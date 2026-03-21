@@ -42,9 +42,9 @@ export const LogEntryItem = memo(function LogEntryItem({ data: log, showHeader, 
     return null;
   }
 
-  // Streaming entries (response, reasoning, tool) don't need a message label —
-  // the content itself or the tool entry is self-explanatory.
-  const isStreamingEntry = logKind === "response" || logKind === "reasoning" || logKind === "tool";
+  // Streaming text entries (response, reasoning) don't need a message label —
+  // their rendered content is already self-explanatory.
+  const isStreamingEntry = logKind === "response" || logKind === "reasoning";
   const showMessageLabel = showHeader && !isStreamingEntry;
 
   return (
