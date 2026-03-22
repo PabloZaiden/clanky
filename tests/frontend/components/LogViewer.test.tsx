@@ -435,10 +435,10 @@ describe("LogViewer", () => {
         message: "AI reasoning...",
         details: { logKind: "reasoning", responseContent: "thinking about it" },
       });
-      const { getByText } = renderWithUser(
+      const { getByText, queryByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
       );
-      expect(getByText("AI reasoning...")).toBeInTheDocument();
+      expect(queryByText("AI reasoning...")).not.toBeInTheDocument();
       expect(getByText("thinking about it")).toBeInTheDocument();
     });
 
@@ -460,10 +460,10 @@ describe("LogViewer", () => {
         message: "AI reasoning...",
         details: { logKind: "reasoning", responseContent: "thinking about it" },
       });
-      const { getByText } = renderWithUser(
+      const { getByText, queryByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} showReasoning={true} />
       );
-      expect(getByText("AI reasoning...")).toBeInTheDocument();
+      expect(queryByText("AI reasoning...")).not.toBeInTheDocument();
       expect(getByText("thinking about it")).toBeInTheDocument();
     });
 
@@ -599,10 +599,10 @@ describe("LogViewer", () => {
         message: "AI generating response...",
         details: { logKind: "response", responseContent: "Hello world" },
       });
-      const { getByText } = renderWithUser(
+      const { getByText, queryByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
       );
-      expect(getByText("AI generating response...")).toBeInTheDocument();
+      expect(queryByText("AI generating response...")).not.toBeInTheDocument();
       expect(getByText("Hello world")).toBeInTheDocument();
     });
 
@@ -901,12 +901,13 @@ describe("LogViewer", () => {
         details: { logKind: "response", responseContent: "Responding..." },
       })];
 
-      const { getByTestId, getByText } = renderWithUser(
+      const { getByTestId, getByText, queryByText } = renderWithUser(
         <LogViewer messages={messages} toolCalls={[]} logs={logs} isActive={true} />
       );
 
       expect(getByText("User msg")).toBeInTheDocument();
-      expect(getByText("AI generating response...")).toBeInTheDocument();
+      expect(queryByText("AI generating response...")).not.toBeInTheDocument();
+      expect(getByText("Responding...")).toBeInTheDocument();
       const indicator = getByTestId("working-indicator");
       expect(indicator).toBeInTheDocument();
     });
@@ -948,13 +949,13 @@ describe("LogViewer", () => {
       expect(container.textContent).toContain("First response");
       expect(container.textContent).toContain("Second response");
 
-      // The action text "AI generating response..." should appear exactly once
+      // Streaming response entries no longer render the redundant action text.
       const allText = container.textContent ?? "";
       const actionOccurrences = allText.split("AI generating response...").length - 1;
-      expect(actionOccurrences).toBe(1);
+      expect(actionOccurrences).toBe(0);
     });
 
-    test("first entry in group always shows action text", () => {
+    test("first streaming response entry shows content without action text", () => {
       const logs = [
         createLogEntry({
           level: "agent",
@@ -962,16 +963,15 @@ describe("LogViewer", () => {
           details: { logKind: "response", responseContent: "Some content" },
         }),
       ];
-      const { getByText } = renderWithUser(
+      const { getByText, queryByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={logs} />
       );
 
-      // Single entry should show both action text and content
-      expect(getByText("AI generating response...")).toBeInTheDocument();
+      expect(queryByText("AI generating response...")).not.toBeInTheDocument();
       expect(getByText("Some content")).toBeInTheDocument();
     });
 
-    test("different group entries each show their own action text", () => {
+    test("different streaming groups each show their content without action text", () => {
       const logs = [
         createLogEntry({
           id: "log-1",
@@ -988,13 +988,12 @@ describe("LogViewer", () => {
           timestamp: "2026-01-01T00:00:02.000Z",
         }),
       ];
-      const { getByText } = renderWithUser(
+      const { getByText, queryByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={logs} />
       );
 
-      // Different groups — both action texts should be visible
-      expect(getByText("AI generating response...")).toBeInTheDocument();
-      expect(getByText("AI reasoning...")).toBeInTheDocument();
+      expect(queryByText("AI generating response...")).not.toBeInTheDocument();
+      expect(queryByText("AI reasoning...")).not.toBeInTheDocument();
       expect(getByText("Response content")).toBeInTheDocument();
       expect(getByText("Reasoning content")).toBeInTheDocument();
     });
@@ -1027,14 +1026,14 @@ describe("LogViewer", () => {
         <LogViewer messages={messages} toolCalls={[]} logs={logs} />
       );
 
-      // The user message breaks the group, so action text should appear twice
+      // The user message breaks the group, but streaming action text stays hidden.
       expect(getByText("User interruption")).toBeInTheDocument();
       expect(getByText("First response")).toBeInTheDocument();
       expect(getByText("Third response")).toBeInTheDocument();
 
       const allText = container.textContent ?? "";
       const actionOccurrences = allText.split("AI generating response...").length - 1;
-      expect(actionOccurrences).toBe(2);
+      expect(actionOccurrences).toBe(0);
     });
   });
 });

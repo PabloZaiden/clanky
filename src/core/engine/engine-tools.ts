@@ -122,13 +122,6 @@ function handleMessageComplete(ctx: IterationContext, toolCtx: ToolProcessingCon
   ctx.currentResponseLogContent = "";
   ctx.currentReasoningLogId = null;
   ctx.currentReasoningLogContent = "";
-  toolCtx.emitLog("debug", "AI full message received", {
-    messageId: ctx.currentMessageId,
-    responseLength: ctx.responseContent.length,
-    responseContent: ctx.responseContent,
-    reasoningLength: ctx.reasoningContent.length,
-    reasoningContent: ctx.reasoningContent,
-  });
   toolCtx.emitLog("agent", "AI finished generating response", {
     logKind: "system",
     responseLength: ctx.responseContent.length,
