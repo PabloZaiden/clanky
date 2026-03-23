@@ -267,17 +267,41 @@ describe("CreateWorkspaceModal", () => {
   });
 
   test("preserves user-entered form values after a live submission fails and Back is clicked", async () => {
-    const startedSnapshot = createSnapshot("running");
-    const failedSnapshot = createSnapshot("failed", {
-      error: {
-        code: "clone_failed",
-        message: "Clone failed",
+    // Snapshots reflect the values the user actually submitted (as a real API would).
+    const startedSnapshot: ProvisioningJobSnapshot = {
+      job: {
+        config: {
+          id: "job-user-values",
+          name: "My Test Workspace",
+          sshServerId: "server-1",
+          repoUrl: "git@github.com:test/project.git",
+          basePath: "/custom/path",
+          provider: "copilot",
+          createdAt: new Date().toISOString(),
+        },
+        state: {
+          status: "running",
+          currentStep: "clone_repo",
+          updatedAt: new Date().toISOString(),
+        },
       },
-    });
+      logs: [],
+    };
+    const failedSnapshot: ProvisioningJobSnapshot = {
+      ...startedSnapshot,
+      job: {
+        ...startedSnapshot.job,
+        state: {
+          status: "failed",
+          currentStep: "clone_repo",
+          updatedAt: new Date().toISOString(),
+          error: { code: "clone_failed", message: "Clone failed" },
+        },
+      },
+    };
     let requestCount = 0;
 
     api.post("/api/provisioning-jobs", () => {
-      // Return running snapshot, then simulate failure on the next GET
       return startedSnapshot;
     });
     api.get("/api/provisioning-jobs/:id", () => {

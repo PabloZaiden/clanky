@@ -56,6 +56,7 @@ export function CreateWorkspaceModal({
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
   const lastSubmittedFormValuesRef = useRef<{
+    jobId: string | null;
     name: string;
     automaticServerId: string;
     automaticRepoUrl: string;
@@ -135,6 +136,7 @@ export function CreateWorkspaceModal({
 
     if (mode === "automatic") {
       lastSubmittedFormValuesRef.current = {
+        jobId: null,
         name: name.trim(),
         automaticServerId,
         automaticRepoUrl: automaticRepoUrl.trim(),
@@ -150,6 +152,12 @@ export function CreateWorkspaceModal({
         password: automaticPassword,
       });
       if (snapshot) {
+        // Associate the saved values with this specific job id so that
+        // handleBackToAutomaticForm can distinguish them from values
+        // submitted for an earlier (now inactive) job.
+        if (lastSubmittedFormValuesRef.current) {
+          lastSubmittedFormValuesRef.current.jobId = snapshot.job.config.id;
+        }
         setMode("automatic");
         setAutomaticPassword("");
       }
@@ -215,15 +223,19 @@ export function CreateWorkspaceModal({
   function handleBackToAutomaticForm(): void {
     const saved = lastSubmittedFormValuesRef.current;
     const config = provisioning.snapshot?.job.config;
-    // Use saved ref as primary source (always set synchronously before job starts),
-    // fall back to provisioning snapshot config if the ref is unexpectedly null.
-    const values = saved ?? (config ? {
+    // Prefer the active job's snapshot config as the primary source so that the
+    // form always reflects the job that is actually being dismissed.  The ref is
+    // only used as a fallback (e.g. when the snapshot hasn't arrived yet) and
+    // only when its stored job id matches the current active job — otherwise the
+    // ref may contain stale values from an earlier submission.
+    const refMatchesActiveJob = saved?.jobId != null && saved.jobId === provisioning.activeJobId;
+    const values = config ? {
       name: config.name,
       automaticServerId: config.sshServerId,
       automaticRepoUrl: config.repoUrl,
       automaticBasePath: config.basePath,
       automaticProvider: config.provider,
-    } : null);
+    } : (refMatchesActiveJob ? saved : null);
 
     if (values) {
       setMode("automatic");
