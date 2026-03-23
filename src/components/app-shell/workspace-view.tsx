@@ -7,8 +7,11 @@ import {
   Badge,
   Button,
   GearIcon,
+  StatusBadge,
   type ActionMenuItem,
   getStatusBadgeVariant,
+  getSshSessionStatusBadgeVariant,
+  getSshSessionStatusLabel,
 } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel, SummaryCard } from "./shell-panel";
@@ -130,9 +133,9 @@ export function WorkspaceView({
                         {loop.config.mode === "chat" ? "Chat" : "Loop"}
                       </span>
                     </span>
-                    <Badge className="ml-auto shrink-0" variant={getStatusBadgeVariant(loop.state.status)}>
+                    <StatusBadge className="ml-auto shrink-0" variant={getStatusBadgeVariant(loop.state.status)}>
                       {getLoopStatusLabel(loop)}
-                    </Badge>
+                    </StatusBadge>
                   </button>
                 );
               })
@@ -165,18 +168,12 @@ export function WorkspaceView({
                       {session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
                     </span>
                   </span>
-                  <Badge
+                  <StatusBadge
                     className="ml-auto shrink-0"
-                    variant={
-                      session.state.status === "connected"
-                        ? "success"
-                        : session.state.status === "failed"
-                          ? "error"
-                          : "default"
-                    }
+                    variant={getSshSessionStatusBadgeVariant(session.state.status)}
                   >
-                    {session.state.status}
-                  </Badge>
+                    {getSshSessionStatusLabel(session.state.status)}
+                  </StatusBadge>
                 </button>
               ))
             )}

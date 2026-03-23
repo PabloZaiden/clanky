@@ -3,7 +3,7 @@
  */
 
 import type { LoopSummaryProps } from "../types";
-import { Badge, getStatusBadgeVariant, Card, EditIcon } from "./common";
+import { Badge, getStatusBadgeVariant, Card, EditIcon, StatusBadge } from "./common";
 import type { BadgeVariant } from "./common";
 import {
   getStatusLabel,
@@ -101,9 +101,9 @@ export function LoopCard({
                 Chat
               </Badge>
             )}
-            <Badge variant={badgeVariant}>
+            <StatusBadge variant={badgeVariant}>
               {badgeLabel}
-            </Badge>
+            </StatusBadge>
             {isAddressable && (
               <Badge variant="info">
                 Addressable

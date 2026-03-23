@@ -3,7 +3,7 @@ import type { PortForward } from "../../types";
 import type { EntityLabels } from "../../utils";
 import { formatDateTime, formatModelDisplay } from "./types";
 import { appAbsoluteUrl } from "../../lib/public-path";
-import { Badge, Button } from "../common";
+import { Badge, Button, getPortForwardStatusBadgeVariant, getPortForwardStatusLabel, StatusBadge } from "../common";
 
 interface InfoTabProps {
   loop: Loop;
@@ -180,9 +180,9 @@ export function InfoTab({
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <Badge variant={forward.state.status === "active" ? "success" : forward.state.status === "failed" ? "error" : "warning"}>
-                          {forward.state.status}
-                        </Badge>
+                        <StatusBadge variant={getPortForwardStatusBadgeVariant(forward.state.status)}>
+                          {getPortForwardStatusLabel(forward.state.status)}
+                        </StatusBadge>
                         <span className="font-mono text-sm text-gray-900 dark:text-gray-100">
                           {forward.config.remoteHost}:{forward.config.remotePort}
                         </span>

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { SshServer, SshServerSession } from "../../types";
 import type { useLoopGrouping, useLoops } from "../../hooks";
 import { getLoopStatusLabel, shouldShowInRecentActivity } from "../../utils";
-import { Badge, getStatusBadgeVariant } from "../common";
+import { Badge, getStatusBadgeVariant, StatusBadge } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
@@ -77,9 +77,9 @@ export function OverviewView({
                         {loop.config.directory}
                       </span>
                     </span>
-                    <Badge variant={getStatusBadgeVariant(loop.state.status)} className="shrink-0">
+                    <StatusBadge variant={getStatusBadgeVariant(loop.state.status)} className="shrink-0">
                       {label}
-                    </Badge>
+                    </StatusBadge>
                   </button>
                 );
               })

@@ -51,7 +51,7 @@ describe("ProvisioningJobView", () => {
       />,
     );
 
-    expect(getByText("running")).toBeInTheDocument();
+    expect(getByText("Running")).toBeInTheDocument();
     expect(getByText("Live")).toBeInTheDocument();
     expect(getByText("Run devbox up")).toBeInTheDocument();
     expect(getByText("Running devbox up")).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("ProvisioningJobView", () => {
       />,
     );
 
-    expect(getByText("failed")).toBeInTheDocument();
+    expect(getByText("Failed")).toBeInTheDocument();
     expect(getByText("Reconnecting")).toBeInTheDocument();
     expect(getByText("Failed to start devbox")).toBeInTheDocument();
     expect(getByText("WebSocket disconnected")).toBeInTheDocument();

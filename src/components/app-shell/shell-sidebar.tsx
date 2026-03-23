@@ -1,6 +1,6 @@
 import { useId } from "react";
 import type { Loop } from "../../types";
-import { Badge, type BadgeVariant } from "../common";
+import { StatusBadge, type BadgeVariant } from "../common";
 import { getWorkspaceGroupCollapseKey } from "./shell-types";
 import type { SidebarSectionId, WorkspaceSidebarGroup } from "./shell-types";
 
@@ -113,16 +113,16 @@ export function SectionItem({
         )}
       </span>
       {badge && (
-        <Badge
+        <StatusBadge
           variant={badgeVariant}
           size="sm"
           className={[
-            "ml-3 shrink-0 uppercase tracking-wide",
+            "ml-3 shrink-0",
             active ? "ring-1 ring-white/10 dark:ring-gray-300/20" : "",
           ].join(" ")}
         >
           {badge}
-        </Badge>
+        </StatusBadge>
       )}
     </button>
   );

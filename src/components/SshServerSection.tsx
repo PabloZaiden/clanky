@@ -1,21 +1,6 @@
 import type { SshServer, SshServerSession } from "../types";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
-import { Badge, Button, Card } from "./common";
-
-function getBadgeVariant(status: SshServerSession["state"]["status"]) {
-  switch (status) {
-    case "connected":
-      return "success";
-    case "connecting":
-      return "info";
-    case "failed":
-      return "error";
-    case "disconnected":
-      return "warning";
-    default:
-      return "default";
-  }
-}
+import { Badge, Button, Card, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
 
 export interface SshServerSectionProps {
   servers: SshServer[];
@@ -123,9 +108,9 @@ export function SshServerSection({
                                   </p>
                                 )}
                               </div>
-                              <Badge variant={getBadgeVariant(session.state.status)} className="shrink-0">
-                                {session.state.status}
-                              </Badge>
+                              <StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)} className="shrink-0">
+                                {getSshSessionStatusLabel(session.state.status)}
+                              </StatusBadge>
                             </div>
                           </button>
                         );

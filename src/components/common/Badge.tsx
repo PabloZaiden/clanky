@@ -3,7 +3,7 @@
  */
 
 import type { HTMLAttributes } from "react";
-import type { SshSessionStatus } from "../../types";
+import type { PortForwardStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
 
 export type BadgeVariant = 
   | "default" 
@@ -127,6 +127,56 @@ export function getSshSessionStatusBadgeVariant(status: SshSessionStatus): Badge
     case "ready":
     default:
       return "default";
+  }
+}
+
+export function getSshSessionStatusLabel(status: SshSessionStatus): string {
+  switch (status) {
+    case "connected": return "Connected";
+    case "connecting": return "Connecting";
+    case "disconnected": return "Disconnected";
+    case "failed": return "Failed";
+    case "ready": return "Ready";
+  }
+}
+
+export function getPortForwardStatusBadgeVariant(status: PortForwardStatus): BadgeVariant {
+  switch (status) {
+    case "active": return "success";
+    case "failed": return "error";
+    case "starting": return "running";
+    case "stopping": return "warning";
+    case "stopped": return "stopped";
+  }
+}
+
+export function getPortForwardStatusLabel(status: PortForwardStatus): string {
+  switch (status) {
+    case "active": return "Active";
+    case "failed": return "Failed";
+    case "starting": return "Starting";
+    case "stopping": return "Stopping";
+    case "stopped": return "Stopped";
+  }
+}
+
+export function getProvisioningStatusBadgeVariant(status: ProvisioningJobStatus): BadgeVariant {
+  switch (status) {
+    case "running":
+    case "pending": return "running";
+    case "completed": return "completed";
+    case "failed": return "failed";
+    case "cancelled": return "warning";
+  }
+}
+
+export function getProvisioningStatusLabel(status: ProvisioningJobStatus): string {
+  switch (status) {
+    case "pending": return "Pending";
+    case "running": return "Running";
+    case "completed": return "Completed";
+    case "failed": return "Failed";
+    case "cancelled": return "Cancelled";
   }
 }
 

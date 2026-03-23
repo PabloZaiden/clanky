@@ -4,7 +4,7 @@
 
 import type { SshSession } from "../types";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
-import { Badge, Card, EditIcon, getSshSessionStatusBadgeVariant } from "./common";
+import { Badge, Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
 
 export interface SshSessionSectionProps {
   sessions: SshSession[];
@@ -56,9 +56,9 @@ export function SshSessionSection({
                         {session.config.directory}
                       </p>
                     </div>
-                    <Badge variant={getSshSessionStatusBadgeVariant(session.state.status)} className="shrink-0">
-                      {session.state.status}
-                    </Badge>
+                    <StatusBadge variant={getSshSessionStatusBadgeVariant(session.state.status)} className="shrink-0">
+                      {getSshSessionStatusLabel(session.state.status)}
+                    </StatusBadge>
                   </div>
                   <button
                     type="button"
