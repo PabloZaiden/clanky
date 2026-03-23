@@ -3,7 +3,7 @@ import type { PortForward } from "../../types";
 import type { EntityLabels } from "../../utils";
 import { formatDateTime, formatModelDisplay } from "./types";
 import { appAbsoluteUrl } from "../../lib/public-path";
-import { Badge, Button, getPortForwardStatusBadgeVariant, getPortForwardStatusLabel, StatusBadge } from "../common";
+import { Button, getPortForwardStatusBadgeVariant, getPortForwardStatusLabel, StatusBadge } from "../common";
 
 interface InfoTabProps {
   loop: Loop;

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Badge, StatusBadge } from "../common";
+import { StatusBadge } from "../common";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../../utils";
 import { CompactBar } from "./compact-bar";
 import { isStandaloneSession } from "./session-utils";

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { SshServer, SshServerSession } from "../../types";
 import type { useLoopGrouping, useLoops } from "../../hooks";
 import { getLoopStatusLabel, shouldShowInRecentActivity } from "../../utils";
-import { Badge, getStatusBadgeVariant, StatusBadge } from "../common";
+import { getStatusBadgeVariant, StatusBadge } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";

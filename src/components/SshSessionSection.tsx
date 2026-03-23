@@ -4,7 +4,7 @@
 
 import type { SshSession } from "../types";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
-import { Badge, Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
+import { Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
 
 export interface SshSessionSectionProps {
   sessions: SshSession[];

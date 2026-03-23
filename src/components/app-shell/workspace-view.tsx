@@ -4,7 +4,6 @@ import type { useLoops, useSshSessions } from "../../hooks";
 import { getLoopStatusLabel } from "../../utils";
 import {
   ActionMenu,
-  Badge,
   Button,
   GearIcon,
   StatusBadge,

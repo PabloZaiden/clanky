@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef } from "react";
 import { Badge, getProvisioningStatusBadgeVariant, getProvisioningStatusLabel, StatusBadge } from "./common";
-import type { ProvisioningJobMode, ProvisioningJobSnapshot, ProvisioningJobStatus, ProvisioningStep } from "../types";
+import type { ProvisioningJobMode, ProvisioningJobSnapshot, ProvisioningStep } from "../types";
 import type { WebSocketConnectionStatus } from "../hooks";
 
 const STEP_LABELS: Record<ProvisioningStep, string> = {
@@ -100,8 +100,8 @@ export const ProvisioningJobView = memo(function ProvisioningJobView({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge variant={getProvisioningStatusBadgeVariant(snapshot.job.state.status as ProvisioningJobStatus)}>
-          {getProvisioningStatusLabel(snapshot.job.state.status as ProvisioningJobStatus)}
+        <StatusBadge variant={getProvisioningStatusBadgeVariant(snapshot.job.state.status)}>
+          {getProvisioningStatusLabel(snapshot.job.state.status)}
         </StatusBadge>
         <StatusBadge variant={websocketStatus === "open" ? "info" : "warning"}>
           {getWebSocketStatusLabel(websocketStatus)}

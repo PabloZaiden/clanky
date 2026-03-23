@@ -3,7 +3,7 @@
  */
 
 import { useLoop, useLoopPortForwards, useMarkdownPreference, useToast } from "../../hooks";
-import { Badge, Button, EditIcon, getStatusBadgeVariant, StatusBadge } from "../common";
+import { Button, EditIcon, getStatusBadgeVariant, StatusBadge } from "../common";
 import { LoopActionBar } from "../LoopActionBar";
 import { getStatusLabel, getPlanningStatusLabel, isLoopActive, canSendTerminalFollowUp, getEntityLabel } from "../../utils";
 import type { TabId } from "./types";
