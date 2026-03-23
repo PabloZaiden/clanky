@@ -76,10 +76,8 @@ export const LogViewer = memo(function LogViewer({
         return;
       }
 
-      // Tool-related log entries: only shown if showTools is enabled
+      // Legacy "AI calling tool:" entries are suppressed entirely (no longer emitted by backend).
       if (logKind === "tool" || (!logKind && logEntry.message.startsWith("AI calling tool:"))) {
-        if (!showTools) return;
-        result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
         return;
       }
 
