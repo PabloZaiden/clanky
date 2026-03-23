@@ -84,9 +84,6 @@ export function LogTab({
                     <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
                       Pending plan question
                     </h3>
-                    <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
-                      This prompt stays here until you answer it. Use the recent log output above for context.
-                    </p>
                   </div>
 
                   <div className="space-y-4">
