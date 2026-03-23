@@ -261,10 +261,12 @@ const result = await Bun.$`ls -la`.text();
 
 ## Testing
 
+First of all, remember to run `bun install` when working on a new task, to make sure all dependencies are installed.
 Always run `bun run build` before running tests, to make sure there are no build errors.
 Use `bun run test` to run all the tests. Don't do `bun test` directly, since the script cleans a lot of the logs that add noise to the tests.
 
-Always run `bun run test` when you think you are done making changes.
+Always run `bun run build && bun run test` when you think you are done making changes.
+Never say a task is done when there are still failing tests, even if you think they're unrelated to your changes.
 
 ```typescript
 import { test, expect } from "bun:test";
