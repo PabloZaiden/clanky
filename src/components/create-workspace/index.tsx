@@ -55,6 +55,13 @@ export function CreateWorkspaceModal({
   const hasActiveProvisioningJob = provisioning.activeJobId !== null;
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
+  const lastSubmittedFormValuesRef = useRef<{
+    name: string;
+    automaticServerId: string;
+    automaticRepoUrl: string;
+    automaticBasePath: string;
+    automaticProvider: AgentProvider;
+  } | null>(null);
 
   // Workspace form state
   const [name, setName] = useState("");
@@ -81,9 +88,8 @@ export function CreateWorkspaceModal({
     }
 
     if (wasOpenRef.current) {
-      if (hasActiveProvisioningJob) {
-        setMode("automatic");
-      }
+      // Modal is already open — do not reset form values in response to any
+      // dependency change (e.g. hasActiveProvisioningJob flipping after clearActiveJob).
       return;
     }
 
@@ -128,6 +134,13 @@ export function CreateWorkspaceModal({
     e.preventDefault();
 
     if (mode === "automatic") {
+      lastSubmittedFormValuesRef.current = {
+        name: name.trim(),
+        automaticServerId,
+        automaticRepoUrl: automaticRepoUrl.trim(),
+        automaticBasePath: automaticBasePath.trim(),
+        automaticProvider,
+      };
       const snapshot = await provisioning.startJob({
         name: name.trim(),
         sshServerId: automaticServerId,
@@ -200,19 +213,28 @@ export function CreateWorkspaceModal({
   const canReturnToAutomaticForm = provisioningStatus === "failed" || provisioningStatus === "cancelled";
 
   function handleBackToAutomaticForm(): void {
+    const saved = lastSubmittedFormValuesRef.current;
     const config = provisioning.snapshot?.job.config;
-    if (!config) {
-      provisioning.clearActiveJob();
-      return;
+    // Use saved ref as primary source (always set synchronously before job starts),
+    // fall back to provisioning snapshot config if the ref is unexpectedly null.
+    const values = saved ?? (config ? {
+      name: config.name,
+      automaticServerId: config.sshServerId,
+      automaticRepoUrl: config.repoUrl,
+      automaticBasePath: config.basePath,
+      automaticProvider: config.provider,
+    } : null);
+
+    if (values) {
+      setMode("automatic");
+      setName(values.name);
+      setAutomaticServerId(values.automaticServerId);
+      setAutomaticRepoUrl(values.automaticRepoUrl);
+      setAutomaticBasePath(values.automaticBasePath);
+      setAutomaticProvider(values.automaticProvider);
+      setAutomaticPassword("");
     }
 
-    setMode("automatic");
-    setName(config.name);
-    setAutomaticServerId(config.sshServerId);
-    setAutomaticRepoUrl(config.repoUrl);
-    setAutomaticBasePath(config.basePath);
-    setAutomaticProvider(config.provider);
-    setAutomaticPassword("");
     provisioning.clearActiveJob();
   }
 

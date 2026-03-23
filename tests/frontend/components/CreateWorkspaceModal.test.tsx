@@ -266,6 +266,69 @@ describe("CreateWorkspaceModal", () => {
     });
   });
 
+  test("preserves user-entered form values after a live submission fails and Back is clicked", async () => {
+    const startedSnapshot = createSnapshot("running");
+    const failedSnapshot = createSnapshot("failed", {
+      error: {
+        code: "clone_failed",
+        message: "Clone failed",
+      },
+    });
+    let requestCount = 0;
+
+    api.post("/api/provisioning-jobs", () => {
+      // Return running snapshot, then simulate failure on the next GET
+      return startedSnapshot;
+    });
+    api.get("/api/provisioning-jobs/:id", () => {
+      requestCount += 1;
+      return requestCount === 1 ? startedSnapshot : failedSnapshot;
+    });
+
+    const { getByLabelText, getByRole, getByText, user } = renderWithUser(
+      <CreateWorkspaceModal
+        isOpen={true}
+        onClose={() => {}}
+        onCreate={mock(async () => true)}
+        registeredSshServers={registeredSshServers}
+      />,
+    );
+
+    // Switch to Automatic tab and fill in values
+    await user.click(getByRole("button", { name: "Automatic" }));
+    await user.type(getByLabelText("Workspace Name *"), "My Test Workspace");
+    await user.type(getByLabelText("Git Repository URL *"), "git@github.com:test/project.git");
+    await user.clear(getByLabelText("Remote Base Path *"));
+    await user.type(getByLabelText("Remote Base Path *"), "/custom/path");
+
+    // Submit
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/provisioning-jobs", "POST")).toHaveLength(1);
+    });
+
+    // Wait for the job to show as failed (polling picks it up)
+    await waitFor(() => {
+      expect(getByText("Clone failed")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Back" })).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    // Click Back
+    await user.click(getByRole("button", { name: "Back" }));
+
+    // Form should be back with the exact values the user entered
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Start Provisioning" })).toBeInTheDocument();
+    });
+
+    expect((getByRole("textbox", { name: "Workspace Name *" }) as HTMLInputElement).value).toBe("My Test Workspace");
+    expect((getByRole("textbox", { name: "Git Repository URL *" }) as HTMLInputElement).value).toBe("git@github.com:test/project.git");
+    expect((getByRole("textbox", { name: "Remote Base Path *" }) as HTMLInputElement).value).toBe("/custom/path");
+    // Password is intentionally empty after going back (security)
+    expect(window.localStorage.getItem("ralpher.activeProvisioningJobId")).toBeNull();
+  });
+
   test("shows Back after a live provisioning failure even if the terminal websocket event is missed", async () => {
     const runningSnapshot = createSnapshot("running");
     const failedSnapshot = createSnapshot("failed", {
