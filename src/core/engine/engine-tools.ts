@@ -150,7 +150,6 @@ function handleToolStart(event: AgentEvent & { type: "tool.start" }, ctx: Iterat
   const toolId = `tool-${ctx.iteration}-${event.toolName}-${ctx.toolCallCount}`;
   ctx.toolCalls.set(event.toolName, { id: toolId, name: event.toolName, input: event.input });
   ctx.toolCallCount++;
-  toolCtx.emitLog("agent", `AI calling tool: ${event.toolName}`, { logKind: "tool" });
   const timestamp = createTimestamp();
   const toolCallData: ToolCallData = {
     id: toolId,

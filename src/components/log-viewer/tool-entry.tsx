@@ -135,15 +135,46 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
     [tool.input]
   );
 
-  const renderOutputContent = useCallback(
+  /** Renders output only (used when input is absent but output is present). */
+  const renderOutputOnlyContent = useCallback(
     () => (
-      <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
-        {typeof tool.output === "string"
-          ? tool.output
-          : JSON.stringify(tool.output, null, 2)}
-      </pre>
+      <>
+        <div className="text-gray-500 text-xs mt-1">{meta.outputLabel}</div>
+        {meta.outputType === "text" ? (
+          <RenderedContent output={tool.output} />
+        ) : (
+          <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
+            {typeof tool.output === "string"
+              ? tool.output
+              : JSON.stringify(tool.output, null, 2)}
+          </pre>
+        )}
+      </>
     ),
-    [tool.output]
+    [tool.output, meta.outputLabel, meta.outputType]
+  );
+
+  /** Renders input + output together inside a single collapsible section. */
+  const renderCombinedContent = useCallback(
+    () => (
+      <>
+        <div className="text-gray-500 text-xs mt-1">Input</div>
+        <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
+          {JSON.stringify(tool.input, null, 2)}
+        </pre>
+        <div className="text-gray-500 text-xs mt-2">{meta.outputLabel}</div>
+        {meta.outputType === "text" ? (
+          <RenderedContent output={tool.output} />
+        ) : (
+          <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
+            {typeof tool.output === "string"
+              ? tool.output
+              : JSON.stringify(tool.output, null, 2)}
+          </pre>
+        )}
+      </>
+    ),
+    [tool.input, tool.output, meta.outputLabel, meta.outputType]
   );
 
   return (
@@ -155,28 +186,20 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
       )}
       <div className="min-w-0">
         {tool.input != null ? (
-          // Input exists: wrap header + input JSON in a collapsible <details>
-          <LazyDetails summary={inputSummary} renderContent={renderInputContent} />
+          // Input exists: wrap in collapsible; include output in same section if completed
+          <LazyDetails
+            summary={inputSummary}
+            renderContent={tool.output != null ? renderCombinedContent : renderInputContent}
+          />
+        ) : tool.output != null ? (
+          // No input but output present: still collapse output
+          <LazyDetails summary={inputSummary} renderContent={renderOutputOnlyContent} />
         ) : (
-          // No input yet (pending/running): show plain header without collapse
+          // Neither input nor output yet (pending/running): plain header
           <span className="text-xs">
             {statusIcon}
             <span className="text-gray-300">{meta.summary}</span>
           </span>
-        )}
-
-        {/* Output section */}
-        {tool.output != null && (
-          meta.outputType === "text" ? (
-            <div className="mt-1 ml-3">
-              <div className="text-gray-500 text-xs">{meta.outputLabel}</div>
-              <RenderedContent output={tool.output} />
-            </div>
-          ) : (
-            <div className="ml-3">
-              <LazyDetails summary={meta.outputLabel} renderContent={renderOutputContent} />
-            </div>
-          )
         )}
       </div>
     </div>
