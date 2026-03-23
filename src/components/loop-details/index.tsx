@@ -3,7 +3,7 @@
  */
 
 import { useLoop, useLoopPortForwards, useMarkdownPreference, useToast } from "../../hooks";
-import { Badge, Button, EditIcon, getStatusBadgeVariant } from "../common";
+import { Button, EditIcon, getStatusBadgeVariant, StatusBadge } from "../common";
 import { LoopActionBar } from "../LoopActionBar";
 import { getStatusLabel, getPlanningStatusLabel, isLoopActive, canSendTerminalFollowUp, getEntityLabel } from "../../utils";
 import type { TabId } from "./types";
@@ -117,9 +117,9 @@ export function LoopDetails({
             >
               <EditIcon />
             </button>
-            <Badge variant={isPlanning ? (isPlanReady ? "plan_ready" : "planning") : getStatusBadgeVariant(state.status)} size="sm">
+            <StatusBadge variant={isPlanning ? (isPlanReady ? "plan_ready" : "planning") : getStatusBadgeVariant(state.status)} size="sm">
               {isPlanning ? getPlanningStatusLabel(isPlanReady) : getStatusLabel(state.status, state.syncState)}
-            </Badge>
+            </StatusBadge>
             <span className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate hidden sm:inline">{config.directory}</span>
           </div>
         </div>

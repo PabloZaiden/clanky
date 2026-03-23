@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Badge } from "../common";
+import { StatusBadge } from "../common";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../../utils";
 import { CompactBar } from "./compact-bar";
 import { isStandaloneSession } from "./session-utils";
@@ -19,19 +19,19 @@ export function SessionInfoSection({ session, standaloneServerName, standaloneSe
 
   const summary = useMemo(() => (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-xs text-gray-500 dark:text-gray-400">
-      <Badge variant={effectiveConnectionMode === "direct" ? "info" : "default"} className="shrink-0">
+      <StatusBadge variant={effectiveConnectionMode === "direct" ? "info" : "default"} className="shrink-0">
         {getSshConnectionModeLabel(effectiveConnectionMode ?? session.config.connectionMode)}
-      </Badge>
+      </StatusBadge>
 
       {session.state.notice && (
-        <Badge variant="warning" className="shrink-0">
+        <StatusBadge variant="warning" className="shrink-0">
           fallback
-        </Badge>
+        </StatusBadge>
       )}
       {session.state.error && (
-        <Badge variant="error" className="shrink-0">
+        <StatusBadge variant="error" className="shrink-0">
           error
-        </Badge>
+        </StatusBadge>
       )}
     </div>
   ), [effectiveConnectionMode, session]);

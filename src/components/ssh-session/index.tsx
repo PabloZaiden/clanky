@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FitAddon, Terminal } from "ghostty-web";
-import { Badge, Button, ConfirmModal, EditIcon } from "../common";
+import { Button, ConfirmModal, EditIcon, StatusBadge } from "../common";
 import { useSshSession, useToast } from "../../hooks";
 import { RenameSshSessionModal } from "../RenameSshSessionModal";
 import { isPersistentSshSession, writeTextToClipboard } from "../../utils";
@@ -299,9 +299,9 @@ export function SshSessionDetails({
               <h1 className="min-w-0 break-words text-base font-semibold text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
                 {session.config.name}
               </h1>
-              <Badge variant={connection.socketStatus === "open" ? "success" : connection.socketStatus === "connecting" ? "info" : "warning"}>
+              <StatusBadge variant={connection.socketStatus === "open" ? "success" : connection.socketStatus === "connecting" ? "info" : "warning"}>
                 {connection.socketStatus === "open" ? "connected" : connection.socketStatus === "closed" ? "disconnected" : "connecting"}
-              </Badge>
+              </StatusBadge>
             </div>
             <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
               {canRenameSession && (

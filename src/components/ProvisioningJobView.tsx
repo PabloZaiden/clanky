@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef } from "react";
-import { Badge } from "./common";
+import { Badge, getProvisioningStatusBadgeVariant, getProvisioningStatusLabel, StatusBadge } from "./common";
 import type { ProvisioningJobMode, ProvisioningJobSnapshot, ProvisioningStep } from "../types";
 import type { WebSocketConnectionStatus } from "../hooks";
 
@@ -38,22 +38,6 @@ const REBUILD_STEPS: ProvisioningStep[] = [
 function getStepsForMode(mode: ProvisioningJobMode | undefined): [ProvisioningStep, string][] {
   const steps = mode === "rebuild" ? REBUILD_STEPS : PROVISION_STEPS;
   return steps.map((step) => [step, STEP_LABELS[step]]);
-}
-
-function getStatusBadgeVariant(status: ProvisioningJobSnapshot["job"]["state"]["status"]) {
-  switch (status) {
-    case "running":
-    case "pending":
-      return "running";
-    case "completed":
-      return "completed";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "warning";
-    default:
-      return "default";
-  }
 }
 
 function getWebSocketStatusLabel(status: WebSocketConnectionStatus): string {
@@ -116,12 +100,12 @@ export const ProvisioningJobView = memo(function ProvisioningJobView({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={getStatusBadgeVariant(snapshot.job.state.status)}>
-          {snapshot.job.state.status}
-        </Badge>
-        <Badge variant={websocketStatus === "open" ? "info" : "warning"}>
+        <StatusBadge variant={getProvisioningStatusBadgeVariant(snapshot.job.state.status)}>
+          {getProvisioningStatusLabel(snapshot.job.state.status)}
+        </StatusBadge>
+        <StatusBadge variant={websocketStatus === "open" ? "info" : "warning"}>
           {getWebSocketStatusLabel(websocketStatus)}
-        </Badge>
+        </StatusBadge>
         {snapshot.job.state.workspaceAction && snapshot.job.state.workspaceId && (
           <Badge variant="success">
             workspace {snapshot.job.state.workspaceAction}
