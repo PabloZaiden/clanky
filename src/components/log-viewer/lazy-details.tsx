@@ -2,19 +2,24 @@ import type { ReactNode } from "react";
 import { memo, useState } from "react";
 
 interface LazyDetailsProps {
-  summary: string;
+  /** Summary content shown in the collapsed header (accepts ReactNode for rich content). */
+  summary: ReactNode;
   renderContent: () => ReactNode;
+  /** Whether the details element starts open. Defaults to false. */
+  defaultOpen?: boolean;
 }
 
 export const LazyDetails = memo(function LazyDetails({
   summary,
   renderContent,
+  defaultOpen = false,
 }: LazyDetailsProps) {
-  const [hasOpened, setHasOpened] = useState(false);
+  const [hasOpened, setHasOpened] = useState(defaultOpen);
 
   return (
     <details
       className="mt-1"
+      open={defaultOpen}
       onToggle={(event) => {
         if (event.currentTarget.open) {
           setHasOpened(true);
