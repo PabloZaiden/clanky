@@ -202,10 +202,16 @@ describe("LogViewer", () => {
       const { getByText, queryByText, user } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("Output")).toBeInTheDocument();
+      const outputSummary = getByText("Output");
+      // Find the <details> wrapping this summary to assert its open state
+      const details = outputSummary.closest("details") as HTMLDetailsElement;
+      // Content not yet mounted (lazy) and details is closed
       expect(queryByText("file contents here")).not.toBeInTheDocument();
-      await user.click(getByText("Output"));
+      expect(details.getAttribute("data-open")).toBe("false");
+      await user.click(outputSummary);
+      // After opening: content is mounted and details element is open
       expect(getByText("file contents here")).toBeInTheDocument();
+      expect(details.getAttribute("data-open")).toBe("true");
     });
 
     test("keeps tool detail content mounted after first expansion", async () => {
@@ -218,11 +224,17 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
       const outputSummary = getByText("Output");
+      // Find the <details> wrapping this summary to assert its open state
+      const details = outputSummary.closest("details") as HTMLDetailsElement;
       expect(queryByText("file contents here")).not.toBeInTheDocument();
       await user.click(outputSummary);
+      // After first open: content mounted and details is open
       expect(getByText("file contents here")).toBeInTheDocument();
+      expect(details.getAttribute("data-open")).toBe("true");
       await user.click(outputSummary);
+      // After re-collapse: content stays mounted but details is closed
       expect(queryByText("file contents here")).toBeInTheDocument();
+      expect(details.getAttribute("data-open")).toBe("false");
     });
 
     test("renders tool output as JSON when it is an object", async () => {
@@ -266,6 +278,30 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[tool]} />
       );
       expect(queryByText("Write")).not.toBeInTheDocument();
+    });
+
+    test("always renders summary line even when showHeader is false and input/output are null", () => {
+      // Regression test: pending/running tools with no input/output and showHeader=false
+      // must still render the status icon + summary so the row is never blank.
+      const pendingTool = createToolCallData({
+        name: "execute",
+        input: null,
+        output: undefined,
+        status: "pending",
+      });
+      const runningTool = createToolCallData({
+        name: "execute",
+        input: null,
+        output: undefined,
+        status: "running",
+      });
+      // Two consecutive tools — second one gets showHeader=false
+      const { getAllByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[pendingTool, runningTool]} showTools={true} />
+      );
+      // Both tools should render their summary ("Executing: execute")
+      const summaries = getAllByText(/Executing:/);
+      expect(summaries.length).toBeGreaterThanOrEqual(2);
     });
   });
 

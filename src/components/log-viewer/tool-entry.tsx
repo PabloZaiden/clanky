@@ -146,8 +146,6 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
     [tool.output]
   );
 
-  const showToolHeader = showHeader || tool.input != null || tool.output != null;
-
   return (
     <div key={`tool-${tool.id}-${index}`} className={`group ${spacingClass}`}>
       {showHeader && (
@@ -156,17 +154,15 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
         </div>
       )}
       <div className="min-w-0">
-        {showToolHeader && (
-          tool.input != null ? (
-            // Input exists: wrap header + input JSON in a collapsible <details>
-            <LazyDetails summary={inputSummary} renderContent={renderInputContent} />
-          ) : (
-            // No input yet (pending/running): show plain header without collapse
-            <span className="text-xs">
-              {statusIcon}
-              <span className="text-gray-300">{meta.summary}</span>
-            </span>
-          )
+        {tool.input != null ? (
+          // Input exists: wrap header + input JSON in a collapsible <details>
+          <LazyDetails summary={inputSummary} renderContent={renderInputContent} />
+        ) : (
+          // No input yet (pending/running): show plain header without collapse
+          <span className="text-xs">
+            {statusIcon}
+            <span className="text-gray-300">{meta.summary}</span>
+          </span>
         )}
 
         {/* Output section */}

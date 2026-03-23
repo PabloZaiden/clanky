@@ -14,14 +14,18 @@ export const LazyDetails = memo(function LazyDetails({
   renderContent,
   defaultOpen = false,
 }: LazyDetailsProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [hasOpened, setHasOpened] = useState(defaultOpen);
 
   return (
     <details
       className="mt-1"
-      open={defaultOpen}
+      open={isOpen}
+      data-open={isOpen ? "true" : "false"}
       onToggle={(event) => {
-        if (event.currentTarget.open) {
+        const open = event.currentTarget.open;
+        setIsOpen(open);
+        if (open) {
           setHasOpened(true);
         }
       }}
