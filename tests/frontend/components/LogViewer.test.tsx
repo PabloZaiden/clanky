@@ -129,29 +129,32 @@ describe("LogViewer", () => {
     });
 
     test("renders a failed tool call with X mark", () => {
-      const tool = createToolCallData({ name: "Read", status: "failed" });
+      // Use an unknown tool name so the raw name is the summary (no transformation)
+      const tool = createToolCallData({ name: "FailedTool", status: "failed", input: null });
       const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("Read")).toBeInTheDocument();
+      expect(getByText("FailedTool")).toBeInTheDocument();
       expect(getByText("✗")).toBeInTheDocument();
     });
 
     test("renders a pending tool call with circle", () => {
-      const tool = createToolCallData({ name: "Bash", status: "pending" });
+      // Use an unknown tool name so the raw name is the summary (no transformation)
+      const tool = createToolCallData({ name: "PendingTool", status: "pending", input: null });
       const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("Bash")).toBeInTheDocument();
+      expect(getByText("PendingTool")).toBeInTheDocument();
       expect(getByText("○")).toBeInTheDocument();
     });
 
     test("renders a running tool call with spinner", () => {
-      const tool = createToolCallData({ name: "Glob", status: "running" });
+      // Use an unknown tool name so the raw name is the summary (no transformation)
+      const tool = createToolCallData({ name: "RunningTool", status: "running", input: null });
       const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("Glob")).toBeInTheDocument();
+      expect(getByText("RunningTool")).toBeInTheDocument();
       expect(getByText("⟳")).toBeInTheDocument();
     });
 
@@ -163,51 +166,81 @@ describe("LogViewer", () => {
       const { container, getByText, user } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      // Input should be in a details/summary element
-      const inputSummary = getByText("Input");
-      expect(inputSummary).toBeInTheDocument();
+      // The tool summary is the collapsible trigger — "Input" is no longer a separate label.
+      // "Write" is an unknown tool, so its raw name is used as the summary.
+      const summaryText = getByText("Write");
+      expect(summaryText).toBeInTheDocument();
       expect(container.querySelectorAll("pre")).toHaveLength(0);
-      // Clicking the summary should open details (toggle handled by browser)
-      await user.click(inputSummary);
+      // Clicking the summary opens the details to reveal the input JSON
+      await user.click(summaryText);
       const inputPre = Array.from(container.querySelectorAll("pre")).find(
         (element) => element.textContent?.includes("\"filePath\": \"/src/test.ts\"")
       );
       expect(inputPre).toBeDefined();
     });
 
-    test("renders tool output in collapsible details", async () => {
+    test("renders known tool text output directly (no collapse needed)", () => {
+      // For known tools (read/view) the output is rendered as a text box immediately visible.
       const tool = createToolCallData({
-        name: "Read",
-        output: "file contents here",
+        name: "read",
+        input: { path: "/src/test.ts" },
+        output: { content: "file contents here" },
       });
-      const { getByText, queryByText, user } = renderWithUser(
+      const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("Output")).toBeInTheDocument();
-      expect(queryByText("file contents here")).not.toBeInTheDocument();
-      await user.click(getByText("Output"));
+      // Content is visible immediately — no click needed
       expect(getByText("file contents here")).toBeInTheDocument();
     });
 
-    test("keeps tool detail content mounted after first expansion", async () => {
+    test("renders unknown tool output in collapsible details", async () => {
+      // For unknown tools, output is collapsed under an "Output" label.
       const tool = createToolCallData({
-        name: "Read",
+        name: "CustomOutputTool",
         output: "file contents here",
       });
       const { getByText, queryByText, user } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
       const outputSummary = getByText("Output");
+      // Find the <details> wrapping this summary to assert its open state
+      const details = outputSummary.closest("details") as HTMLDetailsElement;
+      // Content not yet mounted (lazy) and details is closed
+      expect(queryByText("file contents here")).not.toBeInTheDocument();
+      expect(details.getAttribute("data-open")).toBe("false");
+      await user.click(outputSummary);
+      // After opening: content is mounted and details element is open
+      expect(getByText("file contents here")).toBeInTheDocument();
+      expect(details.getAttribute("data-open")).toBe("true");
+    });
+
+    test("keeps tool detail content mounted after first expansion", async () => {
+      // LazyDetails keeps the output pre mounted even after collapsing again.
+      const tool = createToolCallData({
+        name: "CustomOutputTool",
+        output: "file contents here",
+      });
+      const { getByText, queryByText, user } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+      const outputSummary = getByText("Output");
+      // Find the <details> wrapping this summary to assert its open state
+      const details = outputSummary.closest("details") as HTMLDetailsElement;
       expect(queryByText("file contents here")).not.toBeInTheDocument();
       await user.click(outputSummary);
+      // After first open: content mounted and details is open
       expect(getByText("file contents here")).toBeInTheDocument();
+      expect(details.getAttribute("data-open")).toBe("true");
       await user.click(outputSummary);
+      // After re-collapse: content stays mounted but details is closed
       expect(queryByText("file contents here")).toBeInTheDocument();
+      expect(details.getAttribute("data-open")).toBe("false");
     });
 
     test("renders tool output as JSON when it is an object", async () => {
+      // Unknown tools with object output use collapsed JSON via LazyDetails.
       const tool = createToolCallData({
-        name: "Bash",
+        name: "CustomJsonTool",
         output: { exitCode: 0, stdout: "ok" },
       });
       const { container, getByText, user } = renderWithUser(
@@ -245,6 +278,30 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[tool]} />
       );
       expect(queryByText("Write")).not.toBeInTheDocument();
+    });
+
+    test("always renders summary line even when showHeader is false and input/output are null", () => {
+      // Regression test: pending/running tools with no input/output and showHeader=false
+      // must still render the status icon + summary so the row is never blank.
+      const pendingTool = createToolCallData({
+        name: "execute",
+        input: null,
+        output: undefined,
+        status: "pending",
+      });
+      const runningTool = createToolCallData({
+        name: "execute",
+        input: null,
+        output: undefined,
+        status: "running",
+      });
+      // Two consecutive tools — second one gets showHeader=false
+      const { getAllByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[pendingTool, runningTool]} showTools={true} />
+      );
+      // Both tools should render their summary ("Executing: execute")
+      const summaries = getAllByText(/Executing:/);
+      expect(summaries.length).toBeGreaterThanOrEqual(2);
     });
   });
 
@@ -744,7 +801,8 @@ describe("LogViewer", () => {
   describe("mixed content", () => {
     test("renders messages, tool calls, and logs together", () => {
       const messages = [createMessageData({ content: "Hello from user", role: "user" })];
-      const toolCalls = [createToolCallData({ name: "Edit", status: "completed" })];
+      // Use an unknown tool name so the summary is the raw name (no path transformation)
+      const toolCalls = [createToolCallData({ name: "ProcessingTask", status: "completed", input: null })];
       const logs = [createLogEntry({ level: "info", message: "Processing complete" })];
 
       const { getByText } = renderWithUser(
@@ -752,7 +810,7 @@ describe("LogViewer", () => {
       );
 
       expect(getByText("Hello from user")).toBeInTheDocument();
-      expect(getByText("Edit")).toBeInTheDocument();
+      expect(getByText("ProcessingTask")).toBeInTheDocument();
       expect(getByText("Processing complete")).toBeInTheDocument();
     });
   });
