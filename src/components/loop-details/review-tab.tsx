@@ -129,26 +129,11 @@ export function ReviewTab({ loop, labels, loadingComments, reviewComments, embed
                 </div>
               )}
             </div>
-
-            <div className="bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                About Review Mode
-              </h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                This {labels.singular} can receive reviewer comments and address them iteratively.
-                {loop.state.reviewMode.completionAction === "push"
-                  ? " Pushed loops continue adding commits to the same branch."
-                  : " Merged loops create new review branches for each cycle."}
-              </p>
-            </div>
           </>
         ) : (
           <div className="text-center py-8">
             <p className="text-gray-500 dark:text-gray-400">
               This {labels.singular} does not have review mode enabled.
-            </p>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">
-              Review mode is automatically enabled when a {labels.singular} is pushed or merged.
             </p>
           </div>
         )}
