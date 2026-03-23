@@ -46,7 +46,7 @@ function getToolMeta(tool: ToolCallData): ToolMeta {
     const desc =
       getStringField(tool.input, "description") ??
       (cmdPreview ? `${cmdPreview.slice(0, 60)}…` : name);
-    return { summary: `Executing: ${desc}`, outputLabel: "Output", outputType: "text" };
+    return { summary: desc, outputLabel: "Output", outputType: "text" };
   }
 
   if (name === "read" || name === "view") {
@@ -79,7 +79,7 @@ function getToolMeta(tool: ToolCallData): ToolMeta {
   // SQL tool — also catches "other" tool calls that carry a "query" field
   if (name === "sql" || name === "other" || hasField(tool.input, "query")) {
     const desc = getStringField(tool.input, "description") ?? "SQL query";
-    return { summary: `Executing: ${desc}`, outputLabel: "Done", outputType: "json" };
+    return { summary: desc, outputLabel: "Done", outputType: "json" };
   }
 
   // Unknown / generic tool

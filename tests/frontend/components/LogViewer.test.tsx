@@ -302,8 +302,8 @@ describe("LogViewer", () => {
       const { getAllByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[pendingTool, runningTool]} showTools={true} />
       );
-      // Both tools should render their summary ("Executing: execute")
-      const summaries = getAllByText(/Executing:/);
+      // Both tools should render their summary (fallback label "execute" — no prefix)
+      const summaries = getAllByText(/^execute$/);
       expect(summaries.length).toBeGreaterThanOrEqual(2);
     });
   });
