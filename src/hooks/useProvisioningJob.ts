@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  clearActiveProvisioningJobId,
-  getActiveProvisioningJobId,
-  setActiveProvisioningJobId,
-} from "../lib/provisioning-job-storage";
-import {
   getStoredSshCredentialToken,
   storeSshServerPassword,
 } from "../lib/ssh-browser-credentials";
@@ -75,7 +70,7 @@ function isSuccessfulConnectionLog(entry: ProvisioningLogEntry): boolean {
 const ACTIVE_JOB_REFRESH_INTERVAL_MS = 1000;
 
 export function useProvisioningJob(): UseProvisioningJobResult {
-  const [activeJobId, setJobId] = useState<string | null>(() => getActiveProvisioningJobId());
+  const [activeJobId, setJobId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<ProvisioningJobSnapshot | null>(null);
   const [logs, setLogs] = useState<ProvisioningLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,7 +78,6 @@ export function useProvisioningJob(): UseProvisioningJobResult {
   const [error, setError] = useState<string | null>(null);
 
   const clearActiveJob = useCallback(() => {
-    clearActiveProvisioningJobId();
     setJobId(null);
     setSnapshot(null);
     setLogs([]);
@@ -217,7 +211,6 @@ export function useProvisioningJob(): UseProvisioningJobResult {
       }
 
       const nextSnapshot = await response.json() as ProvisioningJobSnapshot;
-      setActiveProvisioningJobId(nextSnapshot.job.config.id);
       setJobId(nextSnapshot.job.config.id);
       setSnapshot(nextSnapshot);
       setLogs(nextSnapshot.logs);

@@ -6,7 +6,6 @@
 import { useState, useCallback } from "react";
 import type { UncommittedChangesError } from "../types";
 import type { CreateLoopFormActionState } from "../components/CreateLoopForm";
-import { getActiveProvisioningJobId } from "../lib/provisioning-job-storage";
 
 export interface ModalState<T = string | null> {
   open: boolean;
@@ -68,9 +67,7 @@ export function useDashboardModals(
     sessionId: null,
   });
   const [showServerSettingsModal, setShowServerSettingsModal] = useState(false);
-  const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = useState(
-    () => getActiveProvisioningJobId() !== null,
-  );
+  const [showCreateWorkspaceModal, setShowCreateWorkspaceModal] = useState(false);
   const [workspaceSettingsModal, setWorkspaceSettingsModal] = useState<{ open: boolean; workspaceId: string | null }>({
     open: false,
     workspaceId: null,

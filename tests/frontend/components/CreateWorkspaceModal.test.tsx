@@ -169,15 +169,16 @@ describe("CreateWorkspaceModal", () => {
   });
 
   test("renders observer mode and only refreshes once for a completed provisioning job", async () => {
+    const startedSnapshot = createSnapshot("running");
     const completedSnapshot = createSnapshot("completed");
     const firstRefresh = mock(async () => {});
     const secondRefresh = mock(async () => {});
     const onClose = mock(() => {});
 
-    window.localStorage.setItem("ralpher.activeProvisioningJobId", "job-1");
+    api.post("/api/provisioning-jobs", () => startedSnapshot);
     api.get("/api/provisioning-jobs/:id", () => completedSnapshot);
 
-    const { getAllByRole, getByText, rerender, user } = renderWithUser(
+    const { getAllByRole, getByText, getByLabelText, getByRole, rerender, user } = renderWithUser(
       <CreateWorkspaceModal
         isOpen={true}
         onClose={onClose}
@@ -186,6 +187,11 @@ describe("CreateWorkspaceModal", () => {
         onProvisioningSuccess={firstRefresh}
       />,
     );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+    await user.type(getByLabelText("Workspace Name *"), "Provisioned Workspace");
+    await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
 
     await waitFor(() => {
       expect(getByText("Provisioning log")).toBeInTheDocument();
@@ -212,19 +218,18 @@ describe("CreateWorkspaceModal", () => {
   });
 
   test("returns to the automatic form after failure with the previous configuration prefilled", async () => {
+    const startedSnapshot = createSnapshot("running");
     const failedSnapshot = createSnapshot("failed", {
       error: {
         code: "clone_failed",
         message: "Failed to clone repository",
       },
     });
-    const retriedSnapshot = createSnapshot("running");
 
-    window.localStorage.setItem("ralpher.activeProvisioningJobId", "job-1");
+    api.post("/api/provisioning-jobs", () => startedSnapshot);
     api.get("/api/provisioning-jobs/:id", () => failedSnapshot);
-    api.post("/api/provisioning-jobs", () => retriedSnapshot);
 
-    const { getByRole, getByText, user } = renderWithUser(
+    const { getByRole, getByLabelText, getByText, user } = renderWithUser(
       <CreateWorkspaceModal
         isOpen={true}
         onClose={() => {}}
@@ -232,6 +237,11 @@ describe("CreateWorkspaceModal", () => {
         registeredSshServers={registeredSshServers}
       />,
     );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+    await user.type(getByLabelText("Workspace Name *"), "Provisioned Workspace");
+    await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
 
     await waitFor(() => {
       expect(getByText("Failed to clone repository")).toBeInTheDocument();
@@ -254,10 +264,10 @@ describe("CreateWorkspaceModal", () => {
     await user.click(getByRole("button", { name: "Start Provisioning" }));
 
     await waitFor(() => {
-      expect(api.calls("/api/provisioning-jobs", "POST")).toHaveLength(1);
+      expect(api.calls("/api/provisioning-jobs", "POST")).toHaveLength(2);
     });
 
-    expect(api.calls("/api/provisioning-jobs", "POST")[0]?.body).toEqual({
+    expect(api.calls("/api/provisioning-jobs", "POST")[1]?.body).toEqual({
       name: "Provisioned Workspace",
       sshServerId: "server-1",
       repoUrl: "git@github.com:owner/repo.git",
@@ -363,13 +373,13 @@ describe("CreateWorkspaceModal", () => {
     });
     let requestCount = 0;
 
-    window.localStorage.setItem("ralpher.activeProvisioningJobId", "job-1");
+    api.post("/api/provisioning-jobs", () => runningSnapshot);
     api.get("/api/provisioning-jobs/:id", () => {
       requestCount += 1;
       return requestCount === 1 ? runningSnapshot : failedSnapshot;
     });
 
-    const { getByRole, getByText } = renderWithUser(
+    const { getByRole, getByLabelText, getByText, user } = renderWithUser(
       <CreateWorkspaceModal
         isOpen={true}
         onClose={() => {}}
@@ -377,6 +387,11 @@ describe("CreateWorkspaceModal", () => {
         registeredSshServers={registeredSshServers}
       />,
     );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+    await user.type(getByLabelText("Workspace Name *"), "Provisioned Workspace");
+    await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
 
     await waitFor(() => {
       expect(getByText("Provisioning log")).toBeInTheDocument();
@@ -412,13 +427,13 @@ describe("CreateWorkspaceModal", () => {
     };
     let requestCount = 0;
 
-    window.localStorage.setItem("ralpher.activeProvisioningJobId", "job-1");
+    api.post("/api/provisioning-jobs", () => runningSnapshot);
     api.get("/api/provisioning-jobs/:id", () => {
       requestCount += 1;
       return requestCount === 1 ? runningSnapshot : completedSnapshot;
     });
 
-    const { getByText } = renderWithUser(
+    const { getByText, getByRole, getByLabelText, user } = renderWithUser(
       <CreateWorkspaceModal
         isOpen={true}
         onClose={() => {}}
@@ -426,6 +441,11 @@ describe("CreateWorkspaceModal", () => {
         registeredSshServers={registeredSshServers}
       />,
     );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+    await user.type(getByLabelText("Workspace Name *"), "Provisioned Workspace");
+    await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
 
     await waitFor(() => {
       expect(getByText("Workspace Ready")).toBeInTheDocument();
