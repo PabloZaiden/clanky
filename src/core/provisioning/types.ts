@@ -8,9 +8,9 @@ export interface StartProvisioningJobOptions {
   provider: AgentProvider;
   mode?: ProvisioningJobMode;
   password?: string;
-  /** For rebuild mode: directory on the host where the repo lives */
+  /** For rebuild/restart mode: directory on the host where the repo lives */
   targetDirectory?: string;
-  /** For rebuild mode: existing workspace ID */
+  /** For rebuild/restart mode: existing workspace ID */
   workspaceId?: string;
 }
 

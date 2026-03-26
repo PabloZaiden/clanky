@@ -115,4 +115,39 @@ describe("ProvisioningJobView", () => {
     expect(queryByText("Clone repository")).toBeNull();
     expect(queryByText("Rebuild devbox")).toBeNull();
   });
+
+  test("uses the server-level arise step sequence and summary labels", () => {
+    const snapshot = createSnapshot("running", {
+      currentStep: "devbox_arise",
+      targetDirectory: undefined,
+    });
+    snapshot.job.config.mode = "arise";
+    snapshot.job.config.name = "Build host";
+    snapshot.job.config.basePath = "/workspaces";
+    snapshot.logs = [
+      {
+        id: "log-2",
+        source: "system",
+        text: "Running devbox arise",
+        timestamp: new Date().toISOString(),
+        step: "devbox_arise",
+      },
+    ];
+
+    const { getByText, queryByText } = renderWithUser(
+      <ProvisioningJobView
+        snapshot={snapshot}
+        logs={snapshot.logs}
+        websocketStatus="open"
+      />,
+    );
+
+    expect(getByText("Run devbox arise")).toBeInTheDocument();
+    expect(getByText("Arise complete")).toBeInTheDocument();
+    expect(getByText("Server name")).toBeInTheDocument();
+    expect(getByText("Repositories base path")).toBeInTheDocument();
+    expect(getByText("Build host")).toBeInTheDocument();
+    expect(queryByText("Target directory")).toBeNull();
+    expect(queryByText("Workspace name")).toBeNull();
+  });
 });

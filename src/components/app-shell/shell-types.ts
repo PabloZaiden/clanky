@@ -43,6 +43,7 @@ export type ShellRoute =
   | { view: "workspace"; workspaceId: string }
   | { view: "workspace-settings"; workspaceId: string }
   | { view: "ssh-server"; serverId: string }
+  | { view: "server-arise"; serverId: string }
   | {
       view: "compose";
       kind: "loop" | "chat" | "workspace" | "ssh-session" | "ssh-server";
