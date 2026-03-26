@@ -130,7 +130,7 @@ export const LogViewer = memo(function LogViewer({
     <div
       ref={containerRef}
       id={id}
-      className={`min-w-0 rounded-lg bg-neutral-900 text-xs text-gray-100 dark-scrollbar overflow-x-hidden overflow-y-auto font-mono sm:text-sm ${!maxHeight ? "flex-1 min-h-0" : ""}`}
+      className={`min-w-0 rounded-lg bg-neutral-900 text-xs text-gray-100 dark-scrollbar overflow-x-hidden overflow-y-auto sm:text-sm ${!maxHeight ? "flex-1 min-h-0" : ""}`}
       style={maxHeight ? { maxHeight } : undefined}
     >
       {isEmpty ? (

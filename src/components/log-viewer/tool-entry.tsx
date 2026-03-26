@@ -99,7 +99,7 @@ function RenderedContent({ output }: { output: unknown }) {
   }
 
   return (
-    <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto whitespace-pre-wrap break-words">
+    <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-words">
       {content}
     </pre>
   );
@@ -128,7 +128,7 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
 
   const renderInputContent = useCallback(
     () => (
-      <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
+      <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto">
         {JSON.stringify(tool.input, null, 2)}
       </pre>
     ),
@@ -143,7 +143,7 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
         {meta.outputType === "text" ? (
           <RenderedContent output={tool.output} />
         ) : (
-          <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
+          <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto">
             {typeof tool.output === "string"
               ? tool.output
               : JSON.stringify(tool.output, null, 2)}
@@ -159,14 +159,14 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
     () => (
       <>
         <div className="text-gray-500 text-xs mt-1">Input</div>
-        <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
+        <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto">
           {JSON.stringify(tool.input, null, 2)}
         </pre>
         <div className="text-gray-500 text-xs mt-2">{meta.outputLabel}</div>
         {meta.outputType === "text" ? (
           <RenderedContent output={tool.output} />
         ) : (
-          <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
+          <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto">
             {typeof tool.output === "string"
               ? tool.output
               : JSON.stringify(tool.output, null, 2)}
