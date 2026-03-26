@@ -29,7 +29,7 @@ export const LogEntryItem = memo(function LogEntryItem({ data: log, showHeader, 
     : false;
   const renderDetails = useCallback(
     () => (
-      <pre className="mt-1 p-2 bg-neutral-800 rounded text-xs overflow-x-auto">
+      <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto">
         {JSON.stringify(getOtherDetails(details!), null, 2)}
       </pre>
     ),
@@ -65,7 +65,7 @@ export const LogEntryItem = memo(function LogEntryItem({ data: log, showHeader, 
               <MarkdownRenderer content={responseContent as string} className="text-xs" dimmed={isReasoning} />
             </div>
           ) : (
-            <div className={`mt-2 p-2 sm:p-3 bg-neutral-800 rounded whitespace-pre-wrap break-words text-xs leading-relaxed ${isReasoning ? "text-gray-400 italic" : "text-gray-200"}`}>
+            <div className={`mt-2 p-2 sm:p-3 rounded bg-neutral-800 text-xs leading-relaxed whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400 italic" : "text-gray-200"}`}>
               {responseContent}
             </div>
           )

@@ -50,6 +50,7 @@ describe("LogViewer", () => {
       expect(root.className).toContain("min-w-0");
       expect(root.className).toContain("overflow-x-hidden");
       expect(root.className).toContain("overflow-y-auto");
+      expect(root.className).not.toContain("font-mono");
     });
   });
 
@@ -177,6 +178,7 @@ describe("LogViewer", () => {
         (element) => element.textContent?.includes("\"filePath\": \"/src/test.ts\"")
       );
       expect(inputPre).toBeDefined();
+      expect(inputPre?.className).toContain("font-mono");
     });
 
     test("renders known tool text output inside collapsible (click to reveal)", async () => {
@@ -862,6 +864,22 @@ describe("LogViewer", () => {
       expect(strong?.textContent).toBe("bold response");
     });
 
+    test("uses regular body typography for markdown responses while keeping inline code monospace", () => {
+      const log = createLogEntry({
+        level: "agent",
+        details: { logKind: "response", responseContent: "Normal text with `inlineCode()`." },
+      });
+      const { container, getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[log]} markdownEnabled={true} />
+      );
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.className).not.toContain("font-mono");
+      const inlineCode = container.querySelector("code");
+      expect(inlineCode).not.toBeNull();
+      expect(inlineCode?.className).toContain("font-mono");
+      expect(getByText("Normal text with ", { exact: false })).toBeInTheDocument();
+    });
+
     test("renders responseContent as plain text when markdownEnabled is false", () => {
       const log = createLogEntry({
         level: "agent",
@@ -872,6 +890,18 @@ describe("LogViewer", () => {
       );
       expect(container.textContent).toContain("**bold response**");
       expect(container.querySelector("strong")).toBeNull();
+    });
+
+    test("uses regular body typography for raw response content when markdownEnabled is false", () => {
+      const log = createLogEntry({
+        level: "agent",
+        details: { logKind: "response", responseContent: "Plain response content" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[log]} markdownEnabled={false} />
+      );
+      const responseBlock = getByText("Plain response content");
+      expect(responseBlock.className).not.toContain("font-mono");
     });
 
     test("renders markdown code blocks in responseContent logs", () => {
@@ -886,6 +916,9 @@ describe("LogViewer", () => {
       const pre = container.querySelector("pre");
       expect(pre).not.toBeNull();
       expect(pre?.textContent).toContain("console.log('hello');");
+      expect(pre?.className).not.toContain("font-mono");
+      const code = pre?.querySelector("code");
+      expect(code).not.toBeNull();
     });
 
     test("renders markdown lists in responseContent logs", () => {
