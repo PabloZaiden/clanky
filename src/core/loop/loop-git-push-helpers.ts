@@ -415,9 +415,17 @@ function startConflictResolutionEngine(
           );
         });
       }
-      if ((state.status === "failed" || state.status === "max_iterations") && state.syncState?.autoPushOnComplete) {
-        state.syncState.autoPushOnComplete = false;
-        await updateLoopState(loopId, state);
+      if (state.status === "failed" || state.status === "max_iterations") {
+        if (state.syncState?.autoPushOnComplete) {
+          state.syncState.autoPushOnComplete = false;
+          await updateLoopState(loopId, state);
+        } else if (options.onCompleted && state.syncState) {
+          log.warn(
+            `[LoopManager] ${options.completionDescription ?? "Post-conflict completion"} aborted because conflict resolution ended in ${state.status} for loop ${loopId}`,
+          );
+          state.syncState = undefined;
+          await updateLoopState(loopId, state);
+        }
       }
     },
     skipGitSetup: true,

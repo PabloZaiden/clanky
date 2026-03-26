@@ -1293,4 +1293,60 @@ describe("Plan Mode - Accept plan base branch sync", () => {
       await teardownTestContext(ctx);
     }
   });
+
+  test("acceptPlan clears sync state if conflict resolution fails before execution resumes", async () => {
+    const ctx = await setupTestContext({
+      initGit: true,
+      initialFiles: { "test.txt": "Initial content\n" },
+      mockResponses: [
+        "<promise>PLAN_READY</promise>",
+        "ERROR:Failed to resolve conflicts",
+      ],
+    });
+
+    try {
+      const { remoteDir, currentBranch } = await setupRemote(ctx);
+      const loop = await ctx.manager.createLoop({
+        ...testModelFields,
+        prompt: "Create a plan",
+        name: "Test Loop",
+        directory: ctx.workDir,
+        workspaceId: testWorkspaceId,
+        maxIterations: 2,
+        maxConsecutiveErrors: 1,
+        planMode: true,
+      });
+      const loopId = loop.config.id;
+
+      await ctx.manager.startPlanMode(loopId);
+      await waitForPlanReady(ctx.manager, loopId);
+
+      const loopData = await ctx.manager.getLoop(loopId);
+      const worktreePath = loopData!.state.git!.worktreePath!;
+
+      await writeFile(join(worktreePath, "test.txt"), "Modified by loop\n");
+      await Bun.$`git -C ${worktreePath} add -A`.quiet();
+      await Bun.$`git -C ${worktreePath} commit -m "Loop changes to test.txt"`.quiet();
+
+      await addRemoteCommit(
+        remoteDir,
+        currentBranch,
+        { "test.txt": "Modified by someone else\n" },
+        "Conflicting remote commit",
+        ctx.dataDir,
+      );
+
+      await ctx.manager.acceptPlan(loopId);
+
+      const failedLoop = await waitForSyncStateToClear(ctx, loopId, 10000);
+      expect(failedLoop.state.status).toBe("failed");
+      expect(failedLoop.state.syncState).toBeUndefined();
+      expect(failedLoop.state.error?.message).toContain("Failed to resolve conflicts");
+
+      const pushedEvent = ctx.events.find((event) => event.type === "loop.pushed" && event.loopId === loopId);
+      expect(pushedEvent).toBeUndefined();
+    } finally {
+      await teardownTestContext(ctx);
+    }
+  });
 });
