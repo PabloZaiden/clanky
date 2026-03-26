@@ -132,7 +132,15 @@
   }
 }
 
-/* Safe area utility classes for notched devices */
+/* Markdown rendering utility overrides */
+@layer utilities {
+  .markdown-renderer :not(pre) > code::before,
+  .markdown-renderer :not(pre) > code::after {
+    content: none;
+  }
+}
+
+/* Safe-area and scrollbar utility classes */
 @layer utilities {
   .safe-area-top {
     padding-top: env(safe-area-inset-top, 0px);

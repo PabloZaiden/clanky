@@ -33,7 +33,7 @@ export function MarkdownRenderer({ content, className = "", dimmed = false, rawM
   if (rawMode) {
     return (
       <div
-        className={`min-w-0 ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
+        className={`markdown-renderer min-w-0 ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
       >
         <pre className="max-w-full whitespace-pre-wrap break-words font-mono text-sm text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
           {content}
@@ -44,7 +44,7 @@ export function MarkdownRenderer({ content, className = "", dimmed = false, rawM
 
   return (
     <div
-      className={`prose prose-sm dark:prose-invert min-w-0 max-w-none break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
+      className={`markdown-renderer prose prose-sm dark:prose-invert min-w-0 max-w-none break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
     >
       <Markdown
         remarkPlugins={[remarkGfm]}
