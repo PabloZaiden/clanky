@@ -3,9 +3,12 @@ import type { ModelConfig } from "../../types/loop";
 import type { AcceptPlanOptions, AcceptPlanResult } from "./loop-types";
 import { createTimestamp } from "../../types/events";
 import { updateLoopState } from "../../persistence/loops";
+import { backendManager } from "../backend-manager";
+import { GitService } from "../git-service";
 import { sshSessionManager } from "../ssh-session-manager";
 import { log } from "../logger";
 import { assertValidTransition } from "../loop-state-machine";
+import { syncBaseBranchBeforeExecution } from "./loop-git-push-helpers";
 import type { LoopState } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 
@@ -70,7 +73,7 @@ export async function acceptPlanImpl(
   const planServerUrl = engine.state.session?.serverUrl;
   const now = createTimestamp();
 
-  const targetStatus = mode === "open_ssh" ? "completed" : "running";
+  const targetStatus = mode === "open_ssh" ? "completed" : "starting";
   assertValidTransition(engine.state.status, targetStatus, "acceptPlan");
   const updatedState: Partial<LoopState> = {
     status: targetStatus,
@@ -90,16 +93,7 @@ export async function acceptPlanImpl(
   Object.assign(engine.state, updatedState);
   await updateLoopState(loopId, engine.state);
 
-  const executionPrompt = `The plan has been accepted. Now execute all tasks in the plan.
-
-Follow the standard loop execution flow:
-- Read AGENTS.md and the plan in .planning/plan.md
-- Pick up the most important task to continue with
-- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update .planning/status.md to mark it as completed and note any relevant findings. Do not wait until the end — update after every task so progress is preserved if the iteration is interrupted.
-- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update .planning/status.md with the current task and its state, updated status of all tasks, any new learnings or discoveries, and what the next steps should be. This ensures progress is preserved even if the conversation context is compacted or summarized between iterations.
-- If you complete all tasks in the plan, end your response with:
-
-<promise>COMPLETE</promise>`;
+  const executionPrompt = buildAcceptedPlanExecutionPrompt();
 
   ctx.emitter.emit({
     type: "loop.plan.accepted",
@@ -122,11 +116,76 @@ Follow the standard loop execution flow:
     };
   }
 
+  const executor = await backendManager.getCommandExecutorAsync(engine.config.workspaceId, engine.config.directory);
+  const git = GitService.withExecutor(executor);
+  const syncResult = await syncBaseBranchBeforeExecution(
+    ctx,
+    loopId,
+    { config: engine.config, state: engine.state },
+    git,
+    async () => {
+      await beginAcceptedPlanExecution(ctx, loopId, executionPrompt);
+    },
+  );
+
+  if (!syncResult.success) {
+    const errorMsg = syncResult.error ?? "Accepted plan could not be synced with the base branch";
+    await failAcceptedPlanExecutionStart(loopId, engine, errorMsg);
+    throw new Error(errorMsg);
+  }
+
+  if (syncResult.syncStatus !== "conflicts_being_resolved") {
+    await beginAcceptedPlanExecution(ctx, loopId, executionPrompt);
+  }
+
+  return {
+    mode,
+  };
+}
+
+function buildAcceptedPlanExecutionPrompt(): string {
+  return `The plan has been accepted. Now execute all tasks in the plan.
+
+Follow the standard loop execution flow:
+- Read AGENTS.md and the plan in .planning/plan.md
+- Pick up the most important task to continue with
+- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update .planning/status.md to mark it as completed and note any relevant findings. Do not wait until the end — update after every task so progress is preserved if the iteration is interrupted.
+- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update .planning/status.md with the current task and its state, updated status of all tasks, any new learnings or discoveries, and what the next steps should be. This ensures progress is preserved even if the conversation context is compacted or summarized between iterations.
+- If you complete all tasks in the plan, end your response with:
+
+<promise>COMPLETE</promise>`;
+}
+
+async function beginAcceptedPlanExecution(
+  ctx: LoopCtx,
+  loopId: string,
+  executionPrompt: string,
+): Promise<void> {
+  const engine = ctx.engines.get(loopId);
+  if (!engine) {
+    throw new Error(`Loop plan mode is not running: ${loopId}`);
+  }
+
+  await engine.waitForLoopIdle();
+
+  if (engine.state.status === "completed") {
+    assertValidTransition(engine.state.status, "starting", "beginAcceptedPlanExecution");
+    engine.state.status = "starting";
+    engine.state.completedAt = undefined;
+    await updateLoopState(loopId, engine.state);
+  }
+
+  assertValidTransition(engine.state.status, "running", "beginAcceptedPlanExecution");
+  engine.state.status = "running";
+  engine.state.syncState = undefined;
+  engine.state.completedAt = undefined;
+  await updateLoopState(loopId, engine.state);
+
   ctx.emitter.emit({
     type: "loop.started",
     loopId,
     iteration: 0,
-    timestamp: now,
+    timestamp: createTimestamp(),
   });
 
   engine.setPendingPrompt(executionPrompt);
@@ -134,10 +193,23 @@ Follow the standard loop execution flow:
   engine.continueExecution().catch((error) => {
     log.error(`Loop ${loopId} execution after plan acceptance failed:`, String(error));
   });
+}
 
-  return {
-    mode,
+async function failAcceptedPlanExecutionStart(
+  loopId: string,
+  engine: { state: LoopState },
+  errorMsg: string,
+): Promise<void> {
+  assertValidTransition(engine.state.status, "failed", "acceptPlan");
+  engine.state.status = "failed";
+  engine.state.syncState = undefined;
+  engine.state.completedAt = createTimestamp();
+  engine.state.error = {
+    message: errorMsg,
+    iteration: engine.state.currentIteration,
+    timestamp: createTimestamp(),
   };
+  await updateLoopState(loopId, engine.state);
 }
 
 export async function discardPlanImpl(ctx: LoopCtx, loopId: string): Promise<boolean> {

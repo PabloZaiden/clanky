@@ -32,6 +32,55 @@ async function exists(path: string): Promise<boolean> {
   return Bun.file(path).exists();
 }
 
+async function setupRemote(ctx: TestContext): Promise<{ remoteDir: string; currentBranch: string }> {
+  const remoteDir = join(ctx.dataDir, "remote-" + Date.now() + ".git");
+  await Bun.$`git init --bare ${remoteDir}`.quiet();
+  await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
+  const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
+  await Bun.$`git -C ${ctx.workDir} push -u origin ${currentBranch}`.quiet();
+  await Bun.$`git -C ${remoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
+  return { remoteDir, currentBranch };
+}
+
+async function addRemoteCommit(
+  remoteDir: string,
+  branch: string,
+  files: Record<string, string>,
+  message: string,
+  dataDir: string,
+): Promise<void> {
+  const otherClone = join(dataDir, "other-clone-" + Date.now());
+  try {
+    await Bun.$`git clone --branch ${branch} ${remoteDir} ${otherClone}`.quiet();
+    await Bun.$`git -C ${otherClone} config user.email "other@test.com"`.quiet();
+    await Bun.$`git -C ${otherClone} config user.name "Other User"`.quiet();
+    for (const [path, content] of Object.entries(files)) {
+      await writeFile(join(otherClone, path), content);
+    }
+    await Bun.$`git -C ${otherClone} add -A`.quiet();
+    await Bun.$`git -C ${otherClone} commit -m ${message}`.quiet();
+    await Bun.$`git -C ${otherClone} push`.quiet();
+  } finally {
+    await Bun.$`rm -rf ${otherClone}`.quiet();
+  }
+}
+
+async function waitForSyncStateToClear(ctx: TestContext, loopId: string, timeoutMs = 10000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const loop = await ctx.manager.getLoop(loopId);
+    if (loop && loop.state.syncState === undefined && loop.state.status !== "resolving_conflicts") {
+      return loop;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  const lastLoop = await ctx.manager.getLoop(loopId);
+  throw new Error(
+    `Loop ${loopId} did not clear sync state within ${timeoutMs}ms. Last status: ${lastLoop?.state.status ?? "missing"}`,
+  );
+}
+
 const testWorkspaceId = "test-workspace-id";
 
 describe("Plan Mode - Clear Planning Folder", () => {
@@ -1088,5 +1137,160 @@ describe("Plan Mode - Open SSH acceptance", () => {
 
     const completionEvents = ctx.events.filter((event) => event.type === "loop.completed" && event.loopId === loopId);
     expect(completionEvents).toHaveLength(0);
+  });
+
+  test("open_ssh acceptance does not run the post-accept base branch sync", async () => {
+    const { remoteDir, currentBranch } = await setupRemote(ctx);
+
+    const loop = await ctx.manager.createLoop({
+      ...testModelFields,
+      prompt: "Create a plan",
+      name: "Test Loop",
+      directory: ctx.workDir,
+      workspaceId: testWorkspaceId,
+      maxIterations: 1,
+      planMode: true,
+    });
+    const loopId = loop.config.id;
+
+    await ctx.manager.startPlanMode(loopId);
+    await waitForPlanReady(ctx.manager, loopId);
+
+    await addRemoteCommit(
+      remoteDir,
+      currentBranch,
+      { "remote-only.txt": "Remote content\n" },
+      "Remote base branch update",
+      ctx.dataDir,
+    );
+
+    await ctx.manager.acceptPlan(loopId, { mode: "open_ssh" });
+
+    const loopData = await waitForLoopStatus(ctx.manager, loopId, ["completed"]);
+    expect(loopData.state.status).toBe("completed");
+
+    const syncEvents = ctx.events.filter((event) => event.loopId === loopId && event.type.startsWith("loop.sync."));
+    expect(syncEvents).toHaveLength(0);
+  });
+});
+
+describe("Plan Mode - Accept plan base branch sync", () => {
+  test("acceptPlan merges the latest base branch changes before execution starts", async () => {
+    const ctx = await setupTestContext({
+      initGit: true,
+      initialFiles: { "test.txt": "Initial content\n" },
+      mockResponses: [
+        "<promise>PLAN_READY</promise>",
+        "<promise>COMPLETE</promise>",
+      ],
+    });
+
+    try {
+      const { remoteDir, currentBranch } = await setupRemote(ctx);
+      const loop = await ctx.manager.createLoop({
+        ...testModelFields,
+        prompt: "Create a plan",
+        name: "Test Loop",
+        directory: ctx.workDir,
+        workspaceId: testWorkspaceId,
+        maxIterations: 2,
+        planMode: true,
+      });
+      const loopId = loop.config.id;
+
+      await ctx.manager.startPlanMode(loopId);
+      await waitForPlanReady(ctx.manager, loopId);
+
+      const loopData = await ctx.manager.getLoop(loopId);
+      const worktreePath = loopData!.state.git!.worktreePath!;
+
+      await addRemoteCommit(
+        remoteDir,
+        currentBranch,
+        { "remote-only.txt": "Remote content\n" },
+        "Non-conflicting remote commit",
+        ctx.dataDir,
+      );
+
+      await ctx.manager.acceptPlan(loopId);
+      const finalLoop = await waitForLoopStatus(ctx.manager, loopId, ["completed", "running", "max_iterations", "stopped"]);
+
+      expect(await exists(join(worktreePath, "remote-only.txt"))).toBe(true);
+      expect(finalLoop.state.planMode?.active).toBe(false);
+
+      const syncStarted = ctx.events.find((event) => event.type === "loop.sync.started" && event.loopId === loopId);
+      const syncClean = ctx.events.find((event) => event.type === "loop.sync.clean" && event.loopId === loopId);
+      const syncConflicts = ctx.events.find((event) => event.type === "loop.sync.conflicts" && event.loopId === loopId);
+      const startedEvent = ctx.events.find((event) => event.type === "loop.started" && event.loopId === loopId);
+
+      expect(syncStarted).toBeDefined();
+      expect(syncClean).toBeDefined();
+      expect(syncConflicts).toBeUndefined();
+      expect(startedEvent).toBeDefined();
+    } finally {
+      await teardownTestContext(ctx);
+    }
+  });
+
+  test("acceptPlan resolves base branch conflicts before continuing normal execution", async () => {
+    const ctx = await setupTestContext({
+      initGit: true,
+      initialFiles: { "test.txt": "Initial content\n" },
+      mockResponses: [
+        "<promise>PLAN_READY</promise>",
+        "<promise>COMPLETE</promise>",
+        "<promise>COMPLETE</promise>",
+      ],
+    });
+
+    try {
+      const { remoteDir, currentBranch } = await setupRemote(ctx);
+      const loop = await ctx.manager.createLoop({
+        ...testModelFields,
+        prompt: "Create a plan",
+        name: "Test Loop",
+        directory: ctx.workDir,
+        workspaceId: testWorkspaceId,
+        maxIterations: 2,
+        planMode: true,
+      });
+      const loopId = loop.config.id;
+
+      await ctx.manager.startPlanMode(loopId);
+      await waitForPlanReady(ctx.manager, loopId);
+
+      const loopData = await ctx.manager.getLoop(loopId);
+      const worktreePath = loopData!.state.git!.worktreePath!;
+
+      await writeFile(join(worktreePath, "test.txt"), "Modified by loop\n");
+      await Bun.$`git -C ${worktreePath} add -A`.quiet();
+      await Bun.$`git -C ${worktreePath} commit -m "Loop changes to test.txt"`.quiet();
+
+      await addRemoteCommit(
+        remoteDir,
+        currentBranch,
+        { "test.txt": "Modified by someone else\n" },
+        "Conflicting remote commit",
+        ctx.dataDir,
+      );
+
+      await ctx.manager.acceptPlan(loopId);
+      const resumedLoop = await waitForSyncStateToClear(ctx, loopId, 10000);
+      const finalLoop = await waitForLoopStatus(ctx.manager, loopId, ["completed", "max_iterations", "stopped"], 10000);
+
+      const syncConflicts = ctx.events.find((event) => event.type === "loop.sync.conflicts" && event.loopId === loopId);
+      const pushedEvent = ctx.events.find((event) => event.type === "loop.pushed" && event.loopId === loopId);
+      const startedEvents = ctx.events.filter((event) => event.type === "loop.started" && event.loopId === loopId);
+      const latestLoop = await ctx.manager.getLoop(loopId);
+
+      expect(syncConflicts).toBeDefined();
+      expect(pushedEvent).toBeUndefined();
+      expect(startedEvents.length).toBeGreaterThanOrEqual(1);
+      expect(["running", "completed", "max_iterations", "stopped"]).toContain(resumedLoop.state.status);
+      expect(finalLoop.state.status).not.toBe("pushed");
+      expect(latestLoop!.state.syncState).toBeUndefined();
+    } finally {
+      await teardownTestContext(ctx);
+    }
   });
 });
