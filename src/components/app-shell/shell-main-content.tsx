@@ -14,6 +14,7 @@ import { OverviewView, WorkspaceView, SshServerView } from "./shell-views";
 import { DraftLoopComposer } from "./shell-composers";
 import { ComposeView } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
+import { ServerAriseView } from "./server-arise-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import type { ComposeKind, ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
@@ -305,6 +306,45 @@ function renderMainContent(props: ShellMainContentProps) {
           navigateWithinShell({ view: "home" });
           return true;
         }}
+      />
+    );
+  }
+
+  if (route.view === "server-arise") {
+    if (!selectedServer) {
+      return (
+        <ShellPanel
+          eyebrow="SSH server"
+          title="Server not found"
+          description="The selected SSH server no longer exists."
+        >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Use the sidebar or home button to continue.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    if (!selectedServer.config.repositoriesBasePath) {
+      return (
+        <ShellPanel
+          eyebrow="SSH server"
+          title="Automatic provisioning unavailable"
+          description="This server is not configured for automatic workspace provisioning."
+        >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Add a repositories base path to enable provisioning-related actions like Arise.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    return (
+      <ServerAriseView
+        server={selectedServer}
+        provisioning={props.provisioning}
+        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
+        navigateWithinShell={navigateWithinShell}
       />
     );
   }

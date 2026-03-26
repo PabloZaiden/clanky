@@ -359,4 +359,64 @@ describe("ProvisioningManager", () => {
     expect(result.job.state.status).toBe("failed");
     expect(result.job.state.error?.code).toBe("directory_not_found");
   });
+
+  test("runs devbox arise as a server-level job", async () => {
+    const server = await sshServerManager.createServer({
+      name: "Arise Host",
+      address: "10.0.0.11",
+      username: "remote-user",
+      repositoriesBasePath: "/workspaces",
+    });
+    const executor = new ProvisioningTestExecutor();
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+    const manager = new ProvisioningManager(5_000, 500);
+    const started = await manager.startJob({
+      name: server.config.name,
+      sshServerId: server.config.id,
+      repoUrl: "",
+      basePath: server.config.repositoriesBasePath ?? "",
+      provider: "copilot",
+      mode: "arise",
+    });
+
+    const snapshot = await waitForProvisioningStatus(manager, started.job.config.id, ["completed"]);
+    expect(snapshot.job.state.status).toBe("completed");
+    expect(snapshot.job.state.currentStep).toBe("arise_complete");
+    expect(snapshot.workspace).toBeUndefined();
+    expect(snapshot.logs.at(-1)?.text).toBe("Devbox arise completed successfully for Arise Host.");
+    expect(snapshot.logs.at(-1)?.step).toBe("arise_complete");
+
+    const ariseCalls = executor.calls.map((call) => `${call.command} ${call.args.join(" ")}`);
+    expect(ariseCalls.some((call) => call.includes("devbox arise"))).toBe(true);
+    expect(ariseCalls.some((call) => call.includes("devbox status"))).toBe(false);
+  });
+
+  test("captures devbox arise failures as server-level job errors", async () => {
+    const server = await sshServerManager.createServer({
+      name: "Arise Fail Host",
+      address: "10.0.0.12",
+      username: "remote-user",
+      repositoriesBasePath: "/workspaces",
+    });
+    const executor = new ProvisioningTestExecutor({
+      failDevboxArise: true,
+    });
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+    const manager = new ProvisioningManager(5_000, 500);
+    const started = await manager.startJob({
+      name: server.config.name,
+      sshServerId: server.config.id,
+      repoUrl: "",
+      basePath: server.config.repositoriesBasePath ?? "",
+      provider: "copilot",
+      mode: "arise",
+    });
+
+    const snapshot = await waitForProvisioningStatus(manager, started.job.config.id, ["failed"]);
+    expect(snapshot.job.state.status).toBe("failed");
+    expect(snapshot.job.state.error?.code).toBe("devbox_arise_failed");
+    expect(snapshot.job.state.error?.message).toContain("Failed to run devbox arise");
+  });
 });

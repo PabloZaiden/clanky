@@ -233,4 +233,31 @@ describe("Provisioning API integration", () => {
     expect(failed.job.state.error?.code).toBe("devbox_not_found");
     expect(failed.job.state.error?.message).toContain("Devbox is not installed or not available on PATH");
   });
+
+  test("creates and completes a server-level arise job without workspace fields", async () => {
+    const sshServer = await sshServerManager.createServer({
+      name: "Arise Host",
+      address: "ssh.example.com",
+      username: "deploy",
+      repositoriesBasePath: "/workspaces",
+    });
+    sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor());
+
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: sshServer.config.name,
+        sshServerId: sshServer.config.id,
+        mode: "arise",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const started = await response.json() as ProvisioningSnapshotResponse;
+    const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+    expect(completed.job.state.status).toBe("completed");
+    expect(completed.job.state.workspaceId).toBeUndefined();
+    expect(completed.logs.some((entry) => entry.text.includes("Devbox arise completed successfully"))).toBe(true);
+  });
 });

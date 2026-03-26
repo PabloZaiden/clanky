@@ -65,7 +65,15 @@ export class ProvisioningManager {
     this.jobs.set(jobId, record);
     emitJobStarted(record.job);
 
-    if (mode === "rebuild" || mode === "restart") {
+    if (mode === "arise") {
+      void this.runServerAriseJob(record, options.password).catch((error) => {
+        log.error("Provisioning server-level arise job crashed unexpectedly", {
+          provisioningJobId: record.job.config.id,
+          mode,
+          error: String(error),
+        });
+      });
+    } else if (mode === "rebuild" || mode === "restart") {
       void this.runExistingWorkspaceJob(record, options.password, mode).catch((error) => {
         log.error("Provisioning existing-workspace job crashed unexpectedly", {
           provisioningJobId: record.job.config.id,
@@ -649,6 +657,90 @@ export class ProvisioningManager {
           ? buildError(error.code, error.step, error.message)
           : buildError(
               action.genericFailureCode,
+              record.job.state.currentStep ?? "verify_devbox",
+              String(error),
+            );
+
+      const completedAt = new Date().toISOString();
+      record.job.state = {
+        ...record.job.state,
+        status: cancelled ? "cancelled" : "failed",
+        error: failure,
+        completedAt,
+        updatedAt: completedAt,
+      };
+      appendSystemLog(record, this.maxLogEntries, failure.message, failure.step);
+      if (cancelled) {
+        emitJobCancelled(record.job);
+      } else {
+        emitJobFailed(record.job, failure);
+      }
+      this.scheduleCleanup(record);
+    }
+  }
+
+  private async runServerAriseJob(
+    record: ProvisioningJobRecord,
+    password: string | undefined,
+  ): Promise<void> {
+    try {
+      const { executor } = await sshServerManager.getCommandExecutor(
+        record.job.config.sshServerId,
+        password,
+      );
+
+      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
+      await this.runCmd(record, executor, {
+        step: "verify_devbox",
+        label: "Checking devbox availability",
+        command: "bash",
+        args: ["-lc", "command -v devbox >/dev/null 2>&1"],
+        errorCode: "devbox_not_found",
+        errorMessage: "Devbox is not installed or not available on PATH",
+        captureStdout: false,
+      });
+
+      setStep(record, this.maxLogEntries, "devbox_arise", "Running devbox arise");
+      await this.runCmd(record, executor, {
+        step: "devbox_arise",
+        label: "Running devbox arise",
+        command: "devbox",
+        args: ["arise"],
+        timeout: DEVBOX_UP_TIMEOUT_MS,
+        streamOutput: true,
+        errorCode: "devbox_arise_failed",
+        errorMessage: "Failed to run devbox arise",
+      });
+
+      setStep(record, this.maxLogEntries, "arise_complete");
+      const completedAt = new Date().toISOString();
+      record.job.state = {
+        ...record.job.state,
+        status: "completed",
+        completedAt,
+        updatedAt: completedAt,
+      };
+      appendSystemLog(
+        record,
+        this.maxLogEntries,
+        `Devbox arise completed successfully for ${record.job.config.name}.`,
+        "arise_complete",
+      );
+      emitJobCompleted(record.job);
+      this.scheduleCleanup(record);
+    } catch (error) {
+      const cancelled =
+        error instanceof ProvisioningCancelledError || record.abortController.signal.aborted;
+      const failure = cancelled
+        ? buildError(
+            "cancelled",
+            record.job.state.currentStep ?? "verify_devbox",
+            "Provisioning job was cancelled",
+          )
+        : error instanceof ProvisioningFailedError
+          ? buildError(error.code, error.step, error.message)
+          : buildError(
+              "arise_failed",
               record.job.state.currentStep ?? "verify_devbox",
               String(error),
             );
