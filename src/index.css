@@ -134,6 +134,11 @@
 
 /* Safe area utility classes for notched devices */
 @layer utilities {
+  .markdown-renderer :not(pre) > code::before,
+  .markdown-renderer :not(pre) > code::after {
+    content: none;
+  }
+
   .safe-area-top {
     padding-top: env(safe-area-inset-top, 0px);
   }

@@ -28,6 +28,7 @@ describe("MarkdownRenderer", () => {
     );
 
     const wrapper = container.firstElementChild as HTMLElement;
+    expect(wrapper.className).toContain("markdown-renderer");
     expect(wrapper.className).toContain("min-w-0");
     expect(wrapper.className).toContain("break-words");
 

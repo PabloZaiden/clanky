@@ -44,7 +44,7 @@ export function MarkdownRenderer({ content, className = "", dimmed = false, rawM
 
   return (
     <div
-      className={`prose prose-sm dark:prose-invert min-w-0 max-w-none break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
+      className={`markdown-renderer prose prose-sm dark:prose-invert min-w-0 max-w-none break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
     >
       <Markdown
         remarkPlugins={[remarkGfm]}
