@@ -19,7 +19,7 @@ export interface StartProvisioningJobRequest {
   basePath: string;
   provider: AgentProvider;
   password?: string;
-  mode?: "provision" | "rebuild" | "restart";
+  mode?: "provision" | "rebuild" | "restart" | "arise";
   targetDirectory?: string;
   workspaceId?: string;
 }

@@ -9,10 +9,12 @@ const STEP_LABELS: Record<ProvisioningStep, string> = {
   clone_repo: "Clone repository",
   devbox_up: "Run devbox up",
   devbox_rebuild: "Rebuild devbox",
+  devbox_arise: "Run devbox arise",
   devbox_status: "Read devbox status",
   create_workspace: "Create workspace",
   test_connection: "Test connection",
   workspace_ready: "Workspace Ready",
+  arise_complete: "Arise complete",
 };
 
 const PROVISION_STEPS: ProvisioningStep[] = [
@@ -44,13 +46,55 @@ const RESTART_STEPS: ProvisioningStep[] = [
   "workspace_ready",
 ];
 
+const ARISE_STEPS: ProvisioningStep[] = [
+  "verify_devbox",
+  "devbox_arise",
+  "arise_complete",
+];
+
 function getStepsForMode(mode: ProvisioningJobMode | undefined): [ProvisioningStep, string][] {
   const steps = mode === "rebuild"
     ? REBUILD_STEPS
     : mode === "restart"
       ? RESTART_STEPS
+      : mode === "arise"
+        ? ARISE_STEPS
       : PROVISION_STEPS;
   return steps.map((step) => [step, STEP_LABELS[step]]);
+}
+
+function getPrimarySummary(mode: ProvisioningJobMode | undefined, snapshot: ProvisioningJobSnapshot): {
+  label: string;
+  value: string;
+} {
+  if (mode === "arise") {
+    return {
+      label: "Server name",
+      value: snapshot.job.config.name,
+    };
+  }
+
+  return {
+    label: "Workspace name",
+    value: snapshot.job.config.name,
+  };
+}
+
+function getSecondarySummary(mode: ProvisioningJobMode | undefined, snapshot: ProvisioningJobSnapshot): {
+  label: string;
+  value: string;
+} {
+  if (mode === "arise") {
+    return {
+      label: "Repositories base path",
+      value: snapshot.job.config.basePath || "Not set",
+    };
+  }
+
+  return {
+    label: "Target directory",
+    value: snapshot.job.state.targetDirectory ?? "Pending",
+  };
 }
 
 function getWebSocketStatusLabel(status: WebSocketConnectionStatus): string {
@@ -110,6 +154,9 @@ export const ProvisioningJobView = memo(function ProvisioningJobView({
     );
   }
 
+  const primarySummary = getPrimarySummary(jobMode, snapshot);
+  const secondarySummary = getSecondarySummary(jobMode, snapshot);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -130,18 +177,18 @@ export const ProvisioningJobView = memo(function ProvisioningJobView({
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Workspace name
+              {primarySummary.label}
             </p>
             <p className="mt-1 text-sm text-gray-900 dark:text-gray-100">
-              {snapshot.job.config.name}
+              {primarySummary.value}
             </p>
           </div>
           <div className="rounded-md border border-gray-200 p-3 dark:border-gray-700">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              Target directory
+              {secondarySummary.label}
             </p>
             <p className="mt-1 break-all text-sm font-mono text-gray-900 dark:text-gray-100">
-              {snapshot.job.state.targetDirectory ?? "Pending"}
+              {secondarySummary.value}
             </p>
           </div>
         </div>

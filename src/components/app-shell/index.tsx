@@ -159,7 +159,9 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
       ? (servers.find((s) => s.config.id === route.scopeId) ?? null)
       : null;
   const selectedServer =
-    route.view === "ssh-server" ? (servers.find((s) => s.config.id === route.serverId) ?? null) : null;
+    route.view === "ssh-server" || route.view === "server-arise"
+      ? (servers.find((s) => s.config.id === route.serverId) ?? null)
+      : null;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-gray-100 text-gray-950 dark:bg-neutral-950 dark:text-gray-100">

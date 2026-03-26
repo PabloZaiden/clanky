@@ -12,6 +12,7 @@ export interface ProvisioningTestExecutorOptions {
   failClone?: boolean;
   failDevboxUp?: boolean;
   failDevboxRebuild?: boolean;
+  failDevboxArise?: boolean;
   devboxUpDelayMs?: number;
   devboxStatusOutput?: string;
   credentialFileContent?: string;
@@ -188,6 +189,22 @@ export class ProvisioningTestExecutor implements CommandExecutor {
           success: false,
           stdout,
           stderr: "devbox rebuild failed",
+          exitCode: 1,
+        };
+      }
+
+      return { success: true, stdout, stderr: "", exitCode: 0 };
+    }
+
+    if (command === "devbox" && args[0] === "arise") {
+      const stdout = "Arising devboxes...\nExisting stopped devboxes have been restarted.\n";
+      options?.onStdoutChunk?.(stdout);
+
+      if (this.options.failDevboxArise) {
+        return {
+          success: false,
+          stdout,
+          stderr: "devbox arise failed",
           exitCode: 1,
         };
       }
