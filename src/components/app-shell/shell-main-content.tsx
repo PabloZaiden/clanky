@@ -309,7 +309,7 @@ function renderMainContent(props: ShellMainContentProps) {
     );
   }
 
-  if (route.view === "rebuild-workspace") {
+  if (route.view === "rebuild-workspace" || route.view === "restart-workspace") {
     if (!selectedWorkspace) {
       return (
         <ShellPanel
@@ -325,6 +325,7 @@ function renderMainContent(props: ShellMainContentProps) {
     }
     return (
       <RebuildWorkspaceView
+        mode={route.view === "restart-workspace" ? "restart" : "rebuild"}
         workspace={selectedWorkspace}
         servers={servers}
         provisioning={props.provisioning}
@@ -432,4 +433,3 @@ export function ShellMainContent(props: ShellMainContentProps) {
     </div>
   );
 }
-

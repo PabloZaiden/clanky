@@ -51,6 +51,10 @@ export type ShellRoute =
   | {
       view: "rebuild-workspace";
       workspaceId: string;
+    }
+  | {
+      view: "restart-workspace";
+      workspaceId: string;
     };
 
 export type ComposeKind = Extract<ShellRoute, { view: "compose" }>["kind"];

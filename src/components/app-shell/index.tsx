@@ -144,7 +144,10 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
   const selectedLoop =
     route.view === "loop" ? (loopItems.find((loop) => loop.config.id === route.loopId) ?? null) : null;
   const selectedWorkspace =
-    route.view === "workspace" || route.view === "workspace-settings" || route.view === "rebuild-workspace"
+    route.view === "workspace"
+      || route.view === "workspace-settings"
+      || route.view === "rebuild-workspace"
+      || route.view === "restart-workspace"
       ? (workspaces.find((w) => w.id === route.workspaceId) ?? null)
       : null;
   const composeWorkspace =

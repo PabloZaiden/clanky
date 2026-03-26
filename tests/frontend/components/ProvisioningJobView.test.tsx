@@ -98,4 +98,21 @@ describe("ProvisioningJobView", () => {
     expect(workspaceReadyStep.className).toContain("border-green-200");
     expect(workspaceReadyStep.className).not.toContain("border-blue-300");
   });
+
+  test("uses the restart step sequence for restart jobs", () => {
+    const snapshot = createSnapshot("running");
+    snapshot.job.config.mode = "restart";
+
+    const { getByText, queryByText } = renderWithUser(
+      <ProvisioningJobView
+        snapshot={snapshot}
+        logs={snapshot.logs}
+        websocketStatus="open"
+      />,
+    );
+
+    expect(getByText("Run devbox up")).toBeInTheDocument();
+    expect(queryByText("Clone repository")).toBeNull();
+    expect(queryByText("Rebuild devbox")).toBeNull();
+  });
 });

@@ -770,6 +770,23 @@ describe("App shell", () => {
     });
   });
 
+  test("renders restart-workspace view from hash route", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+      sourceDirectory: "/workspaces/frontend-source",
+    });
+    setupDefaultApi({ workspaces: [workspace] });
+    api.get("/api/workspaces/:id", () => workspace);
+
+    const { getByRole } = renderWithUser(<App />, { route: "#/restart-workspace/workspace-1" });
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Restart Frontend" })).toBeTruthy();
+    });
+  });
+
   test("navigating to rebuild-workspace via hash change renders the view", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
@@ -794,6 +811,59 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(window.location.hash).toBe("#/rebuild-workspace/workspace-1");
       expect(getByRole("heading", { name: "Rebuild Frontend" })).toBeTruthy();
+    });
+  });
+
+  test("navigating to restart-workspace via hash change renders the view", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+      sourceDirectory: "/workspaces/frontend-source",
+    });
+    setupDefaultApi({ workspaces: [workspace] });
+    api.get("/api/workspaces/:id", () => workspace);
+
+    const { getByRole } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+    });
+
+    await act(() => {
+      window.location.hash = "/restart-workspace/workspace-1";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/restart-workspace/workspace-1");
+      expect(getByRole("heading", { name: "Restart Frontend" })).toBeTruthy();
+    });
+  });
+
+  test("shows a restart button for auto-provisioned workspaces and navigates to the restart action", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+      sourceDirectory: "/workspaces/frontend-source",
+    });
+    setupDefaultApi({ workspaces: [workspace] });
+    api.get("/api/workspaces/:id", () => workspace);
+
+    const { getByRole, user } = renderWithUser(<App />, { route: "#/workspace/workspace-1" });
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Frontend" })).toBeTruthy();
+      expect(getByRole("button", { name: "Restart" })).toBeTruthy();
+      expect(getByRole("button", { name: "Rebuild" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Restart" }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/restart-workspace/workspace-1");
+      expect(getByRole("heading", { name: "Restart Frontend" })).toBeTruthy();
     });
   });
 });
