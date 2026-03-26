@@ -33,7 +33,7 @@ export function MarkdownRenderer({ content, className = "", dimmed = false, rawM
   if (rawMode) {
     return (
       <div
-        className={`min-w-0 ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
+        className={`markdown-renderer min-w-0 ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
       >
         <pre className="max-w-full whitespace-pre-wrap break-words font-mono text-sm text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
           {content}

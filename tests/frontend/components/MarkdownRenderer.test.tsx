@@ -15,6 +15,10 @@ describe("MarkdownRenderer", () => {
       />
     );
 
+    const wrapper = container.firstElementChild as HTMLElement;
+    expect(wrapper.className).toContain("markdown-renderer");
+    expect(wrapper.className).toContain("min-w-0");
+
     const pre = container.querySelector("pre");
     expect(pre).toBeInTheDocument();
     expect(pre?.className).toContain("whitespace-pre-wrap");
