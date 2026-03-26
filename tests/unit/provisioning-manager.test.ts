@@ -217,6 +217,7 @@ describe("ProvisioningManager", () => {
     const rebuilt = await waitForProvisioningStatus(manager, rebuildSnapshot.job.config.id, ["completed"]);
     expect(rebuilt.job.state.status).toBe("completed");
     expect(rebuilt.job.config.mode).toBe("rebuild");
+    expect(rebuilt.job.state.workspaceAction).toBe("reused");
 
     // Verify rebuild used devbox rebuild instead of devbox up
     const rebuildCalls = rebuildExecutor.calls.map((c) => `${c.command} ${c.args.join(" ")}`);
@@ -274,6 +275,7 @@ describe("ProvisioningManager", () => {
     const restarted = await waitForProvisioningStatus(manager, restartSnapshot.job.config.id, ["completed"]);
     expect(restarted.job.state.status).toBe("completed");
     expect(restarted.job.config.mode).toBe("restart");
+    expect(restarted.job.state.workspaceAction).toBe("reused");
 
     const restartCalls = restartExecutor.calls.map((c) => `${c.command} ${c.args.join(" ")}`);
     expect(restartCalls.some((c) => c.includes("devbox up"))).toBe(true);

@@ -471,7 +471,11 @@ export class ProvisioningManager {
         password,
       );
 
-      this.updateState(record, { targetDirectory, workspaceId });
+      this.updateState(record, {
+        targetDirectory,
+        workspaceId,
+        workspaceAction: "reused",
+      });
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
       await this.runCmd(record, executor, {
