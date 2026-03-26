@@ -91,6 +91,7 @@ describe("Plan Mode - Clear Planning Folder", () => {
       initGit: true,
       mockResponses: ["<promise>PLAN_READY</promise>"],
     });
+    await setupRemote(ctx);
   });
 
   afterEach(async () => {
@@ -436,6 +437,7 @@ describe("Plan Mode - State Transitions", () => {
         "<promise>COMPLETE</promise>",    // After acceptance (execution complete)
       ],
     });
+    await setupRemote(ctx);
   });
 
   afterEach(async () => {
@@ -939,6 +941,7 @@ describe("Plan Mode - Engine Recovery After Server Restart", () => {
         "<promise>COMPLETE</promise>",         // [2] execution after accept
       ],
     });
+    await setupRemote(ctx);
   });
 
   afterEach(async () => {
@@ -1279,11 +1282,13 @@ describe("Plan Mode - Accept plan base branch sync", () => {
       const finalLoop = await waitForLoopStatus(ctx.manager, loopId, ["completed", "max_iterations", "stopped"], 10000);
 
       const syncConflicts = ctx.events.find((event) => event.type === "loop.sync.conflicts" && event.loopId === loopId);
+      const sessionAbortedEvents = ctx.events.filter((event) => event.type === "loop.session_aborted" && event.loopId === loopId);
       const pushedEvent = ctx.events.find((event) => event.type === "loop.pushed" && event.loopId === loopId);
       const startedEvents = ctx.events.filter((event) => event.type === "loop.started" && event.loopId === loopId);
       const latestLoop = await ctx.manager.getLoop(loopId);
 
       expect(syncConflicts).toBeDefined();
+      expect(sessionAbortedEvents).toHaveLength(1);
       expect(pushedEvent).toBeUndefined();
       expect(startedEvents.length).toBeGreaterThanOrEqual(1);
       expect(["running", "completed", "max_iterations", "stopped"]).toContain(resumedLoop.state.status);
@@ -1345,6 +1350,48 @@ describe("Plan Mode - Accept plan base branch sync", () => {
 
       const pushedEvent = ctx.events.find((event) => event.type === "loop.pushed" && event.loopId === loopId);
       expect(pushedEvent).toBeUndefined();
+    } finally {
+      await teardownTestContext(ctx);
+    }
+  });
+
+  test("acceptPlan fails if the base branch cannot be fetched before execution starts", async () => {
+    const ctx = await setupTestContext({
+      initGit: true,
+      initialFiles: { "test.txt": "Initial content\n" },
+      mockResponses: ["<promise>PLAN_READY</promise>"],
+    });
+
+    try {
+      const { remoteDir } = await setupRemote(ctx);
+      const loop = await ctx.manager.createLoop({
+        ...testModelFields,
+        prompt: "Create a plan",
+        name: "Test Loop",
+        directory: ctx.workDir,
+        workspaceId: testWorkspaceId,
+        maxIterations: 2,
+        planMode: true,
+      });
+      const loopId = loop.config.id;
+
+      await ctx.manager.startPlanMode(loopId);
+      await waitForPlanReady(ctx.manager, loopId);
+
+      await Bun.$`rm -rf ${remoteDir}`.quiet();
+
+      await expect(ctx.manager.acceptPlan(loopId)).rejects.toThrow(
+        "Failed to fetch origin/",
+      );
+
+      const failedLoop = await waitForLoopStatus(ctx.manager, loopId, ["failed"]);
+      const syncFailed = ctx.events.find((event) => event.type === "loop.sync.failed" && event.loopId === loopId);
+      const syncClean = ctx.events.find((event) => event.type === "loop.sync.clean" && event.loopId === loopId);
+
+      expect(failedLoop.state.status).toBe("failed");
+      expect(failedLoop.state.syncState).toBeUndefined();
+      expect(syncFailed).toBeDefined();
+      expect(syncClean).toBeUndefined();
     } finally {
       await teardownTestContext(ctx);
     }

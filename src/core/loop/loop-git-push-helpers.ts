@@ -13,6 +13,7 @@ import { startStatePersistenceImpl } from "./loop-execution";
 interface ConflictResolutionOptions {
   onCompleted?: () => Promise<void>;
   completionDescription?: string;
+  engineToReplace?: LoopEngine;
 }
 
 export async function syncWorkingBranch(
@@ -206,6 +207,7 @@ export async function syncBaseBranchBeforeExecution(
   loop: { config: LoopConfig; state: LoopState },
   git: GitService,
   onConflictsResolved: () => Promise<void>,
+  currentEngine?: LoopEngine,
 ): Promise<PushLoopResult> {
   const baseBranch = loop.config.baseBranch ?? loop.state.git!.originalBranch;
   const worktreePath = loop.state.git!.worktreePath ?? loop.config.directory;
@@ -230,8 +232,23 @@ export async function syncBaseBranchBeforeExecution(
 
   let alreadyUpToDate: boolean;
   if (!fetchSuccess) {
-    log.debug(`[LoopManager] syncBaseBranchBeforeExecution: Could not fetch origin/${baseBranch}, skipping sync`);
-    alreadyUpToDate = true;
+    const error = `Failed to fetch origin/${baseBranch} before accepted plan execution`;
+    log.error(`[LoopManager] syncBaseBranchBeforeExecution: ${error} for loop ${loopId}`);
+    loop.state.syncState = undefined;
+    await updateLoopState(loopId, loop.state);
+
+    ctx.emitter.emit({
+      type: "loop.sync.failed",
+      loopId,
+      baseBranch,
+      error,
+      timestamp: createTimestamp(),
+    });
+
+    return {
+      success: false,
+      error,
+    };
   } else {
     alreadyUpToDate = await git.isAncestor(
       worktreePath,
@@ -318,6 +335,7 @@ export async function syncBaseBranchBeforeExecution(
       {
         onCompleted: onConflictsResolved,
         completionDescription: "Resume accepted plan execution",
+        engineToReplace: currentEngine,
       },
     );
   }
@@ -326,6 +344,13 @@ export async function syncBaseBranchBeforeExecution(
   log.error(`[LoopManager] syncBaseBranchBeforeExecution: Merge failed (not conflicts) for loop ${loopId}: ${errorMsg}`);
   loop.state.syncState = undefined;
   await updateLoopState(loopId, loop.state);
+  ctx.emitter.emit({
+    type: "loop.sync.failed",
+    loopId,
+    baseBranch,
+    error: errorMsg,
+    timestamp: createTimestamp(),
+  });
   return {
     success: false,
     error: `Failed to merge origin/${baseBranch}: ${errorMsg}`,
@@ -380,7 +405,7 @@ export async function pushAndFinalize(
   return remoteBranch;
 }
 
-function startConflictResolutionEngine(
+async function startConflictResolutionEngine(
   ctx: LoopCtx,
   loopId: string,
   loop: { config: LoopConfig; state: LoopState },
@@ -388,12 +413,16 @@ function startConflictResolutionEngine(
   sourceBranch: string,
   conflictedFiles: string[],
   options: ConflictResolutionOptions = {},
-): PushLoopResult {
+): Promise<PushLoopResult> {
   const backend = backendManager.getLoopBackend(loopId, loop.config.workspaceId);
 
   const conflictPrompt = constructConflictResolutionPrompt(
     sourceBranch, conflictedFiles, loop.state.syncState?.mergeCommitMessage
   );
+
+  if (options.engineToReplace) {
+    await handOffEngineForConflictResolution(ctx, loopId, options.engineToReplace);
+  }
 
   const engine = new LoopEngine({
     loop: { config: loop.config, state: loop.state },
@@ -444,6 +473,19 @@ function startConflictResolutionEngine(
     success: true,
     syncStatus: "conflicts_being_resolved",
   };
+}
+
+async function handOffEngineForConflictResolution(
+  ctx: LoopCtx,
+  loopId: string,
+  engine: LoopEngine,
+): Promise<void> {
+  await engine.waitForLoopIdle();
+  await engine.abortSessionOnly("Accepted plan entering conflict resolution");
+
+  if (ctx.engines.get(loopId) === engine) {
+    ctx.engines.delete(loopId);
+  }
 }
 
 async function handleConflictResolutionComplete(ctx: LoopCtx, loopId: string): Promise<void> {

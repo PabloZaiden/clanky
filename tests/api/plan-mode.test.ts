@@ -27,6 +27,7 @@ describe("Plan Mode API Integration", () => {
   // Per-test work directory to avoid conflicts between tests
   let currentTestWorkDir: string;
   let currentWorkspaceId: string;
+  let currentRemoteDir: string;
 
   // Helper to get or create a workspace for a directory
   async function getOrCreateWorkspace(
@@ -159,6 +160,12 @@ describe("Plan Mode API Integration", () => {
     await Bun.$`touch ${workDir}/README.md`.quiet();
     await Bun.$`git -C ${workDir} add .`.quiet();
     await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
+    currentRemoteDir = await mkdtemp(join(tmpdir(), "ralpher-api-plan-test-remote-"));
+    await Bun.$`git init --bare ${currentRemoteDir}`.quiet();
+    await Bun.$`git -C ${workDir} remote add origin ${currentRemoteDir}`.quiet();
+    const currentBranch = (await Bun.$`git -C ${workDir} branch --show-current`.text()).trim();
+    await Bun.$`git -C ${workDir} push -u origin ${currentBranch}`.quiet();
+    await Bun.$`git -C ${currentRemoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
     return workDir;
   }
 
@@ -230,6 +237,9 @@ describe("Plan Mode API Integration", () => {
     // Clean up the test work directory
     if (currentTestWorkDir) {
       await rm(currentTestWorkDir, { recursive: true, force: true });
+    }
+    if (currentRemoteDir) {
+      await rm(currentRemoteDir, { recursive: true, force: true });
     }
   };
 

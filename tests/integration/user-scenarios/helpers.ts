@@ -280,7 +280,7 @@ export interface SetupServerOptions {
 export async function setupTestServer(options: SetupServerOptions = {}): Promise<TestServerContext> {
   const {
     mockResponses = ["<promise>COMPLETE</promise>"],
-    withRemote = false,
+    withRemote = true,
     initialFiles = {},
     withPlanningDir = false,
   } = options;

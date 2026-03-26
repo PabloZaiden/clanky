@@ -126,6 +126,7 @@ export async function acceptPlanImpl(
     async () => {
       await beginAcceptedPlanExecution(ctx, loopId, executionPrompt);
     },
+    engine,
   );
 
   if (!syncResult.success) {
