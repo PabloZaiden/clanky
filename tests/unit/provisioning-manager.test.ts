@@ -217,6 +217,7 @@ describe("ProvisioningManager", () => {
     const rebuilt = await waitForProvisioningStatus(manager, rebuildSnapshot.job.config.id, ["completed"]);
     expect(rebuilt.job.state.status).toBe("completed");
     expect(rebuilt.job.config.mode).toBe("rebuild");
+    expect(rebuilt.job.state.workspaceAction).toBe("reused");
 
     // Verify rebuild used devbox rebuild instead of devbox up
     const rebuildCalls = rebuildExecutor.calls.map((c) => `${c.command} ${c.args.join(" ")}`);
@@ -230,6 +231,61 @@ describe("ProvisioningManager", () => {
 
     // Verify final log message
     expect(rebuilt.logs.at(-1)?.text).toContain("rebuilt successfully");
+  });
+
+  test("restarts an existing devbox workspace without cloning", async () => {
+    const server = await sshServerManager.createServer({
+      name: "Restart Host",
+      address: "10.0.0.9",
+      username: "remote-user",
+    });
+
+    const provisionExecutor = new ProvisioningTestExecutor();
+    sshServerManager.setExecutorFactoryForTesting(() => provisionExecutor);
+
+    const manager = new ProvisioningManager(5_000, 500);
+    const provisionSnapshot = await manager.startJob({
+      name: "Restart Target",
+      sshServerId: server.config.id,
+      repoUrl: "git@github.com:octocat/example.git",
+      basePath: "/workspaces",
+      provider: "copilot",
+    });
+    const provisioned = await waitForProvisioningStatus(manager, provisionSnapshot.job.config.id, ["completed"]);
+    const workspaceId = provisioned.job.state.workspaceId!;
+    const workspace = await getWorkspace(workspaceId);
+    expect(workspace).not.toBeNull();
+
+    const restartExecutor = new ProvisioningTestExecutor({
+      existingDirectories: ["/workspaces/example"],
+    });
+    sshServerManager.setExecutorFactoryForTesting(() => restartExecutor);
+
+    const restartSnapshot = await manager.startJob({
+      name: "Restart Target",
+      sshServerId: server.config.id,
+      repoUrl: "git@github.com:octocat/example.git",
+      basePath: "/workspaces",
+      provider: "copilot",
+      mode: "restart",
+      targetDirectory: "/workspaces/example",
+      workspaceId,
+    });
+
+    const restarted = await waitForProvisioningStatus(manager, restartSnapshot.job.config.id, ["completed"]);
+    expect(restarted.job.state.status).toBe("completed");
+    expect(restarted.job.config.mode).toBe("restart");
+    expect(restarted.job.state.workspaceAction).toBe("reused");
+
+    const restartCalls = restartExecutor.calls.map((c) => `${c.command} ${c.args.join(" ")}`);
+    expect(restartCalls.some((c) => c.includes("devbox up"))).toBe(true);
+    expect(restartCalls.some((c) => c.includes("devbox rebuild"))).toBe(false);
+    expect(restartCalls.some((c) => c.includes("git clone"))).toBe(false);
+
+    const updatedWorkspace = await getWorkspace(workspaceId);
+    expect(updatedWorkspace?.serverSettings.agent.transport).toBe("ssh");
+
+    expect(restarted.logs.at(-1)?.text).toContain("restarted successfully");
   });
 
   test("rebuild fails when target directory does not exist", async () => {
@@ -262,6 +318,41 @@ describe("ProvisioningManager", () => {
       mode: "rebuild",
       targetDirectory: "/workspaces/missing",
       workspaceId: "ws-rebuild-fail",
+    });
+
+    const result = await waitForProvisioningStatus(manager, snapshot.job.config.id, ["failed"]);
+    expect(result.job.state.status).toBe("failed");
+    expect(result.job.state.error?.code).toBe("directory_not_found");
+  });
+
+  test("restart fails when target directory does not exist", async () => {
+    const server = await sshServerManager.createServer({
+      name: "Restart Fail Host",
+      address: "10.0.0.10",
+      username: "remote-user",
+    });
+
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    db.run(
+      `INSERT INTO workspaces (id, name, directory, server_fingerprint, server_settings, created_at, updated_at, source_directory, ssh_server_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ["ws-restart-fail", "Missing Dir Restart WS", "/workspaces/devbox", "copilot:ssh:10.0.0.10:5005:", '{"agent":{"provider":"copilot","transport":"ssh","hostname":"10.0.0.10","port":5005,"username":"vscode","password":"test"}}', now, now, "/workspaces/missing", server.config.id],
+    );
+
+    const executor = new ProvisioningTestExecutor();
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+    const manager = new ProvisioningManager(5_000, 500);
+    const snapshot = await manager.startJob({
+      name: "Missing Dir Restart WS",
+      sshServerId: server.config.id,
+      repoUrl: "",
+      basePath: "",
+      provider: "copilot",
+      mode: "restart",
+      targetDirectory: "/workspaces/missing",
+      workspaceId: "ws-restart-fail",
     });
 
     const result = await waitForProvisioningStatus(manager, snapshot.job.config.id, ["failed"]);

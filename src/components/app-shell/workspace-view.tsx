@@ -63,15 +63,26 @@ export function WorkspaceView({
       actions={(
         <>
           {isAutoProvisioned && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => onNavigate({ view: "rebuild-workspace", workspaceId: workspace.id })}
-              title="Rebuild devbox"
-              className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
-            >
-              Rebuild
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onNavigate({ view: "restart-workspace", workspaceId: workspace.id })}
+                title="Restart devbox"
+                className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
+              >
+                Restart
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onNavigate({ view: "rebuild-workspace", workspaceId: workspace.id })}
+                title="Rebuild devbox"
+                className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
+              >
+                Rebuild
+              </Button>
+            </>
           )}
           <Button
             variant="ghost"

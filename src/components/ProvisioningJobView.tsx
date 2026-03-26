@@ -35,8 +35,21 @@ const REBUILD_STEPS: ProvisioningStep[] = [
   "workspace_ready",
 ];
 
+const RESTART_STEPS: ProvisioningStep[] = [
+  "verify_devbox",
+  "prepare_directory",
+  "devbox_up",
+  "devbox_status",
+  "test_connection",
+  "workspace_ready",
+];
+
 function getStepsForMode(mode: ProvisioningJobMode | undefined): [ProvisioningStep, string][] {
-  const steps = mode === "rebuild" ? REBUILD_STEPS : PROVISION_STEPS;
+  const steps = mode === "rebuild"
+    ? REBUILD_STEPS
+    : mode === "restart"
+      ? RESTART_STEPS
+      : PROVISION_STEPS;
   return steps.map((step) => [step, STEP_LABELS[step]]);
 }
 

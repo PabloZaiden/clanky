@@ -11,7 +11,7 @@ export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobR
 
 export type ProvisioningJobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
-export type ProvisioningJobMode = "provision" | "rebuild";
+export type ProvisioningJobMode = "provision" | "rebuild" | "restart";
 
 export type ProvisioningStep =
   | "verify_devbox"

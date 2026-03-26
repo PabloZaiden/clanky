@@ -7,9 +7,11 @@ import type { ShellRoute } from "./shell-types";
 import { getProvisioningStatusBadgeVariant } from "./shell-types";
 import type { Workspace } from "../../types/workspace";
 import type { SshServer } from "../../types/ssh-server";
+import type { ProvisioningJobMode } from "../../types/provisioning";
 import { useState } from "react";
 
 interface RebuildWorkspaceViewProps {
+  mode: Extract<ProvisioningJobMode, "rebuild" | "restart">;
   workspace: Workspace;
   servers: SshServer[];
   provisioning: UseProvisioningJobResult;
@@ -19,6 +21,7 @@ interface RebuildWorkspaceViewProps {
 }
 
 export function RebuildWorkspaceView({
+  mode,
   workspace,
   servers,
   provisioning,
@@ -27,6 +30,9 @@ export function RebuildWorkspaceView({
   refreshWorkspaces,
 }: RebuildWorkspaceViewProps) {
   const [password, setPassword] = useState("");
+  const actionLabel = mode === "restart" ? "Restart" : "Rebuild";
+  const actionLabelLower = actionLabel.toLowerCase();
+  const formId = `${mode}-workspace-form`;
 
   const sshServerId = workspace.sshServerId ?? "";
   const selectedServer = servers.find((s) => s.config.id === sshServerId);
@@ -38,7 +44,7 @@ export function RebuildWorkspaceView({
   const canReturnToForm =
     provisioningStatus === "failed" || provisioningStatus === "cancelled";
 
-  async function handleStartRebuild(event: React.FormEvent<HTMLFormElement>) {
+  async function handleStartWorkspaceAction(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const snapshot = await provisioning.startJob({
@@ -48,7 +54,7 @@ export function RebuildWorkspaceView({
       basePath: workspace.basePath ?? "",
       provider: workspace.provider ?? "copilot",
       password,
-      mode: "rebuild",
+      mode,
       targetDirectory: workspace.sourceDirectory,
       workspaceId: workspace.id,
     });
@@ -63,18 +69,18 @@ export function RebuildWorkspaceView({
     setPassword("");
   }
 
-  // When rebuild completes, refresh workspaces to get updated server settings
+  // When the action completes, refresh workspaces to get updated server settings.
   const isCompleted = provisioningStatus === "completed";
 
   return (
     <ShellPanel
       eyebrow="Workspace"
-      title={`Rebuild ${workspace.name}`}
+      title={`${actionLabel} ${workspace.name}`}
       variant="compact"
       headerOffsetClassName={shellHeaderOffsetClassName}
       badges={
         <>
-          <Badge variant="info" size="sm">Rebuild</Badge>
+          <Badge variant="info" size="sm">{actionLabel}</Badge>
           {provisioningStatus && (
             <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
               {provisioningStatus}
@@ -87,7 +93,7 @@ export function RebuildWorkspaceView({
           <>
             {canReturnToForm && (
               <Button type="button" size="sm" onClick={handleBackToForm}>
-                Back to Rebuild Form
+                {`Back to ${actionLabel} Form`}
               </Button>
             )}
             {isCompleted && (
@@ -111,7 +117,7 @@ export function RebuildWorkspaceView({
                   void provisioning.cancelJob();
                 }}
               >
-                Cancel Rebuild
+                {`Cancel ${actionLabel}`}
               </Button>
             )}
           </>
@@ -127,12 +133,12 @@ export function RebuildWorkspaceView({
             </Button>
             <Button
               type="submit"
-              form="rebuild-workspace-form"
+              form={formId}
               size="sm"
               loading={provisioning.starting}
               disabled={!sshServerId || (!!sshServerId && !selectedServer)}
             >
-              Rebuild Devbox
+              {`${actionLabel} Devbox`}
             </Button>
           </>
         )
@@ -150,13 +156,13 @@ export function RebuildWorkspaceView({
         </div>
       ) : (
         <form
-          id="rebuild-workspace-form"
+          id={formId}
           className="space-y-6"
-          onSubmit={(event) => void handleStartRebuild(event)}
+          onSubmit={(event) => void handleStartWorkspaceAction(event)}
         >
           <div className="space-y-4">
             <InlineField
-              id="rebuild-workspace-name"
+              id={`${mode}-workspace-name`}
               label="Workspace name"
               value={workspace.name}
               onChange={() => {}}
@@ -165,13 +171,13 @@ export function RebuildWorkspaceView({
 
             <div>
               <label
-                htmlFor="rebuild-ssh-server"
+                htmlFor={`${mode}-ssh-server`}
                 className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
               >
                 Saved SSH server
               </label>
               <select
-                id="rebuild-ssh-server"
+                id={`${mode}-ssh-server`}
                 value={sshServerId}
                 disabled
                 className="block w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 cursor-not-allowed"
@@ -191,7 +197,7 @@ export function RebuildWorkspaceView({
             </div>
 
             <InlineField
-              id="rebuild-repo-url"
+              id={`${mode}-repo-url`}
               label="Git repository URL"
               value={workspace.repoUrl ?? ""}
               onChange={() => {}}
@@ -199,7 +205,7 @@ export function RebuildWorkspaceView({
             />
 
             <InlineField
-              id="rebuild-base-path"
+              id={`${mode}-base-path`}
               label="Remote base path"
               value={workspace.basePath ?? ""}
               onChange={() => {}}
@@ -207,7 +213,7 @@ export function RebuildWorkspaceView({
             />
 
             <InlineField
-              id="rebuild-source-directory"
+              id={`${mode}-source-directory`}
               label="Source directory"
               value={workspace.sourceDirectory ?? ""}
               onChange={() => {}}
@@ -216,7 +222,7 @@ export function RebuildWorkspaceView({
             />
 
             <InlineField
-              id="rebuild-provider"
+              id={`${mode}-provider`}
               label="Provider"
               value={workspace.provider ?? "copilot"}
               onChange={() => {}}
@@ -225,13 +231,13 @@ export function RebuildWorkspaceView({
 
             {!selectedServerHasStoredCredential && sshServerId && (
               <InlineField
-                id="rebuild-ssh-password"
+                id={`${mode}-ssh-password`}
                 label="SSH password"
                 value={password}
                 onChange={setPassword}
                 placeholder="Leave blank for key-based auth"
                 type="password"
-                help="Required to connect to the SSH server for the rebuild operation."
+                help={`Required to connect to the SSH server for the ${actionLabelLower} operation.`}
                 inputProps={PASSWORD_INPUT_PROPS}
               />
             )}

@@ -65,10 +65,11 @@ export class ProvisioningManager {
     this.jobs.set(jobId, record);
     emitJobStarted(record.job);
 
-    if (mode === "rebuild") {
-      void this.runRebuildJob(record, options.password).catch((error) => {
-        log.error("Provisioning rebuild job crashed unexpectedly", {
+    if (mode === "rebuild" || mode === "restart") {
+      void this.runExistingWorkspaceJob(record, options.password, mode).catch((error) => {
+        log.error("Provisioning existing-workspace job crashed unexpectedly", {
           provisioningJobId: record.job.config.id,
+          mode,
           error: String(error),
         });
       });
@@ -419,18 +420,40 @@ export class ProvisioningManager {
     }
   }
 
-  /**
-   * Rebuild flow: verify_devbox → prepare_directory → devbox_rebuild → devbox_status → test_connection → workspace_ready.
-   * Skips clone_repo and create_workspace since the workspace and directory already exist.
-   */
-  private async runRebuildJob(record: ProvisioningJobRecord, password?: string): Promise<void> {
+  private async runExistingWorkspaceJob(
+    record: ProvisioningJobRecord,
+    password: string | undefined,
+    mode: "rebuild" | "restart",
+  ): Promise<void> {
+    const action = mode === "restart"
+      ? {
+          progressLabel: "Restarting devbox",
+          step: "devbox_up" as const,
+          commandLabel: "Running devbox up",
+          args: ["up"],
+          errorCode: "devbox_restart_failed",
+          errorMessage: "Failed to restart devbox",
+          completionMessage: `Workspace connection test succeeded. Devbox for ${record.job.config.name} was restarted successfully.`,
+          genericFailureCode: "restart_failed",
+        }
+      : {
+          progressLabel: "Rebuilding devbox",
+          step: "devbox_rebuild" as const,
+          commandLabel: "Running devbox rebuild",
+          args: ["rebuild"],
+          errorCode: "devbox_rebuild_failed",
+          errorMessage: "Failed to rebuild devbox",
+          completionMessage: `Workspace connection test succeeded. Devbox for ${record.job.config.name} was rebuilt successfully.`,
+          genericFailureCode: "rebuild_failed",
+        };
+
     try {
       const targetDirectory = record.job.config.targetDirectory;
       if (!targetDirectory) {
         throw new ProvisioningFailedError(
           "missing_target_directory",
           "verify_devbox",
-          "Rebuild mode requires a target directory",
+          `${mode === "restart" ? "Restart" : "Rebuild"} mode requires a target directory`,
         );
       }
 
@@ -439,7 +462,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "missing_workspace_id",
           "verify_devbox",
-          "Rebuild mode requires a workspace ID",
+          `${mode === "restart" ? "Restart" : "Rebuild"} mode requires a workspace ID`,
         );
       }
 
@@ -448,7 +471,11 @@ export class ProvisioningManager {
         password,
       );
 
-      this.updateState(record, { targetDirectory, workspaceId });
+      this.updateState(record, {
+        targetDirectory,
+        workspaceId,
+        workspaceAction: "reused",
+      });
 
       setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
       await this.runCmd(record, executor, {
@@ -472,17 +499,17 @@ export class ProvisioningManager {
       }
       appendSystemLog(record, this.maxLogEntries, `Target directory verified: ${targetDirectory}`, "prepare_directory");
 
-      setStep(record, this.maxLogEntries, "devbox_rebuild", "Rebuilding devbox");
+      setStep(record, this.maxLogEntries, action.step, action.progressLabel);
       await this.runCmd(record, executor, {
-        step: "devbox_rebuild",
-        label: "Running devbox rebuild",
+        step: action.step,
+        label: action.commandLabel,
         command: "devbox",
-        args: ["rebuild"],
+        args: action.args,
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
-        errorCode: "devbox_rebuild_failed",
-        errorMessage: "Failed to rebuild devbox",
+        errorCode: action.errorCode,
+        errorMessage: action.errorMessage,
       });
 
       setStep(record, this.maxLogEntries, "devbox_status", "Reading devbox status");
@@ -604,7 +631,7 @@ export class ProvisioningManager {
       appendSystemLog(
         record,
         this.maxLogEntries,
-        `Workspace connection test succeeded. Devbox for ${record.job.config.name} was rebuilt successfully.`,
+        action.completionMessage,
         "workspace_ready",
       );
       emitJobCompleted(record.job);
@@ -621,7 +648,7 @@ export class ProvisioningManager {
         : error instanceof ProvisioningFailedError
           ? buildError(error.code, error.step, error.message)
           : buildError(
-              "rebuild_failed",
+              action.genericFailureCode,
               record.job.state.currentStep ?? "verify_devbox",
               String(error),
             );
@@ -700,4 +727,3 @@ export class ProvisioningManager {
 }
 
 export const provisioningManager = new ProvisioningManager();
-
