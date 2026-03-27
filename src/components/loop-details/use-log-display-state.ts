@@ -21,7 +21,7 @@ export interface LogDisplayState {
 export function useLogDisplayState(): LogDisplayState {
   const [showSystemInfo, setShowSystemInfo] = useState(false);
   const [showReasoning, setShowReasoning] = useState(true);
-  const [showTools, setShowTools] = useState(false);
+  const [showTools, setShowTools] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
   const [logsCollapsed, setLogsCollapsed] = useState(false);
 

@@ -25,7 +25,7 @@ export const LogViewer = memo(function LogViewer({
   maxHeight,
   showSystemInfo = false,
   showReasoning = true,
-  showTools = false,
+  showTools = true,
   markdownEnabled = false,
   isActive = false,
   id,

@@ -31,7 +31,11 @@ export interface LogViewerProps {
   showSystemInfo?: boolean;
   /** Whether to show reasoning entries ("AI reasoning..." logs). Default: true */
   showReasoning?: boolean;
-  /** Whether to show tool-related entries (tool calls and "AI calling tool" logs). Default: false */
+  /**
+   * Whether to show tool-related entries derived from `toolCalls` (ToolEntry rows).
+   * Legacy tool-related agent log messages (e.g. logKind="tool" or messages starting
+   * with "AI calling tool:") are always hidden by the log viewer. Default: true
+   */
   showTools?: boolean;
   /** Whether to render response log content as markdown (default: false) */
   markdownEnabled?: boolean;
