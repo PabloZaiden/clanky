@@ -93,7 +93,7 @@ export interface ToolCallData {
  * - **Iteration events**: iteration.start, iteration.end
  * - **Activity events**: message, tool_call, progress, log, git.commit
  * - **Completion events**: accepted (merged locally), merged (detected externally), discarded, pushed
- * - **Sync events**: sync.started, sync.clean, sync.conflicts
+ * - **Sync events**: sync.started, sync.clean, sync.conflicts, sync.failed
  * - **Plan mode events**: plan.ready, plan.feedback, plan.accepted, plan.discarded
  * - **State events**: pending.updated
  */
@@ -120,6 +120,7 @@ export type LoopEvent =
   | LoopSyncStartedEvent
   | LoopSyncCleanEvent
   | LoopSyncConflictsEvent
+  | LoopSyncFailedEvent
   | LoopPlanReadyEvent
   | LoopPlanFeedbackSentEvent
   | LoopPlanAcceptedEvent
@@ -459,6 +460,22 @@ export interface LoopSyncConflictsEvent {
   baseBranch: string;
   /** List of files with conflicts */
   conflictedFiles: string[];
+  /** ISO 8601 timestamp */
+  timestamp: string;
+}
+
+/**
+ * Emitted when a base branch sync cannot complete.
+ * The loop remains blocked until the failure is surfaced or retried explicitly.
+ */
+export interface LoopSyncFailedEvent {
+  type: "loop.sync.failed";
+  /** ID of the loop whose sync failed */
+  loopId: string;
+  /** The base branch that could not be synced */
+  baseBranch: string;
+  /** Human-readable failure reason */
+  error: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

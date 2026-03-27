@@ -28,19 +28,20 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   draft: new Set(["idle", "planning", "deleted"]),
 
   // planning: AI is generating a plan, awaiting user approval
-  // → running: plan accepted for execution (acceptPlan start_loop)
+  // → starting: plan accepted and pre-execution sync/setup begins (acceptPlan start_loop)
   // → completed: plan accepted directly into manual SSH handoff (acceptPlan open_ssh)
   // → stopped: user stops during planning
   // → failed: unrecoverable error during planning
   // → deleted: delete during planning
-  planning: new Set(["running", "completed", "stopped", "failed", "deleted"]),
+  planning: new Set(["starting", "completed", "stopped", "failed", "deleted"]),
 
   // starting: engine is initializing (git branch, session setup)
   // → running: initialization complete, first iteration begins
+  // → resolving_conflicts: accepted-plan base sync encountered conflicts
   // → failed: initialization error
   // → stopped: user cancels during startup
   // → deleted: delete during startup
-  starting: new Set(["running", "failed", "stopped", "deleted"]),
+  starting: new Set(["running", "resolving_conflicts", "failed", "stopped", "deleted"]),
 
   // running: actively executing iterations
   // → completed: stop pattern matched
@@ -59,10 +60,11 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   // → pushed: pushed to remote
   // → deleted: discarded
   // → resolving_conflicts: push encountered merge conflicts
+  // → starting: accepted-plan conflict resolution completed and execution is resuming
   // → idle: review comments restarting the loop
   // → stopped: jumpstart (engine.start accepts stopped)
   // → planning: jumpstart in planning mode
-  completed: new Set(["merged", "pushed", "deleted", "resolving_conflicts", "idle", "stopped", "planning"]),
+  completed: new Set(["merged", "pushed", "deleted", "resolving_conflicts", "starting", "idle", "stopped", "planning"]),
 
   // stopped: manually stopped by user
   // → starting: restart via engine.start
@@ -86,7 +88,7 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   // → planning: jumpstart in planning mode
   max_iterations: new Set(["merged", "pushed", "deleted", "resolving_conflicts", "stopped", "planning"]),
 
-  // resolving_conflicts: engine is resolving merge conflicts before push
+  // resolving_conflicts: engine is resolving merge conflicts before push or execution
   // → starting: engine.start for conflict resolution
   // → stopped: user stops conflict resolution
   // → failed: error during conflict resolution

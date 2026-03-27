@@ -17,6 +17,15 @@ async function exists(path: string): Promise<boolean> {
   return Bun.file(path).exists();
 }
 
+async function setupRemote(ctx: TestContext): Promise<void> {
+  const remoteDir = join(ctx.dataDir, "remote-" + Date.now() + ".git");
+  await Bun.$`git init --bare ${remoteDir}`.quiet();
+  await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
+  const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
+  await Bun.$`git -C ${ctx.workDir} push -u origin ${currentBranch}`.quiet();
+  await Bun.$`git -C ${remoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
+}
+
 describe("Plan Mode E2E Workflow", () => {
   let ctx: TestContext;
 
@@ -32,6 +41,7 @@ describe("Plan Mode E2E Workflow", () => {
         "<promise>COMPLETE</promise>",       // After acceptance (execution complete)
       ],
     });
+    await setupRemote(ctx);
   });
 
   afterEach(async () => {
