@@ -13,6 +13,7 @@ import {
   createLoopWithStatus,
   createFileDiff,
   createSshSession,
+  createPersistedToolCall,
 } from "../helpers/factories";
 import { LoopDetails } from "@/components/LoopDetails";
 
@@ -1534,6 +1535,22 @@ describe("log tab", () => {
       expect(getByText("Show reasoning")).toBeTruthy();
       expect(getByText("Show tools")).toBeTruthy();
     });
+  });
+
+  test("enables show tools by default and renders tool entries", async () => {
+    setupDefaultApi({
+      state: {
+        toolCalls: [createPersistedToolCall({ name: "Write", status: "completed" })],
+      },
+    });
+    const { getByLabelText, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Write")).toBeTruthy();
+    });
+
+    const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
+    expect(showToolsCheckbox.checked).toBe(true);
   });
 
   test("shows autoscroll toggle", async () => {

@@ -31,7 +31,7 @@ export interface LogViewerProps {
   showSystemInfo?: boolean;
   /** Whether to show reasoning entries ("AI reasoning..." logs). Default: true */
   showReasoning?: boolean;
-  /** Whether to show tool-related entries (tool calls and "AI calling tool" logs). Default: false */
+  /** Whether to show tool-related entries (tool calls and "AI calling tool" logs). Default: true */
   showTools?: boolean;
   /** Whether to render response log content as markdown (default: false) */
   markdownEnabled?: boolean;

@@ -277,10 +277,10 @@ describe("LogViewer", () => {
       expect(queryByText("Output")).not.toBeInTheDocument();
     });
 
-    test("hides tool calls when showTools is false (default)", () => {
+    test("hides tool calls when showTools is false", () => {
       const tool = createToolCallData({ name: "Write", status: "completed" });
       const { queryByText } = renderWithUser(
-        <LogViewer messages={[]} toolCalls={[tool]} />
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={false} />
       );
       expect(queryByText("Write")).not.toBeInTheDocument();
     });
@@ -602,10 +602,18 @@ describe("LogViewer", () => {
   });
 
   describe("tools filtering", () => {
-    test("hides tool call entries by default (showTools=false)", () => {
+    test("shows tool call entries by default", () => {
+      const tool = createToolCallData({ name: "Write", status: "completed" });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} />
+      );
+      expect(getByText("Write")).toBeInTheDocument();
+    });
+
+    test("hides tool call entries when showTools=false", () => {
       const tool = createToolCallData({ name: "Write", status: "completed" });
       const { queryByText } = renderWithUser(
-        <LogViewer messages={[]} toolCalls={[tool]} />
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={false} />
       );
       expect(queryByText("Write")).not.toBeInTheDocument();
     });
