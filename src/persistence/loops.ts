@@ -17,5 +17,7 @@ export {
   updateLoopState,
   updateLoopConfig,
   getActiveLoopByDirectory,
+  isStaleLoopStatus,
+  resetStaleLoop,
   resetStaleLoops,
 } from "./loops/index";

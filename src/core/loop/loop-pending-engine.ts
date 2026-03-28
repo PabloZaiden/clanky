@@ -1,8 +1,11 @@
 import type { LoopCtx } from "./context";
 import type { ModelConfig } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
-import { loadLoop } from "../../persistence/loops";
+import { createLogger } from "../logger";
+import { isStaleLoopStatus, loadLoop, resetStaleLoop } from "../../persistence/loops";
 import { jumpstartLoopFromEngine } from "./loop-jumpstart";
+
+const log = createLogger("loop:pending");
 
 export async function setPendingPromptImpl(
   ctx: LoopCtx,
@@ -174,6 +177,14 @@ export async function injectPendingImpl(
     const loop = await loadLoop(loopId);
     if (!loop) {
       return { success: false, error: "Loop not found" };
+    }
+
+    if (isStaleLoopStatus(loop.state.status)) {
+      const reconciled = await resetStaleLoop(loopId);
+      if (reconciled) {
+        log.warn(`Reconciled stale active loop ${loopId} from persisted status ${loop.state.status} before pending injection`);
+        return jumpstartLoopFromEngine(ctx, loopId, options);
+      }
     }
 
     const jumpstartableStates = ["completed", "stopped", "failed", "max_iterations", "planning"];

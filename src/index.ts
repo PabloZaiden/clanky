@@ -15,6 +15,7 @@ import {
 import { wrapRoutesWithLogging, wrapRouteHandlerWithLogging } from "./api/request-logging";
 import { portForwardProxyRoutes } from "./api/port-forwards";
 import { ensureDataDirectories } from "./persistence/database";
+import { resetStaleLoops } from "./persistence/loops";
 import { backendManager } from "./core/backend-manager";
 import { websocketHandlers, type WebSocketData } from "./api/websocket";
 import {
@@ -65,6 +66,11 @@ try {
 
   // Initialize the global backend manager (loads settings from preferences)
   await backendManager.initialize();
+
+  const staleLoopsReset = await resetStaleLoops();
+  if (staleLoopsReset > 0) {
+    log.info(`Reconciled ${staleLoopsReset} stale loops during startup`);
+  }
 
   const runtimeConfig = getServerRuntimeConfig();
   const development = getServerDevelopmentConfig();

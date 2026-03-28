@@ -18,6 +18,13 @@ import type { ModelInfo, CreateLoopRequest } from "@/types";
 import type { Workspace } from "@/types/workspace";
 import { DEFAULT_LOOP_CONFIG } from "@/types/loop";
 import { PROMPT_TEMPLATES, getTemplateById } from "@/lib/prompt-templates";
+import {
+  createTestFile,
+  installImageAttachmentMocks,
+  pasteFiles,
+} from "../helpers/image-paste";
+
+installImageAttachmentMocks();
 
 /**
  * Helper to set a textarea/input value for form testing.
@@ -658,6 +665,55 @@ describe("CreateLoopForm", () => {
       await waitFor(() => {
         expect(onCancel).toHaveBeenCalledTimes(1);
       });
+    });
+
+    test("includes pasted image attachments in the create request", async () => {
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, getByText, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+            branches: [createBranchInfo({ name: "main" })],
+            defaultBranch: "main",
+            currentBranch: "main",
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Use this screenshot");
+      await setInputValue(user, getByLabelText(/Title/) as HTMLInputElement, "Loop title");
+
+      pasteFiles(getByLabelText(/Prompt/) as HTMLTextAreaElement, [
+        createTestFile({ name: "prompt-image.png" }),
+      ]);
+
+      await waitFor(() => {
+        expect(getByText("prompt-image.png")).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+      });
+
+      await user.click(getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
+      expect(req.attachments).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: "prompt-image.png",
+            mimeType: "image/png",
+          }),
+        ]),
+      );
     });
 
     test("does not call onCancel when submission fails", async () => {

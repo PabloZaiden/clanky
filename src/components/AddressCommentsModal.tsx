@@ -3,11 +3,14 @@
  * Allows users to provide feedback that the loop will address.
  */
 
-import { useState } from "react";
+import { useRef, useState, type ClipboardEvent } from "react";
 import { Modal, Button } from "./common";
 import { log } from "../lib/logger";
 import type { ComposerImageAttachment, MessageImageAttachment } from "../types/message-attachments";
-import { ImageAttachmentControl } from "./ImageAttachmentControl";
+import {
+  ImageAttachmentControl,
+  type ImageAttachmentControlHandle,
+} from "./ImageAttachmentControl";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 
 const ADDRESS_UNRESOLVED_PR_COMMENTS_PROMPT =
@@ -39,6 +42,7 @@ export function AddressCommentsModal({
   const [comments, setComments] = useState("");
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
 
   function handleInsertPrPrompt() {
     setComments((current) => {
@@ -82,6 +86,10 @@ export function AddressCommentsModal({
       setAttachments([]);
       onClose();
     }
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    attachmentControlRef.current?.handlePaste(event);
   }
 
   const isValid = comments.trim().length > 0;
@@ -137,6 +145,7 @@ export function AddressCommentsModal({
             id="reviewer-comments"
             value={comments}
             onChange={(e) => setComments(e.target.value)}
+            onPaste={handlePaste}
             placeholder="Enter your review comments here. Be specific about what needs to be changed or improved..."
             rows={10}
             disabled={submitting}
@@ -147,6 +156,7 @@ export function AddressCommentsModal({
           </p>
           <div className="mt-3">
             <ImageAttachmentControl
+              ref={attachmentControlRef}
               attachments={attachments}
               onChange={setAttachments}
               disabled={submitting}
