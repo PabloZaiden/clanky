@@ -136,9 +136,9 @@ export const loopsChatRoutes = {
      * POST /api/loops/:id/chat - Send a message to an interactive chat.
      *
      * Injects a user message into the chat. If the AI is currently responding,
-     * the current generation is aborted and the message is applied immediately
-     * in a new iteration. If the AI is idle (previous turn completed), a new
-     * single-turn iteration is started.
+     * the active ACP turn is stopped first and the new message is applied in
+     * the next chat turn. If the AI is idle (previous turn completed), a new
+     * single-turn iteration is started immediately.
      *
      * Returns immediately after setting up the injection — does not wait for
      * the AI to finish responding.

@@ -68,6 +68,7 @@ import {
   type SessionOperationContext,
 } from "./engine-session";
 import { processLoopAgentEvent, handleQuestionAsked as handleLoopQuestionAsked, type ToolProcessingContext } from "./engine-tools";
+import type { EventStream } from "../../utils/event-stream";
 
 export class LoopEngine {
   private loop: Loop;
@@ -93,6 +94,8 @@ export class LoopEngine {
   private pendingPlanQuestionRequestId?: string;
   private initialPromptAttachments: MessageImageAttachment[];
   private pendingPromptAttachments: MessageImageAttachment[] = [];
+  private currentEventStream: EventStream<AgentEvent> | null = null;
+  private activeSessionInterrupt: Promise<void> | null = null;
 
   constructor(options: LoopEngineOptions) {
     this.loop = options.loop;
@@ -285,6 +288,10 @@ export class LoopEngine {
     return this.sessionId !== null && this.supportsActivePromptQueueing() && this.hasPendingInputQueued();
   }
 
+  private shouldContinueWithPendingChatInput(): boolean {
+    return this.isChatMode && this.loop.state.pendingPrompt !== undefined;
+  }
+
   private shouldBypassMaxIterationsForQueuedPendingInput(): boolean {
     return this.loop.state.status === "planning" && this.shouldContinueWithQueuedPendingInput();
   }
@@ -297,6 +304,65 @@ export class LoopEngine {
     this.injectionPending = false;
     this.updateState({ consecutiveErrors: undefined });
     return false;
+  }
+
+  private async interruptActiveSession(options: {
+    abortMessage: string;
+    abortWarnMessage: string;
+    forceDisconnect: boolean;
+    markAborted?: boolean;
+    disconnectMessage?: string;
+    disconnectWarnMessage?: string;
+  }): Promise<void> {
+    if (!this.sessionId) {
+      return;
+    }
+
+    const activeSessionId = this.sessionId;
+    const interruptPromise = (async () => {
+      if (options.markAborted) {
+        this.aborted = true;
+      }
+
+      this.currentEventStream?.close();
+
+      try {
+        this.emitLog("info", options.abortMessage);
+        await this.backend.abortSession(activeSessionId);
+      } catch (error) {
+        this.emitLog("warn", options.abortWarnMessage, {
+          error: String(error),
+        });
+      }
+
+      if (!options.forceDisconnect) {
+        return;
+      }
+
+      if (!this.backend.isConnected()) {
+        this.sessionId = null;
+        return;
+      }
+
+      try {
+        this.emitLog("info", options.disconnectMessage ?? "Disconnecting the backend to finish interrupting the active session");
+        await this.backend.disconnect();
+      } catch (error) {
+        this.emitLog("warn", options.disconnectWarnMessage ?? "Failed to disconnect the backend after interrupting the active session", {
+          error: String(error),
+        });
+      } finally {
+        this.sessionId = null;
+      }
+    })();
+
+    this.activeSessionInterrupt = interruptPromise.finally(() => {
+      if (this.activeSessionInterrupt === interruptPromise) {
+        this.activeSessionInterrupt = null;
+      }
+    });
+
+    await this.activeSessionInterrupt;
   }
 
   /**
@@ -406,14 +472,14 @@ export class LoopEngine {
     // from overwriting state after the loop is stopped/deleted
     this.onPersistState = undefined;
 
-    if (this.sessionId) {
-      try {
-        this.emitLog("info", "Aborting backend session...");
-        await this.backend.abortSession(this.sessionId);
-      } catch {
-        // Ignore abort errors
-      }
-    }
+    await this.interruptActiveSession({
+      abortMessage: "Aborting backend session...",
+      abortWarnMessage: "Failed to abort the backend session during stop",
+      forceDisconnect: true,
+      markAborted: true,
+      disconnectMessage: "Disconnecting the backend so the active turn stops immediately",
+      disconnectWarnMessage: "Failed to disconnect the backend while stopping the loop",
+    });
 
     this.updateState({
       status: "stopped",
@@ -598,23 +664,21 @@ export class LoopEngine {
     });
 
     if (this.isLoopRunning) {
-      if (this.canQueuePendingInputOnActiveSession()) {
-        this.emitLog("info", "Queued chat message for the next iteration on the active ACP session");
-        return;
-      }
-
-      // Loop is actively running an iteration — inject by aborting current processing.
-      // The runLoop() while-loop detects injectionPending after abort,
-      // resets the flags, and continues to the next iteration which picks up pendingPrompt.
+      // Chat follow-ups should interrupt the active turn instead of relying on
+      // ACP-side queueing so the new user message is not stranded behind a
+      // long-running or stuck generation.
       this.injectionPending = true;
 
       if (this.sessionId) {
-        try {
-          this.emitLog("info", "Injecting chat message - aborting current AI processing");
-          await this.backend.abortSession(this.sessionId);
-        } catch {
-          // Ignore abort errors - the session may already be complete
-        }
+        await this.interruptActiveSession({
+          abortMessage: "Stopping active chat turn before sending the new message",
+          abortWarnMessage: "Failed to stop the active chat turn before sending the new message",
+          forceDisconnect: true,
+          disconnectMessage: "Disconnecting the active chat session so the replacement message can run immediately",
+          disconnectWarnMessage: "Failed to disconnect the active chat session after requesting stop",
+        });
+      } else {
+        this.emitLog("info", "Chat message queued while the turn is still starting - it will run next");
       }
     } else {
       // Loop is idle (previous turn completed) — start a new single-turn iteration.
@@ -1097,6 +1161,18 @@ export class LoopEngine {
    * Always returns true (loop should exit).
    */
   private async handleCompletedOutcome(): Promise<boolean> {
+    if (this.shouldContinueWithPendingChatInput()) {
+      this.injectionPending = false;
+      this.emitLog("info", "Current chat turn finished with a follow-up message pending - starting the next turn");
+      this.updateState({
+        currentIteration: 0,
+        recentIterations: [],
+        consecutiveErrors: undefined,
+        completedAt: undefined,
+      });
+      return false;
+    }
+
     if (this.shouldContinueWithQueuedPendingInput()) {
       this.emitLog("info", "Current turn completed with queued input pending - continuing on the active ACP session");
       this.updateState({
@@ -1431,6 +1507,16 @@ export class LoopEngine {
    * through all agent events until the message completes or an error occurs.
    */
   private async executeIterationPrompt(ctx: IterationContext): Promise<void> {
+    await this.activeSessionInterrupt;
+
+    if (!this.sessionId || !this.backend.isConnected()) {
+      this.emitLog("info", "AI session is unavailable - reconnecting before continuing", {
+        hasSessionId: this.sessionId !== null,
+        connected: this.backend.isConnected(),
+      });
+      await this.reconnectSession();
+    }
+
     // Handle pending model change via ACP config options (works for all agents)
     await this.handlePendingModelChange();
 
@@ -1474,6 +1560,7 @@ export class LoopEngine {
       log.debug("[LoopEngine] runIteration: About to subscribe to events");
       this.emitLog("debug", "Subscribing to AI response stream");
       const eventStream = await this.backend.subscribeToEvents(activeSessionId);
+      this.currentEventStream = eventStream;
       log.debug("[LoopEngine] runIteration: Subscription established, got event stream");
 
       try {
@@ -1539,6 +1626,9 @@ export class LoopEngine {
       } finally {
         // Close the stream to abort the subscription
         eventStream.close();
+        if (this.currentEventStream === eventStream) {
+          this.currentEventStream = null;
+        }
       }
     }
 
@@ -1751,7 +1841,7 @@ export class LoopEngine {
     }
 
     // In chat mode, run exactly one iteration per turn
-    if (this.isChatMode && this.loop.state.currentIteration >= 1 && !this.shouldContinueWithQueuedPendingInput()) {
+    if (this.isChatMode && this.loop.state.currentIteration >= 1 && !this.shouldContinueWithPendingChatInput()) {
       return false;
     }
 

@@ -338,6 +338,8 @@ describe("StopPatternDetector", () => {
     // Create a slow backend that we can control using async streaming
     let resolveEvents: (() => void) | undefined;
     let sendPromptAsyncCalled = false;
+    let abortCalled = false;
+    let disconnectCalled = false;
 
     const baseMock = createMockBackend([]);
     mockBackend = {
@@ -345,6 +347,14 @@ describe("StopPatternDetector", () => {
       async sendPromptAsync(): Promise<void> {
         sendPromptAsyncCalled = true;
         // This just signals we're ready for events
+      },
+      async abortSession(sessionId: string): Promise<void> {
+        abortCalled = true;
+        await baseMock.abortSession(sessionId);
+      },
+      async disconnect(): Promise<void> {
+        disconnectCalled = true;
+        await baseMock.disconnect();
       },
       async subscribeToEvents(): Promise<EventStream<AgentEvent>> {
         // Return an EventStream that waits for external signal before yielding events
@@ -389,6 +399,8 @@ describe("StopPatternDetector", () => {
     await startPromise;
 
     expect(engine.state.status).toBe("stopped");
+    expect(abortCalled).toBe(true);
+    expect(disconnectCalled).toBe(true);
   });
 
   test("completes on second iteration", async () => {
@@ -2194,6 +2206,51 @@ describe("StopPatternDetector", () => {
   });
 
   describe("session recovery", () => {
+    test("interruptActiveSession clears sessionId when force disconnect is requested on an already disconnected backend", async () => {
+      const loop = createTestLoop();
+      let abortCalled = false;
+
+      mockBackend = {
+        ...createMockBackend([]),
+        isConnected(): boolean {
+          return false;
+        },
+        async abortSession(_sessionId: string): Promise<void> {
+          abortCalled = true;
+        },
+      };
+
+      const engine = new LoopEngine({
+        loop,
+        backend: mockBackend,
+        gitService,
+        eventEmitter: emitter,
+      });
+
+      const internalEngine = engine as unknown as {
+        sessionId: string | null;
+        interruptActiveSession: (options: {
+          abortMessage: string;
+          abortWarnMessage: string;
+          forceDisconnect: boolean;
+          markAborted?: boolean;
+          disconnectMessage?: string;
+          disconnectWarnMessage?: string;
+        }) => Promise<void>;
+      };
+
+      internalEngine.sessionId = "stale-session";
+
+      await internalEngine.interruptActiveSession({
+        abortMessage: "Aborting backend session...",
+        abortWarnMessage: "Failed to abort the backend session during stop",
+        forceDisconnect: true,
+      });
+
+      expect(abortCalled).toBe(true);
+      expect(internalEngine.sessionId).toBeNull();
+    });
+
     test("reconnectSession recreates a missing persisted session", async () => {
       const loop = createTestLoop();
       loop.state.status = "planning";

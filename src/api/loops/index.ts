@@ -29,6 +29,7 @@ export { loopsDiscardPurgeRoutes } from "./discard-purge";
 export { loopsSshPortsRoutes } from "./ssh-ports";
 export { loopsPendingRoutes } from "./pending";
 export { loopsPlanRoutes } from "./plan";
+export { loopsStopRoutes } from "./stop";
 
 import { loopsCrudRoutes } from "./crud";
 import { loopsDraftRoutes } from "./draft";
@@ -40,6 +41,7 @@ import { loopsPlanRoutes } from "./plan";
 import { loopsDataRoutes } from "./data";
 import { loopsReviewRoutes } from "./review";
 import { loopsChatRoutes } from "./chat";
+import { loopsStopRoutes } from "./stop";
 
 /**
  * All loops routes combined.
@@ -55,4 +57,5 @@ export const loopsRoutes = {
   ...loopsDataRoutes,
   ...loopsReviewRoutes,
   ...loopsChatRoutes,
+  ...loopsStopRoutes,
 };

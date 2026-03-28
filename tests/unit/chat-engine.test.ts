@@ -441,6 +441,7 @@ describe("LoopEngine - Chat Mode", () => {
     // Create a controllable backend
     let sendPromptAsyncCalled = false;
     let abortCalled = false;
+    let eventStreamCount = 0;
     let resolveEvents: (() => void) | undefined;
     const sentPrompts: PromptInput[] = [];
 
@@ -458,8 +459,17 @@ describe("LoopEngine - Chat Mode", () => {
       },
       async subscribeToEvents(): Promise<EventStream<AgentEvent>> {
         const { stream, push, end } = createEventStream<AgentEvent>();
+        eventStreamCount += 1;
 
         (async () => {
+          if (eventStreamCount > 1) {
+            push({ type: "message.start", messageId: `msg-${Date.now()}` });
+            push({ type: "message.delta", content: "Replacement response" });
+            push({ type: "message.complete", content: "Replacement response" });
+            end();
+            return;
+          }
+
           // Wait for external signal or abort
           await new Promise<void>((resolve) => {
             resolveEvents = resolve;
@@ -504,6 +514,198 @@ describe("LoopEngine - Chat Mode", () => {
     // (chat mode runs 1 iteration per turn, so after injection we get another iteration)
     expect(engine.state.status).toBe("completed");
   }, 10000);
+
+  test("injectChatMessage while running stops the active chat turn even when ACP queueing is supported", async () => {
+    const loop = createChatLoop();
+
+    let sendPromptAsyncCalled = false;
+    let abortCalled = false;
+    let connectCount = 0;
+    let disconnectCount = 0;
+    let eventStreamCount = 0;
+    let resolveEvents: (() => void) | undefined;
+    const sentPrompts: PromptInput[] = [];
+
+    const baseMock = createMockBackend(["First interrupted reply", "Second reply"]);
+    mockBackend = {
+      ...baseMock,
+      async connect(config: BackendConnectionConfig): Promise<void> {
+        connectCount += 1;
+        await baseMock.connect(config);
+      },
+      async disconnect(): Promise<void> {
+        disconnectCount += 1;
+        resolveEvents?.();
+        await baseMock.disconnect();
+      },
+      supportsActivePromptQueueing(): boolean {
+        return true;
+      },
+      async sendPromptAsync(_sessionId: string, prompt: PromptInput): Promise<void> {
+        sentPrompts.push(prompt);
+        sendPromptAsyncCalled = true;
+      },
+      async abortSession(): Promise<void> {
+        abortCalled = true;
+        resolveEvents?.();
+      },
+      async subscribeToEvents(): Promise<EventStream<AgentEvent>> {
+        const { stream, push, end } = createEventStream<AgentEvent>();
+        eventStreamCount += 1;
+
+        (async () => {
+          if (eventStreamCount > 1) {
+            push({ type: "message.start", messageId: `msg-${Date.now()}` });
+            push({ type: "message.delta", content: "Replacement response" });
+            push({ type: "message.complete", content: "Replacement response" });
+            end();
+            return;
+          }
+
+          await new Promise<void>((resolve) => {
+            resolveEvents = resolve;
+          });
+
+          push({ type: "error", message: "session cancelled" });
+          end();
+        })();
+
+        return stream;
+      },
+    };
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    const startPromise = engine.start();
+
+    while (!sendPromptAsyncCalled) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await engine.injectChatMessage("Stop and replace this response");
+
+    expect(abortCalled).toBe(true);
+    expect(disconnectCount).toBe(1);
+
+    await startPromise;
+
+    expect(engine.state.status).toBe("completed");
+    expect(connectCount).toBe(2);
+    expect(sentPrompts).toHaveLength(2);
+    const secondPromptText = sentPrompts[1]?.parts[0]?.type === "text"
+      ? sentPrompts[1].parts[0].text
+      : "";
+    expect(secondPromptText).toContain("Stop and replace this response");
+  }, 10000);
+
+  test("injectChatMessage continues into the replacement turn when the active stream is closed early", async () => {
+    const loop = createChatLoop();
+
+    let connectCount = 0;
+    let disconnectCount = 0;
+    let abortCalled = false;
+    let eventStreamCount = 0;
+    let sendPromptAsyncCalled = false;
+    const sentPrompts: PromptInput[] = [];
+
+    const baseMock = createMockBackend([]);
+    mockBackend = {
+      ...baseMock,
+      async connect(config: BackendConnectionConfig): Promise<void> {
+        connectCount += 1;
+        await baseMock.connect(config);
+      },
+      async disconnect(): Promise<void> {
+        disconnectCount += 1;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        await baseMock.disconnect();
+      },
+      async sendPromptAsync(_sessionId: string, prompt: PromptInput): Promise<void> {
+        sentPrompts.push(prompt);
+        sendPromptAsyncCalled = true;
+      },
+      async abortSession(): Promise<void> {
+        abortCalled = true;
+      },
+      async subscribeToEvents(): Promise<EventStream<AgentEvent>> {
+        eventStreamCount += 1;
+
+        if (eventStreamCount === 1) {
+          const { stream } = createEventStream<AgentEvent>();
+          return stream;
+        }
+
+        const { stream, push, end } = createEventStream<AgentEvent>();
+        push({ type: "message.start", messageId: `msg-${Date.now()}` });
+        push({ type: "message.delta", content: "Replacement after closed stream" });
+        push({ type: "message.complete", content: "Replacement after closed stream" });
+        end();
+        return stream;
+      },
+    };
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    const startPromise = engine.start();
+
+    while (!sendPromptAsyncCalled) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await engine.injectChatMessage("Replacement after closed stream");
+
+    expect(abortCalled).toBe(true);
+    expect(disconnectCount).toBe(1);
+
+    await startPromise;
+
+    expect(engine.state.status).toBe("completed");
+    expect(connectCount).toBe(2);
+    expect(sentPrompts).toHaveLength(2);
+    const secondPromptText = sentPrompts[1]?.parts[0]?.type === "text"
+      ? sentPrompts[1].parts[0].text
+      : "";
+    expect(secondPromptText).toContain("Replacement after closed stream");
+  }, 10000);
+
+  test("completed chat follow-up handoff clears injectionPending before the next turn starts", async () => {
+    const loop = createChatLoop();
+    mockBackend = createMockBackend([]);
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    const internalEngine = engine as unknown as {
+      injectionPending: boolean;
+      handleCompletedOutcome: () => Promise<boolean>;
+    };
+
+    loop.state.status = "running";
+    loop.state.currentIteration = 1;
+    loop.state.pendingPrompt = "Follow-up message";
+    internalEngine.injectionPending = true;
+
+    const shouldExit = await internalEngine.handleCompletedOutcome();
+
+    expect(shouldExit).toBe(false);
+    expect(internalEngine.injectionPending).toBe(false);
+    expect(loop.state.currentIteration).toBe(0);
+    expect(loop.state.completedAt).toBeUndefined();
+  });
 
   test("injectChatMessage while idle starts new chat turn", async () => {
     const loop = createChatLoop();
