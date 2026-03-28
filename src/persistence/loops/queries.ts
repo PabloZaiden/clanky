@@ -3,19 +3,21 @@
  * Handles directory-based lookups and stale loop cleanup.
  */
 
-import type { Loop } from "../../types";
+import type { Loop, LoopStatus } from "../../types";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { rowToLoop } from "./helpers";
 
 const log = createLogger("persistence:loops");
+const STALE_LOOP_RESET_MESSAGE = "Forcefully stopped by connection reset";
+const STALE_LOOP_RESET_ERROR_ITERATION = "COALESCE(current_iteration, 0)";
 
 /**
  * Active loop statuses that should block new loops on the same directory.
  * These are non-terminal, non-draft states where the loop is actively
  * using or about to use the working directory.
  */
-const ACTIVE_LOOP_STATUSES = [
+const ACTIVE_LOOP_STATUSES: LoopStatus[] = [
   "idle",      // Created but not started (transitional)
   "planning",  // Loop is in plan creation/review mode
   "starting",  // Initializing backend connection and git branch
@@ -67,12 +69,50 @@ export async function getActiveLoopByDirectory(directory: string, workspaceId: s
  * Note: "planning" is excluded because planning loops can reconnect to their
  * session when the user sends feedback. We don't want to break their state.
  */
-const STALE_LOOP_STATUSES = [
+const STALE_LOOP_STATUSES: LoopStatus[] = [
   "idle",      // Created but not started (transitional)
   "starting",  // Initializing backend connection and git branch
   "running",   // Actively executing an iteration
   "waiting",   // Between iterations, preparing for next
 ];
+
+export function isStaleLoopStatus(status: LoopStatus): boolean {
+  return STALE_LOOP_STATUSES.includes(status);
+}
+
+export async function resetStaleLoop(loopId: string): Promise<boolean> {
+  log.debug("Resetting stale loop", { loopId });
+  const db = getDatabase();
+  const now = new Date().toISOString();
+
+  const placeholders = STALE_LOOP_STATUSES.map(() => "?").join(", ");
+
+  const stmt = db.prepare(`
+    UPDATE loops
+    SET status = 'stopped',
+        error_message = ?,
+        error_iteration = ${STALE_LOOP_RESET_ERROR_ITERATION},
+        error_timestamp = ?,
+        completed_at = ?
+    WHERE id = ? AND status IN (${placeholders})
+  `);
+
+  const result = stmt.run(
+    STALE_LOOP_RESET_MESSAGE,
+    now,
+    now,
+    loopId,
+    ...STALE_LOOP_STATUSES,
+  );
+
+  if (result.changes > 0) {
+    log.info("Reset stale loop", { loopId });
+    return true;
+  }
+
+  log.debug("No stale loop reset needed", { loopId });
+  return false;
+}
 
 /**
  * Reset all stale loops to "stopped" status.
@@ -97,13 +137,14 @@ export async function resetStaleLoops(): Promise<number> {
   const stmt = db.prepare(`
     UPDATE loops 
     SET status = 'stopped',
-        error_message = 'Forcefully stopped by connection reset',
+        error_message = ?,
+        error_iteration = ${STALE_LOOP_RESET_ERROR_ITERATION},
         error_timestamp = ?,
         completed_at = ?
     WHERE status IN (${placeholders})
   `);
 
-  const result = stmt.run(now, now, ...STALE_LOOP_STATUSES);
+  const result = stmt.run(STALE_LOOP_RESET_MESSAGE, now, now, ...STALE_LOOP_STATUSES);
 
   if (result.changes > 0) {
     log.info("Reset stale loops", { count: result.changes });

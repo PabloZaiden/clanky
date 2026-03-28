@@ -800,6 +800,64 @@ describe("POST /api/loops/:id/pending", () => {
     }
   });
 
+  test("POST with message reconciles a stale running loop after engine reset", async () => {
+    const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
+    try {
+      const { loadLoop, updateLoopState } = await import("../../src/persistence/loops");
+
+      const createRes = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Stale Running Loop",
+          workspaceId,
+          prompt: "Test prompt",
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createRes.status).toBe(201);
+      const created = await createRes.json();
+      const loopId = created.config.id;
+
+      await waitForLoopStatus(loopId, ["running"]);
+
+      await loopManager.stopLoop(loopId);
+      await waitForLoopStatus(loopId, ["stopped"]);
+
+      const stoppedLoop = await loadLoop(loopId);
+      expect(stoppedLoop).not.toBeNull();
+
+      await updateLoopState(loopId, {
+        ...stoppedLoop!.state,
+        status: "running",
+        completedAt: undefined,
+        error: undefined,
+      });
+
+      const staleLoop = await loadLoop(loopId);
+      expect(staleLoop?.state.status).toBe("running");
+
+      const pendingRes = await fetch(`${baseUrl}/api/loops/${loopId}/pending`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Please continue after restart",
+        }),
+      });
+      expect(pendingRes.status).toBe(200);
+      const pendingData = await pendingRes.json();
+      expect(pendingData.success).toBe(true);
+
+      await waitForLoopStatus(loopId, ["starting", "running"]);
+
+      await loopManager.stopLoop(loopId);
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
+  });
+
   test("POST with model jumpstarts a stopped loop and updates config model", async () => {
     const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
     try {

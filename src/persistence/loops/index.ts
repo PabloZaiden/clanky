@@ -4,4 +4,4 @@
 
 export { saveLoop, loadLoop, deleteLoop, listLoops, loopExists } from "./crud";
 export { updateLoopState, updateLoopConfig } from "./updates";
-export { getActiveLoopByDirectory, resetStaleLoops } from "./queries";
+export { getActiveLoopByDirectory, isStaleLoopStatus, resetStaleLoop, resetStaleLoops } from "./queries";
