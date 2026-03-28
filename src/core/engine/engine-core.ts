@@ -630,12 +630,12 @@ export class LoopEngine {
   /**
    * Inject a chat message immediately.
    *
-    * Follows the same pattern as injectPlanFeedback():
-    * - If the loop is actively running an iteration, interrupts the active turn
-    *   so the replacement message can run immediately, while preserving the
-    *   current session whenever possible.
-    * - If the loop is idle (previous turn completed), starts a new single-turn
-    *   iteration as a fire-and-forget operation.
+   * Follows the same pattern as injectPlanFeedback():
+   * - If the loop is actively running an iteration, interrupts the active turn
+   *   so the replacement message can run immediately, while preserving the
+   *   current session whenever possible.
+   * - If the loop is idle (previous turn completed), starts a new single-turn
+   *   iteration as a fire-and-forget operation.
    *
    * @param message - The user's chat message
    * @param model - Optional model override for this turn
@@ -674,6 +674,7 @@ export class LoopEngine {
           abortMessage: "Stopping active chat turn before sending the new message",
           abortWarnMessage: "Failed to stop the active chat turn before sending the new message",
           forceDisconnect: false,
+          markAborted: true,
         });
       } else {
         this.emitLog("info", "Chat message queued while the turn is still starting - it will run next");
@@ -1160,6 +1161,7 @@ export class LoopEngine {
    */
   private async handleCompletedOutcome(): Promise<boolean> {
     if (this.shouldContinueWithPendingChatInput()) {
+      this.aborted = false;
       this.injectionPending = false;
       this.emitLog("info", "Current chat turn finished with a follow-up message pending - starting the next turn");
       this.updateState({
@@ -1172,6 +1174,7 @@ export class LoopEngine {
     }
 
     if (this.shouldContinueWithQueuedPendingInput()) {
+      this.aborted = false;
       this.emitLog("info", "Current turn completed with queued input pending - continuing on the active ACP session");
       this.updateState({
         consecutiveErrors: undefined,

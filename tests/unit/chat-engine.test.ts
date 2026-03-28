@@ -668,6 +668,10 @@ describe("LoopEngine - Chat Mode", () => {
       gitService,
       eventEmitter: emitter,
     });
+    const internalEngine = engine as unknown as {
+      aborted: boolean;
+      injectionPending: boolean;
+    };
 
     const startPromise = engine.start();
 
@@ -685,6 +689,8 @@ describe("LoopEngine - Chat Mode", () => {
     expect(engine.state.status).toBe("completed");
     expect(connectCount).toBe(1);
     expect(sentPrompts).toHaveLength(2);
+    expect(internalEngine.aborted).toBe(false);
+    expect(internalEngine.injectionPending).toBe(false);
     const secondPromptText = sentPrompts[1]?.parts[0]?.type === "text"
       ? sentPrompts[1].parts[0].text
       : "";
@@ -703,6 +709,7 @@ describe("LoopEngine - Chat Mode", () => {
     });
 
     const internalEngine = engine as unknown as {
+      aborted: boolean;
       injectionPending: boolean;
       handleCompletedOutcome: () => Promise<boolean>;
     };
@@ -710,11 +717,13 @@ describe("LoopEngine - Chat Mode", () => {
     loop.state.status = "running";
     loop.state.currentIteration = 1;
     loop.state.pendingPrompt = "Follow-up message";
+    internalEngine.aborted = true;
     internalEngine.injectionPending = true;
 
     const shouldExit = await internalEngine.handleCompletedOutcome();
 
     expect(shouldExit).toBe(false);
+    expect(internalEngine.aborted).toBe(false);
     expect(internalEngine.injectionPending).toBe(false);
     expect(loop.state.currentIteration).toBe(0);
     expect(loop.state.completedAt).toBeUndefined();
