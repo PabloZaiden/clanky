@@ -445,6 +445,7 @@ describe("Persistence", () => {
         expect(loadedRunning).not.toBeNull();
         expect(loadedRunning!.state.status).toBe("stopped");
         expect(loadedRunning!.state.error?.message).toBe("Forcefully stopped by connection reset");
+        expect(loadedRunning!.state.error?.iteration).toBe(0);
 
         const loadedPlanning = await loadLoop("single-planning-loop");
         expect(loadedPlanning).not.toBeNull();
@@ -469,6 +470,7 @@ describe("Persistence", () => {
         expect(loaded).not.toBeNull();
         expect(loaded!.state.status).toBe("stopped");
         expect(loaded!.state.error?.message).toBe("Forcefully stopped by connection reset");
+        expect(loaded!.state.error?.iteration).toBe(0);
       });
 
       test("resets running and waiting loops to stopped", async () => {
@@ -502,12 +504,15 @@ describe("Persistence", () => {
 
         const loadedRunning = await loadLoop("running-loop");
         expect(loadedRunning!.state.status).toBe("stopped");
+        expect(loadedRunning!.state.error?.iteration).toBe(0);
 
         const loadedWaiting = await loadLoop("waiting-loop");
         expect(loadedWaiting!.state.status).toBe("stopped");
+        expect(loadedWaiting!.state.error?.iteration).toBe(0);
 
         const loadedStarting = await loadLoop("starting-loop");
         expect(loadedStarting!.state.status).toBe("stopped");
+        expect(loadedStarting!.state.error?.iteration).toBe(0);
       });
 
       test("does NOT reset planning loops", async () => {

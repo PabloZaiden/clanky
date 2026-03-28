@@ -803,6 +803,8 @@ describe("POST /api/loops/:id/pending", () => {
   test("POST with message reconciles a stale running loop after engine reset", async () => {
     const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
     try {
+      const { loadLoop, updateLoopState } = await import("../../src/persistence/loops");
+
       const createRes = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -821,9 +823,21 @@ describe("POST /api/loops/:id/pending", () => {
 
       await waitForLoopStatus(loopId, ["running"]);
 
-      // Simulate a server restart clearing in-memory engines while the database
-      // still says the loop is active.
-      loopManager.resetForTesting();
+      await loopManager.stopLoop(loopId);
+      await waitForLoopStatus(loopId, ["stopped"]);
+
+      const stoppedLoop = await loadLoop(loopId);
+      expect(stoppedLoop).not.toBeNull();
+
+      await updateLoopState(loopId, {
+        ...stoppedLoop!.state,
+        status: "running",
+        completedAt: undefined,
+        error: undefined,
+      });
+
+      const staleLoop = await loadLoop(loopId);
+      expect(staleLoop?.state.status).toBe("running");
 
       const pendingRes = await fetch(`${baseUrl}/api/loops/${loopId}/pending`, {
         method: "POST",

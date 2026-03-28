@@ -10,6 +10,7 @@ import { rowToLoop } from "./helpers";
 
 const log = createLogger("persistence:loops");
 const STALE_LOOP_RESET_MESSAGE = "Forcefully stopped by connection reset";
+const STALE_LOOP_RESET_ERROR_ITERATION = "COALESCE(current_iteration, 0)";
 
 /**
  * Active loop statuses that should block new loops on the same directory.
@@ -90,6 +91,7 @@ export async function resetStaleLoop(loopId: string): Promise<boolean> {
     UPDATE loops
     SET status = 'stopped',
         error_message = ?,
+        error_iteration = ${STALE_LOOP_RESET_ERROR_ITERATION},
         error_timestamp = ?,
         completed_at = ?
     WHERE id = ? AND status IN (${placeholders})
@@ -136,6 +138,7 @@ export async function resetStaleLoops(): Promise<number> {
     UPDATE loops 
     SET status = 'stopped',
         error_message = ?,
+        error_iteration = ${STALE_LOOP_RESET_ERROR_ITERATION},
         error_timestamp = ?,
         completed_at = ?
     WHERE status IN (${placeholders})
