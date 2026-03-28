@@ -1,9 +1,20 @@
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type ForwardedRef,
+} from "react";
 import type { ComposerImageAttachment } from "../types/message-attachments";
 import {
   MESSAGE_IMAGE_ACCEPT,
   MESSAGE_IMAGE_ATTACHMENT_LIMIT,
   createComposerImageAttachments,
+  getClipboardImageFiles,
   revokeComposerImageAttachments,
 } from "../lib/image-attachments";
 
@@ -17,14 +28,18 @@ interface ImageAttachmentControlProps {
   iconOnly?: boolean;
 }
 
-export function ImageAttachmentControl({
+export interface ImageAttachmentControlHandle {
+  handlePaste: (event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+}
+
+function ImageAttachmentControlInner({
   attachments,
   onChange,
   disabled = false,
   compact = false,
   hint,
   iconOnly = false,
-}: ImageAttachmentControlProps) {
+}: ImageAttachmentControlProps, ref: ForwardedRef<ImageAttachmentControlHandle>) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef(attachments);
@@ -49,19 +64,18 @@ export function ImageAttachmentControl({
     };
   }, []);
 
-  async function handleFilesSelected(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) {
+  const addFiles = useCallback(async (files: File[]) => {
+    if (disabled || files.length === 0) {
       return;
     }
-
     setError(null);
 
     try {
       const nextAttachments = await createComposerImageAttachments(
-        Array.from(fileList),
-        attachments.length,
+        files,
+        attachmentsRef.current.length,
       );
-      onChange([...attachments, ...nextAttachments]);
+      onChange([...attachmentsRef.current, ...nextAttachments]);
     } catch (attachmentError) {
       setError(String(attachmentError));
     } finally {
@@ -69,7 +83,31 @@ export function ImageAttachmentControl({
         inputRef.current.value = "";
       }
     }
+  }, [onChange]);
+
+  async function handleFilesSelected(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) {
+      return;
+    }
+
+    await addFiles(Array.from(fileList));
   }
+
+  const handlePaste = useCallback(
+    (event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const files = getClipboardImageFiles(event.clipboardData?.items);
+      if (files.length === 0 || disabled) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      void addFiles(files);
+    },
+    [addFiles, disabled],
+  );
+
+  useImperativeHandle(ref, () => ({ handlePaste }), [handlePaste]);
 
   function handleRemoveAttachment(attachmentId: string) {
     const nextAttachments = attachments.filter((attachment) => attachment.id !== attachmentId);
@@ -171,3 +209,6 @@ export function ImageAttachmentControl({
     </div>
   );
 }
+
+export const ImageAttachmentControl = forwardRef(ImageAttachmentControlInner);
+ImageAttachmentControl.displayName = "ImageAttachmentControl";

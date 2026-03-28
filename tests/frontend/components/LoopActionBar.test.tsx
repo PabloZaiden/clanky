@@ -10,6 +10,13 @@ import { LoopActionBar } from "@/components/LoopActionBar";
 import { renderWithUser, waitFor } from "../helpers/render";
 import { createModelInfo, createModelConfig } from "../helpers/factories";
 import type { ModelInfo, ModelConfig } from "@/types";
+import {
+  createTestFile,
+  installImageAttachmentMocks,
+  pasteFiles,
+} from "../helpers/image-paste";
+
+installImageAttachmentMocks();
 
 // Default props factory
 function defaultProps(overrides?: Partial<Parameters<typeof LoopActionBar>[0]>) {
@@ -227,6 +234,39 @@ describe("LoopActionBar", () => {
       });
       const callArgs = onQueuePending.mock.calls[0]![0];
       expect(callArgs.model).toEqual({ providerID: "openai", modelID: "gpt-4", variant: "" });
+    });
+
+    test("calls onQueuePending with pasted image attachments", async () => {
+      const onQueuePending = mock(async (_data: { message?: string; attachments?: unknown[] }) => true);
+      const { getByPlaceholderText, getByRole, getByText, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ onQueuePending })} />
+      );
+
+      const input = getByPlaceholderText("Send a message to steer the agent...");
+      await user.type(input, "Please inspect this");
+      pasteFiles(input, [createTestFile({ name: "queued-image.png" })]);
+
+      await waitFor(() => {
+        expect(getByText("queued-image.png")).toBeInTheDocument();
+      });
+
+      await user.click(getByRole("button", { name: "Queue" }));
+
+      await waitFor(() => {
+        expect(onQueuePending).toHaveBeenCalledTimes(1);
+      });
+
+      expect(onQueuePending.mock.calls[0]![0]).toEqual(
+        expect.objectContaining({
+          message: "Please inspect this",
+          attachments: expect.arrayContaining([
+            expect.objectContaining({
+              filename: "queued-image.png",
+              mimeType: "image/png",
+            }),
+          ]),
+        }),
+      );
     });
 
     test("clears message input after successful submission", async () => {

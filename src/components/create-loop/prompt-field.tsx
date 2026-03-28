@@ -1,6 +1,10 @@
+import { useRef, type ClipboardEvent } from "react";
 import { getTemplateById } from "../../lib/prompt-templates";
 import type { ComposerImageAttachment } from "../../types/message-attachments";
-import { ImageAttachmentControl } from "../ImageAttachmentControl";
+import {
+  ImageAttachmentControl,
+  type ImageAttachmentControlHandle,
+} from "../ImageAttachmentControl";
 
 interface PromptFieldProps {
   prompt: string;
@@ -25,6 +29,12 @@ export function PromptField({
   selectedTemplate,
   onTemplateClear,
 }: PromptFieldProps) {
+  const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    attachmentControlRef.current?.handlePaste(event);
+  }
+
   return (
     <div>
       <label
@@ -47,6 +57,7 @@ export function PromptField({
             }
           }
         }}
+        onPaste={handlePaste}
         placeholder={isChatMode ? "Ask a question or describe what you want to do..." : (planMode ? "Describe what you want to achieve. The AI will create a detailed plan based on this." : "Do everything that's pending in the plan")}
         required
         rows={3}
@@ -57,6 +68,7 @@ export function PromptField({
       </p>
       <div className="mt-3">
         <ImageAttachmentControl
+          ref={attachmentControlRef}
           attachments={attachments}
           onChange={onAttachmentsChange}
           iconOnly
