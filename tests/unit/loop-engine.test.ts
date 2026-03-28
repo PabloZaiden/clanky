@@ -2311,6 +2311,66 @@ describe("StopPatternDetector", () => {
       expect(engine.state.session?.id).toBe("new-session-1");
     });
 
+    test("reconnectSession reconnects the backend before validating an in-memory session", async () => {
+      const loop = createTestLoop();
+      loop.state.status = "planning";
+      loop.state.planMode = {
+        active: true,
+        feedbackRounds: 1,
+        planningFolderCleared: false,
+        isPlanReady: true,
+      };
+      loop.state.git = {
+        originalBranch: "master",
+        workingBranch: "test-loop-a1b2c3d",
+        worktreePath: testDir,
+        commits: [],
+      };
+      loop.state.session = {
+        id: "persisted-session",
+        serverUrl: "ssh://example:22",
+      };
+
+      let connected = false;
+      let connectCount = 0;
+      const lookedUpSessionIds: string[] = [];
+
+      mockBackend = {
+        ...createMockBackend([]),
+        isConnected(): boolean {
+          return connected;
+        },
+        async connect(_config: BackendConnectionConfig): Promise<void> {
+          connected = true;
+          connectCount += 1;
+        },
+        async getSession(sessionId: string): Promise<AgentSession | null> {
+          lookedUpSessionIds.push(sessionId);
+          return {
+            id: sessionId,
+            title: "persisted",
+            createdAt: new Date().toISOString(),
+          };
+        },
+      } as LoopBackend;
+
+      const engine = new LoopEngine({
+        loop,
+        backend: mockBackend,
+        gitService,
+        eventEmitter: emitter,
+      });
+      const internalEngine = engine as unknown as { sessionId: string | null };
+      internalEngine.sessionId = "persisted-session";
+
+      await engine.reconnectSession();
+
+      expect(connectCount).toBe(1);
+      expect(lookedUpSessionIds).toEqual(["persisted-session"]);
+      expect(engine.state.session?.id).toBe("persisted-session");
+      expect(internalEngine.sessionId).toBe("persisted-session");
+    });
+
     test("recreates the session and retries once on session-not-found prompt errors", async () => {
       const loop = createTestLoop();
       let connected = false;
