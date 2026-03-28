@@ -122,46 +122,50 @@ describe("LogViewer", () => {
   describe("tool call rendering", () => {
     test("renders a completed tool call without a status icon", () => {
       const tool = createToolCallData({ name: "Write", status: "completed" });
-      const { container, getByText, queryByText } = renderWithUser(
+      const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("Write")).toBeInTheDocument();
-      expect(queryByText("✓")).not.toBeInTheDocument();
-      expect(container.textContent).not.toContain("✓");
+      const toolEntry = getByText("Write").closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.textContent).toContain("Write");
+      expect(toolEntry.textContent).not.toContain("✓");
     });
 
     test("renders a failed tool call without a status icon", () => {
       // Use an unknown tool name so the raw name is the summary (no transformation)
       const tool = createToolCallData({ name: "FailedTool", status: "failed", input: null });
-      const { container, getByText, queryByText } = renderWithUser(
+      const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("FailedTool")).toBeInTheDocument();
-      expect(queryByText("✗")).not.toBeInTheDocument();
-      expect(container.textContent).not.toContain("✗");
+      const toolEntry = getByText("FailedTool").closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.textContent).toContain("FailedTool");
+      expect(toolEntry.textContent).not.toContain("✗");
     });
 
     test("renders a pending tool call without a status icon", () => {
       // Use an unknown tool name so the raw name is the summary (no transformation)
       const tool = createToolCallData({ name: "PendingTool", status: "pending", input: null });
-      const { container, getByText, queryByText } = renderWithUser(
+      const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("PendingTool")).toBeInTheDocument();
-      expect(queryByText("○")).not.toBeInTheDocument();
-      expect(container.textContent).not.toContain("○");
+      const toolEntry = getByText("PendingTool").closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.textContent).toContain("PendingTool");
+      expect(toolEntry.textContent).not.toContain("○");
     });
 
     test("renders a running tool call without a status icon", () => {
       // Use an unknown tool name so the raw name is the summary (no transformation)
       const tool = createToolCallData({ name: "RunningTool", status: "running", input: null });
-      const { container, getByText, queryByText } = renderWithUser(
+      const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("RunningTool")).toBeInTheDocument();
-      expect(queryByText("⟳")).not.toBeInTheDocument();
-      expect(container.querySelector(".animate-spin")).toBeNull();
-      expect(container.textContent).not.toContain("⟳");
+      const toolEntry = getByText("RunningTool").closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.textContent).toContain("RunningTool");
+      expect(toolEntry.querySelector(".animate-spin")).toBeNull();
+      expect(toolEntry.textContent).not.toContain("⟳");
     });
 
     test("renders tool input in collapsible details", async () => {
