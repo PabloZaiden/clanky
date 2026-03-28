@@ -8,12 +8,15 @@
  * The action bar is only visible when a loop is in an active state (running, waiting, planning).
  */
 
-import { useState, useCallback, type FormEvent } from "react";
+import { useState, useRef, useCallback, type ClipboardEvent, type FormEvent } from "react";
 import type { ModelInfo, ModelConfig, LoopConfig } from "../types";
 import type { ComposerImageAttachment, MessageImageAttachment } from "../types/message-attachments";
 import { ModelSelector, makeModelKey, parseModelKey, isModelEnabled, getModelDisplayName } from "./ModelSelector";
 import { createLogger } from "../lib/logger";
-import { ImageAttachmentControl } from "./ImageAttachmentControl";
+import {
+  ImageAttachmentControl,
+  type ImageAttachmentControlHandle,
+} from "./ImageAttachmentControl";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 
 const log = createLogger("LoopActionBar");
@@ -64,6 +67,7 @@ export function LoopActionBar({
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
 
   const isChatMode = mode === "chat";
 
@@ -153,6 +157,10 @@ export function LoopActionBar({
     }
   }, [disabled, isSubmitting, hasPending, onClearPending]);
 
+  const handlePaste = useCallback((event: ClipboardEvent<HTMLInputElement>) => {
+    attachmentControlRef.current?.handlePaste(event);
+  }, []);
+
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-neutral-800 flex-shrink-0 safe-area-bottom">
       {/* Pending indicator */}
@@ -208,6 +216,7 @@ export function LoopActionBar({
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
+            onPaste={handlePaste}
             placeholder={isPlanning ? "Send feedback on the plan..." : isChatMode ? "Type a message..." : "Send a message to steer the agent..."}
             disabled={disabled || isSubmitting}
             className="flex-1 min-w-0 h-9 text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
@@ -215,6 +224,7 @@ export function LoopActionBar({
 
           {/* Image attachment button (icon-only) */}
           <ImageAttachmentControl
+            ref={attachmentControlRef}
             attachments={attachments}
             onChange={setAttachments}
             disabled={disabled || isSubmitting}

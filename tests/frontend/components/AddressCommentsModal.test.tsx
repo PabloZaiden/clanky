@@ -6,6 +6,13 @@ import { test, expect, describe } from "bun:test";
 import { mock } from "bun:test";
 import { AddressCommentsModal } from "@/components/AddressCommentsModal";
 import { renderWithUser, waitFor } from "../helpers/render";
+import {
+  createTestFile,
+  installImageAttachmentMocks,
+  pasteFiles,
+} from "../helpers/image-paste";
+
+installImageAttachmentMocks();
 
 describe("AddressCommentsModal", () => {
   const defaultProps = () => ({
@@ -132,6 +139,37 @@ describe("AddressCommentsModal", () => {
       await user.type(getByLabelText("Reviewer Comments"), "Please fix the error handling");
       await user.click(getByRole("button", { name: "Submit Comments" }));
       expect(props.onSubmit).toHaveBeenCalledWith("Please fix the error handling");
+    });
+
+    test("submits pasted image attachments with the comment", async () => {
+      const props = defaultProps();
+      const { getByRole, getByLabelText, getByText, user } = renderWithUser(
+        <AddressCommentsModal {...props} />
+      );
+
+      const textarea = getByLabelText("Reviewer Comments");
+      await user.type(textarea, "Please fix the UI");
+      pasteFiles(textarea, [createTestFile({ name: "review.png" })]);
+
+      await waitFor(() => {
+        expect(getByText("review.png")).toBeInTheDocument();
+      });
+
+      await user.click(getByRole("button", { name: "Submit Comments" }));
+
+      await waitFor(() => {
+        expect(props.onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      expect(props.onSubmit).toHaveBeenCalledWith(
+        "Please fix the UI",
+        expect.arrayContaining([
+          expect.objectContaining({
+            filename: "review.png",
+            mimeType: "image/png",
+          }),
+        ]),
+      );
     });
 
     test("calls onClose after successful submission", async () => {

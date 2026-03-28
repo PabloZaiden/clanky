@@ -23,6 +23,28 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+export function getClipboardImageFiles(
+  items: ArrayLike<DataTransferItem> | null | undefined,
+): File[] {
+  if (!items) {
+    return [];
+  }
+
+  const files: File[] = [];
+  for (const item of Array.from(items)) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) {
+      continue;
+    }
+
+    const file = item.getAsFile();
+    if (file !== null) {
+      files.push(file);
+    }
+  }
+
+  return files;
+}
+
 export async function createComposerImageAttachments(
   files: File[],
   existingCount = 0,
