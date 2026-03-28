@@ -1,4 +1,4 @@
-import type { ToolCallData, LogLevel } from "../../types";
+import type { LogLevel } from "../../types";
 import type { EntryBase, DisplayEntry } from "./types";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
@@ -12,24 +12,6 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
  */
 export function formatTime(isoString: string): string {
   return timeFormatter.format(new Date(isoString));
-}
-
-/**
- * Get the status color for a tool call.
- */
-export function getToolStatusColor(status: ToolCallData["status"]): string {
-  switch (status) {
-    case "pending":
-      return "text-gray-500";
-    case "running":
-      return "text-blue-500";
-    case "completed":
-      return "text-green-500";
-    case "failed":
-      return "text-red-500";
-    default:
-      return "text-gray-500";
-  }
 }
 
 /**

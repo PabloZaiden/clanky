@@ -1,7 +1,6 @@
 import { memo, useCallback } from "react";
-import type { ReactNode } from "react";
 import type { ToolCallData } from "../../types";
-import { formatTime, getToolStatusColor } from "./utils";
+import { formatTime } from "./utils";
 import { LazyDetails } from "./lazy-details";
 
 interface ToolEntryProps {
@@ -107,21 +106,10 @@ function RenderedContent({ output }: { output: unknown }) {
 
 export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHeader, spacingClass, index }: ToolEntryProps) {
   const meta = getToolMeta(tool);
-  const statusColor = getToolStatusColor(tool.status);
-
-  const statusIcon: ReactNode = (
-    <span className={`${statusColor} mr-1`}>
-      {tool.status === "running" && <span className="inline-block animate-spin mr-1">⟳</span>}
-      {tool.status === "completed" && "✓"}
-      {tool.status === "failed" && "✗"}
-      {tool.status === "pending" && "○"}
-    </span>
-  );
 
   /** Rich ReactNode used as the <summary> of the input <details> element. */
-  const inputSummary: ReactNode = (
+  const inputSummary = (
     <span>
-      {statusIcon}
       <span className="text-gray-300">{meta.summary}</span>
     </span>
   );
@@ -197,7 +185,6 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
         ) : (
           // Neither input nor output yet (pending/running): plain header
           <span className="text-xs">
-            {statusIcon}
             <span className="text-gray-300">{meta.summary}</span>
           </span>
         )}
