@@ -441,6 +441,7 @@ describe("LoopEngine - Chat Mode", () => {
     // Create a controllable backend
     let sendPromptAsyncCalled = false;
     let abortCalled = false;
+    let eventStreamCount = 0;
     let resolveEvents: (() => void) | undefined;
     const sentPrompts: PromptInput[] = [];
 
@@ -458,8 +459,17 @@ describe("LoopEngine - Chat Mode", () => {
       },
       async subscribeToEvents(): Promise<EventStream<AgentEvent>> {
         const { stream, push, end } = createEventStream<AgentEvent>();
+        eventStreamCount += 1;
 
         (async () => {
+          if (eventStreamCount > 1) {
+            push({ type: "message.start", messageId: `msg-${Date.now()}` });
+            push({ type: "message.delta", content: "Replacement response" });
+            push({ type: "message.complete", content: "Replacement response" });
+            end();
+            return;
+          }
+
           // Wait for external signal or abort
           await new Promise<void>((resolve) => {
             resolveEvents = resolve;
@@ -503,6 +513,83 @@ describe("LoopEngine - Chat Mode", () => {
     // The pending prompt should have been consumed by the second iteration
     // (chat mode runs 1 iteration per turn, so after injection we get another iteration)
     expect(engine.state.status).toBe("completed");
+  }, 10000);
+
+  test("injectChatMessage while running stops the active chat turn even when ACP queueing is supported", async () => {
+    const loop = createChatLoop();
+
+    let sendPromptAsyncCalled = false;
+    let abortCalled = false;
+    let eventStreamCount = 0;
+    let resolveEvents: (() => void) | undefined;
+    const sentPrompts: PromptInput[] = [];
+
+    const baseMock = createMockBackend(["First interrupted reply", "Second reply"]);
+    mockBackend = {
+      ...baseMock,
+      supportsActivePromptQueueing(): boolean {
+        return true;
+      },
+      async sendPromptAsync(_sessionId: string, prompt: PromptInput): Promise<void> {
+        sentPrompts.push(prompt);
+        sendPromptAsyncCalled = true;
+      },
+      async abortSession(): Promise<void> {
+        abortCalled = true;
+        resolveEvents?.();
+      },
+      async subscribeToEvents(): Promise<EventStream<AgentEvent>> {
+        const { stream, push, end } = createEventStream<AgentEvent>();
+        eventStreamCount += 1;
+
+        (async () => {
+          if (eventStreamCount > 1) {
+            push({ type: "message.start", messageId: `msg-${Date.now()}` });
+            push({ type: "message.delta", content: "Replacement response" });
+            push({ type: "message.complete", content: "Replacement response" });
+            end();
+            return;
+          }
+
+          await new Promise<void>((resolve) => {
+            resolveEvents = resolve;
+          });
+
+          push({ type: "message.start", messageId: `msg-${Date.now()}` });
+          push({ type: "message.delta", content: "Interrupted" });
+          push({ type: "message.complete", content: "Interrupted" });
+          end();
+        })();
+
+        return stream;
+      },
+    };
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    const startPromise = engine.start();
+
+    while (!sendPromptAsyncCalled) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    await engine.injectChatMessage("Stop and replace this response");
+
+    expect(abortCalled).toBe(true);
+
+    await startPromise;
+
+    expect(engine.state.status).toBe("completed");
+    expect(sentPrompts).toHaveLength(2);
+    const secondPromptText = sentPrompts[1]?.parts[0]?.type === "text"
+      ? sentPrompts[1].parts[0].text
+      : "";
+    expect(secondPromptText).toContain("Stop and replace this response");
   }, 10000);
 
   test("injectChatMessage while idle starts new chat turn", async () => {

@@ -285,6 +285,10 @@ export class LoopEngine {
     return this.sessionId !== null && this.supportsActivePromptQueueing() && this.hasPendingInputQueued();
   }
 
+  private shouldContinueWithPendingChatInput(): boolean {
+    return this.isChatMode && this.loop.state.pendingPrompt !== undefined;
+  }
+
   private shouldBypassMaxIterationsForQueuedPendingInput(): boolean {
     return this.loop.state.status === "planning" && this.shouldContinueWithQueuedPendingInput();
   }
@@ -598,23 +602,22 @@ export class LoopEngine {
     });
 
     if (this.isLoopRunning) {
-      if (this.canQueuePendingInputOnActiveSession()) {
-        this.emitLog("info", "Queued chat message for the next iteration on the active ACP session");
-        return;
-      }
-
-      // Loop is actively running an iteration — inject by aborting current processing.
-      // The runLoop() while-loop detects injectionPending after abort,
-      // resets the flags, and continues to the next iteration which picks up pendingPrompt.
+      // Chat follow-ups should interrupt the active turn instead of relying on
+      // ACP-side queueing so the new user message is not stranded behind a
+      // long-running or stuck generation.
       this.injectionPending = true;
 
       if (this.sessionId) {
         try {
-          this.emitLog("info", "Injecting chat message - aborting current AI processing");
+          this.emitLog("info", "Stopping active chat turn before sending the new message");
           await this.backend.abortSession(this.sessionId);
-        } catch {
-          // Ignore abort errors - the session may already be complete
+        } catch (error) {
+          this.emitLog("warn", "Failed to stop the active chat turn before sending the new message", {
+            error: String(error),
+          });
         }
+      } else {
+        this.emitLog("info", "Chat message queued while the turn is still starting - it will run next");
       }
     } else {
       // Loop is idle (previous turn completed) — start a new single-turn iteration.
@@ -1097,6 +1100,17 @@ export class LoopEngine {
    * Always returns true (loop should exit).
    */
   private async handleCompletedOutcome(): Promise<boolean> {
+    if (this.shouldContinueWithPendingChatInput()) {
+      this.emitLog("info", "Current chat turn finished with a follow-up message pending - starting the next turn");
+      this.updateState({
+        currentIteration: 0,
+        recentIterations: [],
+        consecutiveErrors: undefined,
+        completedAt: undefined,
+      });
+      return false;
+    }
+
     if (this.shouldContinueWithQueuedPendingInput()) {
       this.emitLog("info", "Current turn completed with queued input pending - continuing on the active ACP session");
       this.updateState({
@@ -1751,7 +1765,7 @@ export class LoopEngine {
     }
 
     // In chat mode, run exactly one iteration per turn
-    if (this.isChatMode && this.loop.state.currentIteration >= 1 && !this.shouldContinueWithQueuedPendingInput()) {
+    if (this.isChatMode && this.loop.state.currentIteration >= 1 && !this.shouldContinueWithPendingChatInput()) {
       return false;
     }
 

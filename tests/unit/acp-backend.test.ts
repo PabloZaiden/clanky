@@ -62,6 +62,51 @@ describe("AcpBackend", () => {
   test("throws when abortSession called before connect", async () => {
     await expect(backend.abortSession("test-id")).rejects.toThrow("Not connected");
   });
+
+  test("abortSession falls back through supported ACP cancellation methods", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      sendRpcRequest: (method: string, params: { sessionId: string }, timeoutMs: number) => Promise<void>;
+    };
+
+    const attemptedMethods: string[] = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.sendRpcRequest = async (method: string): Promise<void> => {
+      attemptedMethods.push(method);
+      if (method === "session/cancel") {
+        throw new Error("Method not found");
+      }
+      if (method === "session/abort") {
+        throw new Error("RPC error -32601");
+      }
+    };
+
+    await backend.abortSession("test-session");
+
+    expect(attemptedMethods).toEqual([
+      "session/cancel",
+      "session/abort",
+      "session/stop",
+    ]);
+  });
+
+  test("abortSession rethrows non-method-not-found errors", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      sendRpcRequest: (method: string, params: { sessionId: string }, timeoutMs: number) => Promise<void>;
+    };
+
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.sendRpcRequest = async (): Promise<void> => {
+      throw new Error("transport disconnected");
+    };
+
+    await expect(backend.abortSession("test-session")).rejects.toThrow("transport disconnected");
+  });
 });
 
 describe("sanitizeSpawnArgsForLogging", () => {

@@ -16,7 +16,7 @@ import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { loopManager } from "../../src/core/loop-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { createMockBackend } from "../mocks/mock-backend";
+import { createMockBackend, NeverCompletingMockBackend } from "../mocks/mock-backend";
 
 // Default test model for chat creation (model is required)
 const testModel = { providerID: "test-provider", modelID: "test-model" };
@@ -44,6 +44,23 @@ describe("Chat API Integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     throw new Error(`Chat ${loopId} did not complete within ${timeoutMs}ms. Last status: ${lastStatus}`);
+  }
+
+  async function waitForStatus(loopId: string, expectedStatus: string, timeoutMs = 5000): Promise<void> {
+    const startTime = Date.now();
+    let lastStatus = "unknown";
+    while (Date.now() - startTime < timeoutMs) {
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}`);
+      if (response.ok) {
+        const data = await response.json();
+        lastStatus = data.state?.status ?? "unknown";
+        if (lastStatus === expectedStatus) {
+          return;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`Chat ${loopId} did not reach status ${expectedStatus} within ${timeoutMs}ms. Last status: ${lastStatus}`);
   }
 
   // Helper to create or get a workspace for a directory
@@ -486,6 +503,131 @@ describe("Chat API Integration", () => {
       expect(messageResponse.status).toBe(400);
       const body = await messageResponse.json();
       expect(body.error).toBe("not_chat");
+    });
+
+    test("stops the active chat turn before accepting a follow-up message", async () => {
+      let abortCalls = 0;
+      const backend = new NeverCompletingMockBackend({
+        supportsActivePromptQueueing: true,
+      });
+      backend.abortSession = async (): Promise<void> => {
+        abortCalls += 1;
+      };
+      backendManager.setBackendForTesting(backend);
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/loops/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId: testWorkspaceId,
+            prompt: "Start a long running chat",
+            model: testModel,
+            useWorktree: true,
+          }),
+        });
+        expect(createResponse.status).toBe(201);
+        const chatBody = await createResponse.json();
+        const chatId = chatBody.config.id;
+
+        await waitForStatus(chatId, "running");
+
+        const messageResponse = await fetch(`${baseUrl}/api/loops/${chatId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: "Please stop and do this instead",
+          }),
+        });
+
+        expect(messageResponse.status).toBe(200);
+        expect(abortCalls).toBe(1);
+
+        await loopManager.stopLoop(chatId);
+      } finally {
+        backendManager.setBackendForTesting(createMockBackend());
+      }
+    });
+  });
+
+  describe("POST /api/loops/:id/stop", () => {
+    test("stops a running chat without deleting it", async () => {
+      let abortCalls = 0;
+      const backend = new NeverCompletingMockBackend();
+      backend.abortSession = async (): Promise<void> => {
+        abortCalls += 1;
+      };
+      backendManager.setBackendForTesting(backend);
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/loops/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId: testWorkspaceId,
+            prompt: "Keep running until stopped",
+            model: testModel,
+            useWorktree: true,
+          }),
+        });
+        expect(createResponse.status).toBe(201);
+        const chatBody = await createResponse.json();
+        const chatId = chatBody.config.id;
+
+        await waitForStatus(chatId, "running");
+
+        const stopResponse = await fetch(`${baseUrl}/api/loops/${chatId}/stop`, {
+          method: "POST",
+        });
+
+        expect(stopResponse.status).toBe(200);
+        const body = await stopResponse.json();
+        expect(body.success).toBe(true);
+        expect(body.loopId).toBe(chatId);
+        expect(abortCalls).toBe(1);
+
+        const loopResponse = await fetch(`${baseUrl}/api/loops/${chatId}`);
+        const loopData = await loopResponse.json();
+        expect(loopData.state.status).toBe("stopped");
+      } finally {
+        backendManager.setBackendForTesting(createMockBackend());
+      }
+    });
+
+    test("returns 409 when the loop exists but is not running", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          prompt: "Short chat",
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const chatBody = await createResponse.json();
+      const chatId = chatBody.config.id;
+
+      await waitForCompletion(chatId);
+
+      const stopResponse = await fetch(`${baseUrl}/api/loops/${chatId}/stop`, {
+        method: "POST",
+      });
+
+      expect(stopResponse.status).toBe(409);
+      const body = await stopResponse.json();
+      expect(body.error).toBe("not_running");
+    });
+
+    test("returns 404 for a non-existent loop", async () => {
+      const response = await fetch(`${baseUrl}/api/loops/non-existent-id/stop`, {
+        method: "POST",
+      });
+
+      expect(response.status).toBe(404);
+      const body = await response.json();
+      expect(body.error).toBe("not_found");
     });
   });
 
