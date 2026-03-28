@@ -416,6 +416,41 @@ describe("Persistence", () => {
     });
 
     describe("resetStaleLoops", () => {
+      test("resetStaleLoop resets a single stale loop without touching planning loops", async () => {
+        const { saveLoop, loadLoop, resetStaleLoop } = await import("../../src/persistence/loops");
+
+        await setupPersistence();
+
+        const runningLoop = createTestLoop({
+          id: "single-running-loop",
+          directory: "/tmp/test-single-running",
+          status: "running",
+        });
+        await saveLoop(runningLoop);
+
+        const planningLoop = createTestLoop({
+          id: "single-planning-loop",
+          directory: "/tmp/test-single-planning",
+          status: "planning",
+        });
+        await saveLoop(planningLoop);
+
+        const runningReset = await resetStaleLoop("single-running-loop");
+        const planningReset = await resetStaleLoop("single-planning-loop");
+
+        expect(runningReset).toBe(true);
+        expect(planningReset).toBe(false);
+
+        const loadedRunning = await loadLoop("single-running-loop");
+        expect(loadedRunning).not.toBeNull();
+        expect(loadedRunning!.state.status).toBe("stopped");
+        expect(loadedRunning!.state.error?.message).toBe("Forcefully stopped by connection reset");
+
+        const loadedPlanning = await loadLoop("single-planning-loop");
+        expect(loadedPlanning).not.toBeNull();
+        expect(loadedPlanning!.state.status).toBe("planning");
+      });
+
       test("resets idle loops to stopped", async () => {
         const { saveLoop, loadLoop, resetStaleLoops } = await import("../../src/persistence/loops");
 

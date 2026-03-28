@@ -800,6 +800,50 @@ describe("POST /api/loops/:id/pending", () => {
     }
   });
 
+  test("POST with message reconciles a stale running loop after engine reset", async () => {
+    const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
+    try {
+      const createRes = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Stale Running Loop",
+          workspaceId,
+          prompt: "Test prompt",
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createRes.status).toBe(201);
+      const created = await createRes.json();
+      const loopId = created.config.id;
+
+      await waitForLoopStatus(loopId, ["running"]);
+
+      // Simulate a server restart clearing in-memory engines while the database
+      // still says the loop is active.
+      loopManager.resetForTesting();
+
+      const pendingRes = await fetch(`${baseUrl}/api/loops/${loopId}/pending`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Please continue after restart",
+        }),
+      });
+      expect(pendingRes.status).toBe(200);
+      const pendingData = await pendingRes.json();
+      expect(pendingData.success).toBe(true);
+
+      await waitForLoopStatus(loopId, ["starting", "running"]);
+
+      await loopManager.stopLoop(loopId);
+    } finally {
+      await rm(workDir, { recursive: true, force: true });
+    }
+  });
+
   test("POST with model jumpstarts a stopped loop and updates config model", async () => {
     const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
     try {
