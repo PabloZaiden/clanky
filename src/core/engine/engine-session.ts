@@ -90,12 +90,19 @@ export async function setupLoopSession(ctx: SessionOperationContext): Promise<st
 export async function reconnectLoopSession(ctx: SessionOperationContext): Promise<void> {
   log.debug("[LoopEngine] reconnectSession: Entry point");
 
-  if (ctx.getSessionId()) {
-    log.debug("[LoopEngine] reconnectSession: Already have sessionId", { sessionId: ctx.getSessionId() });
+  const activeSessionId = ctx.getSessionId();
+  if (activeSessionId && ctx.backend.isConnected()) {
+    log.debug("[LoopEngine] reconnectSession: Already have an active connected session", { sessionId: activeSessionId });
     return;
   }
 
-  const existingSession = ctx.state.session;
+  const existingSessionId = activeSessionId ?? ctx.state.session?.id;
+  const existingSession = existingSessionId
+    ? {
+        id: existingSessionId,
+        serverUrl: ctx.state.session?.serverUrl,
+      }
+    : undefined;
   if (existingSession?.id) {
     log.debug("[LoopEngine] reconnectSession: Found existing session in state", {
       sessionId: existingSession.id,

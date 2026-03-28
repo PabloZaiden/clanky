@@ -515,16 +515,18 @@ describe("LoopEngine - Chat Mode", () => {
     expect(engine.state.status).toBe("completed");
   }, 10000);
 
-  test("injectChatMessage while running stops the active chat turn even when ACP queueing is supported", async () => {
+  test("injectChatMessage while running preserves the active session while replacing the turn", async () => {
     const loop = createChatLoop();
 
     let sendPromptAsyncCalled = false;
     let abortCalled = false;
     let connectCount = 0;
     let disconnectCount = 0;
+    let createdSessionCount = 0;
     let eventStreamCount = 0;
     let resolveEvents: (() => void) | undefined;
     const sentPrompts: PromptInput[] = [];
+    const promptSessionIds: string[] = [];
 
     const baseMock = createMockBackend(["First interrupted reply", "Second reply"]);
     mockBackend = {
@@ -532,6 +534,14 @@ describe("LoopEngine - Chat Mode", () => {
       async connect(config: BackendConnectionConfig): Promise<void> {
         connectCount += 1;
         await baseMock.connect(config);
+      },
+      async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+        createdSessionCount += 1;
+        return {
+          id: `session-${createdSessionCount}`,
+          title: options.title,
+          createdAt: new Date().toISOString(),
+        };
       },
       async disconnect(): Promise<void> {
         disconnectCount += 1;
@@ -541,7 +551,8 @@ describe("LoopEngine - Chat Mode", () => {
       supportsActivePromptQueueing(): boolean {
         return true;
       },
-      async sendPromptAsync(_sessionId: string, prompt: PromptInput): Promise<void> {
+      async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
+        promptSessionIds.push(sessionId);
         sentPrompts.push(prompt);
         sendPromptAsyncCalled = true;
       },
@@ -590,12 +601,14 @@ describe("LoopEngine - Chat Mode", () => {
     await engine.injectChatMessage("Stop and replace this response");
 
     expect(abortCalled).toBe(true);
-    expect(disconnectCount).toBe(1);
+    expect(disconnectCount).toBe(0);
 
     await startPromise;
 
     expect(engine.state.status).toBe("completed");
-    expect(connectCount).toBe(2);
+    expect(connectCount).toBe(1);
+    expect(promptSessionIds).toEqual(["session-1", "session-1"]);
+    expect(engine.state.session?.id).toBe("session-1");
     expect(sentPrompts).toHaveLength(2);
     const secondPromptText = sentPrompts[1]?.parts[0]?.type === "text"
       ? sentPrompts[1].parts[0].text
@@ -665,12 +678,12 @@ describe("LoopEngine - Chat Mode", () => {
     await engine.injectChatMessage("Replacement after closed stream");
 
     expect(abortCalled).toBe(true);
-    expect(disconnectCount).toBe(1);
+    expect(disconnectCount).toBe(0);
 
     await startPromise;
 
     expect(engine.state.status).toBe("completed");
-    expect(connectCount).toBe(2);
+    expect(connectCount).toBe(1);
     expect(sentPrompts).toHaveLength(2);
     const secondPromptText = sentPrompts[1]?.parts[0]?.type === "text"
       ? sentPrompts[1].parts[0].text

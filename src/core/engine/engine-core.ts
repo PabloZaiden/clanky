@@ -630,12 +630,12 @@ export class LoopEngine {
   /**
    * Inject a chat message immediately.
    *
-   * Follows the same pattern as injectPlanFeedback():
-   * - If the loop is actively running an iteration, prefers queueing the message
-   *   for the next iteration on the active session and only falls back to aborting
-   *   when the backend cannot support that flow.
-   * - If the loop is idle (previous turn completed), starts a new single-turn
-   *   iteration as a fire-and-forget operation.
+    * Follows the same pattern as injectPlanFeedback():
+    * - If the loop is actively running an iteration, interrupts the active turn
+    *   so the replacement message can run immediately, while preserving the
+    *   current session whenever possible.
+    * - If the loop is idle (previous turn completed), starts a new single-turn
+    *   iteration as a fire-and-forget operation.
    *
    * @param message - The user's chat message
    * @param model - Optional model override for this turn
@@ -673,9 +673,7 @@ export class LoopEngine {
         await this.interruptActiveSession({
           abortMessage: "Stopping active chat turn before sending the new message",
           abortWarnMessage: "Failed to stop the active chat turn before sending the new message",
-          forceDisconnect: true,
-          disconnectMessage: "Disconnecting the active chat session so the replacement message can run immediately",
-          disconnectWarnMessage: "Failed to disconnect the active chat session after requesting stop",
+          forceDisconnect: false,
         });
       } else {
         this.emitLog("info", "Chat message queued while the turn is still starting - it will run next");
