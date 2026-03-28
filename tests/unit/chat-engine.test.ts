@@ -678,6 +678,35 @@ describe("LoopEngine - Chat Mode", () => {
     expect(secondPromptText).toContain("Replacement after closed stream");
   }, 10000);
 
+  test("completed chat follow-up handoff clears injectionPending before the next turn starts", async () => {
+    const loop = createChatLoop();
+    mockBackend = createMockBackend([]);
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    const internalEngine = engine as unknown as {
+      injectionPending: boolean;
+      handleCompletedOutcome: () => Promise<boolean>;
+    };
+
+    loop.state.status = "running";
+    loop.state.currentIteration = 1;
+    loop.state.pendingPrompt = "Follow-up message";
+    internalEngine.injectionPending = true;
+
+    const shouldExit = await internalEngine.handleCompletedOutcome();
+
+    expect(shouldExit).toBe(false);
+    expect(internalEngine.injectionPending).toBe(false);
+    expect(loop.state.currentIteration).toBe(0);
+    expect(loop.state.completedAt).toBeUndefined();
+  });
+
   test("injectChatMessage while idle starts new chat turn", async () => {
     const loop = createChatLoop();
     const backend = createMockBackend([

@@ -335,7 +335,12 @@ export class LoopEngine {
         });
       }
 
-      if (!options.forceDisconnect || !this.backend.isConnected()) {
+      if (!options.forceDisconnect) {
+        return;
+      }
+
+      if (!this.backend.isConnected()) {
+        this.sessionId = null;
         return;
       }
 
@@ -1157,6 +1162,7 @@ export class LoopEngine {
    */
   private async handleCompletedOutcome(): Promise<boolean> {
     if (this.shouldContinueWithPendingChatInput()) {
+      this.injectionPending = false;
       this.emitLog("info", "Current chat turn finished with a follow-up message pending - starting the next turn");
       this.updateState({
         currentIteration: 0,
