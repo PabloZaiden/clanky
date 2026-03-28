@@ -41,6 +41,9 @@ import {
 import { isRecord, getString, getNumber, firstString } from "./json-helpers";
 import { sanitizeSpawnArgsForLogging, getProcessExitHint, inferProviderID } from "./process-utils";
 
+const ACP_PROCESS_EXIT_WAIT_MS = 1_000;
+const ACP_PROCESS_FORCE_KILL_WAIT_MS = 250;
+
 /**
  * ACP backend implementation.
  * Supports stdio ACP mode and translates ACP stream updates into AgentEvents.
@@ -187,8 +190,9 @@ export class AcpBackend implements Backend {
     if (!this.connected && !this.process) {
       return;
     }
+    const process = this.process;
     log.debug("[AcpBackend] Disconnecting ACP runtime", {
-      hasProcess: !!this.process,
+      hasProcess: !!process,
       directory: this.directory,
     });
 
@@ -212,6 +216,8 @@ export class AcpBackend implements Backend {
     this.connected = false;
     this.directory = "";
     this.connectionInfo = null;
+
+    await this.terminateProcess(process);
   }
 
   /**
@@ -296,6 +302,48 @@ export class AcpBackend implements Backend {
       pending.reject(new Error(reason));
     }
     this.pendingRequests.clear();
+  }
+
+  private async terminateProcess(process: Bun.Subprocess | null): Promise<void> {
+    if (!process || process.exitCode !== null) {
+      return;
+    }
+
+    try {
+      process.kill("SIGTERM");
+    } catch (error) {
+      log.debug("[AcpBackend] Failed to send SIGTERM while disconnecting ACP runtime", {
+        error: String(error),
+      });
+    }
+
+    const exitedAfterTerminate = await this.waitForProcessExit(process, ACP_PROCESS_FORCE_KILL_WAIT_MS);
+    if (exitedAfterTerminate) {
+      return;
+    }
+
+    try {
+      process.kill("SIGKILL");
+    } catch (error) {
+      log.debug("[AcpBackend] Failed to send SIGKILL while disconnecting ACP runtime", {
+        error: String(error),
+      });
+    }
+
+    await this.waitForProcessExit(process, ACP_PROCESS_EXIT_WAIT_MS);
+  }
+
+  private async waitForProcessExit(process: Bun.Subprocess, timeoutMs: number): Promise<boolean> {
+    if (process.exitCode !== null) {
+      return true;
+    }
+
+    const exited = await Promise.race<boolean>([
+      process.exited.then(() => true),
+      Bun.sleep(timeoutMs).then(() => false),
+    ]);
+
+    return exited || process.exitCode !== null;
   }
 
   private async readRpcStream(stream: ReadableStream<Uint8Array>, source: "stdout" | "stderr"): Promise<void> {

@@ -33,6 +33,41 @@ describe("AcpBackend", () => {
     expect(backend.isConnected()).toBe(false);
   });
 
+  test("disconnect terminates a running ACP subprocess", async () => {
+    let exitCode: number | null = null;
+    let resolveExit: (code: number) => void = () => {};
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = (code: number) => {
+        exitCode = code;
+        resolve(code);
+      };
+    });
+    const killSignals: Array<number | NodeJS.Signals | undefined> = [];
+
+    const fakeProcess = {
+      exited,
+      get exitCode() {
+        return exitCode;
+      },
+      kill(signal?: number | NodeJS.Signals) {
+        killSignals.push(signal);
+        resolveExit(signal === "SIGKILL" ? 137 : 0);
+      },
+    } as unknown as Bun.Subprocess;
+
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | null;
+    };
+    internal.connected = true;
+    internal.process = fakeProcess;
+
+    await backend.disconnect();
+
+    expect(killSignals).toEqual(["SIGTERM"]);
+    expect(backend.isConnected()).toBe(false);
+  });
+
   test("throws when createSession called before connect", async () => {
     await expect(
       backend.createSession({ directory: "/tmp" })

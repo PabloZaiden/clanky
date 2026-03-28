@@ -338,6 +338,8 @@ describe("StopPatternDetector", () => {
     // Create a slow backend that we can control using async streaming
     let resolveEvents: (() => void) | undefined;
     let sendPromptAsyncCalled = false;
+    let abortCalled = false;
+    let disconnectCalled = false;
 
     const baseMock = createMockBackend([]);
     mockBackend = {
@@ -345,6 +347,14 @@ describe("StopPatternDetector", () => {
       async sendPromptAsync(): Promise<void> {
         sendPromptAsyncCalled = true;
         // This just signals we're ready for events
+      },
+      async abortSession(sessionId: string): Promise<void> {
+        abortCalled = true;
+        await baseMock.abortSession(sessionId);
+      },
+      async disconnect(): Promise<void> {
+        disconnectCalled = true;
+        await baseMock.disconnect();
       },
       async subscribeToEvents(): Promise<EventStream<AgentEvent>> {
         // Return an EventStream that waits for external signal before yielding events
@@ -389,6 +399,8 @@ describe("StopPatternDetector", () => {
     await startPromise;
 
     expect(engine.state.status).toBe("stopped");
+    expect(abortCalled).toBe(true);
+    expect(disconnectCalled).toBe(true);
   });
 
   test("completes on second iteration", async () => {

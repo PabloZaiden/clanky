@@ -68,6 +68,7 @@ import {
   type SessionOperationContext,
 } from "./engine-session";
 import { processLoopAgentEvent, handleQuestionAsked as handleLoopQuestionAsked, type ToolProcessingContext } from "./engine-tools";
+import type { EventStream } from "../../utils/event-stream";
 
 export class LoopEngine {
   private loop: Loop;
@@ -93,6 +94,8 @@ export class LoopEngine {
   private pendingPlanQuestionRequestId?: string;
   private initialPromptAttachments: MessageImageAttachment[];
   private pendingPromptAttachments: MessageImageAttachment[] = [];
+  private currentEventStream: EventStream<AgentEvent> | null = null;
+  private activeSessionInterrupt: Promise<void> | null = null;
 
   constructor(options: LoopEngineOptions) {
     this.loop = options.loop;
@@ -303,6 +306,60 @@ export class LoopEngine {
     return false;
   }
 
+  private async interruptActiveSession(options: {
+    abortMessage: string;
+    abortWarnMessage: string;
+    forceDisconnect: boolean;
+    markAborted?: boolean;
+    disconnectMessage?: string;
+    disconnectWarnMessage?: string;
+  }): Promise<void> {
+    if (!this.sessionId) {
+      return;
+    }
+
+    const activeSessionId = this.sessionId;
+    const interruptPromise = (async () => {
+      if (options.markAborted) {
+        this.aborted = true;
+      }
+
+      this.currentEventStream?.close();
+
+      try {
+        this.emitLog("info", options.abortMessage);
+        await this.backend.abortSession(activeSessionId);
+      } catch (error) {
+        this.emitLog("warn", options.abortWarnMessage, {
+          error: String(error),
+        });
+      }
+
+      if (!options.forceDisconnect || !this.backend.isConnected()) {
+        return;
+      }
+
+      try {
+        this.emitLog("info", options.disconnectMessage ?? "Disconnecting the backend to finish interrupting the active session");
+        await this.backend.disconnect();
+      } catch (error) {
+        this.emitLog("warn", options.disconnectWarnMessage ?? "Failed to disconnect the backend after interrupting the active session", {
+          error: String(error),
+        });
+      } finally {
+        this.sessionId = null;
+      }
+    })();
+
+    this.activeSessionInterrupt = interruptPromise.finally(() => {
+      if (this.activeSessionInterrupt === interruptPromise) {
+        this.activeSessionInterrupt = null;
+      }
+    });
+
+    await this.activeSessionInterrupt;
+  }
+
   /**
    * Wait for any ongoing loop iteration to complete.
    * Used to ensure state modifications happen between iterations.
@@ -410,14 +467,14 @@ export class LoopEngine {
     // from overwriting state after the loop is stopped/deleted
     this.onPersistState = undefined;
 
-    if (this.sessionId) {
-      try {
-        this.emitLog("info", "Aborting backend session...");
-        await this.backend.abortSession(this.sessionId);
-      } catch {
-        // Ignore abort errors
-      }
-    }
+    await this.interruptActiveSession({
+      abortMessage: "Aborting backend session...",
+      abortWarnMessage: "Failed to abort the backend session during stop",
+      forceDisconnect: true,
+      markAborted: true,
+      disconnectMessage: "Disconnecting the backend so the active turn stops immediately",
+      disconnectWarnMessage: "Failed to disconnect the backend while stopping the loop",
+    });
 
     this.updateState({
       status: "stopped",
@@ -608,14 +665,13 @@ export class LoopEngine {
       this.injectionPending = true;
 
       if (this.sessionId) {
-        try {
-          this.emitLog("info", "Stopping active chat turn before sending the new message");
-          await this.backend.abortSession(this.sessionId);
-        } catch (error) {
-          this.emitLog("warn", "Failed to stop the active chat turn before sending the new message", {
-            error: String(error),
-          });
-        }
+        await this.interruptActiveSession({
+          abortMessage: "Stopping active chat turn before sending the new message",
+          abortWarnMessage: "Failed to stop the active chat turn before sending the new message",
+          forceDisconnect: true,
+          disconnectMessage: "Disconnecting the active chat session so the replacement message can run immediately",
+          disconnectWarnMessage: "Failed to disconnect the active chat session after requesting stop",
+        });
       } else {
         this.emitLog("info", "Chat message queued while the turn is still starting - it will run next");
       }
@@ -1445,6 +1501,16 @@ export class LoopEngine {
    * through all agent events until the message completes or an error occurs.
    */
   private async executeIterationPrompt(ctx: IterationContext): Promise<void> {
+    await this.activeSessionInterrupt;
+
+    if (!this.sessionId || !this.backend.isConnected()) {
+      this.emitLog("info", "AI session is unavailable - reconnecting before continuing", {
+        hasSessionId: this.sessionId !== null,
+        connected: this.backend.isConnected(),
+      });
+      await this.reconnectSession();
+    }
+
     // Handle pending model change via ACP config options (works for all agents)
     await this.handlePendingModelChange();
 
@@ -1488,6 +1554,7 @@ export class LoopEngine {
       log.debug("[LoopEngine] runIteration: About to subscribe to events");
       this.emitLog("debug", "Subscribing to AI response stream");
       const eventStream = await this.backend.subscribeToEvents(activeSessionId);
+      this.currentEventStream = eventStream;
       log.debug("[LoopEngine] runIteration: Subscription established, got event stream");
 
       try {
@@ -1553,6 +1620,9 @@ export class LoopEngine {
       } finally {
         // Close the stream to abort the subscription
         eventStream.close();
+        if (this.currentEventStream === eventStream) {
+          this.currentEventStream = null;
+        }
       }
     }
 
