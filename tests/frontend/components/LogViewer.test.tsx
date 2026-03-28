@@ -120,43 +120,52 @@ describe("LogViewer", () => {
   });
 
   describe("tool call rendering", () => {
-    test("renders a completed tool call with check mark", () => {
+    test("renders a completed tool call without a status icon", () => {
       const tool = createToolCallData({ name: "Write", status: "completed" });
       const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("Write")).toBeInTheDocument();
-      expect(getByText("✓")).toBeInTheDocument();
+      const toolEntry = getByText("Write").closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.textContent).toContain("Write");
+      expect(toolEntry.textContent).not.toContain("✓");
     });
 
-    test("renders a failed tool call with X mark", () => {
+    test("renders a failed tool call without a status icon", () => {
       // Use an unknown tool name so the raw name is the summary (no transformation)
       const tool = createToolCallData({ name: "FailedTool", status: "failed", input: null });
       const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("FailedTool")).toBeInTheDocument();
-      expect(getByText("✗")).toBeInTheDocument();
+      const toolEntry = getByText("FailedTool").closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.textContent).toContain("FailedTool");
+      expect(toolEntry.textContent).not.toContain("✗");
     });
 
-    test("renders a pending tool call with circle", () => {
+    test("renders a pending tool call without a status icon", () => {
       // Use an unknown tool name so the raw name is the summary (no transformation)
       const tool = createToolCallData({ name: "PendingTool", status: "pending", input: null });
       const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("PendingTool")).toBeInTheDocument();
-      expect(getByText("○")).toBeInTheDocument();
+      const toolEntry = getByText("PendingTool").closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.textContent).toContain("PendingTool");
+      expect(toolEntry.textContent).not.toContain("○");
     });
 
-    test("renders a running tool call with spinner", () => {
+    test("renders a running tool call without a status icon", () => {
       // Use an unknown tool name so the raw name is the summary (no transformation)
       const tool = createToolCallData({ name: "RunningTool", status: "running", input: null });
       const { getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
-      expect(getByText("RunningTool")).toBeInTheDocument();
-      expect(getByText("⟳")).toBeInTheDocument();
+      const toolEntry = getByText("RunningTool").closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.textContent).toContain("RunningTool");
+      expect(toolEntry.querySelector(".animate-spin")).toBeNull();
+      expect(toolEntry.textContent).not.toContain("⟳");
     });
 
     test("renders tool input in collapsible details", async () => {
@@ -287,7 +296,7 @@ describe("LogViewer", () => {
 
     test("always renders summary line even when showHeader is false and input/output are null", () => {
       // Regression test: pending/running tools with no input/output and showHeader=false
-      // must still render the status icon + summary so the row is never blank.
+      // must still render the summary so the row is never blank.
       const pendingTool = createToolCallData({
         name: "execute",
         input: null,
