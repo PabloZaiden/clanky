@@ -65,7 +65,7 @@ function ImageAttachmentControlInner({
   }, []);
 
   const addFiles = useCallback(async (files: File[]) => {
-    if (files.length === 0) {
+    if (disabled || files.length === 0) {
       return;
     }
     setError(null);
@@ -96,13 +96,15 @@ function ImageAttachmentControlInner({
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const files = getClipboardImageFiles(event.clipboardData?.items);
-      if (files.length === 0) {
+      if (files.length === 0 || disabled) {
         return;
       }
 
+      event.preventDefault();
+      event.stopPropagation();
       void addFiles(files);
     },
-    [addFiles],
+    [addFiles, disabled],
   );
 
   useImperativeHandle(ref, () => ({ handlePaste }), [handlePaste]);

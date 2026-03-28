@@ -15,7 +15,11 @@ import {
 
 installImageAttachmentMocks();
 
-function AttachmentPasteHarness() {
+interface AttachmentPasteHarnessProps {
+  disabled?: boolean;
+}
+
+function AttachmentPasteHarness({ disabled = false }: AttachmentPasteHarnessProps) {
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [message, setMessage] = useState("");
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
@@ -36,6 +40,7 @@ function AttachmentPasteHarness() {
         ref={attachmentControlRef}
         attachments={attachments}
         onChange={setAttachments}
+        disabled={disabled}
         iconOnly
       />
     </div>
@@ -46,7 +51,9 @@ describe("ImageAttachmentControl", () => {
   test("adds an attachment when an image is pasted into the host field", async () => {
     const { getByLabelText, getByText } = renderWithUser(<AttachmentPasteHarness />);
 
-    pasteFiles(getByLabelText("Message"), [createTestFile()]);
+    const pasteResult = pasteFiles(getByLabelText("Message"), [createTestFile()]);
+
+    expect(pasteResult).toBe(false);
 
     await waitFor(() => {
       expect(getByText("clipboard-image.png")).toBeInTheDocument();
@@ -72,6 +79,18 @@ describe("ImageAttachmentControl", () => {
 
     await waitFor(() => {
       expect(getByText(/clipboard-image\.svg is not a supported image type/i)).toBeInTheDocument();
+    });
+  });
+
+  test("ignores pasted images when the control is disabled", async () => {
+    const { getByLabelText, queryByText } = renderWithUser(<AttachmentPasteHarness disabled />);
+
+    const pasteResult = pasteFiles(getByLabelText("Message"), [createTestFile()]);
+
+    expect(pasteResult).toBe(true);
+
+    await waitFor(() => {
+      expect(queryByText("clipboard-image.png")).not.toBeInTheDocument();
     });
   });
 

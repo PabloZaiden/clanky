@@ -69,7 +69,7 @@ export function pasteFiles(element: HTMLElement, files: File[]) {
     getAsFile: () => file,
   }));
 
-  fireEvent.paste(element, {
+  return fireEvent.paste(element, {
     clipboardData: { items },
   });
 }
