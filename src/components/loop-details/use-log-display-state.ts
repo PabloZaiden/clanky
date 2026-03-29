@@ -14,8 +14,6 @@ export interface LogDisplayState {
   onShowToolsChange: (v: boolean) => void;
   autoScroll: boolean;
   onAutoScrollChange: (v: boolean) => void;
-  logsCollapsed: boolean;
-  onLogsCollapsedChange: (v: boolean) => void;
 }
 
 export function useLogDisplayState(): LogDisplayState {
@@ -23,7 +21,6 @@ export function useLogDisplayState(): LogDisplayState {
   const [showReasoning, setShowReasoning] = useState(true);
   const [showTools, setShowTools] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [logsCollapsed, setLogsCollapsed] = useState(false);
 
   return {
     showSystemInfo,
@@ -34,7 +31,5 @@ export function useLogDisplayState(): LogDisplayState {
     onShowToolsChange: setShowTools,
     autoScroll,
     onAutoScrollChange: setAutoScroll,
-    logsCollapsed,
-    onLogsCollapsedChange: setLogsCollapsed,
   };
 }

@@ -1626,13 +1626,15 @@ describe("error display", () => {
 // ─── Log tab details ─────────────────────────────────────────────────────────
 
 describe("log tab", () => {
-  test("shows only the Logs section", async () => {
+  test("shows the log tab without a collapsible Logs section", async () => {
     setupDefaultApi();
     const { getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByText("Logs")).toBeTruthy();
+      expect(getByText("Log")).toBeTruthy();
+      expect(getByText("Show system info")).toBeTruthy();
     });
+    expect(queryByText("Logs")).toBeNull();
     expect(queryByText("TODOs")).toBeNull();
   });
 
@@ -1688,6 +1690,8 @@ describe("log tab", () => {
 
     expect(queryByRole("button", { name: "Info" })).toBeNull();
     expect(queryByRole("button", { name: "Prompt" })).toBeNull();
+    expect(queryByRole("button", { name: "Hide logs" })).toBeNull();
+    expect(queryByRole("button", { name: "Show logs" })).toBeNull();
     expect(getByPlaceholderText("Send a message to steer the agent...")).toBeInTheDocument();
     expect(getByRole("button", { name: "Autoscroll" })).toBeInTheDocument();
   });

@@ -15,8 +15,6 @@ interface LogTabProps {
   onShowToolsChange: (v: boolean) => void;
   autoScroll: boolean;
   onAutoScrollChange: (v: boolean) => void;
-  logsCollapsed: boolean;
-  onLogsCollapsedChange: (v: boolean) => void;
   markdownEnabled: boolean;
   isLogActive: boolean;
   pendingPlanQuestion: PendingPlanQuestion | undefined;
@@ -44,8 +42,6 @@ export function LogTab({
   onShowToolsChange,
   autoScroll,
   onAutoScrollChange,
-  logsCollapsed,
-  onLogsCollapsedChange,
   markdownEnabled,
   isLogActive,
   pendingPlanQuestion,
@@ -71,158 +67,136 @@ export function LogTab({
       }
     >
       <div className={isFocusMode ? "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden px-3 pt-3" : "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden p-4"}>
-        <div className={`flex min-w-0 min-h-0 flex-col ${logsCollapsed ? "flex-shrink-0" : "flex-1"}`}>
-          {!isFocusMode && (
-            <button
-              onClick={() => onLogsCollapsedChange(!logsCollapsed)}
-              className="mb-2 flex-shrink-0 text-left text-sm font-semibold text-gray-700 transition-colors hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100"
-              aria-expanded={!logsCollapsed}
-              aria-controls={logViewerId}
-            >
-              <span className="flex items-center gap-2">
-                <span className="text-xs">{logsCollapsed ? "▶" : "▼"}</span>
-                <span>Logs</span>
-              </span>
-            </button>
-          )}
-          {!logsCollapsed && (
-            <>
-              <LogViewer
-                id={logViewerId}
-                messages={messages}
-                toolCalls={toolCalls}
-                logs={logs}
-                showSystemInfo={showSystemInfo}
-                showReasoning={showReasoning}
-                showTools={showTools}
-                autoScroll={autoScroll}
-                markdownEnabled={markdownEnabled}
-                isActive={isLogActive}
-              />
-              {pendingPlanQuestion && (
-                <div className="mt-4 flex-shrink-0 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
-                  <div className="mb-3">
-                    <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                      Pending plan question
-                    </h3>
-                  </div>
+        <div className="flex min-w-0 min-h-0 flex-1 flex-col">
+          <LogViewer
+            id={logViewerId}
+            messages={messages}
+            toolCalls={toolCalls}
+            logs={logs}
+            showSystemInfo={showSystemInfo}
+            showReasoning={showReasoning}
+            showTools={showTools}
+            autoScroll={autoScroll}
+            markdownEnabled={markdownEnabled}
+            isActive={isLogActive}
+          />
+          {pendingPlanQuestion && (
+            <div className="mt-4 flex-shrink-0 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                  Pending plan question
+                </h3>
+              </div>
 
-                  <div className="space-y-4">
-                    {pendingPlanQuestion.questions.map((question, questionIndex) => {
-                      const selection = planQuestionSelections[questionIndex] ?? [];
-                      const customAnswer = planQuestionCustomAnswers[questionIndex] ?? "";
-                      const useCheckboxes = question.multiple === true;
+              <div className="space-y-4">
+                {pendingPlanQuestion.questions.map((question, questionIndex) => {
+                  const selection = planQuestionSelections[questionIndex] ?? [];
+                  const customAnswer = planQuestionCustomAnswers[questionIndex] ?? "";
+                  const useCheckboxes = question.multiple === true;
 
-                      return (
-                        <div
-                          key={`${pendingPlanQuestion.requestId}-${questionIndex}`}
-                          className="rounded-md border border-amber-200/80 bg-white/70 p-3 dark:border-amber-900/50 dark:bg-neutral-900/40"
-                        >
-                          <div className="space-y-1">
-                            <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                              {question.header}
-                            </p>
-                            <p className="text-sm text-gray-900 dark:text-gray-100">
-                              {question.question}
-                            </p>
-                          </div>
-
-                          {question.options.length > 0 && (
-                            <div className="mt-3 space-y-2">
-                              {question.options.map((option) => {
-                                const checked = selection.includes(option.label);
-                                return (
-                                  <label
-                                    key={option.label}
-                                    className="flex items-start gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:border-amber-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-200"
-                                  >
-                                    <input
-                                      type={useCheckboxes ? "checkbox" : "radio"}
-                                      name={`plan-question-${questionIndex}`}
-                                      checked={checked}
-                                      onChange={(event) => {
-                                        const isChecked = event.target.checked;
-                                        if (useCheckboxes) {
-                                          onPlanQuestionSelectionsChange(
-                                            planQuestionSelections.map((sel, idx) =>
-                                              idx === questionIndex
-                                                ? (isChecked ? [...sel, option.label] : sel.filter((v) => v !== option.label))
-                                                : sel
-                                            )
-                                          );
-                                        } else {
-                                          onPlanQuestionSelectionsChange(
-                                            planQuestionSelections.map((sel, idx) =>
-                                              idx === questionIndex ? (isChecked ? [option.label] : []) : sel
-                                            )
-                                          );
-                                        }
-                                      }}
-                                      className="mt-0.5 h-4 w-4 border-gray-300 text-amber-600 focus:ring-amber-500 dark:border-gray-600 dark:bg-neutral-700"
-                                    />
-                                    <span className="min-w-0">
-                                      <span className="block font-medium text-gray-900 dark:text-gray-100">
-                                        {option.label}
-                                      </span>
-                                      {option.description && (
-                                        <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                                          {option.description}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          <div className="mt-3">
-                            <label
-                              htmlFor={`plan-question-custom-${questionIndex}`}
-                              className="block text-xs font-medium text-gray-700 dark:text-gray-300"
-                            >
-                              Your answer
-                            </label>
-                            <textarea
-                              id={`plan-question-custom-${questionIndex}`}
-                              value={customAnswer}
-                              onChange={(event) => {
-                                const value = event.target.value;
-                                onPlanQuestionCustomAnswersChange(
-                                  planQuestionCustomAnswers.map((ans, idx) => idx === questionIndex ? value : ans)
-                                );
-                              }}
-                              rows={3}
-                              placeholder={
-                                question.options.length > 0
-                                  ? "Optional freeform answer. If provided, it overrides the option selection above."
-                                  : "Type your answer here..."
-                              }
-                              className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-end">
-                    <Button
-                      type="button"
-                      onClick={onAnswerPlanQuestion}
-                      loading={planQuestionSubmitting}
-                      disabled={planQuestionSubmitting}
+                  return (
+                    <div
+                      key={`${pendingPlanQuestion.requestId}-${questionIndex}`}
+                      className="rounded-md border border-amber-200/80 bg-white/70 p-3 dark:border-amber-900/50 dark:bg-neutral-900/40"
                     >
-                      Submit answer
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-          {isFocusMode && logsCollapsed && (
-            <div className="rounded-lg border border-dashed border-neutral-700 bg-neutral-900/70 p-4 text-sm text-neutral-300">
-              Logs are hidden. Use the focus controls below to show them again.
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                          {question.header}
+                        </p>
+                        <p className="text-sm text-gray-900 dark:text-gray-100">
+                          {question.question}
+                        </p>
+                      </div>
+
+                      {question.options.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {question.options.map((option) => {
+                            const checked = selection.includes(option.label);
+                            return (
+                              <label
+                                key={option.label}
+                                className="flex items-start gap-3 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:border-amber-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-200"
+                              >
+                                <input
+                                  type={useCheckboxes ? "checkbox" : "radio"}
+                                  name={`plan-question-${questionIndex}`}
+                                  checked={checked}
+                                  onChange={(event) => {
+                                    const isChecked = event.target.checked;
+                                    if (useCheckboxes) {
+                                      onPlanQuestionSelectionsChange(
+                                        planQuestionSelections.map((sel, idx) =>
+                                          idx === questionIndex
+                                            ? (isChecked ? [...sel, option.label] : sel.filter((v) => v !== option.label))
+                                            : sel
+                                        )
+                                      );
+                                    } else {
+                                      onPlanQuestionSelectionsChange(
+                                        planQuestionSelections.map((sel, idx) =>
+                                          idx === questionIndex ? (isChecked ? [option.label] : []) : sel
+                                        )
+                                      );
+                                    }
+                                  }}
+                                  className="mt-0.5 h-4 w-4 border-gray-300 text-amber-600 focus:ring-amber-500 dark:border-gray-600 dark:bg-neutral-700"
+                                />
+                                <span className="min-w-0">
+                                  <span className="block font-medium text-gray-900 dark:text-gray-100">
+                                    {option.label}
+                                  </span>
+                                  {option.description && (
+                                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                                      {option.description}
+                                    </span>
+                                  )}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      <div className="mt-3">
+                        <label
+                          htmlFor={`plan-question-custom-${questionIndex}`}
+                          className="block text-xs font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          Your answer
+                        </label>
+                        <textarea
+                          id={`plan-question-custom-${questionIndex}`}
+                          value={customAnswer}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            onPlanQuestionCustomAnswersChange(
+                              planQuestionCustomAnswers.map((ans, idx) => idx === questionIndex ? value : ans)
+                            );
+                          }}
+                          rows={3}
+                          placeholder={
+                            question.options.length > 0
+                              ? "Optional freeform answer. If provided, it overrides the option selection above."
+                              : "Type your answer here..."
+                          }
+                          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 flex items-center justify-end">
+                <Button
+                  type="button"
+                  onClick={onAnswerPlanQuestion}
+                  loading={planQuestionSubmitting}
+                  disabled={planQuestionSubmitting}
+                >
+                  Submit answer
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -238,8 +212,6 @@ export function LogTab({
           onShowToolsChange={onShowToolsChange}
           autoScroll={autoScroll}
           onAutoScrollChange={onAutoScrollChange}
-          logsCollapsed={logsCollapsed}
-          onLogsCollapsedChange={onLogsCollapsedChange}
           onExitFocusMode={onExitFocusMode}
           applySafeAreaBottom={applySafeAreaBottomToFocusBar}
         />
