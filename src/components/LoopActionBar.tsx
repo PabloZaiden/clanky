@@ -1,10 +1,11 @@
 /**
- * LoopActionBar component for sending messages and changing models mid-loop.
- * 
+ * LoopActionBar component for stop/send controls and model changes.
+ *
  * This component provides a mobile-responsive action bar that allows users to:
- * - Queue a message to be sent after the current iteration completes
- * - Change the model for subsequent iterations
- * 
+ * - Stop an active generation
+ * - Prepare and send the next message once generation is idle
+ * - Change the model for the next turn or iteration
+ *
  * The action bar is only visible when a loop is in an active state (running, waiting, planning).
  */
 
@@ -26,22 +27,18 @@ export interface LoopActionBarProps {
   mode?: LoopConfig["mode"];
   /** Whether the loop is in planning mode */
   isPlanning?: boolean;
+  /** Whether the loop/chat is actively generating right now */
+  isGenerating?: boolean;
   /** Current model configuration (from loop config) */
   currentModel?: ModelConfig;
-  /** Pending model that will be used for next iteration */
-  pendingModel?: ModelConfig;
-  /** Pending prompt that will be used for next iteration */
-  pendingPrompt?: string;
   /** Available models for selection */
   models: ModelInfo[];
   /** Whether models are loading */
   modelsLoading: boolean;
-  /** Callback when user queues a message and/or model change */
-  onQueuePending: (options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }) => Promise<boolean>;
+  /** Callback when user submits a message and/or model change */
+  onSubmit: (options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }) => Promise<boolean>;
   /** Callback when user stops the active agent without sending a message */
   onStop?: () => Promise<boolean>;
-  /** Callback when user clears pending values */
-  onClearPending: () => Promise<boolean>;
   /** Whether the action bar is disabled */
   disabled?: boolean;
   /** Require a message before submitting */
@@ -54,14 +51,12 @@ export interface LoopActionBarProps {
 export function LoopActionBar({
   mode,
   isPlanning = false,
+  isGenerating = false,
   currentModel,
-  pendingModel,
-  pendingPrompt,
   models,
   modelsLoading,
-  onQueuePending,
+  onSubmit,
   onStop,
-  onClearPending,
   disabled = false,
   requireMessage = false,
   submitLabel,
@@ -79,22 +74,13 @@ export function LoopActionBar({
     ? makeModelKey(currentModel.providerID, currentModel.modelID, currentModel.variant)
     : "";
 
-  // Build pending model key for comparison
-  const pendingModelKey = pendingModel
-    ? makeModelKey(pendingModel.providerID, pendingModel.modelID, pendingModel.variant)
-    : "";
-
-  // Check if we have any pending changes
-  const hasPendingMessage = !!pendingPrompt;
-  const hasPendingModel = !!pendingModel;
-  const hasPending = hasPendingMessage || hasPendingModel;
   const trimmedMessage = message.trim();
 
   // Check if user has local changes (not yet submitted)
   const hasLocalChanges = trimmedMessage.length > 0 || selectedModel !== "" || attachments.length > 0;
   const hasAttachmentWithoutMessage = attachments.length > 0 && trimmedMessage.length === 0;
   const canSubmit = hasLocalChanges && !hasAttachmentWithoutMessage && (!requireMessage || trimmedMessage.length > 0);
-  const showStopButton = onStop !== undefined && !requireMessage && !hasLocalChanges;
+  const showStopButton = isGenerating && onStop !== undefined;
 
   // Check if the selected model is enabled (connected)
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
@@ -108,9 +94,9 @@ export function LoopActionBar({
     // Validate model is enabled if selected
     if (selectedModel && !selectedModelEnabled) return;
 
-    log.debug("Queueing pending changes", { 
-      hasMessage: !!message.trim(), 
-      hasModelChange: !!selectedModel 
+    log.debug("Submitting action bar changes", {
+      hasMessage: !!message.trim(),
+      hasModelChange: !!selectedModel,
     });
     setIsSubmitting(true);
 
@@ -133,37 +119,23 @@ export function LoopActionBar({
         }
       }
 
-      const success = await onQueuePending(options);
+      const success = await onSubmit(options);
       if (success) {
-        log.debug("Pending changes queued successfully");
+        log.debug("Action bar changes submitted successfully");
         // Clear local state on success
         setMessage("");
         setSelectedModel("");
         setAttachments([]);
       } else {
-        log.warn("Failed to queue pending changes");
+        log.warn("Failed to submit action bar changes");
       }
     } finally {
       setIsSubmitting(false);
     }
-  }, [attachments, canSubmit, disabled, isSubmitting, message, selectedModel, selectedModelEnabled, onQueuePending]);
-
-  // Handle clear pending
-  const handleClear = useCallback(async () => {
-    if (disabled || isSubmitting || !hasPending) return;
-
-    log.debug("Clearing pending changes");
-    setIsSubmitting(true);
-    try {
-      await onClearPending();
-      log.debug("Pending changes cleared");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [disabled, isSubmitting, hasPending, onClearPending]);
+  }, [attachments, canSubmit, disabled, isSubmitting, message, selectedModel, selectedModelEnabled, onSubmit]);
 
   const handleStop = useCallback(async () => {
-    if (!onStop || disabled || isSubmitting || hasLocalChanges) return;
+    if (!onStop || disabled || isSubmitting) return;
 
     log.debug("Stopping active agent from composer");
     setIsSubmitting(true);
@@ -172,7 +144,7 @@ export function LoopActionBar({
     } finally {
       setIsSubmitting(false);
     }
-  }, [disabled, hasLocalChanges, isSubmitting, onStop]);
+  }, [disabled, isSubmitting, onStop]);
 
   const handlePaste = useCallback((event: ClipboardEvent<HTMLInputElement>) => {
     attachmentControlRef.current?.handlePaste(event);
@@ -180,34 +152,6 @@ export function LoopActionBar({
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-neutral-800 flex-shrink-0 safe-area-bottom">
-      {/* Pending indicator */}
-      {hasPending && (
-        <div className="px-3 sm:px-4 py-2 bg-yellow-50 dark:bg-yellow-900/20 border-b border-yellow-200 dark:border-yellow-800/50">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex-1 min-w-0">
-              {hasPendingMessage && (
-                <p className="text-xs text-yellow-800 dark:text-yellow-200 truncate">
-                  <span className="font-medium">Queued message:</span> {pendingPrompt}
-                </p>
-              )}
-              {hasPendingModel && (
-                <p className="text-xs text-yellow-800 dark:text-yellow-200">
-                  <span className="font-medium">Model change:</span> {getModelDisplayName(models, pendingModelKey)}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={disabled || isSubmitting}
-              className="flex-shrink-0 text-xs text-yellow-700 dark:text-yellow-300 hover:text-yellow-900 dark:hover:text-yellow-100 disabled:opacity-50"
-            >
-              Clear
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Action bar form */}
       <form onSubmit={handleSubmit} className="p-3 sm:p-4">
         <div className="flex flex-row gap-2 sm:gap-3">
@@ -266,14 +210,14 @@ export function LoopActionBar({
              </button>
            ) : (
              <button
-               type="submit"
-               disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
-               className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
-               aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : isChatMode ? "Send" : "Queue")}
-               title={submitLabel ?? (isPlanning ? "Send Feedback" : isChatMode ? "Send" : "Queue")}
-             >
-               {isSubmitting ? (
-                 <span className="animate-spin text-sm">⏳</span>
+                type="submit"
+                disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
+                className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
+                aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
+                title={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
+              >
+                {isSubmitting ? (
+                  <span className="animate-spin text-sm">⏳</span>
                ) : (
                  <span className="text-lg leading-none">↑</span>
                )}

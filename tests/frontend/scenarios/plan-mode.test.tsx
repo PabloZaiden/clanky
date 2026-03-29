@@ -168,15 +168,14 @@ describe("plan mode scenario", () => {
   });
 
   test("send feedback on plan", async () => {
-    const loop = planningLoop(true, 0);
-    setupApi(loop, "## Initial Plan\nDo X and Y");
+    let currentLoop = planningLoop(true, 0);
+    setupApi(currentLoop, "## Initial Plan\nDo X and Y");
 
-    api.post("/api/loops/:id/plan/feedback", () => ({ success: true }));
-
-    // After feedback, the loop refreshes with updated feedbackRounds
-    const afterFeedbackLoop = planningLoop(false, 1);
-    // Override the loops/:id endpoint after feedback
-    api.get("/api/loops/:id", () => afterFeedbackLoop);
+    api.get("/api/loops/:id", () => currentLoop);
+    api.post("/api/loops/:id/plan/feedback", () => {
+      currentLoop = planningLoop(false, 1);
+      return { success: true };
+    });
 
     window.location.hash = `/loop/${LOOP_ID}`;
     const { getAllByText, getByText, user } = renderWithUser(<App />);

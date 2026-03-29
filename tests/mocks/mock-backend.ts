@@ -37,8 +37,6 @@ export interface MockBackendOptions {
   responses?: string[];
   /** Models to return from getModels() */
   models?: MockModelInfo[];
-  /** Whether the backend supports staying on the active session for queued input */
-  supportsActivePromptQueueing?: boolean;
 }
 
 /**
@@ -59,13 +57,11 @@ export class MockAcpBackend implements Backend {
   private pendingPrompt = false;
   private readonly responses: string[];
   private readonly models: MockModelInfo[];
-  private readonly activePromptQueueingSupported: boolean;
   private readonly sessions = new Map<string, AgentSession>();
 
   constructor(options: MockBackendOptions = {}) {
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
     this.models = options.models ?? [];
-    this.activePromptQueueingSupported = options.supportsActivePromptQueueing ?? true;
   }
 
   /**
@@ -130,10 +126,6 @@ export class MockAcpBackend implements Backend {
 
   async abortSession(_sessionId: string): Promise<void> {
     // Mock - no-op
-  }
-
-  supportsActivePromptQueueing(): boolean {
-    return this.activePromptQueueingSupported;
   }
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
@@ -277,8 +269,6 @@ export function createMockBackend(responses: string[] = ["<promise>COMPLETE</pro
 export interface NeverCompletingMockBackendOptions {
   /** Models to return from getModels() */
   models?: MockModelInfo[];
-  /** Whether the backend supports staying on the active session for queued input */
-  supportsActivePromptQueueing?: boolean;
 }
 
 /**
@@ -292,11 +282,9 @@ export class NeverCompletingMockBackend implements Backend {
   private directory = "";
   private readonly sessions = new Map<string, AgentSession>();
   private readonly models: MockModelInfo[];
-  private readonly activePromptQueueingSupported: boolean;
 
   constructor(options: NeverCompletingMockBackendOptions = {}) {
     this.models = options.models ?? [defaultTestModel];
-    this.activePromptQueueingSupported = options.supportsActivePromptQueueing ?? true;
   }
 
   async connect(config: BackendConnectionConfig, _signal?: AbortSignal): Promise<void> {
@@ -337,10 +325,6 @@ export class NeverCompletingMockBackend implements Backend {
 
   async abortSession(_sessionId: string): Promise<void> {
     // No-op
-  }
-
-  supportsActivePromptQueueing(): boolean {
-    return this.activePromptQueueingSupported;
   }
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
@@ -414,8 +398,6 @@ export class PlanModeMockBackend implements Backend {
   private nameCounter = 0;
   private sessions = new Map<string, AgentSession>();
   private sessionResponseIndex = new Map<string, number>();
-  private readonly activePromptQueueingSupported = true;
-
   reset(): void {
     this.sessionResponseIndex.clear();
     this.pendingPrompt = false;
@@ -475,10 +457,6 @@ export class PlanModeMockBackend implements Backend {
 
   async abortSession(_sessionId: string): Promise<void> {
     // No-op
-  }
-
-  supportsActivePromptQueueing(): boolean {
-    return this.activePromptQueueingSupported;
   }
 
   async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {

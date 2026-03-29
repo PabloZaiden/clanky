@@ -213,8 +213,9 @@ export const PendingPromptRequestSchema = z.object({
 
 /**
  * Schema for set pending - POST /api/loops/:id/pending
- * At least one of message or model should be provided, but we allow the
- * endpoint to handle that logic. Schema just validates structure.
+ * Queueing is no longer supported. The endpoint accepts the legacy
+ * `immediate` field for validation/backward compatibility, but callers must
+ * send `true` or omit it entirely.
  */
 export const SetPendingRequestSchema = z.object({
   message: z.string().optional(),

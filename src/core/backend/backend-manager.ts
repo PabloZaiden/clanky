@@ -66,7 +66,7 @@ class BackendManager {
    * Static capabilities exposed to the status endpoint.
    */
   private getAgentCapabilities(_settings: ServerSettings): string[] {
-    return ["createSession", "sendPromptAsync", "abortSession", "queueActivePrompt", "subscribeToEvents", "models"];
+    return ["createSession", "sendPromptAsync", "abortSession", "subscribeToEvents", "models"];
   }
 
   /**

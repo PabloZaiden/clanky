@@ -1702,8 +1702,8 @@ describe("prompt tab", () => {
     await user.click(getByText("Prompt"));
 
     await waitFor(() => {
-      expect(getByText("Queued Message")).toBeTruthy();
-      // The pending prompt text appears both in the Prompt tab <pre> and in the LoopActionBar
+      expect(getByText("Next Message")).toBeTruthy();
+      // The pending prompt text appears in the Prompt tab <pre>
       const matches = document.querySelectorAll("pre");
       const pendingPre = Array.from(matches).find(
         (el) => el.textContent === "Please also fix the tests",
@@ -1723,7 +1723,7 @@ describe("prompt tab", () => {
     await user.click(getByText("Prompt"));
 
     await waitFor(() => {
-      expect(getByText(/Use the action bar/)).toBeTruthy();
+      expect(getByText(/Stop the current run before sending a new message/)).toBeTruthy();
     });
   });
 
@@ -1749,7 +1749,7 @@ describe("prompt tab", () => {
     await user.click(getByText("Prompt"));
 
     await waitFor(() => {
-      expect(getByText(/Messages can only be queued/)).toBeTruthy();
+      expect(getByText(/Use the action bar to send the next message or restart/)).toBeTruthy();
     });
   });
 });

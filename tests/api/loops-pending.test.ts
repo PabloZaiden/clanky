@@ -616,7 +616,7 @@ describe("POST /api/loops/:id/pending", () => {
     }
   });
 
-  test("POST with immediate: false queues for next iteration", async () => {
+  test("POST with immediate: false rejects backend queueing", async () => {
     const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
     try {
       const createRes = await fetch(`${baseUrl}/api/loops`, {
@@ -646,12 +646,10 @@ describe("POST /api/loops/:id/pending", () => {
           immediate: false,
         }),
       });
-      expect(pendingRes.status).toBe(200);
-
-      // Verify the pending message was stored
-      const loopRes = await fetch(`${baseUrl}/api/loops/${loopId}`);
-      const loopData = await loopRes.json();
-      expect(loopData.state.pendingPrompt).toBe("Queued for later");
+      expect(pendingRes.status).toBe(409);
+      const body = await pendingRes.json();
+      expect(body.error).toBe("queue_not_supported");
+      expect(body.message).toContain("Stop the loop first");
 
       await fetch(`${baseUrl}/api/loops/${loopId}/stop`, { method: "POST" });
     } finally {

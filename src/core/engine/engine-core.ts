@@ -213,9 +213,8 @@ export class LoopEngine {
 
   /**
    * Inject pending prompt and/or model immediately.
-   * When the backend supports it, running loops stay on the active session and
-   * pick up the queued values on the next iteration without interrupting the
-   * current turn. Otherwise this falls back to aborting the current iteration.
+   * Running loops abort the current iteration so the replacement values are
+   * applied on the next iteration without resetting the conversation history.
    *
    * The session is preserved (conversation history maintained), only the current
    * AI processing is interrupted.
@@ -253,11 +252,6 @@ export class LoopEngine {
       return;
     }
 
-    if (this.canQueuePendingInputOnActiveSession()) {
-      this.emitLog("info", "Queued pending values for the next iteration on the active ACP session");
-      return;
-    }
-
     // Mark that we're doing an injection abort (not a user stop)
     this.injectionPending = true;
 
@@ -272,28 +266,8 @@ export class LoopEngine {
     }
   }
 
-  private supportsActivePromptQueueing(): boolean {
-    return this.backend.supportsActivePromptQueueing?.() ?? false;
-  }
-
-  private hasPendingInputQueued(): boolean {
-    return this.loop.state.pendingPrompt !== undefined || this.loop.state.pendingModel !== undefined;
-  }
-
-  private canQueuePendingInputOnActiveSession(): boolean {
-    return this.isLoopRunning && this.sessionId !== null && this.supportsActivePromptQueueing() && this.hasPendingInputQueued();
-  }
-
-  private shouldContinueWithQueuedPendingInput(): boolean {
-    return this.sessionId !== null && this.supportsActivePromptQueueing() && this.hasPendingInputQueued();
-  }
-
   private shouldContinueWithPendingChatInput(): boolean {
     return this.isChatMode && this.loop.state.pendingPrompt !== undefined;
-  }
-
-  private shouldBypassMaxIterationsForQueuedPendingInput(): boolean {
-    return this.loop.state.status === "planning" && this.shouldContinueWithQueuedPendingInput();
   }
 
   private continueWithAbortFallbackInjection(errorMessage?: string): boolean {
@@ -560,11 +534,10 @@ export class LoopEngine {
   /**
    * Inject plan feedback immediately.
    *
-   * If the loop is actively running an iteration and the backend supports
-   * queued active-session prompts, the current turn is allowed to finish and the
-   * feedback is consumed on the next iteration of the same session. Otherwise
-   * it falls back to aborting the current turn. If the loop is idle (e.g., plan
-   * was already ready), starts a new plan iteration as a fire-and-forget operation.
+   * If the loop is actively running an iteration, the current turn is interrupted
+   * so the feedback is applied on the next iteration. If the loop is idle
+   * (e.g., plan was already ready), starts a new plan iteration as a
+   * fire-and-forget operation.
    *
    * The caller (LoopManager.sendPlanFeedback) is responsible for:
    * - Incrementing feedbackRounds and resetting isPlanReady before calling this
@@ -587,11 +560,6 @@ export class LoopEngine {
     });
 
     if (this.isLoopRunning) {
-      if (this.canQueuePendingInputOnActiveSession()) {
-        this.emitLog("info", "Queued plan feedback for the next iteration on the active ACP session");
-        return;
-      }
-
       // Loop is actively running an iteration — inject by aborting current processing.
       // The runLoop() while-loop detects injectionPending after abort, resets the
       // flags, and continues to the next iteration which picks up pendingPrompt.
@@ -673,8 +641,8 @@ export class LoopEngine {
     if (this.isLoopRunning) {
       await this.triggerPersistence();
 
-      // Chat follow-ups should interrupt the active turn instead of relying on
-      // ACP-side queueing so the new user message is not stranded behind a
+      // Chat follow-ups should interrupt the active turn instead of leaving
+      // the new user message stranded behind a
       // long-running or stuck generation.
       this.injectionPending = true;
 
@@ -686,7 +654,7 @@ export class LoopEngine {
           markAborted: true,
         });
       } else {
-        this.emitLog("info", "Chat message queued while the turn is still starting - it will run next");
+        this.emitLog("info", "Chat message saved while the turn is still starting - it will run next");
       }
     } else {
       // Loop is idle (previous turn completed) — make sure any prior interrupt
@@ -1117,14 +1085,6 @@ export class LoopEngine {
           return;
         }
 
-        if (this.shouldContinueWithQueuedPendingInput()) {
-          if (!this.shouldBypassMaxIterationsForQueuedPendingInput() && await this.hasReachedMaxIterations()) {
-            return;
-          }
-          this.emitLog("debug", "Queued pending input detected after iteration - continuing on the active ACP session");
-          continue;
-        }
-
         // Check max iterations
         if (await this.hasReachedMaxIterations()) {
           return;
@@ -1198,16 +1158,6 @@ export class LoopEngine {
       return false;
     }
 
-    if (this.shouldContinueWithQueuedPendingInput()) {
-      this.aborted = false;
-      this.emitLog("info", "Current turn completed with queued input pending - continuing on the active ACP session");
-      this.updateState({
-        consecutiveErrors: undefined,
-        completedAt: undefined,
-      });
-      return false;
-    }
-
     this.emitLog("info", "Stop pattern detected - loop completed successfully", {
       totalIterations: this.loop.state.currentIteration,
     });
@@ -1253,7 +1203,6 @@ export class LoopEngine {
    * Always returns true (loop should exit).
    */
   private async handlePlanReadyOutcome(result: IterationResult): Promise<boolean> {
-    const shouldContinueWithQueuedInput = this.shouldContinueWithQueuedPendingInput();
     this.emitLog("info", "Plan ready - waiting for user feedback or acceptance", {
       iteration: this.loop.state.currentIteration,
     });
@@ -1276,23 +1225,18 @@ export class LoopEngine {
     // context from leaking into subsequent plan feedback prompts).
     if (this.loop.state.planMode) {
       log.trace(`[LoopEngine] runLoop: Before updateState, isPlanReady:`, this.loop.state.planMode.isPlanReady);
-      this.updateState({
-        planMode: {
-          ...this.loop.state.planMode,
-          planContent,
-          isPlanReady: shouldContinueWithQueuedInput ? false : this.loop.state.planMode.isPlanReady,
-        },
-        consecutiveErrors: undefined,
-      });
+        this.updateState({
+          planMode: {
+            ...this.loop.state.planMode,
+            planContent,
+            isPlanReady: this.loop.state.planMode.isPlanReady,
+          },
+          consecutiveErrors: undefined,
+        });
       log.trace(`[LoopEngine] runLoop: After updateState, isPlanReady:`, this.loop.state.planMode?.isPlanReady);
     } else {
       // Even without planMode state, clear the error tracker on success
       this.updateState({ consecutiveErrors: undefined });
-    }
-
-    if (shouldContinueWithQueuedInput) {
-      this.emitLog("info", "Plan feedback is queued - continuing on the active ACP session");
-      return false;
     }
 
     // Emit plan ready event

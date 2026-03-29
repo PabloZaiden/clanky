@@ -758,7 +758,7 @@ describe("Workspace API Integration", () => {
         expect(status).toHaveProperty("provider");
         expect(status).toHaveProperty("transport");
         expect(status).toHaveProperty("capabilities");
-        expect(status.capabilities).toContain("queueActivePrompt");
+        expect(status.capabilities).not.toContain("queueActivePrompt");
       });
 
       test("returns 404 for non-existent workspace", async () => {

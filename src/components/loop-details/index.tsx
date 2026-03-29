@@ -6,7 +6,14 @@ import { useMemo } from "react";
 import { useLoop, useLoopPortForwards, useMarkdownPreference, useToast } from "../../hooks";
 import { Button, EditIcon, getStatusBadgeVariant, StatusBadge } from "../common";
 import { LoopActionBar } from "../LoopActionBar";
-import { getStatusLabel, getPlanningStatusLabel, isLoopActive, canSendTerminalFollowUp, getEntityLabel } from "../../utils";
+import {
+  getStatusLabel,
+  getPlanningStatusLabel,
+  isLoopActive,
+  isLoopGenerating,
+  canSendTerminalFollowUp,
+  getEntityLabel,
+} from "../../utils";
 import type { TabId } from "./types";
 import { tabs, formatDateTime } from "./types";
 import { useTabState } from "./use-tab-state";
@@ -44,7 +51,7 @@ export function LoopDetails({
   const {
     loop, loading, error, messages, toolCalls, logs, gitChangeCounter, isChatMode,
     accept, push, updateBranch, remove, purge, markMerged,
-    stopLoop, setPending, clearPending, sendChatMessage, sendFollowUp, convertChatToLoop,
+    stopLoop, setPending, sendChatMessage, sendFollowUp, convertChatToLoop,
     getDiff, getPlan, getStatusFile, getPullRequestDestination,
     sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan,
     addressReviewComments, update, connectViaSsh,
@@ -118,6 +125,7 @@ export function LoopDetails({
   const isPlanning = state.status === "planning" && !isChatMode;
   const canTerminalFollowUp = canSendTerminalFollowUp(state.status, state.reviewMode?.addressable);
   const isPlanReady = loop.state.planMode?.isPlanReady ?? false;
+  const isGenerating = isLoopGenerating(loop);
   const feedbackRounds = loop.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = isChatMode ? tabs.filter((t) => t.id !== "prompt" && t.id !== "plan") : tabs;
@@ -240,20 +248,19 @@ export function LoopDetails({
 
       {showActionBar && (
         <LoopActionBar
-          mode={config.mode} isPlanning={isPlanning}
-          currentModel={config.model} pendingModel={state.pendingModel} pendingPrompt={state.pendingPrompt}
+          mode={config.mode} isPlanning={isPlanning} isGenerating={isGenerating}
+          currentModel={config.model}
           models={models} modelsLoading={modelsLoading}
           requireMessage={canTerminalFollowUp}
           submitLabel={canTerminalFollowUp ? (isChatMode ? "Send" : "Restart") : undefined}
           onStop={isActive || isPlanning ? stopLoop : undefined}
-          onQueuePending={async (options) => {
+          onSubmit={async (options) => {
             if (isPlanning) { if (options.message) { await sendPlanFeedback(options.message, options.attachments); return true; } return false; }
             if (canTerminalFollowUp) { if (options.message) return await sendFollowUp(options.message, options.model, options.attachments); return false; }
             if (isChatMode) { if (options.message) return await sendChatMessage(options.message, options.model, options.attachments); return false; }
             const result = await setPending(options);
             return result.success;
           }}
-          onClearPending={async () => await clearPending()}
         />
       )}
 

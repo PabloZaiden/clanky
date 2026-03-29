@@ -524,9 +524,7 @@ describe("Chat API Integration", () => {
 
     test("stops the active chat turn before accepting a follow-up message", async () => {
       let abortCalls = 0;
-      const backend = new NeverCompletingMockBackend({
-        supportsActivePromptQueueing: true,
-      });
+      const backend = new NeverCompletingMockBackend();
       backend.abortSession = async (): Promise<void> => {
         abortCalls += 1;
       };
