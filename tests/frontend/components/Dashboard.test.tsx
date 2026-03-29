@@ -814,6 +814,21 @@ describe("app settings modal", () => {
       expect(getByText("App Settings")).toBeTruthy();
     });
   });
+
+  test("renders the log level dropdown with padded select styling", async () => {
+    const { getByLabelText, getByTitle, user } = renderWithUser(<Dashboard />);
+
+    await waitFor(() => {
+      expect(getByTitle("App Settings")).toBeTruthy();
+    });
+
+    await user.click(getByTitle("App Settings"));
+
+    const logLevelSelect = await waitFor(() => getByLabelText("Log Level"));
+
+    expect(logLevelSelect).toHaveClass("px-3");
+    expect(logLevelSelect).toHaveClass("py-2");
+  });
 });
 
 // ─── Create workspace modal ─────────────────────────────────────────────────
