@@ -282,9 +282,17 @@ export class NeverCompletingMockBackend implements Backend {
   private directory = "";
   private readonly sessions = new Map<string, AgentSession>();
   private readonly models: MockModelInfo[];
+  private readonly hangingTimers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(options: NeverCompletingMockBackendOptions = {}) {
     this.models = options.models ?? [defaultTestModel];
+  }
+
+  private clearHangingTimers(): void {
+    for (const timer of this.hangingTimers) {
+      clearTimeout(timer);
+    }
+    this.hangingTimers.clear();
   }
 
   async connect(config: BackendConnectionConfig, _signal?: AbortSignal): Promise<void> {
@@ -293,6 +301,7 @@ export class NeverCompletingMockBackend implements Backend {
   }
 
   async disconnect(): Promise<void> {
+    this.clearHangingTimers();
     this.connected = false;
     this.directory = "";
   }
@@ -324,18 +333,23 @@ export class NeverCompletingMockBackend implements Backend {
   }
 
   async abortSession(_sessionId: string): Promise<void> {
-    // No-op
+    this.clearHangingTimers();
   }
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
-    const { stream, push } = createEventStream<AgentEvent>();
+    const { stream, push, end } = createEventStream<AgentEvent>();
 
-    (async () => {
-      push({ type: "message.start", messageId: `msg-${Date.now()}` });
-      push({ type: "message.delta", content: "Still working..." });
-      // Never end the stream - keep loop running forever
-      await new Promise((resolve) => setTimeout(resolve, 100000));
-    })();
+    push({ type: "message.start", messageId: `msg-${Date.now()}` });
+    push({ type: "message.delta", content: "Still working..." });
+
+    const timer = setTimeout(() => {
+      this.hangingTimers.delete(timer);
+      end();
+    }, 100000);
+    this.hangingTimers.add(timer);
+    if (typeof timer === "object" && "unref" in timer && typeof timer.unref === "function") {
+      timer.unref();
+    }
 
     return stream;
   }
@@ -369,7 +383,7 @@ export class NeverCompletingMockBackend implements Backend {
   }
 
   abortAllSubscriptions(): void {
-    // No-op
+    this.clearHangingTimers();
   }
 
   async getModels(_directory: string): Promise<MockModelInfo[]> {

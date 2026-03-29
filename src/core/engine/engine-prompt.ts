@@ -27,6 +27,7 @@ export interface PromptBuildContext {
 
 const MAX_CHAT_HISTORY_REPLAY_MESSAGES = 100;
 const MAX_CHAT_HISTORY_REPLAY_CHARACTERS = 100_000;
+const CHAT_HISTORY_REPLAY_TRUNCATION_NOTICE = "\n[message truncated for replay]";
 
 function buildPromptParts(text: string, attachments: MessageImageAttachment[]): PromptInput["parts"] {
   return [
@@ -48,49 +49,80 @@ function consumePendingOrInitialAttachments(ctx: PromptBuildContext): MessageIma
   return ctx.consumeInitialPromptAttachments();
 }
 
-function formatChatTranscriptMessage(message: LoopState["messages"][number]): string {
+function formatChatTranscriptMessage(
+  message: LoopState["messages"][number],
+  maxCharacters = Number.POSITIVE_INFINITY,
+): string {
   const speaker = message.role === "user" ? "User" : "Assistant";
+  const prefix = `${speaker}:\n`;
   const content = message.content.trim();
   const attachmentSummary = message.attachments?.length
-    ? `\n[${message.attachments.length} image attachment${message.attachments.length === 1 ? "" : "s"} included with this message]`
+    ? `\n[${message.attachments.length} image attachment${message.attachments.length === 1 ? "" : "s"} were included with this message in the original chat. Historical replay does not re-send their image data.]`
     : "";
-  return `${speaker}:\n${content}${attachmentSummary}`;
+  const body = `${content}${attachmentSummary}`;
+  const formatted = `${prefix}${body}`;
+
+  if (formatted.length <= maxCharacters) {
+    return formatted;
+  }
+
+  if (maxCharacters <= 0) {
+    return "";
+  }
+
+  const maxBodyCharacters = maxCharacters - prefix.length - CHAT_HISTORY_REPLAY_TRUNCATION_NOTICE.length;
+  if (maxBodyCharacters <= 0) {
+    return `${prefix}${CHAT_HISTORY_REPLAY_TRUNCATION_NOTICE}`.slice(0, maxCharacters);
+  }
+
+  const truncatedBody = body.slice(0, maxBodyCharacters).trimEnd();
+  return `${prefix}${truncatedBody}${CHAT_HISTORY_REPLAY_TRUNCATION_NOTICE}`;
 }
 
 function selectMessagesForReplay(messages: LoopState["messages"]): {
-  transcriptMessages: LoopState["messages"];
+  transcriptMessages: string[];
   omittedCount: number;
 } {
   const normalizedMessages = messages.filter((message) => {
     return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0;
   });
-  const selected: LoopState["messages"] = [];
+  const selected: string[] = [];
   let totalCharacters = 0;
+  let includedCount = 0;
 
   for (let index = normalizedMessages.length - 1; index >= 0; index--) {
     const message = normalizedMessages[index]!;
-    const formatted = formatChatTranscriptMessage(message);
     const wouldExceedMessageLimit = selected.length >= MAX_CHAT_HISTORY_REPLAY_MESSAGES;
-    const wouldExceedCharacterLimit =
-      selected.length > 0 && totalCharacters + formatted.length > MAX_CHAT_HISTORY_REPLAY_CHARACTERS;
-    if (wouldExceedMessageLimit || wouldExceedCharacterLimit) {
+    const remainingCharacters = MAX_CHAT_HISTORY_REPLAY_CHARACTERS - totalCharacters;
+    if (wouldExceedMessageLimit || remainingCharacters <= 0) {
       break;
     }
 
-    selected.unshift(message);
+    const fullFormatted = formatChatTranscriptMessage(message);
+    const formatted = formatChatTranscriptMessage(message, remainingCharacters);
+    if (formatted.length === 0) {
+      break;
+    }
+
+    selected.unshift(formatted);
     totalCharacters += formatted.length;
+    includedCount++;
+
+    if (formatted.length < fullFormatted.length) {
+      break;
+    }
   }
 
   return {
     transcriptMessages: selected,
-    omittedCount: normalizedMessages.length - selected.length,
+    omittedCount: normalizedMessages.length - includedCount,
   };
 }
 
 function buildChatHistoryReplayText(ctx: PromptBuildContext, errorContext: string): string {
   const { transcriptMessages, omittedCount } = selectMessagesForReplay(ctx.state.messages);
   const transcript = transcriptMessages.length > 0
-    ? transcriptMessages.map(formatChatTranscriptMessage).join("\n\n")
+    ? transcriptMessages.join("\n\n")
     : `User:\n${ctx.config.prompt.trim() || "(no prior chat transcript was persisted)"}`;
   const truncationNotice = omittedCount > 0
     ? `\nOnly the most recent ${transcriptMessages.length} persisted messages are included here because older conversation history was trimmed for replay.\n`
