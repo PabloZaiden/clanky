@@ -41,7 +41,7 @@ export function LoopDetails({
   const {
     loop, loading, error, messages, toolCalls, logs, gitChangeCounter, isChatMode,
     accept, push, updateBranch, remove, purge, markMerged,
-    setPending, clearPending, sendChatMessage, sendFollowUp,
+    stopLoop, setPending, clearPending, sendChatMessage, sendFollowUp,
     getDiff, getPlan, getStatusFile, getPullRequestDestination,
     sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan,
     addressReviewComments, update, connectViaSsh,
@@ -210,6 +210,7 @@ export function LoopDetails({
           models={models} modelsLoading={modelsLoading}
           requireMessage={canTerminalFollowUp}
           submitLabel={canTerminalFollowUp ? (isChatMode ? "Send" : "Restart") : undefined}
+          onStop={isActive || isPlanning ? async () => await stopLoop() : undefined}
           onQueuePending={async (options) => {
             if (isPlanning) { if (options.message) { await sendPlanFeedback(options.message, options.attachments); return true; } return false; }
             if (canTerminalFollowUp) { if (options.message) return await sendFollowUp(options.message, options.model, options.attachments); return false; }

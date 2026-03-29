@@ -54,6 +54,8 @@ export interface UseLoopResult {
   update: (request: UpdateLoopRequest) => Promise<boolean>;
   /** Delete the loop */
   remove: () => Promise<boolean>;
+  /** Stop the active loop without deleting it */
+  stopLoop: () => Promise<boolean>;
   /** Accept (merge) the loop's changes */
   accept: () => Promise<AcceptLoopResult>;
   /** Push the loop's branch to remote */

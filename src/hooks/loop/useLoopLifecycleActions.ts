@@ -1,11 +1,12 @@
 /**
  * Loop lifecycle actions for the useLoop hook.
- * Handles CRUD and state-transition operations: update, remove, discard, purge, markMerged.
+ * Handles CRUD and state-transition operations: update, remove, stop, discard, purge, markMerged.
  */
 
 import { useCallback } from "react";
 import {
   deleteLoopApi,
+  stopLoopApi,
   discardLoopApi,
   purgeLoopApi,
   markMergedApi,
@@ -20,6 +21,7 @@ const log = createLogger("useLoop");
 export interface UseLoopLifecycleActionsResult {
   update: (request: UpdateLoopRequest) => Promise<boolean>;
   remove: () => Promise<boolean>;
+  stopLoop: () => Promise<boolean>;
   discard: () => Promise<boolean>;
   purge: () => Promise<boolean>;
   markMerged: () => Promise<boolean>;
@@ -105,6 +107,32 @@ export function useLoopLifecycleActions(
     }
   }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError, setLoop]);
 
+  const stopLoop = useCallback(async (): Promise<boolean> => {
+    const actionLoopId = loopId;
+    const staleAction = ignoreStaleLoopAction("stopLoop", actionLoopId, false);
+    if (staleAction !== null) {
+      return staleAction;
+    }
+    log.info("Stopping loop", { loopId: actionLoopId });
+    try {
+      await stopLoopApi(actionLoopId);
+      await refresh();
+      if (!isActiveLoop(actionLoopId)) {
+        return false;
+      }
+      log.info("Loop stopped", { loopId: actionLoopId });
+      return true;
+    } catch (err) {
+      const staleError = ignoreStaleLoopError("stopLoop", actionLoopId, false, err);
+      if (staleError !== null) {
+        return staleError;
+      }
+      log.error("Failed to stop loop", { loopId: actionLoopId, error: String(err) });
+      setError(String(err));
+      return false;
+    }
+  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
+
   const discard = useCallback(async (): Promise<boolean> => {
     const actionLoopId = loopId;
     const staleAction = ignoreStaleLoopAction("discard", actionLoopId, false);
@@ -183,5 +211,5 @@ export function useLoopLifecycleActions(
     }
   }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
 
-  return { update, remove, discard, purge, markMerged };
+  return { update, remove, stopLoop, discard, purge, markMerged };
 }

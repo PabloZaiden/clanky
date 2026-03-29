@@ -1,5 +1,5 @@
 /**
- * Loop lifecycle actions: discard, delete, purge, generate title.
+ * Loop lifecycle actions: stop, discard, delete, purge, generate title.
  */
 
 import type { GenerateLoopTitleRequest, GenerateLoopTitleResponse } from "../../types";
@@ -12,6 +12,13 @@ export interface PurgeArchivedLoopsResult {
   purgedCount: number;
   purgedLoopIds: string[];
   failures: Array<{ loopId: string; error: string }>;
+}
+
+/**
+ * Stop an active loop without deleting it.
+ */
+export async function stopLoopApi(loopId: string): Promise<boolean> {
+  return apiAction(`/api/loops/${loopId}/stop`, "POST", "Stop loop");
 }
 
 /**

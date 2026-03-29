@@ -29,6 +29,7 @@ export {
   deleteLoopPortForwardApi,
   listLoopPortForwardsApi,
   updateBranchApi,
+  stopLoopApi,
   discardLoopApi,
   deleteLoopApi,
   purgeLoopApi,

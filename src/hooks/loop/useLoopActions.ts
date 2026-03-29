@@ -1,7 +1,7 @@
 /**
  * Action callbacks for the useLoop hook.
  * Thin compositor that aggregates focused sub-hooks by domain:
- * - useLoopLifecycleActions – update, remove, discard, purge, markMerged
+ * - useLoopLifecycleActions – update, remove, stop, discard, purge, markMerged
  * - useLoopGitActions       – accept, push, updateBranch
  * - useLoopPlanActions      – sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan
  * - useLoopPendingActions   – setPendingPrompt, clearPendingPrompt, setPending, clearPending
@@ -42,6 +42,7 @@ export interface UseLoopActionsParams {
 export interface UseLoopActionsResult {
   update: (request: UpdateLoopRequest) => Promise<boolean>;
   remove: () => Promise<boolean>;
+  stopLoop: () => Promise<boolean>;
   accept: () => Promise<AcceptLoopResult>;
   push: () => Promise<PushLoopResult>;
   updateBranch: () => Promise<PushLoopResult>;
