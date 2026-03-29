@@ -970,8 +970,10 @@ describe("LogViewer", () => {
       expect(groups).toHaveLength(3);
 
       groups.forEach((group) => {
-        expect(group.textContent ?? "").toMatch(/\d{2}:\d{2}/);
-        expect(group.textContent ?? "").not.toMatch(/\b\d{2}:\d{2}:\d{2}\b/);
+        const timeEl = group.querySelector("time");
+        expect(timeEl).not.toBeNull();
+        const timestampText = timeEl?.textContent ?? "";
+        expect(timestampText).toMatch(/^\d{2}:\d{2}$/);
       });
     });
   });

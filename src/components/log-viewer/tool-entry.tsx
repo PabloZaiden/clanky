@@ -170,9 +170,9 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
   return (
     <div className={`group py-1 ${spacingClass}`}>
       {showHeader && (
-        <div className="text-gray-500 text-xs mb-0.5">
+        <time className="text-gray-500 text-xs mb-0.5 block" dateTime={timestamp}>
           {formatTime(timestamp)}
-        </div>
+        </time>
       )}
       <div className="min-w-0">
         {tool.input != null ? (

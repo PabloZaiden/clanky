@@ -12,9 +12,9 @@ export function MessageEntry({ data: msg, showHeader, spacingClass, index }: Mes
   return (
     <div key={`msg-${msg.id}-${index}`} className={`group ${spacingClass}`}>
       {showHeader && (
-        <div className="text-gray-500 text-xs mb-0.5">
+        <time className="text-gray-500 text-xs mb-0.5 block" dateTime={msg.timestamp}>
           {formatTime(msg.timestamp)}
-        </div>
+        </time>
       )}
       <div className="min-w-0 space-y-2">
         <div className="whitespace-pre-wrap break-words">
