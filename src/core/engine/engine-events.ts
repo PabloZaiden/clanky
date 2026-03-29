@@ -70,11 +70,15 @@ export function persistLoopMessage(
 ): PersistedMessage[] {
   const existingIndex = messages.findIndex((m) => m.id === message.id);
   if (existingIndex >= 0) {
+    const existing = messages[existingIndex]!;
     messages[existingIndex] = {
       id: message.id,
       role: message.role,
       content: message.content,
-      attachments: message.attachments,
+      attachments:
+        message.attachments === undefined
+          ? existing.attachments
+          : message.attachments,
       timestamp: message.timestamp,
     };
   } else {

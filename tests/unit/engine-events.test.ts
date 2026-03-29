@@ -30,4 +30,32 @@ describe("persistLoopMessage", () => {
       timestamp: message.timestamp,
     }]);
   });
+
+  test("preserves persisted attachments when updating a message without attachments", () => {
+    const originalMessage: MessageData = {
+      id: "msg-1",
+      role: "user",
+      content: "Please inspect this screenshot",
+      attachments: [sampleAttachment],
+      timestamp: new Date().toISOString(),
+    };
+
+    const updatedMessage: MessageData = {
+      id: "msg-1",
+      role: "user",
+      content: "Please inspect this screenshot again",
+      timestamp: new Date().toISOString(),
+    };
+
+    const persisted = persistLoopMessage([], originalMessage);
+    const updatedPersisted = persistLoopMessage(persisted, updatedMessage);
+
+    expect(updatedPersisted).toEqual([{
+      id: "msg-1",
+      role: "user",
+      content: "Please inspect this screenshot again",
+      attachments: [sampleAttachment],
+      timestamp: updatedMessage.timestamp,
+    }]);
+  });
 });

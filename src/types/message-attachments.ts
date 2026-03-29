@@ -1,5 +1,5 @@
 /**
- * Shared transient image attachment types and limits.
+ * Shared image attachment types and limits.
  *
  * Attachments are passed from the browser to ACP as inline image data and may
  * be persisted with loop messages so refreshed log views can still render them.
