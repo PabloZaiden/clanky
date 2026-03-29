@@ -405,7 +405,9 @@ export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
 
 /**
  * Response from POST /api/loops/:id/chat endpoint.
- * Returns immediately after injection — does not wait for AI response.
+ * Returns after the backend has safely accepted the message and coordinated
+ * any required chat-turn restart. It does not wait for the AI response to
+ * finish streaming.
  * Uses discriminated union for type-safe success/error handling.
  */
 export type SendChatMessageResponse =

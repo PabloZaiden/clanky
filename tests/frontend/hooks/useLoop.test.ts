@@ -9,7 +9,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { createLoop, createLoopWithStatus, createSshSession } from "../helpers/factories";
+import { createLoop, createLoopWithStatus, createPersistedMessage, createSshSession } from "../helpers/factories";
 import { useLoop } from "@/hooks/useLoop";
 import type { AcceptPlanResult } from "@/hooks/loopActions";
 import type { Loop } from "@/types/loop";
@@ -89,6 +89,40 @@ describe("initial fetch", () => {
     await waitForLoad(result);
 
     expect(result.current.error).toBeTruthy();
+  });
+
+  test("hydrates persisted user image attachments on initial load", async () => {
+    const attachment = {
+      id: "img-1",
+      filename: "screen.png",
+      mimeType: "image/png",
+      data: "ZmFrZQ==",
+      size: 1234,
+    };
+    setupLoop(createLoop({
+      config: { id: LOOP_ID },
+      state: {
+        id: LOOP_ID,
+        messages: [createPersistedMessage({
+          id: "msg-1",
+          role: "user",
+          content: "Please inspect this screenshot",
+          attachments: [attachment],
+        })],
+      },
+    }));
+
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+
+    await waitForLoad(result);
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({
+      id: "msg-1",
+      role: "user",
+      content: "Please inspect this screenshot",
+      attachments: [attachment],
+    });
   });
 });
 

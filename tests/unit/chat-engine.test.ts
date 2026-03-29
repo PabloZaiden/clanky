@@ -176,11 +176,30 @@ describe("LoopEngine - Chat Mode", () => {
     return { config, state };
   }
 
+  async function waitForChatTurnToComplete(
+    engine: LoopEngine,
+    timeoutMessage = "Timed out waiting for chat turn to complete",
+  ): Promise<void> {
+    let attempts = 0;
+    while (
+      engine.state.status === "running" ||
+      engine.state.status === "starting" ||
+      engine.state.status === "stopped"
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      attempts++;
+      if (attempts > 100) {
+        throw new Error(timeoutMessage);
+      }
+    }
+  }
+
   beforeEach(async () => {
     testDir = await mkdtemp(join(tmpdir(), "chat-engine-test-"));
-    emittedEvents = [];
+    const eventsForTest: LoopEvent[] = [];
+    emittedEvents = eventsForTest;
     emitter = new SimpleEventEmitter<LoopEvent>();
-    emitter.subscribe((event) => emittedEvents.push(event));
+    emitter.subscribe((event) => eventsForTest.push(event));
 
     const executor = new TestCommandExecutor();
     gitService = new GitService(executor);
@@ -753,14 +772,7 @@ describe("LoopEngine - Chat Mode", () => {
     await engine.injectChatMessage("Follow-up question");
 
     // Wait for the new turn to complete (fire-and-forget pattern)
-    let attempts = 0;
-    while (engine.state.currentIteration < 1 || engine.state.status === "running" || engine.state.status === "starting") {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      attempts++;
-      if (attempts > 100) {
-        throw new Error("Timed out waiting for chat turn to complete");
-      }
-    }
+    await waitForChatTurnToComplete(engine);
 
     // Should have completed the second turn
     expect(engine.state.status).toBe("completed");
@@ -773,6 +785,55 @@ describe("LoopEngine - Chat Mode", () => {
       : undefined;
     expect(secondPromptText).toContain("Follow-up question");
   }, 10000);
+
+  test("injectChatMessage while idle waits for any prior interrupt cleanup before starting the next turn", async () => {
+    const loop = createChatLoop();
+    const backend = createMockBackend([
+      "Initial response",
+      "Follow-up response",
+    ]);
+    mockBackend = backend;
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    await engine.start();
+    expect(engine.state.status).toBe("completed");
+    expect(backend.sentPrompts).toHaveLength(1);
+
+    const internalEngine = engine as unknown as {
+      activeSessionInterrupt: Promise<void> | null;
+    };
+
+    let releaseInterrupt: (() => void) | undefined;
+    internalEngine.activeSessionInterrupt = new Promise<void>((resolve) => {
+      releaseInterrupt = resolve;
+    });
+
+    let injectResolved = false;
+    const injectPromise = engine.injectChatMessage("Follow-up after cleanup").then(() => {
+      injectResolved = true;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(injectResolved).toBe(false);
+    expect(backend.sentPrompts).toHaveLength(1);
+
+    releaseInterrupt?.();
+    await injectPromise;
+    await waitForChatTurnToComplete(
+      engine,
+      "Timed out waiting for engine to become idle after injected chat turn",
+    );
+    expect(injectResolved).toBe(true);
+    expect(engine.state.status).toBe("completed");
+    expect(backend.sentPrompts).toHaveLength(2);
+  });
 
   test("injectChatMessage with model override applies the model", async () => {
     const loop = createChatLoop();
@@ -800,14 +861,7 @@ describe("LoopEngine - Chat Mode", () => {
     });
 
     // Wait for turn to complete
-    let attempts = 0;
-    while (engine.state.status === "running" || engine.state.status === "starting" || engine.state.status === "stopped") {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      attempts++;
-      if (attempts > 100) {
-        throw new Error("Timed out waiting for chat turn to complete");
-      }
-    }
+    await waitForChatTurnToComplete(engine);
 
     expect(engine.state.status).toBe("completed");
 
