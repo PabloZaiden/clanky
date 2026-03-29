@@ -20,6 +20,7 @@ type PrivateBackend = {
       emittedMessageStarts: Set<string>;
       toolPartStatus: Map<string, string>;
       reasoningTextLength: Map<string, number>;
+      pendingReasoningFallbackDeltas: Map<string, string>;
       partTypes: Map<string, string>;
       client: unknown;
       directory: string;
@@ -54,6 +55,7 @@ function createContext(sessionId = "test-session") {
     emittedMessageStarts: new Set<string>(),
     toolPartStatus: new Map<string, string>(),
     reasoningTextLength: new Map<string, number>(),
+    pendingReasoningFallbackDeltas: new Map<string, string>(),
     partTypes: new Map<string, string>(),
     client: {} as unknown,
     directory: "/tmp/test",
@@ -859,6 +861,47 @@ describe("translateEvent: message.part.delta", () => {
     emitted.push((nextDelta as { content: string }).content);
     expect(emitted.join("")).toBe("Inspecting repository carefully");
     expect(ctx.reasoningTextLength.get("reason-nondup")).toBe(31);
+  });
+
+  test("keeps fallback suppression isolated per translate context", () => {
+    const backend = getBackend();
+    const ctxA = createContext();
+    const ctxB = createContext();
+
+    const fallbackEvent = {
+      type: "message.part.updated",
+      properties: {
+        part: {
+          sessionID: "test-session",
+          type: "reasoning",
+          id: "reason-shared",
+          text: "Inspecting repository",
+        },
+      },
+    };
+    const deltaEvent = {
+      type: "message.part.delta",
+      properties: {
+        sessionID: "test-session",
+        partID: "reason-shared",
+        field: "reasoning",
+        delta: "Inspecting repository",
+      },
+    };
+
+    expect(backend.translateEvent(fallbackEvent, ctxA)).toEqual({
+      type: "reasoning.delta",
+      content: "Inspecting repository",
+    });
+    expect(backend.translateEvent(fallbackEvent, ctxB)).toEqual({
+      type: "reasoning.delta",
+      content: "Inspecting repository",
+    });
+
+    expect(backend.translateEvent(deltaEvent, ctxA)).toBeNull();
+    expect(backend.translateEvent(deltaEvent, ctxB)).toBeNull();
+    expect(ctxA.pendingReasoningFallbackDeltas.size).toBe(0);
+    expect(ctxB.pendingReasoningFallbackDeltas.size).toBe(0);
   });
 
   test("partType takes precedence over conflicting field (reasoning part with text field)", () => {
