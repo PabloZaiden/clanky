@@ -207,6 +207,141 @@ describe("LogViewer", () => {
       expect(getByText("file contents here")).toBeInTheDocument();
     });
 
+    test("renders read tool summary from filePath input", () => {
+      const tool = createToolCallData({
+        name: "read",
+        input: { filePath: "/src/file.ts" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Read /src/file.ts")).toBeInTheDocument();
+    });
+
+    test("uses readable fallback when read input has no file target", () => {
+      const tool = createToolCallData({
+        name: "read",
+        input: {},
+      });
+      const { getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Read file")).toBeInTheDocument();
+      expect(queryByText("Read read")).not.toBeInTheDocument();
+    });
+
+    test("renders edit tool summary from filePath input", () => {
+      const tool = createToolCallData({
+        name: "edit",
+        input: { filePath: "/src/test.ts", oldString: "before", newString: "after" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Edit /src/test.ts")).toBeInTheDocument();
+    });
+
+    test("renders edit tool summary from path input", () => {
+      const tool = createToolCallData({
+        name: "edit",
+        input: { path: "/src/other.ts", oldString: "before", newString: "after" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Edit /src/other.ts")).toBeInTheDocument();
+    });
+
+    test("uses readable fallback when edit input has no file target", () => {
+      const tool = createToolCallData({
+        name: "edit",
+        input: { oldString: "before", newString: "after" },
+      });
+      const { getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Edit file")).toBeInTheDocument();
+      expect(queryByText("Edit edit")).not.toBeInTheDocument();
+    });
+
+    test("renders create tool summary from filePath input", () => {
+      const tool = createToolCallData({
+        name: "create",
+        input: { filePath: "/src/new-file.ts", content: "export const value = 1;" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Create /src/new-file.ts")).toBeInTheDocument();
+    });
+
+    test("renders create tool summary from path input", () => {
+      const tool = createToolCallData({
+        name: "create",
+        input: { path: "/src/from-path.ts", content: "export const value = 1;" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Create /src/from-path.ts")).toBeInTheDocument();
+    });
+
+    test("uses readable fallback when create input has no file target", () => {
+      const tool = createToolCallData({
+        name: "create",
+        input: { content: "export const value = 1;" },
+      });
+      const { getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Create file")).toBeInTheDocument();
+      expect(queryByText("Create create")).not.toBeInTheDocument();
+    });
+
+    test("renders grep tool summary from filePath input", () => {
+      const tool = createToolCallData({
+        name: "grep",
+        input: { pattern: "needle", filePath: "/src/search.ts" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Search for 'needle' in /src/search.ts")).toBeInTheDocument();
+    });
+
+    test("renders grep tool summary from path input", () => {
+      const tool = createToolCallData({
+        name: "grep",
+        input: { pattern: "needle", path: "/src/other-search.ts" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Search for 'needle' in /src/other-search.ts")).toBeInTheDocument();
+    });
+
+    test("uses readable fallback when grep input has no file target", () => {
+      const tool = createToolCallData({
+        name: "grep",
+        input: { pattern: "needle" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Search for 'needle'")).toBeInTheDocument();
+    });
+
     test("renders unknown tool output in collapsible details", async () => {
       // For unknown tools, both input and output are collapsed under the tool summary.
       const tool = createToolCallData({
