@@ -282,9 +282,17 @@ export class NeverCompletingMockBackend implements Backend {
   private directory = "";
   private readonly sessions = new Map<string, AgentSession>();
   private readonly models: MockModelInfo[];
+  private readonly hangingTimers = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(options: NeverCompletingMockBackendOptions = {}) {
     this.models = options.models ?? [defaultTestModel];
+  }
+
+  private clearHangingTimers(): void {
+    for (const timer of this.hangingTimers) {
+      clearTimeout(timer);
+    }
+    this.hangingTimers.clear();
   }
 
   async connect(config: BackendConnectionConfig, _signal?: AbortSignal): Promise<void> {
@@ -293,6 +301,7 @@ export class NeverCompletingMockBackend implements Backend {
   }
 
   async disconnect(): Promise<void> {
+    this.clearHangingTimers();
     this.connected = false;
     this.directory = "";
   }
@@ -324,18 +333,23 @@ export class NeverCompletingMockBackend implements Backend {
   }
 
   async abortSession(_sessionId: string): Promise<void> {
-    // No-op
+    this.clearHangingTimers();
   }
 
   async subscribeToEvents(_sessionId: string): Promise<EventStream<AgentEvent>> {
-    const { stream, push } = createEventStream<AgentEvent>();
+    const { stream, push, end } = createEventStream<AgentEvent>();
 
-    (async () => {
-      push({ type: "message.start", messageId: `msg-${Date.now()}` });
-      push({ type: "message.delta", content: "Still working..." });
-      // Never end the stream - keep loop running forever
-      await new Promise((resolve) => setTimeout(resolve, 100000));
-    })();
+    push({ type: "message.start", messageId: `msg-${Date.now()}` });
+    push({ type: "message.delta", content: "Still working..." });
+
+    const timer = setTimeout(() => {
+      this.hangingTimers.delete(timer);
+      end();
+    }, 100000);
+    this.hangingTimers.add(timer);
+    if (typeof timer === "object" && "unref" in timer && typeof timer.unref === "function") {
+      timer.unref();
+    }
 
     return stream;
   }
@@ -369,7 +383,7 @@ export class NeverCompletingMockBackend implements Backend {
   }
 
   abortAllSubscriptions(): void {
-    // No-op
+    this.clearHangingTimers();
   }
 
   async getModels(_directory: string): Promise<MockModelInfo[]> {
@@ -529,6 +543,234 @@ export class PlanModeMockBackend implements Backend {
 
   async getSession(id: string): Promise<AgentSession | null> {
     return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+}
+
+interface ContextAwareSession {
+  session: AgentSession;
+  pendingPrompt?: PromptInput;
+  firstThingSaid?: string;
+  emitEmptyResponse?: boolean;
+  abortGeneration?: number;
+}
+
+/**
+ * Mock backend that simulates conversational memory per session and loses that
+ * memory on disconnect, allowing tests to verify transcript replay after
+ * stop/reconnect flows.
+ */
+export class ContextAwareMockBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, ContextAwareSession>();
+  private readonly models: MockModelInfo[];
+  private readonly emitEmptyResponseAfterAbort: boolean;
+  private readonly hangingPromptPattern?: RegExp;
+
+  constructor(options: {
+    models?: MockModelInfo[];
+    emitEmptyResponseAfterAbort?: boolean;
+    hangingPromptPattern?: RegExp;
+  } = {}) {
+    this.models = options.models ?? [defaultTestModel];
+    this.emitEmptyResponseAfterAbort = options.emitEmptyResponseAfterAbort ?? false;
+    this.hangingPromptPattern = options.hangingPromptPattern;
+  }
+
+  private extractPromptText(prompt: PromptInput): string {
+    return prompt.parts
+      .filter((part): part is Extract<PromptInput["parts"][number], { type: "text" }> => part.type === "text")
+      .map((part) => part.text)
+      .join("\n");
+  }
+
+  private extractFirstThingSaid(text: string): string | undefined {
+    const match = text.match(/The first thing I said was:\s*(.+)/i);
+    if (!match) {
+      return undefined;
+    }
+    return match[1]!.trim();
+  }
+
+  private buildResponse(session: ContextAwareSession, prompt: PromptInput): string {
+    const text = this.extractPromptText(prompt);
+    const firstThingSaid = this.extractFirstThingSaid(text);
+    if (firstThingSaid) {
+      session.firstThingSaid = session.firstThingSaid ?? firstThingSaid;
+    }
+
+    if (/what was the first thing i said\??/i.test(text)) {
+      const remembered = session.firstThingSaid ?? firstThingSaid;
+      return remembered
+        ? `The first thing you said was: ${remembered}`
+        : "I don't know what you said first.";
+    }
+
+    return "I will remember that.";
+  }
+
+  async connect(config: BackendConnectionConfig, _signal?: AbortSignal): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+    this.sessions.clear();
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `context-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, { session });
+    return session;
+  }
+
+  async sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+    const response = this.buildResponse(session, prompt);
+    return {
+      id: `msg-${Date.now()}`,
+      content: response,
+      parts: [{ type: "text", text: response }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+    session.pendingPrompt = prompt;
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {
+    const session = this.sessions.get(_sessionId);
+    if (!session) {
+      return;
+    }
+
+    session.abortGeneration = (session.abortGeneration ?? 0) + 1;
+    if (this.emitEmptyResponseAfterAbort) {
+      session.emitEmptyResponse = true;
+    }
+  }
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+
+    (async () => {
+      const session = this.sessions.get(sessionId);
+      if (!session) {
+        push({ type: "error", message: `Session not found: ${sessionId}` });
+        end();
+        return;
+      }
+
+      let attempts = 0;
+      while (!session.pendingPrompt && attempts < 100) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        attempts++;
+      }
+
+      const prompt = session.pendingPrompt;
+      session.pendingPrompt = undefined;
+      if (!prompt) {
+        push({ type: "error", message: "No prompt was queued for the session." });
+        end();
+        return;
+      }
+
+      const promptText = this.extractPromptText(prompt);
+      if (
+        this.hangingPromptPattern?.test(promptText)
+        && !/what was the first thing i said\??/i.test(promptText)
+      ) {
+        push({ type: "message.start", messageId: `msg-${Date.now()}` });
+        push({ type: "message.delta", content: "Still working..." });
+        const abortGeneration = session.abortGeneration ?? 0;
+        let attempts = 0;
+        while ((session.abortGeneration ?? 0) === abortGeneration && attempts < 10000) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          attempts++;
+        }
+        return;
+      }
+
+      if (session.emitEmptyResponse) {
+        session.emitEmptyResponse = false;
+        push({ type: "message.start", messageId: `msg-${Date.now()}` });
+        push({ type: "message.complete", content: "" });
+        end();
+        return;
+      }
+
+      const response = this.buildResponse(session, prompt);
+      push({ type: "message.start", messageId: `msg-${Date.now()}` });
+      push({ type: "message.delta", content: response });
+      push({ type: "message.complete", content: response });
+      end();
+    })();
+
+    return stream;
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {
+    // No-op for the mock.
+  }
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {
+    // No-op for the mock.
+  }
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string) {}
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    if (!this.connected) {
+      return null;
+    }
+    return { baseUrl: "http://mock-server:4096", authHeaders: {} };
+  }
+
+  abortAllSubscriptions(): void {
+    // No-op for the mock.
+  }
+
+  async getModels(_directory: string): Promise<MockModelInfo[]> {
+    return this.models;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id)?.session ?? null;
   }
 
   async deleteSession(id: string): Promise<void> {
