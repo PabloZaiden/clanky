@@ -246,11 +246,8 @@ describe("LoopManager - Chat Mode", () => {
       expect(assistantMessages[assistantMessages.length - 1]?.content).toContain("kumquat");
     });
 
-    test("recreates the session after interrupting an active chat turn so the follow-up does not inherit a stale aborted session", async () => {
-      const continuityBackend = new ContextAwareMockBackend({
-        emitEmptyResponseAfterAbort: true,
-        hangingPromptPattern: /survey the repo/i,
-      });
+    test("keeps the same session across completed chat follow-up turns", async () => {
+      const continuityBackend = new ContextAwareMockBackend();
       backendManager.setBackendForTesting(continuityBackend);
 
       const loop = await ctx.manager.createChat({
@@ -262,21 +259,13 @@ describe("LoopManager - Chat Mode", () => {
 
       await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
 
-      await ctx.manager.sendChatMessage(loop.config.id, "Please survey the repo in great detail.");
-
-      const runningStart = Date.now();
-      while (Date.now() - runningStart < 5000) {
-        const current = await ctx.manager.getLoop(loop.config.id);
-        if (current?.state.status === "running") {
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
+      const initialSessionId = (await ctx.manager.getLoop(loop.config.id))!.state.session?.id;
 
       await ctx.manager.sendChatMessage(loop.config.id, "What was the first thing I said?");
       await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"], 15000);
 
       const updated = await ctx.manager.getLoop(loop.config.id);
+      expect(updated!.state.session?.id).toBe(initialSessionId);
       const assistantMessages = (updated!.state.messages ?? []).filter((message) => message.role === "assistant");
       expect(assistantMessages[assistantMessages.length - 1]?.content).toContain("starfruit");
       expect(updated!.state.messages?.some((message) => message.role === "assistant" && message.content === "")).toBe(false);

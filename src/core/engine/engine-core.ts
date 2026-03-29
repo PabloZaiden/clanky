@@ -651,8 +651,9 @@ export class LoopEngine {
       await this.triggerPersistence();
 
       // Chat follow-ups should interrupt the active turn instead of leaving
-      // the new user message stranded behind a
-      // long-running or stuck generation.
+      // the new user message stranded behind a long-running or stuck generation.
+      // Keep the same ACP session when the provider supports cancellation so the
+      // next prompt continues the real remote conversation rather than replaying it.
       this.injectionPending = true;
 
       if (this.sessionId) {
@@ -660,7 +661,6 @@ export class LoopEngine {
           abortMessage: "Stopping active chat turn before sending the new message",
           abortWarnMessage: "Failed to stop the active chat turn before sending the new message",
           forceDisconnect: false,
-          resetSession: true,
           markAborted: true,
         });
       } else {

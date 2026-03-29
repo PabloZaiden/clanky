@@ -541,6 +541,7 @@ interface ContextAwareSession {
   pendingPrompt?: PromptInput;
   firstThingSaid?: string;
   emitEmptyResponse?: boolean;
+  abortGeneration?: number;
 }
 
 /**
@@ -647,11 +648,13 @@ export class ContextAwareMockBackend implements Backend {
   }
 
   async abortSession(_sessionId: string): Promise<void> {
-    if (!this.emitEmptyResponseAfterAbort) {
+    const session = this.sessions.get(_sessionId);
+    if (!session) {
       return;
     }
-    const session = this.sessions.get(_sessionId);
-    if (session) {
+
+    session.abortGeneration = (session.abortGeneration ?? 0) + 1;
+    if (this.emitEmptyResponseAfterAbort) {
       session.emitEmptyResponse = true;
     }
   }
@@ -688,7 +691,12 @@ export class ContextAwareMockBackend implements Backend {
       ) {
         push({ type: "message.start", messageId: `msg-${Date.now()}` });
         push({ type: "message.delta", content: "Still working..." });
-        await new Promise((resolve) => setTimeout(resolve, 100000));
+        const abortGeneration = session.abortGeneration ?? 0;
+        let attempts = 0;
+        while ((session.abortGeneration ?? 0) === abortGeneration && attempts < 10000) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          attempts++;
+        }
         return;
       }
 

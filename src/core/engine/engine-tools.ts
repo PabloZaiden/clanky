@@ -38,15 +38,20 @@ export async function processLoopAgentEvent(event: AgentEvent, ctx: IterationCon
       break;
 
     case "message.delta":
-      ctx.responseContent += event.content;
-      handleStreamingDelta(event.content, ctx, "response", toolCtx);
-      toolCtx.emit({
-        type: "loop.progress",
-        loopId: toolCtx.loopId,
-        iteration: ctx.iteration,
-        content: event.content,
-        timestamp: createTimestamp(),
-      });
+      {
+        const content = sanitizeLeadingCancellationNotice(event.content, ctx.responseContent);
+        ctx.responseContent += content;
+        handleStreamingDelta(content, ctx, "response", toolCtx);
+        if (content.length > 0) {
+          toolCtx.emit({
+            type: "loop.progress",
+            loopId: toolCtx.loopId,
+            iteration: ctx.iteration,
+            content,
+            timestamp: createTimestamp(),
+          });
+        }
+      }
       break;
 
     case "reasoning.delta":
@@ -88,6 +93,24 @@ export async function processLoopAgentEvent(event: AgentEvent, ctx: IterationCon
       });
       break;
   }
+}
+
+function sanitizeLeadingCancellationNotice(content: string, accumulatedContent: string): string {
+  if (accumulatedContent.length > 0) {
+    return content;
+  }
+
+  const prefixes = [
+    "Info: Operation cancelled by user",
+    "Operation cancelled by user",
+  ];
+  for (const prefix of prefixes) {
+    if (content.startsWith(prefix)) {
+      return content.slice(prefix.length).trimStart();
+    }
+  }
+
+  return content;
 }
 
 function handleStreamingDelta(
