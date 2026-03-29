@@ -8,7 +8,6 @@ interface ToolEntryProps {
   timestamp: string;
   showHeader: boolean;
   spacingClass: string;
-  index: number;
 }
 
 interface ToolMeta {
@@ -108,7 +107,7 @@ function RenderedContent({ output }: { output: unknown }) {
   );
 }
 
-export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHeader, spacingClass, index }: ToolEntryProps) {
+export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHeader, spacingClass }: ToolEntryProps) {
   const meta = getToolMeta(tool);
   const toolSummaryClassName = "text-[11px] italic leading-relaxed text-gray-400";
 
@@ -169,7 +168,7 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
   );
 
   return (
-    <div key={`tool-${tool.id}-${index}`} className={`group py-1 ${spacingClass}`}>
+    <div className={`group py-1 ${spacingClass}`}>
       {showHeader && (
         <div className="text-gray-500 text-xs mb-0.5">
           {formatTime(timestamp)}

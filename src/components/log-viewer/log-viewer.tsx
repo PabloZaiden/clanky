@@ -171,7 +171,6 @@ export const LogViewer = memo(function LogViewer({
                   timestamp={entry.timestamp}
                   showHeader={entry.showHeader}
                   spacingClass={spacingClass}
-                  index={index}
                 />
               );
             } else {
