@@ -41,7 +41,7 @@ export interface MessageData {
   role: "user" | "assistant";
   /** The message content (may contain markdown) */
   content: string;
-  /** Transient inline image attachments, not persisted in durable loop state */
+  /** Inline image attachments carried with the message for live updates and refresh recovery */
   attachments?: MessageImageAttachment[];
   /** ISO 8601 timestamp when the message was created */
   timestamp: string;

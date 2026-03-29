@@ -1,8 +1,8 @@
 /**
  * Shared transient image attachment types and limits.
  *
- * Attachments are passed from the browser to ACP as inline image data and are
- * intentionally not persisted in durable loop state.
+ * Attachments are passed from the browser to ACP as inline image data and may
+ * be persisted with loop messages so refreshed log views can still render them.
  */
 
 export const MESSAGE_IMAGE_ATTACHMENT_LIMIT = 3;
