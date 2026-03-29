@@ -1,6 +1,7 @@
 import type { PersistedMessage, PersistedToolCall, LoopLogEntry, PendingPlanQuestion } from "../../types/loop";
 import { LogViewer } from "../LogViewer";
 import { Button } from "../common";
+import { LogFocusModeBar } from "./log-focus-mode-bar";
 
 interface LogTabProps {
   messages: PersistedMessage[];
@@ -25,6 +26,10 @@ interface LogTabProps {
   onPlanQuestionCustomAnswersChange: (v: string[]) => void;
   planQuestionSubmitting: boolean;
   onAnswerPlanQuestion: () => void;
+  isFocusMode: boolean;
+  onEnterFocusMode: () => void;
+  onExitFocusMode: () => void;
+  applySafeAreaBottomToFocusBar?: boolean;
 }
 
 export function LogTab({
@@ -50,24 +55,40 @@ export function LogTab({
   onPlanQuestionCustomAnswersChange,
   planQuestionSubmitting,
   onAnswerPlanQuestion,
+  isFocusMode,
+  onEnterFocusMode,
+  onExitFocusMode,
+  applySafeAreaBottomToFocusBar = false,
 }: LogTabProps) {
+  const logViewerId = "logs-viewer";
+
   return (
-    <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden">
-      <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden p-4">
+    <div
+      className={
+        isFocusMode
+          ? "flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-[#1e1e1e]"
+          : "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
+      }
+    >
+      <div className={isFocusMode ? "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden px-3 pt-3" : "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden p-4"}>
         <div className={`flex min-w-0 min-h-0 flex-col ${logsCollapsed ? "flex-shrink-0" : "flex-1"}`}>
-          <button
-            onClick={() => onLogsCollapsedChange(!logsCollapsed)}
-            className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex-shrink-0 flex items-center gap-2 hover:text-gray-900 dark:hover:text-gray-100 transition-colors text-left"
-            aria-expanded={!logsCollapsed}
-            aria-controls="logs-viewer"
-          >
-            <span className="text-xs">{logsCollapsed ? "▶" : "▼"}</span>
-            <span>Logs</span>
-          </button>
+          {!isFocusMode && (
+            <button
+              onClick={() => onLogsCollapsedChange(!logsCollapsed)}
+              className="mb-2 flex-shrink-0 text-left text-sm font-semibold text-gray-700 transition-colors hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100"
+              aria-expanded={!logsCollapsed}
+              aria-controls={logViewerId}
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-xs">{logsCollapsed ? "▶" : "▼"}</span>
+                <span>Logs</span>
+              </span>
+            </button>
+          )}
           {!logsCollapsed && (
             <>
               <LogViewer
-                id="logs-viewer"
+                id={logViewerId}
                 messages={messages}
                 toolCalls={toolCalls}
                 logs={logs}
@@ -199,50 +220,89 @@ export function LogTab({
               )}
             </>
           )}
+          {isFocusMode && logsCollapsed && (
+            <div className="rounded-lg border border-dashed border-neutral-700 bg-neutral-900/70 p-4 text-sm text-neutral-300">
+              Logs are hidden. Use the focus controls below to show them again.
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Log filter and autoscroll toggles at the bottom */}
-      <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
-        <div className="flex flex-wrap items-center gap-4">
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showSystemInfo}
-              onChange={(e) => onShowSystemInfoChange(e.target.checked)}
-              className="rounded border-gray-300 dark:border-gray-600 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:text-gray-300"
-            />
-            <span>Show system info</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showReasoning}
-              onChange={(e) => onShowReasoningChange(e.target.checked)}
-              className="rounded border-gray-300 dark:border-gray-600 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:text-gray-300"
-            />
-            <span>Show reasoning</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showTools}
-              onChange={(e) => onShowToolsChange(e.target.checked)}
-              className="rounded border-gray-300 dark:border-gray-600 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:text-gray-300"
-            />
-            <span>Show tools</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(e) => onAutoScrollChange(e.target.checked)}
-              className="rounded border-gray-300 dark:border-gray-600 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:text-gray-300"
-            />
-            <span>Autoscroll</span>
-          </label>
+      {isFocusMode ? (
+        <LogFocusModeBar
+          showSystemInfo={showSystemInfo}
+          onShowSystemInfoChange={onShowSystemInfoChange}
+          showReasoning={showReasoning}
+          onShowReasoningChange={onShowReasoningChange}
+          showTools={showTools}
+          onShowToolsChange={onShowToolsChange}
+          autoScroll={autoScroll}
+          onAutoScrollChange={onAutoScrollChange}
+          logsCollapsed={logsCollapsed}
+          onLogsCollapsedChange={onLogsCollapsedChange}
+          onExitFocusMode={onExitFocusMode}
+          applySafeAreaBottom={applySafeAreaBottomToFocusBar}
+        />
+      ) : (
+        <div className="flex-shrink-0 border-t border-gray-200 p-3 dark:border-gray-700">
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showSystemInfo}
+                  onChange={(e) => onShowSystemInfoChange(e.target.checked)}
+                  className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
+                />
+                <span>Show system info</span>
+              </span>
+            </label>
+            <label className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showReasoning}
+                  onChange={(e) => onShowReasoningChange(e.target.checked)}
+                  className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
+                />
+                <span>Show reasoning</span>
+              </span>
+            </label>
+            <label className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showTools}
+                  onChange={(e) => onShowToolsChange(e.target.checked)}
+                  className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
+                />
+                <span>Show tools</span>
+              </span>
+            </label>
+            <label className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={autoScroll}
+                  onChange={(e) => onAutoScrollChange(e.target.checked)}
+                  className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
+                />
+                <span>Autoscroll</span>
+              </span>
+            </label>
+            <Button
+              type="button"
+              variant="secondary"
+              size="xs"
+              onClick={onEnterFocusMode}
+              aria-label="Enter focus mode"
+              title="Focus mode — fullscreen logs with compact controls"
+            >
+              Focus mode
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
