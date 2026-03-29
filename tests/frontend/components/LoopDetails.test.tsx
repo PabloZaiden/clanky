@@ -52,6 +52,7 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   // Actions (POST/PUT/DELETE)
   api.post("/api/loops/:id/accept", () => ({ success: true, mergeCommit: "abc123" }));
   api.post("/api/loops/:id/push", () => ({ success: true }));
+  api.post("/api/loops/:id/stop", () => ({ success: true }));
   api.delete("/api/loops/:id", () => ({ success: true }));
   api.post("/api/loops/:id/purge", () => ({ success: true }));
   api.post("/api/loops/:id/mark-merged", () => ({ success: true }));
@@ -1416,6 +1417,21 @@ describe("loop action bar", () => {
       // The LoopActionBar has a text input for messaging
       const input = container.querySelector("input[type='text']");
       expect(input).toBeTruthy();
+    });
+  });
+
+  test("shows Stop for an empty active composer and calls the stop API", async () => {
+    setupDefaultApi();
+    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Stop" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Stop" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/stop", "POST")).toHaveLength(1);
     });
   });
 
