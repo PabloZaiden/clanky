@@ -35,7 +35,7 @@ export function DeveloperSettingsSection() {
                 value={logLevel}
                 onChange={(e) => setLogLevel(e.target.value as LogLevelName)}
                 disabled={savingLogLevel}
-                className="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-neutral-800 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:border-gray-500 focus:ring-gray-500 disabled:opacity-50"
+                className="block w-full rounded-md border-gray-300 dark:border-gray-600 bg-white px-3 py-2 dark:bg-neutral-800 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:border-gray-500 focus:ring-gray-500 disabled:opacity-50"
               >
                 {availableLevels.map((option) => (
                   <option key={option.value} value={option.value}>
