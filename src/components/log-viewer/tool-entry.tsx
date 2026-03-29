@@ -63,7 +63,7 @@ function getToolMeta(tool: ToolCallData): ToolMeta {
   }
 
   if (name === "create") {
-    const path = getPathField(tool.input) ?? name;
+    const path = getPathField(tool.input) ?? "file";
     return { summary: `Create ${path}`, outputLabel: "Result", outputType: "text" };
   }
 
