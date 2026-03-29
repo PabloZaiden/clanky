@@ -13,6 +13,7 @@
 import { loopManager } from "../../core/loop-manager";
 import { backendManager } from "../../core/backend-manager";
 import { GitService } from "../../core/git-service";
+import { MissingChatHistoryError } from "../../core/loop/errors";
 import { getWorkspace, touchWorkspace } from "../../persistence/workspaces";
 import { createLogger } from "../../core/logger";
 import { isModelEnabled } from "../models";
@@ -212,7 +213,9 @@ export const loopsChatRoutes = {
 
   "/api/loops/:id/chat/convert-to-loop": {
     async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const validation = await parseAndValidate(ConvertChatToLoopRequestSchema, req);
+      const validation = await parseAndValidate(ConvertChatToLoopRequestSchema, req, {
+        allowEmptyBody: true,
+      });
       if (!validation.success) {
         return validation.response;
       }
@@ -221,6 +224,9 @@ export const loopsChatRoutes = {
         const loop = await loopManager.convertChatToLoop(req.params.id);
         return Response.json(loop);
       } catch (error) {
+        if (error instanceof MissingChatHistoryError) {
+          return errorResponse("missing_chat_history", error.message, 409);
+        }
         const errorMsg = String(error);
         if (errorMsg.includes("not found")) {
           return errorResponse("not_found", errorMsg, 404);

@@ -1070,8 +1070,6 @@ describe("Chat API Integration", () => {
 
       const convertResponse = await fetch(`${baseUrl}/api/loops/${chatId}/chat/convert-to-loop`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
       });
 
       expect(convertResponse.status).toBe(200);
@@ -1092,6 +1090,51 @@ describe("Chat API Integration", () => {
       expect(planningLoop.state.status).toBe("planning");
       expect(planningLoop.state.planMode?.isPlanReady).toBe(true);
       expect(planningLoop.state.session?.id).toBe(originalSessionId);
+    });
+
+    test("returns 409 when a completed chat has no usable history for plan generation", async () => {
+      backendManager.setBackendForTesting(createMockBackend([
+        "<promise>COMPLETE</promise>",
+      ]));
+
+      const createResponse = await fetch(`${baseUrl}/api/loops/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          prompt: "Create a temporary chat that will be scrubbed before conversion",
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const chatBody = await createResponse.json();
+      const chatId = chatBody.config.id;
+
+      await waitForCompletion(chatId);
+
+      const { loadLoop, updateLoopConfig, updateLoopState } = await import("../../src/persistence/loops");
+      const persistedChat = await loadLoop(chatId);
+      expect(persistedChat).toBeDefined();
+
+      await updateLoopConfig(chatId, {
+        ...persistedChat!.config,
+        prompt: "   ",
+      });
+      await updateLoopState(chatId, {
+        ...persistedChat!.state,
+        messages: [],
+      });
+      loopManager.resetForTesting();
+
+      const convertResponse = await fetch(`${baseUrl}/api/loops/${chatId}/chat/convert-to-loop`, {
+        method: "POST",
+      });
+
+      expect(convertResponse.status).toBe(409);
+      const errorBody = await convertResponse.json();
+      expect(errorBody.error).toBe("missing_chat_history");
+      expect(errorBody.message).toContain("no chat history");
     });
   });
 });

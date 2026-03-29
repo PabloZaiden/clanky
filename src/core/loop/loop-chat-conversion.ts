@@ -5,6 +5,7 @@ import { loadLoop, updateLoopConfig, updateLoopState } from "../../persistence/l
 import { log } from "../logger";
 import { assertValidTransition } from "../loop-state-machine";
 import type { LoopCtx } from "./context";
+import { MissingChatHistoryError } from "./errors";
 
 const CONVERTIBLE_CHAT_STATUSES = new Set<LoopStatus>(["completed", "max_iterations"]);
 
@@ -26,7 +27,7 @@ function buildConvertedPlanPrompt(loop: Loop): string {
     .filter((message) => message.content.length > 0);
 
   if (transcriptMessages.length === 0 && loop.config.prompt.trim().length === 0) {
-    throw new Error("Cannot convert chat to loop because there is no chat history to build a plan from.");
+    throw new MissingChatHistoryError();
   }
 
   const transcript = transcriptMessages.map(formatTranscriptMessage).join("\n\n");
