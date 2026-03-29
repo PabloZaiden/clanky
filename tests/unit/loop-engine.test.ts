@@ -2203,6 +2203,55 @@ describe("StopPatternDetector", () => {
         expect(thirdPromptText.text).toContain("Please add more details to the plan");
       }
     });
+
+    test("runPlanIteration clears stale interrupt flags before starting planning again", async () => {
+      const loop = createTestLoop({ maxIterations: 5, planMode: true });
+      loop.state.status = "planning";
+      loop.state.planMode = {
+        active: true,
+        feedbackRounds: 0,
+        planningFolderCleared: false,
+        isPlanReady: false,
+      };
+      loop.state.git = {
+        originalBranch: "main",
+        workingBranch: "test-a1b2c3d",
+        worktreePath: testDir,
+        commits: [],
+      };
+
+      const capturedPrompts: PromptInput[] = [];
+      const baseMock = createMockBackend(["Plan created\n<promise>PLAN_READY</promise>"]);
+      mockBackend = {
+        ...baseMock,
+        async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
+          capturedPrompts.push(prompt);
+          await baseMock.sendPromptAsync(sessionId, prompt);
+        },
+      };
+
+      const engine = new LoopEngine({
+        loop,
+        backend: mockBackend,
+        gitService,
+        eventEmitter: emitter,
+      });
+
+      const internalEngine = engine as unknown as {
+        aborted: boolean;
+        injectionPending: boolean;
+      };
+      internalEngine.aborted = true;
+      internalEngine.injectionPending = true;
+      engine.setPendingPrompt("Feedback after stale interruption");
+
+      await engine.runPlanIteration();
+
+      expect(internalEngine.aborted).toBe(false);
+      expect(internalEngine.injectionPending).toBe(false);
+      expect(capturedPrompts).toHaveLength(1);
+      expect(loop.state.planMode?.isPlanReady).toBe(true);
+    });
   });
 
   describe("session recovery", () => {
