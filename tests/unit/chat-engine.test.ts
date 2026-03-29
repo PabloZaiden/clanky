@@ -534,7 +534,7 @@ describe("LoopEngine - Chat Mode", () => {
     expect(engine.state.status).toBe("completed");
   }, 10000);
 
-  test("injectChatMessage while running preserves the active session while replacing the turn", async () => {
+  test("injectChatMessage while running recreates the session for the replacement turn", async () => {
     const loop = createChatLoop();
 
     let sendPromptAsyncCalled = false;
@@ -623,8 +623,8 @@ describe("LoopEngine - Chat Mode", () => {
 
     expect(engine.state.status).toBe("completed");
     expect(connectCount).toBe(1);
-    expect(promptSessionIds).toEqual(["session-1", "session-1"]);
-    expect(engine.state.session?.id).toBe("session-1");
+    expect(promptSessionIds).toEqual(["session-1", "session-2"]);
+    expect(engine.state.session?.id).toBe("session-2");
     expect(sentPrompts).toHaveLength(2);
     const secondPromptText = sentPrompts[1]?.parts[0]?.type === "text"
       ? sentPrompts[1].parts[0].text

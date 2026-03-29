@@ -21,7 +21,12 @@ export interface PromptBuildContext {
   updateState: (update: Partial<LoopState>) => void;
   consumeInitialPromptAttachments: () => MessageImageAttachment[];
   consumePendingPromptAttachments: () => MessageImageAttachment[];
+  shouldReplayChatHistory: () => boolean;
+  markChatHistoryReplayed: () => void;
 }
+
+const MAX_CHAT_HISTORY_REPLAY_MESSAGES = 100;
+const MAX_CHAT_HISTORY_REPLAY_CHARACTERS = 100_000;
 
 function buildPromptParts(text: string, attachments: MessageImageAttachment[]): PromptInput["parts"] {
   return [
@@ -41,6 +46,84 @@ function consumePendingOrInitialAttachments(ctx: PromptBuildContext): MessageIma
     return pendingAttachments;
   }
   return ctx.consumeInitialPromptAttachments();
+}
+
+function formatChatTranscriptMessage(message: LoopState["messages"][number]): string {
+  const speaker = message.role === "user" ? "User" : "Assistant";
+  const content = message.content.trim();
+  const attachmentSummary = message.attachments?.length
+    ? `\n[${message.attachments.length} image attachment${message.attachments.length === 1 ? "" : "s"} included with this message]`
+    : "";
+  return `${speaker}:\n${content}${attachmentSummary}`;
+}
+
+function selectMessagesForReplay(messages: LoopState["messages"]): {
+  transcriptMessages: LoopState["messages"];
+  omittedCount: number;
+} {
+  const normalizedMessages = messages.filter((message) => {
+    return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0;
+  });
+  const selected: LoopState["messages"] = [];
+  let totalCharacters = 0;
+
+  for (let index = normalizedMessages.length - 1; index >= 0; index--) {
+    const message = normalizedMessages[index]!;
+    const formatted = formatChatTranscriptMessage(message);
+    const wouldExceedMessageLimit = selected.length >= MAX_CHAT_HISTORY_REPLAY_MESSAGES;
+    const wouldExceedCharacterLimit =
+      selected.length > 0 && totalCharacters + formatted.length > MAX_CHAT_HISTORY_REPLAY_CHARACTERS;
+    if (wouldExceedMessageLimit || wouldExceedCharacterLimit) {
+      break;
+    }
+
+    selected.unshift(message);
+    totalCharacters += formatted.length;
+  }
+
+  return {
+    transcriptMessages: selected,
+    omittedCount: normalizedMessages.length - selected.length,
+  };
+}
+
+function buildChatHistoryReplayText(ctx: PromptBuildContext, errorContext: string): string {
+  const { transcriptMessages, omittedCount } = selectMessagesForReplay(ctx.state.messages);
+  const transcript = transcriptMessages.length > 0
+    ? transcriptMessages.map(formatChatTranscriptMessage).join("\n\n")
+    : `User:\n${ctx.config.prompt.trim() || "(no prior chat transcript was persisted)"}`;
+  const truncationNotice = omittedCount > 0
+    ? `\nOnly the most recent ${transcriptMessages.length} persisted messages are included here because older conversation history was trimmed for replay.\n`
+    : "\n";
+
+  return [
+    `You are continuing an existing chat in directory: ${ctx.workingDirectory}`,
+    "",
+    "The previous chat session was interrupted, stopped, or recreated.",
+    "Treat the transcript below as the prior conversation history and continue naturally from it.",
+    "Respond to the latest user message at the end of the transcript as if this were one continuous chat.",
+    errorContext.trim(),
+    truncationNotice.trim(),
+    "",
+    "Conversation transcript:",
+    "",
+    transcript,
+  ].filter((line) => line.length > 0).join("\n");
+}
+
+export function buildChatReplayPrompt(
+  ctx: PromptBuildContext,
+  model: ModelConfig | undefined,
+  attachments: MessageImageAttachment[],
+): PromptInput {
+  const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
+  const text = buildChatHistoryReplayText(ctx, errorContext);
+  ctx.markChatHistoryReplayed();
+
+  return {
+    parts: buildPromptParts(text, attachments),
+    model,
+  };
 }
 
 export function buildErrorContext(consecutiveErrors: LoopState["consecutiveErrors"]): string {
@@ -148,6 +231,10 @@ function buildChatPrompt(ctx: PromptBuildContext, model: ModelConfig | undefined
   ctx.emitUserMessage(messageToLog, userMessageIdSuffix, attachments);
 
   ctx.updateState({ pendingPrompt: undefined });
+
+  if (ctx.shouldReplayChatHistory()) {
+    return buildChatReplayPrompt(ctx, model, attachments);
+  }
 
   const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
 
