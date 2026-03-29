@@ -13,13 +13,14 @@
 import { loopManager } from "../../core/loop-manager";
 import { backendManager } from "../../core/backend-manager";
 import { GitService } from "../../core/git-service";
+import { MissingChatHistoryError } from "../../core/loop/errors";
 import { getWorkspace, touchWorkspace } from "../../persistence/workspaces";
 import { createLogger } from "../../core/logger";
 import { isModelEnabled } from "../models";
 import type { SendChatMessageResponse } from "../../types/api";
 import { parseAndValidate } from "../validation";
 import { errorResponse } from "../helpers";
-import { CreateChatRequestSchema, SendChatMessageRequestSchema } from "../../types/schemas";
+import { ConvertChatToLoopRequestSchema, CreateChatRequestSchema, SendChatMessageRequestSchema } from "../../types/schemas";
 import { validateEnabledModelForLoop, startErrorResponse } from "./helpers";
 
 const log = createLogger("api:loops");
@@ -206,6 +207,44 @@ export const loopsChatRoutes = {
           error: errorMsg,
         });
         return errorResponse("send_chat_message_failed", errorMsg, 500);
+      }
+    },
+  },
+
+  "/api/loops/:id/chat/convert-to-loop": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(ConvertChatToLoopRequestSchema, req, {
+        allowEmptyBody: true,
+      });
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const loop = await loopManager.convertChatToLoop(req.params.id);
+        return Response.json(loop);
+      } catch (error) {
+        if (error instanceof MissingChatHistoryError) {
+          return errorResponse("missing_chat_history", error.message, 409);
+        }
+        const errorMsg = String(error);
+        if (errorMsg.includes("not found")) {
+          return errorResponse("not_found", errorMsg, 404);
+        }
+        if (errorMsg.includes("not a chat")) {
+          return errorResponse("not_chat", errorMsg, 400);
+        }
+        if (errorMsg.includes("Cannot convert chat to loop in status")) {
+          return errorResponse("invalid_state", errorMsg, 409);
+        }
+        if (errorMsg.includes("original agent session is unavailable")) {
+          return errorResponse("session_unavailable", errorMsg, 409);
+        }
+        log.error("Failed to convert chat to loop", {
+          loopId: req.params.id,
+          error: errorMsg,
+        });
+        return errorResponse("convert_chat_to_loop_failed", errorMsg, 500);
       }
     },
   },

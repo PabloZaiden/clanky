@@ -141,6 +141,7 @@ export function LoopDetailsTabContent({
           loadingPullRequestDestination={content.loadingPullRequestDestination}
           pullRequestDestination={content.pullRequestDestination}
           onOpenPullRequest={() => actions.handleOpenPullRequest(content.pullRequestDestination)}
+          onConvertToLoop={actions.handleConvertToLoop}
           onAddressCommentsModal={() => actions.setAddressCommentsModal(true)}
           onUpdateBranchModal={() => actions.setUpdateBranchModal(true)}
           onMarkMergedModal={() => actions.setMarkMergedModal(true)}
@@ -151,6 +152,7 @@ export function LoopDetailsTabContent({
           loop={loop}
           loadingComments={content.loadingComments}
           reviewComments={content.reviewComments}
+          convertToLoopSubmitting={actions.convertToLoopSubmitting}
         />
       )}
     </div>

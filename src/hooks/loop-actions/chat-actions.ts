@@ -1,8 +1,8 @@
 /**
- * Chat loop actions: create chat, send message.
+ * Chat loop actions: create chat, send message, convert chat to loop.
  */
 
-import type { Loop, CreateChatRequest, SendChatMessageResponse } from "../../types";
+import type { Loop, CreateChatRequest, ConvertChatToLoopRequest, SendChatMessageResponse } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import { apiCall } from "./helpers";
 
@@ -40,5 +40,20 @@ export async function sendChatMessageApi(
       body: JSON.stringify({ message, model, attachments }),
     },
     "Send chat message",
+  );
+}
+
+export async function convertChatToLoopApi(
+  loopId: string,
+  request: ConvertChatToLoopRequest = {},
+): Promise<Loop> {
+  return apiCall<Loop>(
+    `/api/loops/${loopId}/chat/convert-to-loop`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    "Convert chat to loop",
   );
 }

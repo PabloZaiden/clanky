@@ -63,6 +63,23 @@ describe("Chat API Integration", () => {
     throw new Error(`Chat ${loopId} did not reach status ${expectedStatus} within ${timeoutMs}ms. Last status: ${lastStatus}`);
   }
 
+  async function waitForPlanReady(loopId: string, timeoutMs = 10000): Promise<void> {
+    const startTime = Date.now();
+    let lastStatus = "unknown";
+    while (Date.now() - startTime < timeoutMs) {
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}`);
+      if (response.ok) {
+        const data = await response.json();
+        lastStatus = data.state?.status ?? "unknown";
+        if (data.state?.planMode?.isPlanReady) {
+          return;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`Chat ${loopId} did not produce a ready plan within ${timeoutMs}ms. Last status: ${lastStatus}`);
+  }
+
   // Helper to create or get a workspace for a directory
   async function getOrCreateWorkspace(directory: string, name?: string): Promise<string> {
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -1021,6 +1038,103 @@ describe("Chat API Integration", () => {
       expect(followUpBody.success).toBe(true);
 
       await waitForCompletion(chatId);
+    });
+  });
+
+  describe("POST /api/loops/:id/chat/convert-to-loop", () => {
+    test("converts a completed chat into a planning loop while preserving the session", async () => {
+      backendManager.setBackendForTesting(createMockBackend([
+        "<promise>COMPLETE</promise>",
+        "Planning... <promise>PLAN_READY</promise>",
+      ]));
+
+      const createResponse = await fetch(`${baseUrl}/api/loops/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          prompt: "Help me turn this discussion into a concrete implementation plan",
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const chatBody = await createResponse.json();
+      const chatId = chatBody.config.id;
+
+      await waitForCompletion(chatId);
+
+      const beforeConvertResponse = await fetch(`${baseUrl}/api/loops/${chatId}`);
+      const beforeConvertLoop = await beforeConvertResponse.json();
+      const originalSessionId = beforeConvertLoop.state.session?.id;
+
+      const convertResponse = await fetch(`${baseUrl}/api/loops/${chatId}/chat/convert-to-loop`, {
+        method: "POST",
+      });
+
+      expect(convertResponse.status).toBe(200);
+      const convertedLoop = await convertResponse.json();
+      expect(convertedLoop.config.id).toBe(chatId);
+      expect(convertedLoop.config.mode).toBe("loop");
+      expect(convertedLoop.state.status).toBe("planning");
+      expect(convertedLoop.state.session?.id).toBe(originalSessionId);
+      expect(convertedLoop.state.planMode?.planSessionId).toBe(originalSessionId);
+      expect(convertedLoop.config.prompt).toContain("Original chat prompt:");
+      expect(convertedLoop.config.prompt).toContain("Recent chat transcript:");
+
+      await waitForPlanReady(chatId);
+
+      const planningResponse = await fetch(`${baseUrl}/api/loops/${chatId}`);
+      const planningLoop = await planningResponse.json();
+      expect(planningLoop.config.mode).toBe("loop");
+      expect(planningLoop.state.status).toBe("planning");
+      expect(planningLoop.state.planMode?.isPlanReady).toBe(true);
+      expect(planningLoop.state.session?.id).toBe(originalSessionId);
+    });
+
+    test("returns 409 when a completed chat has no usable history for plan generation", async () => {
+      backendManager.setBackendForTesting(createMockBackend([
+        "<promise>COMPLETE</promise>",
+      ]));
+
+      const createResponse = await fetch(`${baseUrl}/api/loops/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          prompt: "Create a temporary chat that will be scrubbed before conversion",
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const chatBody = await createResponse.json();
+      const chatId = chatBody.config.id;
+
+      await waitForCompletion(chatId);
+
+      const { loadLoop, updateLoopConfig, updateLoopState } = await import("../../src/persistence/loops");
+      const persistedChat = await loadLoop(chatId);
+      expect(persistedChat).toBeDefined();
+
+      await updateLoopConfig(chatId, {
+        ...persistedChat!.config,
+        prompt: "   ",
+      });
+      await updateLoopState(chatId, {
+        ...persistedChat!.state,
+        messages: [],
+      });
+      loopManager.resetForTesting();
+
+      const convertResponse = await fetch(`${baseUrl}/api/loops/${chatId}/chat/convert-to-loop`, {
+        method: "POST",
+      });
+
+      expect(convertResponse.status).toBe(409);
+      const errorBody = await convertResponse.json();
+      expect(errorBody.error).toBe("missing_chat_history");
+      expect(errorBody.message).toContain("no chat history");
     });
   });
 });

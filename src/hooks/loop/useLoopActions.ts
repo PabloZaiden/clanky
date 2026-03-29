@@ -56,6 +56,7 @@ export interface UseLoopActionsResult {
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  convertChatToLoop: () => Promise<boolean>;
   setPending: (options: {
     message?: string;
     model?: { providerID: string; modelID: string };

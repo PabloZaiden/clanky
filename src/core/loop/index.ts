@@ -23,6 +23,7 @@ import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
 import { createLoopImpl, generateLoopTitleImpl, createChatImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
 import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, recoverChatEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
 import { sendPlanFeedbackImpl, answerPendingPlanQuestionImpl, acceptPlanImpl, discardPlanImpl, sendChatMessageImpl } from "./loop-plan-mode";
+import { convertChatToLoopImpl } from "./loop-chat-conversion";
 import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
 import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
@@ -78,6 +79,10 @@ export class LoopManager {
     attachments?: MessageImageAttachment[],
   ): Promise<void> {
     return sendChatMessageImpl(this.ctx, loopId, message, model, attachments);
+  }
+
+  async convertChatToLoop(loopId: string): Promise<Loop> {
+    return convertChatToLoopImpl(this.ctx, loopId);
   }
 
   async startPlanMode(loopId: string, options?: StartLoopOptions): Promise<void> {
