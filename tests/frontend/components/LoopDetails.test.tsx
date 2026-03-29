@@ -58,6 +58,7 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   api.post("/api/loops/:id/mark-merged", () => ({ success: true }));
   api.post("/api/loops/:id/address-comments", () => ({ success: true }));
   api.post("/api/loops/:id/pending", () => ({ success: true }));
+  api.post("/api/loops/:id/chat", () => ({ success: true }));
   api.post("/api/loops/:id/follow-up", () => ({ success: true }));
   api.delete("/api/loops/:id/pending", () => ({ success: true }));
   api.put("/api/loops/:id", () => loop);
@@ -1492,6 +1493,99 @@ describe("loop action bar", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("shows restart composer for completed loops and submits follow-up", async () => {
+    const loop = createLoopWithStatus("completed", {
+      config: { id: LOOP_ID, name: "Completed Loop", prompt: "Finish task" },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+    api.post("/api/loops/:id/follow-up", () => ({ success: true }));
+
+    const { getByRole, getByPlaceholderText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Restart" })).toBeTruthy();
+    });
+
+    await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Continue from the last result");
+    await user.click(getByRole("button", { name: "Restart" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("shows send composer for completed chats and submits a follow-up message", async () => {
+    const loop = createLoopWithStatus("completed", {
+      config: { id: LOOP_ID, name: "Completed Chat", mode: "chat", prompt: "Hello" },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+    api.post("/api/loops/:id/follow-up", () => ({ success: true }));
+
+    const { getByRole, getByPlaceholderText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Send" })).toBeTruthy();
+    });
+
+    await user.type(getByPlaceholderText("Type a message..."), "Can you continue?");
+    await user.click(getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("shows send feedback for plan-ready loops and submits feedback", async () => {
+    const loop = createLoopWithStatus("planning", {
+      config: { id: LOOP_ID, name: "Plan Loop", prompt: "Draft a plan" },
+      state: {
+        planMode: {
+          active: true,
+          feedbackRounds: 1,
+          planningFolderCleared: false,
+          isPlanReady: true,
+        },
+      },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: true, content: "## Plan\n- Step 1" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: true, content: "- Task A" }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+    api.post("/api/loops/:id/plan/feedback", () => ({ success: true }));
+
+    const { getByRole, queryByRole, getByPlaceholderText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Send Feedback" })).toBeTruthy();
+    });
+    expect(queryByRole("button", { name: "Stop" })).toBeNull();
+
+    await user.type(getByPlaceholderText("Send feedback on the plan..."), "Please expand step 1");
+    await user.click(getByRole("button", { name: "Send Feedback" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/plan/feedback", "POST")).toHaveLength(1);
     });
   });
 });
