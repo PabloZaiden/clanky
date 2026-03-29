@@ -37,7 +37,7 @@ export async function clearPendingPromptApi(loopId: string): Promise<boolean> {
 
 /**
  * Set pending message and/or model for a loop via the API.
- * These values will be used for the next iteration instead of the default.
+ * Queueing is unsupported; the API now requires the interrupt-first path.
  */
 export async function setPendingApi(
   loopId: string,

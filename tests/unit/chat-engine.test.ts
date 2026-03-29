@@ -567,9 +567,6 @@ describe("LoopEngine - Chat Mode", () => {
         resolveEvents?.();
         await baseMock.disconnect();
       },
-      supportsActivePromptQueueing(): boolean {
-        return true;
-      },
       async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
         promptSessionIds.push(sessionId);
         sentPrompts.push(prompt);

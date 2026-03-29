@@ -112,6 +112,23 @@ export function isLoopRunning(status: LoopStatus): boolean {
 }
 
 /**
+ * Check if a loop/chat is actively generating output right now.
+ * Planning loops count as generating until the plan is ready for review.
+ */
+export function isLoopGenerating(loop: Loop): boolean {
+  const result =
+    loop.state.status === "running" ||
+    loop.state.status === "starting" ||
+    (loop.state.status === "planning" && loop.state.planMode?.isPlanReady !== true);
+  log.trace("isLoopGenerating check", {
+    status: loop.state.status,
+    isPlanReady: loop.state.planMode?.isPlanReady,
+    result,
+  });
+  return result;
+}
+
+/**
  * Check if a loop can be "jumpstarted" - restarted from a stopped state.
  * This allows users to send a message to restart the loop.
  */

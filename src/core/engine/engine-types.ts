@@ -49,7 +49,6 @@ export interface LoopBackend {
   sendPrompt: AcpBackend["sendPrompt"];
   sendPromptAsync: AcpBackend["sendPromptAsync"];
   abortSession: AcpBackend["abortSession"];
-  supportsActivePromptQueueing?: AcpBackend["supportsActivePromptQueueing"];
   subscribeToEvents: AcpBackend["subscribeToEvents"];
   replyToPermission: AcpBackend["replyToPermission"];
   replyToQuestion: AcpBackend["replyToQuestion"];

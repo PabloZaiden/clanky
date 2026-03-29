@@ -247,13 +247,6 @@ export interface Backend {
   /** Abort a session */
   abortSession(sessionId: string): Promise<void>;
 
-  /**
-   * Whether the backend can keep a running loop on the same session and
-   * consume queued pending input on the next iteration without interrupting
-   * the current turn first.
-   */
-  supportsActivePromptQueueing?(): boolean;
-
   /** Subscribe to events from a session */
   subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>>;
 

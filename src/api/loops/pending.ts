@@ -2,7 +2,7 @@
  * Loop pending prompt and follow-up routes.
  *
  * - PUT/DELETE /api/loops/:id/pending-prompt - Modify the next iteration's prompt
- * - POST/DELETE /api/loops/:id/pending      - Set or clear pending message and/or model
+ * - POST/DELETE /api/loops/:id/pending      - Apply or clear the next message/model override
  * - POST /api/loops/:id/follow-up           - Start a new feedback cycle from a terminal state
  */
 
@@ -80,21 +80,20 @@ export const loopsPendingRoutes = {
 
   "/api/loops/:id/pending": {
     /**
-     * POST /api/loops/:id/pending - Set pending message and/or model for next iteration.
+     * POST /api/loops/:id/pending - Apply a message and/or model override for the next iteration.
      *
-     * Queues a message and/or model change. By default (`immediate: true`), running
-     * ACP-backed loops prefer staying on the active session and applying the pending
-     * values on the very next iteration without interrupting the current turn. If the
-     * backend cannot support that flow, it falls back to interrupting the current
-     * iteration. Set `immediate: false` to wait for the current iteration to complete.
+     * Backend queueing is intentionally unsupported. Requests always use the
+     * interrupt-first path (`immediate: true`) when a loop is actively generating.
+     * Set `immediate: false` requests are rejected so callers follow the explicit
+     * stop-then-send flow instead of relying on queued backend behavior.
+     *
      * Works for active loops (running, waiting, planning, starting) and can also
      * jumpstart loops in supported stopped states (completed, stopped, failed, max_iterations).
      *
      * Request Body:
-     * - message (optional): Message to queue for next iteration
+     * - message (optional): Message for the next iteration
      * - model (optional): { providerID, modelID } for model change
-     * - immediate (optional, default: true): If true, interrupt current iteration
-     *   and apply pending values immediately. If false, wait for current iteration.
+     * - immediate (optional, default: true): Must be true. False is rejected.
      *
      * At least one of message or model must be provided.
      *
@@ -133,22 +132,19 @@ export const loopsPendingRoutes = {
       // Default to immediate: true (Zod already validated the type)
       const immediate = body.immediate ?? true;
 
-      let result: { success: boolean; error?: string };
-      if (immediate) {
-        // Inject immediately by aborting current iteration
-        result = await loopManager.injectPending(req.params.id, {
-          message: trimmedMessage,
-          model: body.model,
-          attachments: body.attachments,
-        });
-      } else {
-        // Queue for next natural iteration
-        result = await loopManager.setPending(req.params.id, {
-          message: trimmedMessage,
-          model: body.model,
-          attachments: body.attachments,
-        });
-      }
+       if (!immediate) {
+         return errorResponse(
+           "queue_not_supported",
+           "Queued pending input is no longer supported. Stop the loop first, then send the new message.",
+           409,
+         );
+       }
+
+       const result = await loopManager.injectPending(req.params.id, {
+         message: trimmedMessage,
+         model: body.model,
+         attachments: body.attachments,
+       });
 
       if (!result.success) {
         if (result.error?.includes("not found")) {
@@ -166,7 +162,7 @@ export const loopsPendingRoutes = {
     /**
      * DELETE /api/loops/:id/pending - Clear all pending values (message and model).
      *
-     * Removes any queued message and model change. Only works for active loops.
+      * Removes any pending message and model change. Only works for active loops.
      *
      * @returns Success response
      */

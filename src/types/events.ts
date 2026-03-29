@@ -535,7 +535,7 @@ export interface LoopPlanDiscardedEvent {
 
 /**
  * Emitted when pending values (prompt or model) are updated.
- * Used for real-time UI updates when user queues a message or model change.
+ * Used for real-time UI updates when the next message/model override changes.
  */
 export interface LoopPendingUpdatedEvent {
   type: "loop.pending.updated";

@@ -9,6 +9,7 @@ export {
   isFinalState,
   isLoopActive,
   isLoopRunning,
+  isLoopGenerating,
   canJumpstart,
   canSendTerminalFollowUp,
   isAwaitingFeedback,
