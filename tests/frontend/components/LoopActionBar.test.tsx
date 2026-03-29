@@ -420,6 +420,19 @@ describe("LoopActionBar", () => {
       expect(getByRole("button", { name: "Stop" })).toBeInTheDocument();
       expect(queryByRole("button", { name: "Send" })).toBeNull();
     });
+
+    test("does not submit when Enter is pressed while generating", async () => {
+      const onStop = mock(async () => true);
+      const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
+      const { getByPlaceholderText, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ isGenerating: true, onStop, onSubmit })} />
+      );
+
+      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Hello agent{enter}");
+
+      expect(onSubmit).not.toHaveBeenCalled();
+      expect(onStop).not.toHaveBeenCalled();
+    });
   });
 
   describe("terminal follow-up copy", () => {

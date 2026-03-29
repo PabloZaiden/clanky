@@ -89,7 +89,7 @@ export function LoopActionBar({
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     
-    if (!canSubmit || disabled || isSubmitting) return;
+    if (showStopButton || !canSubmit || disabled || isSubmitting) return;
     
     // Validate model is enabled if selected
     if (selectedModel && !selectedModelEnabled) return;
@@ -132,7 +132,7 @@ export function LoopActionBar({
     } finally {
       setIsSubmitting(false);
     }
-  }, [attachments, canSubmit, disabled, isSubmitting, message, selectedModel, selectedModelEnabled, onSubmit]);
+  }, [attachments, canSubmit, disabled, isSubmitting, message, onSubmit, selectedModel, selectedModelEnabled, showStopButton]);
 
   const handleStop = useCallback(async () => {
     if (!onStop || disabled || isSubmitting) return;
