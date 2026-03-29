@@ -41,7 +41,7 @@ export function LoopDetails({
   const {
     loop, loading, error, messages, toolCalls, logs, gitChangeCounter, isChatMode,
     accept, push, updateBranch, remove, purge, markMerged,
-    setPending, clearPending, sendChatMessage, sendFollowUp,
+    setPending, clearPending, sendChatMessage, sendFollowUp, convertChatToLoop,
     getDiff, getPlan, getStatusFile, getPullRequestDestination,
     sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan,
     addressReviewComments, update, connectViaSsh,
@@ -63,7 +63,7 @@ export function LoopDetails({
   const actions = useLoopActions({
     onBack, onSelectSshSession, toast,
     accept, push, updateBranch, remove, purge, markMerged,
-    addressReviewComments, acceptPlan, discardPlan, connectViaSsh, update,
+    addressReviewComments, convertChatToLoop, acceptPlan, discardPlan, connectViaSsh, update,
     fetchReviewComments: content.fetchReviewComments,
   });
   const pendingPlanQuestion = loop?.state.planMode?.pendingQuestion;

@@ -20,6 +20,7 @@ import {
   UpdateLoopRequestSchema,
   AddressCommentsRequestSchema,
   SendChatMessageRequestSchema,
+  ConvertChatToLoopRequestSchema,
   CreateChatRequestSchema,
   CreateSshSessionRequestSchema,
   UpdateSshSessionRequestSchema,
@@ -402,6 +403,11 @@ export type SendChatMessageRequest = z.infer<typeof SendChatMessageRequestSchema
  * single source of truth for both validation and TypeScript types.
  */
 export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
+
+/**
+ * Request body for POST /api/loops/:id/chat/convert-to-loop endpoint.
+ */
+export type ConvertChatToLoopRequest = z.infer<typeof ConvertChatToLoopRequestSchema>;
 
 /**
  * Response from POST /api/loops/:id/chat endpoint.

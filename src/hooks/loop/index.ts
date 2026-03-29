@@ -88,6 +88,8 @@ export interface UseLoopResult {
   discardPlan: () => Promise<boolean>;
   /** Address reviewer comments (only works for pushed/merged loops with reviewMode.addressable = true) */
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  /** Convert a completed chat into a plan-mode loop while preserving the same loop identity */
+  convertChatToLoop: () => Promise<boolean>;
   /** Set pending message and/or model for next iteration (only works when loop is active) */
   setPending: (options: { message?: string; model?: { providerID: string; modelID: string }; attachments?: MessageImageAttachment[] }) => Promise<SetPendingResult>;
   /** Clear all pending values (message and model) */

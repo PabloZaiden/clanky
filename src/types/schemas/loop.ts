@@ -259,6 +259,11 @@ export const SendChatMessageRequestSchema = z.object({
 });
 
 /**
+ * Schema for converting a chat into a plan-mode loop - POST /api/loops/:id/chat/convert-to-loop
+ */
+export const ConvertChatToLoopRequestSchema = z.object({});
+
+/**
  * Schema for sending a terminal-state follow-up - POST /api/loops/:id/follow-up
  */
 export const FollowUpRequestSchema = z.object({

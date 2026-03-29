@@ -6,6 +6,7 @@
 import { useCallback } from "react";
 import {
   addressReviewCommentsApi,
+  convertChatToLoopApi,
   sendChatMessageApi,
   sendFollowUpApi,
   getOrCreateLoopSshSessionApi,
@@ -20,6 +21,7 @@ const log = createLogger("useLoop");
 
 export interface UseLoopChatActionsResult {
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  convertChatToLoop: () => Promise<boolean>;
   sendChatMessage: (
     message: string,
     model?: { providerID: string; modelID: string },
@@ -34,7 +36,7 @@ export interface UseLoopChatActionsResult {
 }
 
 export function useLoopChatActions(params: UseLoopActionsParams): UseLoopChatActionsResult {
-  const { loopId, isActiveLoop, ignoreStaleLoopAction, ignoreStaleLoopError, setError, refresh } =
+  const { loopId, isActiveLoop, ignoreStaleLoopAction, ignoreStaleLoopError, setError, setLoop, refresh } =
     params;
 
   const addressReviewComments = useCallback(
@@ -115,6 +117,32 @@ export function useLoopChatActions(params: UseLoopActionsParams): UseLoopChatAct
     [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError],
   );
 
+  const convertChatToLoop = useCallback(async (): Promise<boolean> => {
+    const actionLoopId = loopId;
+    const staleAction = ignoreStaleLoopAction("convertChatToLoop", actionLoopId, false);
+    if (staleAction !== null) {
+      return staleAction;
+    }
+
+    try {
+      const loop = await convertChatToLoopApi(actionLoopId);
+      setLoop(loop);
+      await refresh();
+      if (!isActiveLoop(actionLoopId)) {
+        return false;
+      }
+      return true;
+    } catch (err) {
+      const staleError = ignoreStaleLoopError("convertChatToLoop", actionLoopId, false, err);
+      if (staleError !== null) {
+        return staleError;
+      }
+      log.error("Failed to convert chat to loop", { loopId: actionLoopId, error: String(err) });
+      setError(String(err));
+      return false;
+    }
+  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError, setLoop]);
+
   const sendFollowUp = useCallback(
       async (
         message: string,
@@ -187,5 +215,5 @@ export function useLoopChatActions(params: UseLoopActionsParams): UseLoopChatAct
     }
   }, [isActiveLoop, loopId, setError]);
 
-  return { addressReviewComments, sendChatMessage, sendFollowUp, connectViaSsh };
+  return { addressReviewComments, convertChatToLoop, sendChatMessage, sendFollowUp, connectViaSsh };
 }
