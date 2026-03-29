@@ -1578,6 +1578,49 @@ describe("log tab", () => {
     });
   });
 
+  test("enters log focus mode while keeping the message composer available", async () => {
+    setupDefaultApi();
+    const { getByRole, getByPlaceholderText, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Enter focus mode" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "Enter focus mode" }));
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Exit focus mode" })).toBeInTheDocument();
+    });
+
+    expect(queryByRole("button", { name: "Info" })).toBeNull();
+    expect(queryByRole("button", { name: "Prompt" })).toBeNull();
+    expect(getByPlaceholderText("Send a message to steer the agent...")).toBeInTheDocument();
+    expect(getByRole("button", { name: "Autoscroll" })).toBeInTheDocument();
+  });
+
+  test("restores log focus mode from localStorage on remount", async () => {
+    setupDefaultApi();
+    const firstRender = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(firstRender.getByRole("button", { name: "Enter focus mode" })).toBeInTheDocument();
+    });
+
+    await firstRender.user.click(firstRender.getByRole("button", { name: "Enter focus mode" }));
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem("ralpher-loop-log-focus-mode")).toBe("true");
+    });
+
+    firstRender.unmount();
+
+    const secondRender = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(secondRender.getByRole("button", { name: "Exit focus mode" })).toBeInTheDocument();
+    });
+  });
+
   test("shows pending plan question below logs and submits the selected answer", async () => {
     setupDefaultApi({
       config: {

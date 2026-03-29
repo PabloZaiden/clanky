@@ -44,6 +44,10 @@ interface LoopDetailsTabContentProps {
   portForwardData: { forwards: PortForward[]; forwardsLoading: boolean; forwardsError: string | null };
   content: UseLoopContentResult;
   actions: UseLoopActionsResult;
+  isLogFocusMode: boolean;
+  onEnterLogFocusMode: () => void;
+  onExitLogFocusMode: () => void;
+  applySafeAreaBottomToLogFocusBar?: boolean;
 }
 
 export function LoopDetailsTabContent({
@@ -66,11 +70,21 @@ export function LoopDetailsTabContent({
   portForwardData,
   content,
   actions,
+  isLogFocusMode,
+  onEnterLogFocusMode,
+  onExitLogFocusMode,
+  applySafeAreaBottomToLogFocusBar = false,
 }: LoopDetailsTabContentProps) {
   const { config, state } = loop;
 
   return (
-    <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-neutral-800">
+    <div
+      className={
+        activeTab === "log" && isLogFocusMode
+          ? "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-[#1e1e1e]"
+          : "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-neutral-800"
+      }
+    >
       {activeTab === "log" && (
         <LogTab
           messages={messages}
@@ -86,6 +100,10 @@ export function LoopDetailsTabContent({
           onPlanQuestionCustomAnswersChange={planQuestion.setPlanQuestionCustomAnswers}
           planQuestionSubmitting={planQuestion.planQuestionSubmitting}
           onAnswerPlanQuestion={planQuestion.handleAnswerPlanQuestion}
+          isFocusMode={isLogFocusMode}
+          onEnterFocusMode={onEnterLogFocusMode}
+          onExitFocusMode={onExitLogFocusMode}
+          applySafeAreaBottomToFocusBar={applySafeAreaBottomToLogFocusBar}
         />
       )}
       {activeTab === "info" && (
