@@ -21,7 +21,13 @@ export interface PromptBuildContext {
   updateState: (update: Partial<LoopState>) => void;
   consumeInitialPromptAttachments: () => MessageImageAttachment[];
   consumePendingPromptAttachments: () => MessageImageAttachment[];
+  shouldReplayChatHistory: () => boolean;
+  markChatHistoryReplayed: () => void;
 }
+
+const MAX_CHAT_HISTORY_REPLAY_MESSAGES = 100;
+const MAX_CHAT_HISTORY_REPLAY_CHARACTERS = 100_000;
+const CHAT_HISTORY_REPLAY_TRUNCATION_NOTICE = "\n[message truncated for replay]";
 
 function buildPromptParts(text: string, attachments: MessageImageAttachment[]): PromptInput["parts"] {
   return [
@@ -41,6 +47,115 @@ function consumePendingOrInitialAttachments(ctx: PromptBuildContext): MessageIma
     return pendingAttachments;
   }
   return ctx.consumeInitialPromptAttachments();
+}
+
+function formatChatTranscriptMessage(
+  message: LoopState["messages"][number],
+  maxCharacters = Number.POSITIVE_INFINITY,
+): string {
+  const speaker = message.role === "user" ? "User" : "Assistant";
+  const prefix = `${speaker}:\n`;
+  const content = message.content.trim();
+  const attachmentSummary = message.attachments?.length
+    ? `\n[${message.attachments.length} image attachment${message.attachments.length === 1 ? "" : "s"} were included with this message in the original chat. Historical replay does not re-send their image data.]`
+    : "";
+  const body = `${content}${attachmentSummary}`;
+  const formatted = `${prefix}${body}`;
+
+  if (formatted.length <= maxCharacters) {
+    return formatted;
+  }
+
+  if (maxCharacters <= 0) {
+    return "";
+  }
+
+  const maxBodyCharacters = maxCharacters - prefix.length - CHAT_HISTORY_REPLAY_TRUNCATION_NOTICE.length;
+  if (maxBodyCharacters <= 0) {
+    return `${prefix}${CHAT_HISTORY_REPLAY_TRUNCATION_NOTICE}`.slice(0, maxCharacters);
+  }
+
+  const truncatedBody = body.slice(0, maxBodyCharacters).trimEnd();
+  return `${prefix}${truncatedBody}${CHAT_HISTORY_REPLAY_TRUNCATION_NOTICE}`;
+}
+
+function selectMessagesForReplay(messages: LoopState["messages"]): {
+  transcriptMessages: string[];
+  omittedCount: number;
+} {
+  const normalizedMessages = messages.filter((message) => {
+    return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0;
+  });
+  const selected: string[] = [];
+  let totalCharacters = 0;
+  let includedCount = 0;
+
+  for (let index = normalizedMessages.length - 1; index >= 0; index--) {
+    const message = normalizedMessages[index]!;
+    const wouldExceedMessageLimit = selected.length >= MAX_CHAT_HISTORY_REPLAY_MESSAGES;
+    const remainingCharacters = MAX_CHAT_HISTORY_REPLAY_CHARACTERS - totalCharacters;
+    if (wouldExceedMessageLimit || remainingCharacters <= 0) {
+      break;
+    }
+
+    const fullFormatted = formatChatTranscriptMessage(message);
+    const formatted = formatChatTranscriptMessage(message, remainingCharacters);
+    if (formatted.length === 0) {
+      break;
+    }
+
+    selected.unshift(formatted);
+    totalCharacters += formatted.length;
+    includedCount++;
+
+    if (formatted.length < fullFormatted.length) {
+      break;
+    }
+  }
+
+  return {
+    transcriptMessages: selected,
+    omittedCount: normalizedMessages.length - includedCount,
+  };
+}
+
+function buildChatHistoryReplayText(ctx: PromptBuildContext, errorContext: string): string {
+  const { transcriptMessages, omittedCount } = selectMessagesForReplay(ctx.state.messages);
+  const transcript = transcriptMessages.length > 0
+    ? transcriptMessages.join("\n\n")
+    : `User:\n${ctx.config.prompt.trim() || "(no prior chat transcript was persisted)"}`;
+  const truncationNotice = omittedCount > 0
+    ? `\nOnly the most recent ${transcriptMessages.length} persisted messages are included here because older conversation history was trimmed for replay.\n`
+    : "\n";
+
+  return [
+    `You are continuing an existing chat in directory: ${ctx.workingDirectory}`,
+    "",
+    "The previous chat session was interrupted, stopped, or recreated.",
+    "Treat the transcript below as the prior conversation history and continue naturally from it.",
+    "Respond to the latest user message at the end of the transcript as if this were one continuous chat.",
+    errorContext.trim(),
+    truncationNotice.trim(),
+    "",
+    "Conversation transcript:",
+    "",
+    transcript,
+  ].filter((line) => line.length > 0).join("\n");
+}
+
+export function buildChatReplayPrompt(
+  ctx: PromptBuildContext,
+  model: ModelConfig | undefined,
+  attachments: MessageImageAttachment[],
+): PromptInput {
+  const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
+  const text = buildChatHistoryReplayText(ctx, errorContext);
+  ctx.markChatHistoryReplayed();
+
+  return {
+    parts: buildPromptParts(text, attachments),
+    model,
+  };
 }
 
 export function buildErrorContext(consecutiveErrors: LoopState["consecutiveErrors"]): string {
@@ -148,6 +263,10 @@ function buildChatPrompt(ctx: PromptBuildContext, model: ModelConfig | undefined
   ctx.emitUserMessage(messageToLog, userMessageIdSuffix, attachments);
 
   ctx.updateState({ pendingPrompt: undefined });
+
+  if (ctx.shouldReplayChatHistory()) {
+    return buildChatReplayPrompt(ctx, model, attachments);
+  }
 
   const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
 

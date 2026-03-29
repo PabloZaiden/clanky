@@ -311,6 +311,72 @@ describe("LoopEngine - Chat Mode", () => {
     expect(userMessageEvent?.message.attachments).toEqual([sampleAttachment]);
   });
 
+  test("chat replay truncates an oversized latest message to stay within replay limits", async () => {
+    const loop = createChatLoop({ prompt: "Original chat prompt" });
+    mockBackend = createMockBackend([
+      "Initial turn completed.",
+      "Replay completed.",
+    ]);
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    await engine.start();
+
+    engine.setPendingPrompt("x".repeat(120000));
+    // @ts-expect-error - exercising replay behavior directly in the unit test
+    engine.chatHistoryReplayPending = true;
+
+    await engine.runChatTurn();
+
+    const replayText = mockBackend.sentPrompts[1]?.parts[0];
+    expect(replayText?.type).toBe("text");
+    expect(replayText?.type === "text" ? replayText.text : "").toContain("[message truncated for replay]");
+    expect(replayText?.type === "text" ? replayText.text.length : 0).toBeLessThan(101500);
+  });
+
+  test("chat replay clarifies that historical images are summarized rather than re-sent", async () => {
+    const loop = createChatLoop({ prompt: "Original chat prompt" });
+    mockBackend = createMockBackend([
+      "Initial turn completed.",
+      "You attached a screenshot earlier.",
+    ]);
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    await engine.start();
+
+    engine.state.messages.push({
+      id: "persisted-user-message",
+      role: "user",
+      content: "Please remember the attached screenshot.",
+      attachments: [sampleAttachment],
+      timestamp: new Date().toISOString(),
+    });
+    engine.setPendingPrompt("What did I attach earlier?");
+    // @ts-expect-error - exercising replay behavior directly in the unit test
+    engine.chatHistoryReplayPending = true;
+
+    await engine.runChatTurn();
+
+    const replayPrompt = mockBackend.sentPrompts[1];
+    const replayText = replayPrompt?.parts[0];
+    expect(replayText?.type).toBe("text");
+    expect(replayText?.type === "text" ? replayText.text : "").toContain(
+      "Historical replay does not re-send their image data.",
+    );
+    expect(replayPrompt?.parts.some((part) => part.type === "image")).toBe(false);
+  });
+
   test("chat mode completes even when response contains COMPLETE pattern", async () => {
     // In chat mode, stop pattern detection is skipped entirely.
     // The outcome is always "complete" after one iteration, regardless of content.
@@ -534,7 +600,7 @@ describe("LoopEngine - Chat Mode", () => {
     expect(engine.state.status).toBe("completed");
   }, 10000);
 
-  test("injectChatMessage while running preserves the active session while replacing the turn", async () => {
+  test("injectChatMessage while running keeps the same session for the replacement turn", async () => {
     const loop = createChatLoop();
 
     let sendPromptAsyncCalled = false;
