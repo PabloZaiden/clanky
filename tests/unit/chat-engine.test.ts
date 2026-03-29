@@ -835,6 +835,44 @@ describe("LoopEngine - Chat Mode", () => {
     expect(backend.sentPrompts).toHaveLength(2);
   });
 
+  test("injectChatMessage while idle clears stale interrupt flags before starting the next turn", async () => {
+    const loop = createChatLoop();
+    const backend = createMockBackend([
+      "First response",
+      "Second response after stale interruption",
+    ]);
+    mockBackend = backend;
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    await engine.start();
+
+    const internalEngine = engine as unknown as {
+      aborted: boolean;
+      injectionPending: boolean;
+    };
+    internalEngine.aborted = true;
+    internalEngine.injectionPending = true;
+
+    await engine.injectChatMessage("Follow-up after stale interruption");
+    await waitForChatTurnToComplete(engine);
+
+    expect(engine.state.status).toBe("completed");
+    expect(internalEngine.aborted).toBe(false);
+    expect(internalEngine.injectionPending).toBe(false);
+    expect(backend.sentPrompts).toHaveLength(2);
+
+    const secondPromptText = backend.sentPrompts[1]?.parts[0]?.type === "text"
+      ? backend.sentPrompts[1].parts[0].text
+      : "";
+    expect(secondPromptText).toContain("Follow-up after stale interruption");
+  }, 10000);
+
   test("injectChatMessage with model override applies the model", async () => {
     const loop = createChatLoop();
     const backend = createMockBackend([
