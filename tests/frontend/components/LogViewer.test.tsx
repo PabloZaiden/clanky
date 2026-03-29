@@ -207,6 +207,31 @@ describe("LogViewer", () => {
       expect(getByText("file contents here")).toBeInTheDocument();
     });
 
+    test("renders read tool summary from filePath input", () => {
+      const tool = createToolCallData({
+        name: "read",
+        input: { filePath: "/src/file.ts" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Read /src/file.ts")).toBeInTheDocument();
+    });
+
+    test("uses readable fallback when read input has no file target", () => {
+      const tool = createToolCallData({
+        name: "read",
+        input: {},
+      });
+      const { getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Read file")).toBeInTheDocument();
+      expect(queryByText("Read read")).not.toBeInTheDocument();
+    });
+
     test("renders edit tool summary from filePath input", () => {
       const tool = createToolCallData({
         name: "edit",

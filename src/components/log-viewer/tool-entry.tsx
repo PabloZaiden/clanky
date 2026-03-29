@@ -53,7 +53,7 @@ function getToolMeta(tool: ToolCallData): ToolMeta {
   }
 
   if (name === "read" || name === "view") {
-    const path = getPathField(tool.input) ?? name;
+    const path = getPathField(tool.input) ?? "file";
     return { summary: `Read ${path}`, outputLabel: "Result", outputType: "text" };
   }
 
