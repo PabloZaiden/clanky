@@ -224,6 +224,32 @@ describe("LoopManager - Chat Mode", () => {
       expect(updated!.state.status).toMatch(/completed|max_iterations/);
     });
 
+    test("restarts a completed chat even if a stale interruption flag was left on the in-memory engine", async () => {
+      const loop = await ctx.manager.createChat({
+        ...testModelFields,
+        directory: ctx.workDir,
+        prompt: "Test chat",
+        workspaceId: testWorkspaceId,
+      });
+
+      await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+
+      // @ts-expect-error - accessing private field for test purposes
+      const engine = ctx.manager.engines.get(loop.config.id) as {
+        aborted: boolean;
+        injectionPending: boolean;
+      } | undefined;
+      expect(engine).toBeDefined();
+      engine!.aborted = true;
+      engine!.injectionPending = true;
+
+      await ctx.manager.sendChatMessage(loop.config.id, "Restart after stale interrupt");
+      await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"], 15000);
+
+      const updated = await ctx.manager.getLoop(loop.config.id);
+      expect(updated!.state.status).toMatch(/completed|max_iterations/);
+    });
+
     test("restarts a chat from failed status after recovery", async () => {
       const loop = await ctx.manager.createChat({
         ...testModelFields,

@@ -306,6 +306,11 @@ export class LoopEngine {
     return false;
   }
 
+  private resetRestartFlags(): void {
+    this.aborted = false;
+    this.injectionPending = false;
+  }
+
   private async interruptActiveSession(options: {
     abortMessage: string;
     abortWarnMessage: string;
@@ -391,7 +396,7 @@ export class LoopEngine {
 
     this.emitLog("info", "Starting loop execution", { loopName: this.config.name });
 
-    this.aborted = false;
+    this.resetRestartFlags();
 
     // Only update status if not in plan mode (preserve "planning" status)
     const isInPlanMode = this.loop.state.status === "planning";
@@ -545,6 +550,8 @@ export class LoopEngine {
     if (this.loop.state.status !== "planning") {
       throw new Error(`Cannot run plan iteration in status: ${this.loop.state.status}`);
     }
+
+    this.resetRestartFlags();
 
     // Run the loop (will run one iteration and return on plan_ready or error)
     await this.runLoop();
@@ -720,6 +727,8 @@ export class LoopEngine {
     log.debug("[LoopEngine] continueExecution: Starting execution loop");
     this.emitLog("info", "Starting execution after plan acceptance");
 
+    this.resetRestartFlags();
+
     // Run the loop
     await this.runLoop();
   }
@@ -738,6 +747,8 @@ export class LoopEngine {
       this.emitLog("info", "Waiting for the previous chat interruption to finish before starting the next turn");
       await this.activeSessionInterrupt;
     }
+
+    this.resetRestartFlags();
 
     // Transition to running via the jumpstart path: completed → stopped → starting → running
     // The engine's start() method expects idle/stopped/planning/resolving_conflicts
