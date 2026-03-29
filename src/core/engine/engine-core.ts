@@ -663,9 +663,9 @@ export class LoopEngine {
       timestamp: createTimestamp(),
     });
 
-    await this.triggerPersistence();
-
     if (this.isLoopRunning) {
+      await this.triggerPersistence();
+
       // Chat follow-ups should interrupt the active turn instead of relying on
       // ACP-side queueing so the new user message is not stranded behind a
       // long-running or stuck generation.
@@ -732,6 +732,8 @@ export class LoopEngine {
   }
 
   private async prepareChatTurnStart(): Promise<void> {
+    const hadSessionBeforeStart = this.sessionId !== null;
+
     if (this.activeSessionInterrupt) {
       this.emitLog("info", "Waiting for the previous chat interruption to finish before starting the next turn");
       await this.activeSessionInterrupt;
@@ -759,9 +761,12 @@ export class LoopEngine {
       error: undefined,
     });
     this.updateState({ status: "running" });
-    this.emitLog("info", this.sessionId
-      ? "Starting new chat turn (reusing existing session)"
-      : "Starting new chat turn");
+    this.emitLog(
+      "info",
+      hadSessionBeforeStart
+        ? "Starting new chat turn (reusing existing session)"
+        : "Starting new chat turn (after reconnecting session)",
+    );
     await this.triggerPersistence();
   }
 
