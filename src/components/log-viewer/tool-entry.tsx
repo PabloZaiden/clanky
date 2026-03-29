@@ -110,12 +110,11 @@ function RenderedContent({ output }: { output: unknown }) {
 
 export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHeader, spacingClass, index }: ToolEntryProps) {
   const meta = getToolMeta(tool);
+  const toolSummaryClassName = "text-[11px] italic leading-relaxed text-gray-400";
 
   /** Rich ReactNode used as the <summary> of the input <details> element. */
   const inputSummary = (
-    <span>
-      <span className="text-gray-300">{meta.summary}</span>
-    </span>
+    <span className={toolSummaryClassName}>{meta.summary}</span>
   );
 
   const renderInputContent = useCallback(
@@ -170,7 +169,7 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
   );
 
   return (
-    <div key={`tool-${tool.id}-${index}`} className={`group ${spacingClass}`}>
+    <div key={`tool-${tool.id}-${index}`} className={`group py-1 ${spacingClass}`}>
       {showHeader && (
         <div className="text-gray-500 text-xs mb-0.5">
           {formatTime(timestamp)}
@@ -188,9 +187,7 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
           <LazyDetails summary={inputSummary} renderContent={renderOutputOnlyContent} />
         ) : (
           // Neither input nor output yet (pending/running): plain header
-          <span className="text-xs">
-            <span className="text-gray-300">{meta.summary}</span>
-          </span>
+          <span className={toolSummaryClassName}>{meta.summary}</span>
         )}
       </div>
     </div>

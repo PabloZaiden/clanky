@@ -155,6 +155,21 @@ describe("LogViewer", () => {
       expect(toolEntry.textContent).not.toContain("○");
     });
 
+    test("styles pending tool calls as visually de-emphasized entries", () => {
+      const tool = createToolCallData({ name: "PendingTool", status: "pending", input: null });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      const summaryText = getByText("PendingTool");
+      const toolEntry = summaryText.closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.className).toContain("py-1");
+      expect(summaryText.className).toContain("text-[11px]");
+      expect(summaryText.className).toContain("italic");
+      expect(summaryText.className).toContain("text-gray-400");
+    });
+
     test("renders a running tool call without a status icon", () => {
       // Use an unknown tool name so the raw name is the summary (no transformation)
       const tool = createToolCallData({ name: "RunningTool", status: "running", input: null });
@@ -188,6 +203,24 @@ describe("LogViewer", () => {
       );
       expect(inputPre).toBeDefined();
       expect(inputPre?.className).toContain("font-mono");
+    });
+
+    test("styles collapsible tool call summaries as visually de-emphasized entries", () => {
+      const tool = createToolCallData({
+        name: "Write",
+        input: { filePath: "/src/test.ts", content: "hello" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      const summaryText = getByText("Write");
+      const toolEntry = summaryText.closest(".group") as HTMLElement;
+      expect(toolEntry).not.toBeNull();
+      expect(toolEntry.className).toContain("py-1");
+      expect(summaryText.className).toContain("text-[11px]");
+      expect(summaryText.className).toContain("italic");
+      expect(summaryText.className).toContain("text-gray-400");
     });
 
     test("renders known tool text output inside collapsible (click to reveal)", async () => {
