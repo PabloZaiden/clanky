@@ -560,10 +560,26 @@ describe("Chat API Integration", () => {
         expect(messageResponse.status).toBe(200);
         expect(abortCalls).toBe(1);
 
-        const persistedResponse = await fetch(`${baseUrl}/api/loops/${chatId}`);
-        expect(persistedResponse.status).toBe(200);
-        const persistedChat = await persistedResponse.json();
-        expect(persistedChat.state.pendingPrompt).toBe("Please stop and do this instead");
+        const startTime = Date.now();
+        let followUpPersisted = false;
+
+        while (Date.now() - startTime < 5000) {
+          const persistedResponse = await fetch(`${baseUrl}/api/loops/${chatId}`);
+          expect(persistedResponse.status).toBe(200);
+          const persistedChat = await persistedResponse.json();
+          const messages = persistedChat.state.messages ?? [];
+          followUpPersisted = messages.some(
+            (message: { role?: string; content?: string }) =>
+              message.role === "user" && message.content === "Please stop and do this instead",
+          );
+          if (followUpPersisted) {
+            expect(persistedChat.state.pendingPrompt).toBeUndefined();
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+
+        expect(followUpPersisted).toBe(true);
 
         await loopManager.stopLoop(chatId);
       } finally {

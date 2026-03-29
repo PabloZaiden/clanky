@@ -33,6 +33,8 @@ export interface TranslateEventContext {
   toolPartStatus: Map<string, string>;
   /** Map of reasoning part IDs to their last known text length */
   reasoningTextLength: Map<string, number>;
+  /** Per-subscription fallback reasoning deltas pending duplicate suppression */
+  pendingReasoningFallbackDeltas: Map<string, string>;
   /** Map of part IDs to their type (text, reasoning, tool, etc.) for delta routing */
   partTypes: Map<string, string>;
   /** Client-like object used for session debug queries during event translation */
