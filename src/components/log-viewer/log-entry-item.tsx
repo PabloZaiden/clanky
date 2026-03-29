@@ -50,9 +50,9 @@ export const LogEntryItem = memo(function LogEntryItem({ data: log, showHeader, 
   return (
     <div key={`log-${log.id}-${index}`} className={`group ${isReasoning ? "opacity-60" : ""} ${spacingClass}`}>
       {showHeader && (
-        <div className="text-gray-500 text-xs mb-0.5">
+        <time className="text-gray-500 text-xs mb-0.5 block" dateTime={log.timestamp}>
           {formatTime(log.timestamp)}
-        </div>
+        </time>
       )}
       <div className={`min-w-0 ${isReasoning ? "text-gray-400 italic" : getLogLevelColor(log.level)}`}>
         {showMessageLabel && (

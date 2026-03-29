@@ -945,6 +945,37 @@ describe("LogViewer", () => {
       expect(groups[1]?.textContent).toContain("Second entry");
       expect(groups[2]?.textContent).toContain("Third entry");
     });
+
+    test("renders message, tool, and log timestamps as hh:mm only", () => {
+      const msg = createMessageData({
+        role: "user",
+        content: "Message entry",
+        timestamp: "2026-01-01T00:00:02.000Z",
+      });
+      const tool = createToolCallData({
+        name: "Write",
+        timestamp: "2026-01-01T00:00:01.000Z",
+      });
+      const log = createLogEntry({
+        level: "agent",
+        message: "Log entry",
+        timestamp: "2026-01-01T00:00:03.000Z",
+      });
+
+      const { container } = renderWithUser(
+        <LogViewer messages={[msg]} toolCalls={[tool]} logs={[log]} showTools={true} />
+      );
+
+      const groups = Array.from(container.querySelectorAll(".group"));
+      expect(groups).toHaveLength(3);
+
+      groups.forEach((group) => {
+        const timeEl = group.querySelector("time");
+        expect(timeEl).not.toBeNull();
+        const timestampText = timeEl?.textContent ?? "";
+        expect(timestampText).toMatch(/^\d{2}:\d{2}$/);
+      });
+    });
   });
 
   describe("props", () => {
