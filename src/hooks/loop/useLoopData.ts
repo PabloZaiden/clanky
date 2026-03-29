@@ -141,6 +141,7 @@ export function useLoopData(
               id: msg.id,
               role: msg.role,
               content: msg.content,
+              attachments: msg.attachments,
               timestamp: msg.timestamp,
             })),
           );
