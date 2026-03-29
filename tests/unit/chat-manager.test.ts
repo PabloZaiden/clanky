@@ -13,7 +13,7 @@ import {
   waitForLoopStatus,
 } from "../setup";
 import { updateLoopState } from "../../src/persistence/loops";
-import { ContextAwareMockBackend, NeverCompletingMockBackend } from "../mocks/mock-backend";
+import { NeverCompletingMockBackend } from "../mocks/mock-backend";
 import { backendManager } from "../../src/core/backend-manager";
 
 describe("LoopManager - Chat Mode", () => {
@@ -224,53 +224,6 @@ describe("LoopManager - Chat Mode", () => {
       expect(updated!.state.status).toMatch(/completed|max_iterations/);
     });
 
-    test("replays persisted chat history after stop so the next turn remembers earlier context", async () => {
-      const continuityBackend = new ContextAwareMockBackend();
-      backendManager.setBackendForTesting(continuityBackend);
-
-      const loop = await ctx.manager.createChat({
-        ...testModelFields,
-        directory: ctx.workDir,
-        prompt: "The first thing I said was: kumquat",
-        workspaceId: testWorkspaceId,
-      });
-
-      await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
-
-      await ctx.manager.stopLoop(loop.config.id);
-      await ctx.manager.sendChatMessage(loop.config.id, "What was the first thing I said?");
-      await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"], 15000);
-
-      const updated = await ctx.manager.getLoop(loop.config.id);
-      const assistantMessages = (updated!.state.messages ?? []).filter((message) => message.role === "assistant");
-      expect(assistantMessages[assistantMessages.length - 1]?.content).toContain("kumquat");
-    });
-
-    test("keeps the same session across completed chat follow-up turns", async () => {
-      const continuityBackend = new ContextAwareMockBackend();
-      backendManager.setBackendForTesting(continuityBackend);
-
-      const loop = await ctx.manager.createChat({
-        ...testModelFields,
-        directory: ctx.workDir,
-        prompt: "The first thing I said was: starfruit",
-        workspaceId: testWorkspaceId,
-      });
-
-      await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
-
-      const initialSessionId = (await ctx.manager.getLoop(loop.config.id))!.state.session?.id;
-
-      await ctx.manager.sendChatMessage(loop.config.id, "What was the first thing I said?");
-      await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"], 15000);
-
-      const updated = await ctx.manager.getLoop(loop.config.id);
-      expect(updated!.state.session?.id).toBe(initialSessionId);
-      const assistantMessages = (updated!.state.messages ?? []).filter((message) => message.role === "assistant");
-      expect(assistantMessages[assistantMessages.length - 1]?.content).toContain("starfruit");
-      expect(updated!.state.messages?.some((message) => message.role === "assistant" && message.content === "")).toBe(false);
-    });
-
     test("restarts a completed chat even if a stale interruption flag was left on the in-memory engine", async () => {
       const loop = await ctx.manager.createChat({
         ...testModelFields,
@@ -385,33 +338,6 @@ describe("LoopManager - Chat Mode", () => {
 
       updated = await ctx.manager.getLoop(loop.config.id);
       expect(updated!.state.status).toMatch(/completed|max_iterations/);
-    });
-
-    test("replays persisted chat history after backend session loss during recovery", async () => {
-      const continuityBackend = new ContextAwareMockBackend();
-      backendManager.setBackendForTesting(continuityBackend);
-
-      const loop = await ctx.manager.createChat({
-        ...testModelFields,
-        directory: ctx.workDir,
-        prompt: "The first thing I said was: dragonfruit",
-        workspaceId: testWorkspaceId,
-      });
-
-      await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
-
-      await continuityBackend.disconnect();
-
-      // Simulate a restart after the backend process/session disappeared.
-      // @ts-expect-error - accessing private field for test purposes
-      ctx.manager.engines.delete(loop.config.id);
-
-      await ctx.manager.sendChatMessage(loop.config.id, "What was the first thing I said?");
-      await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"], 15000);
-
-      const updated = await ctx.manager.getLoop(loop.config.id);
-      const assistantMessages = (updated!.state.messages ?? []).filter((message) => message.role === "assistant");
-      expect(assistantMessages[assistantMessages.length - 1]?.content).toContain("dragonfruit");
     });
 
     test("rejects recovery of a non-chat loop", async () => {

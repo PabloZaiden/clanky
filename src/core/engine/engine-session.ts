@@ -21,11 +21,6 @@ export interface SessionOperationContext {
   setSessionId: (id: string | null) => void;
 }
 
-export interface SessionReconnectResult {
-  kind: "existing" | "created" | "recreated";
-  sessionId: string;
-}
-
 export async function setupLoopSession(ctx: SessionOperationContext): Promise<string> {
   log.debug("[LoopEngine] setupSession: Entry point");
 
@@ -92,16 +87,13 @@ export async function setupLoopSession(ctx: SessionOperationContext): Promise<st
   return session.id;
 }
 
-export async function reconnectLoopSession(ctx: SessionOperationContext): Promise<SessionReconnectResult> {
+export async function reconnectLoopSession(ctx: SessionOperationContext): Promise<void> {
   log.debug("[LoopEngine] reconnectSession: Entry point");
 
   const activeSessionId = ctx.getSessionId();
   if (activeSessionId && ctx.backend.isConnected()) {
     log.debug("[LoopEngine] reconnectSession: Already have an active connected session", { sessionId: activeSessionId });
-    return {
-      kind: "existing",
-      sessionId: activeSessionId,
-    };
+    return;
   }
 
   const existingSessionId = activeSessionId ?? ctx.state.session?.id;
@@ -139,12 +131,9 @@ export async function reconnectLoopSession(ctx: SessionOperationContext): Promis
           ctx.emitLog("warn", "Persisted session no longer exists - creating a new session", {
             sessionId: existingSession.id,
           });
-          const recreatedSessionId = await recreateSessionAfterLoss(ctx, `Session ${existingSession.id} not found during reconnect`);
+          await recreateSessionAfterLoss(ctx, `Session ${existingSession.id} not found during reconnect`);
           log.debug("[LoopEngine] reconnectSession: Recreated missing session");
-          return {
-            kind: "recreated",
-            sessionId: recreatedSessionId,
-          };
+          return;
         }
       } catch (error) {
         const message = String(error);
@@ -153,12 +142,9 @@ export async function reconnectLoopSession(ctx: SessionOperationContext): Promis
             sessionId: existingSession.id,
             error: message,
           });
-          const recreatedSessionId = await recreateSessionAfterLoss(ctx, message);
+          await recreateSessionAfterLoss(ctx, message);
           log.debug("[LoopEngine] reconnectSession: Recreated missing session after lookup error");
-          return {
-            kind: "recreated",
-            sessionId: recreatedSessionId,
-          };
+          return;
         }
 
         ctx.emitLog("warn", "Failed to verify persisted session - reusing stored session id", {
@@ -171,20 +157,13 @@ export async function reconnectLoopSession(ctx: SessionOperationContext): Promis
     ctx.setSessionId(existingSession.id);
     ctx.emitLog("info", "Reconnected to existing session", { sessionId: ctx.getSessionId() });
     log.debug("[LoopEngine] reconnectSession: Reconnected to session", { sessionId: ctx.getSessionId() });
-    return {
-      kind: "existing",
-      sessionId: existingSession.id,
-    };
+    return;
   }
 
   log.debug("[LoopEngine] reconnectSession: No existing session, creating new one");
   ctx.emitLog("info", "No existing session found, creating new session");
-  const sessionId = await setupLoopSession(ctx);
+  await setupLoopSession(ctx);
   log.debug("[LoopEngine] reconnectSession: Exit point (new session created)");
-  return {
-    kind: "created",
-    sessionId,
-  };
 }
 
 export async function recreateSessionAfterLoss(ctx: SessionOperationContext, reason: string): Promise<string> {

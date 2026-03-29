@@ -50,7 +50,7 @@ import {
 } from "./engine-types";
 import { StopPatternDetector, nextWithTimeout } from "./engine-helpers";
 import { logToConsole, persistLoopLog, persistLoopMessage, persistLoopToolCall } from "./engine-events";
-import { buildLoopPrompt, buildChatReplayPrompt, evaluateLoopOutcome, type PromptBuildContext } from "./engine-prompt";
+import { buildLoopPrompt, evaluateLoopOutcome, type PromptBuildContext } from "./engine-prompt";
 import {
   clearLoopPlanningFolder,
   setupLoopGitBranch,
@@ -96,7 +96,6 @@ export class LoopEngine {
   private pendingPromptAttachments: MessageImageAttachment[] = [];
   private currentEventStream: EventStream<AgentEvent> | null = null;
   private activeSessionInterrupt: Promise<void> | null = null;
-  private chatHistoryReplayPending = false;
 
   constructor(options: LoopEngineOptions) {
     this.loop = options.loop;
@@ -290,7 +289,6 @@ export class LoopEngine {
     abortMessage: string;
     abortWarnMessage: string;
     forceDisconnect: boolean;
-    resetSession?: boolean;
     markAborted?: boolean;
     disconnectMessage?: string;
     disconnectWarnMessage?: string;
@@ -316,12 +314,6 @@ export class LoopEngine {
         });
       }
 
-      if (options.resetSession) {
-        this.sessionId = null;
-        this.updateState({ session: undefined });
-        return;
-      }
-
       if (!options.forceDisconnect) {
         return;
       }
@@ -343,12 +335,11 @@ export class LoopEngine {
       }
     })();
 
-    const trackedInterrupt = interruptPromise.finally(() => {
-      if (this.activeSessionInterrupt === trackedInterrupt) {
+    this.activeSessionInterrupt = interruptPromise.finally(() => {
+      if (this.activeSessionInterrupt === interruptPromise) {
         this.activeSessionInterrupt = null;
       }
     });
-    this.activeSessionInterrupt = trackedInterrupt;
 
     await this.activeSessionInterrupt;
   }
@@ -651,9 +642,8 @@ export class LoopEngine {
       await this.triggerPersistence();
 
       // Chat follow-ups should interrupt the active turn instead of leaving
-      // the new user message stranded behind a long-running or stuck generation.
-      // Keep the same ACP session when the provider supports cancellation so the
-      // next prompt continues the real remote conversation rather than replaying it.
+      // the new user message stranded behind a
+      // long-running or stuck generation.
       this.injectionPending = true;
 
       if (this.sessionId) {
@@ -784,7 +774,6 @@ export class LoopEngine {
    */
   private async setupSession(): Promise<void> {
     await setupLoopSession(this.makeSessionContext());
-    this.chatHistoryReplayPending = false;
   }
 
   /**
@@ -793,11 +782,7 @@ export class LoopEngine {
    * while a loop is still in planning mode.
    */
   async reconnectSession(): Promise<void> {
-    const result = await reconnectLoopSession(this.makeSessionContext());
-    this.chatHistoryReplayPending =
-      this.isChatMode
-      && this.hasPersistedChatHistory()
-      && result.kind !== "existing";
+    await reconnectLoopSession(this.makeSessionContext());
   }
 
   /**
@@ -805,9 +790,6 @@ export class LoopEngine {
    */
   private async recreateSessionAfterSessionLoss(reason: string): Promise<void> {
     await recreateSessionAfterLoss(this.makeSessionContext(), reason);
-    if (this.isChatMode && this.hasPersistedChatHistory()) {
-      this.chatHistoryReplayPending = true;
-    }
   }
 
   /**
@@ -831,34 +813,6 @@ export class LoopEngine {
    */
   private resetIterationContextForRetry(ctx: IterationContext): void {
     resetIterationContextForRetry(ctx);
-  }
-
-  private hasPersistedChatHistory(): boolean {
-    return this.loop.state.messages.some((message) => {
-      return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0;
-    });
-  }
-
-  private rebuildPromptForRecoveredChatSession(prompt: PromptInput): PromptInput {
-    if (!this.isChatMode || !this.chatHistoryReplayPending) {
-      return prompt;
-    }
-
-    const attachments = prompt.parts.flatMap((part, index) => {
-      if (part.type !== "image") {
-        return [];
-      }
-
-      return [{
-        id: `replayed-image-${index}`,
-        mimeType: part.mimeType,
-        data: part.data,
-        filename: part.filename ?? `replayed-image-${index}`,
-        size: Math.ceil((part.data.length * 3) / 4),
-      }];
-    });
-
-    return buildChatReplayPrompt(this.makePromptContext(), prompt.model, attachments);
   }
 
   /**
@@ -1050,10 +1004,6 @@ export class LoopEngine {
       updateState: this.updateState.bind(this),
       consumeInitialPromptAttachments: this.consumeInitialPromptAttachments.bind(this),
       consumePendingPromptAttachments: this.consumePendingPromptAttachments.bind(this),
-      shouldReplayChatHistory: () => this.chatHistoryReplayPending,
-      markChatHistoryReplayed: () => {
-        this.chatHistoryReplayPending = false;
-      },
     };
   }
 
@@ -1543,7 +1493,7 @@ export class LoopEngine {
     // Build the prompt
     log.debug("[LoopEngine] runIteration: Building prompt");
     this.emitLog("debug", "Building prompt for AI agent");
-    let prompt = this.buildPrompt(ctx.iteration);
+    const prompt = this.buildPrompt(ctx.iteration);
 
     // Log the prompt for debugging
     log.debug("[LoopEngine] runIteration: Prompt details", {
@@ -1638,7 +1588,6 @@ export class LoopEngine {
             error: message,
           });
           await this.recreateSessionAfterSessionLoss(message);
-          prompt = this.rebuildPromptForRecoveredChatSession(prompt);
           this.resetIterationContextForRetry(ctx);
           continue;
         }

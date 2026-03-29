@@ -81,15 +81,6 @@ export class AcpBackend implements Backend {
   /** Track the last emitted reasoning chunk signature per session to suppress duplicates */
   private sessionLastReasoningChunkSignature = new Map<string, string>();
 
-  /** Inactivity fallback timers for prompts that stream output but never send an explicit completion */
-  private sessionPromptCompletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-  /** Short fallback window for ACP runtimes that omit completion after streaming a response */
-  private asyncPromptCompletionFallbackMs = 5_000;
-
-  /** Suppress one leaked cancellation notice chunk when reusing a canceled session */
-  private sessionSuppressCancellationNotice = new Set<string>();
-
   /** Cache sessions and model discovery results */
   private sessionCache = new Map<string, AgentSession>();
   private modelCache = new Map<string, ModelInfo[]>();
@@ -220,11 +211,6 @@ export class AcpBackend implements Backend {
     this.sessionPromptHasActivity.clear();
     this.sessionReasoningPartKeys.clear();
     this.sessionLastReasoningChunkSignature.clear();
-    for (const timer of this.sessionPromptCompletionTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.sessionPromptCompletionTimers.clear();
-    this.sessionSuppressCancellationNotice.clear();
     this.sessionCache.clear();
     this.modelCache.clear();
     this.pendingPermissionRequests.clear();
@@ -521,7 +507,11 @@ export class AcpBackend implements Backend {
             type: "message.complete",
             content: "",
           });
-          this.clearPromptTracking(sessionId);
+          this.sessionMessageStarted.delete(sessionId);
+          this.sessionPromptSequences.delete(sessionId);
+          this.sessionPromptHasActivity.delete(sessionId);
+          this.sessionReasoningPartKeys.delete(sessionId);
+          this.sessionLastReasoningChunkSignature.delete(sessionId);
         }
         return;
       }
@@ -580,12 +570,8 @@ export class AcpBackend implements Backend {
     if (updateType === "agent_message_chunk") {
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
-        this.refreshPromptCompletionFallback(sessionId);
       }
-      let text = getString(content["text"]) ?? "";
-      if (this.sessionSuppressCancellationNotice.delete(sessionId)) {
-        text = this.stripCancellationNotice(text);
-      }
+      const text = getString(content["text"]) ?? "";
       if (!this.sessionMessageStarted.get(sessionId)) {
         this.sessionMessageStarted.set(sessionId, true);
         this.emitSessionEvent(sessionId, {
@@ -605,7 +591,6 @@ export class AcpBackend implements Backend {
     if (updateType === "agent_thought_chunk") {
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
-        this.refreshPromptCompletionFallback(sessionId);
       }
       const text = getString(content["text"]) ?? "";
       if (text.length > 0) {
@@ -634,7 +619,6 @@ export class AcpBackend implements Backend {
     if (updateType === "tool_call") {
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
-        this.refreshPromptCompletionFallback(sessionId);
       }
       const toolCallId = firstString(updateObj["toolCallId"], content["toolCallId"]);
       const toolName = firstString(
@@ -660,7 +644,6 @@ export class AcpBackend implements Backend {
     if (updateType === "tool_call_update") {
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
-        this.refreshPromptCompletionFallback(sessionId);
       }
       const toolCallId = firstString(updateObj["toolCallId"], content["toolCallId"]);
       const toolName = firstString(
@@ -1168,7 +1151,11 @@ export class AcpBackend implements Backend {
 
     this.sessionCache.delete(id);
     this.sessionSubscribers.delete(id);
-    this.clearPromptTracking(id);
+    this.sessionMessageStarted.delete(id);
+    this.sessionPromptSequences.delete(id);
+    this.sessionPromptHasActivity.delete(id);
+    this.sessionReasoningPartKeys.delete(id);
+    this.sessionLastReasoningChunkSignature.delete(id);
   }
 
   /**
@@ -1284,7 +1271,6 @@ export class AcpBackend implements Backend {
     this.sessionPromptHasActivity.set(sessionId, false);
     this.sessionReasoningPartKeys.delete(sessionId);
     this.sessionLastReasoningChunkSignature.delete(sessionId);
-    this.clearPromptCompletionFallback(sessionId);
     log.debug("[AcpBackend] Sending async prompt", {
       sessionId,
       sequence,
@@ -1297,20 +1283,16 @@ export class AcpBackend implements Backend {
         if (this.sessionPromptSequences.get(sessionId) !== sequence) {
           return;
         }
-        const hasPromptActivity = this.sessionPromptHasActivity.get(sessionId) ?? false;
-        if (!hasPromptActivity) {
-          log.debug("[AcpBackend] Async prompt RPC completed before prompt activity; waiting for event-driven completion", {
-            sessionId,
-            sequence,
-          });
-          return;
-        }
         log.debug("[AcpBackend] Async prompt RPC completed", { sessionId, sequence });
         this.emitSessionEvent(sessionId, {
           type: "message.complete",
           content: "",
         });
-        this.clearPromptTracking(sessionId);
+        this.sessionMessageStarted.delete(sessionId);
+        this.sessionPromptSequences.delete(sessionId);
+        this.sessionPromptHasActivity.delete(sessionId);
+        this.sessionReasoningPartKeys.delete(sessionId);
+        this.sessionLastReasoningChunkSignature.delete(sessionId);
       })
       .catch((error) => {
         if (this.sessionPromptSequences.get(sessionId) !== sequence) {
@@ -1332,7 +1314,11 @@ export class AcpBackend implements Backend {
           type: "error",
           message,
         });
-        this.clearPromptTracking(sessionId);
+        this.sessionMessageStarted.delete(sessionId);
+        this.sessionPromptSequences.delete(sessionId);
+        this.sessionPromptHasActivity.delete(sessionId);
+        this.sessionReasoningPartKeys.delete(sessionId);
+        this.sessionLastReasoningChunkSignature.delete(sessionId);
       });
   }
 
@@ -1341,128 +1327,21 @@ export class AcpBackend implements Backend {
    */
   async abortSession(sessionId: string): Promise<void> {
     this.ensureConnected();
-    const settlementWaiter = this.sessionPromptSequences.has(sessionId)
-      ? this.createSessionSettlementWaiter(sessionId)
-      : null;
 
     const cancellationMethods = ["session/cancel", "session/abort", "session/stop"];
     for (const method of cancellationMethods) {
       try {
         await this.sendRpcRequest(method, { sessionId }, 5_000);
-        this.sessionSuppressCancellationNotice.add(sessionId);
-        if (settlementWaiter) {
-          await settlementWaiter.promise;
-        }
         return;
       } catch (error) {
         const message = String(error);
         if (!message.includes("Method not found") && !message.includes("-32601")) {
-          settlementWaiter?.cancel();
           throw error;
         }
       }
     }
 
-    settlementWaiter?.cancel();
     log.debug("[AcpBackend] Session abort is not supported by current ACP provider", { sessionId });
-  }
-
-  private createSessionSettlementWaiter(sessionId: string, timeoutMs = 5_000): {
-    promise: Promise<void>;
-    cancel: () => void;
-  } {
-    let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let resolvePromise: (() => void) | null = null;
-
-    const subscriber: SessionSubscriber = (event) => {
-      if (event.type === "message.complete" || (event.type === "session.status" && event.status === "idle") || event.type === "error") {
-        finish();
-      }
-    };
-
-    const finish = () => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
-      this.removeSessionSubscriber(sessionId, subscriber);
-      resolvePromise?.();
-    };
-
-    const promise = new Promise<void>((resolve) => {
-      resolvePromise = resolve;
-      this.addSessionSubscriber(sessionId, subscriber);
-      timer = setTimeout(() => {
-        log.debug("[AcpBackend] Timed out waiting for canceled session to settle", { sessionId, timeoutMs });
-        finish();
-      }, timeoutMs);
-    });
-
-    return {
-      promise,
-      cancel: finish,
-    };
-  }
-
-  private stripCancellationNotice(text: string): string {
-    const prefixes = [
-      "Info: Operation cancelled by user",
-      "Operation cancelled by user",
-    ];
-    for (const prefix of prefixes) {
-      if (text.startsWith(prefix)) {
-        return text.slice(prefix.length).trimStart();
-      }
-    }
-    return text;
-  }
-
-  private refreshPromptCompletionFallback(sessionId: string): void {
-    if (!this.sessionPromptSequences.has(sessionId)) {
-      return;
-    }
-    this.clearPromptCompletionFallback(sessionId);
-    const timer = setTimeout(() => {
-      this.sessionPromptCompletionTimers.delete(sessionId);
-      if (!this.sessionPromptSequences.has(sessionId)) {
-        return;
-      }
-      if (!(this.sessionPromptHasActivity.get(sessionId) ?? false)) {
-        return;
-      }
-      log.debug("[AcpBackend] Completing prompt after activity timeout fallback", {
-        sessionId,
-        timeoutMs: this.asyncPromptCompletionFallbackMs,
-      });
-      this.emitSessionEvent(sessionId, {
-        type: "message.complete",
-        content: "",
-      });
-      this.clearPromptTracking(sessionId);
-    }, this.asyncPromptCompletionFallbackMs);
-    this.sessionPromptCompletionTimers.set(sessionId, timer);
-  }
-
-  private clearPromptCompletionFallback(sessionId: string): void {
-    const timer = this.sessionPromptCompletionTimers.get(sessionId);
-    if (timer) {
-      clearTimeout(timer);
-      this.sessionPromptCompletionTimers.delete(sessionId);
-    }
-  }
-
-  private clearPromptTracking(sessionId: string): void {
-    this.clearPromptCompletionFallback(sessionId);
-    this.sessionMessageStarted.delete(sessionId);
-    this.sessionPromptSequences.delete(sessionId);
-    this.sessionPromptHasActivity.delete(sessionId);
-    this.sessionReasoningPartKeys.delete(sessionId);
-    this.sessionLastReasoningChunkSignature.delete(sessionId);
-    this.sessionSuppressCancellationNotice.delete(sessionId);
   }
 
   /**

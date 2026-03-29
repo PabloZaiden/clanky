@@ -16,9 +16,7 @@ type PrivateBackend = {
   pendingPermissionRequests: Map<string, { rpcId: number; options: Array<{ optionId: string; kind?: string }> }>;
   toolCallNames: Map<string, string>;
   sessionPromptSequences: Map<string, number>;
-  sessionPromptHasActivity: Map<string, boolean>;
   sessionReasoningPartKeys: Map<string, string>;
-  asyncPromptCompletionFallbackMs: number;
   connected: boolean;
   process: { stdin: { write: (line: string) => void } } | null;
   replyToPermission(requestId: string, response: string): Promise<void>;
@@ -36,7 +34,6 @@ type PrivateBackend = {
       >;
     },
   ): Promise<void>;
-  abortSession(sessionId: string): Promise<void>;
 };
 
 function getBackend(): PrivateBackend {
@@ -653,7 +650,7 @@ describe("AcpBackend ACP parsing", () => {
     expect(events.filter((event) => event["type"] === "message.complete")).toHaveLength(1);
   });
 
-  test("does not emit async prompt completion before the active prompt shows activity", async () => {
+  test("ignores stale message.complete from previous async prompt", async () => {
     const backend = getBackend();
     const sessionId = "session-stale";
     const events: Array<Record<string, unknown>> = [];
@@ -698,152 +695,12 @@ describe("AcpBackend ACP parsing", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(events).toEqual([]);
-    expect(backend.sessionPromptSequences.get(sessionId)).toBe(2);
-
-    backend.handleRpcMessage({
-      jsonrpc: "2.0",
-      method: "session/update",
-      params: {
-        sessionId,
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { text: "real reply" },
-        },
-      },
-    });
-    backend.handleRpcMessage({
-      jsonrpc: "2.0",
-      method: "session/status",
-      params: {
-        sessionId,
-        status: "idle",
-      },
-    });
-
     expect(events).toEqual([
-      {
-        type: "message.start",
-        messageId: expect.any(String),
-      },
-      {
-        type: "message.delta",
-        content: "real reply",
-      },
-      {
-        type: "session.status",
-        sessionId,
-        status: "idle",
-        attempt: undefined,
-        message: undefined,
-      },
       {
         type: "message.complete",
         content: "",
       },
     ]);
-  });
-
-  test("abortSession waits for the canceled prompt to settle before resolving", async () => {
-    const backend = getBackend();
-    const sessionId = "session-abort-wait";
-
-    backend.connected = true;
-    backend.process = {
-      stdin: {
-        write: () => {
-          // no-op
-        },
-      },
-    };
-    backend.sessionPromptSequences.set(sessionId, 1);
-    backend.sessionPromptHasActivity.set(sessionId, true);
-
-    let settled = false;
-    backend.sendRpcRequest = ((method: string) => {
-      if (method === "session/cancel") {
-        queueMicrotask(() => {
-          backend.handleRpcMessage({
-            jsonrpc: "2.0",
-            method: "session/status",
-            params: {
-              sessionId,
-              status: "idle",
-            },
-          });
-          settled = true;
-        });
-      }
-      return Promise.resolve({}) as Promise<unknown>;
-    }) as PrivateBackend["sendRpcRequest"];
-
-    await backend.abortSession(sessionId);
-
-    expect(settled).toBe(true);
-    expect(backend.sessionPromptSequences.has(sessionId)).toBe(false);
-  });
-
-  test("completes an active prompt after fallback inactivity when ACP never sends completion", async () => {
-    const backend = getBackend();
-    const sessionId = "session-fallback-complete";
-    const events: Array<Record<string, unknown>> = [];
-
-    backend.connected = true;
-    backend.process = {
-      stdin: {
-        write: () => {
-          // no-op
-        },
-      },
-    };
-    backend.asyncPromptCompletionFallbackMs = 20;
-    backend.sessionSubscribers.set(
-      sessionId,
-      new Set([
-        (event: unknown) => {
-          events.push(event as Record<string, unknown>);
-        },
-      ]),
-    );
-
-    const pendingPrompt = createDeferred<unknown>();
-    backend.sendRpcRequest = ((method: string) => {
-      if (method === "session/prompt") {
-        return pendingPrompt.promise;
-      }
-      return Promise.resolve({}) as Promise<unknown>;
-    }) as PrivateBackend["sendRpcRequest"];
-
-    await backend.sendPromptAsync(sessionId, { parts: [{ type: "text", text: "hello" }] });
-    backend.handleRpcMessage({
-      jsonrpc: "2.0",
-      method: "session/update",
-      params: {
-        sessionId,
-        update: {
-          sessionUpdate: "agent_message_chunk",
-          content: { text: "You first said: `cobalt-otter-ember`." },
-        },
-      },
-    });
-
-    await new Promise((resolve) => setTimeout(resolve, 40));
-
-    expect(events).toEqual([
-      {
-        type: "message.start",
-        messageId: expect.any(String),
-      },
-      {
-        type: "message.delta",
-        content: "You first said: `cobalt-otter-ember`.",
-      },
-      {
-        type: "message.complete",
-        content: "",
-      },
-    ]);
-    expect(backend.sessionPromptSequences.has(sessionId)).toBe(false);
   });
 
   test("buildPromptParams includes model when provided", () => {
