@@ -7,9 +7,9 @@
     "dev": "bun --hot src/index.ts",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun run tsc && bun src/build.ts",
-    "test": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 tests/unit tests/api tests/e2e tests/integration && bun test --dots --timeout 15000 --preload ./tests/frontend/setup.ts tests/frontend",
-    "test:backend": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 tests/unit tests/api tests/e2e tests/integration",
-    "test:frontend": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 --preload ./tests/frontend/setup.ts tests/frontend",
+    "test": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 --max-concurrency=1 tests/unit tests/api tests/e2e tests/integration && bun test --dots --timeout 15000 --max-concurrency=1 --preload ./tests/frontend/setup.ts tests/frontend",
+    "test:backend": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 --max-concurrency=1 tests/unit tests/api tests/e2e tests/integration",
+    "test:frontend": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 --max-concurrency=1 --preload ./tests/frontend/setup.ts tests/frontend",
     "tsc": "bunx tsc --noEmit"
   },
   "dependencies": {
