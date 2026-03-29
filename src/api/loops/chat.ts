@@ -140,8 +140,9 @@ export const loopsChatRoutes = {
      * the next chat turn. If the AI is idle (previous turn completed), a new
      * single-turn iteration is started immediately.
      *
-     * Returns immediately after setting up the injection — does not wait for
-     * the AI to finish responding.
+     * Returns after the backend has safely accepted the message and coordinated
+     * any required chat-turn restart. It still does not wait for the AI to
+     * finish responding.
      *
      * Request Body:
      * - message (required): The user's message

@@ -23,7 +23,8 @@ export async function createChatApi(request: CreateChatRequest): Promise<Loop> {
 
 /**
  * Send a message to an interactive chat via the API.
- * Returns immediately after injection — does not wait for AI response.
+ * Returns after the backend has safely accepted the message and coordinated
+ * any required chat-turn restart, but does not wait for the AI response.
  */
 export async function sendChatMessageApi(
   loopId: string,
