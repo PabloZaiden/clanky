@@ -3,7 +3,7 @@
  */
 
 import { log } from "../logger";
-import type { LoopLogEntry } from "../../types/loop";
+import type { LoopLogEntry, PersistedMessage } from "../../types/loop";
 import type { MessageData, ToolCallData, LogLevel } from "../../types/events";
 import {
   MAX_PERSISTED_LOGS,
@@ -65,15 +65,20 @@ export function persistLoopLog(
 }
 
 export function persistLoopMessage(
-  messages: MessageData[],
+  messages: PersistedMessage[],
   message: MessageData,
-): MessageData[] {
+): PersistedMessage[] {
   const existingIndex = messages.findIndex((m) => m.id === message.id);
   if (existingIndex >= 0) {
+    const existing = messages[existingIndex]!;
     messages[existingIndex] = {
       id: message.id,
       role: message.role,
       content: message.content,
+      attachments:
+        message.attachments === undefined
+          ? existing.attachments
+          : message.attachments,
       timestamp: message.timestamp,
     };
   } else {
@@ -81,6 +86,7 @@ export function persistLoopMessage(
       id: message.id,
       role: message.role,
       content: message.content,
+      attachments: message.attachments,
       timestamp: message.timestamp,
     });
   }

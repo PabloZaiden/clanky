@@ -11,6 +11,7 @@
 
 // Import and re-export ModelConfig from schema (single source of truth)
 import type { ModelConfig } from "./schemas/model";
+import type { MessageImageAttachment } from "./message-attachments";
 export type { ModelConfig };
 
 /**
@@ -242,6 +243,8 @@ export interface PersistedMessage {
   role: "user" | "assistant";
   /** The message content */
   content: string;
+  /** Inline image attachments persisted for refresh recovery when present */
+  attachments?: MessageImageAttachment[];
   /** ISO 8601 timestamp when the message was created */
   timestamp: string;
 }
