@@ -338,6 +338,46 @@ describe("AcpBackend ACP parsing", () => {
     expect(backend.sessionReasoningPartKeys.get(sessionId)).toBe("id:part-1");
   });
 
+  test("suppresses duplicate agent_thought_chunk notifications for the same part and text", () => {
+    const backend = getBackend();
+    const sessionId = "session-reasoning-duplicate";
+    const events: Array<Record<string, unknown>> = [];
+
+    backend.sessionSubscribers.set(
+      sessionId,
+      new Set([
+        (event: unknown) => {
+          events.push(event as Record<string, unknown>);
+        },
+      ]),
+    );
+
+    const duplicateMessage = {
+      jsonrpc: "2.0" as const,
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_thought_chunk",
+          content: {
+            partId: "part-dup",
+            text: "Inspecting repository",
+          },
+        },
+      },
+    };
+
+    backend.handleRpcMessage(duplicateMessage);
+    backend.handleRpcMessage(duplicateMessage);
+
+    expect(events).toEqual([
+      {
+        type: "reasoning.delta",
+        content: "Inspecting repository",
+      },
+    ]);
+  });
+
   test("parses model lists from availableModels shape", () => {
     const backend = getBackend();
     const parsed = backend.parseModelsFromSessionResult({

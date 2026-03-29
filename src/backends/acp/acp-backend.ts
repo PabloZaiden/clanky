@@ -78,6 +78,12 @@ export class AcpBackend implements Backend {
   /** Track reasoning part identity per session to separate distinct reasoning parts */
   private sessionReasoningPartKeys = new Map<string, string>();
 
+  /** Track the last emitted reasoning chunk signature per session to suppress duplicates */
+  private sessionLastReasoningChunkSignature = new Map<string, string>();
+
+  /** Track reasoning fallback chunks so identical later deltas can be suppressed */
+  private pendingReasoningFallbackDeltas = new Map<string, string>();
+
   /** Cache sessions and model discovery results */
   private sessionCache = new Map<string, AgentSession>();
   private modelCache = new Map<string, ModelInfo[]>();
@@ -207,6 +213,8 @@ export class AcpBackend implements Backend {
     this.sessionPromptSequences.clear();
     this.sessionPromptHasActivity.clear();
     this.sessionReasoningPartKeys.clear();
+    this.sessionLastReasoningChunkSignature.clear();
+    this.pendingReasoningFallbackDeltas.clear();
     this.sessionCache.clear();
     this.modelCache.clear();
     this.pendingPermissionRequests.clear();
@@ -507,6 +515,8 @@ export class AcpBackend implements Backend {
           this.sessionPromptSequences.delete(sessionId);
           this.sessionPromptHasActivity.delete(sessionId);
           this.sessionReasoningPartKeys.delete(sessionId);
+          this.sessionLastReasoningChunkSignature.delete(sessionId);
+          this.clearPendingReasoningFallbacks(sessionId);
         }
         return;
       }
@@ -591,6 +601,10 @@ export class AcpBackend implements Backend {
       if (text.length > 0) {
         let reasoningText = text;
         const partKey = this.getReasoningPartKey(updateObj, content);
+        const chunkSignature = `${partKey ?? "unknown"}\u0000${text}`;
+        if (this.sessionLastReasoningChunkSignature.get(sessionId) === chunkSignature) {
+          return;
+        }
         if (partKey) {
           const previousPartKey = this.sessionReasoningPartKeys.get(sessionId);
           if (previousPartKey && previousPartKey !== partKey && !text.startsWith("\n")) {
@@ -598,6 +612,7 @@ export class AcpBackend implements Backend {
           }
           this.sessionReasoningPartKeys.set(sessionId, partKey);
         }
+        this.sessionLastReasoningChunkSignature.set(sessionId, chunkSignature);
         this.emitSessionEvent(sessionId, {
           type: "reasoning.delta",
           content: reasoningText,
@@ -717,6 +732,19 @@ export class AcpBackend implements Backend {
     }
 
     return undefined;
+  }
+
+  private getReasoningFallbackDeltaKey(sessionId: string, partId: string): string {
+    return `${sessionId}:${partId}`;
+  }
+
+  private clearPendingReasoningFallbacks(sessionId: string): void {
+    const prefix = `${sessionId}:`;
+    for (const key of this.pendingReasoningFallbackDeltas.keys()) {
+      if (key.startsWith(prefix)) {
+        this.pendingReasoningFallbackDeltas.delete(key);
+      }
+    }
   }
 
   private addSessionSubscriber(sessionId: string, subscriber: SessionSubscriber): void {
@@ -1145,6 +1173,8 @@ export class AcpBackend implements Backend {
     this.sessionPromptSequences.delete(id);
     this.sessionPromptHasActivity.delete(id);
     this.sessionReasoningPartKeys.delete(id);
+    this.sessionLastReasoningChunkSignature.delete(id);
+    this.clearPendingReasoningFallbacks(id);
   }
 
   /**
@@ -1259,6 +1289,8 @@ export class AcpBackend implements Backend {
     this.sessionPromptSequences.set(sessionId, sequence);
     this.sessionPromptHasActivity.set(sessionId, false);
     this.sessionReasoningPartKeys.delete(sessionId);
+    this.sessionLastReasoningChunkSignature.delete(sessionId);
+    this.clearPendingReasoningFallbacks(sessionId);
     log.debug("[AcpBackend] Sending async prompt", {
       sessionId,
       sequence,
@@ -1280,6 +1312,8 @@ export class AcpBackend implements Backend {
         this.sessionPromptSequences.delete(sessionId);
         this.sessionPromptHasActivity.delete(sessionId);
         this.sessionReasoningPartKeys.delete(sessionId);
+        this.sessionLastReasoningChunkSignature.delete(sessionId);
+        this.clearPendingReasoningFallbacks(sessionId);
       })
       .catch((error) => {
         if (this.sessionPromptSequences.get(sessionId) !== sequence) {
@@ -1305,6 +1339,8 @@ export class AcpBackend implements Backend {
         this.sessionPromptSequences.delete(sessionId);
         this.sessionPromptHasActivity.delete(sessionId);
         this.sessionReasoningPartKeys.delete(sessionId);
+        this.sessionLastReasoningChunkSignature.delete(sessionId);
+        this.clearPendingReasoningFallbacks(sessionId);
       });
   }
 
@@ -1633,6 +1669,10 @@ export class AcpBackend implements Backend {
 
             if (newContent.length > 0) {
               reasoningTextLength.set(partId, part.text.length);
+              this.pendingReasoningFallbackDeltas.set(
+                this.getReasoningFallbackDeltaKey(sessionId, partId),
+                newContent,
+              );
               return {
                 type: "reasoning.delta",
                 content: newContent,
@@ -1818,6 +1858,13 @@ export class AcpBackend implements Backend {
             };
           }
           if (resolvedType === "reasoning") {
+            const fallbackKey = this.getReasoningFallbackDeltaKey(sessionId, partID);
+            const pendingFallbackDelta = this.pendingReasoningFallbackDeltas.get(fallbackKey);
+            if (pendingFallbackDelta === delta) {
+              this.pendingReasoningFallbackDeltas.delete(fallbackKey);
+              return null;
+            }
+            this.pendingReasoningFallbackDeltas.delete(fallbackKey);
             const currentLength = reasoningTextLength.get(partID) ?? 0;
             reasoningTextLength.set(partID, currentLength + delta.length);
             return {

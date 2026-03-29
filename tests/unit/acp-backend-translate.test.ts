@@ -778,6 +778,89 @@ describe("translateEvent: message.part.delta", () => {
     expect(ctx.reasoningTextLength.get("r-1")).toBe(13);
   });
 
+  test("suppresses an identical reasoning delta after fallback emission from message.part.updated", () => {
+    const backend = getBackend();
+    const ctx = createContext();
+    const emitted: string[] = [];
+
+    const fallback = backend.translateEvent(
+      {
+        type: "message.part.updated",
+        properties: {
+          part: {
+            sessionID: "test-session",
+            type: "reasoning",
+            id: "reason-dup",
+            text: "Inspecting repository",
+          },
+        },
+      },
+      ctx
+    );
+
+    expect(fallback).toEqual({ type: "reasoning.delta", content: "Inspecting repository" });
+    emitted.push((fallback as { content: string }).content);
+
+    const duplicateDelta = backend.translateEvent(
+      {
+        type: "message.part.delta",
+        properties: {
+          sessionID: "test-session",
+          partID: "reason-dup",
+          field: "reasoning",
+          delta: "Inspecting repository",
+        },
+      },
+      ctx
+    );
+
+    expect(duplicateDelta).toBeNull();
+    expect(emitted.join("")).toBe("Inspecting repository");
+    expect(ctx.reasoningTextLength.get("reason-dup")).toBe(21);
+  });
+
+  test("keeps emitting non-duplicate reasoning deltas after fallback emission", () => {
+    const backend = getBackend();
+    const ctx = createContext();
+    const emitted: string[] = [];
+
+    const fallback = backend.translateEvent(
+      {
+        type: "message.part.updated",
+        properties: {
+          part: {
+            sessionID: "test-session",
+            type: "reasoning",
+            id: "reason-nondup",
+            text: "Inspecting repository",
+          },
+        },
+      },
+      ctx
+    );
+
+    expect(fallback).toEqual({ type: "reasoning.delta", content: "Inspecting repository" });
+    emitted.push((fallback as { content: string }).content);
+
+    const nextDelta = backend.translateEvent(
+      {
+        type: "message.part.delta",
+        properties: {
+          sessionID: "test-session",
+          partID: "reason-nondup",
+          field: "reasoning",
+          delta: " carefully",
+        },
+      },
+      ctx
+    );
+
+    expect(nextDelta).toEqual({ type: "reasoning.delta", content: " carefully" });
+    emitted.push((nextDelta as { content: string }).content);
+    expect(emitted.join("")).toBe("Inspecting repository carefully");
+    expect(ctx.reasoningTextLength.get("reason-nondup")).toBe(31);
+  });
+
   test("partType takes precedence over conflicting field (reasoning part with text field)", () => {
     const backend = getBackend();
     const ctx = createContext();
