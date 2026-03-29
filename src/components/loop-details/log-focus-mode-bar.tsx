@@ -12,8 +12,6 @@ export interface LogFocusModeBarProps {
   onShowToolsChange: (value: boolean) => void;
   autoScroll: boolean;
   onAutoScrollChange: (value: boolean) => void;
-  logsCollapsed: boolean;
-  onLogsCollapsedChange: (value: boolean) => void;
   onExitFocusMode: () => void;
   applySafeAreaBottom?: boolean;
 }
@@ -27,8 +25,6 @@ export function LogFocusModeBar({
   onShowToolsChange,
   autoScroll,
   onAutoScrollChange,
-  logsCollapsed,
-  onLogsCollapsedChange,
   onExitFocusMode,
   applySafeAreaBottom = false,
 }: LogFocusModeBarProps) {
@@ -52,18 +48,6 @@ export function LogFocusModeBar({
           title="Exit focus mode"
         >
           ✕
-        </Button>
-
-        <span className={separatorClassName} aria-hidden="true" />
-
-        <Button
-          variant={logsCollapsed ? "secondary" : "primary"}
-          size="xs"
-          className={buttonClassName}
-          onClick={() => onLogsCollapsedChange(!logsCollapsed)}
-          aria-pressed={!logsCollapsed}
-        >
-          {logsCollapsed ? "Show logs" : "Hide logs"}
         </Button>
 
         <span className={separatorClassName} aria-hidden="true" />
