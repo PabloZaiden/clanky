@@ -32,6 +32,10 @@ function getStringField(input: unknown, key: string): string | undefined {
   return undefined;
 }
 
+function getPathField(input: unknown): string | undefined {
+  return getStringField(input, "path") ?? getStringField(input, "filePath");
+}
+
 function hasField(input: unknown, key: string): boolean {
   return input !== null && typeof input === "object" && key in (input as Record<string, unknown>);
 }
@@ -49,23 +53,23 @@ function getToolMeta(tool: ToolCallData): ToolMeta {
   }
 
   if (name === "read" || name === "view") {
-    const path = getStringField(tool.input, "path") ?? name;
+    const path = getPathField(tool.input) ?? name;
     return { summary: `Read ${path}`, outputLabel: "Result", outputType: "text" };
   }
 
   if (name === "edit") {
-    const path = getStringField(tool.input, "path") ?? name;
+    const path = getPathField(tool.input) ?? "file";
     return { summary: `Edit ${path}`, outputLabel: "Result", outputType: "text" };
   }
 
   if (name === "create") {
-    const path = getStringField(tool.input, "path") ?? name;
+    const path = getPathField(tool.input) ?? name;
     return { summary: `Create ${path}`, outputLabel: "Result", outputType: "text" };
   }
 
   if (name === "grep") {
     const pattern = getStringField(tool.input, "pattern") ?? "";
-    const path = getStringField(tool.input, "path");
+    const path = getPathField(tool.input);
     const summary = path ? `Search for '${pattern}' in ${path}` : `Search for '${pattern}'`;
     return { summary, outputLabel: "Result", outputType: "text" };
   }

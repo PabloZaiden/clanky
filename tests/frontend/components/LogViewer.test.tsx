@@ -207,6 +207,43 @@ describe("LogViewer", () => {
       expect(getByText("file contents here")).toBeInTheDocument();
     });
 
+    test("renders edit tool summary from filePath input", () => {
+      const tool = createToolCallData({
+        name: "edit",
+        input: { filePath: "/src/test.ts", oldString: "before", newString: "after" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Edit /src/test.ts")).toBeInTheDocument();
+    });
+
+    test("renders edit tool summary from path input", () => {
+      const tool = createToolCallData({
+        name: "edit",
+        input: { path: "/src/other.ts", oldString: "before", newString: "after" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Edit /src/other.ts")).toBeInTheDocument();
+    });
+
+    test("uses readable fallback when edit input has no file target", () => {
+      const tool = createToolCallData({
+        name: "edit",
+        input: { oldString: "before", newString: "after" },
+      });
+      const { getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Edit file")).toBeInTheDocument();
+      expect(queryByText("Edit edit")).not.toBeInTheDocument();
+    });
+
     test("renders unknown tool output in collapsible details", async () => {
       // For unknown tools, both input and output are collapsed under the tool summary.
       const tool = createToolCallData({
