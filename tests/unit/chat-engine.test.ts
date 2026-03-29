@@ -774,6 +774,47 @@ describe("LoopEngine - Chat Mode", () => {
     expect(secondPromptText).toContain("Follow-up question");
   }, 10000);
 
+  test("injectChatMessage while idle waits for any prior interrupt cleanup before starting the next turn", async () => {
+    const loop = createChatLoop();
+    const backend = createMockBackend([
+      "Follow-up response",
+    ]);
+    mockBackend = backend;
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    loop.state.status = "completed";
+    loop.state.currentIteration = 1;
+
+    const internalEngine = engine as unknown as {
+      activeSessionInterrupt: Promise<void> | null;
+    };
+
+    let releaseInterrupt: (() => void) | undefined;
+    internalEngine.activeSessionInterrupt = new Promise<void>((resolve) => {
+      releaseInterrupt = resolve;
+    });
+
+    let injectResolved = false;
+    const injectPromise = engine.injectChatMessage("Follow-up after cleanup").then(() => {
+      injectResolved = true;
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(injectResolved).toBe(false);
+    expect(backend.sentPrompts).toHaveLength(0);
+
+    releaseInterrupt?.();
+    await injectPromise;
+    expect(injectResolved).toBe(true);
+  });
+
   test("injectChatMessage with model override applies the model", async () => {
     const loop = createChatLoop();
     const backend = createMockBackend([

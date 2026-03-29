@@ -543,6 +543,11 @@ describe("Chat API Integration", () => {
         expect(messageResponse.status).toBe(200);
         expect(abortCalls).toBe(1);
 
+        const persistedResponse = await fetch(`${baseUrl}/api/loops/${chatId}`);
+        expect(persistedResponse.status).toBe(200);
+        const persistedChat = await persistedResponse.json();
+        expect(persistedChat.state.pendingPrompt).toBe("Please stop and do this instead");
+
         await loopManager.stopLoop(chatId);
       } finally {
         backendManager.setBackendForTesting(createMockBackend());

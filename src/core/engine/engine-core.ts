@@ -663,6 +663,8 @@ export class LoopEngine {
       timestamp: createTimestamp(),
     });
 
+    await this.triggerPersistence();
+
     if (this.isLoopRunning) {
       // Chat follow-ups should interrupt the active turn instead of relying on
       // ACP-side queueing so the new user message is not stranded behind a
@@ -680,12 +682,10 @@ export class LoopEngine {
         this.emitLog("info", "Chat message queued while the turn is still starting - it will run next");
       }
     } else {
-      // Loop is idle (previous turn completed) — start a new single-turn iteration.
-      // Fire-and-forget: the chat turn runs asynchronously and will emit events/update state.
+      // Loop is idle (previous turn completed) — make sure any prior interrupt
+      // cleanup has finished before starting the replacement turn.
       this.emitLog("info", "Injecting chat message - starting new chat turn");
-      this.runChatTurn().catch((error) => {
-        this.emitLog("error", `Chat turn failed: ${String(error)}`);
-      });
+      await this.startInjectedChatTurn();
     }
   }
 
@@ -696,40 +696,8 @@ export class LoopEngine {
    * in chat mode (shouldContinue returns false after single iteration).
    */
   async runChatTurn(): Promise<void> {
-    // Transition to running via the jumpstart path: completed → stopped → starting → running
-    // The engine's start() method expects idle/stopped/planning/resolving_conflicts
-    const currentStatus = this.loop.state.status;
-    if (currentStatus === "completed" || currentStatus === "max_iterations" || currentStatus === "failed") {
-      // Jumpstart: transition through stopped so engine.start() can accept it
-      this.updateState({ status: "stopped" });
-    }
-
-    // If we have a session, skip git setup and session creation — reuse existing
-    if (this.sessionId) {
-      // Reset iteration counter for the new turn but preserve everything else
-      this.updateState({
-        status: "starting",
-        currentIteration: 0,
-        recentIterations: [],
-        error: undefined,
-      });
-      this.updateState({ status: "running" });
-      this.emitLog("info", "Starting new chat turn (reusing existing session)");
-      await this.runLoop();
-    } else {
-      // No active session — need to reconnect first
-      this.emitLog("info", "No active session, reconnecting before chat turn");
-      this.skipGitSetup = true; // Git branch already exists
-      await this.reconnectSession();
-      this.updateState({
-        status: "starting",
-        currentIteration: 0,
-        recentIterations: [],
-        error: undefined,
-      });
-      this.updateState({ status: "running" });
-      await this.runLoop();
-    }
+    await this.prepareChatTurnStart();
+    await this.runLoop();
   }
 
   /**
@@ -754,6 +722,47 @@ export class LoopEngine {
 
     // Run the loop
     await this.runLoop();
+  }
+
+  private async startInjectedChatTurn(): Promise<void> {
+    await this.prepareChatTurnStart();
+    this.runLoop().catch((error) => {
+      this.emitLog("error", `Chat turn failed: ${String(error)}`);
+    });
+  }
+
+  private async prepareChatTurnStart(): Promise<void> {
+    if (this.activeSessionInterrupt) {
+      this.emitLog("info", "Waiting for the previous chat interruption to finish before starting the next turn");
+      await this.activeSessionInterrupt;
+    }
+
+    // Transition to running via the jumpstart path: completed → stopped → starting → running
+    // The engine's start() method expects idle/stopped/planning/resolving_conflicts
+    const currentStatus = this.loop.state.status;
+    if (currentStatus === "completed" || currentStatus === "max_iterations" || currentStatus === "failed") {
+      // Jumpstart: transition through stopped so engine.start() can accept it
+      this.updateState({ status: "stopped" });
+    }
+
+    if (!this.sessionId) {
+      this.emitLog("info", "No active session, reconnecting before chat turn");
+      this.skipGitSetup = true; // Git branch already exists
+      await this.reconnectSession();
+    }
+
+    this.updateState({
+      status: "starting",
+      currentIteration: 0,
+      recentIterations: [],
+      completedAt: undefined,
+      error: undefined,
+    });
+    this.updateState({ status: "running" });
+    this.emitLog("info", this.sessionId
+      ? "Starting new chat turn (reusing existing session)"
+      : "Starting new chat turn");
+    await this.triggerPersistence();
   }
 
   // ---------------------------------------------------------------------------
