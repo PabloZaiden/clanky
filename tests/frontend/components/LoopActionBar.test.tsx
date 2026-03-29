@@ -24,6 +24,7 @@ function defaultProps(overrides?: Partial<Parameters<typeof LoopActionBar>[0]>) 
     models: [] as ModelInfo[],
     modelsLoading: false,
     onQueuePending: mock(async () => true),
+    onStop: undefined,
     onClearPending: mock(async () => true),
     ...overrides,
   };
@@ -58,6 +59,13 @@ describe("LoopActionBar", () => {
         <LoopActionBar {...defaultProps({ isPlanning: true })} />
       );
       expect(getByRole("button", { name: "Send Feedback" })).toBeInTheDocument();
+    });
+
+    test("renders a Stop button when the composer is empty and stop is available", () => {
+      const { getByRole } = renderWithUser(
+        <LoopActionBar {...defaultProps({ onStop: mock(async () => true) })} />
+      );
+      expect(getByRole("button", { name: "Stop" })).toBeInTheDocument();
     });
   });
 
@@ -160,6 +168,13 @@ describe("LoopActionBar", () => {
       expect(getByRole("button", { name: "Queue" })).toBeDisabled();
       expect(container.querySelector("select")).toBeDisabled();
     });
+
+    test("disables the Stop button when disabled=true", () => {
+      const { getByRole } = renderWithUser(
+        <LoopActionBar {...defaultProps({ disabled: true, onStop: mock(async () => true) })} />
+      );
+      expect(getByRole("button", { name: "Stop" })).toBeDisabled();
+    });
   });
 
   describe("form submission", () => {
@@ -176,6 +191,57 @@ describe("LoopActionBar", () => {
       );
       await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Test message");
       expect(getByRole("button", { name: "Queue" })).not.toBeDisabled();
+    });
+
+    test("calls onStop when the empty-state Stop button is clicked", async () => {
+      const onStop = mock(async () => true);
+      const { getByRole, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ onStop })} />
+      );
+
+      await user.click(getByRole("button", { name: "Stop" }));
+
+      await waitFor(() => {
+        expect(onStop).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    test("keeps normal send behavior when text is entered even if stop is available", async () => {
+      const onStop = mock(async () => true);
+      const onQueuePending = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
+      const { getByPlaceholderText, getByRole, queryByRole, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ onStop, onQueuePending })} />
+      );
+
+      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Hello agent");
+
+      expect(queryByRole("button", { name: "Stop" })).toBeNull();
+      await user.click(getByRole("button", { name: "Queue" }));
+
+      await waitFor(() => {
+        expect(onQueuePending).toHaveBeenCalledTimes(1);
+      });
+      expect(onStop).not.toHaveBeenCalled();
+    });
+
+    test("keeps model-only queue behavior when stop is available", async () => {
+      const onQueuePending = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
+      const models = [
+        createModelInfo({ providerID: "openai", modelID: "gpt-4", modelName: "GPT-4", providerName: "OpenAI", connected: true }),
+      ];
+      const { container, getByRole, queryByRole, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ models, onStop: mock(async () => true), onQueuePending })} />
+      );
+
+      const select = container.querySelector("select") as HTMLSelectElement;
+      await user.selectOptions(select, "openai:gpt-4:");
+
+      expect(queryByRole("button", { name: "Stop" })).toBeNull();
+      await user.click(getByRole("button", { name: "Queue" }));
+
+      await waitFor(() => {
+        expect(onQueuePending).toHaveBeenCalledTimes(1);
+      });
     });
 
     test("requires a message for terminal follow-up submissions", async () => {

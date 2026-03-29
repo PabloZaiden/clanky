@@ -38,6 +38,8 @@ export interface LoopActionBarProps {
   modelsLoading: boolean;
   /** Callback when user queues a message and/or model change */
   onQueuePending: (options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }) => Promise<boolean>;
+  /** Callback when user stops the active agent without sending a message */
+  onStop?: () => Promise<boolean>;
   /** Callback when user clears pending values */
   onClearPending: () => Promise<boolean>;
   /** Whether the action bar is disabled */
@@ -58,6 +60,7 @@ export function LoopActionBar({
   models,
   modelsLoading,
   onQueuePending,
+  onStop,
   onClearPending,
   disabled = false,
   requireMessage = false,
@@ -85,11 +88,13 @@ export function LoopActionBar({
   const hasPendingMessage = !!pendingPrompt;
   const hasPendingModel = !!pendingModel;
   const hasPending = hasPendingMessage || hasPendingModel;
+  const trimmedMessage = message.trim();
 
   // Check if user has local changes (not yet submitted)
-  const hasLocalChanges = message.trim().length > 0 || selectedModel !== "";
-  const hasAttachmentWithoutMessage = attachments.length > 0 && message.trim().length === 0;
-  const canSubmit = hasLocalChanges && !hasAttachmentWithoutMessage && (!requireMessage || message.trim().length > 0);
+  const hasLocalChanges = trimmedMessage.length > 0 || selectedModel !== "" || attachments.length > 0;
+  const hasAttachmentWithoutMessage = attachments.length > 0 && trimmedMessage.length === 0;
+  const canSubmit = hasLocalChanges && !hasAttachmentWithoutMessage && (!requireMessage || trimmedMessage.length > 0);
+  const showStopButton = onStop !== undefined && !requireMessage && !hasLocalChanges;
 
   // Check if the selected model is enabled (connected)
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
@@ -156,6 +161,18 @@ export function LoopActionBar({
       setIsSubmitting(false);
     }
   }, [disabled, isSubmitting, hasPending, onClearPending]);
+
+  const handleStop = useCallback(async () => {
+    if (!onStop || disabled || isSubmitting || hasLocalChanges) return;
+
+    log.debug("Stopping active agent from composer");
+    setIsSubmitting(true);
+    try {
+      await onStop();
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [disabled, hasLocalChanges, isSubmitting, onStop]);
 
   const handlePaste = useCallback((event: ClipboardEvent<HTMLInputElement>) => {
     attachmentControlRef.current?.handlePaste(event);
@@ -231,20 +248,37 @@ export function LoopActionBar({
             iconOnly
           />
 
-          {/* Submit button (compact arrow) */}
-          <button
-            type="submit"
-            disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
-            className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
-            aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : isChatMode ? "Send" : "Queue")}
-            title={submitLabel ?? (isPlanning ? "Send Feedback" : isChatMode ? "Send" : "Queue")}
-          >
-            {isSubmitting ? (
-              <span className="animate-spin text-sm">⏳</span>
-            ) : (
-              <span className="text-lg leading-none">↑</span>
-            )}
-          </button>
+           {/* Primary action button */}
+           {showStopButton ? (
+             <button
+               type="button"
+               onClick={handleStop}
+               disabled={disabled || isSubmitting}
+               className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
+               aria-label="Stop"
+               title="Stop"
+             >
+               {isSubmitting ? (
+                 <span className="animate-spin text-sm">⏳</span>
+               ) : (
+                 <span className="text-lg leading-none">×</span>
+               )}
+             </button>
+           ) : (
+             <button
+               type="submit"
+               disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
+               className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
+               aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : isChatMode ? "Send" : "Queue")}
+               title={submitLabel ?? (isPlanning ? "Send Feedback" : isChatMode ? "Send" : "Queue")}
+             >
+               {isSubmitting ? (
+                 <span className="animate-spin text-sm">⏳</span>
+               ) : (
+                 <span className="text-lg leading-none">↑</span>
+               )}
+             </button>
+           )}
         </div>
 
         {/* Error message for disconnected model */}
