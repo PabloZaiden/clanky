@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
  */
 export function getMockAcpCommand(): { command: string; args: string[] } {
   const serverPath = fileURLToPath(new URL("./mock-acp-server.ts", import.meta.url));
+  const bunExecutable = Bun.which("bun") ?? process.execPath;
   return {
-    command: process.execPath,
+    command: bunExecutable,
     args: [serverPath],
   };
 }

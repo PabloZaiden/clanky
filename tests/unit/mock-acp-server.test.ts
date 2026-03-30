@@ -42,7 +42,6 @@ class MockAcpHarness {
   constructor() {
     const command = getMockAcpCommand();
     this.process = Bun.spawn([command.command, ...command.args], {
-      cwd: "/workspaces/ralpher/.ralph-worktrees/2a4c00cb-eacd-4e36-8f36-121f38e90abd",
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",
@@ -201,18 +200,23 @@ class MockAcpHarness {
 }
 
 describe("mock ACP server", () => {
-  let harness: MockAcpHarness;
+  let harness: MockAcpHarness | null = null;
 
   beforeEach(() => {
     harness = new MockAcpHarness();
   });
 
   afterEach(async () => {
-    await harness.shutdown();
+    if (harness) {
+      await harness.shutdown();
+      harness = null;
+    }
   });
 
   test("supports initialization, authentication, session lifecycle, and load replay", async () => {
-    const initialize = await harness.initialize();
+    expect(harness).not.toBeNull();
+    const activeHarness = harness!;
+    const initialize = await activeHarness.initialize();
     expect(isRecord(initialize.result)).toBe(true);
     expect(initialize.result).toMatchObject({
       protocolVersion: 1,
@@ -225,10 +229,10 @@ describe("mock ACP server", () => {
       },
     });
 
-    const auth = await harness.request("authenticate", { methodId: "mock-agent-auth" });
+    const auth = await activeHarness.request("authenticate", { methodId: "mock-agent-auth" });
     expect(auth.error).toBeUndefined();
 
-    const created = await harness.request("session/new", {
+    const created = await activeHarness.request("session/new", {
       cwd: "/tmp/mock-acp-lifecycle",
       mcpServers: [],
     });
@@ -238,16 +242,16 @@ describe("mock ACP server", () => {
     expect(sessionId).toBeTruthy();
     expect(Array.isArray(createdResult["configOptions"])).toBe(true);
 
-    const promptResponsePromise = harness.request("session/prompt", {
+    const promptResponsePromise = activeHarness.request("session/prompt", {
       sessionId,
       prompt: [{ type: "text", text: "remember this response for load replay" }],
     });
-    await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "agent_message_chunk");
     const promptResponse = await promptResponsePromise;
     expect(promptResponse.result).toEqual({ stopReason: "end_turn" });
 
-    const listed = await harness.request("session/list", { cwd: "/tmp/mock-acp-lifecycle" });
+    const listed = await activeHarness.request("session/list", { cwd: "/tmp/mock-acp-lifecycle" });
     expect(listed.result).toMatchObject({
       sessions: [
         {
@@ -257,14 +261,14 @@ describe("mock ACP server", () => {
       ],
     });
 
-    const loadPromise = harness.request("session/load", {
+    const loadPromise = activeHarness.request("session/load", {
       sessionId,
       cwd: "/tmp/mock-acp-lifecycle",
       mcpServers: [],
     });
-    const replayedUser = await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    const replayedUser = await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "user_message_chunk");
-    const replayedAssistant = await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    const replayedAssistant = await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "agent_message_chunk");
     expect(replayedUser.params?.["sessionId"]).toBe(sessionId);
     expect(replayedAssistant.params?.["sessionId"]).toBe(sessionId);
@@ -272,17 +276,19 @@ describe("mock ACP server", () => {
     expect(isRecord(loaded.result)).toBe(true);
     expect((loaded.result as Record<string, unknown>)["sessionId"]).toBe(sessionId);
 
-    const deleted = await harness.request("session/delete", { sessionId });
+    const deleted = await activeHarness.request("session/delete", { sessionId });
     expect(deleted.result).toEqual({});
-    const deletedAgain = await harness.request("session/delete", { sessionId });
+    const deletedAgain = await activeHarness.request("session/delete", { sessionId });
     expect(deletedAgain.result).toEqual({});
 
-    const listedAfterDelete = await harness.request("session/list", { cwd: "/tmp/mock-acp-lifecycle" });
+    const listedAfterDelete = await activeHarness.request("session/list", { cwd: "/tmp/mock-acp-lifecycle" });
     expect(listedAfterDelete.result).toEqual({ sessions: [] });
   });
 
   test("streams prompt turns and exercises permission, question, config update, fs, and terminal flows", async () => {
-    await harness.initialize({
+    expect(harness).not.toBeNull();
+    const activeHarness = harness!;
+    await activeHarness.initialize({
       fs: {
         readTextFile: true,
         writeTextFile: true,
@@ -290,14 +296,14 @@ describe("mock ACP server", () => {
       terminal: true,
     });
 
-    const created = await harness.request("session/new", {
+    const created = await activeHarness.request("session/new", {
       cwd: "/tmp/mock-acp-protocol",
       mcpServers: [],
     });
     const sessionId = getString((created.result as Record<string, unknown>)["sessionId"]);
     expect(sessionId).toBeTruthy();
 
-    const promptResponsePromise = harness.request("session/prompt", {
+    const promptResponsePromise = activeHarness.request("session/prompt", {
       sessionId,
       prompt: [
         {
@@ -307,40 +313,40 @@ describe("mock ACP server", () => {
       ],
     });
 
-    const sessionInfoUpdate = await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    const sessionInfoUpdate = await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "session_info_update");
     expect(sessionInfoUpdate.params?.["sessionId"]).toBe(sessionId);
 
-    const availableCommandsUpdate = await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    const availableCommandsUpdate = await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "available_commands_update");
     expect(availableCommandsUpdate.params?.["sessionId"]).toBe(sessionId);
 
-    const permissionRequest = await harness.waitFor((message) => message.method === "session/request_permission");
+    const permissionRequest = await activeHarness.waitFor((message) => message.method === "session/request_permission");
     expect(permissionRequest.id).toBeDefined();
-    harness.respond(permissionRequest.id!, {
+    activeHarness.respond(permissionRequest.id!, {
       outcome: {
         outcome: "selected",
         optionId: "allow-once",
       },
     });
 
-    const questionNotification = await harness.waitFor((message) => message.method === "session/question");
+    const questionNotification = await activeHarness.waitFor((message) => message.method === "session/question");
     expect(questionNotification.params?.["sessionId"]).toBe(sessionId);
-    await harness.request("session/reply_question", {
+    await activeHarness.request("session/reply_question", {
       requestId: questionNotification.params?.["requestId"],
       answers: [["Detailed"]],
     });
 
-    const fsReadRequest = await harness.waitFor((message) => message.method === "fs/read_text_file");
-    harness.respond(fsReadRequest.id!, {
+    const fsReadRequest = await activeHarness.waitFor((message) => message.method === "fs/read_text_file");
+    activeHarness.respond(fsReadRequest.id!, {
       content: "mock file contents from client",
     });
 
-    const terminalCreate = await harness.waitFor((message) => message.method === "terminal/create");
-    harness.respond(terminalCreate.id!, { terminalId: "terminal-1" });
+    const terminalCreate = await activeHarness.waitFor((message) => message.method === "terminal/create");
+    activeHarness.respond(terminalCreate.id!, { terminalId: "terminal-1" });
 
-    const terminalOutput = await harness.waitFor((message) => message.method === "terminal/output");
-    harness.respond(terminalOutput.id!, {
+    const terminalOutput = await activeHarness.waitFor((message) => message.method === "terminal/output");
+    activeHarness.respond(terminalOutput.id!, {
       output: "terminal output from client\n",
       truncated: false,
       exitStatus: {
@@ -349,36 +355,36 @@ describe("mock ACP server", () => {
       },
     });
 
-    const terminalWait = await harness.waitFor((message) => message.method === "terminal/wait_for_exit");
-    harness.respond(terminalWait.id!, {
+    const terminalWait = await activeHarness.waitFor((message) => message.method === "terminal/wait_for_exit");
+    activeHarness.respond(terminalWait.id!, {
       exitCode: 0,
       signal: null,
     });
 
-    const terminalRelease = await harness.waitFor((message) => message.method === "terminal/release");
-    harness.respond(terminalRelease.id!, {});
+    const terminalRelease = await activeHarness.waitFor((message) => message.method === "terminal/release");
+    activeHarness.respond(terminalRelease.id!, {});
 
-    const statusBusy = await harness.waitFor((message) => message.method === "session/status" && isRecord(message.params)
+    const statusBusy = await activeHarness.waitFor((message) => message.method === "session/status" && isRecord(message.params)
       && getString(message.params["status"]) === "busy");
     expect(statusBusy.params?.["sessionId"]).toBe(sessionId);
 
-    const toolCall = await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    const toolCall = await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "tool_call");
     expect(toolCall.params?.["sessionId"]).toBe(sessionId);
 
-    const reasoningChunk = await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    const reasoningChunk = await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "agent_thought_chunk");
     expect(reasoningChunk.params?.["sessionId"]).toBe(sessionId);
 
-    const messageChunk = await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    const messageChunk = await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "agent_message_chunk");
     expect(messageChunk.params?.["sessionId"]).toBe(sessionId);
 
-    const configUpdate = await harness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
+    const configUpdate = await activeHarness.waitFor((message) => message.method === "session/update" && isRecord(message.params)
       && isRecord(message.params["update"]) && getString((message.params["update"] as Record<string, unknown>)["sessionUpdate"]) === "config_option_update");
     expect(configUpdate.params?.["sessionId"]).toBe(sessionId);
 
-    const statusIdle = await harness.waitFor((message) => message.method === "session/status" && isRecord(message.params)
+    const statusIdle = await activeHarness.waitFor((message) => message.method === "session/status" && isRecord(message.params)
       && getString(message.params["status"]) === "idle");
     expect(statusIdle.params?.["sessionId"]).toBe(sessionId);
 
@@ -387,32 +393,34 @@ describe("mock ACP server", () => {
   });
 
   test("supports prompt cancellation via session/cancel and $/cancel_request", async () => {
-    await harness.initialize();
-    const created = await harness.request("session/new", {
+    expect(harness).not.toBeNull();
+    const activeHarness = harness!;
+    await activeHarness.initialize();
+    const created = await activeHarness.request("session/new", {
       cwd: "/tmp/mock-acp-cancel",
       mcpServers: [],
     });
     const sessionId = getString((created.result as Record<string, unknown>)["sessionId"]);
     expect(sessionId).toBeTruthy();
 
-    const slowPromptPromise = harness.request("session/prompt", {
+    const slowPromptPromise = activeHarness.request("session/prompt", {
       sessionId,
       prompt: [{ type: "text", text: "this is slow [slow]" }],
     });
-    await harness.waitFor((message) => message.method === "session/status" && isRecord(message.params)
+    await activeHarness.waitFor((message) => message.method === "session/status" && isRecord(message.params)
       && getString(message.params["status"]) === "busy");
-    harness.notify("session/cancel", { sessionId });
+    activeHarness.notify("session/cancel", { sessionId });
     const cancelledBySession = await slowPromptPromise;
     expect(cancelledBySession.result).toEqual({ stopReason: "cancelled" });
 
     const directPromptId = 99;
-    const cancelledByRequestPromise = harness.requestWithId(directPromptId, "session/prompt", {
+    const cancelledByRequestPromise = activeHarness.requestWithId(directPromptId, "session/prompt", {
       sessionId,
       prompt: [{ type: "text", text: "cancel by id [slow]" }],
     });
-    await harness.waitFor((message) => message.method === "session/status" && isRecord(message.params)
+    await activeHarness.waitFor((message) => message.method === "session/status" && isRecord(message.params)
       && getString(message.params["status"]) === "busy");
-    harness.notify("$/cancel_request", { requestId: directPromptId });
+    activeHarness.notify("$/cancel_request", { requestId: directPromptId });
     const cancelledByRequest = await cancelledByRequestPromise;
     expect(cancelledByRequest.result).toEqual({ stopReason: "cancelled" });
   });

@@ -11,7 +11,7 @@ import { getProviderAcpCommand } from "../agent-runtime-command";
 
 function buildAgentRuntimeCommand(settings: ServerSettings): { command: string; args: string[] } {
   const provider = settings.agent.provider;
-  const providerCommand = getProviderAcpCommand(provider);
+  const providerCommand = getProviderAcpCommand(provider, settings.agent.transport);
   const providerInvocation = [providerCommand.command, ...providerCommand.args].join(" ");
   const remoteCommand = buildSshRemoteShellCommand(providerInvocation);
 

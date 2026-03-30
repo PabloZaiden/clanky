@@ -136,7 +136,7 @@ export class AcpBackend implements Backend {
    * Spawn an ACP stdio process and initialize JSON-RPC.
    */
   private async connectSpawn(config: BackendConnectionConfig): Promise<void> {
-    const providerCommand = getProviderAcpCommand(config.provider ?? "opencode");
+    const providerCommand = getProviderAcpCommand(config.provider ?? "opencode", config.transport);
     const command = config.command ?? providerCommand.command;
     const args = config.args ?? providerCommand.args;
     const logArgs = sanitizeSpawnArgsForLogging(command, args);

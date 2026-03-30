@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { fileURLToPath } from "node:url";
 
+import { getMockAcpCommand } from "../../src/backends/acp";
 import { getProviderAcpCommand } from "../../src/core/agent-runtime-command";
 
 describe("getProviderAcpCommand", () => {
@@ -30,13 +30,19 @@ describe("getProviderAcpCommand", () => {
   test("returns the mock ACP runtime command when enabled", () => {
     process.env["RALPHER_MOCK_ACP"] = "true";
 
-    expect(getProviderAcpCommand("copilot")).toEqual({
-      command: process.execPath,
-      args: [
-        fileURLToPath(
-          new URL("../../src/backends/acp/mock-acp-server.ts", import.meta.url),
-        ),
-      ],
+    expect(getProviderAcpCommand("copilot", "stdio")).toEqual(getMockAcpCommand());
+  });
+
+  test("keeps remote ssh provider commands even when mock ACP is enabled", () => {
+    process.env["RALPHER_MOCK_ACP"] = "true";
+
+    expect(getProviderAcpCommand("copilot", "ssh")).toEqual({
+      command: "copilot",
+      args: ["--yolo", "--acp"],
+    });
+    expect(getProviderAcpCommand("opencode", "ssh")).toEqual({
+      command: "opencode",
+      args: ["acp"],
     });
   });
 });
