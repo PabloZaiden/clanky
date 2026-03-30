@@ -44,6 +44,18 @@ export function ComposeChatView({
   createChat: (request: CreateChatRequest) => Promise<import("../../types").Chat | null>;
 }) {
   const toast = useToast();
+  const {
+    branches,
+    branchesLoading,
+    currentBranch,
+    defaultBranch,
+    handleWorkspaceChange,
+    lastModel,
+    models,
+    modelsLoading,
+    resetCreateModalState,
+    setLastModel,
+  } = dashboardData;
   const [name, setName] = useState("");
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(composeWorkspace?.id ?? "");
   const [selectedModel, setSelectedModel] = useState("");
@@ -58,25 +70,29 @@ export function ComposeChatView({
 
   useEffect(() => {
     if (!selectedWorkspace) {
-      dashboardData.resetCreateModalState();
+      resetCreateModalState();
+      setSelectedModel("");
+      setBaseBranch("");
       return;
     }
-    dashboardData.handleWorkspaceChange(selectedWorkspace.id, selectedWorkspace.directory);
-  }, [dashboardData, selectedWorkspace]);
+    setSelectedModel("");
+    setBaseBranch("");
+    handleWorkspaceChange(selectedWorkspace.id, selectedWorkspace.directory);
+  }, [handleWorkspaceChange, resetCreateModalState, selectedWorkspace?.directory, selectedWorkspace?.id]);
 
   useEffect(() => {
     if (!selectedWorkspace) {
       return;
     }
-    setBaseBranch((current) => current || dashboardData.defaultBranch || dashboardData.currentBranch);
-  }, [dashboardData.currentBranch, dashboardData.defaultBranch, selectedWorkspace]);
+    setBaseBranch((current) => current || defaultBranch || currentBranch);
+  }, [currentBranch, defaultBranch, selectedWorkspace?.id]);
 
   useEffect(() => {
-    if (selectedModel || dashboardData.models.length === 0) {
+    if (selectedModel || models.length === 0) {
       return;
     }
-    setSelectedModel(getPreferredModelKey(dashboardData.models, dashboardData.lastModel));
-  }, [dashboardData.lastModel, dashboardData.models, selectedModel]);
+    setSelectedModel(getPreferredModelKey(models, lastModel));
+  }, [lastModel, models, selectedModel]);
 
   async function handleSubmit(): Promise<void> {
     if (!selectedWorkspace) {
@@ -106,7 +122,7 @@ export function ComposeChatView({
         toast.error("Failed to create chat");
         return;
       }
-      dashboardData.setLastModel({
+      setLastModel({
         providerID: parsedModel.providerID,
         modelID: parsedModel.modelID,
       });
@@ -138,7 +154,14 @@ export function ComposeChatView({
             type="button"
             size="sm"
             onClick={() => void handleSubmit()}
-            disabled={isSubmitting || !selectedWorkspace || !selectedModel || name.trim().length === 0}
+            disabled={
+              isSubmitting
+              || branchesLoading
+              || modelsLoading
+              || !selectedWorkspace
+              || !selectedModel
+              || name.trim().length === 0
+            }
             loading={isSubmitting}
           >
             Create chat
@@ -193,8 +216,8 @@ export function ComposeChatView({
             id="chat-model"
             value={selectedModel}
             onChange={setSelectedModel}
-            models={dashboardData.models}
-            loading={dashboardData.modelsLoading}
+            models={models}
+            loading={modelsLoading}
             showDisconnected
             className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
             emptyText="Select a workspace to load models"
@@ -204,10 +227,10 @@ export function ComposeChatView({
         <BranchSelector
           selectedBranch={baseBranch}
           onBranchChange={setBaseBranch}
-          branches={dashboardData.branches}
-          branchesLoading={dashboardData.branchesLoading}
-          defaultBranch={dashboardData.defaultBranch}
-          currentBranch={dashboardData.currentBranch}
+          branches={branches}
+          branchesLoading={branchesLoading}
+          defaultBranch={defaultBranch}
+          currentBranch={currentBranch}
         />
 
         <div>

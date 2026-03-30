@@ -160,9 +160,17 @@ export const migrations: Migration[] = [
           FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
         )
       `);
-      db.run("CREATE INDEX IF NOT EXISTS idx_chats_workspace_id ON chats(workspace_id)");
-      db.run("CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats(created_at)");
-      db.run("CREATE INDEX IF NOT EXISTS idx_chats_directory ON chats(directory)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats(created_at DESC)");
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_chats_workspace_created_at
+        ON chats(workspace_id, created_at DESC)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_chats_directory_workspace_status
+        ON chats(directory, workspace_id, status)
+      `);
+      db.run("DROP INDEX IF EXISTS idx_chats_workspace_id");
+      db.run("DROP INDEX IF EXISTS idx_chats_directory");
     },
   },
 ];

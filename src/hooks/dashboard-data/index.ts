@@ -62,7 +62,6 @@ export function useDashboardData(): UseDashboardDataResult {
     log.debug("handleWorkspaceChange called", {
       workspaceId,
       directory,
-      modelsWorkspaceId: workspaceModels.modelsWorkspaceId,
     });
     workspaceModels.setModelsWorkspaceId(workspaceId);
     log.debug("Fetching workspace data with directory:", directory);
@@ -70,7 +69,13 @@ export function useDashboardData(): UseDashboardDataResult {
     workspaceBranches.fetchBranches(directory, workspaceId);
     workspaceBranches.fetchDefaultBranch(directory, workspaceId);
     planningDir.checkPlanningDir(directory, workspaceId);
-  }, [workspaceModels.modelsWorkspaceId, workspaceModels.fetchModels, workspaceModels.setModelsWorkspaceId, workspaceBranches.fetchBranches, workspaceBranches.fetchDefaultBranch, planningDir.checkPlanningDir]);
+  }, [
+    planningDir.checkPlanningDir,
+    workspaceBranches.fetchBranches,
+    workspaceBranches.fetchDefaultBranch,
+    workspaceModels.fetchModels,
+    workspaceModels.setModelsWorkspaceId,
+  ]);
 
   const resetCreateModalState = useCallback(() => {
     workspaceModels.resetModels();
