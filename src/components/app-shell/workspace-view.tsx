@@ -1,5 +1,5 @@
 import type { Chat, SshServer, Workspace } from "../../types";
-import { getServerLabel } from "../../types/settings";
+import { findRegisteredSshServer } from "../../types/settings";
 import type { useChats, useLoops, useSshSessions } from "../../hooks";
 import { getLoopStatusLabel } from "../../utils";
 import {
@@ -14,8 +14,24 @@ import {
   getSshSessionStatusLabel,
 } from "../common";
 import type { ShellRoute } from "./shell-types";
-import { ShellPanel, SummaryCard } from "./shell-panel";
+import { ShellPanel } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
+
+function getWorkspaceHeaderServerLabel(
+  workspace: Workspace,
+  registeredSshServers: readonly SshServer[],
+): string {
+  if (workspace.serverSettings.agent.transport === "stdio") {
+    return "stdio";
+  }
+
+  const hostname = workspace.serverSettings.agent.hostname.trim() || "127.0.0.1";
+  const port = workspace.serverSettings.agent.port ?? 22;
+  const registeredServer = findRegisteredSshServer(hostname, registeredSshServers);
+  const serverLabel = registeredServer?.config.name ?? hostname;
+
+  return port === 22 ? serverLabel : `${serverLabel}:${port}`;
+}
 
 export function WorkspaceView({
   workspace,
@@ -38,6 +54,7 @@ export function WorkspaceView({
 }) {
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
   const isAutoProvisioned = Boolean(workspace.sourceDirectory);
+  const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
   const createActionItems: ActionMenuItem[] = [
     {
       label: "New Loop",
@@ -59,8 +76,7 @@ export function WorkspaceView({
     <ShellPanel
       eyebrow="Workspace"
       title={workspace.name}
-      description={workspace.directory}
-      descriptionClassName="hidden sm:inline font-mono"
+      description={serverLabel}
       variant="compact"
       headerOffsetClassName={headerOffsetClassName}
       actions={(
@@ -102,19 +118,38 @@ export function WorkspaceView({
         </>
       )}
     >
-      <div className="grid gap-4 lg:grid-cols-3">
-        <SummaryCard
-          label="Connection"
-          value={workspace.serverSettings.agent.transport}
-          meta={getServerLabel(workspace.serverSettings, registeredSshServers)}
-        />
-        <SummaryCard
-          label="Loops"
-          value={relatedLoops.length}
-          meta="Loops assigned to this workspace."
-        />
-        <SummaryCard label="Chats" value={relatedChats.length} meta="Persistent chat sessions in this workspace." />
-        <SummaryCard label="SSH Sessions" value={relatedSessions.length} meta="Saved SSH sessions for this workspace." />
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            Workspace activity
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Unified counts for loops, chats, and SSH sessions in this workspace.
+          </p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-neutral-900">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Loops</p>
+            <p className="mt-2 text-2xl font-semibold text-gray-950 dark:text-gray-100">{relatedLoops.length}</p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Loops assigned to this workspace.</p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-neutral-900">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Chats</p>
+            <p className="mt-2 text-2xl font-semibold text-gray-950 dark:text-gray-100">{relatedChats.length}</p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Persistent chat sessions in this workspace.</p>
+          </div>
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-neutral-900">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              SSH sessions
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-gray-950 dark:text-gray-100">{relatedSessions.length}</p>
+            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+              {workspaceSshEnabled
+                ? "Saved SSH sessions for this workspace."
+                : "Saved SSH sessions stay at 0 until this workspace uses SSH transport."}
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="grid min-w-0 gap-6 xl:grid-cols-3">

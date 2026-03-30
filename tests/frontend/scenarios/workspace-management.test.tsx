@@ -8,7 +8,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { renderWithUser, waitFor } from "../helpers/render";
+import { renderWithUser, waitFor, within } from "../helpers/render";
 import {
   createLoopWithStatus,
   createSshSession,
@@ -16,6 +16,7 @@ import {
   createModelInfo,
 } from "../helpers/factories";
 import { App } from "@/App";
+import type { Chat, SshServer } from "@/types";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -350,14 +351,114 @@ describe("workspace management scenario", () => {
     expect(getByText("No loops in this workspace yet.")).toBeTruthy();
   });
 
-  test("workspace route shows summary cards and related loop content", async () => {
+  test("workspace route shows header server info and a unified activity summary", async () => {
     setupBaseApi();
 
     const loop = createLoopWithStatus("running", {
       config: { id: "ws-loop-1", name: "In Workspace", directory: "/workspaces/existing", workspaceId: "ws-1" },
     });
+    const chat: Chat = {
+      config: {
+        id: "ws-chat-1",
+        name: "Workspace Chat",
+        workspaceId: "ws-1",
+        directory: "/workspaces/existing",
+        model: {
+          providerID: "github",
+          modelID: "gpt-5.4",
+          variant: "",
+        },
+        useWorktree: true,
+        baseBranch: "main",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        mode: "chat",
+      },
+      state: {
+        id: "ws-chat-1",
+        status: "idle",
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    };
+    const session = createSshSession({
+      config: {
+        id: "ws-session-1",
+        name: "Workspace SSH",
+        workspaceId: "ws-1",
+      },
+    });
+    const server: SshServer = {
+      config: {
+        id: "server-1",
+        name: "Build host",
+        address: "server.example.com",
+        username: "ubuntu",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      publicKey: {
+        algorithm: "RSA-OAEP-256",
+        publicKey: "test-key",
+        fingerprint: "fingerprint",
+        version: 1,
+        createdAt: new Date().toISOString(),
+      },
+    };
+    const sshWorkspace = createWorkspace({
+      ...WORKSPACE,
+      serverSettings: {
+        agent: {
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "server.example.com",
+          port: 22,
+        },
+      },
+    });
 
     api.get("/api/loops", () => [loop]);
+    api.get("/api/chats", () => [chat]);
+    api.get("/api/ssh-sessions", () => [session]);
+    api.get("/api/ssh-servers", () => [server]);
+    api.get("/api/ssh-servers/:id/sessions", () => []);
+    api.get("/api/workspaces", () => [sshWorkspace]);
+    api.get("/api/workspaces/:id", () => sshWorkspace);
+
+    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
+    });
+
+    await user.click(getAllByText("Existing Project")[0]!);
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
+    });
+
+    const activityHeading = getByText("Workspace activity");
+    const activityCard = activityHeading.closest("div.rounded-2xl") as HTMLElement | null;
+    expect(activityCard).toBeTruthy();
+    expect(within(activityCard!).getByText("Unified counts for loops, chats, and SSH sessions in this workspace.")).toBeTruthy();
+    expect(
+      getAllByText((content) => content === "Build host" || content === "server.example.com").length
+    ).toBeGreaterThan(0);
+    expect(within(activityCard!).getAllByText("1").length).toBeGreaterThanOrEqual(3);
+    expect(document.body.textContent?.includes("Connection")).toBe(false);
+    expect(getByRole("heading", { name: "Loops" })).toBeTruthy();
+    expect(getByRole("heading", { name: "Chats" })).toBeTruthy();
+    expect(getByRole("heading", { name: "SSH sessions" })).toBeTruthy();
+    expect(getAllByText("In Workspace").length).toBeGreaterThan(0);
+    expect(getAllByText("Workspace Chat").length).toBeGreaterThan(0);
+    expect(getAllByText("Workspace SSH").length).toBeGreaterThan(0);
+  });
+
+  test("workspace route shows stdio in the header for local workspaces", async () => {
+    setupBaseApi();
+    api.get("/api/loops", () => []);
+    api.get("/api/chats", () => []);
+    api.get("/api/ssh-sessions", () => []);
     api.get("/api/workspaces", () => [WORKSPACE]);
     api.get("/api/workspaces/:id", () => WORKSPACE);
 
@@ -371,9 +472,8 @@ describe("workspace management scenario", () => {
     await waitFor(() => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
-    expect(getByRole("heading", { name: "Loops" })).toBeTruthy();
-    expect(getByRole("heading", { name: "SSH sessions" })).toBeTruthy();
-    expect(getAllByText("In Workspace").length).toBeGreaterThan(0);
+
+    expect(getAllByText("stdio").length).toBeGreaterThan(0);
   });
 
   test("workspace detail rows keep long loop and session names shrinkable on mobile", async () => {
