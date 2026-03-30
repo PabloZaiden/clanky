@@ -117,6 +117,40 @@ describe("Persistence", () => {
       const ready = await isDataDirectoryReady();
       expect(ready).toBe(true);
     });
+
+    test("initializeDatabase repairs the chats table when legacy schema_migrations versions already exist", async () => {
+      const { Database } = await import("bun:sqlite");
+      const databasePath = join(testDataDir, "ralpher.db");
+      const legacyDb = new Database(databasePath);
+
+      legacyDb.run(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        1,
+        "legacy_reset_one",
+        "2025-01-01T00:00:00.000Z",
+      ]);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        2,
+        "legacy_reset_two",
+        "2025-01-01T00:00:00.000Z",
+      ]);
+      legacyDb.close();
+
+      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      await initializeDatabase();
+
+      const row = getDatabase().query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chats'",
+      ).get() as { name: string } | null;
+
+      expect(row?.name).toBe("chats");
+    });
   });
 
   describe("loops", () => {

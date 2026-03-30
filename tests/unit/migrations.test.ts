@@ -240,11 +240,15 @@ describe("migration infrastructure", () => {
         ORDER BY name
       `).all() as Array<{ name: string }>;
 
-      expect(indexes.map((index) => index.name)).toEqual(expect.arrayContaining([
-        "idx_chats_workspace_id",
+      const indexNames = indexes.map((index) => index.name);
+
+      expect(indexNames).toEqual(expect.arrayContaining([
         "idx_chats_created_at",
-        "idx_chats_directory",
+        "idx_chats_workspace_created_at",
+        "idx_chats_directory_workspace_status",
       ]));
+      expect(indexNames).not.toContain("idx_chats_workspace_id");
+      expect(indexNames).not.toContain("idx_chats_directory");
     });
   });
 
