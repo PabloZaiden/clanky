@@ -1022,18 +1022,7 @@ export class LoopEngine {
       consecutiveErrors: undefined,
     });
 
-    this.emit({
-      type: "loop.completed",
-      loopId: this.config.id,
-      totalIterations: this.loop.state.currentIteration,
-      timestamp: createTimestamp(),
-    });
-
-    // Persist immediately so callbacks (e.g., auto-push after conflict resolution)
-    // can act on the completed status without waiting for the periodic persistence interval.
-    await this.triggerPersistence();
-
-    // Auto-mark any pending comments as addressed if this is a review cycle
+    // Keep review-cycle comment state in sync before observers handle completion.
     if (this.loop.state.reviewMode && this.loop.state.reviewMode.reviewCycles > 0) {
       try {
         const addressedAt = new Date().toISOString();
@@ -1047,6 +1036,17 @@ export class LoopEngine {
         log.error(`Failed to mark comments as addressed: ${String(error)}`);
       }
     }
+
+    this.emit({
+      type: "loop.completed",
+      loopId: this.config.id,
+      totalIterations: this.loop.state.currentIteration,
+      timestamp: createTimestamp(),
+    });
+
+    // Persist immediately so callbacks (e.g., auto-push after conflict resolution)
+    // can act on the completed status without waiting for the periodic persistence interval.
+    await this.triggerPersistence();
     return true;
   }
 
@@ -1172,6 +1172,7 @@ export class LoopEngine {
       iteration: this.loop.state.currentIteration,
       timestamp: createTimestamp(),
     });
+    void this.triggerPersistence();
 
     // Continue to retry (next iteration will use same iteration number)
     return false;
