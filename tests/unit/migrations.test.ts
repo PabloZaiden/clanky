@@ -139,6 +139,7 @@ describe("migration infrastructure", () => {
 
     test("works for all known table names", () => {
       // Create all known tables
+      db.run("CREATE TABLE chats (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE loops (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE ssh_sessions (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE ssh_servers (id TEXT PRIMARY KEY)");
@@ -150,6 +151,7 @@ describe("migration infrastructure", () => {
       db.run("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)");
 
       // All should work without throwing
+      expect(getTableColumns(db, "chats")).toContain("id");
       expect(getTableColumns(db, "loops")).toContain("id");
       expect(getTableColumns(db, "ssh_sessions")).toContain("id");
       expect(getTableColumns(db, "ssh_servers")).toContain("id");
@@ -177,6 +179,20 @@ describe("migration infrastructure", () => {
       expect(tableExists(db, "loops")).toBe(true);
       db.run("DROP TABLE loops");
       expect(tableExists(db, "loops")).toBe(false);
+    });
+  });
+
+  describe("chat migration", () => {
+    test("creates the chats table and indexes", () => {
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(tableExists(db, "chats")).toBe(true);
+
+      const columns = getTableColumns(db, "chats");
+      expect(columns).toContain("workspace_id");
+      expect(columns).toContain("session_id");
+      expect(columns).toContain("interrupt_requested");
     });
   });
 

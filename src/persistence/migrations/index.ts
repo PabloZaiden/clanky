@@ -60,6 +60,7 @@ export interface Migration {
  * since PRAGMA does not support parameterized queries.
  */
 const KNOWN_TABLE_NAMES = new Set([
+  "chats",
   "loops",
   "ssh_sessions",
   "ssh_servers",
@@ -119,6 +120,53 @@ export const migrations: Migration[] = [
         return;
       }
       db.run("UPDATE loops SET mode = 'loop' WHERE mode IS NULL OR mode != 'loop'");
+    },
+  },
+  {
+    version: 2,
+    name: "create_chats_table",
+    up: (db) => {
+      if (tableExists(db, "chats")) {
+        return;
+      }
+
+      db.run(`
+        CREATE TABLE IF NOT EXISTS chats (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          model_provider_id TEXT,
+          model_model_id TEXT,
+          model_variant TEXT,
+          use_worktree INTEGER NOT NULL DEFAULT 1,
+          base_branch TEXT,
+          mode TEXT NOT NULL DEFAULT 'chat',
+          status TEXT NOT NULL DEFAULT 'idle',
+          started_at TEXT,
+          completed_at TEXT,
+          last_activity_at TEXT,
+          session_id TEXT,
+          session_server_url TEXT,
+          error_message TEXT,
+          error_timestamp TEXT,
+          error_code TEXT,
+          worktree_original_branch TEXT,
+          worktree_working_branch TEXT,
+          worktree_path TEXT,
+          messages TEXT,
+          logs TEXT,
+          tool_calls TEXT,
+          active_message_id TEXT,
+          interrupt_requested INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+        )
+      `);
+      db.run("CREATE INDEX IF NOT EXISTS idx_chats_workspace_id ON chats(workspace_id)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats(created_at)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_chats_directory ON chats(directory)");
     },
   },
 ];

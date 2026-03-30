@@ -3,6 +3,7 @@
  */
 
 export * from "./conventional-commits";
+export * from "./chat-manager";
 export * from "./event-emitter";
 export * from "./git-service";
 export * from "./branch-name";

@@ -586,6 +586,14 @@ class BackendManager {
   }
 
   /**
+   * Get a dedicated backend instance for a chat.
+   * Chats share the same dedicated-backend pool semantics as loops.
+   */
+  getChatBackend(chatId: string, workspaceId: string): Backend {
+    return this.getLoopBackend(chatId, workspaceId);
+  }
+
+  /**
    * Disconnect and clean up the backend for a specific loop.
    * Called when a loop is stopped, completed, or failed.
    *
@@ -613,6 +621,13 @@ class BackendManager {
 
     this.loopConnections.delete(loopId);
     log.debug(`[BackendManager] Cleaned up backend for loop ${loopId}`);
+  }
+
+  /**
+   * Disconnect and clean up the backend for a specific chat.
+   */
+  async disconnectChat(chatId: string): Promise<void> {
+    await this.disconnectLoop(chatId);
   }
 
   /**

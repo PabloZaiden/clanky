@@ -16,6 +16,8 @@ export {
 export {
   GitConfigSchema,
   LoopNameSchema,
+  MessageImageAttachmentSchema,
+  MessageImageAttachmentsSchema,
   CreateLoopRequestSchema,
   GenerateLoopTitleRequestSchema,
   UpdateLoopRequestSchema,
@@ -28,6 +30,14 @@ export {
   StartDraftRequestSchema,
   FollowUpRequestSchema,
 } from "./loop";
+
+// Chat schemas
+export {
+  CreateChatRequestSchema,
+  UpdateChatRequestSchema,
+  SendChatMessageRequestSchema,
+  InterruptChatRequestSchema,
+} from "./chat";
 
 // Workspace schemas
 export {
