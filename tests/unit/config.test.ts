@@ -3,7 +3,7 @@
  */
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { isRemoteOnlyMode, getAppConfig } from "../../src/core/config";
+import { isRemoteOnlyMode, isMockAcpEnabled, getAppConfig } from "../../src/core/config";
 
 describe("isRemoteOnlyMode", () => {
   const originalEnv = process.env["RALPHER_REMOTE_ONLY"];
@@ -102,5 +102,41 @@ describe("getAppConfig", () => {
     process.env["RALPHER_REMOTE_ONLY"] = "true";
     const config = getAppConfig();
     expect(config).toEqual({ remoteOnly: true });
+  });
+});
+
+describe("isMockAcpEnabled", () => {
+  const originalEnv = process.env["RALPHER_MOCK_ACP"];
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env["RALPHER_MOCK_ACP"];
+    } else {
+      process.env["RALPHER_MOCK_ACP"] = originalEnv;
+    }
+  });
+
+  test("returns false when env var is not set", () => {
+    delete process.env["RALPHER_MOCK_ACP"];
+    expect(isMockAcpEnabled()).toBe(false);
+  });
+
+  test("returns true for supported truthy values", () => {
+    process.env["RALPHER_MOCK_ACP"] = "true";
+    expect(isMockAcpEnabled()).toBe(true);
+
+    process.env["RALPHER_MOCK_ACP"] = "1";
+    expect(isMockAcpEnabled()).toBe(true);
+
+    process.env["RALPHER_MOCK_ACP"] = "YES";
+    expect(isMockAcpEnabled()).toBe(true);
+  });
+
+  test("returns false for unsupported values", () => {
+    process.env["RALPHER_MOCK_ACP"] = "false";
+    expect(isMockAcpEnabled()).toBe(false);
+
+    process.env["RALPHER_MOCK_ACP"] = "on";
+    expect(isMockAcpEnabled()).toBe(false);
   });
 });

@@ -136,7 +136,7 @@ export class AcpBackend implements Backend {
    * Spawn an ACP stdio process and initialize JSON-RPC.
    */
   private async connectSpawn(config: BackendConnectionConfig): Promise<void> {
-    const providerCommand = getProviderAcpCommand(config.provider ?? "opencode");
+    const providerCommand = getProviderAcpCommand(config.provider ?? "opencode", config.transport);
     const command = config.command ?? providerCommand.command;
     const args = config.args ?? providerCommand.args;
     const logArgs = sanitizeSpawnArgsForLogging(command, args);
@@ -547,8 +547,8 @@ export class AcpBackend implements Backend {
       return;
     }
 
-    // Handle config_options_update from the agent (ACP session-config-options spec)
-    if (updateType === "config_options_update") {
+    // Handle config_option_update/config_options_update from the agent.
+    if (updateType === "config_option_update" || updateType === "config_options_update") {
       const configOptions = this.parseConfigOptions(updateObj);
       if (configOptions.length > 0) {
         const cached = this.sessionCache.get(sessionId);
