@@ -36,6 +36,7 @@ describe("ChatManager", () => {
     context = await setupTestContext({
       useMockBackend: true,
       mockResponses: ["Hello from the chat backend"],
+      initGit: true,
     });
 
     const manager = new ChatManager();
@@ -43,7 +44,7 @@ describe("ChatManager", () => {
       name: "Runtime Chat",
       workspaceId: testWorkspaceId,
       directory: context.workDir,
-      useWorktree: false,
+      useWorktree: true,
       ...testModelFields,
     });
 
@@ -58,6 +59,16 @@ describe("ChatManager", () => {
     );
 
     expect(completed.state.session?.id).toBeString();
+    expect(completed.state.worktree?.originalBranch).toBeString();
+    expect(completed.state.worktree?.workingBranch).toContain("chat-runtime-chat-");
+    expect(completed.state.worktree?.worktreePath).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+    expect(context.mockBackend?.getDirectory()).toBe(completed.state.worktree?.worktreePath);
+    expect(
+      await context.git.worktreeExists(
+        context.workDir,
+        `${context.workDir}/.ralph-worktrees/${chat.config.id}`,
+      ),
+    ).toBe(true);
     expect(completed.state.messages.map((message) => message.content)).toEqual([
       "Say hello",
       "Hello from the chat backend",
@@ -95,5 +106,36 @@ describe("ChatManager", () => {
     expect(reconnected?.state.session?.id).toBe(sessionId);
     expect(reconnected?.state.error?.message.toLowerCase()).toContain("session");
     expect(await context.mockBackend?.getSession(sessionId!)).toBeNull();
+  });
+
+  test("removes the chat worktree when deleting a worktree-backed chat", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the chat backend"],
+      initGit: true,
+    });
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Delete Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Create the worktree",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    const worktreePath = completed.state.worktree?.worktreePath;
+
+    expect(worktreePath).toBeString();
+    expect(await context.git.worktreeExists(context.workDir, worktreePath!)).toBe(true);
+
+    expect(await manager.deleteChat(chat.config.id)).toBe(true);
+    expect(await loadChat(chat.config.id)).toBeNull();
+    expect(await context.git.worktreeExists(context.workDir, worktreePath!)).toBe(false);
   });
 });

@@ -20,7 +20,9 @@ import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { nextWithTimeout } from "./engine/engine-helpers";
 import { isSessionNotFoundError } from "./engine/engine-session";
+import { GitService } from "./git";
 import { createLogger } from "./logger";
+import { sanitizeBranchName } from "../utils";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -311,6 +313,16 @@ export class ChatManager {
   }
 
   async deleteChat(chatId: string): Promise<boolean> {
+    const chat = await loadChat(chatId);
+    if (!chat) {
+      return false;
+    }
+
+    this.activeStreams.get(chatId)?.stream.close();
+    this.activeStreams.delete(chatId);
+    await backendManager.disconnectChat(chatId);
+    await this.cleanupWorktree(chat);
+
     const deleted = await deleteChat(chatId);
     if (deleted) {
       this.emitter.emit({
@@ -318,7 +330,6 @@ export class ChatManager {
         chatId,
         timestamp: createTimestamp(),
       });
-      await backendManager.disconnectChat(chatId);
     }
     return deleted;
   }
@@ -337,13 +348,14 @@ export class ChatManager {
       throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
     }
 
+    const working = await this.resolveWorkingDirectory(chat);
     await backendManager.getBackendAsync(chat.config.workspaceId);
-    const backend = this.getChatBackend(chat.config.id, chat.config.workspaceId);
-    if (!backend.isConnected() || backend.getDirectory() !== chat.config.directory) {
+    const backend = this.getChatBackend(working.chat.config.id, working.chat.config.workspaceId);
+    if (!backend.isConnected() || backend.getDirectory() !== working.directory) {
       if (backend.isConnected()) {
         await backend.disconnect();
       }
-      await backend.connect(buildConnectionConfig(workspace.serverSettings, chat.config.directory));
+      await backend.connect(buildConnectionConfig(workspace.serverSettings, working.directory));
     }
     return backend;
   }
@@ -365,22 +377,105 @@ export class ChatManager {
       }
     }
 
+    const working = await this.resolveWorkingDirectory(chat);
     const session = await backend.createSession({
-      title: `Ralpher Chat: ${chat.config.name}`,
-      directory: chat.config.directory,
-      model: chat.config.model.modelID,
+      title: `Ralpher Chat: ${working.chat.config.name}`,
+      directory: working.directory,
+      model: working.chat.config.model.modelID,
     });
 
-    await this.configureSessionModel(backend, session.id, chat.config.model.modelID);
+    await this.configureSessionModel(backend, session.id, working.chat.config.model.modelID);
 
-    return this.updateChatStateAndReturn(chat, {
-      ...chat.state,
+    return this.updateChatStateAndReturn(working.chat, {
+      ...working.chat.state,
       session: {
         id: session.id,
       },
-      startedAt: chat.state.startedAt ?? createTimestamp(),
+      startedAt: working.chat.state.startedAt ?? createTimestamp(),
       lastActivityAt: createTimestamp(),
     });
+  }
+
+  private async resolveWorkingDirectory(chat: Chat): Promise<{ chat: Chat; directory: string }> {
+    if (!chat.config.useWorktree) {
+      return {
+        chat,
+        directory: chat.config.directory,
+      };
+    }
+
+    const prepared = await this.ensureWorktree(chat);
+    const worktreePath = prepared.state.worktree?.worktreePath;
+    if (!worktreePath) {
+      throw new Error(`Chat ${chat.config.id} is configured to use a worktree but no worktree path was recorded`);
+    }
+
+    return {
+      chat: prepared,
+      directory: worktreePath,
+    };
+  }
+
+  private async ensureWorktree(chat: Chat): Promise<Chat> {
+    if (!chat.config.useWorktree) {
+      return chat;
+    }
+
+    const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const git = GitService.withExecutor(executor);
+    const originalBranch = chat.state.worktree?.originalBranch
+      ?? chat.config.baseBranch
+      ?? await git.getCurrentBranch(chat.config.directory);
+    const workingBranch = chat.state.worktree?.workingBranch
+      ?? this.buildWorkingBranchName(chat);
+    const worktreePath = chat.state.worktree?.worktreePath
+      ?? `${chat.config.directory}/.ralph-worktrees/${chat.config.id}`;
+
+    const worktreeExists = await git.worktreeExists(chat.config.directory, worktreePath);
+    if (!worktreeExists) {
+      const branchExists = await git.branchExists(chat.config.directory, workingBranch);
+      if (branchExists) {
+        await git.addWorktreeForExistingBranch(chat.config.directory, worktreePath, workingBranch);
+      } else {
+        await git.createWorktree(chat.config.directory, worktreePath, workingBranch, originalBranch);
+      }
+    }
+
+    const nextWorktreeState = {
+      originalBranch,
+      workingBranch,
+      worktreePath,
+    };
+    if (
+      chat.state.worktree?.originalBranch === nextWorktreeState.originalBranch
+      && chat.state.worktree?.workingBranch === nextWorktreeState.workingBranch
+      && chat.state.worktree?.worktreePath === nextWorktreeState.worktreePath
+    ) {
+      return chat;
+    }
+
+    return this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      worktree: nextWorktreeState,
+      lastActivityAt: chat.state.lastActivityAt ?? createTimestamp(),
+    });
+  }
+
+  private async cleanupWorktree(chat: Chat): Promise<void> {
+    const worktreePath = chat.state.worktree?.worktreePath;
+    if (!chat.config.useWorktree || !worktreePath) {
+      return;
+    }
+
+    const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const git = GitService.withExecutor(executor);
+    await git.ensureWorktreeRemoved(chat.config.directory, worktreePath, {
+      force: true,
+    });
+  }
+
+  private buildWorkingBranchName(chat: Chat): string {
+    return `chat-${sanitizeBranchName(chat.config.name)}-${chat.config.id.slice(0, 8)}`;
   }
 
   private async startActivePrompt(
