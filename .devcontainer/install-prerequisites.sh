@@ -3,7 +3,7 @@
 set -e
 
 # support executing node scripts
-if [ ! -f "/usr/localbin/node" ]; then
+if [ ! -e "/usr/local/bin/node" ]; then
     sudo ln -s /usr/local/bin/bun /usr/local/bin/node
 fi
 
