@@ -1022,6 +1022,13 @@ export class LoopEngine {
       consecutiveErrors: undefined,
     });
 
+    this.emit({
+      type: "loop.completed",
+      loopId: this.config.id,
+      totalIterations: this.loop.state.currentIteration,
+      timestamp: createTimestamp(),
+    });
+
     // Persist immediately so callbacks (e.g., auto-push after conflict resolution)
     // can act on the completed status without waiting for the periodic persistence interval.
     await this.triggerPersistence();
@@ -1033,20 +1040,13 @@ export class LoopEngine {
         markCommentsAsAddressed(
           this.config.id,
           this.loop.state.reviewMode.reviewCycles,
-          addressedAt
+          addressedAt,
         );
         log.debug(`Marked comments as addressed for loop ${this.config.id}, cycle ${this.loop.state.reviewMode.reviewCycles}`);
       } catch (error) {
         log.error(`Failed to mark comments as addressed: ${String(error)}`);
       }
     }
-
-    this.emit({
-      type: "loop.completed",
-      loopId: this.config.id,
-      totalIterations: this.loop.state.currentIteration,
-      timestamp: createTimestamp(),
-    });
     return true;
   }
 
@@ -1101,6 +1101,8 @@ export class LoopEngine {
       timestamp: createTimestamp(),
     });
 
+    await this.triggerPersistence();
+
     // Exit the loop but stay in "planning" status
     // The loop will be resumed when user sends feedback or accepts the plan
     return true;
@@ -1144,9 +1146,6 @@ export class LoopEngine {
         },
       });
 
-      // Persist immediately so callbacks can act on the failed status
-      await this.triggerPersistence();
-
       this.emit({
         type: "loop.error",
         loopId: this.config.id,
@@ -1154,6 +1153,7 @@ export class LoopEngine {
         iteration: this.loop.state.currentIteration,
         timestamp: createTimestamp(),
       });
+      await this.triggerPersistence();
       return true;
     }
 
@@ -1192,15 +1192,13 @@ export class LoopEngine {
         completedAt: createTimestamp(),
       });
 
-      // Persist immediately so callbacks can act on the max_iterations status
-      await this.triggerPersistence();
-
       this.emit({
         type: "loop.stopped",
         loopId: this.config.id,
         reason: `Reached maximum iterations: ${this.config.maxIterations}`,
         timestamp: createTimestamp(),
       });
+      await this.triggerPersistence();
       return true;
     }
     return false;
@@ -1639,9 +1637,12 @@ export class LoopEngine {
       timestamp: completedAt,
     });
 
-    // Persist state to disk at the end of each iteration
-    // This ensures messages, tool calls, and logs survive server restart
-    await this.triggerPersistence();
+    // Persist non-terminal iteration state immediately. Terminal and plan-ready
+    // outcomes persist after their state transitions are applied so finalization
+    // cannot get stuck after the response has already been streamed.
+    if (ctx.outcome === "continue") {
+      await this.triggerPersistence();
+    }
 
     return {
       continue: ctx.outcome === "continue",

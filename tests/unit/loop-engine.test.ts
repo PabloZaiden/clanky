@@ -312,6 +312,55 @@ describe("StopPatternDetector", () => {
     expect(completedEvents.length).toBe(1);
   });
 
+  test("emits loop.completed even if completion persistence is still pending", async () => {
+    const loop = createTestLoop({ maxIterations: 1 });
+    const persistDeferred = createDeferred<void>();
+
+    mockBackend = createMockBackend([
+      "Done! <promise>COMPLETE</promise>",
+    ]);
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+      onPersistState: async () => {
+        await persistDeferred.promise;
+      },
+    });
+
+    const startPromise = engine.start();
+
+    const deadline = Date.now() + 5000;
+    while (
+      Date.now() < deadline
+      && !emittedEvents.some((event) => event.type === "loop.log"
+        && (event as { details?: Record<string, unknown> }).details?.["logKind"] === "response"
+        && String((event as { details?: Record<string, unknown> }).details?.["responseContent"] ?? "").includes("<promise>COMPLETE</promise>"))
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const completionDeadline = Date.now() + 5000;
+    while (
+      Date.now() < completionDeadline
+      && !emittedEvents.some((event) => event.type === "loop.completed")
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const responseLogSeen = emittedEvents.some((event) => event.type === "loop.log"
+      && (event as { details?: Record<string, unknown> }).details?.["logKind"] === "response"
+      && String((event as { details?: Record<string, unknown> }).details?.["responseContent"] ?? "").includes("<promise>COMPLETE</promise>"));
+    expect(responseLogSeen).toBe(true);
+    expect(engine.state.status).toBe("completed");
+    expect(emittedEvents.some((event) => event.type === "loop.completed")).toBe(true);
+
+    persistDeferred.resolve();
+    await startPromise;
+  });
+
   test("stops at max iterations", async () => {
     const loop = createTestLoop({ maxIterations: 2 });
     mockBackend = createMockBackend([
