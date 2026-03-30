@@ -1,6 +1,6 @@
-import type { SshServer, Workspace } from "../../types";
+import type { Chat, SshServer, Workspace } from "../../types";
 import { getServerLabel } from "../../types/settings";
-import type { useLoops, useSshSessions } from "../../hooks";
+import type { useChats, useLoops, useSshSessions } from "../../hooks";
 import { getLoopStatusLabel } from "../../utils";
 import {
   ActionMenu,
@@ -19,6 +19,7 @@ import { EmptySection } from "./shell-sidebar";
 export function WorkspaceView({
   workspace,
   relatedLoops,
+  relatedChats,
   relatedSessions,
   registeredSshServers,
   headerOffsetClassName,
@@ -27,6 +28,7 @@ export function WorkspaceView({
 }: {
   workspace: Workspace;
   relatedLoops: ReturnType<typeof useLoops>["loops"];
+  relatedChats: ReturnType<typeof useChats>["chats"];
   relatedSessions: ReturnType<typeof useSshSessions>["sessions"];
   registeredSshServers: readonly SshServer[];
   headerOffsetClassName?: string;
@@ -39,6 +41,10 @@ export function WorkspaceView({
     {
       label: "New Loop",
       onClick: () => onNavigate({ view: "compose", kind: "loop", scopeId: workspace.id }),
+    },
+    {
+      label: "New Chat",
+      onClick: () => onNavigate({ view: "compose", kind: "chat", scopeId: workspace.id }),
     },
     ...(workspaceSshEnabled
       ? [{
@@ -106,14 +112,11 @@ export function WorkspaceView({
           value={relatedLoops.length}
           meta="Loops assigned to this workspace."
         />
-        <SummaryCard
-          label="SSH Sessions"
-          value={relatedSessions.length}
-          meta="Saved SSH sessions for this workspace."
-        />
+        <SummaryCard label="Chats" value={relatedChats.length} meta="Persistent chat sessions in this workspace." />
+        <SummaryCard label="SSH Sessions" value={relatedSessions.length} meta="Saved SSH sessions for this workspace." />
       </div>
 
-      <div className="grid min-w-0 gap-6 xl:grid-cols-2">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-3">
         <div className="min-w-0 space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
           <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Loops</h2>
           <div className="space-y-2">
@@ -143,6 +146,36 @@ export function WorkspaceView({
                   </button>
                 );
               })
+            )}
+          </div>
+        </div>
+
+        <div className="min-w-0 space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
+          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Chats</h2>
+          <div className="space-y-2">
+            {relatedChats.length === 0 ? (
+              <EmptySection message="No chats in this workspace yet." />
+            ) : (
+              relatedChats.map((chat: Chat) => (
+                <button
+                  key={chat.config.id}
+                  type="button"
+                  onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}
+                  className="flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"
+                >
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {chat.config.name}
+                    </span>
+                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                      Chat
+                    </span>
+                  </span>
+                  <StatusBadge className="ml-auto shrink-0" variant={getStatusBadgeVariant(chat.state.status)}>
+                    {chat.state.status}
+                  </StatusBadge>
+                </button>
+              ))
             )}
           </div>
         </div>

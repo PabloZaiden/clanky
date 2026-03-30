@@ -1,7 +1,7 @@
-import type { Loop, Workspace } from "../../types";
+import type { Chat, Loop, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import { getLoopStatusLabel } from "../../utils";
-import { GearIcon, RefreshIcon, SidebarIcon, getLoopStatusBadgeVariant } from "../common";
+import { GearIcon, RefreshIcon, SidebarIcon, getLoopStatusBadgeVariant, getStatusBadgeVariant } from "../common";
 import type { BadgeVariant } from "../common";
 import { ShellSection, SectionItem, WorkspaceGroupedSectionItems, EmptySection } from "./shell-sidebar";
 import type { ShellRoute, SidebarSectionId, WorkspaceSidebarGroup } from "./shell-types";
@@ -28,6 +28,7 @@ interface ShellSidebarNavProps {
   workspaces: Workspace[];
   loopGroups: WorkspaceSidebarGroup[];
   loopItems: Loop[];
+  chatItems: Array<{ chat: Chat; workspaceName: string }>;
   allShellSessions: ShellSession[];
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
@@ -54,6 +55,7 @@ export function ShellSidebarNav({
   workspaces,
   loopGroups,
   loopItems,
+  chatItems,
   allShellSessions,
   servers,
   sessionsByServerId,
@@ -169,6 +171,31 @@ export function ShellSidebarNav({
                 />
               )}
             />
+          )}
+        </ShellSection>
+
+        <ShellSection
+          title="Chats"
+          count={chatItems.length}
+          actionLabel="New"
+          onAction={() => navigateWithinShell({ view: "compose", kind: "chat" })}
+          collapsed={isSectionCollapsed("chats")}
+          onToggle={() => toggleSectionCollapsed("chats")}
+        >
+          {chatItems.length === 0 ? (
+            <EmptySection message="No chats yet." />
+          ) : (
+            chatItems.map(({ chat, workspaceName }) => (
+              <SectionItem
+                key={chat.config.id}
+                active={route.view === "chat" && route.chatId === chat.config.id}
+                title={chat.config.name}
+                subtitle={workspaceName}
+                badge={chat.state.status}
+                badgeVariant={getStatusBadgeVariant(chat.state.status)}
+                onClick={() => navigateWithinShell({ view: "chat", chatId: chat.config.id })}
+              />
+            ))
           )}
         </ShellSection>
 

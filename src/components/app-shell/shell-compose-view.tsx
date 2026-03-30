@@ -8,6 +8,7 @@ import { SshSessionComposer, SshServerComposer } from "./shell-composers";
 import type { ComposeKind, ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import { ComposeLoopView } from "./compose-loop-view";
+import { ComposeChatView } from "./compose-chat-view";
 import { ComposeWorkspaceView } from "./compose-workspace-view";
 
 interface ComposeViewProps {
@@ -19,6 +20,7 @@ interface ComposeViewProps {
   composeActionState: CreateLoopFormActionState | null;
   setComposeActionState: (state: CreateLoopFormActionState | null) => void;
   handleLoopSubmit: (request: CreateLoopFormSubmitRequest) => Promise<boolean>;
+  createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
   dashboardData: UseDashboardDataResult;
   workspaces: Workspace[];
   workspacesLoading: boolean;
@@ -47,6 +49,7 @@ export function ComposeView(props: ComposeViewProps) {
     composeActionState,
     setComposeActionState,
     handleLoopSubmit,
+    createChat,
     dashboardData,
     workspaces,
     workspacesLoading,
@@ -93,6 +96,21 @@ export function ComposeView(props: ComposeViewProps) {
         provisioning={provisioning}
         workspacesSaving={workspacesSaving}
         dashboardData={dashboardData}
+      />
+    );
+  }
+
+  if (kind === "chat") {
+    return (
+      <ComposeChatView
+        composeWorkspace={composeWorkspace}
+        workspaces={workspaces}
+        workspacesLoading={workspacesLoading}
+        workspaceError={workspaceError}
+        dashboardData={dashboardData}
+        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
+        navigateWithinShell={navigateWithinShell}
+        createChat={createChat}
       />
     );
   }

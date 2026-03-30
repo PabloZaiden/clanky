@@ -1,5 +1,5 @@
 import { createLogger } from "../../lib/logger";
-import type { Loop, Workspace } from "../../types";
+import type { Chat, Loop, Workspace } from "../../types";
 import type { BadgeVariant } from "../common";
 
 const log = createLogger("AppShell");
@@ -9,6 +9,7 @@ export const SIDEBAR_SECTION_STORAGE_KEY = "ralpher.sidebarSectionCollapseState"
 export type SidebarSectionId =
   | "workspaces"
   | "loops"
+  | "chats"
   | "workspace-ssh"
   | "ssh-servers";
 
@@ -22,6 +23,7 @@ export interface SidebarSectionCollapseStateLoadResult {
 export const SIDEBAR_SECTION_IDS: SidebarSectionId[] = [
   "workspaces",
   "loops",
+  "chats",
   "workspace-ssh",
   "ssh-servers",
 ];
@@ -32,10 +34,17 @@ export interface WorkspaceSidebarGroup {
   items: Loop[];
 }
 
+export interface ChatSidebarGroup {
+  key: string;
+  title: string;
+  items: Chat[];
+}
+
 export type ShellRoute =
   | { view: "home" }
   | { view: "settings" }
   | { view: "loop"; loopId: string }
+  | { view: "chat"; chatId: string }
   | { view: "ssh"; sshSessionId: string }
   | { view: "workspace"; workspaceId: string }
   | { view: "workspace-settings"; workspaceId: string }
@@ -43,7 +52,7 @@ export type ShellRoute =
   | { view: "server-arise"; serverId: string }
   | {
       view: "compose";
-      kind: "loop" | "workspace" | "ssh-session" | "ssh-server";
+      kind: "loop" | "chat" | "workspace" | "ssh-session" | "ssh-server";
       scopeId?: string;
     }
   | {
@@ -111,6 +120,41 @@ export function groupSidebarItemsByWorkspace(
       return left.title.localeCompare(right.title);
     })
     .map(({ key, title, items: groupedItems }) => ({ key, title, items: groupedItems }));
+}
+
+export function groupSidebarChatsByWorkspace(
+  chats: Chat[],
+  workspaces: readonly Workspace[],
+): ChatSidebarGroup[] {
+  const workspacesById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  const workspaceOrder = new Map(workspaces.map((workspace, index) => [workspace.id, index]));
+  const groups = new Map<string, ChatSidebarGroup & { order: number }>();
+
+  for (const chat of chats) {
+    const workspace = workspacesById.get(chat.config.workspaceId);
+    const key = workspace?.id ?? `missing:${chat.config.workspaceId ?? chat.config.id}`;
+    const group = groups.get(key) ?? {
+      key,
+      title: workspace?.name ?? "Unknown workspace",
+      order: workspace ? (workspaceOrder.get(workspace.id) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER,
+      items: [],
+    };
+    group.items.push(chat);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.values())
+    .sort((left, right) => {
+      if (left.order !== right.order) {
+        return left.order - right.order;
+      }
+      return left.title.localeCompare(right.title);
+    })
+    .map(({ key, title, items }) => ({
+      key,
+      title,
+      items: items.sort((left, right) => right.config.updatedAt.localeCompare(left.config.updatedAt)),
+    }));
 }
 
 export function isDesktopShellViewport(): boolean {

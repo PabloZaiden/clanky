@@ -1,4 +1,5 @@
 import type { MessageData } from "../../types";
+import { MarkdownRenderer } from "../MarkdownRenderer";
 import { formatTime } from "./utils";
 
 interface MessageEntryProps {
@@ -6,9 +7,14 @@ interface MessageEntryProps {
   showHeader: boolean;
   spacingClass: string;
   index: number;
+  markdownEnabled: boolean;
+  showRoleLabel: boolean;
 }
 
-export function MessageEntry({ data: msg, showHeader, spacingClass, index }: MessageEntryProps) {
+export function MessageEntry({ data: msg, showHeader, spacingClass, index, markdownEnabled, showRoleLabel }: MessageEntryProps) {
+  const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
+  const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
+
   return (
     <div key={`msg-${msg.id}-${index}`} className={`group ${spacingClass}`}>
       {showHeader && (
@@ -17,9 +23,20 @@ export function MessageEntry({ data: msg, showHeader, spacingClass, index }: Mes
         </time>
       )}
       <div className="min-w-0 space-y-2">
-        <div className="whitespace-pre-wrap break-words">
-          {msg.content}
-        </div>
+        {showRoleLabel && (
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">
+            {roleLabel}
+          </div>
+        )}
+        {shouldRenderMarkdown ? (
+          <div className="rounded bg-neutral-800 p-2 sm:p-3">
+            <MarkdownRenderer content={msg.content} className="text-xs" />
+          </div>
+        ) : (
+          <div className="whitespace-pre-wrap break-words">
+            {msg.content}
+          </div>
+        )}
         {msg.attachments && msg.attachments.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {msg.attachments.map((attachment) => (

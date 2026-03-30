@@ -6,7 +6,7 @@
  */
 
 import { test, expect, describe } from "bun:test";
-import { LogViewer } from "@/components/LogViewer";
+import { ConversationViewer, LogViewer } from "@/components/LogViewer";
 import type { LogEntry } from "@/components/LogViewer";
 import { renderWithUser } from "../helpers/render";
 import {
@@ -40,6 +40,27 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[]} logs={[]} />
       );
       expect(getByText("No logs yet. Waiting for activity.")).toBeInTheDocument();
+    });
+
+    test("shared conversation viewer accepts custom empty and active labels", () => {
+      const rendered = renderWithUser(
+        <ConversationViewer
+          messages={[]}
+          toolCalls={[]}
+          emptyStateMessage="No conversation yet."
+        />
+      );
+      expect(rendered.getByText("No conversation yet.")).toBeInTheDocument();
+
+      rendered.rerender(
+        <ConversationViewer
+          messages={[]}
+          toolCalls={[]}
+          isActive={true}
+          activeStateMessage="Responding..."
+        />
+      );
+      expect(rendered.getByText("Responding...")).toBeInTheDocument();
     });
 
     test("uses vertical scrolling while hiding panel-level horizontal overflow", () => {
@@ -82,6 +103,28 @@ describe("LogViewer", () => {
       expect(container.querySelector("img")?.getAttribute("src")).toContain("data:image/png;base64,ZmFrZQ==");
     });
 
+    test("shared conversation viewer can render assistant messages", () => {
+      const msg = createMessageData({ role: "assistant", content: "I can help with that" });
+      const { getByText } = renderWithUser(
+        <ConversationViewer messages={[msg]} toolCalls={[]} showAssistantMessages={true} />
+      );
+      expect(getByText("I can help with that")).toBeInTheDocument();
+    });
+
+    test("shared conversation viewer can label message roles", () => {
+      const msg = createMessageData({ role: "assistant", content: "Assistant answer" });
+      const { getByText } = renderWithUser(
+        <ConversationViewer
+          messages={[msg]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+          showMessageRoles={true}
+        />
+      );
+      expect(getByText("Assistant")).toBeInTheDocument();
+      expect(getByText("Assistant answer")).toBeInTheDocument();
+    });
+
     test("filters out assistant messages from display", () => {
       const msg = createMessageData({ role: "assistant", content: "I can help with that" });
       const { queryByText } = renderWithUser(
@@ -103,6 +146,19 @@ describe("LogViewer", () => {
       expect(getByText("First message")).toBeInTheDocument();
       // Assistant message is filtered out
       expect(queryByText("Second message")).not.toBeInTheDocument();
+    });
+
+    test("renders assistant markdown in shared conversation viewer", () => {
+      const msg = createMessageData({ role: "assistant", content: "**bold text**" });
+      const { getByText } = renderWithUser(
+        <ConversationViewer
+          messages={[msg]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+          markdownEnabled={true}
+        />
+      );
+      expect(getByText("bold text")).toBeInTheDocument();
     });
 
     test("user messages are always shown regardless of filter settings", () => {
