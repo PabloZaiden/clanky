@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { ConversationViewer } from "./LogViewer";
 import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
-import { Button, StatusBadge, getChatStatusBadgeVariant } from "./common";
+import { Button, ConfirmModal, StatusBadge, getChatStatusBadgeVariant } from "./common";
+import { ChatFocusModeBar } from "./chat-details/chat-focus-mode-bar";
+import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { useMarkdownPreference, useToast, useWebSocket } from "../hooks";
@@ -54,7 +56,9 @@ function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
 }
 
 function appendLog(logs: LoopLogEntry[], log: LoopLogEntry): LoopLogEntry[] {
-  return [...logs, log].sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+  const next = logs.filter((entry) => entry.id !== log.id);
+  next.push(log);
+  return next.sort((left, right) => left.timestamp.localeCompare(right.timestamp));
 }
 
 export function ChatDetails({
@@ -76,9 +80,13 @@ export function ChatDetails({
   const [message, setMessage] = useState("");
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isReconnectPending, setIsReconnectPending] = useState(false);
+  const [isDeletePending, setIsDeletePending] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
+  const composerFormRef = useRef<HTMLFormElement>(null);
   const reconnectAttemptedRef = useRef(false);
+  const { isFocusMode, toggleFocusMode } = useChatFocusMode();
 
   const refreshChat = useCallback(async () => {
     try {
@@ -188,7 +196,6 @@ export function ChatDetails({
   const isActive = chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false;
 
   const handleReconnect = useCallback(async (showSuccessToast = true) => {
-    setIsReconnectPending(true);
     try {
       const response = await appFetch(`/api/chats/${chatId}/reconnect`, {
         method: "POST",
@@ -203,16 +210,15 @@ export function ChatDetails({
       }
     } catch (reconnectError) {
       toast.error(String(reconnectError));
-    } finally {
-      setIsReconnectPending(false);
     }
   }, [chatId, toast]);
 
   useEffect(() => {
-    if (!chat || reconnectAttemptedRef.current || !chat.state.session?.id) {
+    if (!chat || !chat.state.session?.id || !ACTIVE_CHAT_STATUSES.has(chat.state.status)) {
+      reconnectAttemptedRef.current = false;
       return;
     }
-    if (!ACTIVE_CHAT_STATUSES.has(chat.state.status)) {
+    if (reconnectAttemptedRef.current) {
       return;
     }
     reconnectAttemptedRef.current = true;
@@ -278,11 +284,40 @@ export function ChatDetails({
     }
   }
 
-  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+  async function handleDelete() {
+    if (isDeletePending) {
+      return;
+    }
+
+    setIsDeletePending(true);
+    try {
+      const response = await appFetch(`/api/chats/${chatId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to delete chat"));
+      }
+      setIsDeleteConfirmOpen(false);
+      toast.success("Chat deleted");
+      onBack?.();
+    } catch (deleteError) {
+      toast.error(String(deleteError));
+    } finally {
+      setIsDeletePending(false);
+    }
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLInputElement>) {
     attachmentControlRef.current?.handlePaste(event);
   }
 
-  const canReconnect = Boolean(chat?.state.session?.id) && !isActive;
+  function handleComposerKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      composerFormRef.current?.requestSubmit();
+    }
+  }
+
   const transcriptDescription = useMemo(() => {
     if (!chat) {
       return "";
@@ -313,6 +348,122 @@ export function ChatDetails({
             </div>
           </div>
         </header>
+      </div>
+    );
+  }
+
+  const hasPendingInput = message.trim().length > 0 || attachments.length > 0;
+  const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
+  const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
+  const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
+
+  const conversation = (
+    <ConversationViewer
+      id="chat-transcript"
+      messages={chat.state.messages}
+      toolCalls={chat.state.toolCalls}
+      logs={chat.state.logs}
+      autoScroll={autoScroll}
+      isActive={isActive}
+      markdownEnabled={markdownEnabled}
+      showAssistantMessages
+      showResponseLogs={isActive}
+      emptyStateMessage="No messages yet"
+      activeStateMessage="Thinking…"
+    />
+  );
+
+  const composer = (
+    <form
+      ref={composerFormRef}
+      onSubmit={handleSubmit}
+      className={`border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-neutral-900 ${isFocusMode ? "" : "safe-area-bottom"}`}
+    >
+      <label htmlFor="chat-message" className="sr-only">Message</label>
+      <div className="flex flex-row items-center gap-2 sm:gap-3">
+        <input
+          id="chat-message"
+          type="text"
+          value={message}
+          onChange={(event) => setMessage(event.target.value)}
+          onKeyDown={handleComposerKeyDown}
+          onPaste={handlePaste}
+          placeholder={isActive ? "Wait for the current turn to finish…" : "Send a message to the agent…"}
+          disabled={isActive || isSubmitting}
+          className="h-9 min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600"
+        />
+        <ImageAttachmentControl
+          ref={attachmentControlRef}
+          attachments={attachments}
+          onChange={setAttachments}
+          disabled={isActive || isSubmitting}
+          iconOnly
+        />
+        {isActive ? (
+          <button
+            type="button"
+            onClick={() => void handleInterrupt()}
+            disabled={isSubmitting}
+            className={interruptButtonClassName}
+            aria-label="Interrupt"
+            title="Interrupt"
+          >
+            {isSubmitting ? (
+              <span className="animate-spin text-sm">⏳</span>
+            ) : (
+              <span className="text-lg leading-none">×</span>
+            )}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={isSubmitting || !hasPendingInput}
+            className={sendButtonClassName}
+            aria-label="Send"
+            title="Send"
+          >
+            {isSubmitting ? (
+              <span className="animate-spin text-sm">⏳</span>
+            ) : (
+              <span className="text-lg leading-none">↑</span>
+            )}
+          </button>
+        )}
+      </div>
+    </form>
+  );
+
+  const deleteConfirmModal = (
+    <ConfirmModal
+      isOpen={isDeleteConfirmOpen}
+      onClose={() => setIsDeleteConfirmOpen(false)}
+      onConfirm={() => void handleDelete()}
+      title="Delete chat?"
+      message="This removes the saved chat session, transcript, and any worktree created for it."
+      confirmLabel="Delete"
+      loading={isDeletePending}
+    />
+  );
+
+  if (isFocusMode) {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e]">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3">
+          {chat.state.error && (
+            <p className="mb-3 shrink-0 text-sm text-red-300">
+              {chat.state.error.message}
+            </p>
+          )}
+          {conversation}
+        </div>
+        {composer}
+        <ChatFocusModeBar
+          autoScroll={autoScroll}
+          onAutoScrollChange={setAutoScroll}
+          onExitFocusMode={toggleFocusMode}
+          applySafeAreaBottom
+        />
+        {deleteConfirmModal}
       </div>
     );
   }
@@ -348,76 +499,36 @@ export function ChatDetails({
             )}
           </div>
           <div className="flex items-center gap-2">
-            {canReconnect && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void handleReconnect()}
-                loading={isReconnectPending}
-              >
-                Reconnect
-              </Button>
-            )}
-            {isActive && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => void handleInterrupt()}
-                loading={isSubmitting}
-              >
-                Interrupt
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 w-9 px-0"
+              onClick={toggleFocusMode}
+              aria-label="Enter focus mode"
+              title="Focus mode — fullscreen chat with compact controls"
+            >
+              <span aria-hidden="true" className="text-base leading-none">⤢</span>
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 w-9 px-0 text-red-600 dark:text-red-400"
+              onClick={() => setIsDeleteConfirmOpen(true)}
+              loading={isDeletePending}
+              aria-label="Delete chat"
+              title="Delete chat"
+            >
+              <span aria-hidden="true" className="text-base leading-none">🗑</span>
+            </Button>
           </div>
         </div>
       </header>
 
-      <ConversationViewer
-        id="chat-transcript"
-        messages={chat.state.messages}
-        toolCalls={chat.state.toolCalls}
-        logs={chat.state.logs}
-        isActive={isActive}
-        markdownEnabled={markdownEnabled}
-        showAssistantMessages
-        showMessageRoles
-        showResponseLogs={isActive}
-        emptyStateMessage="No messages yet"
-        activeStateMessage="Thinking…"
-      />
-
-      <form onSubmit={handleSubmit} className="border-t border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-900">
-        <label htmlFor="chat-message" className="sr-only">Message</label>
-        <textarea
-          id="chat-message"
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onPaste={handlePaste}
-          rows={3}
-          placeholder={isActive ? "Wait for the current turn to finish…" : "Send a message to the agent…"}
-          disabled={isActive || isSubmitting}
-          className="block min-h-[96px] w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600"
-        />
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <ImageAttachmentControl
-            ref={attachmentControlRef}
-            attachments={attachments}
-            onChange={setAttachments}
-            disabled={isActive || isSubmitting}
-            hint="Paste or attach images for the next turn."
-          />
-          <Button
-            type="submit"
-            size="sm"
-            disabled={isActive || isSubmitting || (message.trim().length === 0 && attachments.length === 0)}
-            loading={isSubmitting}
-          >
-            Send
-          </Button>
-        </div>
-      </form>
+      {conversation}
+      {composer}
+      {deleteConfirmModal}
     </div>
   );
 }

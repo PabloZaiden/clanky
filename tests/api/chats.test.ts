@@ -228,7 +228,7 @@ describe("Chats API Integration", () => {
     ]);
   });
 
-  test("fails reconnect when the persisted session is missing", async () => {
+  test("recreates missing persisted sessions during reconnect and send", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -260,8 +260,33 @@ describe("Chats API Integration", () => {
     });
     expect(reconnectResponse.status).toBe(200);
     const reconnected = await reconnectResponse.json();
-    expect(reconnected.state.status).toBe("failed");
-    expect(reconnected.state.session.id).toBe(sessionId);
-    expect(reconnected.state.error.message.toLowerCase()).toContain("session");
+    expect(reconnected.state.status).toBe("idle");
+    expect(reconnected.state.session.id).not.toBe(sessionId);
+    expect(reconnected.state.error).toBeUndefined();
+
+    const replacementSessionId = reconnected.state.session.id as string;
+    await mockBackend.deleteSession(replacementSessionId);
+
+    const resumedSendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Recover automatically" }),
+    });
+    expect(resumedSendResponse.status).toBe(200);
+
+    const settledAfterRecovery = await waitForChatIdle(created.config.id) as {
+      state: {
+        status: string;
+        session?: { id?: string };
+        error?: { message: string };
+        messages: Array<{ content: string }>;
+      };
+    };
+
+    expect(settledAfterRecovery.state.status).toBe("idle");
+    expect(settledAfterRecovery.state.session?.id).toBeString();
+    expect(settledAfterRecovery.state.session?.id).not.toBe(replacementSessionId);
+    expect(settledAfterRecovery.state.error).toBeUndefined();
+    expect(settledAfterRecovery.state.messages.some((message) => message.content === "Recover automatically")).toBe(true);
   });
 });
