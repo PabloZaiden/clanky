@@ -30,6 +30,7 @@ const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
 interface ActiveChatStream {
   stream: EventStream<AgentEvent>;
   promptPromise: Promise<void>;
+  generation: number;
 }
 
 export interface CreateChatOptions {
@@ -45,6 +46,7 @@ export interface CreateChatOptions {
 
 export class ChatManager {
   private readonly activeStreams = new Map<string, ActiveChatStream>();
+  private readonly activeStreamGenerations = new Map<string, number>();
 
   constructor(private readonly emitter: SimpleEventEmitter<ChatEvent> = chatEventEmitter) {}
 
@@ -238,7 +240,15 @@ export class ChatManager {
     };
 
     let current = await this.appendMessage(sessionChat, userMessage);
-    current = await this.updateChatStatusInternal(current, "starting");
+    current = await this.updateChatStateAndReturn(current, {
+      ...current.state,
+      status: "starting",
+      error: undefined,
+      completedAt: undefined,
+      activeMessageId: undefined,
+      interruptRequested: false,
+      lastActivityAt: createTimestamp(),
+    });
 
     const prompt: PromptInput = {
       parts: [
@@ -287,6 +297,8 @@ export class ChatManager {
       throw error;
     }
 
+    this.activeStreams.get(chatId)?.stream.close();
+
     const stopped = await this.updateChatStateAndReturn(updating, {
       ...updating.state,
       status: "idle",
@@ -307,8 +319,6 @@ export class ChatManager {
       chatId,
       timestamp: stopped.state.lastActivityAt ?? createTimestamp(),
     });
-    this.activeStreams.get(chatId)?.stream.close();
-    this.activeStreams.delete(chatId);
     return stopped;
   }
 
@@ -320,6 +330,7 @@ export class ChatManager {
 
     this.activeStreams.get(chatId)?.stream.close();
     this.activeStreams.delete(chatId);
+    this.activeStreamGenerations.delete(chatId);
     await backendManager.disconnectChat(chatId);
     await this.cleanupWorktree(chat);
 
@@ -532,14 +543,17 @@ export class ChatManager {
   ): Promise<Chat> {
     const eventStream = await backend.subscribeToEvents(sessionId);
     const promptPromise = backend.sendPromptAsync(sessionId, prompt);
+    const generation = this.nextActiveStreamGeneration(chat.config.id);
     this.activeStreams.set(chat.config.id, {
       stream: eventStream,
       promptPromise,
+      generation,
     });
-    void this.consumeEventStream(chat.config.id, eventStream, promptPromise);
+    void this.consumeEventStream(chat.config.id, eventStream, promptPromise, generation);
     return this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: "streaming",
+      error: undefined,
       interruptRequested: false,
       completedAt: undefined,
       lastActivityAt: createTimestamp(),
@@ -550,6 +564,7 @@ export class ChatManager {
     chatId: string,
     eventStream: EventStream<AgentEvent>,
     promptPromise: Promise<void>,
+    generation: number,
   ): Promise<void> {
     let chat = await loadChat(chatId);
     if (!chat) {
@@ -569,6 +584,9 @@ export class ChatManager {
       await promptPromise;
       let event = await nextWithTimeout<AgentEvent>(eventStream, DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS);
       while (event !== null) {
+        if (!this.isActiveStreamGeneration(chatId, generation)) {
+          return;
+        }
         chat = await loadChat(chatId);
         if (!chat) {
           break;
@@ -674,13 +692,17 @@ export class ChatManager {
               interruptRequested: false,
               lastActivityAt: now,
             });
-            this.activeStreams.delete(chatId);
+            this.clearActiveStream(chatId, generation);
             return;
           }
 
           case "error":
+            if (this.shouldSuppressStreamError(chatId, generation, event.message)) {
+              this.clearActiveStream(chatId, generation);
+              return;
+            }
             await this.emitChatError(chat, event.message);
-            this.activeStreams.delete(chatId);
+            this.clearActiveStream(chatId, generation);
             return;
 
           case "permission.asked":
@@ -698,13 +720,17 @@ export class ChatManager {
         event = await nextWithTimeout<AgentEvent>(eventStream, DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS);
       }
     } catch (error) {
+      const message = String(error);
+      if (this.shouldSuppressStreamError(chatId, generation, message)) {
+        return;
+      }
       chat = await loadChat(chatId);
-      if (chat) {
-        await this.emitChatError(chat, String(error));
+      if (chat && this.isActiveStreamGeneration(chatId, generation)) {
+        await this.emitChatError(chat, message);
       }
     } finally {
       eventStream.close();
-      this.activeStreams.delete(chatId);
+      this.clearActiveStream(chatId, generation);
     }
   }
 
@@ -843,12 +869,35 @@ export class ChatManager {
     }
   }
 
-  private async updateChatStatusInternal(chat: Chat, status: ChatStatus): Promise<Chat> {
-    return this.updateChatStateAndReturn(chat, {
-      ...chat.state,
-      status,
-      lastActivityAt: createTimestamp(),
-    });
+  private nextActiveStreamGeneration(chatId: string): number {
+    const generation = (this.activeStreamGenerations.get(chatId) ?? 0) + 1;
+    this.activeStreamGenerations.set(chatId, generation);
+    return generation;
+  }
+
+  private isActiveStreamGeneration(chatId: string, generation: number): boolean {
+    return this.activeStreams.get(chatId)?.generation === generation;
+  }
+
+  private clearActiveStream(chatId: string, generation: number): void {
+    if (this.isActiveStreamGeneration(chatId, generation)) {
+      this.activeStreams.delete(chatId);
+    }
+  }
+
+  private shouldSuppressStreamError(chatId: string, generation: number, message: string): boolean {
+    if (!this.isActiveStreamGeneration(chatId, generation)) {
+      return true;
+    }
+
+    const normalized = message.toLowerCase();
+    return normalized.includes("request cancelled")
+      || normalized.includes("operation cancelled by user")
+      || normalized.includes("prompt cancelled")
+      || normalized.includes("session cancelled")
+      || normalized.includes("useraborterror")
+      || normalized.includes("aborterror")
+      || normalized.includes("-32800");
   }
 
   private async updateChatStateAndReturn(chat: Chat, state: Chat["state"]): Promise<Chat> {
