@@ -312,6 +312,62 @@ describe("StopPatternDetector", () => {
     expect(completedEvents.length).toBe(1);
   });
 
+  test("emits loop.completed even if completion persistence is still pending", async () => {
+    const loop = createTestLoop({ maxIterations: 1 });
+    const persistDeferred = createDeferred<void>();
+    let persistenceCalls = 0;
+    let persistenceResolved = false;
+
+    mockBackend = createMockBackend([
+      "Done! <promise>COMPLETE</promise>",
+    ]);
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+      onPersistState: async () => {
+        persistenceCalls += 1;
+        await persistDeferred.promise;
+        persistenceResolved = true;
+      },
+    });
+
+    const startPromise = engine.start();
+
+    const deadline = Date.now() + 5000;
+    while (
+      Date.now() < deadline
+      && !emittedEvents.some((event) => event.type === "loop.log"
+        && (event as { details?: Record<string, unknown> }).details?.["logKind"] === "response"
+        && String((event as { details?: Record<string, unknown> }).details?.["responseContent"] ?? "").includes("<promise>COMPLETE</promise>"))
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const completionDeadline = Date.now() + 5000;
+    while (
+      Date.now() < completionDeadline
+      && (!emittedEvents.some((event) => event.type === "loop.completed")
+        || persistenceCalls === 0)
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    const responseLogSeen = emittedEvents.some((event) => event.type === "loop.log"
+      && (event as { details?: Record<string, unknown> }).details?.["logKind"] === "response"
+      && String((event as { details?: Record<string, unknown> }).details?.["responseContent"] ?? "").includes("<promise>COMPLETE</promise>"));
+    expect(responseLogSeen).toBe(true);
+    expect(engine.state.status).toBe("completed");
+    expect(emittedEvents.some((event) => event.type === "loop.completed")).toBe(true);
+    expect(persistenceCalls).toBeGreaterThan(0);
+    expect(persistenceResolved).toBe(false);
+
+    persistDeferred.resolve();
+    await startPromise;
+  });
+
   test("stops at max iterations", async () => {
     const loop = createTestLoop({ maxIterations: 2 });
     mockBackend = createMockBackend([
@@ -495,6 +551,12 @@ describe("StopPatternDetector", () => {
     // the engine correctly continues to the next iteration instead of stopping.
     // Also validates that error iterations don't count towards maxIterations.
     const loop = createTestLoop({ maxIterations: 3, maxConsecutiveErrors: 3 });
+    const persistedSnapshots: Array<{
+      currentIteration: number;
+      status: LoopState["status"];
+      consecutiveErrorCount?: number;
+      lastOutcome?: string;
+    }> = [];
 
     let iterationCount = 0;
     let promptSent = false;
@@ -548,6 +610,14 @@ describe("StopPatternDetector", () => {
       backend: mockBackend,
       gitService,
       eventEmitter: emitter,
+      onPersistState: async (state: LoopState) => {
+        persistedSnapshots.push({
+          currentIteration: state.currentIteration,
+          status: state.status,
+          consecutiveErrorCount: state.consecutiveErrors?.count,
+          lastOutcome: state.recentIterations.at(-1)?.outcome,
+        });
+      },
     });
 
     // Add timeout to detect if the engine hangs
@@ -572,6 +642,11 @@ describe("StopPatternDetector", () => {
     // Check that error event was emitted for iteration 1
     const errorEvents = emittedEvents.filter((e) => e.type === "loop.error");
     expect(errorEvents.length).toBe(1);
+    expect(persistedSnapshots.some((snapshot) =>
+      snapshot.status === "running"
+      && snapshot.currentIteration === 0
+      && snapshot.consecutiveErrorCount === 1
+      && snapshot.lastOutcome === "error")).toBe(true);
 
     // Check that both iteration start events were emitted
     const iterationStartEvents = emittedEvents.filter((e) => e.type === "loop.iteration.start");
