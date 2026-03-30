@@ -330,6 +330,7 @@ export class ChatManager {
 
     this.activeStreams.get(chatId)?.stream.close();
     this.activeStreams.delete(chatId);
+    this.activeStreamGenerations.delete(chatId);
     await backendManager.disconnectChat(chatId);
     await this.cleanupWorktree(chat);
 

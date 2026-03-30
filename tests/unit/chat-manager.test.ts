@@ -4,6 +4,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import { loadChat } from "../../src/persistence/chats";
 import type { ChatEvent } from "../../src/types";
+import type { ModelInfo } from "../../src/types/api";
 import type {
   AgentEvent,
   AgentResponse,
@@ -193,10 +194,14 @@ class InterruptRaceBackend implements Backend {
     this.sessions.delete(id);
   }
 
-  async getModels(_directory: string): Promise<[]> {
+  async getModels(_directory: string): Promise<ModelInfo[]> {
     return [];
   }
 }
+
+type ChatManagerInternals = {
+  activeStreamGenerations: Map<string, number>;
+};
 
 describe("ChatManager", () => {
   afterEach(async () => {
@@ -446,10 +451,12 @@ describe("ChatManager", () => {
 
     expect(worktreePath).toBeString();
     expect(await context.git.worktreeExists(context.workDir, worktreePath!)).toBe(true);
+    expect((manager as unknown as ChatManagerInternals).activeStreamGenerations.has(chat.config.id)).toBe(true);
 
     expect(await manager.deleteChat(chat.config.id)).toBe(true);
     expect(await loadChat(chat.config.id)).toBeNull();
     expect(await context.git.worktreeExists(context.workDir, worktreePath!)).toBe(false);
+    expect((manager as unknown as ChatManagerInternals).activeStreamGenerations.has(chat.config.id)).toBe(false);
   });
 
   test("accepts an immediate follow-up message after interrupting a running prompt", async () => {
