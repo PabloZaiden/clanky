@@ -32,13 +32,21 @@ export function useComposeState({
   const [composeActionState, setComposeActionState] = useState<CreateLoopFormActionState | null>(null);
 
   useEffect(() => {
-    if (route.view !== "compose" || route.kind !== "loop") {
+    if (route.view !== "compose") {
+      dashboardData.resetCreateModalState();
+      return;
+    }
+    if (route.kind !== "loop") {
       dashboardData.resetCreateModalState();
     }
   }, [dashboardData.resetCreateModalState, route]);
 
   useEffect(() => {
-    if (route.view !== "compose" || route.kind !== "loop") {
+    if (route.view !== "compose") {
+      setComposeActionState(null);
+      return;
+    }
+    if (route.kind !== "loop") {
       setComposeActionState(null);
     }
   }, [route.view, route.view === "compose" ? route.kind : undefined]);

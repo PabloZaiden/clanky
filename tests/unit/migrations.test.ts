@@ -78,8 +78,8 @@ describe("migration infrastructure", () => {
       expect(tableExists(db, "schema_migrations")).toBe(true);
     });
 
-    test("returns 0 when no migrations are defined", () => {
-      expect(migrations.length).toBe(0);
+    test("returns 0 when all migrations are already applied", () => {
+      runMigrations(db);
       const applied = runMigrations(db);
       expect(applied).toBe(0);
     });
@@ -89,6 +89,27 @@ describe("migration infrastructure", () => {
       runMigrations(db);
       runMigrations(db);
       expect(tableExists(db, "schema_migrations")).toBe(true);
+    });
+
+    test("normalizes legacy loop modes to loop", () => {
+      db.run("CREATE TABLE loops (id TEXT PRIMARY KEY, mode TEXT)");
+      db.run("INSERT INTO loops (id, mode) VALUES ('legacy-chat', 'chat')");
+      db.run("INSERT INTO loops (id, mode) VALUES ('legacy-loop', 'loop')");
+      db.run("INSERT INTO loops (id, mode) VALUES ('legacy-null', NULL)");
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+
+      const rows = db.query("SELECT id, mode FROM loops ORDER BY id").all() as Array<{
+        id: string;
+        mode: string;
+      }>;
+      expect(rows).toEqual([
+        { id: "legacy-chat", mode: "loop" },
+        { id: "legacy-loop", mode: "loop" },
+        { id: "legacy-null", mode: "loop" },
+      ]);
     });
   });
 

@@ -163,6 +163,17 @@ export function safeJsonParse<T>(json: string, fallback: T, fieldName: string, r
 }
 
 /**
+ * Normalize persisted loop modes to the loop-only contract.
+ */
+export function normalizeLoopMode(mode: unknown, rowId: unknown): LoopConfig["mode"] {
+  if (mode === "loop" || mode === null || mode === undefined) {
+    return "loop";
+  }
+  log.warn(`Normalizing legacy loop mode for loop ${String(rowId)}`, { rawMode: String(mode) });
+  return "loop";
+}
+
+/**
  * Convert a database row to a Loop object.
  */
 export function rowToLoop(row: Record<string, unknown>): Loop {
@@ -208,7 +219,7 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
     clearPlanningFolder: row["clear_planning_folder"] === 1,
     planMode: row["plan_mode"] === 1,
     planModeAutoReply: row["plan_mode_auto_reply"] !== 0,
-    mode: (row["mode"] as string as LoopConfig["mode"]) ?? "loop",
+    mode: normalizeLoopMode(row["mode"], row["id"]),
   };
 
   // Optional config fields

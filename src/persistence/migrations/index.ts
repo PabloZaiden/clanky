@@ -106,7 +106,22 @@ export function tableExists(db: Database, tableName: string): boolean {
  * Migrations v1-v13 (post-reset) were removed in the second clean-cut reset.
  * All schema changes are now part of the base schema in database.ts.
  */
-export const migrations: Migration[] = [];
+export const migrations: Migration[] = [
+  {
+    version: 1,
+    name: "normalize_legacy_loop_modes",
+    up: (db) => {
+      if (!tableExists(db, "loops")) {
+        return;
+      }
+      const columns = getTableColumns(db, "loops");
+      if (!columns.includes("mode")) {
+        return;
+      }
+      db.run("UPDATE loops SET mode = 'loop' WHERE mode IS NULL OR mode != 'loop'");
+    },
+  },
+];
 
 /**
  * Create the schema_migrations table if it doesn't exist.
