@@ -1206,10 +1206,10 @@ class MockAcpServer {
       }
     }
 
-    if (/create a detailed plan/i.test(promptText) || promptText.includes("<promise>PLAN_READY</promise>")) {
-      fragments.push("The plan is ready for review. <promise>PLAN_READY</promise>");
-    } else if (promptText.includes("<promise>COMPLETE</promise>") || /original goal:/i.test(promptText)) {
+    if (promptText.includes("<promise>COMPLETE</promise>") || /original goal:/i.test(promptText)) {
       fragments.push("The requested work is complete. <promise>COMPLETE</promise>");
+    } else if (/create a detailed plan/i.test(promptText) || promptText.includes("<promise>PLAN_READY</promise>")) {
+      fragments.push("The plan is ready for review. <promise>PLAN_READY</promise>");
     }
 
     return fragments.join(" ");
