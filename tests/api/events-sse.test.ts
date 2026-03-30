@@ -560,17 +560,55 @@ describe("Events WebSocket API Integration", () => {
       const filteredWs = new WebSocket(`${wsUrl}/api/ws?loopId=specific-loop`);
       // A client with no filter
       const unfilteredWs = new WebSocket(`${wsUrl}/api/ws`);
+      const expectedEventIds = new Set(["log-match", "log-other"]);
 
       // Set up message collectors immediately to avoid race conditions.
-      const filteredEvents: unknown[] = [];
-      const unfilteredEvents: unknown[] = [];
+      const filteredEvents: Array<{ loopId: string; id: string }> = [];
+      const unfilteredEvents: Array<{ loopId: string; id: string }> = [];
+      const trackExpectedEvent = (
+        rawEvent: MessageEvent<string>,
+        target: Array<{ loopId: string; id: string }>,
+      ) => {
+        const data = JSON.parse(rawEvent.data);
+        if (
+          typeof data === "object"
+          && data !== null
+          && "id" in data
+          && typeof data.id === "string"
+          && expectedEventIds.has(data.id)
+          && "loopId" in data
+          && typeof data.loopId === "string"
+        ) {
+          target.push({ loopId: data.loopId, id: data.id });
+        }
+      };
+      const waitForExpectedEvents = async (
+        expectedFilteredCount: number,
+        expectedUnfilteredCount: number,
+      ) => {
+        const timeoutMs = 1000;
+        const deadline = Date.now() + timeoutMs;
+        while (Date.now() < deadline) {
+          if (
+            filteredEvents.length === expectedFilteredCount
+            && unfilteredEvents.length === expectedUnfilteredCount
+          ) {
+            return;
+          }
+          await Bun.sleep(10);
+        }
+
+        throw new Error(
+          `Timed out waiting for expected websocket events (filtered=${filteredEvents.length}, unfiltered=${unfilteredEvents.length})`,
+        );
+      };
       const filteredConnected = new Promise<void>((resolve) => {
         filteredWs.onmessage = (event) => {
           const data = JSON.parse(event.data);
           if (data.type === "connected") {
             resolve();
           } else {
-            filteredEvents.push(data);
+            trackExpectedEvent(event, filteredEvents);
           }
         };
       });
@@ -580,7 +618,7 @@ describe("Events WebSocket API Integration", () => {
           if (data.type === "connected") {
             resolve();
           } else {
-            unfilteredEvents.push(data);
+            trackExpectedEvent(event, unfilteredEvents);
           }
         };
       });
@@ -590,10 +628,10 @@ describe("Events WebSocket API Integration", () => {
 
       // Set up final event collectors
       filteredWs.onmessage = (event) => {
-        filteredEvents.push(JSON.parse(event.data));
+        trackExpectedEvent(event, filteredEvents);
       };
       unfilteredWs.onmessage = (event) => {
-        unfilteredEvents.push(JSON.parse(event.data));
+        trackExpectedEvent(event, unfilteredEvents);
       };
 
       // Emit event that has no loopId — should pass through the filter
@@ -616,14 +654,16 @@ describe("Events WebSocket API Integration", () => {
         timestamp: new Date().toISOString(),
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForExpectedEvents(1, 2);
 
       // Filtered client should only get the matching event
       expect(filteredEvents.length).toBe(1);
-      expect((filteredEvents[0] as { loopId: string }).loopId).toBe("specific-loop");
+      expect(filteredEvents[0]?.loopId).toBe("specific-loop");
+      expect(filteredEvents[0]?.id).toBe("log-match");
 
       // Unfiltered client should get both events
       expect(unfilteredEvents.length).toBe(2);
+      expect(unfilteredEvents.map((event) => event.id)).toEqual(["log-match", "log-other"]);
 
       filteredWs.close();
       unfilteredWs.close();
