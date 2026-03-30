@@ -153,6 +153,81 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("preserves the original first message after multiple sends and reconnect", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "First Message Ordering",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const firstMessage = "Remember: this is the first message.";
+
+    const firstSendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: firstMessage,
+      }),
+    });
+    expect(firstSendResponse.status).toBe(200);
+    await waitForChatIdle(chatId);
+
+    const secondSendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "This is the second message.",
+      }),
+    });
+    expect(secondSendResponse.status).toBe(200);
+    await waitForChatIdle(chatId);
+
+    const reconnectResponse = await fetch(`${baseUrl}/api/chats/${chatId}/reconnect`, {
+      method: "POST",
+    });
+    expect(reconnectResponse.status).toBe(200);
+
+    const resumedSendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "This is the third message after reconnect.",
+      }),
+    });
+    expect(resumedSendResponse.status).toBe(200);
+
+    const settled = await waitForChatIdle(chatId) as {
+      state: {
+        status: string;
+        messages: Array<{ id?: string; role: string; content: string; timestamp?: string }>;
+      };
+    };
+
+    expect(settled.state.status).toBe("idle");
+    expect(settled.state.messages[0]).toMatchObject({
+      role: "user",
+      content: firstMessage,
+    });
+    expect(
+      settled.state.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content),
+    ).toEqual([
+      "Remember: this is the first message.",
+      "This is the second message.",
+      "This is the third message after reconnect.",
+    ]);
+  });
+
   test("fails reconnect when the persisted session is missing", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",

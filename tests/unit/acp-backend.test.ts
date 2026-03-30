@@ -74,6 +74,100 @@ describe("AcpBackend", () => {
     await expect(backend.getSession("test-id")).rejects.toThrow("Not connected");
   });
 
+  test("getSession loads a listed session before returning it", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      directory: string;
+      sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+    };
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.directory = "/tmp/copilot-session-load";
+    internal.sendRpcRequest = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+      calls.push({ method, params });
+      if (method === "session/list") {
+        return {
+          sessions: [
+            {
+              sessionId: "resume-me",
+              title: "Resume me",
+              cwd: "/tmp/copilot-session-load",
+            },
+          ],
+        };
+      }
+      if (method === "session/load") {
+        return {
+          sessionId: "resume-me",
+          title: "Loaded session",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-5-mini",
+              category: "model",
+              options: [
+                {
+                  value: "gpt-5-mini",
+                  name: "GPT-5 mini",
+                },
+              ],
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    const session = await backend.getSession("resume-me");
+
+    expect(calls.map((call) => call.method)).toEqual(["session/list", "session/load"]);
+    expect(calls[1]?.params).toEqual({
+      sessionId: "resume-me",
+      cwd: "/tmp/copilot-session-load",
+      mcpServers: [],
+    });
+    expect(session).toMatchObject({
+      id: "resume-me",
+      title: "Loaded session",
+      model: "gpt-5-mini",
+    });
+  });
+
+  test("getSession returns null when session/load says the listed session is not found", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+    };
+
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.sendRpcRequest = async (method: string): Promise<unknown> => {
+      if (method === "session/list") {
+        return {
+          sessions: [
+            {
+              sessionId: "resume-me",
+              title: "Resume me",
+              cwd: "/tmp/copilot-session-load",
+            },
+          ],
+        };
+      }
+      if (method === "session/load") {
+        throw new Error("Session resume-me not found");
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    await expect(backend.getSession("resume-me")).resolves.toBeNull();
+  });
+
   test("throws when deleteSession called before connect", async () => {
     await expect(backend.deleteSession("test-id")).rejects.toThrow("Not connected");
   });
