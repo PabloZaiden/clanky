@@ -111,6 +111,11 @@ export async function initializeDatabase(): Promise<void> {
  * New columns and tables should be added ONLY as migrations. The base schema
  * here should only be updated during future clean-cut resets that fold
  * accumulated migrations back in.
+ *
+ * Exception: the chats table and its indexes intentionally remain here because
+ * older databases can already contain reused schema_migrations version numbers
+ * from pre-reset eras. Recreating chats during baseline startup is the repair
+ * path that keeps /api/chats available even when the old migration IDs collide.
  */
 function createTables(database: Database): void {
   // Wrap all schema creation in a transaction
@@ -380,13 +385,21 @@ function createTables(database: Database): void {
 
     // Chat indexes
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_chats_workspace_id ON chats(workspace_id)
-    `);
-    database.run(`
       CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats(created_at DESC)
     `);
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_chats_directory ON chats(directory)
+      CREATE INDEX IF NOT EXISTS idx_chats_workspace_created_at
+      ON chats(workspace_id, created_at DESC)
+    `);
+    database.run(`
+      CREATE INDEX IF NOT EXISTS idx_chats_directory_workspace_status
+      ON chats(directory, workspace_id, status)
+    `);
+    database.run(`
+      DROP INDEX IF EXISTS idx_chats_workspace_id
+    `);
+    database.run(`
+      DROP INDEX IF EXISTS idx_chats_directory
     `);
 
     // SSH sessions indexes
