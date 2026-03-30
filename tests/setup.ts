@@ -5,6 +5,7 @@
 import { mkdtemp, rm, writeFile, mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { AcpBackend } from "../src/backends/acp";
 import { SimpleEventEmitter } from "../src/core/event-emitter";
 import { GitService } from "../src/core/git-service";
 import { LoopManager } from "../src/core/loop-manager";
@@ -62,6 +63,8 @@ export interface TestContext {
   manager: LoopManager;
   /** Mock backend instance (if using mock) */
   mockBackend?: MockAcpBackend;
+  /** Original RALPHER_MOCK_ACP env value before test setup */
+  originalMockAcpEnv?: string;
 }
 
 /**
@@ -70,6 +73,8 @@ export interface TestContext {
 export interface SetupOptions {
   /** Use mock backend (default: true) */
   useMockBackend?: boolean;
+  /** Use the process-backed mock ACP runtime instead of the in-memory backend */
+  useMockAcpProcess?: boolean;
   /** Mock backend responses */
   mockResponses?: string[];
   /** Initialize git in work directory (default: false) */
@@ -84,6 +89,7 @@ export interface SetupOptions {
 export async function setupTestContext(options: SetupOptions = {}): Promise<TestContext> {
   const {
     useMockBackend = true,
+    useMockAcpProcess = false,
     mockResponses = ["<promise>COMPLETE</promise>"],
     initGit = false,
     initialFiles = {},
@@ -137,7 +143,12 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
 
   // Register mock backend if requested
   let mockBackend: MockAcpBackend | undefined;
-  if (useMockBackend) {
+  const originalMockAcpEnv = process.env["RALPHER_MOCK_ACP"];
+  if (useMockAcpProcess) {
+    process.env["RALPHER_MOCK_ACP"] = "true";
+    backendManager.setBackendForTesting(new AcpBackend());
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+  } else if (useMockBackend) {
     mockBackend = new MockAcpBackend({ 
       responses: mockResponses,
       models: [defaultTestModel],
@@ -160,6 +171,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
     git,
     manager,
     mockBackend,
+    originalMockAcpEnv,
   };
 }
 
@@ -178,6 +190,11 @@ export async function teardownTestContext(ctx: TestContext): Promise<void> {
 
   // Clean up env
   delete process.env["RALPHER_DATA_DIR"];
+  if (ctx.originalMockAcpEnv === undefined) {
+    delete process.env["RALPHER_MOCK_ACP"];
+  } else {
+    process.env["RALPHER_MOCK_ACP"] = ctx.originalMockAcpEnv;
+  }
 
   // Remove temp directories (force: true ignores ENOENT if already deleted)
   await rm(ctx.dataDir, { recursive: true, force: true });

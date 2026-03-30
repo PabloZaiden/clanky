@@ -161,6 +161,7 @@ When the server starts, it logs the effective listening address and whether buil
 | `RALPHER_USERNAME` | Username for built-in HTTP Basic auth when `RALPHER_PASSWORD` enables it | `ralpher` |
 | `RALPHER_DATA_DIR` | Data directory for persistence | `./data` |
 | `RALPHER_REMOTE_ONLY` | Disable local `stdio` transport and only allow `ssh` transport (`true`/`1`/`yes`) | unset |
+| `RALPHER_MOCK_ACP` | Replace local ACP CLI launches with Ralpher's built-in fake ACP runtime for testing (`true`/`1`/`yes`) | unset |
 | `RALPHER_LOG_LEVEL` | Override server log level (`silly`, `trace`, `debug`, `info`, `warn`, `error`, `fatal`) | `info` |
 
 ### Optional Built-In Basic Auth
@@ -185,6 +186,16 @@ data/
 ├── ralpher.db-shm   # SQLite shared memory (runtime)
 └── ralpher.db-wal   # SQLite write-ahead log (runtime)
 ```
+
+### Mock ACP Runtime for Testing
+
+Set `RALPHER_MOCK_ACP=true` to make local `stdio` workspaces use Ralpher's built-in fake ACP server instead of launching `opencode` or `copilot`.
+
+```bash
+RALPHER_MOCK_ACP=true ralpher
+```
+
+This mode is intended for testing and end-to-end automation. The mock runtime speaks ACP over stdio, streams delayed agent-like text, supports session lifecycle flows, and exercises protocol surfaces such as config updates, tool calls, permissions, questions, file-system requests, terminal requests, and cancellation handling.
 
 ---
 
@@ -312,7 +323,7 @@ Ralpher separates agent interaction from deterministic repository operations:
 
 | Channel | Purpose | Runtime |
 |---------|---------|---------|
-| **Agent Channel** | AI sessions, prompts, streaming, tool events, permissions | ACP JSON-RPC via provider CLI (`opencode acp` or `copilot --yolo --acp`) |
+| **Agent Channel** | AI sessions, prompts, streaming, tool events, permissions | ACP JSON-RPC via provider CLI (`opencode acp` or `copilot --yolo --acp`), or the built-in mock runtime when `RALPHER_MOCK_ACP=true` |
 | **Execution Channel** | Git/file/command operations used by loop orchestration and APIs | `CommandExecutor` (local for `stdio`, remote over SSH for `ssh`) |
 
 This decoupling allows Ralpher to support multiple ACP providers while keeping repository operations deterministic and transport-aware.
@@ -370,7 +381,7 @@ Ralpher uses provider + transport settings per workspace:
 
 | Transport | Description |
 |-----------|-------------|
-| **stdio** | Ralpher starts the configured ACP CLI locally (`opencode acp` or `copilot --yolo --acp`) |
+| **stdio** | Ralpher starts the configured ACP CLI locally (`opencode acp` or `copilot --yolo --acp`), or the built-in mock ACP runtime when `RALPHER_MOCK_ACP=true` |
 | **ssh** | Ralpher starts the configured ACP CLI on a remote host via SSH |
 
 > **Tip:** If you want headless isolated environments for Ralpher, [Devbox](https://github.com/pablozaiden/devbox) is a great fit. You can run repositories and ACP tooling inside a Devbox environment and connect to it from Ralpher over `ssh`, keeping loop execution cleanly separated from your main machine.

@@ -47,6 +47,8 @@ Agent transport is configured per workspace:
 1. **Local ACP** (`stdio`): provider CLI is launched on the local host.
 2. **Remote ACP** (`ssh`): provider CLI is launched over SSH on the target workspace host.
 
+When `RALPHER_MOCK_ACP=true`, local `stdio` workspaces use Ralpher's built-in fake ACP runtime instead of launching the provider CLI. This is intended for testing and exercises ACP flows such as initialization, authentication, session lifecycle, prompt streaming, tool events, permission requests, question flows, config updates, file-system requests, terminal requests, and cancellation.
+
 This agent channel handles sessions, prompts, streaming updates, tool events, and permission/question requests.
 
 ## Command Execution Architecture
@@ -1784,6 +1786,8 @@ Execution behavior is derived automatically from `agent.transport`:
 Provider runtime command is derived from `agent.provider`:
 - `opencode` → `opencode acp`
 - `copilot` → `copilot --yolo --acp`
+
+If `RALPHER_MOCK_ACP=true`, local `stdio` launches use the built-in mock ACP runtime regardless of the selected provider so end-to-end tests can exercise ACP transport behavior without an external agent CLI.
 
 #### GET /api/workspaces/:id/server-settings
 

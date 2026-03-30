@@ -5,6 +5,11 @@
 
 import type { AppConfig } from "../types/api";
 
+function isTruthyEnvFlag(name: string): boolean {
+  const value = process.env[name]?.toLowerCase();
+  return value === "true" || value === "1" || value === "yes";
+}
+
 /**
  * Check if the application is running in remote-only mode.
  * When enabled, spawning local servers is disabled and only
@@ -13,8 +18,16 @@ import type { AppConfig } from "../types/api";
  * Set RALPHER_REMOTE_ONLY=true, 1, or yes to enable.
  */
 export function isRemoteOnlyMode(): boolean {
-  const value = process.env["RALPHER_REMOTE_ONLY"]?.toLowerCase();
-  return value === "true" || value === "1" || value === "yes";
+  return isTruthyEnvFlag("RALPHER_REMOTE_ONLY");
+}
+
+/**
+ * Check if the built-in mock ACP runtime should be used.
+ *
+ * Set RALPHER_MOCK_ACP=true, 1, or yes to enable.
+ */
+export function isMockAcpEnabled(): boolean {
+  return isTruthyEnvFlag("RALPHER_MOCK_ACP");
 }
 
 /**
