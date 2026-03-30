@@ -56,7 +56,7 @@ export function WorkspaceView({
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
   const activityDescription = workspaceSshEnabled
     ? "Loops, chats, and SSH sessions in this workspace."
-    : "Loops and chats in this workspace. SSH sessions appear here when the workspace uses SSH transport.";
+    : "Loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.";
   const hasActivity = relatedLoops.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
   const activityRowClassName = "flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800";
   const createActionItems: ActionMenuItem[] = [

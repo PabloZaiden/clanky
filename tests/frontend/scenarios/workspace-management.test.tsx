@@ -505,7 +505,7 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Activity" })).toBeTruthy();
     });
 
-    expect(getByText("Loops and chats in this workspace. SSH sessions appear here when the workspace uses SSH transport.")).toBeTruthy();
+    expect(getByText("Loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.")).toBeTruthy();
     expect(getAllByText("Legacy SSH").length).toBeGreaterThan(0);
     expect(document.body.textContent?.includes("stay at 0")).toBe(false);
   });
