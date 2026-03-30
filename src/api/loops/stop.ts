@@ -1,5 +1,5 @@
 /**
- * Non-destructive stop route for active loops and chats.
+ * Non-destructive stop route for active loops.
  *
  * - POST /api/loops/:id/stop - Stop the active ACP-backed loop without deleting it
  */

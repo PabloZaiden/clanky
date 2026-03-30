@@ -58,7 +58,7 @@ export function DeleteWorkspaceSection({
         <p className="text-sm text-red-700 dark:text-red-300 mb-4">
           {workspaceLoopCount > 0
             ? `Delete the remaining ${workspaceLoopCount} loop${workspaceLoopCount === 1 ? "" : "s"} in this workspace before removing it from Ralpher.`
-            : "Remove this workspace from Ralpher now that it no longer contains loops or chats."}
+            : "Remove this workspace from Ralpher now that it no longer contains loops."}
           {" "}This only removes the workspace record and does not delete files on disk.
         </p>
         <Button

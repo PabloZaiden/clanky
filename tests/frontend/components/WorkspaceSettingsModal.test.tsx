@@ -483,7 +483,7 @@ describe("WorkspaceSettingsModal terminal-state loop purge", () => {
 });
 
 describe("WorkspaceSettingsModal workspace deletion", () => {
-  test("disables workspace deletion while loops or chats still exist", async () => {
+  test("disables workspace deletion while loops still exist", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
 
     const { getByRole, getByText } = renderWithUser(
@@ -494,13 +494,13 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
       />
     );
 
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Delete Workspace" })).toBeDisabled();
-      expect(
-        getByText("Delete the remaining 2 loops or chats in this workspace before removing it from Ralpher. This only removes the workspace record and does not delete files on disk.")
-      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(getByRole("button", { name: "Delete Workspace" })).toBeDisabled();
+        expect(
+          getByText("Delete the remaining 2 loops in this workspace before removing it from Ralpher. This only removes the workspace record and does not delete files on disk.")
+        ).toBeInTheDocument();
+      });
     });
-  });
 
   test("opens a confirmation modal and closes on successful delete", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());

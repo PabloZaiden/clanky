@@ -310,6 +310,6 @@ describe("dashboard management scenario", () => {
       expect(getByText("Workspaces map")).toBeTruthy();
     });
     expect(getAllByText("Project Beta").length).toBeGreaterThan(0);
-    expect(getByText("0 items")).toBeTruthy();
+    expect(getByText("0 loops")).toBeTruthy();
   });
 });
