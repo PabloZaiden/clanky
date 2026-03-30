@@ -50,7 +50,7 @@ export function OverviewView({
           <div>
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Recent activity</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Jump back into active loops or chats from the overview.
+              Jump back into active loops from the overview.
             </p>
           </div>
           <div className="space-y-2">
@@ -58,9 +58,7 @@ export function OverviewView({
               <EmptySection message="Recent activity will appear here as you start work." />
             ) : (
               recentLoops.map((loop) => {
-                const route: ShellRoute = loop.config.mode === "chat"
-                  ? { view: "chat", chatId: loop.config.id }
-                  : { view: "loop", loopId: loop.config.id };
+                const route: ShellRoute = { view: "loop", loopId: loop.config.id };
                 const label = getLoopStatusLabel(loop);
                 return (
                   <button
@@ -126,7 +124,7 @@ export function OverviewView({
           <div>
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Workspaces map</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Browse workspaces first, then branch into loops, chats, and terminals from there.
+              Browse workspaces first, then branch into loops and terminals from there.
             </p>
           </div>
           <div className="space-y-2">
@@ -149,7 +147,7 @@ export function OverviewView({
                     </span>
                   </span>
                   <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
-                    {group.loops.length} items
+                    {group.loops.length} loop{group.loops.length === 1 ? "" : "s"}
                   </span>
                 </button>
               ))

@@ -21,18 +21,11 @@ export interface LoopCtx {
   getLoop(loopId: string): Promise<Loop | null>;
   startLoop(loopId: string, options?: { attachments?: MessageImageAttachment[] }): Promise<void>;
   startPlanMode(loopId: string, options?: { attachments?: MessageImageAttachment[] }): Promise<void>;
-  sendChatMessage(
-    loopId: string,
-    message: string,
-    model?: ModelConfig,
-    attachments?: MessageImageAttachment[],
-  ): Promise<void>;
   startStatePersistence(loopId: string): void;
   ensureLoopBranchCheckedOut(loop: Loop, git: GitService, workingDirectory: string): Promise<void>;
   validateMainCheckoutStart(loop: Loop, git: GitService): Promise<void>;
   clearPlanningFiles(loopId: string, loop: Loop, executor: CommandExecutor, worktreePath: string): Promise<void>;
   recoverPlanningEngine(loopId: string): Promise<LoopEngine>;
-  recoverChatEngine(loopId: string): Promise<LoopEngine>;
   startFeedbackCycle(
     loopId: string,
     options: { prompt: string; model?: ModelConfig; reviewCommentText?: string; attachments?: MessageImageAttachment[] },

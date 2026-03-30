@@ -11,7 +11,6 @@ interface PromptFieldProps {
   onChange: (value: string) => void;
   attachments: ComposerImageAttachment[];
   onAttachmentsChange: (attachments: ComposerImageAttachment[]) => void;
-  isChatMode: boolean;
   planMode: boolean;
   isEditingDraft?: boolean;
   selectedTemplate: string;
@@ -23,7 +22,6 @@ export function PromptField({
   onChange,
   attachments,
   onAttachmentsChange,
-  isChatMode,
   planMode,
   isEditingDraft: _isEditingDraft = false,
   selectedTemplate,
@@ -41,7 +39,7 @@ export function PromptField({
         htmlFor="prompt"
         className="block text-sm font-medium text-gray-700 dark:text-gray-300"
       >
-        {isChatMode ? "Message" : "Prompt"} <span className="text-red-500">*</span>
+        Prompt <span className="text-red-500">*</span>
       </label>
       <textarea
         id="prompt"
@@ -58,13 +56,13 @@ export function PromptField({
           }
         }}
         onPaste={handlePaste}
-        placeholder={isChatMode ? "Ask a question or describe what you want to do..." : (planMode ? "Describe what you want to achieve. The AI will create a detailed plan based on this." : "Do everything that's pending in the plan")}
+        placeholder={planMode ? "Describe what you want to achieve. The AI will create a detailed plan based on this." : "Do everything that's pending in the plan"}
         required
         rows={3}
         className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 min-h-[76px] sm:min-h-[120px] resize-y"
       />
       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-        {isChatMode ? "Your first message to start the conversation" : "The prompt sent to the AI agent at the start of each iteration"}
+        The prompt sent to the AI agent at the start of each iteration
       </p>
       <div className="mt-3">
         <ImageAttachmentControl

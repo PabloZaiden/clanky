@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   AnswerPlanQuestionRequestSchema,
-  CreateChatRequestSchema,
+  CreateLoopRequestSchema,
   SetPendingRequestSchema,
 } from "../../src/types/schemas/loop";
 
@@ -36,8 +36,9 @@ describe("AnswerPlanQuestionRequestSchema", () => {
 });
 
 describe("loop attachment schemas", () => {
-  test("accepts transient image attachments on create-chat requests", () => {
-    const result = CreateChatRequestSchema.safeParse({
+  test("accepts transient image attachments on create-loop requests", () => {
+    const result = CreateLoopRequestSchema.safeParse({
+      name: "Screenshot review",
       workspaceId: "ws-1",
       prompt: "Look at this screenshot",
       attachments: [{
@@ -52,13 +53,15 @@ describe("loop attachment schemas", () => {
         modelID: "model",
       },
       useWorktree: true,
+      planMode: false,
     });
 
     expect(result.success).toBe(true);
   });
 
   test("rejects non-image attachments and oversized attachment batches", () => {
-    expect(CreateChatRequestSchema.safeParse({
+    expect(CreateLoopRequestSchema.safeParse({
+      name: "Invalid attachment",
       workspaceId: "ws-1",
       prompt: "Invalid attachment",
       attachments: [{
@@ -73,6 +76,7 @@ describe("loop attachment schemas", () => {
         modelID: "model",
       },
       useWorktree: true,
+      planMode: false,
     }).success).toBe(false);
 
     expect(SetPendingRequestSchema.safeParse({

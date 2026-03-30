@@ -95,7 +95,6 @@ List all loops.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `mode` | No | Filter results to `"loop"` or `"chat"` |
 
 **Response**
 
@@ -1049,7 +1048,7 @@ Get the review history for a loop, including past review cycles.
 
 Start a new follow-up cycle from a restartable terminal state.
 
-For pushed or merged loops, this starts a review-feedback cycle. For other restartable loop or chat states, it queues the message and restarts the work on the existing loop.
+For pushed or merged loops, this starts a review-feedback cycle. For other restartable loop states, it queues the message and restarts the work on the existing loop.
 
 **Request Body**
 
@@ -1083,84 +1082,6 @@ The `model` override is optional and applies to the restarted follow-up work.
 | 400 | `model_not_enabled` | The selected model provider is not connected |
 | 400 | `invalid_state` | The loop cannot accept follow-up work in its current state |
 | 404 | `not_found` | Loop not found |
-
----
-
-### Chat
-
-Chats are loops with `mode: "chat"`. They reuse the same workspace, git, persistence, and review infrastructure, but they run one user-driven turn at a time instead of autonomous multi-iteration execution.
-
-#### POST /api/loops/chat
-
-Create a new interactive chat and start it immediately.
-
-**Request Body**
-
-```json
-{
-  "workspaceId": "ws-abc123",
-  "prompt": "Let's debug the failing auth tests together.",
-  "model": {
-    "providerID": "anthropic",
-    "modelID": "claude-sonnet-4-20250514"
-  },
-  "useWorktree": true
-}
-```
-
-Optional fields: `baseBranch`, `git.branchPrefix`, `git.commitScope`.
-
-**Response**
-
-Returns the created loop object with `config.mode = "chat"` and status `201 Created`.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `workspace_not_found` | Workspace not found |
-| 400 | `validation_error` | Missing or invalid request fields |
-| 400 | `model_not_enabled` | The selected model is not available |
-| 500 | `create_chat_failed` | Chat creation failed |
-
-#### POST /api/loops/:id/chat
-
-Send a user message to an existing chat.
-
-If the AI is already responding, the current turn is aborted and replaced immediately. If the chat is idle, this starts a new single-turn iteration.
-
-**Request Body**
-
-```json
-{
-  "message": "Now show me the minimal fix.",
-  "model": {
-    "providerID": "anthropic",
-    "modelID": "claude-sonnet-4-20250514"
-  }
-}
-```
-
-The `model` override is optional and applies to that turn.
-
-**Response**
-
-```json
-{
-  "success": true,
-  "loopId": "abc-123"
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `not_chat` | The target loop is not a chat |
-| 400 | `invalid_state` | The chat cannot currently accept a message |
-| 400 | `validation_error` | Message is empty or invalid |
-| 500 | `send_chat_message_failed` | Failed to send the chat message |
 
 ---
 
@@ -2802,24 +2723,6 @@ curl -X POST http://localhost:3000/api/loops/abc-123/plan/feedback \
 
 # Accept the plan and start execution
 curl -X POST http://localhost:3000/api/loops/abc-123/plan/accept
-```
-
-### Create a Chat
-
-```bash
-curl -X POST http://localhost:3000/api/loops/chat \
-  -H "Content-Type: application/json" \
-  -d '{
-    "workspaceId": "ws-abc123",
-    "prompt": "Help me diagnose the failing auth tests",
-    "model": { "providerID": "anthropic", "modelID": "claude-sonnet-4-20250514" },
-    "useWorktree": true
-  }'
-
-# Send another turn to the chat
-curl -X POST http://localhost:3000/api/loops/abc-123/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Now suggest the smallest safe fix."}'
 ```
 
 ### Modify Next Iteration Prompt

@@ -22,7 +22,6 @@ export interface UseCreateLoopFormReturn {
 
   // Derived flags
   isEditing: boolean;
-  isChatMode: boolean;
   isSubmitting: boolean;
   canSubmit: boolean;
   canSaveDraft: boolean;
@@ -86,7 +85,6 @@ export function useCreateLoopForm({
   isEditingDraft = false,
   attachments = [],
   renderActions,
-  mode = "loop",
 }: Pick<
   CreateLoopFormProps,
   | "onSubmit"
@@ -103,10 +101,8 @@ export function useCreateLoopForm({
   | "isEditingDraft"
   | "attachments"
   | "renderActions"
-  | "mode"
 >): UseCreateLoopFormReturn {
   const isEditing = !!editLoopId;
-  const isChatMode = mode === "chat";
 
   const fields = useFormFields({ initialLoopData });
 
@@ -135,9 +131,8 @@ export function useCreateLoopForm({
   const actions = useFormActions({
     selectedWorkspaceId: workspace.selectedWorkspaceId,
     selectedModel,
-    selectedModelEnabled,
-    isChatMode,
-    planMode: fields.planMode,
+      selectedModelEnabled,
+      planMode: fields.planMode,
     planModeAutoReply: fields.planModeAutoReply,
     maxIterations: fields.maxIterations,
     maxConsecutiveErrors: fields.maxConsecutiveErrors,
@@ -166,7 +161,6 @@ export function useCreateLoopForm({
     nameRef: fields.nameRef,
     promptRef: fields.promptRef,
     isEditing,
-    isChatMode,
     isSubmitting: actions.isSubmitting,
     canSubmit: actions.canSubmit,
     canSaveDraft: actions.canSaveDraft,

@@ -16,7 +16,7 @@ import { ComposeView } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
-import type { ComposeKind, ShellRoute } from "./shell-types";
+import type { ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
@@ -77,10 +77,7 @@ interface ShellMainContentProps {
   // Compose state
   composeActionState: CreateLoopFormActionState | null;
   setComposeActionState: (state: CreateLoopFormActionState | null) => void;
-  handleLoopSubmit: (
-    kind: Extract<ComposeKind, "loop" | "chat">,
-    request: CreateLoopFormSubmitRequest,
-  ) => Promise<boolean>;
+  handleLoopSubmit: (request: CreateLoopFormSubmitRequest) => Promise<boolean>;
 
   // Workspace create
   workspaceCreate: UseWorkspaceCreateResult;
@@ -173,22 +170,6 @@ function renderMainContent(props: ShellMainContentProps) {
       <LoopDetails
         key={`loop:${route.loopId}`}
         loopId={route.loopId}
-        onBack={() => {
-          navigateWithinShell({ view: "home" });
-          void refreshLoops();
-        }}
-        showBackButton={false}
-        headerOffsetClassName={shellHeaderOffsetClassName}
-        onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "ssh", sshSessionId })}
-      />
-    );
-  }
-
-  if (route.view === "chat") {
-    return (
-      <LoopDetails
-        key={`chat:${route.chatId}`}
-        loopId={route.chatId}
         onBack={() => {
           navigateWithinShell({ view: "home" });
           void refreshLoops();

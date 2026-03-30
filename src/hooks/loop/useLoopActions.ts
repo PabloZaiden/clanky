@@ -5,7 +5,7 @@
  * - useLoopGitActions       – accept, push, updateBranch
  * - useLoopPlanActions      – sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan
  * - useLoopPendingActions   – setPendingPrompt, clearPendingPrompt, setPending, clearPending
- * - useLoopChatActions      – sendChatMessage, sendFollowUp, connectViaSsh, addressReviewComments
+ * - useLoopFollowUpActions  – sendFollowUp, connectViaSsh, addressReviewComments
  */
 
 import type { Dispatch, SetStateAction } from "react";
@@ -22,7 +22,7 @@ import { useLoopLifecycleActions } from "./useLoopLifecycleActions";
 import { useLoopGitActions } from "./useLoopGitActions";
 import { useLoopPlanActions } from "./useLoopPlanActions";
 import { useLoopPendingActions } from "./useLoopPendingActions";
-import { useLoopChatActions } from "./useLoopChatActions";
+import { useLoopFollowUpActions } from "./useLoopFollowUpActions";
 
 export interface UseLoopActionsParams {
   loopId: string;
@@ -56,18 +56,12 @@ export interface UseLoopActionsResult {
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
-  convertChatToLoop: () => Promise<boolean>;
   setPending: (options: {
     message?: string;
     model?: { providerID: string; modelID: string };
     attachments?: MessageImageAttachment[];
   }) => Promise<SetPendingResult>;
   clearPending: () => Promise<boolean>;
-  sendChatMessage: (
-    message: string,
-    model?: { providerID: string; modelID: string },
-    attachments?: MessageImageAttachment[],
-  ) => Promise<boolean>;
   sendFollowUp: (
     message: string,
     model?: { providerID: string; modelID: string },
@@ -81,13 +75,13 @@ export function useLoopActions(params: UseLoopActionsParams): UseLoopActionsResu
   const git = useLoopGitActions(params);
   const plan = useLoopPlanActions(params);
   const pending = useLoopPendingActions(params);
-  const chat = useLoopChatActions(params);
+  const followUp = useLoopFollowUpActions(params);
 
   return {
     ...lifecycle,
     ...git,
     ...plan,
     ...pending,
-    ...chat,
+    ...followUp,
   };
 }

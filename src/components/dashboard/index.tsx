@@ -21,20 +21,17 @@ import type { SshServer } from "../../types";
 export interface DashboardProps {
   /** Callback when a loop is selected */
   onSelectLoop?: (loopId: string) => void;
-  /** Callback when a chat is selected */
-  onSelectChat?: (chatId: string) => void;
   /** Callback when an SSH session is selected */
   onSelectSshSession?: (sessionId: string) => void;
 }
 
-export function Dashboard({ onSelectLoop, onSelectChat, onSelectSshSession }: DashboardProps) {
+export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) {
   const {
     loops,
     loading,
     error,
     refresh,
     createLoop,
-    createChat,
     purgeLoop,
     updateLoop,
     purgeArchivedWorkspaceLoops,
@@ -105,15 +102,7 @@ export function Dashboard({ onSelectLoop, onSelectChat, onSelectSshSession }: Da
     )?.loops.length ?? 0;
   }, [modals.workspaceSettingsModal.workspaceId, workspaceGroups]);
 
-  // Mode-aware selection handler: routes chats to #/chat/:id, loops to #/loop/:id
-  const handleSelectItem = (loopId: string) => {
-    const loop = loops.find((l) => l.config.id === loopId);
-    if (loop?.config.mode === "chat" && onSelectChat) {
-      onSelectChat(loopId);
-    } else if (onSelectLoop) {
-      onSelectLoop(loopId);
-    }
-  };
+  const handleSelectItem = (loopId: string) => onSelectLoop?.(loopId);
 
   // View mode preference hook
   const { viewMode, toggle: toggleViewMode } = useViewModePreference();
@@ -225,7 +214,6 @@ export function Dashboard({ onSelectLoop, onSelectChat, onSelectSshSession }: Da
         onOpenServerSettings={() => modals.setShowServerSettingsModal(true)}
         onOpenCreateWorkspace={() => modals.setShowCreateWorkspaceModal(true)}
         onOpenCreateLoop={() => modals.handleOpenCreateLoop()}
-        onOpenCreateChat={() => modals.handleOpenCreateChat()}
         onCreateSshSession={() => void handleCreateWorkspaceSshSession()}
       />
 
@@ -281,12 +269,10 @@ export function Dashboard({ onSelectLoop, onSelectChat, onSelectSshSession }: Da
         // Create/Edit modal
         showCreateModal={modals.showCreateModal}
         editDraftId={modals.editDraftId}
-        createMode={modals.createMode}
         formActionState={modals.formActionState}
         setFormActionState={modals.setFormActionState}
         onCloseCreateModal={modals.handleCloseCreateModal}
         onCreateLoop={createLoop}
-        onCreateChat={createChat}
         onDeleteDraft={purgeLoop}
         onRefresh={refresh}
         // Model/branch/workspace data

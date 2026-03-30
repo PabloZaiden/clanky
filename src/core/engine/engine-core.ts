@@ -123,13 +123,6 @@ export class LoopEngine {
   }
 
   /**
-   * Whether this engine is running in chat mode (single-turn, no auto-iteration).
-   */
-  get isChatMode(): boolean {
-    return this.config.mode === "chat";
-  }
-
-  /**
    * Get the effective working directory for this loop.
    * Returns the worktree path when worktrees are enabled, otherwise the
    * repository directory itself.
@@ -264,10 +257,6 @@ export class LoopEngine {
         // Ignore abort errors - the session may already be complete
       }
     }
-  }
-
-  private shouldContinueWithPendingChatInput(): boolean {
-    return this.isChatMode && this.loop.state.pendingPrompt !== undefined;
   }
 
   private continueWithAbortFallbackInjection(errorMessage?: string): boolean {
@@ -603,79 +592,6 @@ export class LoopEngine {
   }
 
   /**
-   * Inject a chat message immediately.
-   *
-   * Follows the same pattern as injectPlanFeedback():
-   * - If the loop is actively running an iteration, interrupts the active turn
-   *   so the replacement message can run immediately, while preserving the
-   *   current session whenever possible.
-   * - If the loop is idle (previous turn completed), starts a new single-turn
-   *   iteration as a fire-and-forget operation.
-   *
-   * @param message - The user's chat message
-   * @param model - Optional model override for this turn
-   */
-  async injectChatMessage(
-    message: string,
-    model?: ModelConfig,
-    attachments: MessageImageAttachment[] = [],
-  ): Promise<void> {
-    // Set the message as a pending prompt
-    this.updateState({ pendingPrompt: message });
-    this.pendingPromptAttachments = [...attachments];
-
-    // Set model override if provided
-    if (model !== undefined) {
-      this.updateState({ pendingModel: model });
-    }
-
-    // Emit event for UI update
-    this.emitter.emit({
-      type: "loop.pending.updated",
-      loopId: this.loop.config.id,
-      pendingPrompt: message,
-      pendingModel: model,
-      timestamp: createTimestamp(),
-    });
-
-    if (this.isLoopRunning) {
-      await this.triggerPersistence();
-
-      // Chat follow-ups should interrupt the active turn instead of leaving
-      // the new user message stranded behind a
-      // long-running or stuck generation.
-      this.injectionPending = true;
-
-      if (this.sessionId) {
-        await this.interruptActiveSession({
-          abortMessage: "Stopping active chat turn before sending the new message",
-          abortWarnMessage: "Failed to stop the active chat turn before sending the new message",
-          forceDisconnect: false,
-          markAborted: true,
-        });
-      } else {
-        this.emitLog("info", "Chat message saved while the turn is still starting - it will run next");
-      }
-    } else {
-      // Loop is idle (previous turn completed) — make sure any prior interrupt
-      // cleanup has finished before starting the replacement turn.
-      this.emitLog("info", "Injecting chat message - starting new chat turn");
-      await this.startInjectedChatTurn();
-    }
-  }
-
-  /**
-   * Run a single chat turn iteration.
-   * Lightweight equivalent of runPlanIteration() — sets status to running
-   * and delegates to runLoop(), which will execute exactly one iteration
-   * in chat mode (shouldContinue returns false after single iteration).
-   */
-  async runChatTurn(): Promise<void> {
-    await this.prepareChatTurnStart();
-    await this.runLoop();
-  }
-
-  /**
    * Continue loop execution after plan acceptance.
    * Used to start the execution phase after a plan has been accepted.
    * The engine must be in running status with a pending prompt set.
@@ -699,54 +615,6 @@ export class LoopEngine {
 
     // Run the loop
     await this.runLoop();
-  }
-
-  private async startInjectedChatTurn(): Promise<void> {
-    await this.prepareChatTurnStart();
-    this.runLoop().catch((error) => {
-      this.emitLog("error", `Chat turn failed: ${String(error)}`);
-    });
-  }
-
-  private async prepareChatTurnStart(): Promise<void> {
-    const hadSessionBeforeStart = this.sessionId !== null;
-
-    if (this.activeSessionInterrupt) {
-      this.emitLog("info", "Waiting for the previous chat interruption to finish before starting the next turn");
-      await this.activeSessionInterrupt;
-    }
-
-    this.resetRestartFlags();
-
-    // Transition to running via the jumpstart path: completed → stopped → starting → running
-    // The engine's start() method expects idle/stopped/planning/resolving_conflicts
-    const currentStatus = this.loop.state.status;
-    if (currentStatus === "completed" || currentStatus === "max_iterations" || currentStatus === "failed") {
-      // Jumpstart: transition through stopped so engine.start() can accept it
-      this.updateState({ status: "stopped" });
-    }
-
-    if (!this.sessionId) {
-      this.emitLog("info", "No active session, reconnecting before chat turn");
-      this.skipGitSetup = true; // Git branch already exists
-      await this.reconnectSession();
-    }
-
-    this.updateState({
-      status: "starting",
-      currentIteration: 0,
-      recentIterations: [],
-      completedAt: undefined,
-      error: undefined,
-    });
-    this.updateState({ status: "running" });
-    this.emitLog(
-      "info",
-      hadSessionBeforeStart
-        ? "Starting new chat turn (reusing existing session)"
-        : "Starting new chat turn (after reconnecting session)",
-    );
-    await this.triggerPersistence();
   }
 
   // ---------------------------------------------------------------------------
@@ -997,7 +865,6 @@ export class LoopEngine {
       config: this.loop.config,
       state: this.loop.state,
       workingDirectory: this.workingDirectory,
-      isChatMode: this.isChatMode,
       stopDetector: this.stopDetector,
       emitUserMessage: this.emitUserMessage.bind(this),
       emitLog: this.emitLog.bind(this),
@@ -1145,19 +1012,6 @@ export class LoopEngine {
    * Always returns true (loop should exit).
    */
   private async handleCompletedOutcome(): Promise<boolean> {
-    if (this.shouldContinueWithPendingChatInput()) {
-      this.aborted = false;
-      this.injectionPending = false;
-      this.emitLog("info", "Current chat turn finished with a follow-up message pending - starting the next turn");
-      this.updateState({
-        currentIteration: 0,
-        recentIterations: [],
-        consecutiveErrors: undefined,
-        completedAt: undefined,
-      });
-      return false;
-    }
-
     this.emitLog("info", "Stop pattern detected - loop completed successfully", {
       totalIterations: this.loop.state.currentIteration,
     });
@@ -1801,7 +1655,6 @@ export class LoopEngine {
 
   /**
    * Check if the loop should continue running.
-   * In chat mode, stops after a single iteration (currentIteration >= 1).
    */
   private shouldContinue(): boolean {
     const status = this.loop.state.status;
@@ -1809,12 +1662,6 @@ export class LoopEngine {
     if (!isActive) {
       return false;
     }
-
-    // In chat mode, run exactly one iteration per turn
-    if (this.isChatMode && this.loop.state.currentIteration >= 1 && !this.shouldContinueWithPendingChatInput()) {
-      return false;
-    }
-
     return true;
   }
 

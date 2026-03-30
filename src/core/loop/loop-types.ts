@@ -46,8 +46,6 @@ export interface CreateLoopOptions {
   planModeAutoReply?: boolean;
   /** Save as draft without starting (no git branch or session created) */
   draft?: boolean;
-  /** Mode of operation: "loop" for autonomous loops, "chat" for interactive chat (default: "loop") */
-  mode?: "loop" | "chat";
 }
 
 /**

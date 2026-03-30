@@ -17,13 +17,6 @@ function parseHash(): ShellRoute {
     }
   }
 
-  if (hash.startsWith("/chat/")) {
-    const chatId = hash.slice(6);
-    if (chatId) {
-      return { view: "chat", chatId };
-    }
-  }
-
   if (hash.startsWith("/ssh/")) {
     const sshSessionId = hash.slice(5);
     if (sshSessionId) {
@@ -81,7 +74,6 @@ function parseHash(): ShellRoute {
     const [kind, scopeId] = hash.slice(5).split("/");
     if (
       kind === "loop"
-      || kind === "chat"
       || kind === "workspace"
       || kind === "ssh-session"
       || kind === "ssh-server"
@@ -100,9 +92,6 @@ function navigateTo(route: ShellRoute) {
       return;
     case "loop":
       window.location.hash = `/loop/${route.loopId}`;
-      return;
-    case "chat":
-      window.location.hash = `/chat/${route.chatId}`;
       return;
     case "ssh":
       window.location.hash = `/ssh/${route.sshSessionId}`;

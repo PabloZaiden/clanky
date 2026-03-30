@@ -48,7 +48,6 @@ export function CreateLoopForm({
   registeredSshServers = [],
   renderActions,
   leadingActions,
-  mode = "loop",
 }: CreateLoopFormProps) {
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const {
@@ -56,7 +55,6 @@ export function CreateLoopForm({
     promptRef,
     nameRef,
     isEditing,
-    isChatMode,
     isSubmitting,
     canSubmit,
     canSaveDraft,
@@ -108,7 +106,6 @@ export function CreateLoopForm({
     isEditingDraft,
     attachments,
     renderActions,
-    mode,
   });
 
   return (
@@ -123,7 +120,7 @@ export function CreateLoopForm({
           error={workspaceError}
           registeredSshServers={registeredSshServers}
         />
-        {planningWarning && !planMode && !isChatMode && (
+        {planningWarning && !planMode && (
           <div className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-800 dark:text-amber-300">
             <svg
               className="h-5 w-5 flex-shrink-0 text-amber-500"
@@ -164,33 +161,27 @@ export function CreateLoopForm({
         modelsLoading={modelsLoading}
       />
 
-      {/* Prompt Template — hidden in chat mode */}
-      {!isChatMode && (
-        <TemplateSelector
-          selectedTemplate={selectedTemplate}
-          onChange={setSelectedTemplate}
-          onPromptChange={(p) => {
-            setPrompt(p);
-            promptRef.current = p;
-          }}
-          onPlanModeChange={setPlanMode}
-          promptRef={promptRef}
-        />
-      )}
+      <TemplateSelector
+        selectedTemplate={selectedTemplate}
+        onChange={setSelectedTemplate}
+        onPromptChange={(p) => {
+          setPrompt(p);
+          promptRef.current = p;
+        }}
+        onPlanModeChange={setPlanMode}
+        promptRef={promptRef}
+      />
 
-      {/* Title — hidden in chat mode */}
-      {!isChatMode && (
-        <TitleField
-          name={name}
-          onChange={(value) => {
-            setName(value);
-            nameRef.current = value;
-          }}
-          onGenerate={() => void handleGenerateTitle()}
-          canGenerate={canGenerateTitle}
-          generating={generatingTitle}
-        />
-      )}
+      <TitleField
+        name={name}
+        onChange={(value) => {
+          setName(value);
+          nameRef.current = value;
+        }}
+        onGenerate={() => void handleGenerateTitle()}
+        canGenerate={canGenerateTitle}
+        generating={generatingTitle}
+      />
 
       {/* Prompt */}
       <PromptField
@@ -201,16 +192,13 @@ export function CreateLoopForm({
         }}
         attachments={attachments}
         onAttachmentsChange={setAttachments}
-        isChatMode={isChatMode}
         planMode={planMode}
         isEditingDraft={isEditingDraft}
         selectedTemplate={selectedTemplate}
         onTemplateClear={() => setSelectedTemplate("")}
       />
 
-      {/* Plan Mode, Auto-reply, and Use Worktree toggles */}
       <LoopSettings
-        isChatMode={isChatMode}
         planMode={planMode}
         onPlanModeChange={setPlanMode}
         planModeAutoReply={planModeAutoReply}
@@ -219,9 +207,7 @@ export function CreateLoopForm({
         onUseWorktreeChange={setUseWorktree}
       />
 
-      {/* Advanced options toggle + panel — hidden in chat mode */}
       <AdvancedOptions
-        isChatMode={isChatMode}
         showAdvanced={showAdvanced}
         onToggle={() => setShowAdvanced(!showAdvanced)}
         maxIterations={maxIterations}
@@ -237,7 +223,6 @@ export function CreateLoopForm({
       {/* Actions - only render inline if renderActions prop is not provided */}
       {!renderActions && (
         <FormActions
-          isChatMode={isChatMode}
           isEditing={isEditing}
           isEditingDraft={isEditingDraft}
           isSubmitting={isSubmitting}

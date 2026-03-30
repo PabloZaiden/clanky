@@ -14,7 +14,6 @@ export interface PromptBuildContext {
   config: LoopConfig;
   state: LoopState;
   workingDirectory: string;
-  isChatMode: boolean;
   stopDetector: StopPatternDetector;
   emitUserMessage: (content: string, idSuffix?: string, attachments?: MessageImageAttachment[]) => void;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
@@ -60,10 +59,6 @@ export function buildLoopPrompt(ctx: PromptBuildContext, _iteration: number): Pr
     });
     ctx.config.model = model;
     ctx.updateState({ pendingModel: undefined });
-  }
-
-  if (ctx.isChatMode) {
-    return buildChatPrompt(ctx, model);
   }
 
   if (ctx.state.status === "planning" && ctx.state.planMode?.active) {
@@ -128,35 +123,6 @@ When the updated plan is ready, end your response with:
 <promise>PLAN_READY</promise>`;
 
   ctx.updateState({ pendingPrompt: undefined });
-
-  return {
-    parts: buildPromptParts(text, attachments),
-    model,
-  };
-}
-
-function buildChatPrompt(ctx: PromptBuildContext, model: ModelConfig | undefined): PromptInput {
-  const userMessage = ctx.state.pendingPrompt;
-  const attachments = userMessage
-    ? consumePendingOrInitialAttachments(ctx)
-    : ctx.consumeInitialPromptAttachments();
-
-  const messageToLog = userMessage ?? ctx.config.prompt;
-  const userMessageIdSuffix = userMessage
-    ? `chat-turn-${crypto.randomUUID()}`
-    : "initial-goal";
-  ctx.emitUserMessage(messageToLog, userMessageIdSuffix, attachments);
-
-  ctx.updateState({ pendingPrompt: undefined });
-
-  const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
-
-  const isFirstMessage = ctx.state.currentIteration <= 1;
-  const contextSection = isFirstMessage
-    ? `You are working in directory: ${ctx.workingDirectory}\n\n`
-    : "";
-
-  const text = `${contextSection}${errorContext}${userMessage ?? ctx.config.prompt}`;
 
   return {
     parts: buildPromptParts(text, attachments),
@@ -230,12 +196,6 @@ export function evaluateLoopOutcome(ctx: IterationContext, buildCtx: PromptBuild
   buildCtx.emitLog("info", "Evaluating stop pattern...");
 
   if (ctx.outcome === "error") {
-    return;
-  }
-
-  if (buildCtx.isChatMode) {
-    buildCtx.emitLog("info", "Chat mode - turn completed");
-    ctx.outcome = "complete";
     return;
   }
 

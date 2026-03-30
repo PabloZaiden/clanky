@@ -11,19 +11,19 @@ export type { CreateLoopOptions, StartLoopOptions, AcceptPlanOptions, AcceptPlan
 export { getLoopWorkingDirectory } from "./loop-types";
 
 import type { LoopCtx } from "./context";
-import type { Loop, LoopConfig, LoopState, ModelConfig } from "../../types/loop";
+import type { Loop, LoopConfig, LoopState } from "../../types/loop";
 import type { LoopEvent } from "../../types/events";
-import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { ModelConfig } from "../../types/loop";
 import type { CreateLoopOptions, StartLoopOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
+import type { MessageImageAttachment } from "../../types/message-attachments";
 
 import { LoopEngine } from "../loop-engine";
 import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
 
-import { createLoopImpl, generateLoopTitleImpl, createChatImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
-import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, recoverChatEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
-import { sendPlanFeedbackImpl, answerPendingPlanQuestionImpl, acceptPlanImpl, discardPlanImpl, sendChatMessageImpl } from "./loop-plan-mode";
-import { convertChatToLoopImpl } from "./loop-chat-conversion";
+import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
+import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
+import { sendPlanFeedbackImpl, answerPendingPlanQuestionImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
 import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
 import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
@@ -48,13 +48,11 @@ export class LoopManager {
       getLoop: (id) => this.getLoop(id),
       startLoop: (id, options) => this.startLoop(id, options),
       startPlanMode: (id, options) => this.startPlanMode(id, options),
-      sendChatMessage: (id, msg, model, attachments) => this.sendChatMessage(id, msg, model, attachments),
       startStatePersistence: (id) => startStatePersistenceImpl(this.ctx, id),
       ensureLoopBranchCheckedOut: (loop, git, dir) => ensureLoopBranchCheckedOutImpl(this.ctx, loop, git, dir),
       validateMainCheckoutStart: (loop, git) => validateMainCheckoutStartImpl(this.ctx, loop, git),
       clearPlanningFiles: (id, loop, executor, path) => clearPlanningFilesImpl(this.ctx, id, loop, executor, path),
       recoverPlanningEngine: (id) => this.recoverPlanningEngine(id),
-      recoverChatEngine: (id) => this.recoverChatEngine(id),
       startFeedbackCycle: (id, opts) => startFeedbackCycleImpl(this.ctx, id, opts),
       jumpstartLoop: (id, opts) => jumpstartLoopImpl(this.ctx, id, opts),
     };
@@ -66,23 +64,6 @@ export class LoopManager {
 
   async generateLoopTitle(options: Pick<CreateLoopOptions, "prompt" | "directory" | "workspaceId">): Promise<string> {
     return generateLoopTitleImpl(this.ctx, options);
-  }
-
-  async createChat(options: Omit<CreateLoopOptions, "planMode" | "mode" | "name">): Promise<Loop> {
-    return createChatImpl(this.ctx, options);
-  }
-
-  async sendChatMessage(
-    loopId: string,
-    message: string,
-    model?: ModelConfig,
-    attachments?: MessageImageAttachment[],
-  ): Promise<void> {
-    return sendChatMessageImpl(this.ctx, loopId, message, model, attachments);
-  }
-
-  async convertChatToLoop(loopId: string): Promise<Loop> {
-    return convertChatToLoopImpl(this.ctx, loopId);
   }
 
   async startPlanMode(loopId: string, options?: StartLoopOptions): Promise<void> {
@@ -268,10 +249,6 @@ export class LoopManager {
 
   private async recoverPlanningEngine(loopId: string): Promise<LoopEngine> {
     return recoverPlanningEngineImpl(this.ctx, loopId);
-  }
-
-  private async recoverChatEngine(loopId: string): Promise<LoopEngine> {
-    return recoverChatEngineImpl(this.ctx, loopId);
   }
 }
 

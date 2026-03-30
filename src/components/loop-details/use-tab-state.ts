@@ -10,7 +10,6 @@ import type { TabId } from "./types";
 interface UseTabStateOptions {
   loopId: string;
   loop: Loop | null;
-  isChatMode: boolean;
   messagesCount: number;
   toolCallsCount: number;
   logsCount: number;
@@ -26,7 +25,6 @@ interface UseTabStateResult {
 export function useTabState({
   loopId,
   loop,
-  isChatMode,
   messagesCount,
   toolCallsCount,
   logsCount,
@@ -85,7 +83,7 @@ export function useTabState({
   }, [loop?.state.status, loop?.state.reviewMode?.addressable, loop?.state.git, loop?.state.planMode?.isPlanReady, activeTab, loop]);
 
   // Default to "plan" tab when in planning mode on initial load
-  const isCurrentlyPlanning = loop?.state.status === "planning" && !isChatMode;
+  const isCurrentlyPlanning = loop?.state.status === "planning";
   const pendingPlanQuestion = loop?.state.planMode?.pendingQuestion;
 
   useEffect(() => {

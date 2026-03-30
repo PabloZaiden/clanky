@@ -27,23 +27,12 @@ export const loopsCollectionRoutes = {
      * Returns all loops with their configurations and current states.
      * Loops are returned regardless of status (idle, running, completed, etc.).
      *
-     * Query Parameters:
-     * - mode (optional): Filter by mode ("loop" or "chat")
-     *
      * @returns Array of Loop objects with config and state
      */
-    async GET(req: Request): Promise<Response> {
+    async GET(_req: Request): Promise<Response> {
       log.debug("GET /api/loops - Listing all loops");
-      let loops = await loopManager.getAllLoops();
-
-      // Apply optional mode filter
-      const url = new URL(req.url);
-      const modeFilter = url.searchParams.get("mode");
-      if (modeFilter === "loop" || modeFilter === "chat") {
-        loops = loops.filter((loop) => loop.config.mode === modeFilter);
-      }
-
-      log.debug("GET /api/loops - Retrieved loops", { count: loops.length, modeFilter });
+      const loops = await loopManager.getAllLoops();
+      log.debug("GET /api/loops - Retrieved loops", { count: loops.length });
       return Response.json(loops);
     },
 

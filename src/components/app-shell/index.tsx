@@ -34,7 +34,6 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
     error: loopsError,
     refresh: refreshLoops,
     createLoop,
-    createChat,
     purgeLoop,
     purgeArchivedWorkspaceLoops,
   } = useLoops();
@@ -92,7 +91,6 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
   const composeState = useComposeState({
     route,
     createLoop,
-    createChat,
     refreshLoops,
     navigateWithinShell,
     dashboardData,
@@ -102,16 +100,11 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
   // Derived memos
   const workspacesById = useMemo(() => new Map(workspaces.map((w) => [w.id, w])), [workspaces]);
   const serversById = useMemo(() => new Map(servers.map((s) => [s.config.id, s])), [servers]);
-  const loopItems = useMemo(() => loops.filter((loop) => loop.config.mode !== "chat"), [loops]);
-  const chatItems = useMemo(() => loops.filter((loop) => loop.config.mode === "chat"), [loops]);
+  const loopItems = loops;
   const standaloneSessions = useMemo(() => Object.values(sessionsByServerId).flat(), [sessionsByServerId]);
   const loopGroups = useMemo(
     () => groupSidebarItemsByWorkspace(loopItems, workspaces),
     [loopItems, workspaces],
-  );
-  const chatGroups = useMemo(
-    () => groupSidebarItemsByWorkspace(chatItems, workspaces),
-    [chatItems, workspaces],
   );
   const allShellSessions = useMemo(
     () =>
@@ -142,7 +135,7 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
   ) as string[];
 
   const selectedLoop =
-    route.view === "loop" ? (loopItems.find((loop) => loop.config.id === route.loopId) ?? null) : null;
+    route.view === "loop" ? (loops.find((loop) => loop.config.id === route.loopId) ?? null) : null;
   const selectedWorkspace =
     route.view === "workspace"
       || route.view === "workspace-settings"
@@ -185,9 +178,7 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
         collapsedWorkspaceGroups={sidebar.collapsedWorkspaceGroups}
         workspaces={workspaces}
         loopGroups={loopGroups}
-        chatGroups={chatGroups}
         loopItems={loopItems}
-        chatItems={chatItems}
         allShellSessions={allShellSessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}

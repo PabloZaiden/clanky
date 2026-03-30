@@ -11,18 +11,17 @@ import type {
   BranchInfo,
   Workspace,
   CreateLoopRequest,
-  CreateChatRequest,
   SshServer,
 } from "../../types";
 import { CreateLoopForm } from "../CreateLoopForm";
 import type { CreateLoopFormActionState } from "../CreateLoopForm";
-import type { CreateLoopResult, CreateChatResult } from "../../hooks/useLoops";
+import type { CreateLoopResult } from "../../hooks/useLoops";
 import { Modal } from "../common";
 import { useToast } from "../../hooks";
 import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 import { DeleteDraftConfirmation } from "./delete-draft-confirmation";
 import { DeleteConfirmFooter, LoopFormFooter } from "./loop-modal-footer";
-import { isCreateLoopRequest, handleCreateLoopSubmit, handleCreateChatSubmit } from "./loop-submit-handlers";
+import { handleCreateLoopSubmit } from "./loop-submit-handlers";
 
 export interface CreateEditLoopModalProps {
   loops: Loop[];
@@ -30,12 +29,10 @@ export interface CreateEditLoopModalProps {
 
   showCreateModal: boolean;
   editDraftId: string | null;
-  createMode: "loop" | "chat";
   formActionState: CreateLoopFormActionState | null;
   setFormActionState: (state: CreateLoopFormActionState | null) => void;
   onCloseCreateModal: () => void;
   onCreateLoop: (request: CreateLoopRequest) => Promise<CreateLoopResult>;
-  onCreateChat: (request: CreateChatRequest) => Promise<CreateChatResult>;
   onDeleteDraft: (loopId: string) => Promise<boolean>;
   onRefresh: () => Promise<void>;
 
@@ -63,7 +60,6 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
   const editLoop = props.editDraftId ? props.loops.find((l) => l.config.id === props.editDraftId) : null;
   const isEditing = !!editLoop;
   const isEditingDraft = editLoop?.state.status === "draft";
-  const isChatMode = props.createMode === "chat";
   const isConfirmingDraftDelete = deleteDraftConfirmation !== null;
 
   useEffect(() => {
@@ -109,16 +105,12 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
   const modalTitle = isConfirmingDraftDelete
     ? "Edit Draft Loop"
     : isEditing
-    ? "Edit Draft Loop"
-    : isChatMode
-      ? "New Chat"
+      ? "Edit Draft Loop"
       : "Create New Loop";
   const modalDescription = isConfirmingDraftDelete
     ? "Confirm whether you want to permanently remove this draft from the dashboard."
     : isEditing
-    ? "Update your draft loop configuration."
-    : isChatMode
-      ? "Start an interactive conversation with your workspace."
+      ? "Update your draft loop configuration."
       : "Configure a new Ralph Loop for autonomous AI development.";
 
   const initialLoopData = editLoop ? {
@@ -143,7 +135,6 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
     setUncommittedModal: props.setUncommittedModal,
     onRefresh: props.onRefresh,
     onCreateLoop: props.onCreateLoop,
-    onCreateChat: props.onCreateChat,
   };
 
   return (
@@ -163,7 +154,6 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
         ) : (
           <LoopFormFooter
             formActionState={props.formActionState}
-            isChatMode={isChatMode}
             onOpenDeleteConfirmation={openDeleteDraftConfirmation}
           />
         )
@@ -173,24 +163,12 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
         <DeleteDraftConfirmation loopName={deleteDraftConfirmation.loopName} />
       ) : (
         <CreateLoopForm
-          key={isEditing ? editLoop!.config.id : `create-new-${props.createMode}`}
+          key={isEditing ? editLoop!.config.id : "create-new-loop"}
           editLoopId={isEditing ? editLoop!.config.id : undefined}
           initialLoopData={initialLoopData}
           isEditingDraft={isEditingDraft}
           renderActions={props.setFormActionState}
-          mode={props.createMode}
-          onSubmit={async (request) => {
-            if (isChatMode) {
-              if (isCreateLoopRequest(request)) {
-                throw new Error("Expected chat submission request");
-              }
-              return await handleCreateChatSubmit(submitHandlerProps, request, toast);
-            }
-            if (!isCreateLoopRequest(request)) {
-              throw new Error("Expected loop submission request");
-            }
-            return await handleCreateLoopSubmit(submitHandlerProps, editLoop, request, toast);
-          }}
+          onSubmit={async (request) => await handleCreateLoopSubmit(submitHandlerProps, editLoop, request, toast)}
           onCancel={props.onCloseCreateModal}
           models={props.models}
           modelsLoading={props.modelsLoading}

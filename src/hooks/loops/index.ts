@@ -3,15 +3,15 @@
  * Provides CRUD operations and real-time state updates for loops.
  */
 
-export type { CreateLoopResult, CreateChatResult } from "./use-loop-mutations";
+export type { CreateLoopResult } from "./use-loop-mutations";
 export type { UseLoopsStateResult } from "./use-loops-state";
 
 import { useLoopsState } from "./use-loops-state";
 import { useLoopEvents } from "./use-loop-events";
-import { useLoopMutations, type CreateLoopResult, type CreateChatResult } from "./use-loop-mutations";
+import { useLoopMutations, type CreateLoopResult } from "./use-loop-mutations";
 import { useLoopActions } from "./use-loop-actions";
 import type { AcceptLoopResult, PushLoopResult, AddressCommentsResult, PurgeArchivedLoopsResult } from "../loopActions";
-import type { Loop, CreateLoopRequest, CreateChatRequest, UpdateLoopRequest } from "../../types";
+import type { Loop, CreateLoopRequest, UpdateLoopRequest } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 
 export interface UseLoopsResult {
@@ -25,8 +25,6 @@ export interface UseLoopsResult {
   refresh: () => Promise<void>;
   /** Create a new loop (loops are always started immediately) */
   createLoop: (request: CreateLoopRequest) => Promise<CreateLoopResult>;
-  /** Create a new interactive chat */
-  createChat: (request: CreateChatRequest) => Promise<CreateChatResult>;
   /** Update an existing loop */
   updateLoop: (id: string, request: UpdateLoopRequest) => Promise<Loop | null>;
   /** Delete a loop */
@@ -57,7 +55,7 @@ export function useLoops(): UseLoopsResult {
 
   useLoopEvents({ refresh, refreshLoop, setLoops });
 
-  const { createLoop, createChat, updateLoop, deleteLoop } = useLoopMutations({ setError, setLoops });
+  const { createLoop, updateLoop, deleteLoop } = useLoopMutations({ setError, setLoops });
 
   const { acceptLoop, pushLoop, updateBranch, discardLoop, purgeLoop, purgeArchivedWorkspaceLoops, addressReviewComments } =
     useLoopActions({ setError, setLoops, refreshLoop });
@@ -68,7 +66,6 @@ export function useLoops(): UseLoopsResult {
     error,
     refresh,
     createLoop,
-    createChat,
     updateLoop,
     deleteLoop,
     acceptLoop,

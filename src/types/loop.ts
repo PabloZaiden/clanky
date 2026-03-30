@@ -71,8 +71,8 @@ export interface LoopConfig {
   /** Whether plan-mode ACP questions should be auto-answered instead of shown for manual reply */
   planModeAutoReply?: boolean;
 
-  /** Mode of operation: "loop" for autonomous loops, "chat" for interactive chat */
-  mode: "loop" | "chat";
+  /** Mode of operation for this entity. Loops are the only supported mode. */
+  mode: "loop";
 }
 
 /**

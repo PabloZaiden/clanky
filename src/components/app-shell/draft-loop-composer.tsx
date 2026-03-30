@@ -202,7 +202,6 @@ export function DraftLoopComposer({
             loading={actionState?.isSubmitting ?? false}
           >
             {getComposeSubmitActionLabel({
-              isChatMode: false,
               isEditing: true,
             })}
           </Button>

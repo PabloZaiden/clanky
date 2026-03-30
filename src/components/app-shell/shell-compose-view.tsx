@@ -18,10 +18,7 @@ interface ComposeViewProps {
   navigateWithinShell: (route: ShellRoute) => void;
   composeActionState: CreateLoopFormActionState | null;
   setComposeActionState: (state: CreateLoopFormActionState | null) => void;
-  handleLoopSubmit: (
-    kind: Extract<ComposeKind, "loop" | "chat">,
-    request: CreateLoopFormSubmitRequest,
-  ) => Promise<boolean>;
+  handleLoopSubmit: (request: CreateLoopFormSubmitRequest) => Promise<boolean>;
   dashboardData: UseDashboardDataResult;
   workspaces: Workspace[];
   workspacesLoading: boolean;
@@ -68,10 +65,9 @@ export function ComposeView(props: ComposeViewProps) {
     (workspace) => workspace.serverSettings.agent.transport === "ssh",
   );
 
-  if (kind === "loop" || kind === "chat") {
+  if (kind === "loop") {
     return (
       <ComposeLoopView
-        kind={kind}
         composeWorkspace={composeWorkspace}
         shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}

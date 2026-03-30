@@ -3,7 +3,7 @@
  */
 
 import { useCallback } from "react";
-import type { Loop, CreateLoopRequest, CreateChatRequest, UpdateLoopRequest, UncommittedChangesError } from "../../types";
+import type { Loop, CreateLoopRequest, UpdateLoopRequest, UncommittedChangesError } from "../../types";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
 import { deleteLoopApi } from "../loopActions";
@@ -15,13 +15,6 @@ export interface CreateLoopResult {
   startError?: UncommittedChangesError;
 }
 
-export interface CreateChatResult {
-  /** The created chat, or null if creation failed */
-  loop: Loop | null;
-  /** Error if the chat was created but failed to start (e.g., uncommitted changes) */
-  startError?: UncommittedChangesError;
-}
-
 interface UseLoopMutationsOptions {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setLoops: React.Dispatch<React.SetStateAction<Loop[]>>;
@@ -29,7 +22,6 @@ interface UseLoopMutationsOptions {
 
 export interface UseLoopMutationsResult {
   createLoop: (request: CreateLoopRequest) => Promise<CreateLoopResult>;
-  createChat: (request: CreateChatRequest) => Promise<CreateChatResult>;
   updateLoop: (id: string, request: UpdateLoopRequest) => Promise<Loop | null>;
   deleteLoop: (id: string) => Promise<boolean>;
 }
@@ -75,42 +67,6 @@ export function useLoopMutations({ setError, setLoops }: UseLoopMutationsOptions
     }
   }, [setError]);
 
-  const createChat = useCallback(async (request: CreateChatRequest): Promise<CreateChatResult> => {
-    try {
-      const response = await appFetch("/api/loops/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-      });
-
-      if (response.status === 409) {
-        const errorData = (await response.json()) as { error?: string };
-        if (errorData.error === "uncommitted_changes") {
-          return {
-            loop: null,
-            startError: errorData as UncommittedChangesError,
-          };
-        }
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Failed to create chat");
-      }
-
-      const loop = (await response.json()) as Loop;
-      return { loop };
-    } catch (err) {
-      log.error("Failed to create chat", {
-        workspaceId: request.workspaceId,
-        useWorktree: request.useWorktree,
-        error: String(err),
-      });
-      setError(String(err));
-      return { loop: null };
-    }
-  }, [setError]);
-
   const updateLoop = useCallback(async (id: string, request: UpdateLoopRequest): Promise<Loop | null> => {
     try {
       const response = await appFetch(`/api/loops/${id}`, {
@@ -146,5 +102,5 @@ export function useLoopMutations({ setError, setLoops }: UseLoopMutationsOptions
     }
   }, [setError]);
 
-  return { createLoop, createChat, updateLoop, deleteLoop };
+  return { createLoop, updateLoop, deleteLoop };
 }

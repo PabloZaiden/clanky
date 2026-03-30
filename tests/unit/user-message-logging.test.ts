@@ -1,7 +1,7 @@
 /**
  * Unit tests for user message logging across all prompt types.
  * Verifies that emitUserMessage() is called correctly in
- * buildChatPrompt, buildExecutionPrompt, and buildPlanModePrompt,
+ * buildExecutionPrompt and buildPlanModePrompt,
  * and that user messages are persisted in loop.state.messages
  * and emitted as loop.message events with role "user".
  */
@@ -186,80 +186,6 @@ describe("User Message Logging", () => {
   afterEach(async () => {
     backendManager.resetForTesting();
     await rm(testDir, { recursive: true });
-  });
-
-  // ─── Chat Mode ─────────────────────────────────────────────────────────────
-
-  describe("chat mode", () => {
-    test("first chat message (config.prompt) is persisted as user message", async () => {
-      const loop = createLoop({ mode: "chat", prompt: "Hello, world!", maxIterations: 1 });
-      const backend = createMockBackend(["Hi there!"]);
-
-      const engine = new LoopEngine({
-        loop,
-        backend,
-        gitService,
-        eventEmitter: emitter,
-      });
-
-      await engine.start();
-
-      // Verify a loop.message event with role "user" was emitted
-      const userMsgEvents = getUserMessageEvents();
-      expect(userMsgEvents.length).toBe(1);
-      expect(userMsgEvents[0]!.message.content).toBe("Hello, world!");
-      expect(userMsgEvents[0]!.message.role).toBe("user");
-
-      // Verify the message is persisted in loop.state.messages
-      const userMessages = loop.state.messages?.filter((m) => m.role === "user");
-      expect(userMessages?.length).toBe(1);
-      expect(userMessages?.[0]?.content).toBe("Hello, world!");
-    });
-
-    test("subsequent chat message (pendingPrompt) is persisted as user message", async () => {
-      const loop = createLoop({
-        mode: "chat",
-        prompt: "Initial message",
-        maxIterations: 1,
-      });
-      loop.state.pendingPrompt = "Follow-up question";
-      const backend = createMockBackend(["Here's the answer."]);
-
-      const engine = new LoopEngine({
-        loop,
-        backend,
-        gitService,
-        eventEmitter: emitter,
-      });
-
-      await engine.start();
-
-      const userMsgEvents = getUserMessageEvents();
-      expect(userMsgEvents.length).toBe(1);
-      expect(userMsgEvents[0]!.message.content).toBe("Follow-up question");
-    });
-
-    test("user message appears in messages array, not in logs as 'user' level", async () => {
-      const loop = createLoop({ mode: "chat", prompt: "Test message", maxIterations: 1 });
-      const backend = createMockBackend(["Response."]);
-
-      const engine = new LoopEngine({
-        loop,
-        backend,
-        gitService,
-        eventEmitter: emitter,
-      });
-
-      await engine.start();
-
-      // Should be in messages array
-      const userMessages = loop.state.messages?.filter((m) => m.role === "user");
-      expect(userMessages?.length).toBe(1);
-
-      // Should NOT be in logs as level "user" (no duplication)
-      const userLogs = loop.state.logs?.filter((l) => l.level === "user");
-      expect(userLogs?.length ?? 0).toBe(0);
-    });
   });
 
   // ─── Execution Mode ───────────────────────────────────────────────────────
@@ -474,7 +400,7 @@ describe("User Message Logging", () => {
 
   describe("deduplication", () => {
     test("user message uses deterministic ID for retry safety", async () => {
-      const loop = createLoop({ mode: "chat", prompt: "Test dedup", maxIterations: 1 });
+      const loop = createLoop({ mode: "loop", prompt: "Test dedup", maxIterations: 1 });
       const backend = createMockBackend(["Response."]);
 
       const engine = new LoopEngine({
@@ -496,8 +422,8 @@ describe("User Message Logging", () => {
   // ─── Both user and assistant messages in conversation ─────────────────────
 
   describe("conversation flow", () => {
-    test("chat produces both user and assistant messages in order", async () => {
-      const loop = createLoop({ mode: "chat", prompt: "What is 2+2?", maxIterations: 1 });
+    test("loop execution produces both user and assistant messages in order", async () => {
+      const loop = createLoop({ mode: "loop", prompt: "What is 2+2?", maxIterations: 1 });
       const backend = createMockBackend(["4"]);
 
       const engine = new LoopEngine({
@@ -526,7 +452,7 @@ describe("User Message Logging", () => {
     });
 
     test("loop.message events emitted for both user and assistant", async () => {
-      const loop = createLoop({ mode: "chat", prompt: "Tell me a joke", maxIterations: 1 });
+      const loop = createLoop({ mode: "loop", prompt: "Tell me a joke", maxIterations: 1 });
       const backend = createMockBackend(["Why did the chicken cross the road?"]);
 
       const engine = new LoopEngine({

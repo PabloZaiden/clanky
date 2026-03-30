@@ -30,22 +30,6 @@ describe("LoopManager", () => {
     modelVariant: "",
   };
 
-  async function waitForLoopCondition(
-    loopId: string,
-    predicate: (loop: Awaited<ReturnType<LoopManager["getLoop"]>>) => boolean,
-    timeoutMs = 10000,
-  ): Promise<void> {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-      const loop = await manager.getLoop(loopId);
-      if (predicate(loop)) {
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error(`Loop ${loopId} did not reach the expected condition within ${timeoutMs}ms`);
-  }
-
   beforeEach(async () => {
     // Create temp directories
     testDataDir = await mkdtemp(join(tmpdir(), "ralpher-manager-test-data-"));
@@ -873,91 +857,4 @@ describe("LoopManager", () => {
     });
   });
 
-  describe("convertChatToLoop", () => {
-    test("converts a completed chat in place and preserves the existing session", async () => {
-      backendManager.setBackendForTesting(createMockBackend([
-        "<promise>COMPLETE</promise>",
-        "Planning... <promise>PLAN_READY</promise>",
-      ]));
-
-      await Bun.write(join(testWorkDir, "README.md"), "# test\n");
-      await Bun.$`git -C ${testWorkDir} init`.quiet();
-      await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`git -C ${testWorkDir} config user.email "test@example.com"`.quiet();
-      await Bun.$`git -C ${testWorkDir} add README.md`.quiet();
-      await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
-
-      const chat = await manager.createChat({
-        ...testModelFields,
-        directory: testWorkDir,
-        prompt: "Discuss an implementation strategy and then plan it",
-        workspaceId: testWorkspaceId,
-        useWorktree: false,
-      });
-
-      await waitForLoopCondition(chat.config.id, (loop) => loop?.state.status === "completed");
-
-      const completedChat = await manager.getLoop(chat.config.id);
-      const originalSessionId = completedChat?.state.session?.id;
-
-      const convertedLoop = await manager.convertChatToLoop(chat.config.id);
-      expect(convertedLoop.config.id).toBe(chat.config.id);
-      expect(convertedLoop.config.mode).toBe("loop");
-      expect(convertedLoop.state.status).toBe("planning");
-      expect(convertedLoop.state.session?.id).toBe(originalSessionId);
-      expect(convertedLoop.state.planMode?.planSessionId).toBe(originalSessionId);
-      expect(convertedLoop.config.prompt).toContain("Original chat prompt:");
-      expect(convertedLoop.config.prompt).toContain("Recent chat transcript:");
-
-      await waitForLoopCondition(chat.config.id, (loop) => loop?.state.planMode?.isPlanReady === true);
-
-      const planningLoop = await manager.getLoop(chat.config.id);
-      expect(planningLoop?.config.mode).toBe("loop");
-      expect(planningLoop?.state.status).toBe("planning");
-      expect(planningLoop?.state.planMode?.isPlanReady).toBe(true);
-      expect(planningLoop?.state.session?.id).toBe(originalSessionId);
-    });
-
-    test("converts a completed chat with stale interruption flags and still starts planning", async () => {
-      backendManager.setBackendForTesting(createMockBackend([
-        "<promise>COMPLETE</promise>",
-        "Planning... <promise>PLAN_READY</promise>",
-      ]));
-
-      await Bun.write(join(testWorkDir, "README.md"), "# test\n");
-      await Bun.$`git -C ${testWorkDir} init`.quiet();
-      await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
-      await Bun.$`git -C ${testWorkDir} config user.email "test@example.com"`.quiet();
-      await Bun.$`git -C ${testWorkDir} add README.md`.quiet();
-      await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
-
-      const chat = await manager.createChat({
-        ...testModelFields,
-        directory: testWorkDir,
-        prompt: "Discuss an implementation strategy and then plan it",
-        workspaceId: testWorkspaceId,
-        useWorktree: false,
-      });
-
-      await waitForLoopCondition(chat.config.id, (loop) => loop?.state.status === "completed");
-
-      // @ts-expect-error - accessing private field for test purposes
-      const engine = manager.engines.get(chat.config.id) as {
-        aborted: boolean;
-        injectionPending: boolean;
-      } | undefined;
-      expect(engine).toBeDefined();
-      engine!.aborted = true;
-      engine!.injectionPending = true;
-
-      const convertedLoop = await manager.convertChatToLoop(chat.config.id);
-      expect(convertedLoop.config.mode).toBe("loop");
-      expect(convertedLoop.state.status).toBe("planning");
-
-      await waitForLoopCondition(chat.config.id, (loop) => loop?.state.planMode?.isPlanReady === true);
-
-      const planningLoop = await manager.getLoop(chat.config.id);
-      expect(planningLoop?.state.planMode?.isPlanReady).toBe(true);
-    });
-  });
 });

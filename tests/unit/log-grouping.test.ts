@@ -1,5 +1,5 @@
 /**
- * Tests for the LogViewer chat-style consecutive entry grouping logic.
+ * Tests for the LogViewer consecutive entry grouping logic.
  * Verifies that getEntryGroupKey and annotateShowHeader correctly identify
  * when consecutive entries share the same actor+action.
  */

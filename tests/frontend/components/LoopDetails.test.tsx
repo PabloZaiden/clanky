@@ -58,7 +58,6 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   api.post("/api/loops/:id/mark-merged", () => ({ success: true }));
   api.post("/api/loops/:id/address-comments", () => ({ success: true }));
   api.post("/api/loops/:id/pending", () => ({ success: true }));
-  api.post("/api/loops/:id/chat", () => ({ success: true }));
   api.post("/api/loops/:id/follow-up", () => ({ success: true }));
   api.delete("/api/loops/:id/pending", () => ({ success: true }));
   api.put("/api/loops/:id", () => loop);
@@ -1524,33 +1523,6 @@ describe("loop action bar", () => {
     });
   });
 
-  test("shows send composer for completed chats and submits a follow-up message", async () => {
-    const loop = createLoopWithStatus("completed", {
-      config: { id: LOOP_ID, name: "Completed Chat", mode: "chat", prompt: "Hello" },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-    api.post("/api/loops/:id/follow-up", () => ({ success: true }));
-
-    const { getByRole, getByPlaceholderText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Send" })).toBeTruthy();
-    });
-
-    await user.type(getByPlaceholderText("Type a message..."), "Can you continue?");
-    await user.click(getByRole("button", { name: "Send" }));
-
-    await waitFor(() => {
-      expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
-    });
-  });
 
   test("shows send feedback for plan-ready loops and submits feedback", async () => {
     const loop = createLoopWithStatus("planning", {

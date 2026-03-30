@@ -24,8 +24,6 @@ export interface UseDashboardModalsResult {
   setShowCreateModal: (show: boolean) => void;
   editDraftId: string | null;
   setEditDraftId: (id: string | null) => void;
-  createMode: "loop" | "chat";
-  setCreateMode: (mode: "loop" | "chat") => void;
   uncommittedModal: UncommittedModalState;
   setUncommittedModal: (state: UncommittedModalState) => void;
   renameModal: ModalState;
@@ -46,7 +44,6 @@ export interface UseDashboardModalsResult {
   // Handler functions
   handleCloseCreateModal: () => void;
   handleEditDraft: (loopId: string) => void;
-  handleOpenCreateChat: () => void;
   handleOpenCreateLoop: () => void;
 }
 
@@ -55,7 +52,6 @@ export function useDashboardModals(
 ): UseDashboardModalsResult {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editDraftId, setEditDraftId] = useState<string | null>(null);
-  const [createMode, setCreateMode] = useState<"loop" | "chat">("loop");
   const [uncommittedModal, setUncommittedModal] = useState<UncommittedModalState>({
     open: false,
     loopId: null,
@@ -82,18 +78,10 @@ export function useDashboardModals(
 
   const handleEditDraft = useCallback((loopId: string) => {
     setEditDraftId(loopId);
-    setCreateMode("loop");
-    setShowCreateModal(true);
-  }, []);
-
-  const handleOpenCreateChat = useCallback(() => {
-    setCreateMode("chat");
-    setEditDraftId(null);
     setShowCreateModal(true);
   }, []);
 
   const handleOpenCreateLoop = useCallback(() => {
-    setCreateMode("loop");
     setEditDraftId(null);
     setShowCreateModal(true);
   }, []);
@@ -103,8 +91,6 @@ export function useDashboardModals(
     setShowCreateModal,
     editDraftId,
     setEditDraftId,
-    createMode,
-    setCreateMode,
     uncommittedModal,
     setUncommittedModal,
     renameModal,
@@ -121,7 +107,6 @@ export function useDashboardModals(
     setFormActionState,
     handleCloseCreateModal,
     handleEditDraft,
-    handleOpenCreateChat,
     handleOpenCreateLoop,
   };
 }

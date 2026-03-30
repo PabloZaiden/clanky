@@ -545,26 +545,6 @@ describe("LoopEngine Pending Model", () => {
     expect(emittedEvents.some((event) => event.type === "loop.error")).toBe(false);
   });
 
-  test("chat mode continues when a follow-up prompt is still waiting to run", () => {
-    const loop = createTestLoop({ mode: "chat" });
-    loop.state.status = "running";
-    loop.state.currentIteration = 1;
-    loop.state.pendingPrompt = "Replacement follow-up";
-    const engine = new LoopEngine({
-      loop,
-      backend: createMockBackend(["Chat reply"]),
-      gitService,
-      eventEmitter: emitter,
-    });
-    const internalEngine = engine as unknown as {
-      sessionId: string | null;
-      shouldContinue: () => boolean;
-    };
-    internalEngine.sessionId = "active-session";
-
-    expect(internalEngine.shouldContinue()).toBe(true);
-  });
-
   test("runLoop checks maxIterations before continuing after a normal iteration", async () => {
     const loop = createTestLoop({ maxIterations: 1 });
     loop.state.status = "running";

@@ -1,6 +1,6 @@
 import type { Loop, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
-import { getLoopStatusLabel, getStatusLabel } from "../../utils";
+import { getLoopStatusLabel } from "../../utils";
 import { GearIcon, RefreshIcon, SidebarIcon, getLoopStatusBadgeVariant } from "../common";
 import type { BadgeVariant } from "../common";
 import { ShellSection, SectionItem, WorkspaceGroupedSectionItems, EmptySection } from "./shell-sidebar";
@@ -27,9 +27,7 @@ interface ShellSidebarNavProps {
   collapsedWorkspaceGroups: Partial<Record<string, boolean>>;
   workspaces: Workspace[];
   loopGroups: WorkspaceSidebarGroup[];
-  chatGroups: WorkspaceSidebarGroup[];
   loopItems: Loop[];
-  chatItems: Loop[];
   allShellSessions: ShellSession[];
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
@@ -55,9 +53,7 @@ export function ShellSidebarNav({
   collapsedWorkspaceGroups,
   workspaces,
   loopGroups,
-  chatGroups,
   loopItems,
-  chatItems,
   allShellSessions,
   servers,
   sessionsByServerId,
@@ -170,39 +166,6 @@ export function ShellSidebarNav({
                     loop.state.planMode?.isPlanReady ?? false,
                   )}
                   onClick={() => navigateWithinShell({ view: "loop", loopId: loop.config.id })}
-                />
-              )}
-            />
-          )}
-        </ShellSection>
-
-        <ShellSection
-          title="Chats"
-          count={chatItems.length}
-          actionLabel="New"
-          onAction={() => navigateWithinShell({ view: "compose", kind: "chat" })}
-          collapsed={isSectionCollapsed("chats")}
-          onToggle={() => toggleSectionCollapsed("chats")}
-        >
-          {chatItems.length === 0 ? (
-            <EmptySection message="No chats yet." />
-          ) : (
-            <WorkspaceGroupedSectionItems
-              sectionId="chats"
-              groups={chatGroups}
-              collapsedGroups={collapsedWorkspaceGroups}
-              onToggleGroup={toggleWorkspaceGroupCollapsed}
-              renderItem={(chat) => (
-                <SectionItem
-                  key={chat.config.id}
-                  active={route.view === "chat" && route.chatId === chat.config.id}
-                  title={chat.config.name}
-                  badge={getStatusLabel(chat.state.status, chat.state.syncState)}
-                  badgeVariant={getLoopStatusBadgeVariant(
-                    chat.state.status,
-                    chat.state.planMode?.isPlanReady ?? false,
-                  )}
-                  onClick={() => navigateWithinShell({ view: "chat", chatId: chat.config.id })}
                 />
               )}
             />

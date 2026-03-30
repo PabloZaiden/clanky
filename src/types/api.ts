@@ -19,9 +19,6 @@ import {
   GenerateLoopTitleRequestSchema,
   UpdateLoopRequestSchema,
   AddressCommentsRequestSchema,
-  SendChatMessageRequestSchema,
-  ConvertChatToLoopRequestSchema,
-  CreateChatRequestSchema,
   CreateSshSessionRequestSchema,
   UpdateSshSessionRequestSchema,
   PlanAcceptRequestSchema,
@@ -381,49 +378,4 @@ export type PullRequestDestinationResponse =
       destinationType: "disabled";
       /** Human-readable reason shown in the UI */
       disabledReason: string;
-    };
-
-/**
- * Request body for POST /api/loops/:id/chat endpoint.
- * Sends a message to an interactive chat.
- *
- * Type is derived from SendChatMessageRequestSchema - the Zod schema is the
- * single source of truth for both validation and TypeScript types.
- */
-export type SendChatMessageRequest = z.infer<typeof SendChatMessageRequestSchema>;
-
-/**
- * Request body for POST /api/loops/chat endpoint.
- * Creates a new interactive chat.
- *
- * Simpler than CreateLoopRequest — chats don't have plan mode,
- * draft mode, stop patterns, or clearPlanningFolder.
- *
- * Type is derived from CreateChatRequestSchema - the Zod schema is the
- * single source of truth for both validation and TypeScript types.
- */
-export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
-
-/**
- * Request body for POST /api/loops/:id/chat/convert-to-loop endpoint.
- */
-export type ConvertChatToLoopRequest = z.infer<typeof ConvertChatToLoopRequestSchema>;
-
-/**
- * Response from POST /api/loops/:id/chat endpoint.
- * Returns after the backend has safely accepted the message and coordinated
- * any required chat-turn restart. It does not wait for the AI response to
- * finish streaming.
- * Uses discriminated union for type-safe success/error handling.
- */
-export type SendChatMessageResponse =
-  | {
-      success: true;
-      /** The loop/chat ID that received the message */
-      loopId: string;
-    }
-  | {
-      success: false;
-      /** Error message describing what went wrong */
-      error: string;
     };
