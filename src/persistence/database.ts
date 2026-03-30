@@ -199,6 +199,44 @@ function createTables(database: Database): void {
       )
     `);
 
+    // Chats table - stores long-lived ACP-backed chat sessions.
+    // Keep this in the base schema so startup repairs legacy databases whose
+    // schema_migrations versions collide with earlier clean-cut resets.
+    database.run(`
+      CREATE TABLE IF NOT EXISTS chats (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        directory TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        model_provider_id TEXT,
+        model_model_id TEXT,
+        model_variant TEXT,
+        use_worktree INTEGER NOT NULL DEFAULT 1,
+        base_branch TEXT,
+        mode TEXT NOT NULL DEFAULT 'chat',
+        status TEXT NOT NULL DEFAULT 'idle',
+        started_at TEXT,
+        completed_at TEXT,
+        last_activity_at TEXT,
+        session_id TEXT,
+        session_server_url TEXT,
+        error_message TEXT,
+        error_timestamp TEXT,
+        error_code TEXT,
+        worktree_original_branch TEXT,
+        worktree_working_branch TEXT,
+        worktree_path TEXT,
+        messages TEXT,
+        logs TEXT,
+        tool_calls TEXT,
+        active_message_id TEXT,
+        interrupt_requested INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+      )
+    `);
+
     // Sessions table - maps loops to backend sessions
     // Uses composite primary key (backend_name, loop_id) since id was unused
     // and this combination is already unique
@@ -338,6 +376,17 @@ function createTables(database: Database): void {
     `);
     database.run(`
       CREATE INDEX IF NOT EXISTS idx_review_comments_loop_cycle ON review_comments(loop_id, review_cycle)
+    `);
+
+    // Chat indexes
+    database.run(`
+      CREATE INDEX IF NOT EXISTS idx_chats_workspace_id ON chats(workspace_id)
+    `);
+    database.run(`
+      CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats(created_at DESC)
+    `);
+    database.run(`
+      CREATE INDEX IF NOT EXISTS idx_chats_directory ON chats(directory)
     `);
 
     // SSH sessions indexes
