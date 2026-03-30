@@ -45,6 +45,19 @@ export interface LogViewerProps {
   id?: string;
 }
 
+export interface ConversationViewerProps extends LogViewerProps {
+  /** Whether assistant messages should be rendered alongside user messages. Default: false */
+  showAssistantMessages?: boolean;
+  /** Whether response log entries should be rendered. Default: true */
+  showResponseLogs?: boolean;
+  /** Whether to show explicit role labels above message content. Default: false */
+  showMessageRoles?: boolean;
+  /** Empty state copy to show when there are no visible entries. */
+  emptyStateMessage?: string;
+  /** Active-state copy to show while the transcript is still streaming. */
+  activeStateMessage?: string;
+}
+
 /**
  * Base type for a display entry before showHeader annotation.
  */

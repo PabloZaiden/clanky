@@ -1,7 +1,7 @@
 import type { ServerWebSocket } from "bun";
-import { loopEventEmitter, provisioningEventEmitter, sshSessionEventEmitter } from "../../core/event-emitter";
+import { chatEventEmitter, loopEventEmitter, provisioningEventEmitter, sshSessionEventEmitter } from "../../core/event-emitter";
 import { createLogger } from "../../core/logger";
-import type { LoopEvent, ProvisioningEvent, SshSessionEvent } from "../../types";
+import type { ChatEvent, LoopEvent, ProvisioningEvent, SshSessionEvent } from "../../types";
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
 
@@ -22,6 +22,7 @@ export const activeConnections = new Set<ServerWebSocket<WebSocketData>>();
 export function open(ws: ServerWebSocket<WebSocketData>): void {
   const {
     loopId,
+    chatId,
     sshSessionId,
     sshServerSessionId,
     provisioningJobId,
@@ -47,6 +48,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   activeConnections.add(ws);
   log.info("WebSocket connection opened", {
     loopId: loopId ?? "all",
+    chatId: chatId ?? "all",
     activeConnections: activeConnections.size,
   });
 
@@ -95,12 +97,18 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   ws.send(JSON.stringify({
     type: "connected",
     loopId: loopId ?? null,
+    chatId: chatId ?? null,
     sshSessionId: sshSessionId ?? null,
     sshServerSessionId: sshServerSessionId ?? null,
     provisioningJobId: provisioningJobId ?? null,
   }));
 
-  const shouldSubscribeToLoopEvents = !provisioningJobId || !!loopId;
+  const hasScopedSubscription = Boolean(
+    loopId || chatId || sshSessionId || sshServerSessionId || provisioningJobId,
+  );
+  const shouldSubscribeToAllRuntimeEvents = !hasScopedSubscription;
+
+  const shouldSubscribeToLoopEvents = shouldSubscribeToAllRuntimeEvents || !!loopId;
   const loopUnsubscribe = shouldSubscribeToLoopEvents
     ? loopEventEmitter.subscribe((event: LoopEvent) => {
         if (loopId && "loopId" in event && event.loopId !== loopId) {
@@ -115,7 +123,22 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
       })
     : undefined;
 
-  const shouldSubscribeToSshEvents = !provisioningJobId || !!sshSessionId || !!sshServerSessionId;
+  const shouldSubscribeToChatEvents = shouldSubscribeToAllRuntimeEvents || !!chatId;
+  const chatUnsubscribe = shouldSubscribeToChatEvents
+    ? chatEventEmitter.subscribe((event: ChatEvent) => {
+        if (chatId && event.chatId !== chatId) {
+          return;
+        }
+
+        try {
+          ws.send(JSON.stringify(event));
+        } catch (sendError) {
+          log.trace("Failed to send chat event to WebSocket client", { error: String(sendError) });
+        }
+      })
+    : undefined;
+
+  const shouldSubscribeToSshEvents = shouldSubscribeToAllRuntimeEvents || !!sshSessionId || !!sshServerSessionId;
   const sshSessionUnsubscribe = shouldSubscribeToSshEvents
     ? sshSessionEventEmitter.subscribe((event: SshSessionEvent) => {
         const expectedSessionId = sshSessionId ?? sshServerSessionId;
@@ -149,6 +172,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
 
   ws.data.unsubscribers = [
     ...(loopUnsubscribe ? [loopUnsubscribe] : []),
+    ...(chatUnsubscribe ? [chatUnsubscribe] : []),
     ...(sshSessionUnsubscribe ? [sshSessionUnsubscribe] : []),
     ...(provisioningUnsubscribe ? [provisioningUnsubscribe] : []),
   ];
@@ -193,6 +217,7 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   log.error("WebSocket error", {
     error: String(err),
     loopId: ws.data.loopId,
+    chatId: ws.data.chatId,
     sshSessionId: ws.data.sshSessionId,
     sshServerSessionId: ws.data.sshServerSessionId,
     provisioningJobId: ws.data.provisioningJobId,

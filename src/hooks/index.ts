@@ -3,6 +3,7 @@
  */
 
 export { useWebSocket, useGlobalEvents, useLoopEvents, type WebSocketConnectionStatus, type UseWebSocketOptions, type UseWebSocketResult } from "./useWebSocket";
+export { useChats, type UseChatsResult } from "./useChats";
 export { useLoops, type UseLoopsResult, type CreateLoopResult } from "./useLoops";
 export { useLoop, type UseLoopResult } from "./useLoop";
 export { useSshSessions, type UseSshSessionsResult } from "./useSshSessions";

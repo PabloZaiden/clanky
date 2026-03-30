@@ -12,12 +12,17 @@
  */
 
 import type { ReviewComment } from "./loop";
+import type { Chat } from "./chat";
 import type { SshServer } from "./ssh-server";
 import type { SshSession } from "./ssh-session";
 import {
   CreateLoopRequestSchema,
+  CreateChatRequestSchema,
   GenerateLoopTitleRequestSchema,
+  InterruptChatRequestSchema,
+  SendChatMessageRequestSchema,
   UpdateLoopRequestSchema,
+  UpdateChatRequestSchema,
   AddressCommentsRequestSchema,
   CreateSshSessionRequestSchema,
   UpdateSshSessionRequestSchema,
@@ -91,6 +96,7 @@ export interface ModelInfo {
  * single source of truth for both validation and TypeScript types.
  */
 export type CreateLoopRequest = z.infer<typeof CreateLoopRequestSchema>;
+export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
 
 /**
  * Request body for POST /api/loops/title endpoint.
@@ -120,6 +126,11 @@ export type CreateSshSessionRequest = z.infer<typeof CreateSshSessionRequestSche
  * single source of truth for both validation and TypeScript types.
  */
 export type UpdateLoopRequest = z.infer<typeof UpdateLoopRequestSchema>;
+export type UpdateChatRequest = z.infer<typeof UpdateChatRequestSchema>;
+export type SendChatMessageRequest = z.infer<typeof SendChatMessageRequestSchema>;
+export type InterruptChatRequest = z.infer<typeof InterruptChatRequestSchema>;
+
+export type ListChatsResponse = Chat[];
 
 /**
  * Request body for PATCH /api/ssh-sessions/:id.

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { App } from "@/App";
+import type { Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor, act, within } from "../helpers/render";
@@ -70,20 +71,56 @@ function createStandaloneSession(serverId: string, overrides?: Partial<{ id: str
   };
 }
 
+function createChat(overrides?: {
+  config?: Partial<Chat["config"]>;
+  state?: Partial<Chat["state"]>;
+}): Chat {
+  return {
+    config: {
+      id: overrides?.config?.id ?? "chat-1",
+      name: "Repo pairing",
+      workspaceId: overrides?.config?.workspaceId ?? "workspace-1",
+      directory: "/workspaces/test-project",
+      model: {
+        providerID: "github",
+        modelID: "gpt-5.4",
+        variant: "",
+      },
+      useWorktree: true,
+      baseBranch: "main",
+      createdAt: isoNow(),
+      updatedAt: isoNow(),
+      mode: "chat",
+      ...(overrides?.config ?? {}),
+    },
+    state: {
+      id: overrides?.state?.id ?? overrides?.config?.id ?? "chat-1",
+      status: "idle",
+      messages: [],
+      logs: [],
+      toolCalls: [],
+      ...(overrides?.state ?? {}),
+    },
+  };
+}
+
 function setupDefaultApi(options?: {
   loops?: ReturnType<typeof createLoop>[];
+  chats?: Chat[];
   workspaces?: ReturnType<typeof createWorkspace>[];
   sshSessions?: ReturnType<typeof createSshSession>[];
   sshServers?: ReturnType<typeof createSshServer>[];
   standaloneSessionsByServerId?: Record<string, ReturnType<typeof createStandaloneSession>[]>;
 }) {
   const loops = options?.loops ?? [];
+  const chats = options?.chats ?? [];
   const workspaces = options?.workspaces ?? [];
   const sshSessions = options?.sshSessions ?? [];
   const sshServers = options?.sshServers ?? [];
   const standaloneSessionsByServerId = options?.standaloneSessionsByServerId ?? {};
 
   api.get("/api/loops", () => loops);
+  api.get("/api/chats", () => chats);
   api.get("/api/workspaces", () => workspaces);
   api.get("/api/ssh-sessions", () => sshSessions);
   api.get("/api/ssh-servers", () => sshServers);
@@ -97,6 +134,11 @@ function setupDefaultApi(options?: {
   api.get("/api/loops/:id", (req) => {
     return loops.find((loop) => loop.config.id === req.params["id"])
       ?? createLoop({ config: { id: req.params["id"], name: `Loop ${req.params["id"]}` } });
+  });
+  api.get("/api/chats/:id", (req) => {
+    const chatId = req.params["id"]!;
+    return chats.find((chat) => chat.config.id === chatId)
+      ?? createChat({ config: { id: chatId, name: `Chat ${chatId}` } });
   });
   api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
   api.get("/api/loops/:id/diff", () => []);
@@ -415,6 +457,51 @@ describe("App shell", () => {
       expect(serverRender.getByRole("heading", { name: "Deploy host" })).toBeTruthy();
       expect(serverRender.getByText("No standalone sessions yet for this SSH server.")).toBeTruthy();
     });
+  });
+
+  test("renders chat details from the shell chat route", async () => {
+    const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
+    const chat = createChat({
+      config: {
+        id: "chat-1",
+        name: "Repo pairing",
+        workspaceId: workspace.id,
+        directory: workspace.directory,
+      },
+      state: {
+        id: "chat-1",
+        status: "idle",
+        worktree: {
+          originalBranch: "main",
+          workingBranch: "chat-repo-pairing-chat1",
+          worktreePath: "/workspaces/frontend/.ralph-worktrees/chat-1",
+        },
+        messages: [
+          {
+            id: "assistant-1",
+            role: "assistant",
+            content: "Ready when you are.",
+            timestamp: isoNow(),
+          },
+        ],
+        logs: [],
+        toolCalls: [],
+      },
+    });
+
+    setupDefaultApi({ workspaces: [workspace], chats: [chat] });
+
+    const { getByRole, getByText } = renderWithUser(<App />, { route: "#/chat/chat-1" });
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Repo pairing" })).toBeTruthy();
+      expect(getByText("Ready when you are.")).toBeTruthy();
+    });
+
+    const openChatConnections = ws.connections().filter(
+      (connection) => connection.isOpen && connection.queryParams["chatId"] === "chat-1",
+    );
+    expect(openChatConnections).toHaveLength(1);
   });
 
   test("opens workspace settings from the workspace shell icon action", async () => {

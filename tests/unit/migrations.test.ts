@@ -139,6 +139,7 @@ describe("migration infrastructure", () => {
 
     test("works for all known table names", () => {
       // Create all known tables
+      db.run("CREATE TABLE chats (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE loops (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE ssh_sessions (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE ssh_servers (id TEXT PRIMARY KEY)");
@@ -150,6 +151,7 @@ describe("migration infrastructure", () => {
       db.run("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)");
 
       // All should work without throwing
+      expect(getTableColumns(db, "chats")).toContain("id");
       expect(getTableColumns(db, "loops")).toContain("id");
       expect(getTableColumns(db, "ssh_sessions")).toContain("id");
       expect(getTableColumns(db, "ssh_servers")).toContain("id");
@@ -177,6 +179,72 @@ describe("migration infrastructure", () => {
       expect(tableExists(db, "loops")).toBe(true);
       db.run("DROP TABLE loops");
       expect(tableExists(db, "loops")).toBe(false);
+    });
+  });
+
+  describe("chat migration", () => {
+    test("creates the chats table and indexes", () => {
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(tableExists(db, "chats")).toBe(true);
+
+      const columns = getTableColumns(db, "chats");
+      expect(columns).toContain("workspace_id");
+      expect(columns).toContain("session_id");
+      expect(columns).toContain("interrupt_requested");
+    });
+
+    test("creates chat indexes even when chats table already exists", () => {
+      db.run(`
+        CREATE TABLE chats (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          model_provider_id TEXT,
+          model_model_id TEXT,
+          model_variant TEXT,
+          use_worktree INTEGER NOT NULL DEFAULT 1,
+          base_branch TEXT,
+          mode TEXT NOT NULL DEFAULT 'chat',
+          status TEXT NOT NULL DEFAULT 'idle',
+          started_at TEXT,
+          completed_at TEXT,
+          last_activity_at TEXT,
+          session_id TEXT,
+          session_server_url TEXT,
+          error_message TEXT,
+          error_timestamp TEXT,
+          error_code TEXT,
+          worktree_original_branch TEXT,
+          worktree_working_branch TEXT,
+          worktree_path TEXT,
+          messages TEXT,
+          logs TEXT,
+          tool_calls TEXT,
+          active_message_id TEXT,
+          interrupt_requested INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
+      const applied = runMigrations(db);
+      expect(applied).toBe(migrations.length);
+
+      const indexes = db.query(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'index' AND tbl_name = 'chats'
+        ORDER BY name
+      `).all() as Array<{ name: string }>;
+
+      expect(indexes.map((index) => index.name)).toEqual(expect.arrayContaining([
+        "idx_chats_workspace_id",
+        "idx_chats_created_at",
+        "idx_chats_directory",
+      ]));
     });
   });
 

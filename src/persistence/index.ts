@@ -3,6 +3,7 @@
  */
 
 export * from "./database";
+export * from "./chats";
 export * from "./loops";
 export * from "./preferences";
 export * from "./migrations";

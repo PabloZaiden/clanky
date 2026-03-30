@@ -1122,13 +1122,33 @@ export class AcpBackend implements Backend {
       if (sessionId !== id) {
         continue;
       }
-      const session = this.mapSession({
+      const sessionDirectory = getString(rawSession["cwd"]) ?? this.directory;
+      const listedSession = this.mapSession({
         id: sessionId,
         title: getString(rawSession["title"]),
         time: { created: Date.now() },
       });
-      this.sessionCache.set(session.id, session);
-      return session;
+
+      try {
+        const loaded = await this.sendRpcRequest<unknown>("session/load", {
+          sessionId,
+          cwd: sessionDirectory,
+          mcpServers: [],
+        });
+        const hydratedSession = this.hydrateSessionFromResult(sessionId, loaded, listedSession.title);
+        this.sessionCache.set(hydratedSession.id, hydratedSession);
+        return hydratedSession;
+      } catch (error) {
+        const message = String(error);
+        if (message.includes("Method not found") || message.includes("-32601")) {
+          this.sessionCache.set(listedSession.id, listedSession);
+          return listedSession;
+        }
+        if (message.toLowerCase().includes("not found")) {
+          return null;
+        }
+        throw error;
+      }
     }
 
     return null;
@@ -1526,6 +1546,39 @@ export class AcpBackend implements Backend {
       title: session.title,
       createdAt: new Date(session.time.created).toISOString(),
     };
+  }
+
+  private hydrateSessionFromResult(sessionId: string, result: unknown, fallbackTitle?: string): AgentSession {
+    const session = this.mapSession({
+      id: sessionId,
+      title: isRecord(result) ? getString(result["title"]) ?? fallbackTitle : fallbackTitle,
+      time: { created: Date.now() },
+    });
+    const configOptions = this.parseConfigOptions(result);
+    if (configOptions.length > 0) {
+      session.configOptions = configOptions;
+      const modelOption = configOptions.find((option) => option.category === "model" || option.id === "model");
+      if (modelOption) {
+        session.model = modelOption.currentValue;
+      }
+      const configModels = this.parseModelsFromConfigOptions(configOptions);
+      if (configModels.length > 0) {
+        this.modelCache.set(this.directory, configModels);
+      }
+    }
+    if (!session.model && isRecord(result)) {
+      const responseModel = getString(result["model"]) ?? getString(result["defaultModel"]);
+      if (responseModel) {
+        session.model = responseModel;
+      }
+    }
+    if (!this.modelCache.has(this.directory)) {
+      const models = this.parseModelsFromSessionResult(result);
+      if (models.length > 0) {
+        this.modelCache.set(this.directory, models);
+      }
+    }
+    return session;
   }
 
   /**

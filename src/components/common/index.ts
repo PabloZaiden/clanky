@@ -6,6 +6,7 @@ export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from ".
 export { Card, type CardProps } from "./Card";
 export {
   Badge,
+  getChatStatusBadgeVariant,
   getLoopStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,

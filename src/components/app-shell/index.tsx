@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  useChats,
   useDashboardData,
   useLoopGrouping,
   useLoops,
@@ -10,8 +11,7 @@ import {
   useWorkspaces,
 } from "../../hooks";
 import { getSshSessionStatusBadgeVariant } from "../common";
-import { getSshConnectionModeLabel } from "./shell-types";
-import { groupSidebarItemsByWorkspace } from "./shell-types";
+import { getSshConnectionModeLabel, groupSidebarChatsByWorkspace, groupSidebarItemsByWorkspace } from "./shell-types";
 import { ShellSidebarNav } from "./shell-sidebar-nav";
 import { ShellMainContent } from "./shell-main-content";
 import { useSidebar } from "./use-sidebar";
@@ -28,6 +28,13 @@ interface AppShellProps {
 
 export function AppShell({ route, onNavigate }: AppShellProps) {
   const toast = useToast();
+  const {
+    chats,
+    loading: chatsLoading,
+    error: chatsError,
+    refresh: refreshChats,
+    createChat,
+  } = useChats();
   const {
     loops,
     loading: loopsLoading,
@@ -106,6 +113,20 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
     () => groupSidebarItemsByWorkspace(loopItems, workspaces),
     [loopItems, workspaces],
   );
+  const chatGroups = useMemo(
+    () => groupSidebarChatsByWorkspace(chats, workspaces),
+    [chats, workspaces],
+  );
+  const chatItems = useMemo(
+    () =>
+      chatGroups.flatMap((group) =>
+        group.items.map((chat) => ({
+          chat,
+          workspaceName: group.title,
+        })),
+      ),
+    [chatGroups],
+  );
   const allShellSessions = useMemo(
     () =>
       [
@@ -129,13 +150,15 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
     [serversById, sessions, standaloneSessions, workspacesById],
   );
 
-  const shellLoading = loopsLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
-  const shellErrors = [loopsError, sshSessionsError, sshServersError, workspaceError].filter(
+  const shellLoading = chatsLoading || loopsLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
+  const shellErrors = [chatsError, loopsError, sshSessionsError, sshServersError, workspaceError].filter(
     Boolean,
   ) as string[];
 
   const selectedLoop =
     route.view === "loop" ? (loops.find((loop) => loop.config.id === route.loopId) ?? null) : null;
+  const selectedChat =
+    route.view === "chat" ? (chats.find((chat) => chat.config.id === route.chatId) ?? null) : null;
   const selectedWorkspace =
     route.view === "workspace"
       || route.view === "workspace-settings"
@@ -179,6 +202,7 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
         workspaces={workspaces}
         loopGroups={loopGroups}
         loopItems={loopItems}
+        chatItems={chatItems}
         allShellSessions={allShellSessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
@@ -194,6 +218,7 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
         openSidebar={sidebar.openSidebar}
         navigateWithinShell={navigateWithinShell}
         loops={loops}
+        chats={chats}
         workspaces={workspaces}
         sessions={sessions}
         servers={servers}
@@ -203,11 +228,13 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
         workspacesSaving={workspacesSaving}
         workspaceError={workspaceError}
         selectedLoop={selectedLoop}
+        selectedChat={selectedChat}
         selectedWorkspace={selectedWorkspace}
         composeWorkspace={composeWorkspace}
         composeServer={composeServer}
         selectedServer={selectedServer}
         refreshLoops={refreshLoops}
+        refreshChats={refreshChats}
         purgeLoop={purgeLoop}
         refreshSshSessions={refreshSshSessions}
         refreshSshServers={refreshSshServers}
@@ -223,6 +250,7 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
         composeActionState={composeState.composeActionState}
         setComposeActionState={composeState.setComposeActionState}
         handleLoopSubmit={composeState.handleLoopSubmit}
+        createChat={createChat}
         workspaceCreate={workspaceCreate}
         workspaceSettings={workspaceSettings}
         provisioning={provisioning}

@@ -7,6 +7,8 @@ import type { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
 export interface WebSocketData {
   /** Optional loop ID to filter events - only events for this loop are sent */
   loopId?: string;
+  /** Optional chat ID to filter chat events */
+  chatId?: string;
   /** Optional SSH session ID to filter session events or attach a terminal */
   sshSessionId?: string;
   /** Optional standalone SSH server session ID to filter session events or attach a terminal */

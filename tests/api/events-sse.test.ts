@@ -11,7 +11,7 @@ import { serve, type Server } from "bun";
 import { apiRoutes } from "../../src/api";
 import { websocketHandlers, type WebSocketData } from "../../src/api/websocket";
 import { ensureDataDirectories } from "../../src/persistence/database";
-import { loopEventEmitter } from "../../src/core/event-emitter";
+import { chatEventEmitter, loopEventEmitter } from "../../src/core/event-emitter";
 
 describe("Events WebSocket API Integration", () => {
   let testDataDir: string;
@@ -39,9 +39,10 @@ describe("Events WebSocket API Integration", () => {
         "/api/ws": (req: Request, server: Server<WebSocketData>) => {
           const url = new URL(req.url);
           const loopId = url.searchParams.get("loopId") ?? undefined;
+          const chatId = url.searchParams.get("chatId") ?? undefined;
 
           const upgraded = server.upgrade(req, {
-            data: { loopId } as WebSocketData,
+            data: { loopId, chatId } as WebSocketData,
           });
 
           if (upgraded) {
@@ -97,7 +98,7 @@ describe("Events WebSocket API Integration", () => {
     test("receives connection confirmation", async () => {
       const ws = new WebSocket(`${wsUrl}/api/ws`);
 
-      const message = await new Promise<{ type: string; loopId: string | null } | null>((resolve) => {
+      const message = await new Promise<{ type: string; loopId: string | null; chatId: string | null } | null>((resolve) => {
         const timeout = setTimeout(() => {
           ws.close();
           resolve(null);
@@ -121,6 +122,76 @@ describe("Events WebSocket API Integration", () => {
       expect(message).not.toBeNull();
       expect(message?.type).toBe("connected");
       expect(message?.loopId).toBeNull();
+      expect(message?.chatId).toBeNull();
+      ws.close();
+    });
+
+    test("filters chat events by chatId when specified", async () => {
+      const targetChatId = "target-chat";
+      const otherChatId = "other-chat";
+
+      const ws = new WebSocket(`${wsUrl}/api/ws?chatId=${targetChatId}`);
+
+      await new Promise<void>((resolve) => {
+        ws.onopen = () => resolve();
+      });
+
+      const connMsg = await new Promise<{ chatId: string | null }>((resolve) => {
+        ws.onmessage = (event) => {
+          resolve(JSON.parse(event.data));
+        };
+      });
+      expect(connMsg.chatId).toBe(targetChatId);
+
+      const receivedEvent = new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Timed out waiting for filtered chat event"));
+        }, 1000);
+
+        ws.onmessage = (event) => {
+          clearTimeout(timeout);
+          resolve(JSON.parse(event.data));
+        };
+      });
+
+      loopEventEmitter.emit({
+        type: "loop.log",
+        loopId: "other-loop",
+        id: "other-loop-log",
+        level: "info",
+        message: "Other loop message",
+        timestamp: new Date().toISOString(),
+      });
+
+      chatEventEmitter.emit({
+        type: "chat.log",
+        chatId: otherChatId,
+        log: {
+          id: "other-log",
+          level: "info",
+          message: "Other chat message",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+      chatEventEmitter.emit({
+        type: "chat.log",
+        chatId: targetChatId,
+        log: {
+          id: "target-log",
+          level: "info",
+          message: "Target chat message",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(await receivedEvent).toMatchObject({
+        type: "chat.log",
+        chatId: targetChatId,
+      });
+
       ws.close();
     });
 
@@ -191,11 +262,28 @@ describe("Events WebSocket API Integration", () => {
       });
       expect(connMsg.loopId).toBe(targetLoopId);
 
-      // Collect received events
-      const receivedEvents: unknown[] = [];
-      ws.onmessage = (event) => {
-        receivedEvents.push(JSON.parse(event.data));
-      };
+      const receivedEvent = new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Timed out waiting for filtered loop event"));
+        }, 1000);
+
+        ws.onmessage = (event) => {
+          clearTimeout(timeout);
+          resolve(JSON.parse(event.data));
+        };
+      });
+
+      chatEventEmitter.emit({
+        type: "chat.log",
+        chatId: "other-chat",
+        log: {
+          id: "chat-other",
+          level: "info",
+          message: "Other chat message",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
 
       // Emit events for different loops
       loopEventEmitter.emit({
@@ -216,12 +304,10 @@ describe("Events WebSocket API Integration", () => {
         timestamp: new Date().toISOString(),
       });
 
-      // Wait a bit for events to arrive
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Should only receive the target loop event
-      expect(receivedEvents.length).toBe(1);
-      expect((receivedEvents[0] as { loopId: string }).loopId).toBe(targetLoopId);
+      expect(await receivedEvent).toMatchObject({
+        type: "loop.log",
+        loopId: targetLoopId,
+      });
 
       ws.close();
     });

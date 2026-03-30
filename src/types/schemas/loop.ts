@@ -45,7 +45,7 @@ export const MessageImageAttachmentSchema = z.object({
   ),
 });
 
-const MessageImageAttachmentsSchema = z
+export const MessageImageAttachmentsSchema = z
   .array(MessageImageAttachmentSchema)
   .max(MESSAGE_IMAGE_ATTACHMENT_LIMIT, `no more than ${MESSAGE_IMAGE_ATTACHMENT_LIMIT} images can be attached`);
 

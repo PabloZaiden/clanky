@@ -1,4 +1,4 @@
-import type { Loop, SshSession, Workspace } from "../../types";
+import type { Chat, Loop, SshSession, Workspace } from "../../types";
 import type { CreateSshSessionRequest } from "../../types/api";
 import type { SshServer } from "../../types/ssh-server";
 import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/workspace";
@@ -6,6 +6,7 @@ import type { WorkspaceGroup } from "../../hooks/useLoopGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import { AppSettingsPanel } from "../AppSettingsModal";
+import { ChatDetails } from "../ChatDetails";
 import { LoopDetails } from "../LoopDetails";
 import { SshSessionDetails } from "../SshSessionDetails";
 import { SidebarIcon } from "../common";
@@ -35,6 +36,7 @@ interface ShellMainContentProps {
 
   // Data
   loops: Loop[];
+  chats: Chat[];
   workspaces: Workspace[];
   sessions: SshSession[];
   servers: SshServer[];
@@ -46,6 +48,7 @@ interface ShellMainContentProps {
 
   // Selections
   selectedLoop: Loop | null;
+  selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
@@ -53,6 +56,7 @@ interface ShellMainContentProps {
 
   // Loop actions
   refreshLoops: () => Promise<void>;
+  refreshChats: () => Promise<void>;
   purgeLoop: (loopId: string) => Promise<boolean>;
   refreshSshSessions: () => Promise<void>;
   refreshSshServers: () => Promise<void>;
@@ -78,6 +82,7 @@ interface ShellMainContentProps {
   composeActionState: CreateLoopFormActionState | null;
   setComposeActionState: (state: CreateLoopFormActionState | null) => void;
   handleLoopSubmit: (request: CreateLoopFormSubmitRequest) => Promise<boolean>;
+  createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
 
   // Workspace create
   workspaceCreate: UseWorkspaceCreateResult;
@@ -99,6 +104,7 @@ function renderMainContent(props: ShellMainContentProps) {
     shellHeaderOffsetClassName,
     navigateWithinShell,
     loops,
+    chats,
     workspaces,
     sessions,
     servers,
@@ -107,9 +113,11 @@ function renderMainContent(props: ShellMainContentProps) {
     workspacesLoading,
     workspaceError,
     selectedLoop,
+    selectedChat,
     selectedWorkspace,
     selectedServer,
     refreshLoops,
+    refreshChats,
     refreshSshSessions,
     refreshSshServers,
     refreshWorkspaces,
@@ -117,6 +125,7 @@ function renderMainContent(props: ShellMainContentProps) {
     deleteServer,
     deleteWorkspace,
     dashboardData,
+    createChat,
     workspaceSettings,
     exportConfig,
     importConfig,
@@ -181,6 +190,32 @@ function renderMainContent(props: ShellMainContentProps) {
     );
   }
 
+  if (route.view === "chat") {
+    if (!selectedChat) {
+      return shellLoading ? (
+        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>
+      ) : (
+        <ShellPanel eyebrow="Chat" title="Chat not found" description="The selected chat no longer exists.">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Use the sidebar or home button to continue.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    return (
+      <ChatDetails
+        chatId={route.chatId}
+        onBack={() => {
+          navigateWithinShell({ view: "home" });
+          void refreshChats();
+        }}
+        showBackButton={false}
+        headerOffsetClassName={shellHeaderOffsetClassName}
+      />
+    );
+  }
+
   if (route.view === "ssh") {
     return (
       <SshSessionDetails
@@ -211,6 +246,7 @@ function renderMainContent(props: ShellMainContentProps) {
       );
     }
     const relatedLoops = loops.filter((loop) => loop.config.workspaceId === selectedWorkspace.id);
+    const relatedChats = chats.filter((chat) => chat.config.workspaceId === selectedWorkspace.id);
     const relatedSessions = sessions.filter(
       (session) => session.config.workspaceId === selectedWorkspace.id,
     );
@@ -218,6 +254,7 @@ function renderMainContent(props: ShellMainContentProps) {
       <WorkspaceView
         workspace={selectedWorkspace}
         relatedLoops={relatedLoops}
+        relatedChats={relatedChats}
         relatedSessions={relatedSessions}
         registeredSshServers={servers}
         headerOffsetClassName={shellHeaderOffsetClassName}
@@ -368,6 +405,7 @@ function renderMainContent(props: ShellMainContentProps) {
         composeActionState={props.composeActionState}
         setComposeActionState={props.setComposeActionState}
         handleLoopSubmit={props.handleLoopSubmit}
+        createChat={createChat}
         dashboardData={dashboardData}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}

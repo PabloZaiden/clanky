@@ -15,7 +15,8 @@
  * @module types/events
  */
 
-import type { GitCommit, LoopConfig, ModelConfig, PendingPlanQuestion } from "./loop";
+import type { ChatConfig, ChatStatus } from "./chat";
+import type { GitCommit, LoopConfig, LoopLogEntry, ModelConfig, PendingPlanQuestion } from "./loop";
 import type { MessageImageAttachment } from "./message-attachments";
 
 /**
@@ -126,6 +127,73 @@ export type LoopEvent =
   | LoopPlanAcceptedEvent
   | LoopPlanDiscardedEvent
   | LoopPendingUpdatedEvent;
+
+/**
+ * Union type of all chat-scoped events streamed to clients.
+ */
+export type ChatEvent =
+  | ChatCreatedEvent
+  | ChatStatusEvent
+  | ChatMessageEvent
+  | ChatToolCallEvent
+  | ChatLogEvent
+  | ChatInterruptedEvent
+  | ChatErrorEvent
+  | ChatDeletedEvent;
+
+export interface ChatCreatedEvent {
+  type: "chat.created";
+  chatId: string;
+  config: ChatConfig;
+  timestamp: string;
+}
+
+export interface ChatStatusEvent {
+  type: "chat.status";
+  chatId: string;
+  status: ChatStatus;
+  timestamp: string;
+}
+
+export interface ChatMessageEvent {
+  type: "chat.message";
+  chatId: string;
+  message: MessageData;
+  timestamp: string;
+}
+
+export interface ChatToolCallEvent {
+  type: "chat.tool_call";
+  chatId: string;
+  tool: ToolCallData;
+  timestamp: string;
+}
+
+export interface ChatLogEvent {
+  type: "chat.log";
+  chatId: string;
+  log: LoopLogEntry;
+  timestamp: string;
+}
+
+export interface ChatInterruptedEvent {
+  type: "chat.interrupted";
+  chatId: string;
+  timestamp: string;
+}
+
+export interface ChatErrorEvent {
+  type: "chat.error";
+  chatId: string;
+  message: string;
+  timestamp: string;
+}
+
+export interface ChatDeletedEvent {
+  type: "chat.deleted";
+  chatId: string;
+  timestamp: string;
+}
 
 /**
  * Emitted when a new loop is created.
