@@ -112,7 +112,7 @@ describe("ChatManager", () => {
     expect(statuses).toEqual(expect.arrayContaining(["starting", "streaming", "idle"]));
   });
 
-  test("marks chat failed when persisted session is missing instead of recreating it", async () => {
+  test("recreates a missing persisted session during reconnect", async () => {
     context = await setupTestContext({
       useMockBackend: true,
       mockResponses: ["Recovered response"],
@@ -139,10 +139,49 @@ describe("ChatManager", () => {
 
     const reconnected = await manager.reconnectSession(firstRun.config.id);
     expect(reconnected).not.toBeNull();
-    expect(reconnected?.state.status).toBe("failed");
-    expect(reconnected?.state.session?.id).toBe(sessionId);
-    expect(reconnected?.state.error?.message.toLowerCase()).toContain("session");
+    expect(reconnected?.state.status).toBe("idle");
+    expect(reconnected?.state.session?.id).not.toBe(sessionId);
+    expect(reconnected?.state.error).toBeUndefined();
     expect(await context.mockBackend?.getSession(sessionId!)).toBeNull();
+  });
+
+  test("auto-reconnects on send when the persisted session is missing", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["First response", "Recovered response"],
+    });
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Auto Reconnect Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Create a session",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    const sessionId = completed.state.session?.id;
+
+    expect(sessionId).toBeString();
+    await context.mockBackend?.deleteSession(sessionId!);
+
+    const restarted = await manager.sendMessage(chat.config.id, {
+      message: "Recover and continue",
+    });
+    expect(restarted.state.status).toBe("streaming");
+
+    const recovered = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle" && current.state.messages.some((message) => message.content === "Recovered response"),
+    );
+
+    expect(recovered.state.session?.id).toBeString();
+    expect(recovered.state.session?.id).not.toBe(sessionId);
+    expect(recovered.state.error).toBeUndefined();
   });
 
   test("removes the chat worktree when deleting a worktree-backed chat", async () => {

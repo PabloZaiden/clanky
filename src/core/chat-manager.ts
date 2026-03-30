@@ -166,26 +166,52 @@ export class ChatManager {
     }
 
     const backend = await this.ensureBackendConnected(chat);
-    if (!chat.state.session?.id) {
-      return this.ensureSession(chat, backend);
+    let reconnectingChat = await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      status: "reconnecting",
+      error: undefined,
+      lastActivityAt: createTimestamp(),
+    });
+
+    if (!reconnectingChat.state.session?.id) {
+      reconnectingChat = await this.ensureSession(reconnectingChat, backend, { recreateIfMissing: true });
+      return this.updateChatStateAndReturn(reconnectingChat, {
+        ...reconnectingChat.state,
+        status: this.activeStreams.has(chatId) ? "streaming" : "idle",
+        error: undefined,
+        lastActivityAt: createTimestamp(),
+      });
     }
 
     try {
-      const existing = await backend.getSession(chat.state.session.id);
+      const existing = await backend.getSession(reconnectingChat.state.session.id);
       if (!existing) {
-        return this.failLostSession(chat, `Session ${chat.state.session.id} not found during reconnect`);
+        reconnectingChat = await this.ensureSession(reconnectingChat, backend, { recreateIfMissing: true });
+        return this.updateChatStateAndReturn(reconnectingChat, {
+          ...reconnectingChat.state,
+          status: this.activeStreams.has(chatId) ? "streaming" : "idle",
+          error: undefined,
+          lastActivityAt: createTimestamp(),
+        });
       }
     } catch (error) {
       const message = String(error);
       if (isSessionNotFoundError(message)) {
-        return this.failLostSession(chat, message);
+        reconnectingChat = await this.ensureSession(reconnectingChat, backend, { recreateIfMissing: true });
+        return this.updateChatStateAndReturn(reconnectingChat, {
+          ...reconnectingChat.state,
+          status: this.activeStreams.has(chatId) ? "streaming" : "idle",
+          error: undefined,
+          lastActivityAt: createTimestamp(),
+        });
       }
       throw error;
     }
 
-    return this.updateChatStateAndReturn(chat, {
-      ...chat.state,
+    return this.updateChatStateAndReturn(reconnectingChat, {
+      ...reconnectingChat.state,
       status: this.activeStreams.has(chatId) ? "streaming" : "idle",
+      error: undefined,
       lastActivityAt: createTimestamp(),
     });
   }
@@ -207,7 +233,7 @@ export class ChatManager {
     }
 
     const backend = await this.ensureBackendConnected(chat);
-    const sessionChat = await this.ensureSession(chat, backend);
+    const sessionChat = await this.ensureSession(chat, backend, { recreateIfMissing: true });
     if (!sessionChat?.state.session?.id) {
       throw new Error("Failed to establish chat session");
     }
@@ -349,23 +375,39 @@ export class ChatManager {
     return backend;
   }
 
-  private async ensureSession(chat: Chat, backend: Backend): Promise<Chat> {
+  private async ensureSession(
+    chat: Chat,
+    backend: Backend,
+    options?: {
+      recreateIfMissing?: boolean;
+    },
+  ): Promise<Chat> {
     if (chat.state.session?.id) {
       try {
         const existing = await backend.getSession(chat.state.session.id);
         if (existing) {
           return chat;
         }
+        if (options?.recreateIfMissing) {
+          return this.recreateSession(chat, backend);
+        }
         return this.failLostSession(chat, `Session ${chat.state.session.id} not found`);
       } catch (error) {
         const message = String(error);
         if (isSessionNotFoundError(message)) {
+          if (options?.recreateIfMissing) {
+            return this.recreateSession(chat, backend);
+          }
           return this.failLostSession(chat, message);
         }
         throw error;
       }
     }
 
+    return this.createSession(chat, backend);
+  }
+
+  private async createSession(chat: Chat, backend: Backend): Promise<Chat> {
     const working = await this.resolveWorkingDirectory(chat);
     const session = await backend.createSession({
       title: `Ralpher Chat: ${working.chat.config.name}`,
@@ -382,7 +424,23 @@ export class ChatManager {
       },
       startedAt: working.chat.state.startedAt ?? createTimestamp(),
       lastActivityAt: createTimestamp(),
+      error: undefined,
     });
+  }
+
+  private async recreateSession(chat: Chat, backend: Backend): Promise<Chat> {
+    const reconnecting = chat.state.status === "reconnecting"
+      ? chat
+      : await this.updateChatStateAndReturn(chat, {
+          ...chat.state,
+          status: "reconnecting",
+          error: undefined,
+          completedAt: undefined,
+          activeMessageId: undefined,
+          interruptRequested: false,
+          lastActivityAt: createTimestamp(),
+        });
+    return this.createSession(reconnecting, backend);
   }
 
   private async resolveWorkingDirectory(chat: Chat): Promise<{ chat: Chat; directory: string }> {
