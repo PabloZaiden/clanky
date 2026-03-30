@@ -145,6 +145,36 @@ describe("ChatManager", () => {
     expect(await context.mockBackend?.getSession(sessionId!)).toBeNull();
   });
 
+  test("marks reconnect as failed when backend session lookup errors unexpectedly", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Recovered response"],
+    });
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Reconnect Error Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Create a session",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    expect(completed.state.session?.id).toBeString();
+
+    context.mockBackend?.failNextGetSession("backend session lookup exploded");
+
+    await expect(manager.reconnectSession(chat.config.id)).rejects.toThrow("backend session lookup exploded");
+
+    const failed = await waitForChat(chat.config.id, (current) => current.state.status === "failed");
+    expect(failed.state.error?.message).toBe("Error: backend session lookup exploded");
+  });
+
   test("auto-reconnects on send when the persisted session is missing", async () => {
     context = await setupTestContext({
       useMockBackend: true,
@@ -182,6 +212,41 @@ describe("ChatManager", () => {
     expect(recovered.state.session?.id).toBeString();
     expect(recovered.state.session?.id).not.toBe(sessionId);
     expect(recovered.state.error).toBeUndefined();
+  });
+
+  test("marks chats as failed when recreating a missing session fails during send", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["First response", "Recovered response"],
+    });
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Recreate Failure Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Create a session",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    const sessionId = completed.state.session?.id;
+
+    expect(sessionId).toBeString();
+    await context.mockBackend?.deleteSession(sessionId!);
+    context.mockBackend?.failNextCreateSession("session recreation exploded");
+
+    await expect(manager.sendMessage(chat.config.id, {
+      message: "Recover and continue",
+    })).rejects.toThrow("session recreation exploded");
+
+    const failed = await waitForChat(chat.config.id, (current) => current.state.status === "failed");
+    expect(failed.state.error?.message).toBe("Error: session recreation exploded");
+    expect(failed.state.session?.id).toBe(sessionId);
   });
 
   test("removes the chat worktree when deleting a worktree-backed chat", async () => {

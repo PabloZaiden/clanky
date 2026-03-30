@@ -58,6 +58,8 @@ export class MockAcpBackend implements Backend {
   private readonly responses: string[];
   private readonly models: MockModelInfo[];
   private readonly sessions = new Map<string, AgentSession>();
+  private nextCreateSessionError: string | null = null;
+  private nextGetSessionError: string | null = null;
 
   constructor(options: MockBackendOptions = {}) {
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
@@ -101,6 +103,11 @@ export class MockAcpBackend implements Backend {
   }
 
   async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    if (this.nextCreateSessionError) {
+      const message = this.nextCreateSessionError;
+      this.nextCreateSessionError = null;
+      throw new Error(message);
+    }
     const session: AgentSession = {
       id: `mock-session-${Date.now()}`,
       title: options.title,
@@ -228,6 +235,11 @@ export class MockAcpBackend implements Backend {
    * Get an existing session by ID.
    */
   async getSession(id: string): Promise<AgentSession | null> {
+    if (this.nextGetSessionError) {
+      const message = this.nextGetSessionError;
+      this.nextGetSessionError = null;
+      throw new Error(message);
+    }
     return this.sessions.get(id) ?? null;
   }
 
@@ -236,6 +248,14 @@ export class MockAcpBackend implements Backend {
    */
   async deleteSession(id: string): Promise<void> {
     this.sessions.delete(id);
+  }
+
+  failNextCreateSession(message: string): void {
+    this.nextCreateSessionError = message;
+  }
+
+  failNextGetSession(message: string): void {
+    this.nextGetSessionError = message;
   }
 }
 
