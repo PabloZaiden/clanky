@@ -126,10 +126,6 @@ export const migrations: Migration[] = [
     version: 2,
     name: "create_chats_table",
     up: (db) => {
-      if (tableExists(db, "chats")) {
-        return;
-      }
-
       db.run(`
         CREATE TABLE IF NOT EXISTS chats (
           id TEXT PRIMARY KEY,

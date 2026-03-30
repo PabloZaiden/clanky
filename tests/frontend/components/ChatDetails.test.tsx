@@ -187,4 +187,38 @@ describe("ChatDetails", () => {
       expect(getByText("The main risk is the missing reconnect guard.")).toBeTruthy();
     });
   });
+
+  test("treats interrupt websocket events as returning to idle", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        session: { id: "session-1" },
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Streaming")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.interrupted",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:05.000Z",
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Idle")).toBeTruthy();
+    });
+  });
 });

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { ChatManager } from "../../src/core/chat-manager";
+import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import { loadChat } from "../../src/persistence/chats";
+import type { ChatEvent } from "../../src/types";
 import { setupTestContext, teardownTestContext, testModelFields, testWorkspaceId, type TestContext } from "../setup";
 
 let context: TestContext | undefined;
@@ -73,6 +75,41 @@ describe("ChatManager", () => {
       "Say hello",
       "Hello from the chat backend",
     ]);
+  });
+
+  test("emits chat.status events for starting, streaming, and idle transitions", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the chat backend"],
+      initGit: true,
+    });
+
+    const events: ChatEvent[] = [];
+    const emitter = new SimpleEventEmitter<ChatEvent>();
+    emitter.subscribe((event) => {
+      events.push(event);
+    });
+
+    const manager = new ChatManager(emitter);
+    const chat = await manager.createChat({
+      name: "Status Events Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Say hello",
+    });
+
+    await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+
+    const statuses = events
+      .filter((event): event is Extract<ChatEvent, { type: "chat.status" }> => event.type === "chat.status")
+      .map((event) => event.status);
+
+    expect(statuses).toEqual(expect.arrayContaining(["starting", "streaming", "idle"]));
   });
 
   test("marks chat failed when persisted session is missing instead of recreating it", async () => {

@@ -3,7 +3,7 @@
  */
 
 import type { HTMLAttributes } from "react";
-import type { PortForwardStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
+import type { ChatStatus, PortForwardStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
 
 export type BadgeVariant = 
   | "default" 
@@ -112,6 +112,24 @@ export function getLoopStatusBadgeVariant(status: string, isPlanReady = false): 
   }
 
   return getStatusBadgeVariant(status);
+}
+
+export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
+  switch (status) {
+    case "starting":
+    case "streaming":
+    case "reconnecting":
+      return "info";
+    case "interrupting":
+      return "warning";
+    case "failed":
+      return "error";
+    case "stopped":
+      return "stopped";
+    case "idle":
+    default:
+      return "success";
+  }
 }
 
 export function getSshSessionStatusBadgeVariant(status: SshSessionStatus): BadgeVariant {

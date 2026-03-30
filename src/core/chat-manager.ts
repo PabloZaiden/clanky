@@ -138,18 +138,7 @@ export class ChatManager {
       state.completedAt = state.completedAt ?? state.lastActivityAt;
     }
 
-    const saved = await updateChatState(chatId, state);
-    if (!saved) {
-      return null;
-    }
-
-    this.emitter.emit({
-      type: "chat.status",
-      chatId,
-      status,
-      timestamp: state.lastActivityAt,
-    });
-    return { config: chat.config, state };
+    return this.updateChatStateAndReturn(chat, state);
   }
 
   async attachSession(chatId: string, session: SessionInfo): Promise<Chat | null> {
@@ -798,18 +787,11 @@ export class ChatManager {
   }
 
   private async updateChatStatusInternal(chat: Chat, status: ChatStatus): Promise<Chat> {
-    const updated = await this.updateChatStateAndReturn(chat, {
+    return this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status,
       lastActivityAt: createTimestamp(),
     });
-    this.emitter.emit({
-      type: "chat.status",
-      chatId: chat.config.id,
-      status,
-      timestamp: updated.state.lastActivityAt ?? createTimestamp(),
-    });
-    return updated;
   }
 
   private async updateChatStateAndReturn(chat: Chat, state: Chat["state"]): Promise<Chat> {
@@ -817,10 +799,19 @@ export class ChatManager {
     if (!saved) {
       throw new Error(`Failed to persist chat state for ${chat.config.id}`);
     }
-    return {
+    const updated = {
       config: chat.config,
       state,
     };
+    if (chat.state.status !== state.status) {
+      this.emitter.emit({
+        type: "chat.status",
+        chatId: chat.config.id,
+        status: state.status,
+        timestamp: state.lastActivityAt ?? createTimestamp(),
+      });
+    }
+    return updated;
   }
 }
 

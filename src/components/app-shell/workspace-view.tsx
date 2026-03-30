@@ -8,6 +8,7 @@ import {
   GearIcon,
   StatusBadge,
   type ActionMenuItem,
+  getChatStatusBadgeVariant,
   getStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
@@ -171,7 +172,7 @@ export function WorkspaceView({
                       Chat
                     </span>
                   </span>
-                  <StatusBadge className="ml-auto shrink-0" variant={getStatusBadgeVariant(chat.state.status)}>
+                  <StatusBadge className="ml-auto shrink-0" variant={getChatStatusBadgeVariant(chat.state.status)}>
                     {chat.state.status}
                   </StatusBadge>
                 </button>

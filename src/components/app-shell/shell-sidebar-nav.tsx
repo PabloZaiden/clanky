@@ -1,7 +1,7 @@
 import type { Chat, Loop, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import { getLoopStatusLabel } from "../../utils";
-import { GearIcon, RefreshIcon, SidebarIcon, getLoopStatusBadgeVariant, getStatusBadgeVariant } from "../common";
+import { GearIcon, RefreshIcon, SidebarIcon, getChatStatusBadgeVariant, getLoopStatusBadgeVariant } from "../common";
 import type { BadgeVariant } from "../common";
 import { ShellSection, SectionItem, WorkspaceGroupedSectionItems, EmptySection } from "./shell-sidebar";
 import type { ShellRoute, SidebarSectionId, WorkspaceSidebarGroup } from "./shell-types";
@@ -192,7 +192,7 @@ export function ShellSidebarNav({
                 title={chat.config.name}
                 subtitle={workspaceName}
                 badge={chat.state.status}
-                badgeVariant={getStatusBadgeVariant(chat.state.status)}
+                badgeVariant={getChatStatusBadgeVariant(chat.state.status)}
                 onClick={() => navigateWithinShell({ view: "chat", chatId: chat.config.id })}
               />
             ))

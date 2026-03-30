@@ -4,7 +4,7 @@ import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
-import { Button, StatusBadge } from "./common";
+import { Button, StatusBadge, getChatStatusBadgeVariant } from "./common";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { useMarkdownPreference, useToast, useWebSocket } from "../hooks";
@@ -35,23 +35,6 @@ function getChatStatusLabel(status: Chat["state"]["status"]): string {
       return "Failed";
     default:
       return "Idle";
-  }
-}
-
-function getChatStatusVariant(status: Chat["state"]["status"]): "default" | "success" | "warning" | "error" | "info" {
-  switch (status) {
-    case "streaming":
-    case "starting":
-    case "reconnecting":
-      return "info";
-    case "interrupting":
-      return "warning";
-    case "failed":
-      return "error";
-    case "idle":
-      return "success";
-    default:
-      return "default";
   }
 }
 
@@ -169,7 +152,7 @@ export function ChatDetails({
             ...current,
             state: {
               ...current.state,
-              status: "stopped",
+              status: "idle",
               lastActivityAt: event.timestamp,
             },
           };
@@ -348,7 +331,7 @@ export function ChatDetails({
               <h1 className="truncate text-lg font-semibold text-gray-950 dark:text-gray-100">
                 {chat.config.name}
               </h1>
-              <StatusBadge variant={getChatStatusVariant(chat.state.status)}>
+              <StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>
                 {getChatStatusLabel(chat.state.status)}
               </StatusBadge>
             </div>

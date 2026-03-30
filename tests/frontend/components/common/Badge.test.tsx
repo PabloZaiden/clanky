@@ -5,6 +5,7 @@
 import { test, expect, describe } from "bun:test";
 import {
   Badge,
+  getChatStatusBadgeVariant,
   getLoopStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getStatusBadgeVariant,
@@ -213,6 +214,21 @@ describe("getLoopStatusBadgeVariant", () => {
 
   test("falls back to the base status mapping for non-planning states", () => {
     expect(getLoopStatusBadgeVariant("running", true)).toBe("running");
+  });
+});
+
+describe("getChatStatusBadgeVariant", () => {
+  test("maps active chat statuses to info or warning variants", () => {
+    expect(getChatStatusBadgeVariant("starting")).toBe("info");
+    expect(getChatStatusBadgeVariant("streaming")).toBe("info");
+    expect(getChatStatusBadgeVariant("reconnecting")).toBe("info");
+    expect(getChatStatusBadgeVariant("interrupting")).toBe("warning");
+  });
+
+  test("maps idle, stopped, and failed chat statuses to stable variants", () => {
+    expect(getChatStatusBadgeVariant("idle")).toBe("success");
+    expect(getChatStatusBadgeVariant("stopped")).toBe("stopped");
+    expect(getChatStatusBadgeVariant("failed")).toBe("error");
   });
 });
 
