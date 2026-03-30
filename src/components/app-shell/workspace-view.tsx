@@ -55,6 +55,11 @@ export function WorkspaceView({
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
   const isAutoProvisioned = Boolean(workspace.sourceDirectory);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
+  const sshActivityDescription = relatedSessions.length > 0
+    ? "Saved SSH sessions for this workspace."
+    : workspaceSshEnabled
+      ? "No saved SSH sessions yet for this workspace."
+      : "Saved SSH sessions are only created when this workspace uses SSH transport.";
   const createActionItems: ActionMenuItem[] = [
     {
       label: "New Loop",
@@ -144,9 +149,7 @@ export function WorkspaceView({
             </p>
             <p className="mt-2 text-2xl font-semibold text-gray-950 dark:text-gray-100">{relatedSessions.length}</p>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              {workspaceSshEnabled
-                ? "Saved SSH sessions for this workspace."
-                : "Saved SSH sessions stay at 0 until this workspace uses SSH transport."}
+              {sshActivityDescription}
             </p>
           </div>
         </div>

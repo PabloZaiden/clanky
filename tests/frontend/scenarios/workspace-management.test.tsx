@@ -476,6 +476,38 @@ describe("workspace management scenario", () => {
     expect(getAllByText("stdio").length).toBeGreaterThan(0);
   });
 
+  test("workspace activity SSH copy stays consistent when legacy sessions exist on stdio workspaces", async () => {
+    setupBaseApi();
+
+    const legacySession = createSshSession({
+      config: {
+        id: "ws-session-legacy",
+        name: "Legacy SSH",
+        workspaceId: WORKSPACE.id,
+      },
+    });
+
+    api.get("/api/loops", () => []);
+    api.get("/api/chats", () => []);
+    api.get("/api/ssh-sessions", () => [legacySession]);
+    api.get("/api/workspaces", () => [WORKSPACE]);
+    api.get("/api/workspaces/:id", () => WORKSPACE);
+
+    const { getAllByText, getByText, user } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
+    });
+
+    await user.click(getAllByText("Existing Project")[0]!);
+    await waitFor(() => {
+      expect(getByText("Workspace activity")).toBeTruthy();
+    });
+
+    expect(getByText("Saved SSH sessions for this workspace.")).toBeTruthy();
+    expect(document.body.textContent?.includes("stay at 0")).toBe(false);
+  });
+
   test("workspace detail rows keep long loop and session names shrinkable on mobile", async () => {
     setupBaseApi();
 
