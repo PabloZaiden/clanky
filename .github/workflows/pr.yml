@@ -16,6 +16,9 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+          
+      - name: Install playwright
+        run: bunx playwright install --with-deps --only-shell
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
