@@ -23,11 +23,11 @@ import { toMessageImageAttachments } from "../lib/image-attachments";
 const log = createLogger("LoopActionBar");
 
 export interface LoopActionBarProps {
-  /** Mode of the loop: "loop" or "chat" */
+  /** Mode of the loop */
   mode?: LoopConfig["mode"];
   /** Whether the loop is in planning mode */
   isPlanning?: boolean;
-  /** Whether the loop/chat is actively generating right now */
+  /** Whether the loop is actively generating right now */
   isGenerating?: boolean;
   /** Current model configuration (from loop config) */
   currentModel?: ModelConfig;
@@ -49,7 +49,7 @@ export interface LoopActionBarProps {
 }
 
 export function LoopActionBar({
-  mode,
+  mode: _mode,
   isPlanning = false,
   isGenerating = false,
   currentModel,
@@ -66,8 +66,6 @@ export function LoopActionBar({
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
-
-  const isChatMode = mode === "chat";
 
   // Build current model key for display
   const currentModelKey = currentModel 
@@ -178,7 +176,7 @@ export function LoopActionBar({
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onPaste={handlePaste}
-            placeholder={isPlanning ? "Send feedback on the plan..." : isChatMode ? "Type a message..." : "Send a message to steer the agent..."}
+            placeholder={isPlanning ? "Send feedback on the plan..." : "Send a message to steer the agent..."}
             disabled={disabled || isSubmitting}
             className="flex-1 min-w-0 h-9 text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
           />

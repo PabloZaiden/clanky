@@ -110,8 +110,7 @@ This downloads the appropriate binary for your platform (Linux/macOS, x64/arm64)
 - **Real-time Updates** - Live log streaming via WebSocket
 - **Model Selection** - Choose AI models from available providers
 - **Plan Mode** - Review, refine, and accept plans before autonomous execution starts
-- **Chat Mode** - Run interactive single-turn chats on the same workspace and git infrastructure
-- **Feedback Cycles** - Restart finished loops and chats from the bottom composer, including review follow-ups on pushed or merged loops
+- **Feedback Cycles** - Restart finished loops from the bottom composer, including review follow-ups on pushed or merged loops
 - **SSH Sessions** - Open persistent dtach-backed terminal sessions for SSH workspaces
 - **Port Forwarding** - Expose remote loop services through browser-safe local proxy routes
 - **Workspace-Scoped Settings** - Configure provider and transport per workspace
@@ -248,14 +247,13 @@ The **"Review"** tab shows:
 </details>
 
 <details>
-<summary><strong>Restarting a Finished Loop or Chat</strong></summary>
+<summary><strong>Restarting a Finished Loop</strong></summary>
 
-When a loop or chat reaches a restartable terminal state, the bottom composer becomes a restart surface instead of a mid-run queue.
+When a loop reaches a restartable terminal state, the bottom composer becomes a restart surface instead of a mid-run queue.
 
 - `completed`, `stopped`, `failed`, and `max_iterations` restart as a new feedback cycle on the same logical loop
-- chat mode reconnects to the persisted chat session when possible so follow-up context survives
 - `pushed` and `merged` accept generic follow-up messages from the same composer, reusing review-cycle branch handling
-- `deleted` loops and chats can be revived before purge, reusing preserved branch/worktree state when available
+- `deleted` loops can be revived before purge, reusing preserved branch/worktree state when available
 
 </details>
 
@@ -271,11 +269,10 @@ While a loop is running:
 </details>
 
 <details>
-<summary><strong>Using Plan Mode and Chat Mode</strong></summary>
+<summary><strong>Using Plan Mode</strong></summary>
 
 - **Plan mode** lets you review the generated `.planning/plan.md` before the loop starts editing code
 - Plans can be refined with feedback, accepted to start the loop, or handed off directly to an SSH session
-- **Chat mode** creates an interactive loop that runs one turn at a time on demand instead of cycling autonomously
 
 </details>
 

@@ -15,7 +15,7 @@ import { clearPlanningFilesImpl } from "./loop-planning-files";
 export { startStatePersistenceImpl } from "./loop-state-persistence";
 export { validateMainCheckoutStartImpl, ensureLoopBranchCheckedOutImpl } from "./loop-git-validation";
 export { clearPlanningFilesImpl } from "./loop-planning-files";
-export { recoverPlanningEngineImpl, recoverChatEngineImpl } from "./loop-engine-recovery";
+export { recoverPlanningEngineImpl } from "./loop-engine-recovery";
 
 export async function startLoopImpl(ctx: LoopCtx, loopId: string, _options?: StartLoopOptions): Promise<void> {
   const loop = await loadLoop(loopId);

@@ -12,7 +12,6 @@ import {
   isLoopPlanReady,
   isLoopActive,
   formatRelativeTime,
-  isChat,
 } from "../utils";
 
 export function LoopRow({
@@ -27,7 +26,6 @@ export function LoopRow({
   const isPlanReady = isLoopPlanReady(loop);
   const isDraft = state.status === "draft";
   const isAddressable = state.reviewMode?.addressable === true;
-  const isChatMode = isChat(loop);
 
   // Determine badge variant and label for planning sub-states
   const badgeVariant: BadgeVariant = isPlanning
@@ -91,8 +89,8 @@ export function LoopRow({
                   onRename();
                 }}
                 className="flex-shrink-0 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-neutral-700"
-                aria-label={isChatMode ? "Rename chat" : "Rename loop"}
-                title={isChatMode ? "Rename chat" : "Rename loop"}
+                aria-label="Rename loop"
+                title="Rename loop"
               >
                 <EditIcon size="h-3.5 w-3.5" />
               </button>
@@ -101,11 +99,6 @@ export function LoopRow({
 
           {/* Badges */}
           <div className="flex max-w-full flex-wrap items-center gap-1.5">
-            {isChatMode && (
-              <Badge variant="default">
-                Chat
-              </Badge>
-            )}
             <StatusBadge variant={badgeVariant}>
               {badgeLabel}
             </StatusBadge>

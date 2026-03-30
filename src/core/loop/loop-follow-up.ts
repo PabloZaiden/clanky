@@ -3,7 +3,7 @@ import type { ModelConfig } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { SendFollowUpResult } from "./loop-types";
 import { loadLoop } from "../../persistence/loops";
-import { canReuseExistingBranch, jumpstartLoopFromEngine, reviveDeletedLoop } from "./loop-jumpstart";
+import { jumpstartLoopFromEngine } from "./loop-jumpstart";
 
 export async function sendFollowUpImpl(
   ctx: LoopCtx,
@@ -32,43 +32,11 @@ export async function sendFollowUpImpl(
   }
 
   if (loop.state.status === "deleted") {
-    if (loop.config.mode === "chat") {
-      const canRecoverChatContext = await canReuseExistingBranch(loop);
-      if (!canRecoverChatContext) {
-        return jumpstartLoopFromEngine(ctx, loopId, {
-          message,
-          model: options.model,
-          attachments: options.attachments,
-        });
-      }
-
-      const reviveResult = await reviveDeletedLoop(loopId);
-      if (!reviveResult.success) {
-        return reviveResult;
-      }
-
-      try {
-        await ctx.sendChatMessage(loopId, message, options.model, options.attachments);
-        return { success: true };
-      } catch (error) {
-        return { success: false, error: String(error) };
-      }
-    }
-
     return jumpstartLoopFromEngine(ctx, loopId, {
       message,
       model: options.model,
       attachments: options.attachments,
     });
-  }
-
-  if (loop.config.mode === "chat") {
-    try {
-      await ctx.sendChatMessage(loopId, message, options.model, options.attachments);
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
   }
 
   return jumpstartLoopFromEngine(ctx, loopId, {

@@ -13,16 +13,12 @@ import type { ShellRoute } from "./shell-types";
 import type { SshServer } from "../../types/ssh-server";
 
 interface ComposeLoopViewProps {
-  kind: "loop" | "chat";
   composeWorkspace: Workspace | null;
   shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: ShellRoute) => void;
   composeActionState: CreateLoopFormActionState | null;
   setComposeActionState: (state: CreateLoopFormActionState | null) => void;
-  handleLoopSubmit: (
-    kind: "loop" | "chat",
-    request: CreateLoopFormSubmitRequest,
-  ) => Promise<boolean>;
+  handleLoopSubmit: (request: CreateLoopFormSubmitRequest) => Promise<boolean>;
   dashboardData: UseDashboardDataResult;
   workspaces: Workspace[];
   workspacesLoading: boolean;
@@ -32,7 +28,6 @@ interface ComposeLoopViewProps {
 
 export function ComposeLoopView(props: ComposeLoopViewProps) {
   const {
-    kind,
     composeWorkspace,
     shellHeaderOffsetClassName,
     navigateWithinShell,
@@ -53,15 +48,11 @@ export function ComposeLoopView(props: ComposeLoopViewProps) {
 
   return (
     <ShellPanel
-      eyebrow={kind === "chat" ? "Chat" : "Loop"}
+      eyebrow="Loop"
       title={
-        kind === "chat"
-          ? composeWorkspace
-            ? `Start a new chat in ${composeWorkspace.name}`
-            : "Start a new chat"
-          : composeWorkspace
-            ? `Start a new loop in ${composeWorkspace.name}`
-            : "Start a new loop"
+        composeWorkspace
+          ? `Start a new loop in ${composeWorkspace.name}`
+          : "Start a new loop"
       }
       description={composeWorkspace?.directory}
       descriptionClassName="hidden sm:inline font-mono"
@@ -78,8 +69,7 @@ export function ComposeLoopView(props: ComposeLoopViewProps) {
           >
             Cancel
           </Button>
-          {kind === "loop" &&
-            composeActionState &&
+          {composeActionState &&
             (!composeActionState.isEditing || composeActionState.isEditingDraft) && (
               <Button
                 type="button"
@@ -102,7 +92,6 @@ export function ComposeLoopView(props: ComposeLoopViewProps) {
               loading={composeActionState.isSubmitting}
             >
               {getComposeSubmitActionLabel({
-                isChatMode: kind === "chat",
                 isEditing: composeActionState.isEditing,
               })}
             </Button>
@@ -111,9 +100,8 @@ export function ComposeLoopView(props: ComposeLoopViewProps) {
       }
     >
       <CreateLoopForm
-        key={`${kind}:${composeWorkspace?.id ?? "none"}`}
-        mode={kind}
-        onSubmit={(request) => handleLoopSubmit(kind, request)}
+        key={`loop:${composeWorkspace?.id ?? "none"}`}
+        onSubmit={handleLoopSubmit}
         onCancel={handleComposeCancel}
         closeOnSuccess={false}
         models={dashboardData.models}

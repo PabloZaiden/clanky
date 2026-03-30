@@ -24,16 +24,10 @@ export function startStatePersistenceImpl(ctx: LoopCtx, loopId: string): void {
       engine.state.status === "max_iterations"
     ) {
       clearInterval(interval);
-
-      const isChatIdle = engine.config.mode === "chat" &&
-        (engine.state.status === "completed" || engine.state.status === "max_iterations");
-
-      if (!isChatIdle) {
-        backendManager.disconnectLoop(loopId).catch((error) => {
-          log.error(`Failed to disconnect loop backend during cleanup: ${String(error)}`);
-        });
-        ctx.engines.delete(loopId);
-      }
+      backendManager.disconnectLoop(loopId).catch((error) => {
+        log.error(`Failed to disconnect loop backend during cleanup: ${String(error)}`);
+      });
+      ctx.engines.delete(loopId);
     }
   }, 5000);
 }

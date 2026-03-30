@@ -40,10 +40,6 @@ export function WorkspaceView({
       label: "New Loop",
       onClick: () => onNavigate({ view: "compose", kind: "loop", scopeId: workspace.id }),
     },
-    {
-      label: "New Chat",
-      onClick: () => onNavigate({ view: "compose", kind: "chat", scopeId: workspace.id }),
-    },
     ...(workspaceSshEnabled
       ? [{
           label: "New SSH Session",
@@ -107,27 +103,25 @@ export function WorkspaceView({
         />
         <SummaryCard
           label="Loops"
-          value={relatedLoops.filter((loop) => loop.config.mode !== "chat").length}
-          meta="Task loops in this workspace."
+          value={relatedLoops.length}
+          meta="Loops assigned to this workspace."
         />
         <SummaryCard
-          label="Chats / SSH"
-          value={`${relatedLoops.filter((loop) => loop.config.mode === "chat").length} / ${relatedSessions.length}`}
-          meta="Interactive chat sessions and terminals."
+          label="SSH Sessions"
+          value={relatedSessions.length}
+          meta="Saved SSH sessions for this workspace."
         />
       </div>
 
       <div className="grid min-w-0 gap-6 xl:grid-cols-2">
         <div className="min-w-0 space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Loops and chats</h2>
+          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Loops</h2>
           <div className="space-y-2">
             {relatedLoops.length === 0 ? (
-              <EmptySection message="No loops or chats in this workspace yet." />
+              <EmptySection message="No loops in this workspace yet." />
             ) : (
               relatedLoops.map((loop) => {
-                const route: ShellRoute = loop.config.mode === "chat"
-                  ? { view: "chat", chatId: loop.config.id }
-                  : { view: "loop", loopId: loop.config.id };
+                const route: ShellRoute = { view: "loop", loopId: loop.config.id };
                 return (
                   <button
                     key={loop.config.id}
@@ -140,7 +134,7 @@ export function WorkspaceView({
                         {loop.config.name}
                       </span>
                       <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                        {loop.config.mode === "chat" ? "Chat" : "Loop"}
+                        Loop
                       </span>
                     </span>
                     <StatusBadge className="ml-auto shrink-0" variant={getStatusBadgeVariant(loop.state.status)}>

@@ -9,14 +9,13 @@ import type {
   BranchInfo,
   Workspace,
   CreateLoopRequest,
-  CreateChatRequest,
   SshSession,
   SshServer,
 } from "../../types";
 import type { WorkspaceExportData, WorkspaceImportResult, CreateWorkspaceRequest } from "../../types/workspace";
 import type { CreateLoopFormActionState } from "../CreateLoopForm";
 import type { PurgeArchivedLoopsResult } from "../../hooks";
-import type { CreateLoopResult, CreateChatResult } from "../../hooks/useLoops";
+import type { CreateLoopResult } from "../../hooks/useLoops";
 import type { UseWorkspaceServerSettingsResult } from "../../hooks/useWorkspaceServerSettings";
 import {
   UncommittedChangesModal,
@@ -38,12 +37,10 @@ export interface DashboardModalsProps {
   // Create/Edit modal
   showCreateModal: boolean;
   editDraftId: string | null;
-  createMode: "loop" | "chat";
   formActionState: CreateLoopFormActionState | null;
   setFormActionState: (state: CreateLoopFormActionState | null) => void;
   onCloseCreateModal: () => void;
   onCreateLoop: (request: CreateLoopRequest) => Promise<CreateLoopResult>;
-  onCreateChat: (request: CreateChatRequest) => Promise<CreateChatResult>;
   onDeleteDraft: (loopId: string) => Promise<boolean>;
   onRefresh: () => Promise<void>;
 
@@ -117,12 +114,10 @@ export function DashboardModals(props: DashboardModalsProps) {
         sshServers={props.sshServers}
         showCreateModal={props.showCreateModal}
         editDraftId={props.editDraftId}
-        createMode={props.createMode}
         formActionState={props.formActionState}
         setFormActionState={props.setFormActionState}
         onCloseCreateModal={props.onCloseCreateModal}
         onCreateLoop={props.onCreateLoop}
-        onCreateChat={props.onCreateChat}
         onDeleteDraft={props.onDeleteDraft}
         onRefresh={props.onRefresh}
         models={props.models}

@@ -1,5 +1,4 @@
 import type { LoopCtx } from "./context";
-import type { ModelConfig } from "../../types/loop";
 import type { AcceptPlanOptions, AcceptPlanResult } from "./loop-types";
 import { createTimestamp } from "../../types/events";
 import { updateLoopState } from "../../persistence/loops";
@@ -232,25 +231,4 @@ export async function discardPlanImpl(ctx: LoopCtx, loopId: string): Promise<boo
   const result = await ctx.deleteLoop(loopId);
   log.debug(`[LoopManager] discardPlan: deleteLoop returned ${result} for ${loopId}`);
   return result;
-}
-
-export async function sendChatMessageImpl(
-  ctx: LoopCtx,
-  loopId: string,
-  message: string,
-  model?: ModelConfig,
-  attachments: MessageImageAttachment[] = [],
-): Promise<void> {
-  const engine = ctx.engines.get(loopId) ?? await ctx.recoverChatEngine(loopId);
-
-  if (engine.config.mode !== "chat") {
-    throw new Error(`Loop is not a chat (mode: ${engine.config.mode})`);
-  }
-
-  const validStates = ["completed", "running", "max_iterations", "stopped", "failed"];
-  if (!validStates.includes(engine.state.status)) {
-    throw new Error(`Cannot send chat message in status: ${engine.state.status}`);
-  }
-
-  await engine.injectChatMessage(message, model, attachments);
 }

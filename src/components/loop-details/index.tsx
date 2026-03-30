@@ -49,9 +49,9 @@ export function LoopDetails({
   onSelectSshSession,
 }: LoopDetailsProps) {
   const {
-    loop, loading, error, messages, toolCalls, logs, gitChangeCounter, isChatMode,
+    loop, loading, error, messages, toolCalls, logs, gitChangeCounter,
     accept, push, updateBranch, remove, purge, markMerged,
-    stopLoop, setPending, sendChatMessage, sendFollowUp, convertChatToLoop,
+    stopLoop, setPending, sendFollowUp,
     getDiff, getPlan, getStatusFile, getPullRequestDestination,
     sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan,
     addressReviewComments, update, connectViaSsh,
@@ -64,7 +64,7 @@ export function LoopDetails({
   const logDisplay = useLogDisplayState();
   const { isFocusMode: isLogFocusMode, toggleFocusMode: toggleLogFocusMode } = useLogFocusMode();
   const { activeTab, tabsWithUpdates, setTabsWithUpdates, handleTabChange } = useTabState({
-    loopId, loop, isChatMode,
+    loopId, loop,
     messagesCount: messages.length, toolCallsCount: toolCalls.length, logsCount: logs.length,
   });
   const content = useLoopContent({
@@ -74,7 +74,7 @@ export function LoopDetails({
   const actions = useLoopActions({
     onBack, onSelectSshSession, toast,
     accept, push, updateBranch, remove, purge, markMerged,
-    addressReviewComments, convertChatToLoop, acceptPlan, discardPlan, connectViaSsh, update,
+    addressReviewComments, acceptPlan, discardPlan, connectViaSsh, update,
     fetchReviewComments: content.fetchReviewComments,
   });
   const pendingPlanQuestion = loop?.state.planMode?.pendingQuestion;
@@ -122,13 +122,13 @@ export function LoopDetails({
   const { config, state } = loop;
   const isActive = isLoopActive(state.status);
   const labels = getEntityLabel(config.mode);
-  const isPlanning = state.status === "planning" && !isChatMode;
+  const isPlanning = state.status === "planning";
   const canTerminalFollowUp = canSendTerminalFollowUp(state.status, state.reviewMode?.addressable);
   const isPlanReady = loop.state.planMode?.isPlanReady ?? false;
   const isGenerating = isLoopGenerating(loop);
   const feedbackRounds = loop.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
-  const visibleTabs = isChatMode ? tabs.filter((t) => t.id !== "prompt" && t.id !== "plan") : tabs;
+  const visibleTabs = tabs;
   const showActionBar = isActive || isPlanning || canTerminalFollowUp;
   const errorBannerSpacingClassName = isLogFocusActive ? "mx-3 mt-3 mb-3" : "mb-3";
 
@@ -252,12 +252,11 @@ export function LoopDetails({
           currentModel={config.model}
           models={models} modelsLoading={modelsLoading}
           requireMessage={canTerminalFollowUp}
-          submitLabel={canTerminalFollowUp ? (isChatMode ? "Send" : "Restart") : undefined}
+          submitLabel={canTerminalFollowUp ? "Restart" : undefined}
           onStop={isActive || isPlanning ? stopLoop : undefined}
           onSubmit={async (options) => {
             if (isPlanning) { if (options.message) { await sendPlanFeedback(options.message, options.attachments); return true; } return false; }
             if (canTerminalFollowUp) { if (options.message) return await sendFollowUp(options.message, options.model, options.attachments); return false; }
-            if (isChatMode) { if (options.message) return await sendChatMessage(options.message, options.model, options.attachments); return false; }
             const result = await setPending(options);
             return result.success;
           }}

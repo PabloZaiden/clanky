@@ -1,7 +1,7 @@
 /**
  * Tests for the LoopActionBar component.
  *
- * LoopActionBar provides stop/send controls and model changes for loops and chats.
+ * LoopActionBar provides stop/send controls and model changes for loops.
  */
 
 import { test, expect, describe, mock } from "bun:test";

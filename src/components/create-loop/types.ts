@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { CreateLoopRequest, CreateChatRequest, ModelInfo, BranchInfo, SshServer } from "../../types";
+import type { CreateLoopRequest, ModelInfo, BranchInfo, SshServer } from "../../types";
 import type { ComposerImageAttachment } from "../../types/message-attachments";
 import type { Workspace } from "../../types/workspace";
 
@@ -30,13 +30,11 @@ export function getComposeDraftActionLabel(isEditingDraft: boolean): string {
 }
 
 export function getComposeSubmitActionLabel({
-  isChatMode,
   isEditing,
 }: {
-  isChatMode: boolean;
   isEditing: boolean;
 }): string {
-  return isChatMode || isEditing ? "Start" : "Create";
+  return isEditing ? "Start" : "Create";
 }
 
 export interface CreateLoopFormProps {
@@ -104,8 +102,6 @@ export interface CreateLoopFormProps {
   renderActions?: (state: CreateLoopFormActionState) => void;
   /** Optional extra actions rendered beside the draft/save action group. */
   leadingActions?: ReactNode;
-  /** Mode: "loop" (default) or "chat" — controls which fields are shown */
-  mode?: "loop" | "chat";
 }
 
-export type CreateLoopFormSubmitRequest = CreateLoopRequest | CreateChatRequest;
+export type CreateLoopFormSubmitRequest = CreateLoopRequest;

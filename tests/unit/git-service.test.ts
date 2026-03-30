@@ -1542,20 +1542,8 @@ describe("GitService", () => {
     });
 
     test("works on non-existent directory gracefully", async () => {
-
-      await withGitServiceTest(async (context) => {
-
-        const { testDir, git } = context;
-
-        void testDir;
-
-        void git;
-        // Should not throw for non-existent directory
-        const cleaned = await GitService.cleanupStaleLockFiles("/tmp/nonexistent-dir-12345");
-        expect(cleaned).toBe(false);
-
-      });
-
+      const cleaned = await GitService.cleanupStaleLockFiles("/tmp/nonexistent-dir-12345");
+      expect(cleaned).toBe(false);
     });
   });
 

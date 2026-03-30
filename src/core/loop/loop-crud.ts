@@ -9,7 +9,7 @@ import { setLastModel } from "../../persistence/preferences";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
 import { log } from "../logger";
-import { generateLoopName, sanitizeLoopName } from "../../utils/name-generator";
+import { generateLoopName } from "../../utils/name-generator";
 import { normalizeCommitScope } from "../../utils/commit-scope";
 import { assertValidTransition } from "../loop-state-machine";
 import { normalizeBranchPrefix } from "../branch-name";
@@ -59,7 +59,7 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
     clearPlanningFolder: options.clearPlanningFolder ?? DEFAULT_LOOP_CONFIG.clearPlanningFolder,
     planMode: options.planMode,
     planModeAutoReply: options.planModeAutoReply ?? DEFAULT_LOOP_CONFIG.planModeAutoReply,
-    mode: options.mode ?? DEFAULT_LOOP_CONFIG.mode,
+    mode: DEFAULT_LOOP_CONFIG.mode,
   };
 
   const state = createInitialState(id);
@@ -125,25 +125,6 @@ export async function generateLoopTitleImpl(
       log.warn(`Failed to clean up temporary session: ${String(cleanupError)}`);
     }
   }
-}
-
-export async function createChatImpl(
-  ctx: LoopCtx,
-  options: Omit<CreateLoopOptions, "planMode" | "mode" | "name">
-): Promise<Loop> {
-  const loop = await createLoopImpl(ctx, {
-    ...options,
-    name: sanitizeLoopName(options.prompt) || "New Chat",
-    mode: "chat",
-    planMode: false,
-    maxIterations: 1,
-    clearPlanningFolder: false,
-  });
-
-  await ctx.startLoop(loop.config.id, { attachments: options.attachments });
-
-  const updatedLoop = await ctx.getLoop(loop.config.id);
-  return updatedLoop ?? loop;
 }
 
 export async function getLoopImpl(ctx: LoopCtx, loopId: string): Promise<Loop | null> {

@@ -3,7 +3,6 @@ import { Button } from "../common";
 import { getComposeDraftActionLabel, getComposeSubmitActionLabel } from "./types";
 
 interface FormActionsProps {
-  isChatMode: boolean;
   isEditing: boolean;
   isEditingDraft: boolean;
   isSubmitting: boolean;
@@ -15,7 +14,6 @@ interface FormActionsProps {
 }
 
 export function FormActions({
-  isChatMode,
   isEditing,
   isEditingDraft,
   isSubmitting,
@@ -39,7 +37,7 @@ export function FormActions({
         >
           Cancel
         </Button>
-        {!isChatMode && (!isEditing || isEditingDraft) && (
+        {(!isEditing || isEditingDraft) && (
           <Button
             type="button"
             variant="secondary"
@@ -52,7 +50,6 @@ export function FormActions({
         )}
         <Button type="submit" loading={isSubmitting} disabled={isSubmitting || !canSubmit}>
           {getComposeSubmitActionLabel({
-            isChatMode,
             isEditing,
           })}
         </Button>

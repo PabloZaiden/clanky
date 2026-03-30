@@ -1,5 +1,4 @@
 interface LoopSettingsProps {
-  isChatMode: boolean;
   planMode: boolean;
   onPlanModeChange: (value: boolean) => void;
   planModeAutoReply: boolean;
@@ -9,7 +8,6 @@ interface LoopSettingsProps {
 }
 
 export function LoopSettings({
-  isChatMode,
   planMode,
   onPlanModeChange,
   planModeAutoReply,
@@ -19,33 +17,29 @@ export function LoopSettings({
 }: LoopSettingsProps) {
   return (
     <>
-      {/* Plan Mode Toggle — hidden in chat mode */}
-      {!isChatMode && (
-        <div>
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={planMode}
-              onChange={(e) => onPlanModeChange(e.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-            />
-            <div className="flex-1">
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Plan Mode
-              </span>
-              {/* Short description on mobile, full description on desktop */}
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 sm:hidden">
-                Review AI plan before execution
-              </p>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
-                Create and review a plan before starting the loop. The AI will generate a plan based on your prompt, and you can provide feedback before execution begins.
-              </p>
-            </div>
-          </label>
-        </div>
-      )}
+      <div>
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            checked={planMode}
+            onChange={(e) => onPlanModeChange(e.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+          />
+          <div className="flex-1">
+            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Plan Mode
+            </span>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 sm:hidden">
+              Review AI plan before execution
+            </p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
+              Create and review a plan before starting the loop. The AI will generate a plan based on your prompt, and you can provide feedback before execution begins.
+            </p>
+          </div>
+        </label>
+      </div>
 
-      {!isChatMode && planMode && (
+      {planMode && (
         <div className="ml-7">
           <label className="flex items-start gap-3">
             <input

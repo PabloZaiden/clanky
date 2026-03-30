@@ -25,7 +25,7 @@ export interface WorkspaceSettingsModalProps {
   onDeleteWorkspace?: () => Promise<{ success: boolean; error?: string }>;
   /** Number of purgeable loops shown in the terminal-state section */
   purgeableLoopCount?: number;
-  /** Total number of loops/chats still assigned to the selected workspace */
+  /** Total number of loops still assigned to the selected workspace */
   workspaceLoopCount?: number;
   /** Whether saving is in progress */
   saving?: boolean;
@@ -55,7 +55,7 @@ export interface WorkspaceSettingsFormProps {
   onDeleteWorkspace?: () => Promise<{ success: boolean; error?: string }>;
   /** Number of purgeable loops shown in the terminal-state section */
   purgeableLoopCount?: number;
-  /** Total number of loops/chats still assigned to the selected workspace */
+  /** Total number of loops still assigned to the selected workspace */
   workspaceLoopCount?: number;
   /** Whether saving is in progress */
   saving?: boolean;

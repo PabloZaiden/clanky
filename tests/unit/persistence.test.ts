@@ -156,6 +156,26 @@ describe("Persistence", () => {
       expect(loaded!.config.git.commitScope).toBe("");
     });
 
+    test("loadLoop coerces legacy persisted chat mode to loop", async () => {
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      const { getDatabase } = await import("../../src/persistence/database");
+
+      await setupPersistence();
+
+      const testLoop = createTestLoop({
+        id: "legacy-mode-loop",
+        name: "legacy-mode-loop",
+      });
+
+      await saveLoop(testLoop);
+      getDatabase().run("UPDATE loops SET mode = 'chat' WHERE id = ?", ["legacy-mode-loop"]);
+
+      const loaded = await loadLoop("legacy-mode-loop");
+
+      expect(loaded).not.toBeNull();
+      expect(loaded!.config.mode).toBe("loop");
+    });
+
     test("persists plan-mode auto-reply and pending questions", async () => {
       const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
 

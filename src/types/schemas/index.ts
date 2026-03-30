@@ -26,10 +26,7 @@ export {
   PendingPromptRequestSchema,
   SetPendingRequestSchema,
   StartDraftRequestSchema,
-  SendChatMessageRequestSchema,
-  ConvertChatToLoopRequestSchema,
   FollowUpRequestSchema,
-  CreateChatRequestSchema,
 } from "./loop";
 
 // Workspace schemas

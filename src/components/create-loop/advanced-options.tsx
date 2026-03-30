@@ -1,7 +1,6 @@
 import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 
 interface AdvancedOptionsProps {
-  isChatMode: boolean;
   showAdvanced: boolean;
   onToggle: () => void;
   maxIterations: string;
@@ -15,7 +14,6 @@ interface AdvancedOptionsProps {
 }
 
 export function AdvancedOptions({
-  isChatMode,
   showAdvanced,
   onToggle,
   maxIterations,
@@ -27,11 +25,8 @@ export function AdvancedOptions({
   clearPlanningFolder,
   onClearPlanningFolderChange,
 }: AdvancedOptionsProps) {
-  if (isChatMode) return null;
-
   return (
     <>
-      {/* Advanced options toggle — hidden in chat mode */}
       <button
         type="button"
         onClick={onToggle}
@@ -40,7 +35,6 @@ export function AdvancedOptions({
         {showAdvanced ? "Hide" : "Show"} advanced options
       </button>
 
-      {/* Advanced options — hidden in chat mode */}
       {showAdvanced && (
         <div className="space-y-4 p-4 bg-gray-50 dark:bg-neutral-800 rounded-md">
           {/* Max iterations */}

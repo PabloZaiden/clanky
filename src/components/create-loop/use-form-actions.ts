@@ -4,7 +4,6 @@
  */
 
 import { useState, useRef, useEffect, useCallback, type FormEvent } from "react";
-import type { CreateLoopRequest, CreateChatRequest } from "../../types";
 import type { ComposerImageAttachment } from "../../types/message-attachments";
 import { parseModelKey } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
@@ -29,7 +28,6 @@ export function useFormActions({
   selectedWorkspaceId,
   selectedModel,
   selectedModelEnabled,
-  isChatMode,
   planMode,
   planModeAutoReply,
   maxIterations,
@@ -56,7 +54,6 @@ export function useFormActions({
   selectedWorkspaceId: string | undefined;
   selectedModel: string;
   selectedModelEnabled: boolean;
-  isChatMode: boolean;
   planMode: boolean;
   planModeAutoReply: boolean;
   maxIterations: string;
@@ -89,14 +86,14 @@ export function useFormActions({
 
   const isSubmitting = loading || submitting;
 
-  const canSaveDraft = !isChatMode && !!selectedWorkspaceId && !!prompt.trim() && !!name.trim();
+  const canSaveDraft = !!selectedWorkspaceId && !!prompt.trim() && !!name.trim();
   const canSubmit =
     !!selectedWorkspaceId &&
     !!prompt.trim() &&
-    (isChatMode || !!name.trim()) &&
+    !!name.trim() &&
     selectedModelEnabled;
   const canGenerateTitle =
-    !isChatMode && !!selectedWorkspaceId && !!prompt.trim() && !isSubmitting && !generatingTitle;
+    !!selectedWorkspaceId && !!prompt.trim() && !isSubmitting && !generatingTitle;
 
   const handleSubmit = useCallback(
     async (e: FormEvent, asDraft = false) => {
@@ -107,7 +104,6 @@ export function useFormActions({
 
       log.info("Submitting create-loop form", {
         asDraft,
-        isChatMode,
         hasPrompt: currentPrompt.trim().length > 0,
         hasName: currentName.trim().length > 0,
         selectedWorkspaceId,
@@ -115,7 +111,7 @@ export function useFormActions({
 
       if (!selectedWorkspaceId) return;
       if (!currentPrompt.trim()) return;
-      if (!isChatMode && !currentName.trim()) return;
+      if (!currentName.trim()) return;
       if (!selectedModel || !selectedModelEnabled) return;
 
       setSubmitting(true);
@@ -132,73 +128,50 @@ export function useFormActions({
         variant: parsedModel.variant,
       };
 
-      let request: CreateLoopFormSubmitRequest;
+      const request: CreateLoopFormSubmitRequest = {
+        name: currentName.trim(),
+        workspaceId: selectedWorkspaceId,
+        prompt: currentPrompt.trim(),
+        planMode,
+        planModeAutoReply,
+        model,
+        useWorktree,
+      };
 
-        if (isChatMode) {
-          const chatRequest: CreateChatRequest = {
-            workspaceId: selectedWorkspaceId,
-            prompt: currentPrompt.trim(),
-            model,
-            useWorktree,
-          };
+      if (attachments.length > 0 && !asDraft) {
+        request.attachments = toMessageImageAttachments(attachments);
+      }
 
-          if (attachments.length > 0 && !asDraft) {
-            chatRequest.attachments = toMessageImageAttachments(attachments);
-          }
-
-        if (selectedBranch && selectedBranch !== currentBranch) {
-          chatRequest.baseBranch = selectedBranch;
+      if (maxIterations.trim()) {
+        const num = parseInt(maxIterations, 10);
+        if (!isNaN(num) && num > 0) {
+          request.maxIterations = num;
         }
+      }
 
-        request = chatRequest;
-      } else {
-        const loopRequest: CreateLoopRequest = {
-          name: currentName.trim(),
-          workspaceId: selectedWorkspaceId,
-          prompt: currentPrompt.trim(),
-          planMode,
-          planModeAutoReply,
-          model,
-          useWorktree,
-        };
-
-        if (attachments.length > 0 && !asDraft) {
-          loopRequest.attachments = toMessageImageAttachments(attachments);
+      if (maxConsecutiveErrors.trim()) {
+        const num = parseInt(maxConsecutiveErrors, 10);
+        if (!isNaN(num) && num >= 0) {
+          request.maxConsecutiveErrors = num === 0 ? 0 : num;
         }
+      }
 
-        if (maxIterations.trim()) {
-          const num = parseInt(maxIterations, 10);
-          if (!isNaN(num) && num > 0) {
-            loopRequest.maxIterations = num;
-          }
+      if (activityTimeoutSeconds.trim()) {
+        const num = parseInt(activityTimeoutSeconds, 10);
+        if (!isNaN(num) && num >= 60) {
+          request.activityTimeoutSeconds = num;
         }
+      }
 
-        if (maxConsecutiveErrors.trim()) {
-          const num = parseInt(maxConsecutiveErrors, 10);
-          if (!isNaN(num) && num >= 0) {
-            loopRequest.maxConsecutiveErrors = num === 0 ? 0 : num;
-          }
-        }
+      if (selectedBranch && selectedBranch !== currentBranch) {
+        request.baseBranch = selectedBranch;
+      }
 
-        if (activityTimeoutSeconds.trim()) {
-          const num = parseInt(activityTimeoutSeconds, 10);
-          if (!isNaN(num) && num >= 60) {
-            loopRequest.activityTimeoutSeconds = num;
-          }
-        }
+      request.clearPlanningFolder = clearPlanningFolder;
+      request.planMode = planMode;
 
-        if (selectedBranch && selectedBranch !== currentBranch) {
-          loopRequest.baseBranch = selectedBranch;
-        }
-
-        loopRequest.clearPlanningFolder = clearPlanningFolder;
-        loopRequest.planMode = planMode;
-
-        if (asDraft) {
-          loopRequest.draft = true;
-        }
-
-        request = loopRequest;
+      if (asDraft) {
+        request.draft = true;
       }
 
       try {
@@ -219,8 +192,7 @@ export function useFormActions({
       selectedWorkspaceId,
       selectedModel,
       selectedModelEnabled,
-      isChatMode,
-      planMode,
+        planMode,
       planModeAutoReply,
       maxIterations,
       maxConsecutiveErrors,

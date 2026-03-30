@@ -44,7 +44,7 @@ export const LogViewer = memo(function LogViewer({
     }
   }, [messages, toolCalls, logs, autoScroll, showSystemInfo, showReasoning, showTools, markdownEnabled, isActive]);
 
-  // Combine, sort, and annotate entries with showHeader for chat-style grouping
+  // Combine, sort, and annotate entries with showHeader for grouped rendering
   const entries = useMemo(() => {
     const result: EntryBase[] = [];
 
@@ -120,7 +120,7 @@ export const LogViewer = memo(function LogViewer({
     // Sort by timestamp
     result.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    // Annotate with showHeader for chat-style consecutive grouping
+    // Annotate with showHeader for consecutive grouping
     return annotateShowHeader(result);
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools]);
 
@@ -147,7 +147,7 @@ export const LogViewer = memo(function LogViewer({
       ) : (
         <div className="p-2 sm:p-4">
           {entries.map((entry, index) => {
-            // Chat-style spacing: tighter within a group, normal between groups
+            // Tighter spacing within a group, normal spacing between groups
             const spacingClass = index === 0
               ? ""
               : entry.showHeader

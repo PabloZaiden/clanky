@@ -165,7 +165,7 @@ describe("App shell", () => {
   test("wraps long server map and recent activity text inside the shell overview cards", async () => {
     const longServerName = `Server ${"super-long-hostname-".repeat(6)}`;
     const longAddress = `${"edge-node-".repeat(6)}example.internal`;
-    const longLoopName = `Chat ${"very-long-conversation-title-".repeat(5)}`;
+    const longLoopName = `Loop ${"very-long-conversation-title-".repeat(5)}`;
     const longDirectory = `/workspaces/${"deeply-nested-project-".repeat(6)}repo`;
 
     const server = createSshServer({

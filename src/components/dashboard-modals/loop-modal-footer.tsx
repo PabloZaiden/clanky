@@ -38,11 +38,10 @@ export function DeleteConfirmFooter({ deletingDraft, onKeepDraft, onDeleteDraft 
 
 interface LoopFormFooterProps {
   formActionState: CreateLoopFormActionState;
-  isChatMode: boolean;
   onOpenDeleteConfirmation: () => void;
 }
 
-export function LoopFormFooter({ formActionState, isChatMode, onOpenDeleteConfirmation }: LoopFormFooterProps) {
+export function LoopFormFooter({ formActionState, onOpenDeleteConfirmation }: LoopFormFooterProps) {
   return (
     <>
       <Button
@@ -63,7 +62,7 @@ export function LoopFormFooter({ formActionState, isChatMode, onOpenDeleteConfir
           Delete
         </Button>
       )}
-      {!isChatMode && (!formActionState.isEditing || formActionState.isEditingDraft) && (
+      {(!formActionState.isEditing || formActionState.isEditingDraft) && (
         <Button
           type="button"
           variant="secondary"
@@ -81,7 +80,6 @@ export function LoopFormFooter({ formActionState, isChatMode, onOpenDeleteConfir
         disabled={!formActionState.canSubmit}
       >
         {getComposeSubmitActionLabel({
-          isChatMode,
           isEditing: formActionState.isEditing,
         })}
       </Button>

@@ -54,7 +54,7 @@ export type EntryBase =
   | { type: "log"; data: LogEntry; timestamp: string };
 
 /**
- * Display entry with showHeader flag for chat-style grouping.
+ * Display entry with showHeader flag for grouped log rendering.
  * When consecutive visible entries share the same actor+action,
  * only the first entry in the group has showHeader=true.
  */

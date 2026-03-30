@@ -123,7 +123,6 @@ export const CreateLoopRequestSchema = z.object({
   planMode: z.boolean({ error: "planMode is required and must be a boolean (true or false)" }),
   planModeAutoReply: z.boolean().optional(),
   draft: z.boolean().optional(),
-  mode: z.enum(["loop", "chat"]).optional(),
 });
 
 /**
@@ -231,38 +230,6 @@ export const StartDraftRequestSchema = z.object({
   planMode: z.boolean({ error: "planMode is required" }),
   attachments: MessageImageAttachmentsSchema.optional(),
 });
-
-/**
- * Schema for creating a new chat - POST /api/loops/chat
- *
- * Simpler than CreateLoopRequestSchema — chats don't have plan mode,
- * draft mode, stop patterns, or clearPlanningFolder.
- */
-export const CreateChatRequestSchema = z.object({
-  workspaceId: z.string().min(1, "workspaceId is required"),
-  prompt: z.string().min(1, "prompt is required and must be a non-empty string"),
-  attachments: MessageImageAttachmentsSchema.optional(),
-  model: ModelConfigSchema,
-  baseBranch: z.string().optional(),
-  useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
-  git: GitConfigSchema.optional(),
-});
-
-/**
- * Schema for sending a chat message - POST /api/loops/:id/chat
- */
-export const SendChatMessageRequestSchema = z.object({
-  message: z.string().refine((val) => val.trim().length > 0, {
-    message: "message cannot be empty",
-  }),
-  model: ModelConfigSchema.optional(),
-  attachments: MessageImageAttachmentsSchema.optional(),
-});
-
-/**
- * Schema for converting a chat into a plan-mode loop - POST /api/loops/:id/chat/convert-to-loop
- */
-export const ConvertChatToLoopRequestSchema = z.object({});
 
 /**
  * Schema for sending a terminal-state follow-up - POST /api/loops/:id/follow-up

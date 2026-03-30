@@ -46,8 +46,6 @@ export interface UseLoopResult {
   logs: LogEntry[];
   /** Counter that increments when git changes occur (use to trigger diff refresh) */
   gitChangeCounter: number;
-  /** Whether this loop is in chat mode */
-  isChatMode: boolean;
   /** Refresh loop data */
   refresh: () => Promise<void>;
   /** Update the loop */
@@ -90,18 +88,10 @@ export interface UseLoopResult {
   discardPlan: () => Promise<boolean>;
   /** Address reviewer comments (only works for pushed/merged loops with reviewMode.addressable = true) */
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
-  /** Convert a completed chat into a plan-mode loop while preserving the same loop identity */
-  convertChatToLoop: () => Promise<boolean>;
   /** Set pending message and/or model for next iteration (only works when loop is active) */
   setPending: (options: { message?: string; model?: { providerID: string; modelID: string }; attachments?: MessageImageAttachment[] }) => Promise<SetPendingResult>;
   /** Clear all pending values (message and model) */
   clearPending: () => Promise<boolean>;
-  /** Send a message to a chat (only works for chat-mode loops) */
-  sendChatMessage: (
-    message: string,
-    model?: { providerID: string; modelID: string },
-    attachments?: MessageImageAttachment[],
-  ) => Promise<boolean>;
   /** Start a new feedback cycle from a restartable terminal state */
   sendFollowUp: (
     message: string,
@@ -184,9 +174,6 @@ export function useLoop(loopId: string): UseLoopResult {
     setError,
   });
 
-  // Whether this loop is in chat mode
-  const isChatMode = loop?.config.mode === "chat";
-
   // Reset state when loopId changes (switching between loops)
   // This prevents stale data from appearing briefly when switching loops
   useEffect(() => {
@@ -264,7 +251,6 @@ export function useLoop(loopId: string): UseLoopResult {
     progressContent,
     logs,
     gitChangeCounter,
-    isChatMode,
     refresh,
     ...actions,
     ...fileQueries,

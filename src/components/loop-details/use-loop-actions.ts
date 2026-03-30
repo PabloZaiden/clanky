@@ -20,7 +20,6 @@ interface UseLoopActionsOptions {
   purge: () => Promise<boolean>;
   markMerged: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
-  convertChatToLoop: () => Promise<boolean>;
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
@@ -39,7 +38,6 @@ export interface UseLoopActionsResult {
   updateBranchModal: boolean;
   discardPlanModal: boolean;
   planActionSubmitting: boolean;
-  convertToLoopSubmitting: boolean;
   sshConnecting: boolean;
 
   // Modal open/close setters
@@ -61,7 +59,6 @@ export interface UseLoopActionsResult {
   handleMarkMerged: () => Promise<void>;
   handleAddressComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<void>;
   handleOpenPullRequest: (destination: PullRequestDestinationResponse | null) => void;
-  handleConvertToLoop: () => Promise<void>;
   handleAcceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<void>;
   handleDiscardPlan: () => Promise<void>;
   handleConnectViaSsh: () => Promise<void>;
@@ -79,7 +76,6 @@ export function useLoopActions({
   purge,
   markMerged,
   addressReviewComments,
-  convertChatToLoop,
   acceptPlan,
   discardPlan,
   connectViaSsh,
@@ -95,7 +91,6 @@ export function useLoopActions({
   const [updateBranchModal, setUpdateBranchModal] = useState(false);
   const [discardPlanModal, setDiscardPlanModal] = useState(false);
   const [planActionSubmitting, setPlanActionSubmitting] = useState(false);
-  const [convertToLoopSubmitting, setConvertToLoopSubmitting] = useState(false);
   const [sshConnecting, setSshConnecting] = useState(false);
 
   function navigateToSshSession(sshSessionId: string) {
@@ -165,18 +160,6 @@ export function useLoopActions({
     window.open(destination.url, "_blank", "noopener,noreferrer");
   }
 
-  async function handleConvertToLoop() {
-    setConvertToLoopSubmitting(true);
-    try {
-      const success = await convertChatToLoop();
-      if (!success) {
-        toast.error("Failed to convert chat to loop");
-      }
-    } finally {
-      setConvertToLoopSubmitting(false);
-    }
-  }
-
   async function handleAcceptPlan(mode: "start_loop" | "open_ssh" = "start_loop") {
     setPlanActionSubmitting(true);
     try {
@@ -235,7 +218,6 @@ export function useLoopActions({
     updateBranchModal,
     discardPlanModal,
     planActionSubmitting,
-    convertToLoopSubmitting,
     sshConnecting,
     setDeleteModal,
     setAcceptModal,
@@ -253,7 +235,6 @@ export function useLoopActions({
     handleMarkMerged,
     handleAddressComments,
     handleOpenPullRequest,
-    handleConvertToLoop,
     handleAcceptPlan,
     handleDiscardPlan,
     handleConnectViaSsh,

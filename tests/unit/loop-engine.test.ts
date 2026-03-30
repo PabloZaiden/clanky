@@ -3,7 +3,7 @@
  */
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, rm, writeFile } from "fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -204,6 +204,7 @@ describe("StopPatternDetector", () => {
 
   beforeEach(async () => {
     testDir = await mkdtemp(join(tmpdir(), "loop-engine-test-"));
+    await mkdir(testDir, { recursive: true });
     emittedEvents = [];
     emitter = new SimpleEventEmitter<LoopEvent>();
     emitter.subscribe((event) => emittedEvents.push(event));
@@ -228,7 +229,7 @@ describe("StopPatternDetector", () => {
 
   afterEach(async () => {
     backendManager.resetForTesting();
-    await rm(testDir, { recursive: true });
+    await rm(testDir, { recursive: true, force: true });
   });
 
   test("initializes with correct state", () => {

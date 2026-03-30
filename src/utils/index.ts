@@ -19,7 +19,6 @@ export {
   getLoopStatusLabel,
   isLoopPlanReady,
   getEntityLabel,
-  isChat,
   type EntityLabels,
 } from "./loop-status";
 

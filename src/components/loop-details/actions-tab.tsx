@@ -15,7 +15,6 @@ interface ActionsTabProps {
   loadingPullRequestDestination: boolean;
   pullRequestDestination: PullRequestDestinationResponse | null;
   onOpenPullRequest: () => void;
-  onConvertToLoop: () => void;
   onAddressCommentsModal: () => void;
   onUpdateBranchModal: () => void;
   onMarkMergedModal: () => void;
@@ -26,7 +25,6 @@ interface ActionsTabProps {
   loop: Loop;
   loadingComments: boolean;
   reviewComments: ReviewComment[];
-  convertToLoopSubmitting: boolean;
 }
 
 export function ActionsTab({
@@ -40,7 +38,6 @@ export function ActionsTab({
   loadingPullRequestDestination,
   pullRequestDestination,
   onOpenPullRequest,
-  onConvertToLoop,
   onAddressCommentsModal,
   onUpdateBranchModal,
   onMarkMergedModal,
@@ -51,10 +48,7 @@ export function ActionsTab({
   loop,
   loadingComments,
   reviewComments,
-  convertToLoopSubmitting,
 }: ActionsTabProps) {
-  const canConvertChatToLoop = loop.config.mode === "chat" && (state.status === "completed" || state.status === "max_iterations");
-
   return (
     <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
       <div className="min-w-0 w-full space-y-4">
@@ -204,26 +198,6 @@ export function ActionsTab({
           </>
         ) : (
           <>
-            {canConvertChatToLoop && (
-              <button
-                onClick={onConvertToLoop}
-                disabled={convertToLoopSubmitting}
-                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <span className="text-blue-600 dark:text-blue-400 text-sm">↻</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {convertToLoopSubmitting ? "Converting..." : "Convert to Loop"}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    Create a plan from this chat and continue it as a loop
-                  </div>
-                </div>
-                <span className="text-gray-400 dark:text-gray-500">→</span>
-              </button>
-            )}
             {canAccept(state.status) && state.git && (
               <button
                 onClick={onAcceptModal}

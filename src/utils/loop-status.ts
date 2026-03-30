@@ -112,7 +112,7 @@ export function isLoopRunning(status: LoopStatus): boolean {
 }
 
 /**
- * Check if a loop/chat is actively generating output right now.
+ * Check if a loop is actively generating output right now.
  * Planning loops count as generating until the plan is ready for review.
  */
 export function isLoopGenerating(loop: Loop): boolean {
@@ -211,36 +211,25 @@ export function isLoopPlanReady(loop: Loop): boolean {
 }
 
 /**
- * Mode-aware display labels for loops and chats.
- * Use this instead of scattering ternaries throughout the UI.
+ * Display labels for loop UI text.
  */
 export interface EntityLabels {
-  /** Lowercase singular: "loop" or "chat" */
+  /** Lowercase singular label. */
   singular: string;
-  /** Lowercase plural: "loops" or "chats" */
+  /** Lowercase plural label. */
   plural: string;
-  /** Capitalized singular: "Loop" or "Chat" */
+  /** Capitalized singular label. */
   capitalized: string;
-  /** Capitalized plural: "Loops" or "Chats" */
+  /** Capitalized plural label. */
   capitalizedPlural: string;
-  /** Action verb: "Start Loop" or "Start Chat" */
+  /** Action verb label. */
   actionVerb: string;
 }
 
 /**
- * Get mode-appropriate display labels for UI text.
- * Defaults to "loop" labels if mode is undefined (backward compatibility).
+ * Get display labels for loop UI text.
  */
-export function getEntityLabel(mode: LoopConfig["mode"] | undefined): EntityLabels {
-  if (mode === "chat") {
-    return {
-      singular: "chat",
-      plural: "chats",
-      capitalized: "Chat",
-      capitalizedPlural: "Chats",
-      actionVerb: "Start Chat",
-    };
-  }
+export function getEntityLabel(_mode: LoopConfig["mode"] | undefined): EntityLabels {
   return {
     singular: "loop",
     plural: "loops",
@@ -248,11 +237,4 @@ export function getEntityLabel(mode: LoopConfig["mode"] | undefined): EntityLabe
     capitalizedPlural: "Loops",
     actionVerb: "Start Loop",
   };
-}
-
-/**
- * Check if a loop is in chat mode.
- */
-export function isChat(loop: Loop): boolean {
-  return loop.config.mode === "chat";
 }

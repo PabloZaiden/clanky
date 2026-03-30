@@ -9,7 +9,6 @@ export const SIDEBAR_SECTION_STORAGE_KEY = "ralpher.sidebarSectionCollapseState"
 export type SidebarSectionId =
   | "workspaces"
   | "loops"
-  | "chats"
   | "workspace-ssh"
   | "ssh-servers";
 
@@ -23,7 +22,6 @@ export interface SidebarSectionCollapseStateLoadResult {
 export const SIDEBAR_SECTION_IDS: SidebarSectionId[] = [
   "workspaces",
   "loops",
-  "chats",
   "workspace-ssh",
   "ssh-servers",
 ];
@@ -38,7 +36,6 @@ export type ShellRoute =
   | { view: "home" }
   | { view: "settings" }
   | { view: "loop"; loopId: string }
-  | { view: "chat"; chatId: string }
   | { view: "ssh"; sshSessionId: string }
   | { view: "workspace"; workspaceId: string }
   | { view: "workspace-settings"; workspaceId: string }
@@ -46,7 +43,7 @@ export type ShellRoute =
   | { view: "server-arise"; serverId: string }
   | {
       view: "compose";
-      kind: "loop" | "chat" | "workspace" | "ssh-session" | "ssh-server";
+      kind: "loop" | "workspace" | "ssh-session" | "ssh-server";
       scopeId?: string;
     }
   | {

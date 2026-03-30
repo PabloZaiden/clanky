@@ -5,7 +5,6 @@
  * - CRUD: Create, read, update, and delete loops
  * - Control: Accept, push, discard, and purge completed loops
  * - Plan Mode: Create, review, and accept plans before execution
- * - Chat: Interactive single-turn conversations on the same loop infrastructure
  * - SSH: Loop-linked SSH session management
  * - Port Forwards: Loop-scoped remote service exposure
  * - Review: Address reviewer comments on pushed/merged loops
@@ -22,7 +21,6 @@ export { loopsCrudRoutes } from "./crud";
 export { loopsControlRoutes } from "./lifecycle";
 export { loopsDataRoutes } from "./data";
 export { loopsReviewRoutes } from "./review";
-export { loopsChatRoutes } from "./chat";
 export { loopsDraftRoutes } from "./draft";
 export { loopsAcceptPushRoutes } from "./accept-push";
 export { loopsDiscardPurgeRoutes } from "./discard-purge";
@@ -40,7 +38,6 @@ import { loopsPendingRoutes } from "./pending";
 import { loopsPlanRoutes } from "./plan";
 import { loopsDataRoutes } from "./data";
 import { loopsReviewRoutes } from "./review";
-import { loopsChatRoutes } from "./chat";
 import { loopsStopRoutes } from "./stop";
 
 /**
@@ -56,6 +53,5 @@ export const loopsRoutes = {
   ...loopsPlanRoutes,
   ...loopsDataRoutes,
   ...loopsReviewRoutes,
-  ...loopsChatRoutes,
   ...loopsStopRoutes,
 };

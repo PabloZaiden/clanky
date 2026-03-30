@@ -33,6 +33,7 @@ function setupBaseApi() {
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
   api.get("/api/preferences/last-directory", () => null);
   api.get("/api/models", () => [createModelInfo({ connected: true })]);
+  api.get("/api/ssh-sessions", () => []);
   api.get("/api/ssh-servers", () => []);
   api.get("/api/workspaces/:id/server-settings/status", () => ({
     connected: false,
@@ -346,7 +347,7 @@ describe("workspace management scenario", () => {
       expect(window.location.hash).toBe("#/workspace/ws-1");
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
-    expect(getByText("No loops or chats in this workspace yet.")).toBeTruthy();
+    expect(getByText("No loops in this workspace yet.")).toBeTruthy();
   });
 
   test("workspace route shows summary cards and related loop content", async () => {
@@ -360,7 +361,7 @@ describe("workspace management scenario", () => {
     api.get("/api/workspaces", () => [WORKSPACE]);
     api.get("/api/workspaces/:id", () => WORKSPACE);
 
-    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
+    const { getAllByText, getByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
@@ -370,8 +371,8 @@ describe("workspace management scenario", () => {
     await waitFor(() => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
-    expect(getByText("Loops and chats")).toBeTruthy();
-    expect(getByText("SSH sessions")).toBeTruthy();
+    expect(getByRole("heading", { name: "Loops" })).toBeTruthy();
+    expect(getByRole("heading", { name: "SSH sessions" })).toBeTruthy();
     expect(getAllByText("In Workspace").length).toBeGreaterThan(0);
   });
 
@@ -397,7 +398,7 @@ describe("workspace management scenario", () => {
     api.get("/api/workspaces", () => [WORKSPACE]);
     api.get("/api/workspaces/:id", () => WORKSPACE);
 
-    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
+    const { getAllByText, getByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
@@ -408,8 +409,8 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
 
-    const loopsCard = getByText("Loops and chats").parentElement;
-    const sshSessionsCard = getByText("SSH sessions").parentElement;
+    const loopsCard = getByRole("heading", { name: "Loops" }).parentElement?.parentElement;
+    const sshSessionsCard = getByRole("heading", { name: "SSH sessions" }).parentElement?.parentElement;
     expect(loopsCard?.className).toContain("min-w-0");
     expect(sshSessionsCard?.className).toContain("min-w-0");
 
