@@ -143,10 +143,25 @@ describe("Events WebSocket API Integration", () => {
       });
       expect(connMsg.chatId).toBe(targetChatId);
 
-      const receivedEvents: unknown[] = [];
-      ws.onmessage = (event) => {
-        receivedEvents.push(JSON.parse(event.data));
-      };
+      const receivedEvent = new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Timed out waiting for filtered chat event"));
+        }, 1000);
+
+        ws.onmessage = (event) => {
+          clearTimeout(timeout);
+          resolve(JSON.parse(event.data));
+        };
+      });
+
+      loopEventEmitter.emit({
+        type: "loop.log",
+        loopId: "other-loop",
+        id: "other-loop-log",
+        level: "info",
+        message: "Other loop message",
+        timestamp: new Date().toISOString(),
+      });
 
       chatEventEmitter.emit({
         type: "chat.log",
@@ -172,10 +187,7 @@ describe("Events WebSocket API Integration", () => {
         timestamp: new Date().toISOString(),
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0]).toMatchObject({
+      expect(await receivedEvent).toMatchObject({
         type: "chat.log",
         chatId: targetChatId,
       });
@@ -250,11 +262,28 @@ describe("Events WebSocket API Integration", () => {
       });
       expect(connMsg.loopId).toBe(targetLoopId);
 
-      // Collect received events
-      const receivedEvents: unknown[] = [];
-      ws.onmessage = (event) => {
-        receivedEvents.push(JSON.parse(event.data));
-      };
+      const receivedEvent = new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Timed out waiting for filtered loop event"));
+        }, 1000);
+
+        ws.onmessage = (event) => {
+          clearTimeout(timeout);
+          resolve(JSON.parse(event.data));
+        };
+      });
+
+      chatEventEmitter.emit({
+        type: "chat.log",
+        chatId: "other-chat",
+        log: {
+          id: "chat-other",
+          level: "info",
+          message: "Other chat message",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
 
       // Emit events for different loops
       loopEventEmitter.emit({
@@ -275,12 +304,10 @@ describe("Events WebSocket API Integration", () => {
         timestamp: new Date().toISOString(),
       });
 
-      // Wait a bit for events to arrive
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      // Should only receive the target loop event
-      expect(receivedEvents.length).toBe(1);
-      expect((receivedEvents[0] as { loopId: string }).loopId).toBe(targetLoopId);
+      expect(await receivedEvent).toMatchObject({
+        type: "loop.log",
+        loopId: targetLoopId,
+      });
 
       ws.close();
     });

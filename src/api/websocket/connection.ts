@@ -103,7 +103,12 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     provisioningJobId: provisioningJobId ?? null,
   }));
 
-  const shouldSubscribeToLoopEvents = !provisioningJobId || !!loopId;
+  const hasScopedSubscription = Boolean(
+    loopId || chatId || sshSessionId || sshServerSessionId || provisioningJobId,
+  );
+  const shouldSubscribeToAllRuntimeEvents = !hasScopedSubscription;
+
+  const shouldSubscribeToLoopEvents = shouldSubscribeToAllRuntimeEvents || !!loopId;
   const loopUnsubscribe = shouldSubscribeToLoopEvents
     ? loopEventEmitter.subscribe((event: LoopEvent) => {
         if (loopId && "loopId" in event && event.loopId !== loopId) {
@@ -118,7 +123,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
       })
     : undefined;
 
-  const shouldSubscribeToChatEvents = !provisioningJobId || !!chatId;
+  const shouldSubscribeToChatEvents = shouldSubscribeToAllRuntimeEvents || !!chatId;
   const chatUnsubscribe = shouldSubscribeToChatEvents
     ? chatEventEmitter.subscribe((event: ChatEvent) => {
         if (chatId && event.chatId !== chatId) {
@@ -133,7 +138,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
       })
     : undefined;
 
-  const shouldSubscribeToSshEvents = !provisioningJobId || !!sshSessionId || !!sshServerSessionId;
+  const shouldSubscribeToSshEvents = shouldSubscribeToAllRuntimeEvents || !!sshSessionId || !!sshServerSessionId;
   const sshSessionUnsubscribe = shouldSubscribeToSshEvents
     ? sshSessionEventEmitter.subscribe((event: SshSessionEvent) => {
         const expectedSessionId = sshSessionId ?? sshServerSessionId;
