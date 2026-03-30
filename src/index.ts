@@ -91,6 +91,7 @@ try {
       (req: Request, server: Server<WebSocketData>) => {
         const url = new URL(req.url);
         const loopId = url.searchParams.get("loopId") ?? undefined;
+        const chatId = url.searchParams.get("chatId") ?? undefined;
         const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
         const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
         const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
@@ -98,6 +99,7 @@ try {
         const upgraded = server.upgrade(req, {
           data: {
             loopId,
+            chatId,
             sshSessionId,
             sshServerSessionId,
             provisioningJobId,

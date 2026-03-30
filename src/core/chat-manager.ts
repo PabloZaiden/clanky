@@ -14,7 +14,7 @@ import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
 import type { EventStream } from "../utils/event-stream";
 import { createInitialChatState, DEFAULT_CHAT_CONFIG } from "../types/chat";
-import { loadChat, listChats, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
+import { loadChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
 import { getWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
@@ -95,6 +95,10 @@ export class ChatManager {
 
   async getAllChats(): Promise<Chat[]> {
     return listChats();
+  }
+
+  async getChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
+    return listChatsByWorkspace(workspaceId);
   }
 
   async updateChat(
