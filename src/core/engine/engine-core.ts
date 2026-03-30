@@ -1073,6 +1073,7 @@ export class LoopEngine {
     } catch {
       // Ignore errors reading plan file
     }
+    const effectivePlanContent = planContent ?? result.responseContent;
 
     // Update plan mode state with the plan content, and clear consecutive
     // error tracker since this iteration succeeded (prevents stale error
@@ -1082,7 +1083,7 @@ export class LoopEngine {
         this.updateState({
           planMode: {
             ...this.loop.state.planMode,
-            planContent,
+            planContent: effectivePlanContent,
             isPlanReady: this.loop.state.planMode.isPlanReady,
           },
           consecutiveErrors: undefined,
@@ -1097,7 +1098,7 @@ export class LoopEngine {
     this.emit({
       type: "loop.plan.ready",
       loopId: this.config.id,
-      planContent: planContent ?? result.responseContent,
+      planContent: effectivePlanContent,
       timestamp: createTimestamp(),
     });
 

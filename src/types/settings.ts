@@ -3,8 +3,6 @@
  * Defines workspace settings for agent and deterministic execution channels.
  */
 
-import { isDeepStrictEqual } from "node:util";
-
 // Import and re-export ServerSettings from schema (single source of truth)
 import type {
   ServerSettings,
@@ -178,10 +176,7 @@ function getComparableServerSettings(settings: ServerSettings): ServerSettings {
 }
 
 export function areServerSettingsEqual(left: ServerSettings, right: ServerSettings): boolean {
-  return isDeepStrictEqual(
-    getComparableServerSettings(left),
-    getComparableServerSettings(right),
-  );
+  return JSON.stringify(getComparableServerSettings(left)) === JSON.stringify(getComparableServerSettings(right));
 }
 
 function normalizeHostname(hostname: string): string {

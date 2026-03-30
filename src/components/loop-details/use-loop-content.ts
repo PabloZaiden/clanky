@@ -128,6 +128,20 @@ export function useLoopContent({
     loadPlanForPlanningMode();
   }, [loop?.state.status, getPlan, gitChangeCounter]);
 
+  useEffect(() => {
+    const fallbackPlanContent = loop?.state.planMode?.planContent?.trim();
+    if (
+      loop?.state.status === "planning"
+      && fallbackPlanContent
+      && (!planContent?.exists || !planContent.content.trim())
+    ) {
+      setPlanContent({
+        content: fallbackPlanContent,
+        exists: true,
+      });
+    }
+  }, [loop?.state.status, loop?.state.planMode?.planContent, planContent]);
+
   // Detect changes in diff content by fetching when git events occur
   useEffect(() => {
     async function checkDiffChanges() {
