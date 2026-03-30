@@ -39,6 +39,13 @@ export interface MockBackendOptions {
   models?: MockModelInfo[];
 }
 
+let mockSessionIdCounter = 0;
+
+function createMockSessionId(prefix: string): string {
+  mockSessionIdCounter += 1;
+  return `${prefix}-${Date.now()}-${mockSessionIdCounter}`;
+}
+
 /**
  * MockAcpBackend provides a mock implementation of the Backend interface.
  * It implements all methods that AcpBackend has, ensuring no runtime errors
@@ -109,7 +116,7 @@ export class MockAcpBackend implements Backend {
       throw new Error(message);
     }
     const session: AgentSession = {
-      id: `mock-session-${Date.now()}`,
+      id: createMockSessionId("mock-session"),
       title: options.title,
       createdAt: new Date().toISOString(),
     };
@@ -323,7 +330,7 @@ export class NeverCompletingMockBackend implements Backend {
 
   async createSession(options: CreateSessionOptions): Promise<AgentSession> {
     const session: AgentSession = {
-      id: `mock-session-${Date.now()}`,
+      id: createMockSessionId("mock-session"),
       title: options.title,
       createdAt: new Date().toISOString(),
     };
