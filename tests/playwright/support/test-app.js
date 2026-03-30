@@ -66,6 +66,22 @@ async function requestJson(baseUrl, path, init) {
   return await response.json();
 }
 
+async function terminateChildProcess(child, childExited, timeoutMs = 5000) {
+  if (child.exitCode === null && !child.killed) {
+    child.kill("SIGTERM");
+  }
+  const killTimeout = setTimeout(() => {
+    if (child.exitCode === null) {
+      child.kill("SIGKILL");
+    }
+  }, timeoutMs);
+  try {
+    await childExited;
+  } finally {
+    clearTimeout(killTimeout);
+  }
+}
+
 export async function startTestApp(repoRoot) {
   const tempRoot = await mkdtemp(join(tmpdir(), "ralpher-playwright-"));
   const dataDir = join(tempRoot, "data");
@@ -111,10 +127,7 @@ export async function startTestApp(repoRoot) {
   try {
     await waitForHealth(baseUrl, () => combinedLogs);
   } catch (error) {
-    if (!child.killed) {
-      child.kill("SIGTERM");
-    }
-    await childExited;
+    await terminateChildProcess(child, childExited);
     await rm(tempRoot, { recursive: true, force: true });
     throw error;
   }
@@ -174,18 +187,7 @@ export async function startTestApp(repoRoot) {
   }
 
   async function stop() {
-    if (!child.killed) {
-      child.kill("SIGTERM");
-      const timeout = setTimeout(() => {
-        if (child.exitCode === null) {
-          child.kill("SIGKILL");
-        }
-      }, 5000);
-      await childExited;
-      clearTimeout(timeout);
-    } else {
-      await childExited;
-    }
+    await terminateChildProcess(child, childExited);
     await rm(tempRoot, { recursive: true, force: true });
   }
 

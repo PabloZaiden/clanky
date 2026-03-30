@@ -25,10 +25,22 @@ export async function withBrowserTest(
   try {
     await callback({ app, page });
   } finally {
-    await page.close();
-    await context.close();
-    await browser.close();
-    await app.stop();
+    const teardownErrors: unknown[] = [];
+    for (const closeResource of [
+      async () => await page.close(),
+      async () => await context.close(),
+      async () => await browser.close(),
+      async () => await app.stop(),
+    ]) {
+      try {
+        await closeResource();
+      } catch (error) {
+        teardownErrors.push(error);
+      }
+    }
+    if (teardownErrors.length > 0) {
+      throw teardownErrors[0];
+    }
   }
 }
 
