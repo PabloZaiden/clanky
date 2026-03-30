@@ -348,10 +348,11 @@ describe("workspace management scenario", () => {
       expect(window.location.hash).toBe("#/workspace/ws-1");
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
-    expect(getByText("No loops in this workspace yet.")).toBeTruthy();
+    expect(getByRole("heading", { name: "Activity" })).toBeTruthy();
+    expect(getByText("No activity in this workspace yet.")).toBeTruthy();
   });
 
-  test("workspace route shows header server info and a unified activity summary", async () => {
+  test("workspace route shows header server info and a unified activity card", async () => {
     setupBaseApi();
 
     const loop = createLoopWithStatus("running", {
@@ -426,7 +427,7 @@ describe("workspace management scenario", () => {
     api.get("/api/workspaces", () => [sshWorkspace]);
     api.get("/api/workspaces/:id", () => sshWorkspace);
 
-    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
+    const { getAllByText, getByRole, queryByRole, queryByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
@@ -437,18 +438,18 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
 
-    const activityHeading = getByText("Workspace activity");
+    const activityHeading = getByRole("heading", { name: "Activity" });
     const activityCard = activityHeading.closest("div.rounded-2xl") as HTMLElement | null;
     expect(activityCard).toBeTruthy();
-    expect(within(activityCard!).getByText("Unified counts for loops, chats, and SSH sessions in this workspace.")).toBeTruthy();
+    expect(within(activityCard!).getByText("Loops, chats, and SSH sessions in this workspace.")).toBeTruthy();
     expect(
       getAllByText((content) => content === "Build host" || content === "server.example.com").length
     ).toBeGreaterThan(0);
-    expect(within(activityCard!).getAllByText("1").length).toBeGreaterThanOrEqual(3);
     expect(document.body.textContent?.includes("Connection")).toBe(false);
-    expect(getByRole("heading", { name: "Loops" })).toBeTruthy();
-    expect(getByRole("heading", { name: "Chats" })).toBeTruthy();
-    expect(getByRole("heading", { name: "SSH sessions" })).toBeTruthy();
+    expect(queryByText("Workspace activity")).toBeNull();
+    expect(queryByRole("heading", { name: "Loops" })).toBeNull();
+    expect(queryByRole("heading", { name: "Chats" })).toBeNull();
+    expect(queryByRole("heading", { name: "SSH sessions" })).toBeNull();
     expect(getAllByText("In Workspace").length).toBeGreaterThan(0);
     expect(getAllByText("Workspace Chat").length).toBeGreaterThan(0);
     expect(getAllByText("Workspace SSH").length).toBeGreaterThan(0);
@@ -476,7 +477,7 @@ describe("workspace management scenario", () => {
     expect(getAllByText("stdio").length).toBeGreaterThan(0);
   });
 
-  test("workspace activity SSH copy stays consistent when legacy sessions exist on stdio workspaces", async () => {
+  test("workspace activity card keeps SSH copy clear when legacy sessions exist on stdio workspaces", async () => {
     setupBaseApi();
 
     const legacySession = createSshSession({
@@ -493,7 +494,7 @@ describe("workspace management scenario", () => {
     api.get("/api/workspaces", () => [WORKSPACE]);
     api.get("/api/workspaces/:id", () => WORKSPACE);
 
-    const { getAllByText, getByText, user } = renderWithUser(<App />);
+    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
@@ -501,10 +502,11 @@ describe("workspace management scenario", () => {
 
     await user.click(getAllByText("Existing Project")[0]!);
     await waitFor(() => {
-      expect(getByText("Workspace activity")).toBeTruthy();
+      expect(getByRole("heading", { name: "Activity" })).toBeTruthy();
     });
 
-    expect(getByText("Saved SSH sessions for this workspace.")).toBeTruthy();
+    expect(getByText("Loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.")).toBeTruthy();
+    expect(getAllByText("Legacy SSH").length).toBeGreaterThan(0);
     expect(document.body.textContent?.includes("stay at 0")).toBe(false);
   });
 
@@ -541,15 +543,13 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
 
-    const loopsCard = getByRole("heading", { name: "Loops" }).parentElement?.parentElement;
-    const sshSessionsCard = getByRole("heading", { name: "SSH sessions" }).parentElement?.parentElement;
-    expect(loopsCard?.className).toContain("min-w-0");
-    expect(sshSessionsCard?.className).toContain("min-w-0");
+    const activityCard = getByRole("heading", { name: "Activity" }).closest("div.rounded-2xl");
+    expect(activityCard?.className).toContain("min-w-0");
 
-    const loopRow = Array.from(loopsCard?.querySelectorAll("button") ?? []).find((button) =>
+    const loopRow = Array.from(activityCard?.querySelectorAll("button") ?? []).find((button) =>
       button.textContent?.includes(longLoopName)
     );
-    const sessionRow = Array.from(sshSessionsCard?.querySelectorAll("button") ?? []).find((button) =>
+    const sessionRow = Array.from(activityCard?.querySelectorAll("button") ?? []).find((button) =>
       button.textContent?.includes(longSessionName)
     );
 
