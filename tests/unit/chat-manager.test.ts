@@ -1,8 +1,20 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { ChatManager } from "../../src/core/chat-manager";
+import { backendManager } from "../../src/core/backend-manager";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import { loadChat } from "../../src/persistence/chats";
 import type { ChatEvent } from "../../src/types";
+import type {
+  AgentEvent,
+  AgentResponse,
+  AgentSession,
+  Backend,
+  BackendConnectionConfig,
+  ConnectionInfo,
+  CreateSessionOptions,
+  PromptInput,
+} from "../../src/backends/types";
+import { createEventStream, type EventStream } from "../../src/utils/event-stream";
 import { setupTestContext, teardownTestContext, testModelFields, testWorkspaceId, type TestContext } from "../setup";
 
 let context: TestContext | undefined;
@@ -24,6 +36,166 @@ async function waitForChat(
 
   const lastChat = await loadChat(chatId);
   throw new Error(`Timed out waiting for chat condition. Last state: ${JSON.stringify(lastChat?.state)}`);
+}
+
+class InterruptRaceBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+  private readonly pendingPrompts = new Map<string, {
+    reject: (error: Error) => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `interrupt-race-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "unused",
+      parts: [{ type: "text", text: "unused" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    const promptText = prompt.parts
+      .filter((part): part is Extract<PromptInput["parts"][number], { type: "text" }> => part.type === "text")
+      .map((part) => part.text)
+      .join(" ");
+
+    if (promptText.includes("follow-up")) {
+      setTimeout(() => {
+        subscription.push({
+          type: "message.start",
+          messageId: `msg-${crypto.randomUUID()}`,
+        });
+        subscription.push({
+          type: "message.delta",
+          content: "Second response after interrupt",
+        });
+        subscription.push({
+          type: "message.complete",
+          content: "Second response after interrupt",
+        });
+        subscription.end();
+      }, 0);
+      return;
+    }
+
+    return await new Promise<void>((_resolve, reject) => {
+      this.pendingPrompts.set(sessionId, {
+        reject: (error: Error) => reject(error),
+      });
+    });
+  }
+
+  async abortSession(sessionId: string): Promise<void> {
+    const pendingPrompt = this.pendingPrompts.get(sessionId);
+    if (!pendingPrompt) {
+      return;
+    }
+    this.pendingPrompts.delete(sessionId);
+    setTimeout(() => {
+      pendingPrompt.reject(new Error("Operation cancelled by user"));
+    }, 0);
+  }
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://interrupt-race-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<[]> {
+    return [];
+  }
 }
 
 describe("ChatManager", () => {
@@ -278,5 +450,58 @@ describe("ChatManager", () => {
     expect(await manager.deleteChat(chat.config.id)).toBe(true);
     expect(await loadChat(chat.config.id)).toBeNull();
     expect(await context.git.worktreeExists(context.workDir, worktreePath!)).toBe(false);
+  });
+
+  test("accepts an immediate follow-up message after interrupting a running prompt", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    const events: ChatEvent[] = [];
+    const emitter = new SimpleEventEmitter<ChatEvent>();
+    emitter.subscribe((event) => {
+      events.push(event);
+    });
+
+    backendManager.setBackendForTesting(new InterruptRaceBackend());
+
+    const manager = new ChatManager(emitter);
+    const chat = await manager.createChat({
+      name: "Interrupt Recovery Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    const firstRun = await manager.sendMessage(chat.config.id, {
+      message: "start a long response",
+    });
+    expect(firstRun.state.status).toBe("streaming");
+
+    const interrupted = await manager.interruptChat(chat.config.id);
+    expect(interrupted?.state.status).toBe("idle");
+
+    const resumed = await manager.sendMessage(chat.config.id, {
+      message: "follow-up request",
+    });
+    expect(resumed.state.status).toBe("streaming");
+
+    const settled = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "Second response after interrupt"),
+    );
+
+    expect(settled.state.error).toBeUndefined();
+    expect(
+      settled.state.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content),
+    ).toEqual([
+      "start a long response",
+      "follow-up request",
+    ]);
+    expect(settled.state.messages.some((message) => message.content === "Second response after interrupt")).toBe(true);
+    expect(events.some((event) => event.type === "chat.error")).toBe(false);
   });
 });

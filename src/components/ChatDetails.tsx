@@ -61,6 +61,22 @@ function appendLog(logs: LoopLogEntry[], log: LoopLogEntry): LoopLogEntry[] {
   return next.sort((left, right) => left.timestamp.localeCompare(right.timestamp));
 }
 
+function isCancellationMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return normalized.includes("request cancelled")
+    || normalized.includes("operation cancelled by user")
+    || normalized.includes("prompt cancelled")
+    || normalized.includes("session cancelled")
+    || normalized.includes("aborterror")
+    || normalized.includes("useraborterror")
+    || normalized.includes("-32800");
+}
+
+function isStaleTerminalEvent(chat: Chat, timestamp: string): boolean {
+  const lastActivityAt = chat.state.lastActivityAt;
+  return typeof lastActivityAt === "string" && lastActivityAt.localeCompare(timestamp) > 0;
+}
+
 export function ChatDetails({
   chatId,
   onBack,
@@ -120,6 +136,9 @@ export function ChatDetails({
       }
       switch (event.type) {
         case "chat.status":
+          if (isStaleTerminalEvent(current, event.timestamp) && ACTIVE_CHAT_STATUSES.has(current.state.status)) {
+            return current;
+          }
           return {
             ...current,
             state: {
@@ -156,15 +175,26 @@ export function ChatDetails({
             },
           };
         case "chat.interrupted":
+          if (isStaleTerminalEvent(current, event.timestamp) && ACTIVE_CHAT_STATUSES.has(current.state.status)) {
+            return current;
+          }
           return {
             ...current,
             state: {
               ...current.state,
               status: "idle",
+              activeMessageId: undefined,
               lastActivityAt: event.timestamp,
             },
           };
         case "chat.error":
+          if (
+            isStaleTerminalEvent(current, event.timestamp)
+            && ACTIVE_CHAT_STATUSES.has(current.state.status)
+            && isCancellationMessage(event.message)
+          ) {
+            return current;
+          }
           return {
             ...current,
             state: {
