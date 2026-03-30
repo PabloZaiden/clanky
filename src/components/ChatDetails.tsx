@@ -512,15 +512,14 @@ export function ChatDetails({
             </Button>
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 w-9 px-0 text-red-600 dark:text-red-400"
+              variant="danger"
+              size="xs"
               onClick={() => setIsDeleteConfirmOpen(true)}
               loading={isDeletePending}
               aria-label="Delete chat"
               title="Delete chat"
             >
-              <span aria-hidden="true" className="text-base leading-none">🗑</span>
+              Delete
             </Button>
           </div>
         </div>
