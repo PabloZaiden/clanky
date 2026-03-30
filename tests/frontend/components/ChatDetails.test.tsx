@@ -92,12 +92,15 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/messages", () => updatedChat, 200);
 
-    const { getByText, getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText, getByLabelText, getByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
     expect(getByText("Sure, let me take a look.")).toBeTruthy();
+    expect((getByLabelText("Message") as HTMLInputElement).tagName).toBe("INPUT");
+    expect(queryByText("Assistant")).toBeNull();
+    expect(queryByText("You")).toBeNull();
 
     await user.type(getByLabelText("Message"), "Please summarize the risk.");
     await user.click(getByRole("button", { name: "Send" }));
@@ -143,10 +146,45 @@ describe("ChatDetails", () => {
     await user.click(getByRole("button", { name: "Interrupt" }));
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Reconnect" })).toBeTruthy();
+      expect(getByRole("button", { name: "Send" })).toBeTruthy();
     });
 
     expect(api.calls("/api/chats/:id/interrupt", "POST")).toHaveLength(1);
+  });
+
+  test("submits the composer with Ctrl+Enter", async () => {
+    const initialChat = createChat();
+    const updatedChat = createChat({
+      state: {
+        ...initialChat.state,
+        status: "streaming",
+        messages: [
+          ...initialChat.state.messages,
+          {
+            id: "user-2",
+            role: "user",
+            content: "Send on shortcut",
+            timestamp: "2025-01-01T00:00:02.000Z",
+          },
+        ],
+      },
+    });
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/messages", () => updatedChat, 200);
+
+    const { getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByLabelText("Message")).toBeTruthy();
+    });
+
+    await user.type(getByLabelText("Message"), "Send on shortcut");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(1);
+    });
   });
 
   test("applies chat-scoped websocket message updates", async () => {
@@ -220,5 +258,108 @@ describe("ChatDetails", () => {
     await waitFor(() => {
       expect(getByText("Idle")).toBeTruthy();
     });
+  });
+
+  test("updates streaming logs in place when websocket events reuse the same log id", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        session: { id: "session-1" },
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.log",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:02.000Z",
+        log: {
+          id: "log-1",
+          level: "agent",
+          message: "AI generating response...",
+          details: {
+            logKind: "response",
+            responseContent: "Alpha chunk",
+          },
+          timestamp: "2025-01-01T00:00:02.000Z",
+        },
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.log",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:03.000Z",
+        log: {
+          id: "log-1",
+          level: "agent",
+          message: "AI generating response...",
+          details: {
+            logKind: "response",
+            responseContent: "Bravo final chunk",
+          },
+          timestamp: "2025-01-01T00:00:03.000Z",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Bravo final chunk")).toBeTruthy();
+    });
+
+    expect(queryByText("Alpha chunk")).toBeNull();
+  });
+
+  test("deletes the chat from the UI with confirmation", async () => {
+    api.get("/api/chats/:id", () => createChat());
+    api.delete("/api/chats/:id", () => ({ ok: true }), 200);
+    let navigatedBack = false;
+
+    const { getByRole, getByText, user } = renderWithUser(
+      <ChatDetails chatId={CHAT_ID} onBack={() => {
+        navigatedBack = true;
+      }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Delete chat" }));
+    await user.click(getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id", "DELETE")).toHaveLength(1);
+    });
+    expect(navigatedBack).toBe(true);
+  });
+
+  test("supports focus mode for chat", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Enter focus mode" }));
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Exit focus mode" })).toBeTruthy();
+    });
+    expect(queryByText("Repo pairing")).toBeNull();
   });
 });
