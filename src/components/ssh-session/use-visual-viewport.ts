@@ -9,13 +9,31 @@
  *   layout viewport top (iOS Safari shifts this when the keyboard opens)
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 export interface VisualViewportState {
   /** Visual viewport height in CSS pixels. */
   height: number;
   /** Offset from layout viewport top (iOS keyboard scroll). */
   offsetTop: number;
+}
+
+export function getFocusModeViewportStyle(
+  enabled: boolean,
+  viewport: VisualViewportState | null,
+): CSSProperties | undefined {
+  if (!enabled || !viewport) {
+    return undefined;
+  }
+
+  const style: CSSProperties = {
+    height: `${viewport.height}px`,
+    overflow: "hidden",
+  };
+  if (viewport.offsetTop > 0) {
+    style.transform = `translateY(${viewport.offsetTop}px)`;
+  }
+  return style;
 }
 
 export function useVisualViewport(enabled: boolean): VisualViewportState | null {

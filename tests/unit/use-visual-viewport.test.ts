@@ -18,6 +18,11 @@ describe("use-visual-viewport module", () => {
     expect(typeof mod.useVisualViewport).toBe("function");
   });
 
+  test("exports getFocusModeViewportStyle function", async () => {
+    const mod = await import("../../src/components/ssh-session/use-visual-viewport");
+    expect(typeof mod.getFocusModeViewportStyle).toBe("function");
+  });
+
   test("VisualViewportState interface has expected shape", async () => {
     // Type-level check — if this compiles, the interface is correct
     const state: import("../../src/components/ssh-session/use-visual-viewport").VisualViewportState = {
@@ -26,5 +31,31 @@ describe("use-visual-viewport module", () => {
     };
     expect(state.height).toBe(600);
     expect(state.offsetTop).toBe(0);
+  });
+
+  test("getFocusModeViewportStyle returns undefined when disabled", async () => {
+    const mod = await import("../../src/components/ssh-session/use-visual-viewport");
+    const style = mod.getFocusModeViewportStyle(true, null);
+    expect(style).toBeUndefined();
+    expect(mod.getFocusModeViewportStyle(false, { height: 600, offsetTop: 0 })).toBeUndefined();
+  });
+
+  test("getFocusModeViewportStyle returns height and hidden overflow", async () => {
+    const mod = await import("../../src/components/ssh-session/use-visual-viewport");
+    const style = mod.getFocusModeViewportStyle(true, { height: 432, offsetTop: 0 });
+    expect(style).toEqual({
+      height: "432px",
+      overflow: "hidden",
+    });
+  });
+
+  test("getFocusModeViewportStyle translates when the viewport is offset", async () => {
+    const mod = await import("../../src/components/ssh-session/use-visual-viewport");
+    const style = mod.getFocusModeViewportStyle(true, { height: 432, offsetTop: 28 });
+    expect(style).toEqual({
+      height: "432px",
+      overflow: "hidden",
+      transform: "translateY(28px)",
+    });
   });
 });
