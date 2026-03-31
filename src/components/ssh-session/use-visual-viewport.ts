@@ -18,6 +18,24 @@ export interface VisualViewportState {
   offsetTop: number;
 }
 
+export function getFocusModeViewportStyle(
+  enabled: boolean,
+  viewport: VisualViewportState | null,
+): Record<string, string> | undefined {
+  if (!enabled || !viewport) {
+    return undefined;
+  }
+
+  const style: Record<string, string> = {
+    height: `${viewport.height}px`,
+    overflow: "hidden",
+  };
+  if (viewport.offsetTop > 0) {
+    style["transform"] = `translateY(${viewport.offsetTop}px)`;
+  }
+  return style;
+}
+
 export function useVisualViewport(enabled: boolean): VisualViewportState | null {
   const [state, setState] = useState<VisualViewportState | null>(() => {
     if (!enabled || typeof window === "undefined" || !window.visualViewport) {

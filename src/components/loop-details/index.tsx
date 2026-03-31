@@ -2,7 +2,6 @@
  * LoopDetails component showing full loop information with tabs.
  */
 
-import { useMemo } from "react";
 import { useLoop, useLoopPortForwards, useMarkdownPreference, useToast } from "../../hooks";
 import { Button, EditIcon, getStatusBadgeVariant, StatusBadge } from "../common";
 import { LoopActionBar } from "../LoopActionBar";
@@ -26,7 +25,7 @@ import { useLogDisplayState } from "./use-log-display-state";
 import { useLogFocusMode } from "./use-log-focus-mode";
 import { LoopDetailsModals } from "./loop-details-modals";
 import { LoopDetailsTabContent } from "./loop-details-tab-content";
-import { useVisualViewport } from "../ssh-session/use-visual-viewport";
+import { getFocusModeViewportStyle, useVisualViewport } from "../ssh-session/use-visual-viewport";
 
 export interface LoopDetailsProps {
   /** Loop ID to display */
@@ -83,19 +82,7 @@ export function LoopDetails({
   const portForward = usePortForwardActions({ loopId, toast, createForward, deleteForward });
   const isLogFocusActive = activeTab === "log" && isLogFocusMode && !!loop;
   const viewport = useVisualViewport(isLogFocusActive);
-  const focusModeContainerStyle = useMemo(() => {
-    if (!isLogFocusActive || !viewport) {
-      return undefined as Record<string, string> | undefined;
-    }
-    const style: Record<string, string> = {
-      height: `${viewport.height}px`,
-      overflow: "hidden",
-    };
-    if (viewport.offsetTop > 0) {
-      style["transform"] = `translateY(${viewport.offsetTop}px)`;
-    }
-    return style;
-  }, [isLogFocusActive, viewport]);
+  const focusModeContainerStyle = getFocusModeViewportStyle(isLogFocusActive, viewport);
 
   if (loading && !loop) {
     return (
