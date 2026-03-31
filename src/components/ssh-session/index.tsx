@@ -27,7 +27,7 @@ import { useSshConnection } from "./use-ssh-connection";
 import { useTerminalRenderer } from "./use-terminal-renderer";
 import { useFocusMode } from "./use-focus-mode";
 import { FocusModeBar } from "./focus-mode-bar";
-import { useVisualViewport } from "./use-visual-viewport";
+import { getFocusModeViewportStyle, useVisualViewport } from "./use-visual-viewport";
 
 export interface SshSessionDetailsProps {
   sshSessionId: string;
@@ -153,24 +153,7 @@ export function SshSessionDetails({
     };
   }, [viewport?.height, connection.syncTerminalSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Compute the focus-mode container style. When the visual viewport API
-  // reports a height (keyboard visible on mobile), use that as an explicit
-  // height + top offset so the terminal, bar, and keyboard don't overlap.
-  const focusModeContainerStyle = useMemo(() => {
-    if (!isFocusMode || !viewport) {
-      return undefined as Record<string, string> | undefined;
-    }
-    const style: Record<string, string> = {
-      height: `${viewport.height}px`,
-      overflow: "hidden",
-    };
-    // iOS Safari scrolls the layout viewport when the keyboard opens;
-    // translate the container back into the visible region.
-    if (viewport.offsetTop > 0) {
-      style["transform"] = `translateY(${viewport.offsetTop}px)`;
-    }
-    return style;
-  }, [isFocusMode, viewport]);
+  const focusModeContainerStyle = getFocusModeViewportStyle(isFocusMode, viewport);
 
   useTerminalRenderer({
     sessionConfigId: session?.config.id,

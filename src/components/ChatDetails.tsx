@@ -8,6 +8,7 @@ import { RenameChatModal } from "./RenameChatModal";
 import { Button, ConfirmModal, StatusBadge, getChatStatusBadgeVariant } from "./common";
 import { ChatFocusModeBar } from "./chat-details/chat-focus-mode-bar";
 import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
+import { getFocusModeViewportStyle, useVisualViewport } from "./ssh-session/use-visual-viewport";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { useMarkdownPreference, useToast, useWebSocket } from "../hooks";
@@ -106,6 +107,8 @@ export function ChatDetails({
   const composerFormRef = useRef<HTMLFormElement>(null);
   const reconnectAttemptedRef = useRef(false);
   const { isFocusMode, toggleFocusMode } = useChatFocusMode();
+  const viewport = useVisualViewport(isFocusMode);
+  const focusModeContainerStyle = getFocusModeViewportStyle(isFocusMode, viewport);
 
   const refreshChat = useCallback(async () => {
     try {
@@ -505,7 +508,7 @@ export function ChatDetails({
 
   if (isFocusMode) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e]">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e]" style={focusModeContainerStyle}>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3">
           {chat.state.error && (
             <p className="mb-3 shrink-0 text-sm text-red-300">
