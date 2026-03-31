@@ -13,6 +13,7 @@
  * - Automatic cleanup on disconnect
  *
  * Event Types Streamed:
+ * - chat.created, chat.updated, chat.status, chat.interrupted, chat.error, chat.deleted
  * - loop.created, loop.started, loop.completed, loop.ssh_handoff, loop.stopped, loop.error
  * - loop.iteration.start, loop.iteration.end
  * - loop.message, loop.tool_call, loop.progress, loop.log
