@@ -41,7 +41,8 @@ function resolveWorkspacePath(workspace: Workspace, requestedPath: string): stri
     ? pathPosix.normalize(trimmedPath)
     : pathPosix.normalize(pathPosix.join(root, trimmedPath));
 
-  if (normalizedPath !== root && !normalizedPath.startsWith(`${root}/`)) {
+  const relativePath = pathPosix.relative(root, normalizedPath);
+  if (relativePath && (relativePath.startsWith("..") || pathPosix.isAbsolute(relativePath))) {
     throw new Error("Requested path must stay within the workspace directory");
   }
 
@@ -56,35 +57,10 @@ function parseModifiedAt(timestampSeconds: string): string {
   return new Date(timestamp * 1000).toISOString();
 }
 
-function buildVersionToken(timestampSeconds: string, size: number): string {
-  return `${timestampSeconds}:${size}`;
-}
-
-function parseEntryLine(
-  workspace: Workspace,
-  parentAbsolutePath: string,
-  line: string,
-): WorkspaceFileEntry {
-  const [name, typeFlag, sizeText, timestampSeconds] = line.split(LIST_SEPARATOR);
-  if (!name || !typeFlag || !sizeText || !timestampSeconds) {
-    throw new Error(`Invalid file entry output: ${line}`);
-  }
-
-  const size = Number.parseInt(sizeText, 10);
-  if (!Number.isFinite(size)) {
-    throw new Error(`Invalid file size: ${sizeText}`);
-  }
-
-  const absolutePath = pathPosix.join(parentAbsolutePath, name);
-
-  return {
-    name,
-    path: toRelativeWorkspacePath(workspace, absolutePath),
-    kind: typeFlag === "d" ? "directory" : "file",
-    size,
-    modifiedAt: parseModifiedAt(timestampSeconds),
-    versionToken: buildVersionToken(timestampSeconds, size),
-  };
+function buildVersionToken(timestampSeconds: string, size: number, contentHash?: string): string {
+  return contentHash
+    ? `${timestampSeconds}:${size}:${contentHash}`
+    : `${timestampSeconds}:${size}`;
 }
 
 async function runMetadataCommand(
@@ -95,7 +71,7 @@ async function runMetadataCommand(
     "bash",
     [
       "-lc",
-      "if [ ! -e \"$1\" ]; then exit 2; fi; find \"$1\" -maxdepth 0 -printf '%y\\t%s\\t%T@\\n'",
+      "if [ ! -e \"$1\" ]; then exit 2; fi; if [ -d \"$1\" ]; then typeFlag=d; hash=-; else typeFlag=f; if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$1\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$1\" | cut -d' ' -f1); else hash=; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$1\"); modified=$(stat -c '%Y' \"$1\"); else size=$(stat -f '%z' \"$1\"); modified=$(stat -f '%m' \"$1\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"",
       "workspace-file-metadata",
       absolutePath,
     ],
@@ -111,7 +87,7 @@ async function runMetadataCommand(
     throw new Error(result.stderr.trim() || "Failed to read file metadata");
   }
 
-  const [typeFlag, sizeText, timestampSeconds] = result.stdout.trim().split(LIST_SEPARATOR);
+  const [typeFlag, sizeText, timestampSeconds, contentHash] = result.stdout.trim().split(LIST_SEPARATOR);
   if (!typeFlag || !sizeText || !timestampSeconds) {
     throw new Error("Failed to parse file metadata");
   }
@@ -125,7 +101,11 @@ async function runMetadataCommand(
     kind: typeFlag === "d" ? "directory" : "file",
     size,
     modifiedAt: parseModifiedAt(timestampSeconds),
-    versionToken: buildVersionToken(timestampSeconds, size),
+    versionToken: buildVersionToken(
+      timestampSeconds,
+      size,
+      typeFlag === "f" && contentHash && contentHash !== "-" ? contentHash : undefined,
+    ),
   };
 }
 
@@ -157,28 +137,19 @@ class WorkspaceFileService {
       throw new Error("Requested path is not a directory");
     }
 
-    const result = await executor.exec(
-      "bash",
-      [
-        "-lc",
-        "find \"$1\" -mindepth 1 -maxdepth 1 -printf '%f\\t%y\\t%s\\t%T@\\n' | sort",
-        "workspace-file-list",
-        absolutePath,
-      ],
-      {
-        logFailures: false,
-      },
-    );
+    const names = await executor.listDirectory(absolutePath);
+    const entries = (await Promise.all(
+      names.map(async (name) => {
+        const entryPath = pathPosix.join(absolutePath, name);
+        const entryMetadata = await runMetadataCommand(executor, entryPath);
+        if (!entryMetadata) {
+          return null;
+        }
 
-    if (!result.success) {
-      throw new Error(result.stderr.trim() || "Failed to list directory");
-    }
-
-    const entries = result.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => parseEntryLine(workspace, absolutePath, line))
+        return toWorkspaceFileEntry(workspace, entryPath, entryMetadata);
+      }),
+    ))
+      .filter((entry): entry is WorkspaceFileEntry => entry !== null)
       .sort((left, right) => {
         if (left.kind !== right.kind) {
           return left.kind === "directory" ? -1 : 1;
@@ -243,8 +214,7 @@ class WorkspaceFileService {
 
     if (
       !options?.overwrite
-      && options?.expectedVersionToken !== undefined
-      && (currentFile?.versionToken ?? null) !== (options.expectedVersionToken ?? null)
+      && (currentFile?.versionToken ?? null) !== (options?.expectedVersionToken ?? null)
     ) {
       const conflictError = new Error("File changed outside the editor");
       conflictError.name = "WorkspaceFileConflictError";

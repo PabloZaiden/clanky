@@ -20,7 +20,7 @@ function mapFileError(error: unknown): Response {
     return error;
   }
 
-  const message = String(error);
+  const message = error instanceof Error ? error.message : String(error);
   if ((error as { name?: string } | null)?.name === "WorkspaceFileConflictError") {
     const currentFile = (error as { currentFile?: WorkspaceFileEntry | null }).currentFile ?? null;
     return Response.json({

@@ -179,6 +179,29 @@ describe("workspace files API integration", () => {
     expect(data.currentFile?.path).toBe("src/index.ts");
   });
 
+  test("requires an explicit overwrite to save an existing file without a version token", async () => {
+    const workspace = await createWorkspace();
+
+    const writeResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/write`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "src/index.ts",
+        content: "export const value = 9;\n",
+      }),
+    });
+
+    expect(writeResponse.status).toBe(409);
+    const data = await writeResponse.json() as {
+      error: string;
+      message: string;
+      currentFile: { path: string } | null;
+    };
+    expect(data.error).toBe("file_conflict");
+    expect(data.message).toBe("File changed outside the editor");
+    expect(data.currentFile?.path).toBe("src/index.ts");
+  });
+
   test("rejects paths that escape the workspace root", async () => {
     const workspace = await createWorkspace();
 
