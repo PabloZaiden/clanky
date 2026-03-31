@@ -76,6 +76,14 @@ export {
   CreatePortForwardRequestSchema,
 } from "./ssh-session";
 
+// Workspace file explorer schemas
+export {
+  WorkspaceRelativePathSchema,
+  ListWorkspaceFilesRequestSchema,
+  GetWorkspaceFileRequestSchema,
+  WriteWorkspaceFileRequestSchema,
+} from "./workspace-files";
+
 // Standalone SSH server schemas
 export {
   SshKeyAlgorithmSchema,

@@ -1,0 +1,204 @@
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createMockApi } from "../helpers/mock-api";
+import { renderWithUser, waitFor } from "../helpers/render";
+import { createSshSession, createWorkspace } from "../helpers/factories";
+
+mock.module("@monaco-editor/react", () => ({
+  default: ({
+    value,
+    onChange,
+  }: {
+    value?: string;
+    onChange?: (value: string) => void;
+  }) => (
+    <textarea
+      aria-label="Monaco editor"
+      value={value ?? ""}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  ),
+}));
+
+mock.module("@/components/SshSessionDetails", () => ({
+  SshSessionDetails: ({ sshSessionId }: { sshSessionId: string }) => (
+    <div>Embedded SSH session: {sshSessionId}</div>
+  ),
+}));
+
+const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+
+const api = createMockApi();
+
+function createFileEntry(overrides?: Partial<{
+  name: string;
+  path: string;
+  kind: "file" | "directory";
+  size: number;
+  modifiedAt: string;
+  versionToken: string;
+}>) {
+  return {
+    name: overrides?.name ?? "src",
+    path: overrides?.path ?? "src",
+    kind: overrides?.kind ?? "directory",
+    size: overrides?.size ?? 0,
+    modifiedAt: overrides?.modifiedAt ?? "2026-01-01T00:00:00.000Z",
+    versionToken: overrides?.versionToken ?? "100:0",
+  };
+}
+
+describe("WorkspaceFilesView", () => {
+  beforeEach(() => {
+    api.reset();
+    api.install();
+  });
+
+  afterEach(() => {
+    api.uninstall();
+  });
+
+  test("opens files from the tree and enables saving edited content", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Editor Workspace",
+      directory: "/workspaces/editor-workspace",
+    });
+
+    api.get("/api/workspaces/:id/files", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      if (path === "src") {
+        return {
+          workspaceId: workspace.id,
+          directory: "src",
+          entries: [createFileEntry({
+            name: "index.ts",
+            path: "src/index.ts",
+            kind: "file",
+            size: 20,
+            versionToken: "100:20",
+          })],
+        };
+      }
+      return {
+        workspaceId: workspace.id,
+        directory: "",
+        entries: [createFileEntry()],
+      };
+    });
+
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "100:20",
+      }),
+      content: "export const value = 1;\n",
+    }));
+
+    api.post("/api/workspaces/:id/files/write", () => ({
+      success: true,
+      workspaceId: workspace.id,
+      overwritten: false,
+      file: createFileEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "200:20",
+      }),
+    }));
+
+    const { getByRole, getByLabelText, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /src/i }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: /index.ts/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /index.ts/i }));
+    await waitFor(() => {
+      expect(getByLabelText("Monaco editor")).toBeInTheDocument();
+    });
+
+    await user.clear(getByLabelText("Monaco editor"));
+    await user.type(getByLabelText("Monaco editor"), "export const value = 2;");
+    await user.click(getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/workspaces/:id/files/write", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("shows existing SSH sessions and can create a new terminal session", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-ssh",
+      name: "SSH Workspace",
+      directory: "/workspaces/ssh-workspace",
+      serverSettings: {
+        agent: {
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "remote.example",
+          username: "tester",
+        },
+      },
+    });
+    const session = createSshSession({
+      config: {
+        id: "session-1",
+        workspaceId: workspace.id,
+        name: "Workspace SSH",
+      },
+    });
+    const createSession = mock(async () => createSshSession({
+      config: {
+        id: "session-2",
+        workspaceId: workspace.id,
+        name: "Created SSH",
+      },
+    }));
+
+    api.get("/api/workspaces/:id/files", () => ({
+      workspaceId: workspace.id,
+      directory: "",
+      entries: [],
+    }));
+
+    const { getByRole, getByText, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[session]}
+        createSession={createSession}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("combobox", { name: "Select workspace SSH session" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /Show terminal/i }));
+    await waitFor(() => {
+      expect(getByText("Embedded SSH session: session-1")).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /New terminal/i }));
+    await waitFor(() => {
+      expect(createSession).toHaveBeenCalledTimes(1);
+    });
+  });
+});

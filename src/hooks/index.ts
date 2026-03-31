@@ -22,6 +22,7 @@ export { useDashboardModals, type ModalState, type UncommittedModalState, type U
 export { useDashboardData, type UseDashboardDataResult } from "./useDashboardData";
 export { useViewModePreference, type UseViewModePreferenceResult, type DashboardViewMode } from "./useViewModePreference";
 export { useProvisioningJob, type UseProvisioningJobResult, type StartProvisioningJobRequest } from "./useProvisioningJob";
+export { useWorkspaceFiles, type UseWorkspaceFilesResult, type WorkspaceFileConflictState } from "./useWorkspaceFiles";
 // Shared loop action API functions
 export {
   acceptLoopApi,
@@ -64,3 +65,10 @@ export {
   deleteStandaloneSshSessionApi,
   saveStandaloneSshServerPassword,
 } from "./sshServerActions";
+export {
+  WorkspaceFileConflictError,
+  listWorkspaceFilesApi,
+  readWorkspaceFileApi,
+  getWorkspaceFileMetadataApi,
+  writeWorkspaceFileApi,
+} from "./workspaceFileActions";
