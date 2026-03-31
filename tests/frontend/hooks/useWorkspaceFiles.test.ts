@@ -58,6 +58,84 @@ describe("useWorkspaceFiles", () => {
     expect(result.current.directoryEntries[""]?.map((entry) => entry.name)).toEqual(["src", "README.md"]);
   });
 
+  test("toggles hidden files and refreshes expanded directories", async () => {
+    api.get("/api/workspaces/:id/files", (req) => {
+      const url = new URL(req.url, "http://localhost");
+      const path = url.searchParams.get("path") ?? "";
+      const showHidden = url.searchParams.get("showHidden") === "true";
+
+      if (path === "src") {
+        return {
+          workspaceId: "workspace-1",
+          directory: "src",
+          entries: showHidden
+            ? [
+                createDirectoryEntry({
+                  name: ".secret.ts",
+                  path: "src/.secret.ts",
+                  kind: "file",
+                  size: 5,
+                  versionToken: "101:5",
+                }),
+                createDirectoryEntry({
+                  name: "index.ts",
+                  path: "src/index.ts",
+                  kind: "file",
+                  size: 20,
+                  versionToken: "100:20",
+                }),
+              ]
+            : [createDirectoryEntry({
+                name: "index.ts",
+                path: "src/index.ts",
+                kind: "file",
+                size: 20,
+                versionToken: "100:20",
+              })],
+        };
+      }
+
+      return {
+        workspaceId: "workspace-1",
+        directory: "",
+        entries: showHidden
+          ? [
+              createDirectoryEntry(),
+              createDirectoryEntry({
+                name: ".env",
+                path: ".env",
+                kind: "file",
+                size: 10,
+                versionToken: "100:10",
+              }),
+            ]
+          : [createDirectoryEntry()],
+      };
+    });
+
+    const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
+
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.toggleDirectory("src");
+    });
+
+    expect(result.current.directoryEntries[""]?.map((entry) => entry.name)).toEqual(["src"]);
+    expect(result.current.directoryEntries["src"]?.map((entry) => entry.name)).toEqual(["index.ts"]);
+    expect(result.current.showHiddenFiles).toBe(false);
+
+    await act(async () => {
+      await result.current.toggleShowHiddenFiles();
+    });
+
+    expect(result.current.showHiddenFiles).toBe(true);
+    expect(result.current.directoryEntries[""]?.map((entry) => entry.name)).toEqual(["src", ".env"]);
+    expect(result.current.directoryEntries["src"]?.map((entry) => entry.name)).toEqual([".secret.ts", "index.ts"]);
+  });
+
   test("opens a file, tracks dirty state, and saves successfully", async () => {
     api.get("/api/workspaces/:id/files", () => ({
       workspaceId: "workspace-1",

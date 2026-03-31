@@ -23,6 +23,7 @@ export interface UseWorkspaceFilesResult {
   expandedDirectories: string[];
   currentDirectory: string;
   currentFile: WorkspaceFileEntry | null;
+  showHiddenFiles: boolean;
   editorContent: string;
   savedContent: string;
   loadingTree: boolean;
@@ -33,6 +34,7 @@ export interface UseWorkspaceFilesResult {
   conflictState: WorkspaceFileConflictState | null;
   autoReloadedAt: string | null;
   refreshTree: (path?: string) => Promise<void>;
+  toggleShowHiddenFiles: () => Promise<void>;
   toggleDirectory: (path: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
   setEditorContent: (value: string) => void;
@@ -81,6 +83,7 @@ export function useWorkspaceFiles(
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
   const [currentFile, setCurrentFile] = useState<WorkspaceFileEntry | null>(null);
+  const [showHiddenFiles, setShowHiddenFiles] = useState(false);
   const [editorContent, setEditorContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
   const [loadingTree, setLoadingTree] = useState(true);
@@ -93,11 +96,15 @@ export function useWorkspaceFiles(
 
   const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
 
+  const loadDirectory = useCallback(async (path: string, includeHidden: boolean) => {
+    return await listWorkspaceFilesApi(workspaceId, path, includeHidden);
+  }, [workspaceId]);
+
   const refreshTree = useCallback(async (path = "") => {
     try {
       setLoadingTree(true);
       setError(null);
-      const response = await listWorkspaceFilesApi(workspaceId, path);
+      const response = await loadDirectory(path, showHiddenFiles);
       setDirectoryEntries((currentEntries) => ({
         ...currentEntries,
         [path]: response.entries,
@@ -113,7 +120,35 @@ export function useWorkspaceFiles(
     } finally {
       setLoadingTree(false);
     }
-  }, [workspaceId]);
+  }, [loadDirectory, showHiddenFiles]);
+
+  const toggleShowHiddenFiles = useCallback(async () => {
+    const nextShowHiddenFiles = !showHiddenFiles;
+    const directoriesToRefresh = Array.from(new Set(["", ...expandedDirectories]));
+
+    try {
+      setLoadingTree(true);
+      setError(null);
+      const responses = await Promise.all(
+        directoriesToRefresh.map(async (path) => ({
+          path,
+          response: await loadDirectory(path, nextShowHiddenFiles),
+        })),
+      );
+      setDirectoryEntries((currentEntries) => {
+        const nextEntries = { ...currentEntries };
+        for (const { path, response } of responses) {
+          nextEntries[path] = response.entries;
+        }
+        return nextEntries;
+      });
+      setShowHiddenFiles(nextShowHiddenFiles);
+    } catch (requestError) {
+      setError(String(requestError));
+    } finally {
+      setLoadingTree(false);
+    }
+  }, [expandedDirectories, loadDirectory, showHiddenFiles]);
 
   const openFile = useCallback(async (path: string) => {
     try {
@@ -254,16 +289,28 @@ export function useWorkspaceFiles(
   }, []);
 
   useEffect(() => {
+    setLoadingTree(true);
+    setError(null);
     setDirectoryEntries({});
     setExpandedDirectories([]);
     setCurrentDirectory("");
     setCurrentFile(null);
+    setShowHiddenFiles(false);
     setEditorContent("");
     setSavedContent("");
     setConflictState(null);
     setAutoReloadedAt(null);
-    void refreshTree("");
-  }, [refreshTree, workspaceId]);
+    void loadDirectory("", false)
+      .then((response) => {
+        setDirectoryEntries({ "": response.entries });
+      })
+      .catch((requestError) => {
+        setError(String(requestError));
+      })
+      .finally(() => {
+        setLoadingTree(false);
+      });
+  }, [loadDirectory, workspaceId]);
 
   useEffect(() => {
     if (pollTimerRef.current !== null) {
@@ -292,6 +339,7 @@ export function useWorkspaceFiles(
     expandedDirectories,
     currentDirectory,
     currentFile,
+    showHiddenFiles,
     editorContent,
     savedContent,
     loadingTree,
@@ -302,6 +350,7 @@ export function useWorkspaceFiles(
     conflictState,
     autoReloadedAt,
     refreshTree,
+    toggleShowHiddenFiles,
     toggleDirectory,
     openFile,
     setEditorContent,

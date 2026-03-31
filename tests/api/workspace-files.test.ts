@@ -86,11 +86,25 @@ describe("workspace files API integration", () => {
       entries: Array<{ name: string; path: string; kind: string; versionToken: string }>;
     };
     expect(data.directory).toBe("");
-    expect(data.entries.map((entry) => entry.name)).toEqual([".git", "src", "README.md"]);
-    expect(data.entries.find((entry) => entry.name === ".git")?.kind).toBe("directory");
+    expect(data.entries.map((entry) => entry.name)).toEqual(["src", "README.md"]);
     expect(data.entries.find((entry) => entry.name === "src")?.kind).toBe("directory");
     expect(data.entries.find((entry) => entry.name === "README.md")?.path).toBe("README.md");
     expect(data.entries[0]?.versionToken.length).toBeGreaterThan(0);
+  });
+
+  test("lists hidden files when showHidden is enabled", async () => {
+    const workspace = await createWorkspace();
+
+    const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files?showHidden=true`);
+    expect(response.ok).toBe(true);
+
+    const data = await response.json() as {
+      directory: string;
+      entries: Array<{ name: string; kind: string }>;
+    };
+    expect(data.directory).toBe("");
+    expect(data.entries.map((entry) => entry.name)).toEqual([".git", "src", "README.md"]);
+    expect(data.entries.find((entry) => entry.name === ".git")?.kind).toBe("directory");
   });
 
   test("reads file content and metadata", async () => {

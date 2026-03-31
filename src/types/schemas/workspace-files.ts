@@ -5,9 +5,13 @@
 import { z } from "zod";
 
 export const WorkspaceRelativePathSchema = z.string().trim();
+const WorkspaceFilesBooleanQuerySchema = z
+  .union([z.literal("true"), z.literal("false"), z.boolean()])
+  .transform((value) => value === true || value === "true");
 
 export const ListWorkspaceFilesRequestSchema = z.object({
   path: WorkspaceRelativePathSchema.optional().default(""),
+  showHidden: WorkspaceFilesBooleanQuerySchema.optional().default(false),
 });
 
 export const GetWorkspaceFileRequestSchema = z.object({

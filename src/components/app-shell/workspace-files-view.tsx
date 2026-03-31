@@ -127,9 +127,11 @@ export function WorkspaceFilesView({
                 entriesByDirectory={workspaceFiles.directoryEntries}
                 expandedDirectories={workspaceFiles.expandedDirectories}
                 currentFilePath={workspaceFiles.currentFile?.path}
+                showHiddenFiles={workspaceFiles.showHiddenFiles}
                 loading={workspaceFiles.loadingTree}
                 collapsed={explorerCollapsed}
                 onRefresh={() => workspaceFiles.refreshTree("")}
+                onToggleShowHiddenFiles={workspaceFiles.toggleShowHiddenFiles}
                 onToggleCollapsed={() => setExplorerCollapsed((current) => !current)}
                 onToggleDirectory={workspaceFiles.toggleDirectory}
                 onOpenFile={async (path: string) => {

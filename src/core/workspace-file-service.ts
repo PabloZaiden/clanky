@@ -125,7 +125,11 @@ function toWorkspaceFileEntry(
 }
 
 class WorkspaceFileService {
-  async listDirectory(workspace: Workspace, requestedPath = ""): Promise<WorkspaceFileListResponse> {
+  async listDirectory(
+    workspace: Workspace,
+    requestedPath = "",
+    options?: { includeHidden?: boolean },
+  ): Promise<WorkspaceFileListResponse> {
     const absolutePath = resolveWorkspacePath(workspace, requestedPath);
     const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
     const metadata = await runMetadataCommand(executor, absolutePath);
@@ -137,7 +141,9 @@ class WorkspaceFileService {
       throw new Error("Requested path is not a directory");
     }
 
-    const names = await executor.listDirectory(absolutePath);
+    const names = await executor.listDirectory(absolutePath, {
+      includeHidden: options?.includeHidden,
+    });
     const entries = (await Promise.all(
       names.map(async (name) => {
         const entryPath = pathPosix.join(absolutePath, name);

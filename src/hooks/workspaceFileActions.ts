@@ -52,10 +52,15 @@ async function parseWorkspaceFileError(response: Response): Promise<never> {
 export async function listWorkspaceFilesApi(
   workspaceId: string,
   path = "",
+  showHidden = false,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileListResponse> {
+  const searchParams = new URLSearchParams({
+    path,
+    showHidden: showHidden ? "true" : "false",
+  });
   const response = await appFetch(
-    `/api/workspaces/${workspaceId}/files?path=${encodeURIComponent(path)}`,
+    `/api/workspaces/${workspaceId}/files?${searchParams.toString()}`,
     {
       signal: options?.signal,
     },

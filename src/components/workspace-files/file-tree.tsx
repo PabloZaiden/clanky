@@ -45,13 +45,41 @@ function ExplorerToggleIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
+function HiddenFilesIcon({ visible }: { visible: boolean }) {
+  return (
+    <svg
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7Z"
+      />
+      <circle cx="12" cy="12" r="3" />
+      {!visible && (
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M4 4l16 16"
+        />
+      )}
+    </svg>
+  );
+}
+
 interface WorkspaceFileTreeProps {
   entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
   expandedDirectories: string[];
   currentFilePath?: string;
+  showHiddenFiles: boolean;
   loading: boolean;
   collapsed: boolean;
   onRefresh: () => Promise<void>;
+  onToggleShowHiddenFiles: () => Promise<void>;
   onToggleCollapsed: () => void;
   onToggleDirectory: (path: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
@@ -113,9 +141,11 @@ export function WorkspaceFileTree({
   entriesByDirectory,
   expandedDirectories,
   currentFilePath,
+  showHiddenFiles,
   loading,
   collapsed,
   onRefresh,
+  onToggleShowHiddenFiles,
   onToggleCollapsed,
   onToggleDirectory,
   onOpenFile,
@@ -145,6 +175,19 @@ export function WorkspaceFileTree({
             className="w-9 px-0"
           >
             <span className="sr-only">Refresh explorer</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void onToggleShowHiddenFiles()}
+            disabled={loading}
+            aria-label={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
+            aria-pressed={showHiddenFiles}
+            title={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
+            className="w-9 px-0"
+            icon={<HiddenFilesIcon visible={showHiddenFiles} />}
+          >
+            <span className="sr-only">{showHiddenFiles ? "Hide hidden files" : "Show hidden files"}</span>
           </Button>
           <Button
             variant="ghost"

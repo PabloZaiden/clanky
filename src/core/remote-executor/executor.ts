@@ -332,16 +332,18 @@ export class CommandExecutorImpl implements CommandExecutor {
     return result.stdout;
   }
 
-  async listDirectory(path: string): Promise<string[]> {
+  async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
+    const includeHidden = options?.includeHidden ?? false;
     if (this.provider === "local") {
       try {
-        return await readdir(path);
+        const entries = await readdir(path);
+        return includeHidden ? entries : entries.filter((entry) => !entry.startsWith("."));
       } catch {
         return [];
       }
     }
 
-    const result = await this.exec("ls", ["-1", path]);
+    const result = await this.exec("ls", [includeHidden ? "-1A" : "-1", path]);
     if (!result.success) {
       return [];
     }
