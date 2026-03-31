@@ -4,12 +4,15 @@ import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
+import { RenameChatModal } from "./RenameChatModal";
 import { Button, ConfirmModal, StatusBadge, getChatStatusBadgeVariant } from "./common";
 import { ChatFocusModeBar } from "./chat-details/chat-focus-mode-bar";
 import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
+import { getFocusModeViewportStyle, useVisualViewport } from "./ssh-session/use-visual-viewport";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { useMarkdownPreference, useToast, useWebSocket } from "../hooks";
+import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import type {
   Chat,
   ChatEvent,
@@ -98,11 +101,14 @@ export function ChatDetails({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const reconnectAttemptedRef = useRef(false);
   const { isFocusMode, toggleFocusMode } = useChatFocusMode();
+  const viewport = useVisualViewport(isFocusMode);
+  const focusModeContainerStyle = getFocusModeViewportStyle(isFocusMode, viewport);
 
   const refreshChat = useCallback(async () => {
     try {
@@ -135,6 +141,8 @@ export function ChatDetails({
         return current;
       }
       switch (event.type) {
+        case "chat.updated":
+          return mergeChatSnapshot(current, event.chat);
         case "chat.status":
           if (isStaleTerminalEvent(current, event.timestamp) && ACTIVE_CHAT_STATUSES.has(current.state.status)) {
             return current;
@@ -254,6 +262,20 @@ export function ChatDetails({
     reconnectAttemptedRef.current = true;
     void handleReconnect(false);
   }, [chat, handleReconnect]);
+
+  const handleRename = useCallback(async (newName: string) => {
+    const response = await appFetch(`/api/chats/${chatId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName }),
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Failed to rename chat"));
+    }
+    const updatedChat = (await response.json()) as Chat;
+    setChat(updatedChat);
+    toast.success(`Renamed chat to “${updatedChat.config.name}”`);
+  }, [chatId, toast]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -475,9 +497,18 @@ export function ChatDetails({
     />
   );
 
+  const renameModal = (
+    <RenameChatModal
+      isOpen={isRenameModalOpen}
+      onClose={() => setIsRenameModalOpen(false)}
+      currentName={chat.config.name}
+      onRename={handleRename}
+    />
+  );
+
   if (isFocusMode) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e]">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e]" style={focusModeContainerStyle}>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3">
           {chat.state.error && (
             <p className="mb-3 shrink-0 text-sm text-red-300">
@@ -532,6 +563,15 @@ export function ChatDetails({
             <Button
               type="button"
               variant="ghost"
+              size="xs"
+              onClick={() => setIsRenameModalOpen(true)}
+              disabled={isDeletePending}
+            >
+              Rename
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
               size="sm"
               className="h-9 w-9 px-0"
               onClick={toggleFocusMode}
@@ -557,6 +597,7 @@ export function ChatDetails({
 
       {conversation}
       {composer}
+      {renameModal}
       {deleteConfirmModal}
     </div>
   );

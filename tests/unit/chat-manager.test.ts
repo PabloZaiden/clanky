@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { ChatManager } from "../../src/core/chat-manager";
 import { backendManager } from "../../src/core/backend-manager";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
+import * as chatPersistence from "../../src/persistence/chats";
 import { loadChat } from "../../src/persistence/chats";
 import type { ChatEvent } from "../../src/types";
 import type { ModelInfo } from "../../src/types/api";
@@ -287,6 +288,51 @@ describe("ChatManager", () => {
       .map((event) => event.status);
 
     expect(statuses).toEqual(expect.arrayContaining(["starting", "streaming", "idle"]));
+  });
+
+  test("emits chat.updated events when renaming a chat", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the chat backend"],
+    });
+
+    const events: ChatEvent[] = [];
+    const emitter = new SimpleEventEmitter<ChatEvent>();
+    emitter.subscribe((event) => {
+      events.push(event);
+    });
+
+    const manager = new ChatManager(emitter);
+    const chat = await manager.createChat({
+      name: "Original Chat Name",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    const loadChatSpy = spyOn(chatPersistence, "loadChat");
+    loadChatSpy.mockClear();
+
+    const renamed = await manager.updateChat(chat.config.id, {
+      name: "Renamed Chat",
+    });
+
+    expect(renamed).not.toBeNull();
+    expect(renamed?.config.name).toBe("Renamed Chat");
+
+    const updateEvent = events.find(
+      (event): event is Extract<ChatEvent, { type: "chat.updated" }> => event.type === "chat.updated",
+    );
+    expect(updateEvent).toBeDefined();
+    expect(updateEvent?.chatId).toBe(chat.config.id);
+    expect(updateEvent?.chat.config.name).toBe("Renamed Chat");
+    expect(loadChatSpy).toHaveBeenCalledTimes(2);
+
+    const persisted = await loadChat(chat.config.id);
+    expect(persisted?.config.name).toBe("Renamed Chat");
+
+    loadChatSpy.mockRestore();
   });
 
   test("recreates a missing persisted session during reconnect", async () => {

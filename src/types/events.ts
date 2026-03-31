@@ -15,7 +15,7 @@
  * @module types/events
  */
 
-import type { ChatConfig, ChatStatus } from "./chat";
+import type { Chat, ChatConfig, ChatStatus } from "./chat";
 import type { GitCommit, LoopConfig, LoopLogEntry, ModelConfig, PendingPlanQuestion } from "./loop";
 import type { MessageImageAttachment } from "./message-attachments";
 
@@ -133,6 +133,7 @@ export type LoopEvent =
  */
 export type ChatEvent =
   | ChatCreatedEvent
+  | ChatUpdatedEvent
   | ChatStatusEvent
   | ChatMessageEvent
   | ChatToolCallEvent
@@ -145,6 +146,13 @@ export interface ChatCreatedEvent {
   type: "chat.created";
   chatId: string;
   config: ChatConfig;
+  timestamp: string;
+}
+
+export interface ChatUpdatedEvent {
+  type: "chat.updated";
+  chatId: string;
+  chat: Chat;
   timestamp: string;
 }
 
