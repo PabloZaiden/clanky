@@ -152,6 +152,42 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id/interrupt", "POST")).toHaveLength(1);
   });
 
+  test("renames the chat from the header actions", async () => {
+    const initialChat = createChat();
+    const renamedChat = createChat({
+      config: {
+        ...initialChat.config,
+        name: "Renamed pairing",
+        updatedAt: "2025-01-01T00:00:02.000Z",
+      },
+    });
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.patch("/api/chats/:id", () => renamedChat, 200);
+
+    const { getByRole, getByLabelText, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Rename" }));
+
+    const input = await waitFor(() => getByLabelText("Chat Name")) as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, "Renamed pairing");
+    await user.click(getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(getByText("Renamed pairing")).toBeTruthy();
+      expect(api.calls("/api/chats/:id", "PATCH")).toHaveLength(1);
+    });
+
+    expect(api.calls("/api/chats/:id", "PATCH")[0]?.body).toMatchObject({
+      name: "Renamed pairing",
+    });
+  });
+
   test("submits the composer with Ctrl+Enter", async () => {
     const initialChat = createChat();
     const updatedChat = createChat({
@@ -319,6 +355,83 @@ describe("ChatDetails", () => {
     });
 
     expect(queryByText("Alpha chunk")).toBeNull();
+  });
+
+  test("preserves newer local state when chat.updated carries a stale snapshot", async () => {
+    const currentChat = createChat({
+      config: {
+        ...createChat().config,
+        id: CHAT_ID,
+        name: "Repo pairing",
+        updatedAt: "2025-01-01T00:00:03.000Z",
+      },
+      state: {
+        ...createChat().state,
+        id: CHAT_ID,
+        status: "streaming",
+        lastActivityAt: "2025-01-01T00:00:05.000Z",
+        messages: [
+          {
+            id: "assistant-2",
+            role: "assistant",
+            content: "Fresh transcript content",
+            timestamp: "2025-01-01T00:00:05.000Z",
+          },
+        ],
+        logs: [],
+        toolCalls: [],
+      },
+    });
+    api.get("/api/chats/:id", () => currentChat);
+
+    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+      expect(getByText("Fresh transcript content")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.updated",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:06.000Z",
+        chat: createChat({
+          config: {
+            ...currentChat.config,
+            id: CHAT_ID,
+            name: "Renamed pairing",
+            updatedAt: "2025-01-01T00:00:06.000Z",
+          },
+          state: {
+            ...currentChat.state,
+            id: CHAT_ID,
+            status: "idle",
+            lastActivityAt: "2025-01-01T00:00:04.000Z",
+            messages: [
+              {
+                id: "assistant-1",
+                role: "assistant",
+                content: "Stale transcript content",
+                timestamp: "2025-01-01T00:00:04.000Z",
+              },
+            ],
+            logs: [],
+            toolCalls: [],
+          },
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Renamed pairing")).toBeTruthy();
+      expect(getByText("Fresh transcript content")).toBeTruthy();
+    });
+
+    expect(queryByText("Stale transcript content")).toBeNull();
   });
 
   test("deletes the chat from the UI with confirmation", async () => {

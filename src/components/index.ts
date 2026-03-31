@@ -15,6 +15,7 @@ export { ChatDetails } from "./ChatDetails";
 export { CreateLoopForm } from "./CreateLoopForm";
 export { CreateSshSessionModal } from "./CreateSshSessionModal";
 export { ProvisioningJobView } from "./ProvisioningJobView";
+export { RenameChatModal } from "./RenameChatModal";
 export { RenameSshSessionModal } from "./RenameSshSessionModal";
 export { LoopActionBar } from "./LoopActionBar";
 export { SshSessionSection } from "./SshSessionSection";
