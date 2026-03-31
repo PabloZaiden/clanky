@@ -358,9 +358,177 @@ class UnsupportedInterruptBackend implements Backend {
   }
 }
 
+class IdleStatusInterruptBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `idle-status-interrupt-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "unused",
+      parts: [{ type: "text", text: "unused" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    const promptText = prompt.parts
+      .filter((part): part is Extract<PromptInput["parts"][number], { type: "text" }> => part.type === "text")
+      .map((part) => part.text)
+      .join(" ");
+
+    if (promptText.includes("follow-up")) {
+      setTimeout(() => {
+        subscription.push({
+          type: "message.start",
+          messageId: `msg-${crypto.randomUUID()}`,
+        });
+        subscription.push({
+          type: "message.delta",
+          content: "Second response after idle-status interrupt",
+        });
+        subscription.push({
+          type: "message.complete",
+          content: "Second response after idle-status interrupt",
+        });
+        subscription.end();
+      }, 0);
+      return;
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "message.start",
+        messageId: `msg-${crypto.randomUUID()}`,
+      });
+    }, 0);
+  }
+
+  async abortSession(sessionId: string): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      return;
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "session.status",
+        sessionId,
+        status: "idle",
+      });
+      subscription.push({
+        type: "message.complete",
+        content: "",
+      });
+      subscription.end();
+    }, 0);
+  }
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://idle-status-interrupt-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 type ChatManagerInternals = {
   activeStreamGenerations: Map<string, number>;
   activeStreams: Map<string, { generation: number }>;
+  loadChatIfAvailable: (chatId: string) => Promise<Awaited<ReturnType<typeof loadChat>> | null>;
 };
 
 describe("ChatManager", () => {
@@ -525,6 +693,26 @@ describe("ChatManager", () => {
     expect(reconnected?.state.session?.id).not.toBe(sessionId);
     expect(reconnected?.state.error).toBeUndefined();
     expect(await context.mockBackend?.getSession(sessionId!)).toBeNull();
+  });
+
+  test("treats uninitialized database errors by error message instead of String(error)", async () => {
+    class DatabaseNotInitializedError extends Error {
+      override toString(): string {
+        return `WrappedError(${this.message})`;
+      }
+    }
+
+    const loadChatSpy = spyOn(chatPersistence, "loadChat");
+    loadChatSpy.mockImplementation(async () => {
+      throw new DatabaseNotInitializedError("Database not initialized. Call initializeDatabase() first.");
+    });
+
+    const manager = new ChatManager();
+    const chat = await (manager as unknown as ChatManagerInternals).loadChatIfAvailable("chat-id");
+
+    expect(chat).toBeNull();
+
+    loadChatSpy.mockRestore();
   });
 
   test("marks reconnect as failed when backend session lookup errors unexpectedly", async () => {
@@ -746,6 +934,50 @@ describe("ChatManager", () => {
     expect(interrupted?.state.status).toBe("interrupting");
     await waitForChat(chat.config.id, (current) => current.state.status === "idle");
     expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(false);
+  });
+
+  test("stops an interrupted generation after idle status and ignores trailing completion events", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new IdleStatusInterruptBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Idle Status Interrupt Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "start a long response",
+    });
+
+    const interrupted = await manager.interruptChat(chat.config.id);
+    expect(interrupted?.state.status).toBe("interrupting");
+
+    const settledAfterInterrupt = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    expect(
+      settledAfterInterrupt.state.messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content),
+    ).toEqual([]);
+
+    const resumed = await manager.sendMessage(chat.config.id, {
+      message: "follow-up request",
+    });
+    expect(resumed.state.status).toBe("streaming");
+
+    const settled = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "Second response after idle-status interrupt"),
+    );
+
+    expect(settled.state.messages.some((message) => message.content === "Second response after idle-status interrupt")).toBe(true);
+    expect(settled.state.messages.some((message) => message.role === "assistant" && message.content === "")).toBe(false);
   });
 
   test("settles unsupported interrupts without persisting canceled output and keeps the same session for follow-up", async () => {

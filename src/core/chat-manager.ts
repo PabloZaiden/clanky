@@ -26,11 +26,16 @@ import { sanitizeBranchName } from "../utils";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+const DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call initializeDatabase() first.";
 
 interface ActiveChatStream {
   stream: EventStream<AgentEvent>;
   promptPromise: Promise<void>;
   generation: number;
+}
+
+function isDatabaseNotInitializedError(error: unknown): boolean {
+  return error instanceof Error && error.message === DATABASE_NOT_INITIALIZED_MESSAGE;
 }
 
 export interface CreateChatOptions {
@@ -684,6 +689,8 @@ export class ChatManager {
           case "session.status":
             if (event.status === "idle" && (chat.state.status === "interrupting" || chat.state.interruptRequested)) {
               chat = await this.completeInterruptedChat(chat);
+              this.clearActiveStream(chatId, generation);
+              return;
             } else if (event.status === "idle") {
               chat = await this.updateChatStateAndReturn(chat, {
                 ...chat.state,
@@ -982,8 +989,7 @@ export class ChatManager {
     try {
       return await loadChat(chatId);
     } catch (error) {
-      const message = String(error);
-      if (message === "Error: Database not initialized. Call initializeDatabase() first.") {
+      if (isDatabaseNotInitializedError(error)) {
         return null;
       }
       throw error;
