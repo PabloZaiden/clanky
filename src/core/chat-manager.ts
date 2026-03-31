@@ -122,7 +122,21 @@ export class ChatManager {
     };
 
     const saved = await updateChatConfig(chatId, config);
-    return saved ? { config, state: chat.state } : null;
+    if (!saved) {
+      return null;
+    }
+
+    const updatedChat: Chat = {
+      config,
+      state: chat.state,
+    };
+    this.emitter.emit({
+      type: "chat.updated",
+      chatId,
+      chat: updatedChat,
+      timestamp: config.updatedAt,
+    });
+    return updatedChat;
   }
 
   async updateChatStatus(chatId: string, status: ChatStatus): Promise<Chat | null> {

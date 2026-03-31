@@ -289,4 +289,40 @@ describe("Chats API Integration", () => {
     expect(settledAfterRecovery.state.error).toBeUndefined();
     expect(settledAfterRecovery.state.messages.some((message) => message.content === "Recover automatically")).toBe(true);
   });
+
+  test("renames an existing chat", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Original Chat Name",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+
+    const renameResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Renamed Chat",
+      }),
+    });
+
+    expect(renameResponse.status).toBe(200);
+    const renamed = await renameResponse.json();
+    expect(renamed.config.name).toBe("Renamed Chat");
+    expect(renamed.config.id).toBe(created.config.id);
+    expect(renamed.config.workspaceId).toBe(created.config.workspaceId);
+    expect(renamed.config.updatedAt).not.toBe(created.config.updatedAt);
+
+    const getResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
+    expect(getResponse.status).toBe(200);
+    const persisted = await getResponse.json();
+    expect(persisted.config.name).toBe("Renamed Chat");
+  });
 });

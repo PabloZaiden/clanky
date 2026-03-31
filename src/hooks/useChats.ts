@@ -223,6 +223,9 @@ export function useChats(): UseChatsResult {
   useGlobalEvents<ChatEvent>({
     onEvent: (event) => {
       switch (event.type) {
+        case "chat.updated":
+          setChats((prev) => upsertChat(prev, event.chat));
+          break;
         case "chat.created":
           void refresh();
           break;

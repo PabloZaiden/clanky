@@ -152,6 +152,42 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id/interrupt", "POST")).toHaveLength(1);
   });
 
+  test("renames the chat from the header actions", async () => {
+    const initialChat = createChat();
+    const renamedChat = createChat({
+      config: {
+        ...initialChat.config,
+        name: "Renamed pairing",
+        updatedAt: "2025-01-01T00:00:02.000Z",
+      },
+    });
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.patch("/api/chats/:id", () => renamedChat, 200);
+
+    const { getByRole, getByLabelText, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Rename" }));
+
+    const input = await waitFor(() => getByLabelText("Chat Name")) as HTMLInputElement;
+    await user.clear(input);
+    await user.type(input, "Renamed pairing");
+    await user.click(getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(getByText("Renamed pairing")).toBeTruthy();
+      expect(api.calls("/api/chats/:id", "PATCH")).toHaveLength(1);
+    });
+
+    expect(api.calls("/api/chats/:id", "PATCH")[0]?.body).toMatchObject({
+      name: "Renamed pairing",
+    });
+  });
+
   test("submits the composer with Ctrl+Enter", async () => {
     const initialChat = createChat();
     const updatedChat = createChat({
