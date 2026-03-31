@@ -58,13 +58,18 @@ describe("App workspace files route", () => {
       entries: [],
     }));
 
-    const { getByRole, getByText } = renderWithUser(<App />, {
+    const { getByRole, user } = renderWithUser(<App />, {
       route: "#/workspace-files/workspace-files-1",
     });
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Files Route Workspace editor" })).toBeInTheDocument();
-      expect(getByText("Integrated terminal")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Terminals" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "Terminals" }));
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Integrated terminal" })).toBeInTheDocument();
     });
   });
 });

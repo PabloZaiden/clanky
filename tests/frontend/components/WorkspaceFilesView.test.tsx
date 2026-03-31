@@ -178,7 +178,7 @@ describe("WorkspaceFilesView", () => {
       entries: [],
     }));
 
-    const { getByRole, getByText, user } = renderWithUser(
+    const { getByRole, getByText, queryByText, user } = renderWithUser(
       <WorkspaceFilesView
         workspace={workspace}
         sessions={[session]}
@@ -187,18 +187,52 @@ describe("WorkspaceFilesView", () => {
       />,
     );
 
+    expect(queryByText("Reuses workspace SSH sessions where available.")).not.toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: "Terminals" }));
     await waitFor(() => {
       expect(getByRole("combobox", { name: "Select workspace SSH session" })).toBeInTheDocument();
-    });
-
-    await user.click(getByRole("button", { name: /Show terminal/i }));
-    await waitFor(() => {
       expect(getByText("Embedded SSH session: session-1")).toBeInTheDocument();
     });
 
     await user.click(getByRole("button", { name: /New terminal/i }));
     await waitFor(() => {
       expect(createSession).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  test("can collapse and expand the file explorer pane", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-collapse",
+      name: "Explorer Collapse",
+      directory: "/workspaces/explorer-collapse",
+    });
+
+    api.get("/api/workspaces/:id/files", () => ({
+      workspaceId: workspace.id,
+      directory: "",
+      entries: [createFileEntry()],
+    }));
+
+    const { getByRole, queryByRole, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "Collapse file explorer" }));
+    expect(queryByRole("button", { name: /src/i })).not.toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: "Expand file explorer" }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
     });
   });
 });

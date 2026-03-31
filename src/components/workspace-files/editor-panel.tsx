@@ -40,7 +40,7 @@ export function WorkspaceEditorPanel({
   onSave,
 }: WorkspaceEditorPanelProps) {
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
+    <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -59,7 +59,7 @@ export function WorkspaceEditorPanel({
           </Button>
         </div>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 overflow-hidden">
         {filePath ? (
           <MonacoEditor
             height="100%"

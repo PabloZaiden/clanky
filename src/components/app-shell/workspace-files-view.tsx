@@ -25,6 +25,16 @@ function TerminalIcon() {
   );
 }
 
+function FileIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
+    </svg>
+  );
+}
+
+type WorkspacePane = "editor" | "terminal";
+
 export function WorkspaceFilesView({
   workspace,
   sessions,
@@ -34,12 +44,14 @@ export function WorkspaceFilesView({
 }: WorkspaceFilesViewProps) {
   const toast = useToast();
   const workspaceFiles = useWorkspaceFiles(workspace.id);
-  const [showTerminal, setShowTerminal] = useState(false);
+  const [activePane, setActivePane] = useState<WorkspacePane>("editor");
+  const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const workspaceSessions = useMemo(
     () => sessions.filter((session) => session.config.workspaceId === workspace.id),
     [sessions, workspace.id],
   );
+  const hasSshTransport = workspace.serverSettings.agent.transport === "ssh";
 
   useEffect(() => {
     if (!selectedSessionId && workspaceSessions[0]?.config.id) {
@@ -53,7 +65,7 @@ export function WorkspaceFilesView({
         workspaceId: workspace.id,
       });
       setSelectedSessionId(session.config.id);
-      setShowTerminal(true);
+      setActivePane("terminal");
       toast.success(`Created SSH session "${session.config.name}"`);
     } catch (error) {
       toast.error(String(error));
@@ -79,6 +91,12 @@ export function WorkspaceFilesView({
   }
 
   const conflictState = workspaceFiles.conflictState;
+  const tabButtonClassName = (pane: WorkspacePane) => [
+    "inline-flex min-h-[36px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition",
+    activePane === pane
+      ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+      : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-300 dark:hover:bg-neutral-800",
+  ].join(" ");
 
   return (
     <ShellPanel
@@ -87,96 +105,120 @@ export function WorkspaceFilesView({
       variant="compact"
       headerOffsetClassName={headerOffsetClassName}
       actions={(
-        <>
-          <Button variant="ghost" size="sm" onClick={() => onNavigate({ view: "workspace", workspaceId: workspace.id })}>
-            Back to workspace
-          </Button>
-          <Button
-            variant={showTerminal ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => setShowTerminal((current) => !current)}
-            icon={<TerminalIcon />}
-          >
-            {showTerminal ? "Hide terminal" : "Show terminal"}
-          </Button>
-        </>
+        <Button variant="ghost" size="sm" onClick={() => onNavigate({ view: "workspace", workspaceId: workspace.id })}>
+          Back to workspace
+        </Button>
       )}
-      bodyClassName="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[280px_minmax(0,1fr)]"
+      bodyClassName="h-full min-h-0"
     >
-      <div className="min-h-[300px] lg:min-h-0">
-        <WorkspaceFileTree
-          entriesByDirectory={workspaceFiles.directoryEntries}
-          expandedDirectories={workspaceFiles.expandedDirectories}
-          currentFilePath={workspaceFiles.currentFile?.path}
-          loading={workspaceFiles.loadingTree}
-          onRefresh={() => workspaceFiles.refreshTree("")}
-          onToggleDirectory={workspaceFiles.toggleDirectory}
-          onOpenFile={workspaceFiles.openFile}
-        />
-      </div>
+      <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
+        <div
+          className={[
+            "min-h-0 overflow-hidden transition-[max-height,width] duration-200 ease-out",
+            explorerCollapsed
+              ? "max-h-16 lg:h-full lg:w-14 lg:max-h-none"
+              : "max-h-[35vh] lg:h-full lg:w-[280px] lg:max-h-none",
+          ].join(" ")}
+        >
+          <WorkspaceFileTree
+            entriesByDirectory={workspaceFiles.directoryEntries}
+            expandedDirectories={workspaceFiles.expandedDirectories}
+            currentFilePath={workspaceFiles.currentFile?.path}
+            loading={workspaceFiles.loadingTree}
+            collapsed={explorerCollapsed}
+            onRefresh={() => workspaceFiles.refreshTree("")}
+            onToggleCollapsed={() => setExplorerCollapsed((current) => !current)}
+            onToggleDirectory={workspaceFiles.toggleDirectory}
+            onOpenFile={async (path: string) => {
+              setActivePane("editor");
+              await workspaceFiles.openFile(path);
+            }}
+          />
+        </div>
 
-      <div className="flex min-h-[520px] min-w-0 flex-col gap-4">
-        <WorkspaceEditorPanel
-          filePath={workspaceFiles.currentFile?.path}
-          value={workspaceFiles.editorContent}
-          loading={workspaceFiles.loadingFile}
-          saving={workspaceFiles.savingFile}
-          dirty={workspaceFiles.isDirty}
-          autoReloadedAt={workspaceFiles.autoReloadedAt}
-          onChange={workspaceFiles.setEditorContent}
-          onRefresh={handleRefreshEditor}
-          onSave={handleSave}
-        />
-
-        <section className="flex min-h-[260px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Integrated terminal</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Reuses workspace SSH sessions where available.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={selectedSessionId}
-                onChange={(event) => setSelectedSessionId(event.target.value)}
-                disabled={workspace.serverSettings.agent.transport !== "ssh" || workspaceSessions.length === 0}
-                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
-                aria-label="Select workspace SSH session"
-              >
-                <option value="">Select SSH session</option>
-                {workspaceSessions.map((session) => (
-                  <option key={session.config.id} value={session.config.id}>
-                    {session.config.name}
-                  </option>
-                ))}
-              </select>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleCreateTerminal()}
-                disabled={workspace.serverSettings.agent.transport !== "ssh"}
-              >
-                New terminal
-              </Button>
-            </div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto pb-1">
+            <button
+              type="button"
+              className={tabButtonClassName("editor")}
+              onClick={() => setActivePane("editor")}
+              aria-pressed={activePane === "editor"}
+            >
+              <FileIcon />
+              Files
+            </button>
+            <button
+              type="button"
+              className={tabButtonClassName("terminal")}
+              onClick={() => setActivePane("terminal")}
+              aria-pressed={activePane === "terminal"}
+            >
+              <TerminalIcon />
+              Terminals
+            </button>
           </div>
+
           <div className="min-h-0 flex-1 overflow-hidden">
-            {showTerminal && selectedSessionId ? (
-              <SshSessionDetails
-                sshSessionId={selectedSessionId}
-                showBackButton={false}
-                headerOffsetClassName={headerOffsetClassName}
+            {activePane === "editor" ? (
+              <WorkspaceEditorPanel
+                filePath={workspaceFiles.currentFile?.path}
+                value={workspaceFiles.editorContent}
+                loading={workspaceFiles.loadingFile}
+                saving={workspaceFiles.savingFile}
+                dirty={workspaceFiles.isDirty}
+                autoReloadedAt={workspaceFiles.autoReloadedAt}
+                onChange={workspaceFiles.setEditorContent}
+                onRefresh={handleRefreshEditor}
+                onSave={handleSave}
               />
             ) : (
-              <div className="flex h-full items-center justify-center px-4 text-sm text-gray-500 dark:text-gray-400">
-                {workspace.serverSettings.agent.transport === "ssh"
-                  ? "Choose an existing SSH session or create a new one."
-                  : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable."}
-              </div>
+              <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Integrated terminal</h2>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <select
+                      value={selectedSessionId}
+                      onChange={(event) => setSelectedSessionId(event.target.value)}
+                      disabled={!hasSshTransport || workspaceSessions.length === 0}
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
+                      aria-label="Select workspace SSH session"
+                    >
+                      <option value="">Select SSH session</option>
+                      {workspaceSessions.map((session) => (
+                        <option key={session.config.id} value={session.config.id}>
+                          {session.config.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleCreateTerminal()}
+                      disabled={!hasSshTransport}
+                    >
+                      New terminal
+                    </Button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  {selectedSessionId ? (
+                    <SshSessionDetails
+                      sshSessionId={selectedSessionId}
+                      showBackButton={false}
+                      headerOffsetClassName={headerOffsetClassName}
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center px-4 text-sm text-gray-500 dark:text-gray-400">
+                      {hasSshTransport
+                        ? "Choose an existing SSH session or create a new one."
+                        : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable."}
+                    </div>
+                  )}
+                </div>
+              </section>
             )}
           </div>
-        </section>
+        </div>
       </div>
 
       <WorkspaceFileConflictModal

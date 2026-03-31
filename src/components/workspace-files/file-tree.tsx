@@ -36,7 +36,9 @@ interface WorkspaceFileTreeProps {
   expandedDirectories: string[];
   currentFilePath?: string;
   loading: boolean;
+  collapsed: boolean;
   onRefresh: () => Promise<void>;
+  onToggleCollapsed: () => void;
   onToggleDirectory: (path: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
 }
@@ -98,24 +100,61 @@ export function WorkspaceFileTree({
   expandedDirectories,
   currentFilePath,
   loading,
+  collapsed,
   onRefresh,
+  onToggleCollapsed,
   onToggleDirectory,
   onOpenFile,
 }: WorkspaceFileTreeProps) {
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
-      <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-800">
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Explorer</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Workspace files</p>
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
+      <div
+        className={[
+          "border-b border-gray-200 dark:border-gray-800",
+          collapsed ? "flex h-full flex-col items-center gap-2 px-2 py-3" : "flex items-center justify-between px-3 py-2",
+        ].join(" ")}
+      >
+        {!collapsed && (
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Explorer</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Workspace files</p>
+          </div>
+        )}
+        <div className={collapsed ? "flex flex-col gap-2" : "flex items-center gap-2"}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void onRefresh()}
+            loading={loading}
+            icon={<RefreshIcon size="h-4 w-4" />}
+            aria-label="Refresh explorer"
+            title="Refresh explorer"
+            className={collapsed ? "w-9 px-0" : ""}
+          >
+            {collapsed ? <span className="sr-only">Refresh</span> : "Refresh"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? "Expand file explorer" : "Collapse file explorer"}
+            title={collapsed ? "Expand file explorer" : "Collapse file explorer"}
+            className={collapsed ? "w-9 px-0" : ""}
+          >
+            {collapsed ? <span aria-hidden="true">»</span> : "Collapse"}
+          </Button>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => void onRefresh()} loading={loading} icon={<RefreshIcon size="h-4 w-4" />}>
-          Refresh
-        </Button>
+        {collapsed && (
+          <div className="mt-auto text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 [writing-mode:vertical-rl]">
+            Files
+          </div>
+        )}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-2">
-        {renderDirectory("", entriesByDirectory, expandedDirectories, currentFilePath, onToggleDirectory, onOpenFile)}
-      </div>
+      {!collapsed && (
+        <div className="min-h-0 flex-1 overflow-auto p-2">
+          {renderDirectory("", entriesByDirectory, expandedDirectories, currentFilePath, onToggleDirectory, onOpenFile)}
+        </div>
+      )}
     </section>
   );
 }
