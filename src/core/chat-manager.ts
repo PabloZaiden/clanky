@@ -126,15 +126,16 @@ export class ChatManager {
       return null;
     }
 
-    const updatedChat: Chat = {
-      config,
-      state: chat.state,
-    };
+    const updatedChat = await loadChat(chatId);
+    if (!updatedChat) {
+      return null;
+    }
+
     this.emitter.emit({
       type: "chat.updated",
       chatId,
       chat: updatedChat,
-      timestamp: config.updatedAt,
+      timestamp: updatedChat.config.updatedAt,
     });
     return updatedChat;
   }

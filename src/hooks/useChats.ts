@@ -9,6 +9,7 @@ import type {
   SendChatMessageRequest,
   UpdateChatRequest,
 } from "../types";
+import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import { useGlobalEvents } from "./useWebSocket";
 
 const log = createLogger("useChats");
@@ -20,8 +21,15 @@ function sortChats(chats: Chat[]): Chat[] {
 }
 
 function upsertChat(chats: Chat[], chat: Chat): Chat[] {
-  const next = chats.filter((item) => item.config.id !== chat.config.id);
-  next.push(chat);
+  const next = [...chats];
+  const index = next.findIndex((item) => item.config.id === chat.config.id);
+
+  if (index === -1) {
+    next.push(chat);
+    return sortChats(next);
+  }
+
+  next[index] = mergeChatSnapshot(next[index]!, chat);
   return sortChats(next);
 }
 

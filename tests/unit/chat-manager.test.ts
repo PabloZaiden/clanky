@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { ChatManager } from "../../src/core/chat-manager";
 import { backendManager } from "../../src/core/backend-manager";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
+import * as chatPersistence from "../../src/persistence/chats";
 import { loadChat } from "../../src/persistence/chats";
 import type { ChatEvent } from "../../src/types";
 import type { ModelInfo } from "../../src/types/api";
@@ -310,6 +311,9 @@ describe("ChatManager", () => {
       ...testModelFields,
     });
 
+    const loadChatSpy = spyOn(chatPersistence, "loadChat");
+    loadChatSpy.mockClear();
+
     const renamed = await manager.updateChat(chat.config.id, {
       name: "Renamed Chat",
     });
@@ -323,9 +327,12 @@ describe("ChatManager", () => {
     expect(updateEvent).toBeDefined();
     expect(updateEvent?.chatId).toBe(chat.config.id);
     expect(updateEvent?.chat.config.name).toBe("Renamed Chat");
+    expect(loadChatSpy).toHaveBeenCalledTimes(2);
 
     const persisted = await loadChat(chat.config.id);
     expect(persisted?.config.name).toBe("Renamed Chat");
+
+    loadChatSpy.mockRestore();
   });
 
   test("recreates a missing persisted session during reconnect", async () => {

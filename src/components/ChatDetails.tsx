@@ -11,6 +11,7 @@ import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { useMarkdownPreference, useToast, useWebSocket } from "../hooks";
+import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import type {
   Chat,
   ChatEvent,
@@ -138,7 +139,7 @@ export function ChatDetails({
       }
       switch (event.type) {
         case "chat.updated":
-          return event.chat;
+          return mergeChatSnapshot(current, event.chat);
         case "chat.status":
           if (isStaleTerminalEvent(current, event.timestamp) && ACTIVE_CHAT_STATUSES.has(current.state.status)) {
             return current;

@@ -357,6 +357,83 @@ describe("ChatDetails", () => {
     expect(queryByText("Alpha chunk")).toBeNull();
   });
 
+  test("preserves newer local state when chat.updated carries a stale snapshot", async () => {
+    const currentChat = createChat({
+      config: {
+        ...createChat().config,
+        id: CHAT_ID,
+        name: "Repo pairing",
+        updatedAt: "2025-01-01T00:00:03.000Z",
+      },
+      state: {
+        ...createChat().state,
+        id: CHAT_ID,
+        status: "streaming",
+        lastActivityAt: "2025-01-01T00:00:05.000Z",
+        messages: [
+          {
+            id: "assistant-2",
+            role: "assistant",
+            content: "Fresh transcript content",
+            timestamp: "2025-01-01T00:00:05.000Z",
+          },
+        ],
+        logs: [],
+        toolCalls: [],
+      },
+    });
+    api.get("/api/chats/:id", () => currentChat);
+
+    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+      expect(getByText("Fresh transcript content")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.updated",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:06.000Z",
+        chat: createChat({
+          config: {
+            ...currentChat.config,
+            id: CHAT_ID,
+            name: "Renamed pairing",
+            updatedAt: "2025-01-01T00:00:06.000Z",
+          },
+          state: {
+            ...currentChat.state,
+            id: CHAT_ID,
+            status: "idle",
+            lastActivityAt: "2025-01-01T00:00:04.000Z",
+            messages: [
+              {
+                id: "assistant-1",
+                role: "assistant",
+                content: "Stale transcript content",
+                timestamp: "2025-01-01T00:00:04.000Z",
+              },
+            ],
+            logs: [],
+            toolCalls: [],
+          },
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Renamed pairing")).toBeTruthy();
+      expect(getByText("Fresh transcript content")).toBeTruthy();
+    });
+
+    expect(queryByText("Stale transcript content")).toBeNull();
+  });
+
   test("deletes the chat from the UI with confirmation", async () => {
     api.get("/api/chats/:id", () => createChat());
     api.delete("/api/chats/:id", () => ({ ok: true }), 200);
