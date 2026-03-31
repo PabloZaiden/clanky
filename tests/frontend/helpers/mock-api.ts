@@ -100,6 +100,25 @@ function createRouteConfig(method: HttpMethod, pattern: string, handler: RouteHa
 }
 
 const DEFAULT_ROUTES: RouteConfig[] = [
+  createRouteConfig("GET", "/api/models", () => []),
+  createRouteConfig("GET", "/api/git/branches", () => ({
+    branches: [],
+    currentBranch: "",
+  })),
+  createRouteConfig("GET", "/api/git/default-branch", () => ({
+    defaultBranch: "",
+  })),
+  createRouteConfig("GET", "/api/check-planning-dir", () => ({
+    warning: null,
+  })),
+  createRouteConfig("GET", "/api/loops/:id/plan", () => ({
+    exists: false,
+    content: "",
+  })),
+  createRouteConfig("GET", "/api/loops/:id/status-file", () => ({
+    exists: false,
+    content: "",
+  })),
   createRouteConfig("GET", "/api/loops/:id/port-forwards", () => []),
   createRouteConfig("GET", "/api/loops/:id/pull-request", () => ({
     enabled: false,

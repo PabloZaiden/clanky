@@ -134,6 +134,66 @@ describe("Frontend Test Infrastructure", () => {
       }
     });
 
+    test("provides neutral defaults for implicit app-shell reads", async () => {
+      const api = createMockApi();
+      api.install();
+
+      try {
+        const modelsResponse = await fetch("/api/models");
+        const models = await modelsResponse.json();
+        expect(modelsResponse.status).toBe(200);
+        expect(models).toEqual([]);
+
+        const branchesResponse = await fetch("/api/git/branches");
+        const branches = await branchesResponse.json();
+        expect(branches).toEqual({
+          branches: [],
+          currentBranch: "",
+        });
+
+        const defaultBranchResponse = await fetch("/api/git/default-branch");
+        const defaultBranch = await defaultBranchResponse.json();
+        expect(defaultBranch).toEqual({ defaultBranch: "" });
+
+        const planningDirResponse = await fetch("/api/check-planning-dir");
+        const planningDir = await planningDirResponse.json();
+        expect(planningDir).toEqual({ warning: null });
+
+        const planResponse = await fetch("/api/loops/loop-123/plan");
+        const plan = await planResponse.json();
+        expect(plan).toEqual({ exists: false, content: "" });
+
+        const statusFileResponse = await fetch("/api/loops/loop-123/status-file");
+        const statusFile = await statusFileResponse.json();
+        expect(statusFile).toEqual({ exists: false, content: "" });
+      } finally {
+        api.uninstall();
+      }
+    });
+
+    test("allows explicit mocks to override implicit app-shell defaults", async () => {
+      const api = createMockApi();
+      api.get("/api/models", () => [createModelInfo({ connected: true })]);
+      api.get("/api/loops/:id/plan", () => ({
+        exists: true,
+        content: "# Plan",
+      }));
+      api.install();
+
+      try {
+        const modelsResponse = await fetch("/api/models");
+        const models = await modelsResponse.json();
+        expect(models).toHaveLength(1);
+        expect(models[0]?.connected).toBe(true);
+
+        const planResponse = await fetch("/api/loops/loop-123/plan");
+        const plan = await planResponse.json();
+        expect(plan).toEqual({ exists: true, content: "# Plan" });
+      } finally {
+        api.uninstall();
+      }
+    });
+
     test("handles MockApiError for error responses", async () => {
       const api = createMockApi();
       api.post("/api/loops", () => {
