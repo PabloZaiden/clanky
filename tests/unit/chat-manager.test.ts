@@ -201,6 +201,7 @@ class InterruptRaceBackend implements Backend {
 
 type ChatManagerInternals = {
   activeStreamGenerations: Map<string, number>;
+  activeStreams: Map<string, { generation: number }>;
 };
 
 describe("ChatManager", () => {
@@ -487,7 +488,9 @@ describe("ChatManager", () => {
     expect(firstRun.state.status).toBe("streaming");
 
     const interrupted = await manager.interruptChat(chat.config.id);
-    expect(interrupted?.state.status).toBe("idle");
+    expect(interrupted?.state.status).toBe("interrupting");
+
+    await waitForChat(chat.config.id, (current) => current.state.status === "idle");
 
     const resumed = await manager.sendMessage(chat.config.id, {
       message: "follow-up request",
@@ -510,5 +513,33 @@ describe("ChatManager", () => {
     ]);
     expect(settled.state.messages.some((message) => message.content === "Second response after interrupt")).toBe(true);
     expect(events.some((event) => event.type === "chat.error")).toBe(false);
+  });
+
+  test("drops the active stream immediately when interrupting a running prompt", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new InterruptRaceBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Interrupt Cleanup Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "start a long response",
+    });
+
+    expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(true);
+
+    await manager.interruptChat(chat.config.id);
+
+    await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(false);
   });
 });

@@ -296,16 +296,11 @@ export class ChatManager {
       await this.emitChatError(updating, message);
       throw error;
     }
-
-    this.activeStreams.get(chatId)?.stream.close();
-
-    const stopped = await this.updateChatStateAndReturn(updating, {
+    const activeStream = this.activeStreams.get(chatId);
+    activeStream?.stream.close();
+    this.activeStreams.delete(chatId);
+    return this.updateChatStateAndReturn(updating, {
       ...updating.state,
-      status: "idle",
-      interruptRequested: false,
-      completedAt: undefined,
-      activeMessageId: undefined,
-      lastActivityAt: createTimestamp(),
       error: reason
         ? {
             message: reason,
@@ -314,12 +309,6 @@ export class ChatManager {
           }
         : updating.state.error,
     });
-    this.emitter.emit({
-      type: "chat.interrupted",
-      chatId,
-      timestamp: stopped.state.lastActivityAt ?? createTimestamp(),
-    });
-    return stopped;
   }
 
   async deleteChat(chatId: string): Promise<boolean> {
@@ -661,7 +650,9 @@ export class ChatManager {
           }
 
           case "session.status":
-            if (event.status === "idle" && chat.state.status !== "interrupting") {
+            if (event.status === "idle" && (chat.state.status === "interrupting" || chat.state.interruptRequested)) {
+              chat = await this.completeInterruptedChat(chat);
+            } else if (event.status === "idle") {
               chat = await this.updateChatStateAndReturn(chat, {
                 ...chat.state,
                 status: "idle",
@@ -685,19 +676,27 @@ export class ChatManager {
                 timestamp: now,
               });
             }
-            chat = await this.updateChatStateAndReturn(chat, {
-              ...chat.state,
-              status: chat.state.interruptRequested ? "interrupting" : "idle",
-              activeMessageId: undefined,
-              interruptRequested: false,
-              lastActivityAt: now,
-            });
+            if (chat.state.interruptRequested || chat.state.status === "interrupting") {
+              chat = await this.completeInterruptedChat(chat);
+            } else {
+              chat = await this.updateChatStateAndReturn(chat, {
+                ...chat.state,
+                status: "idle",
+                activeMessageId: undefined,
+                interruptRequested: false,
+                lastActivityAt: now,
+              });
+            }
             this.clearActiveStream(chatId, generation);
             return;
           }
 
           case "error":
             if (this.shouldSuppressStreamError(chatId, generation, event.message)) {
+              chat = await loadChat(chatId) ?? chat;
+              if (chat.state.status === "interrupting" || chat.state.interruptRequested) {
+                await this.completeInterruptedChat(chat);
+              }
               this.clearActiveStream(chatId, generation);
               return;
             }
@@ -722,6 +721,10 @@ export class ChatManager {
     } catch (error) {
       const message = String(error);
       if (this.shouldSuppressStreamError(chatId, generation, message)) {
+        const interruptedChat = await loadChat(chatId);
+        if (interruptedChat && (interruptedChat.state.status === "interrupting" || interruptedChat.state.interruptRequested)) {
+          await this.completeInterruptedChat(interruptedChat);
+        }
         return;
       }
       chat = await loadChat(chatId);
@@ -845,6 +848,24 @@ export class ChatManager {
 
   private async failLostSession(chat: Chat, message: string): Promise<Chat> {
     return this.emitChatError(chat, message);
+  }
+
+  private async completeInterruptedChat(chat: Chat): Promise<Chat> {
+    const now = createTimestamp();
+    const updated = await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      status: "idle",
+      interruptRequested: false,
+      completedAt: undefined,
+      activeMessageId: undefined,
+      lastActivityAt: now,
+    });
+    this.emitter.emit({
+      type: "chat.interrupted",
+      chatId: chat.config.id,
+      timestamp: now,
+    });
+    return updated;
   }
 
   private async configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void> {

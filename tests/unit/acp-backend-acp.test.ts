@@ -16,10 +16,13 @@ type PrivateBackend = {
   pendingPermissionRequests: Map<string, { rpcId: number; options: Array<{ optionId: string; kind?: string }> }>;
   toolCallNames: Map<string, string>;
   sessionPromptSequences: Map<string, number>;
+  sessionPromptHasActivity: Map<string, boolean>;
+  sessionIgnoreStatusUntilActivity: Set<string>;
   sessionReasoningPartKeys: Map<string, string>;
   connected: boolean;
   process: { stdin: { write: (line: string) => void } } | null;
   replyToPermission(requestId: string, response: string): Promise<void>;
+  abortSession(sessionId: string): Promise<void>;
   sendRpcRequest<T>(
     method: string,
     params: Record<string, unknown>,
@@ -528,6 +531,124 @@ describe("AcpBackend ACP parsing", () => {
       },
     ]);
     expect(backend.sessionPromptSequences.has(sessionId)).toBe(true);
+  });
+
+  test("ignores stale idle completion after abort until fresh prompt activity arrives", async () => {
+    const backend = getBackend();
+    const sessionId = "session-ignore-stale-idle";
+    const events: Array<Record<string, unknown>> = [];
+
+    backend.connected = true;
+    backend.process = {
+      stdin: {
+        write: () => {
+          // no-op
+        },
+      },
+    };
+
+    const originalSendRpcRequest = backend.sendRpcRequest.bind(backend);
+    backend.sendRpcRequest = async <T>(
+      method: string,
+      params: Record<string, unknown>,
+      timeoutMs?: number,
+    ): Promise<T> => {
+      if (method === "session/cancel") {
+        return undefined as T;
+      }
+      return await originalSendRpcRequest(method, params, timeoutMs);
+    };
+
+    backend.sessionSubscribers.set(
+      sessionId,
+      new Set([
+        (event: unknown) => {
+          events.push(event as Record<string, unknown>);
+        },
+      ]),
+    );
+    backend.sessionPromptSequences.set(sessionId, 1);
+    backend.sessionPromptHasActivity.set(sessionId, true);
+
+    await backend.abortSession(sessionId);
+
+    expect(backend.sessionIgnoreStatusUntilActivity.has(sessionId)).toBe(true);
+    expect(backend.sessionPromptSequences.get(sessionId)).toBe(2);
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/status",
+      params: {
+        sessionId,
+        status: "idle",
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "session.status",
+        sessionId,
+        status: "idle",
+        attempt: undefined,
+        message: undefined,
+      },
+    ]);
+    expect(backend.sessionPromptSequences.get(sessionId)).toBe(2);
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "fresh prompt output",
+          },
+        },
+      },
+    });
+
+    expect(backend.sessionIgnoreStatusUntilActivity.has(sessionId)).toBe(false);
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/status",
+      params: {
+        sessionId,
+        status: "idle",
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "session.status",
+        sessionId,
+        status: "idle",
+        attempt: undefined,
+        message: undefined,
+      },
+      {
+        type: "message.start",
+        messageId: expect.any(String),
+      },
+      {
+        type: "message.delta",
+        content: "fresh prompt output",
+      },
+      {
+        type: "session.status",
+        sessionId,
+        status: "idle",
+        attempt: undefined,
+        message: undefined,
+      },
+      {
+        type: "message.complete",
+        content: "",
+      },
+    ]);
+    expect(backend.sessionPromptSequences.has(sessionId)).toBe(false);
   });
 
   test("does not emit error for session/prompt timeout in async mode", async () => {
