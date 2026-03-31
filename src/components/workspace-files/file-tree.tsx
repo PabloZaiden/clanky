@@ -31,6 +31,20 @@ function FileIcon() {
   );
 }
 
+function ExplorerToggleIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      className={`h-4 w-4 transition-transform ${collapsed ? "" : "rotate-180"}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
 interface WorkspaceFileTreeProps {
   entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
   expandedDirectories: string[];
@@ -117,7 +131,6 @@ export function WorkspaceFileTree({
         {!collapsed && (
           <div>
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Explorer</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Workspace files</p>
           </div>
         )}
         <div className={collapsed ? "flex flex-col gap-2" : "flex items-center gap-2"}>
@@ -129,9 +142,9 @@ export function WorkspaceFileTree({
             icon={<RefreshIcon size="h-4 w-4" />}
             aria-label="Refresh explorer"
             title="Refresh explorer"
-            className={collapsed ? "w-9 px-0" : ""}
+            className="w-9 px-0"
           >
-            {collapsed ? <span className="sr-only">Refresh</span> : "Refresh"}
+            <span className="sr-only">Refresh explorer</span>
           </Button>
           <Button
             variant="ghost"
@@ -139,9 +152,10 @@ export function WorkspaceFileTree({
             onClick={onToggleCollapsed}
             aria-label={collapsed ? "Expand file explorer" : "Collapse file explorer"}
             title={collapsed ? "Expand file explorer" : "Collapse file explorer"}
-            className={collapsed ? "w-9 px-0" : ""}
+            className="w-9 px-0"
+            icon={<ExplorerToggleIcon collapsed={collapsed} />}
           >
-            {collapsed ? <span aria-hidden="true">»</span> : "Collapse"}
+            <span className="sr-only">{collapsed ? "Expand file explorer" : "Collapse file explorer"}</span>
           </Button>
         </div>
         {collapsed && (

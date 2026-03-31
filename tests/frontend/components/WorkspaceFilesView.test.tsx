@@ -20,8 +20,17 @@ mock.module("@monaco-editor/react", () => ({
 }));
 
 mock.module("@/components/SshSessionDetails", () => ({
-  SshSessionDetails: ({ sshSessionId }: { sshSessionId: string }) => (
-    <div>Embedded SSH session: {sshSessionId}</div>
+  SshSessionDetails: ({
+    sshSessionId,
+    forcedFocusMode,
+  }: {
+    sshSessionId: string;
+    forcedFocusMode?: boolean;
+  }) => (
+    <div>
+      Embedded SSH session: {sshSessionId}
+      {forcedFocusMode ? " (focused)" : ""}
+    </div>
   ),
 }));
 
@@ -192,7 +201,7 @@ describe("WorkspaceFilesView", () => {
     await user.click(getByRole("button", { name: "Terminals" }));
     await waitFor(() => {
       expect(getByRole("combobox", { name: "Select workspace SSH session" })).toBeInTheDocument();
-      expect(getByText("Embedded SSH session: session-1")).toBeInTheDocument();
+      expect(getByText("Embedded SSH session: session-1 (focused)")).toBeInTheDocument();
     });
 
     await user.click(getByRole("button", { name: /New terminal/i }));
@@ -234,5 +243,75 @@ describe("WorkspaceFilesView", () => {
     await waitFor(() => {
       expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
     });
+  });
+
+  test("removes non-essential legends and keeps refresh actions icon-only", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-chrome",
+      name: "Minimal Chrome",
+      directory: "/workspaces/minimal-chrome",
+    });
+
+    api.get("/api/workspaces/:id/files", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      if (path === "src") {
+        return {
+          workspaceId: workspace.id,
+          directory: "src",
+          entries: [createFileEntry({
+            name: "index.ts",
+            path: "src/index.ts",
+            kind: "file",
+            size: 20,
+            versionToken: "100:20",
+          })],
+        };
+      }
+      return {
+        workspaceId: workspace.id,
+        directory: "",
+        entries: [createFileEntry()],
+      };
+    });
+
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "100:20",
+      }),
+      content: "export const value = 1;\n",
+    }));
+
+    const { getByRole, queryByText, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+      expect(getByRole("button", { name: "Refresh explorer" })).toBeInTheDocument();
+    });
+
+    expect(queryByText("Workspace files")).not.toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: /src/i }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: /index.ts/i })).toBeInTheDocument();
+    });
+    await user.click(getByRole("button", { name: /index.ts/i }));
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Refresh file" })).toBeInTheDocument();
+    });
+
+    expect(queryByText("Editor ready")).not.toBeInTheDocument();
   });
 });

@@ -39,6 +39,12 @@ export function WorkspaceEditorPanel({
   onRefresh,
   onSave,
 }: WorkspaceEditorPanelProps) {
+  const statusText = dirty
+    ? "Unsaved changes"
+    : autoReloadedAt
+      ? `Auto-reloaded at ${new Date(autoReloadedAt).toLocaleTimeString()}`
+      : null;
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
@@ -46,13 +52,24 @@ export function WorkspaceEditorPanel({
           <h2 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
             {filePath ?? "No file selected"}
           </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {dirty ? "Unsaved changes" : autoReloadedAt ? `Auto-reloaded at ${new Date(autoReloadedAt).toLocaleTimeString()}` : "Editor ready"}
-          </p>
+          {statusText && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {statusText}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void onRefresh()} disabled={!filePath || loading} icon={<RefreshIcon size="h-4 w-4" />}>
-            Refresh
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void onRefresh()}
+            disabled={!filePath || loading}
+            icon={<RefreshIcon size="h-4 w-4" />}
+            aria-label="Refresh file"
+            title="Refresh file"
+            className="w-9 px-0"
+          >
+            <span className="sr-only">Refresh file</span>
           </Button>
           <Button variant="primary" size="sm" onClick={() => void onSave()} disabled={!filePath || !dirty || loading} loading={saving}>
             Save
