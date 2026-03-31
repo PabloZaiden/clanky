@@ -296,10 +296,7 @@ export class ChatManager {
       await this.emitChatError(updating, message);
       throw error;
     }
-    const activeStream = this.activeStreams.get(chatId);
-    activeStream?.stream.close();
-    this.activeStreams.delete(chatId);
-    return this.updateChatStateAndReturn(updating, {
+    const interrupted = await this.updateChatStateAndReturn(updating, {
       ...updating.state,
       error: reason
         ? {
@@ -309,6 +306,10 @@ export class ChatManager {
           }
         : updating.state.error,
     });
+    if (!this.activeStreams.has(chatId)) {
+      return this.completeInterruptedChat(interrupted);
+    }
+    return interrupted;
   }
 
   async deleteChat(chatId: string): Promise<boolean> {
@@ -582,6 +583,7 @@ export class ChatManager {
         }
 
         const now = createTimestamp();
+        const isInterrupted = chat.state.status === "interrupting" || chat.state.interruptRequested;
         chat = await this.updateChatStateAndReturn(chat, {
           ...chat.state,
           lastActivityAt: now,
@@ -595,6 +597,9 @@ export class ChatManager {
             responseLogContent = "";
             reasoningLogId = null;
             reasoningLogContent = "";
+            if (isInterrupted) {
+              break;
+            }
             chat = await this.emitChatLog(chat, "agent", "AI started generating response", { logKind: "system" });
             chat = await this.updateChatStateAndReturn(chat, {
               ...chat.state,
@@ -604,6 +609,9 @@ export class ChatManager {
             break;
 
           case "message.delta":
+            if (isInterrupted) {
+              break;
+            }
             responseContent += event.content;
             responseLogContent += event.content;
             chat = await this.emitChatLog(chat, "agent", "AI generating response...", {
@@ -614,6 +622,9 @@ export class ChatManager {
             break;
 
           case "reasoning.delta":
+            if (isInterrupted) {
+              break;
+            }
             reasoningLogContent += event.content;
             chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
               logKind: "reasoning",
@@ -623,6 +634,9 @@ export class ChatManager {
             break;
 
           case "tool.start": {
+            if (isInterrupted) {
+              break;
+            }
             const toolId = `chat-tool-${crypto.randomUUID()}`;
             toolInputs.set(event.toolName, event.input);
             chat = await this.appendToolCall(chat, {
@@ -636,6 +650,9 @@ export class ChatManager {
           }
 
           case "tool.complete": {
+            if (isInterrupted) {
+              break;
+            }
             const toolName = event.toolName;
             const existing = [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
             chat = await this.upsertToolCall(chat, {
@@ -663,6 +680,11 @@ export class ChatManager {
             break;
 
           case "message.complete": {
+            if (isInterrupted) {
+              chat = await this.completeInterruptedChat(chat);
+              this.clearActiveStream(chatId, generation);
+              return;
+            }
             chat = await this.emitChatLog(chat, "agent", "AI finished generating response", {
               logKind: "system",
               responseLength: responseContent.length,
@@ -721,13 +743,13 @@ export class ChatManager {
     } catch (error) {
       const message = String(error);
       if (this.shouldSuppressStreamError(chatId, generation, message)) {
-        const interruptedChat = await loadChat(chatId);
+        const interruptedChat = await this.loadChatIfAvailable(chatId);
         if (interruptedChat && (interruptedChat.state.status === "interrupting" || interruptedChat.state.interruptRequested)) {
           await this.completeInterruptedChat(interruptedChat);
         }
         return;
       }
-      chat = await loadChat(chatId);
+      chat = await this.loadChatIfAvailable(chatId);
       if (chat && this.isActiveStreamGeneration(chatId, generation)) {
         await this.emitChatError(chat, message);
       }
@@ -939,6 +961,18 @@ export class ChatManager {
       });
     }
     return updated;
+  }
+
+  private async loadChatIfAvailable(chatId: string): Promise<Chat | null> {
+    try {
+      return await loadChat(chatId);
+    } catch (error) {
+      const message = String(error);
+      if (message === "Error: Database not initialized. Call initializeDatabase() first.") {
+        return null;
+      }
+      throw error;
+    }
   }
 }
 

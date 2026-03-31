@@ -1313,6 +1313,15 @@ export class AcpBackend implements Backend {
         if (this.sessionPromptSequences.get(sessionId) !== sequence) {
           return;
         }
+        const hasPromptActivity = this.sessionPromptHasActivity.get(sessionId) ?? false;
+        const messageStarted = this.sessionMessageStarted.get(sessionId) ?? false;
+        if (!hasPromptActivity && !messageStarted) {
+          log.debug("[AcpBackend] Async prompt RPC completed before activity; waiting for session updates", {
+            sessionId,
+            sequence,
+          });
+          return;
+        }
         log.debug("[AcpBackend] Async prompt RPC completed", { sessionId, sequence });
         this.emitSessionEvent(sessionId, {
           type: "message.complete",
@@ -1359,19 +1368,18 @@ export class AcpBackend implements Backend {
    */
   async abortSession(sessionId: string): Promise<void> {
     this.ensureConnected();
-    if (this.sessionPromptSequences.has(sessionId)) {
-      this.sessionPromptSequences.set(sessionId, (this.sessionPromptSequences.get(sessionId) ?? 0) + 1);
-      this.sessionPromptHasActivity.set(sessionId, false);
-      this.sessionMessageStarted.set(sessionId, false);
-      this.sessionIgnoreStatusUntilActivity.add(sessionId);
-      this.sessionReasoningPartKeys.delete(sessionId);
-      this.sessionLastReasoningChunkSignature.delete(sessionId);
-    }
-
     const cancellationMethods = ["session/cancel", "session/abort", "session/stop"];
     for (const method of cancellationMethods) {
       try {
         await this.sendRpcRequest(method, { sessionId }, 5_000);
+        if (this.sessionPromptSequences.has(sessionId)) {
+          this.sessionPromptSequences.set(sessionId, (this.sessionPromptSequences.get(sessionId) ?? 0) + 1);
+          this.sessionPromptHasActivity.set(sessionId, false);
+          this.sessionMessageStarted.set(sessionId, false);
+          this.sessionIgnoreStatusUntilActivity.add(sessionId);
+          this.sessionReasoningPartKeys.delete(sessionId);
+          this.sessionLastReasoningChunkSignature.delete(sessionId);
+        }
         return;
       } catch (error) {
         const message = String(error);

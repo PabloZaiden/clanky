@@ -199,6 +199,164 @@ class InterruptRaceBackend implements Backend {
   }
 }
 
+class UnsupportedInterruptBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `unsupported-interrupt-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "unused",
+      parts: [{ type: "text", text: "unused" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    const promptText = prompt.parts
+      .filter((part): part is Extract<PromptInput["parts"][number], { type: "text" }> => part.type === "text")
+      .map((part) => part.text)
+      .join(" ");
+
+    if (promptText.includes("follow-up")) {
+      setTimeout(() => {
+        subscription.push({
+          type: "message.start",
+          messageId: `msg-${crypto.randomUUID()}`,
+        });
+        subscription.push({
+          type: "message.delta",
+          content: "Second response after unsupported interrupt",
+        });
+        subscription.push({
+          type: "message.complete",
+          content: "Second response after unsupported interrupt",
+        });
+        subscription.end();
+      }, 20);
+      return;
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "message.start",
+        messageId: `msg-${crypto.randomUUID()}`,
+      });
+      subscription.push({
+        type: "message.delta",
+        content: "First response that should be discarded after interrupt",
+      });
+      subscription.push({
+        type: "message.complete",
+        content: "First response that should be discarded after interrupt",
+      });
+      subscription.end();
+    }, 80);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://unsupported-interrupt-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 type ChatManagerInternals = {
   activeStreamGenerations: Map<string, number>;
   activeStreams: Map<string, { generation: number }>;
@@ -537,9 +695,59 @@ describe("ChatManager", () => {
 
     expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(true);
 
-    await manager.interruptChat(chat.config.id);
+    const interrupted = await manager.interruptChat(chat.config.id);
 
+    expect(interrupted?.state.status).toBe("interrupting");
     await waitForChat(chat.config.id, (current) => current.state.status === "idle");
     expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(false);
+  });
+
+  test("settles unsupported interrupts without persisting canceled output and keeps the same session for follow-up", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new UnsupportedInterruptBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Unsupported Interrupt Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "start a long response",
+    });
+
+    const interrupted = await manager.interruptChat(chat.config.id);
+    const sessionId = interrupted?.state.session?.id;
+    expect(interrupted?.state.status).toBe("interrupting");
+    expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(true);
+
+    const settledAfterInterrupt = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(false);
+    expect(settledAfterInterrupt.state.session?.id).toBe(sessionId);
+    expect(
+      settledAfterInterrupt.state.messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content),
+    ).toEqual([]);
+
+    const resumed = await manager.sendMessage(chat.config.id, {
+      message: "follow-up request",
+    });
+    expect(resumed.state.session?.id).toBe(sessionId);
+
+    const settled = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "Second response after unsupported interrupt"),
+    );
+
+    expect(settled.state.session?.id).toBe(sessionId);
+    expect(settled.state.messages.some((message) => message.content === "Second response after unsupported interrupt")).toBe(true);
+    expect(settled.state.messages.some((message) => message.content === "First response that should be discarded after interrupt")).toBe(false);
   });
 });
