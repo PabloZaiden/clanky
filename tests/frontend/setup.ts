@@ -9,6 +9,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, expect } from "bun:test";
 import * as matchers from "@testing-library/jest-dom/matchers";
+import { resolveDefaultApiRoute } from "./helpers/default-api-routes";
 
 // Extend Bun's expect with jest-dom matchers (toBeInTheDocument, toHaveTextContent, etc.)
 expect.extend(matchers);
@@ -80,6 +81,14 @@ const frontendFetchGuard = Object.assign(
       resolvedUrl.origin === window.location.origin &&
       resolvedUrl.pathname.startsWith("/api/")
     ) {
+      const defaultRoute = resolveDefaultApiRoute(method.toUpperCase(), resolvedUrl.pathname);
+      if (defaultRoute) {
+        return new Response(JSON.stringify(defaultRoute.body), {
+          status: defaultRoute.statusCode,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
       throw new Error(
         `Unexpected frontend test network request: ${method.toUpperCase()} ${resolvedUrl.pathname}. ` +
           "Mock this API call in the test instead of relying on a live app server.",
