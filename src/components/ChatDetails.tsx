@@ -175,7 +175,7 @@ export function ChatDetails({
             },
           };
         case "chat.interrupted":
-          if (isStaleTerminalEvent(current, event.timestamp) && ACTIVE_CHAT_STATUSES.has(current.state.status)) {
+          if (isStaleTerminalEvent(current, event.timestamp)) {
             return current;
           }
           return {
@@ -190,7 +190,6 @@ export function ChatDetails({
         case "chat.error":
           if (
             isStaleTerminalEvent(current, event.timestamp)
-            && ACTIVE_CHAT_STATUSES.has(current.state.status)
             && isCancellationMessage(event.message)
           ) {
             return current;
