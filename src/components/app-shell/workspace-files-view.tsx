@@ -93,7 +93,7 @@ export function WorkspaceFilesView({
   const conflictState = workspaceFiles.conflictState;
   const tabButtonClassName = (pane: WorkspacePane, compact = false) => [
     "inline-flex min-h-[36px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-    compact ? "w-9 justify-center px-0" : "w-full justify-center",
+    compact ? "w-full justify-center lg:w-9 lg:px-0" : "w-full justify-center",
     activePane === pane
       ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
       : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-300 dark:hover:bg-neutral-800",
@@ -114,11 +114,12 @@ export function WorkspaceFilesView({
     >
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
         <div
+          data-testid="workspace-explorer-column"
           className={[
-            "min-h-0 overflow-hidden transition-[max-height,width] duration-200 ease-out",
+            "min-h-0 transition-[max-height,width] duration-200 ease-out",
             explorerCollapsed
-              ? "max-h-16 lg:h-full lg:w-14 lg:max-h-none"
-              : "max-h-[35vh] lg:h-full lg:w-[280px] lg:max-h-none",
+              ? "max-h-none overflow-visible lg:h-full lg:w-14 lg:max-h-none lg:overflow-hidden"
+              : "max-h-[35vh] overflow-hidden lg:h-full lg:w-[280px] lg:max-h-none",
           ].join(" ")}
         >
           <div className="flex h-full min-h-0 flex-col gap-3">
@@ -141,9 +142,12 @@ export function WorkspaceFilesView({
               />
             </div>
             <div
+              data-testid="workspace-pane-switcher"
               className={[
                 "shrink-0",
-                explorerCollapsed ? "flex flex-col items-center gap-2" : "grid grid-cols-2 gap-2",
+                explorerCollapsed
+                  ? "grid grid-cols-2 gap-2 lg:flex lg:flex-col lg:items-center"
+                  : "grid grid-cols-2 gap-2",
               ].join(" ")}
             >
               <button
@@ -155,7 +159,7 @@ export function WorkspaceFilesView({
                 title="Files"
               >
                 <FileIcon />
-                {explorerCollapsed ? <span className="sr-only">Files</span> : "Files"}
+                {explorerCollapsed ? <span className="lg:sr-only">Files</span> : "Files"}
               </button>
               <button
                 type="button"
@@ -166,7 +170,7 @@ export function WorkspaceFilesView({
                 title="Terminals"
               >
                 <TerminalIcon />
-                {explorerCollapsed ? <span className="sr-only">Terminals</span> : "Terminals"}
+                {explorerCollapsed ? <span className="lg:sr-only">Terminals</span> : "Terminals"}
               </button>
             </div>
           </div>

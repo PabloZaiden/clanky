@@ -153,17 +153,25 @@ export function WorkspaceFileTree({
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
       <div
+        data-testid="workspace-file-tree-header"
         className={[
           "border-b border-gray-200 dark:border-gray-800",
-          collapsed ? "flex h-full flex-col items-center gap-2 px-2 py-3" : "flex items-center justify-between px-3 py-2",
+          collapsed
+            ? "flex items-center justify-between gap-2 px-3 py-2 lg:h-full lg:flex-col lg:items-center lg:gap-2 lg:px-2 lg:py-3"
+            : "flex items-center justify-between px-3 py-2",
         ].join(" ")}
       >
+        {collapsed && (
+          <div className="text-xs font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 lg:hidden">
+            Files
+          </div>
+        )}
         {!collapsed && (
           <div>
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Explorer</h2>
           </div>
         )}
-        <div className={collapsed ? "flex flex-col gap-2" : "flex items-center gap-2"}>
+        <div className={collapsed ? "flex items-center gap-2 lg:flex-col" : "flex items-center gap-2"}>
           <Button
             variant="ghost"
             size="sm"
@@ -202,7 +210,7 @@ export function WorkspaceFileTree({
           </Button>
         </div>
         {collapsed && (
-          <div className="mt-auto text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 [writing-mode:vertical-rl]">
+          <div className="mt-auto hidden text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 lg:block [writing-mode:vertical-rl]">
             Files
           </div>
         )}
