@@ -160,7 +160,8 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
   const selectedChat =
     route.view === "chat" ? (chats.find((chat) => chat.config.id === route.chatId) ?? null) : null;
   const selectedWorkspace =
-    route.view === "workspace"
+     route.view === "workspace"
+      || route.view === "workspace-files"
       || route.view === "workspace-settings"
       || route.view === "rebuild-workspace"
       || route.view === "restart-workspace"

@@ -57,6 +57,8 @@ function setupBaseApi() {
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
   api.get("/api/preferences/last-directory", () => null);
   api.get("/api/models", () => [connectedModel()]);
+  api.get("/api/ssh-sessions", () => []);
+  api.get("/api/ssh-servers", () => []);
   api.get("/api/git/branches", () => ({
     branches: [{ name: "main", isCurrent: true, isDefault: true }],
     currentBranch: "main",

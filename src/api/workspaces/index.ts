@@ -11,6 +11,7 @@ import { archivedLoopsRoutes } from "./archived-loops";
 import { byDirectoryRoutes } from "./by-directory";
 import { serverSettingsRoutes } from "./server-settings";
 import { exportImportRoutes } from "./export-import";
+import { workspaceFilesRoutes } from "./files";
 
 export const workspacesRoutes = {
   ...crudRoutes,
@@ -18,4 +19,5 @@ export const workspacesRoutes = {
   ...byDirectoryRoutes,
   ...serverSettingsRoutes,
   ...exportImportRoutes,
+  ...workspaceFilesRoutes,
 };

@@ -95,9 +95,10 @@ export class TestCommandExecutor implements CommandExecutor {
   /**
    * List files in a directory locally.
    */
-  async listDirectory(path: string): Promise<string[]> {
+  async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
     try {
-      return await readdir(path);
+      const entries = await readdir(path);
+      return options?.includeHidden ? entries : entries.filter((entry) => !entry.startsWith("."));
     } catch {
       return [];
     }

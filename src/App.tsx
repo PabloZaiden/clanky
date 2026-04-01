@@ -52,6 +52,13 @@ function parseHash(): ShellRoute {
     }
   }
 
+  if (hash.startsWith("/workspace-files/")) {
+    const workspaceId = hash.slice(17);
+    if (workspaceId) {
+      return { view: "workspace-files", workspaceId };
+    }
+  }
+
   if (hash.startsWith("/workspace/")) {
     const workspaceId = hash.slice(11);
     if (workspaceId) {
@@ -109,6 +116,9 @@ function navigateTo(route: ShellRoute) {
       return;
     case "workspace":
       window.location.hash = `/workspace/${route.workspaceId}`;
+      return;
+    case "workspace-files":
+      window.location.hash = `/workspace-files/${route.workspaceId}`;
       return;
     case "workspace-settings":
       window.location.hash = `/workspace-settings/${route.workspaceId}`;

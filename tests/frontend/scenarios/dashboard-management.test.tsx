@@ -34,6 +34,8 @@ const WORKSPACE_B = createWorkspace({
 function setupBaseApi() {
   api.get("/api/config", () => ({ remoteOnly: false }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
+  api.get("/api/ssh-sessions", () => []);
+  api.get("/api/ssh-servers", () => []);
   api.get("/api/preferences/last-model", () => null);
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
   api.get("/api/preferences/last-directory", () => null);

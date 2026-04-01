@@ -9,6 +9,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, expect } from "bun:test";
 import * as matchers from "@testing-library/jest-dom/matchers";
+import { resolveDefaultApiRoute } from "./helpers/default-api-routes";
 
 // Extend Bun's expect with jest-dom matchers (toBeInTheDocument, toHaveTextContent, etc.)
 expect.extend(matchers);
@@ -54,11 +55,60 @@ if (window.location.href === "about:blank") {
   window.location.href = "http://localhost:3000/";
 }
 
+const originalFetch = globalThis.fetch;
+
+function resolveRequestUrl(input: string | URL | Request): URL | null {
+  try {
+    if (typeof input === "string") {
+      return new URL(input, window.location.href);
+    }
+    if (input instanceof URL) {
+      return input;
+    }
+    return new URL(input.url, window.location.href);
+  } catch {
+    return null;
+  }
+}
+
+const frontendFetchGuard = Object.assign(
+  async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const resolvedUrl = resolveRequestUrl(input);
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+
+    if (
+      resolvedUrl &&
+      resolvedUrl.origin === window.location.origin &&
+      resolvedUrl.pathname.startsWith("/api/")
+    ) {
+      const defaultRoute = resolveDefaultApiRoute(method.toUpperCase(), resolvedUrl.pathname);
+      if (defaultRoute) {
+        return new Response(JSON.stringify(defaultRoute.body), {
+          status: defaultRoute.statusCode,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      throw new Error(
+        `Unexpected frontend test network request: ${method.toUpperCase()} ${resolvedUrl.pathname}. ` +
+          "Mock this API call in the test instead of relying on a live app server.",
+      );
+    }
+
+    return await originalFetch(input, init);
+  },
+  {
+    preconnect: originalFetch.preconnect,
+  },
+) as typeof globalThis.fetch;
+
 // Clean up after each test to prevent DOM leaks between tests
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
   window.sessionStorage.clear();
+  globalThis.fetch = frontendFetchGuard;
+  window.fetch = frontendFetchGuard;
 });
 
 // Reset location before each test so pathname-based public base path inference
@@ -68,4 +118,6 @@ beforeEach(() => {
   window.location.hash = "#/";
   window.localStorage.clear();
   window.sessionStorage.clear();
+  globalThis.fetch = frontendFetchGuard;
+  window.fetch = frontendFetchGuard;
 });

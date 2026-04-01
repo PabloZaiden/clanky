@@ -17,6 +17,7 @@ import { ComposeView } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
+import { WorkspaceFilesView } from "./workspace-files-view";
 import type { ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
@@ -261,6 +262,32 @@ function renderMainContent(props: ShellMainContentProps) {
         onOpenSettings={() =>
           navigateWithinShell({ view: "workspace-settings", workspaceId: selectedWorkspace.id })
         }
+        onNavigate={navigateWithinShell}
+      />
+    );
+  }
+
+  if (route.view === "workspace-files") {
+    if (!selectedWorkspace) {
+      return (
+        <ShellPanel
+          eyebrow="Workspace"
+          title="Workspace not found"
+          description="The selected workspace no longer exists."
+        >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Use the sidebar or home button to continue.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    return (
+      <WorkspaceFilesView
+        workspace={selectedWorkspace}
+        sessions={sessions}
+        headerOffsetClassName={shellHeaderOffsetClassName}
+        createSession={props.createSession}
         onNavigate={navigateWithinShell}
       />
     );

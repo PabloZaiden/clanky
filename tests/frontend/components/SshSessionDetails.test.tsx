@@ -240,7 +240,11 @@ mock.module("ghostty-web", () => ({
   FitAddon: MockFitAddon,
 }));
 
-const { SshSessionDetails } = await import("@/components/SshSessionDetails");
+// Import from the internal module path to avoid mock.module pollution from other
+// test files (e.g. AppWorkspaceFiles, WorkspaceFilesView) that mock
+// "@/components/SshSessionDetails" with a stub. Bun's mock.module is permanent
+// within a process and can leak across test files in certain environments.
+const { SshSessionDetails } = await import("@/components/ssh-session/index");
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -300,6 +304,7 @@ describe("SshSessionDetails", () => {
     expect(queryByText("Reconnect Terminal")).toBeNull();
     expect(queryByText("Workspace ID")).toBeNull();
     expect(queryByText("Ctrl")).toBeNull();
+    expect(document.querySelector("button button")).toBeNull();
 
     await user.click(getByText("Session Info"));
     await waitFor(() => {
