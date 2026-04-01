@@ -64,6 +64,7 @@ describe("WorkspaceFilesView", () => {
 
   afterEach(() => {
     api.uninstall();
+    mock.restore();
   });
 
   test("opens files from the tree and enables saving edited content", async () => {

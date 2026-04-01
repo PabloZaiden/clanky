@@ -32,6 +32,7 @@ describe("App workspace files route", () => {
     api.uninstall();
     ws.uninstall();
     window.location.hash = "";
+    mock.restore();
   });
 
   test("renders the workspace files screen from the hash route", async () => {
