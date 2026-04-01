@@ -71,6 +71,7 @@ export const workspaceFilesRoutes = {
         return Response.json(await workspaceFileService.listDirectory(
           workspaceResult,
           validation.data.path,
+          { includeHidden: true },
         ));
       } catch (error) {
         log.error("Failed to list workspace files", {

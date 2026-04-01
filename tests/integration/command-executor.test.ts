@@ -175,15 +175,25 @@ describe("CommandExecutor Integration", () => {
       expect(content).toBeNull();
     });
 
-    test("listDirectory returns file names", async () => {
+    test("listDirectory hides hidden entries by default", async () => {
       await writeFile(join(testDir, "a.txt"), "");
       await writeFile(join(testDir, "b.txt"), "");
+      await writeFile(join(testDir, ".env"), "");
       await mkdir(join(testDir, "subdir"));
       
       const files = await executor.listDirectory(testDir);
       expect(files).toContain("a.txt");
       expect(files).toContain("b.txt");
       expect(files).toContain("subdir");
+      expect(files).not.toContain(".env");
+    });
+
+    test("listDirectory can include hidden entries explicitly", async () => {
+      await writeFile(join(testDir, ".env"), "");
+
+      const files = await executor.listDirectory(testDir, { includeHidden: true });
+
+      expect(files).toContain(".env");
     });
 
     test("listDirectory returns empty array for non-existing directory", async () => {

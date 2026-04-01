@@ -246,6 +246,30 @@ describe("Plan Mode API Integration", () => {
   beforeEach(setupAndCleanup);
   afterEach(teardownTest);
 
+  describe("GET /api/check-planning-dir", () => {
+    test("treats a .planning directory with only .gitkeep as empty", async () => {
+      const planningDir = join(currentTestWorkDir, ".planning");
+      await mkdir(planningDir, { recursive: true });
+      await writeFile(join(planningDir, ".gitkeep"), "");
+
+      const response = await fetch(
+        `${baseUrl}/api/check-planning-dir?directory=${encodeURIComponent(currentTestWorkDir)}&workspaceId=${encodeURIComponent(currentWorkspaceId)}`,
+      );
+
+      expect(response.ok).toBe(true);
+      const data = await response.json() as {
+        exists: boolean;
+        hasFiles: boolean;
+        files: string[];
+        warning?: string;
+      };
+      expect(data.exists).toBe(true);
+      expect(data.hasFiles).toBe(false);
+      expect(data.files).toEqual([]);
+      expect(data.warning).toBe("The .planning directory is empty. Consider adding plan.md and status.md files.");
+    });
+  });
+
   describe("POST /api/loops (plan mode)", () => {
     test("creates loop in planning status when planMode is true", async () => {
       const response = await fetch(`${baseUrl}/api/loops`, {

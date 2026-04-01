@@ -333,7 +333,7 @@ export class CommandExecutorImpl implements CommandExecutor {
   }
 
   async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
-    const includeHidden = options?.includeHidden ?? true;
+    const includeHidden = options?.includeHidden ?? false;
     if (this.provider === "local") {
       try {
         const entries = await readdir(path);
