@@ -42,7 +42,7 @@ describe("workspace file service", () => {
     expect(response.content).toContain("value = 1");
   });
 
-  test("hides hidden files by default when listing directories", async () => {
+  test("includes hidden files by default when listing directories", async () => {
     const workspace: Workspace = {
       id: "workspace-default-hidden",
       name: "Default Hidden Workspace",
@@ -54,10 +54,10 @@ describe("workspace file service", () => {
 
     const response = await workspaceFileService.listDirectory(workspace);
 
-    expect(response.entries.map((entry) => entry.name)).toEqual(["nested"]);
+    expect(response.entries.map((entry) => entry.name)).toEqual([".hidden-dir", "nested", ".env"]);
   });
 
-  test("includes hidden files when requested", async () => {
+  test("can still hide hidden files when requested explicitly", async () => {
     const workspace: Workspace = {
       id: "workspace-show-hidden",
       name: "Show Hidden Workspace",
@@ -68,9 +68,9 @@ describe("workspace file service", () => {
     };
 
     const response = await workspaceFileService.listDirectory(workspace, "", {
-      includeHidden: true,
+      includeHidden: false,
     });
 
-    expect(response.entries.map((entry) => entry.name)).toEqual([".hidden-dir", "nested", ".env"]);
+    expect(response.entries.map((entry) => entry.name)).toEqual(["nested"]);
   });
 });

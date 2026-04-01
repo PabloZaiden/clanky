@@ -71,15 +71,11 @@ export const workspaceFilesRoutes = {
         return Response.json(await workspaceFileService.listDirectory(
           workspaceResult,
           validation.data.path,
-          {
-            includeHidden: validation.data.showHidden,
-          },
         ));
       } catch (error) {
         log.error("Failed to list workspace files", {
           workspaceId: req.params.id,
           path: validation.data.path,
-          showHidden: validation.data.showHidden,
           error: String(error),
         });
         return mapFileError(error);

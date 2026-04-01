@@ -85,16 +85,21 @@ interface WorkspaceFileTreeProps {
   onOpenFile: (path: string) => Promise<void>;
 }
 
+function isHiddenEntry(entry: WorkspaceFileEntry): boolean {
+  return entry.name.startsWith(".");
+}
+
 function renderDirectory(
   path: string,
   entriesByDirectory: Record<string, WorkspaceFileEntry[]>,
   expandedDirectories: string[],
   currentFilePath: string | undefined,
+  showHiddenFiles: boolean,
   onToggleDirectory: (path: string) => Promise<void>,
   onOpenFile: (path: string) => Promise<void>,
   depth = 0,
 ): React.ReactNode {
-  const entries = entriesByDirectory[path] ?? [];
+  const entries = (entriesByDirectory[path] ?? []).filter((entry) => showHiddenFiles || !isHiddenEntry(entry));
   return entries.map((entry) => {
     const isDirectory = entry.kind === "directory";
     const isExpanded = expandedDirectories.includes(entry.path);
@@ -128,6 +133,7 @@ function renderDirectory(
           entriesByDirectory,
           expandedDirectories,
           currentFilePath,
+          showHiddenFiles,
           onToggleDirectory,
           onOpenFile,
           depth + 1,
@@ -217,7 +223,15 @@ export function WorkspaceFileTree({
       </div>
       {!collapsed && (
         <div className="min-h-0 flex-1 overflow-auto p-2">
-          {renderDirectory("", entriesByDirectory, expandedDirectories, currentFilePath, onToggleDirectory, onOpenFile)}
+          {renderDirectory(
+            "",
+            entriesByDirectory,
+            expandedDirectories,
+            currentFilePath,
+            showHiddenFiles,
+            onToggleDirectory,
+            onOpenFile,
+          )}
         </div>
       )}
     </section>
