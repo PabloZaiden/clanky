@@ -300,6 +300,7 @@ describe("SshSessionDetails", () => {
     expect(queryByText("Reconnect Terminal")).toBeNull();
     expect(queryByText("Workspace ID")).toBeNull();
     expect(queryByText("Ctrl")).toBeNull();
+    expect(document.querySelector("button button")).toBeNull();
 
     await user.click(getByText("Session Info"));
     await waitFor(() => {
