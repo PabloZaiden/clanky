@@ -252,6 +252,48 @@ describe("WorkspaceFilesView", () => {
     });
   });
 
+  test("keeps the mobile collapsed explorer controls available for re-expanding", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-mobile-collapse",
+      name: "Mobile Explorer Collapse",
+      directory: "/workspaces/mobile-explorer-collapse",
+    });
+
+    api.get("/api/workspaces/:id/files", () => ({
+      workspaceId: workspace.id,
+      directory: "",
+      entries: [createFileEntry()],
+    }));
+
+    const { getAllByText, getByRole, queryByRole, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "Collapse file explorer" }));
+
+    expect(queryByRole("button", { name: /src/i })).not.toBeInTheDocument();
+    expect(getByRole("button", { name: "Expand file explorer" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Files" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Terminals" })).toBeInTheDocument();
+    expect(getAllByText("Files").length).toBeGreaterThan(0);
+
+    await user.click(getByRole("button", { name: "Expand file explorer" }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+  });
+
   test("removes non-essential legends and keeps refresh actions icon-only", async () => {
     installEmbeddedSshSessionMock();
     const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
