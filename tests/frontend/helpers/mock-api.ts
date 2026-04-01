@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, afterEach } from "bun:test";
+import { DEFAULT_API_ROUTES } from "./default-api-routes";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -99,23 +100,9 @@ function createRouteConfig(method: HttpMethod, pattern: string, handler: RouteHa
   return { pattern, regex, paramNames, method, handler, statusCode };
 }
 
-const DEFAULT_ROUTES: RouteConfig[] = [
-  createRouteConfig("GET", "/api/loops/:id/port-forwards", () => []),
-  createRouteConfig("GET", "/api/loops/:id/pull-request", () => ({
-    enabled: false,
-    destinationType: "disabled",
-    disabledReason: "disabled",
-  })),
-  createRouteConfig("GET", "/api/workspaces/:id/agents-md", () => ({
-    content: "# AGENTS.md",
-    fileExists: true,
-    analysis: {
-      isOptimized: false,
-      currentVersion: null,
-      updateAvailable: false,
-    },
-  })),
-];
+const DEFAULT_ROUTES: RouteConfig[] = DEFAULT_API_ROUTES.map((route) =>
+  createRouteConfig(route.method, route.pattern, (req) => route.handler(req.params), route.statusCode),
+);
 
 /**
  * Create a mock API instance for intercepting fetch calls.

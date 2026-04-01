@@ -73,9 +73,10 @@ export interface CommandExecutor {
   /**
    * List files in a directory.
    * @param path - Absolute path to the directory
+   * @param options - Listing options
    * @returns Array of file/directory names in the directory
    */
-  listDirectory(path: string): Promise<string[]>;
+  listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]>;
 
   /**
    * Write content to a file on the server.

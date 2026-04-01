@@ -10,11 +10,14 @@ function readStoredValue(): boolean {
   }
 }
 
-export function useFocusMode() {
-  const [isFocusMode, setIsFocusMode] = useState(readStoredValue);
+export function useFocusMode(forcedFocusMode = false) {
+  const [storedFocusMode, setStoredFocusMode] = useState(readStoredValue);
 
   const toggleFocusMode = useCallback(() => {
-    setIsFocusMode((current) => {
+    if (forcedFocusMode) {
+      return;
+    }
+    setStoredFocusMode((current) => {
       const next = !current;
       try {
         localStorage.setItem(STORAGE_KEY, String(next));
@@ -23,7 +26,7 @@ export function useFocusMode() {
       }
       return next;
     });
-  }, []);
+  }, [forcedFocusMode]);
 
-  return { isFocusMode, toggleFocusMode } as const;
+  return { isFocusMode: forcedFocusMode || storedFocusMode, toggleFocusMode } as const;
 }

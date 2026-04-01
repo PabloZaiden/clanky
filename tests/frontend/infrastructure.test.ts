@@ -134,6 +134,82 @@ describe("Frontend Test Infrastructure", () => {
       }
     });
 
+    test("provides neutral defaults for implicit app-shell reads", async () => {
+      const api = createMockApi();
+      api.install();
+
+      try {
+        const modelsResponse = await fetch("/api/models");
+        const models = await modelsResponse.json();
+        expect(modelsResponse.status).toBe(200);
+        expect(models).toEqual([]);
+
+        const branchesResponse = await fetch("/api/git/branches");
+        const branches = await branchesResponse.json();
+        expect(branches).toEqual({
+          branches: [],
+          currentBranch: "",
+        });
+
+        const defaultBranchResponse = await fetch("/api/git/default-branch");
+        const defaultBranch = await defaultBranchResponse.json();
+        expect(defaultBranch).toEqual({ defaultBranch: "" });
+
+        const planningDirResponse = await fetch("/api/check-planning-dir");
+        const planningDir = await planningDirResponse.json();
+        expect(planningDir).toEqual({ warning: null });
+
+        const planResponse = await fetch("/api/loops/loop-123/plan");
+        const plan = await planResponse.json();
+        expect(plan).toEqual({ exists: false, content: "" });
+
+        const statusFileResponse = await fetch("/api/loops/loop-123/status-file");
+        const statusFile = await statusFileResponse.json();
+        expect(statusFile).toEqual({ exists: false, content: "" });
+
+        const pullRequestResponse = await fetch("/api/loops/loop-123/pull-request");
+        const pullRequest = await pullRequestResponse.json();
+        expect(pullRequest).toEqual({
+          enabled: false,
+          destinationType: "disabled",
+          disabledReason: "disabled",
+        });
+
+        const markdownPreferenceResponse = await fetch("/api/preferences/markdown-rendering");
+        const markdownPreference = await markdownPreferenceResponse.json();
+        expect(markdownPreference).toEqual({ enabled: true });
+
+        const dashboardViewModeResponse = await fetch("/api/preferences/dashboard-view-mode");
+        const dashboardViewMode = await dashboardViewModeResponse.json();
+        expect(dashboardViewMode).toEqual({ mode: "rows" });
+      } finally {
+        api.uninstall();
+      }
+    });
+
+    test("allows explicit mocks to override implicit app-shell defaults", async () => {
+      const api = createMockApi();
+      api.get("/api/models", () => [createModelInfo({ connected: true })]);
+      api.get("/api/loops/:id/plan", () => ({
+        exists: true,
+        content: "# Plan",
+      }));
+      api.install();
+
+      try {
+        const modelsResponse = await fetch("/api/models");
+        const models = await modelsResponse.json();
+        expect(models).toHaveLength(1);
+        expect(models[0]?.connected).toBe(true);
+
+        const planResponse = await fetch("/api/loops/loop-123/plan");
+        const plan = await planResponse.json();
+        expect(plan).toEqual({ exists: true, content: "# Plan" });
+      } finally {
+        api.uninstall();
+      }
+    });
+
     test("handles MockApiError for error responses", async () => {
       const api = createMockApi();
       api.post("/api/loops", () => {
@@ -161,6 +237,37 @@ describe("Frontend Test Infrastructure", () => {
       } finally {
         api.uninstall();
       }
+    });
+  });
+
+  describe("Frontend fetch guard", () => {
+    test("provides neutral defaults for implicit read-only routes before installing a test mock", async () => {
+      const modelsResponse = await fetch("/api/models");
+      expect(modelsResponse.status).toBe(200);
+      expect(await modelsResponse.json()).toEqual([]);
+
+      const planResponse = await fetch("/api/loops/loop-123/plan");
+      expect(await planResponse.json()).toEqual({ exists: false, content: "" });
+
+      const agentsMdResponse = await fetch("/api/workspaces/ws-123/agents-md");
+      expect(await agentsMdResponse.json()).toEqual({
+        content: "# AGENTS.md",
+        fileExists: true,
+        analysis: {
+          isOptimized: false,
+          currentVersion: null,
+          updateAvailable: false,
+        },
+      });
+
+      const dashboardViewModeResponse = await fetch("/api/preferences/dashboard-view-mode");
+      expect(await dashboardViewModeResponse.json()).toEqual({ mode: "rows" });
+    });
+
+    test("still rejects unexpected API requests without an installed mock", async () => {
+      await expect(fetch("/api/not-covered")).rejects.toThrow(
+        "Unexpected frontend test network request: GET /api/not-covered",
+      );
     });
   });
 

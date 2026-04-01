@@ -35,6 +35,7 @@ export interface SshSessionDetailsProps {
   showBackButton?: boolean;
   headerOffsetClassName?: string;
   copyTextToClipboard?: (text: string) => Promise<void>;
+  forcedFocusMode?: boolean;
 }
 
 export function SshSessionDetails({
@@ -43,6 +44,7 @@ export function SshSessionDetails({
   showBackButton = true,
   headerOffsetClassName,
   copyTextToClipboard = writeTextToClipboard,
+  forcedFocusMode = false,
 }: SshSessionDetailsProps) {
   const toast = useToast();
   const { error: showErrorToast, warning: showWarningToast } = toast;
@@ -119,7 +121,7 @@ export function SshSessionDetails({
     showErrorToast,
   });
 
-  const { isFocusMode, toggleFocusMode } = useFocusMode();
+  const { isFocusMode, toggleFocusMode } = useFocusMode(forcedFocusMode);
 
   // Track the visual viewport so the focus-mode layout can shrink when the
   // mobile on-screen keyboard is visible.
@@ -360,7 +362,7 @@ export function SshSessionDetails({
       </div>
 
       {/* Focus mode bar — only shown in focus mode */}
-      {isFocusMode && (
+      {isFocusMode && !forcedFocusMode && (
         <FocusModeBar
           {...touchControlProps}
           onExitFocusMode={toggleFocusMode}
