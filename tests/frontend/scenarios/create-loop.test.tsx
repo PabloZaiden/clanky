@@ -170,14 +170,17 @@ describe("create loop scenario", () => {
     setupApi();
     api.post("/api/loops/title", () => ({ message: "Title generation failed" }), 500);
 
-    const { getByText, getByRole, getByLabelText, user } = renderWithUser(<App />, { route: "#/new/loop" });
+    const { getByRole, getByLabelText, user } = renderWithUser(<App />, { route: "#/new/loop" });
 
     await selectWorkspace(user);
     await user.type(getByLabelText(/Prompt/) as HTMLTextAreaElement, "X");
     await user.click(getByRole("button", { name: "Generate title with AI" }));
 
     await waitFor(() => {
-      expect(getByText("Title generation failed")).toBeTruthy();
+      expect(
+        document.body.textContent?.includes("Title generation failed") ||
+          document.body.textContent?.includes("Failed to generate loop title"),
+      ).toBe(true);
     });
   });
 

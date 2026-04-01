@@ -29,10 +29,22 @@ export async function apiCall<T = unknown>(
   const response = await appFetch(url, options);
 
   if (!response.ok) {
-    const errorData = await response.json();
+    let errorData: Record<string, unknown> = {};
+    try {
+      const text = await response.text();
+      if (text) {
+        try {
+          errorData = JSON.parse(text) as Record<string, unknown>;
+        } catch {
+          errorData = { message: text };
+        }
+      }
+    } catch {
+      // ignore body reading errors; fall back to generic message below
+    }
     const errorMessage = extractError
-      ? extractError(errorData as Record<string, unknown>)
-      : (errorData as Record<string, unknown>)["message"] as string | undefined;
+      ? extractError(errorData)
+      : errorData["message"] as string | undefined;
     const finalMessage = errorMessage || `Failed to ${actionName.toLowerCase()}`;
     log.error(`API: ${actionName} failed`, { url, error: finalMessage });
     throw new Error(finalMessage);
