@@ -153,6 +153,7 @@ export function WorkspaceFileTree({
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
       <div
+        data-testid="workspace-file-tree-header"
         className={[
           "border-b border-gray-200 dark:border-gray-800",
           collapsed

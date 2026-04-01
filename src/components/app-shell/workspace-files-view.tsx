@@ -114,6 +114,7 @@ export function WorkspaceFilesView({
     >
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
         <div
+          data-testid="workspace-explorer-column"
           className={[
             "min-h-0 transition-[max-height,width] duration-200 ease-out",
             explorerCollapsed
@@ -141,6 +142,7 @@ export function WorkspaceFilesView({
               />
             </div>
             <div
+              data-testid="workspace-pane-switcher"
               className={[
                 "shrink-0",
                 explorerCollapsed

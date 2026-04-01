@@ -267,7 +267,7 @@ describe("WorkspaceFilesView", () => {
       entries: [createFileEntry()],
     }));
 
-    const { getAllByText, getByRole, queryByRole, user } = renderWithUser(
+    const { getByRole, getByTestId, queryByRole, user } = renderWithUser(
       <WorkspaceFilesView
         workspace={workspace}
         sessions={[]}
@@ -280,13 +280,29 @@ describe("WorkspaceFilesView", () => {
       expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
     });
 
+    const explorerColumn = getByTestId("workspace-explorer-column");
+    const paneSwitcher = getByTestId("workspace-pane-switcher");
+    const header = getByTestId("workspace-file-tree-header");
+
+    expect(explorerColumn).toHaveClass("max-h-[35vh]");
+    expect(explorerColumn).toHaveClass("overflow-hidden");
+    expect(paneSwitcher).toHaveClass("grid");
+    expect(paneSwitcher).not.toHaveClass("lg:flex");
+    expect(header).not.toHaveClass("lg:h-full");
+
     await user.click(getByRole("button", { name: "Collapse file explorer" }));
 
     expect(queryByRole("button", { name: /src/i })).not.toBeInTheDocument();
     expect(getByRole("button", { name: "Expand file explorer" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Files" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Terminals" })).toBeInTheDocument();
-    expect(getAllByText("Files").length).toBeGreaterThan(0);
+    expect(explorerColumn).toHaveClass("max-h-none");
+    expect(explorerColumn).toHaveClass("overflow-visible");
+    expect(explorerColumn).not.toHaveClass("max-h-[35vh]");
+    expect(paneSwitcher).toHaveClass("grid");
+    expect(paneSwitcher).toHaveClass("lg:flex");
+    expect(header).toHaveClass("lg:h-full");
+    expect(header).toHaveClass("justify-between");
 
     await user.click(getByRole("button", { name: "Expand file explorer" }));
     await waitFor(() => {
