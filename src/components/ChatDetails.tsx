@@ -52,10 +52,15 @@ async function parseError(response: Response, fallback: string): Promise<string>
   }
 }
 
-function upsertById<T extends { id: string }>(items: T[], item: T): T[] {
+function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
   const next = items.filter((entry) => entry.id !== item.id);
   next.push(item);
-  return next.sort((left, right) => left.id.localeCompare(right.id));
+  return next.sort((left, right) => {
+    const leftTimestamp = left.timestamp ?? "";
+    const rightTimestamp = right.timestamp ?? "";
+    const byTimestamp = leftTimestamp.localeCompare(rightTimestamp);
+    return byTimestamp !== 0 ? byTimestamp : left.id.localeCompare(right.id);
+  });
 }
 
 function appendLog(logs: LoopLogEntry[], log: LoopLogEntry): LoopLogEntry[] {
@@ -221,7 +226,7 @@ export function ChatDetails({
     });
   }, [chatId]);
 
-  useWebSocket<ChatEvent>({
+  const { status: chatSocketStatus } = useWebSocket<ChatEvent>({
     url: `/api/ws?chatId=${encodeURIComponent(chatId)}`,
     onEvent: handleEvent,
   });
@@ -255,12 +260,16 @@ export function ChatDetails({
       reconnectAttemptedRef.current = false;
       return;
     }
+    if (chatSocketStatus !== "error") {
+      reconnectAttemptedRef.current = false;
+      return;
+    }
     if (reconnectAttemptedRef.current) {
       return;
     }
     reconnectAttemptedRef.current = true;
     void handleReconnect(false);
-  }, [chat, handleReconnect]);
+  }, [chat, chatSocketStatus, handleReconnect]);
 
   const handleRename = useCallback(async (newName: string) => {
     const response = await appFetch(`/api/chats/${chatId}`, {
@@ -418,7 +427,7 @@ export function ChatDetails({
       isActive={isActive}
       markdownEnabled={markdownEnabled}
       showAssistantMessages
-      showResponseLogs={isActive}
+      showResponseLogs={false}
       emptyStateMessage="No messages yet"
       activeStateMessage="Thinking…"
     />

@@ -634,6 +634,15 @@ export class ChatManager {
             }
             responseContent += event.content;
             responseLogContent += event.content;
+            chat = await this.appendMessage(chat, {
+              id: currentMessageId ?? chat.state.activeMessageId ?? `chat-assistant-${crypto.randomUUID()}`,
+              role: "assistant",
+              content: responseContent,
+              timestamp: now,
+            });
+            currentMessageId = chat.state.messages.at(-1)?.role === "assistant"
+              ? chat.state.messages.at(-1)?.id ?? currentMessageId
+              : currentMessageId;
             chat = await this.emitChatLog(chat, "agent", "AI generating response...", {
               logKind: "response",
               responseContent: responseLogContent,
@@ -896,12 +905,16 @@ export class ChatManager {
 
   private async completeInterruptedChat(chat: Chat): Promise<Chat> {
     const now = createTimestamp();
+    const activeMessageId = chat.state.activeMessageId;
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: "idle",
       interruptRequested: false,
       completedAt: undefined,
       activeMessageId: undefined,
+      messages: activeMessageId
+        ? chat.state.messages.filter((message) => message.id !== activeMessageId)
+        : chat.state.messages,
       lastActivityAt: now,
     });
     this.emitter.emit({

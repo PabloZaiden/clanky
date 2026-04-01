@@ -358,6 +358,156 @@ class UnsupportedInterruptBackend implements Backend {
   }
 }
 
+class ProgressiveStreamingBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `progressive-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "Hello world",
+      parts: [{ type: "text", text: "Hello world" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, _prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "message.start",
+        messageId: "assistant-progressive",
+      });
+    }, 0);
+    setTimeout(() => {
+      subscription.push({
+        type: "reasoning.delta",
+        content: "Working through the transcript shape.",
+      });
+    }, 25);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.delta",
+        content: "Hello",
+      });
+    }, 50);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.delta",
+        content: " world",
+      });
+    }, 100);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.complete",
+        content: "Hello world",
+      });
+      subscription.end();
+    }, 180);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://progressive-streaming-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 class IdleStatusInterruptBackend implements Backend {
   readonly name = "acp";
 
@@ -580,6 +730,49 @@ describe("ChatManager", () => {
       "Say hello",
       "Hello from the chat backend",
     ]);
+  });
+
+  test("persists the active assistant message incrementally while streaming", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new ProgressiveStreamingBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Progressive Streaming Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Stream the reply",
+    });
+
+    const streaming = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "streaming"
+      && current.state.messages.some((message) => message.role === "assistant" && message.content === "Hello"),
+    );
+
+    expect(
+      streaming.state.logs.some((log) =>
+        log.details?.["logKind"] === "reasoning"
+        && log.details?.["responseContent"] === "Working through the transcript shape."),
+    ).toBe(true);
+
+    const completed = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.role === "assistant" && message.content === "Hello world"),
+    );
+
+    expect(
+      completed.state.messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content),
+    ).toEqual(["Hello world"]);
   });
 
   test("emits chat.status events for starting, streaming, and idle transitions", async () => {

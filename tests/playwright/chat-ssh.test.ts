@@ -86,6 +86,47 @@ test("creates a chat and supports multiple back-and-forth messages", async () =>
   });
 });
 
+test("shows reasoning during streaming and keeps the final assistant answer visible", async () => {
+  await withBrowserTest(async ({ app, page }) => {
+    const repo = await app.createGitRepository("chat-streaming-browser");
+    const workspace = await app.createWorkspace({
+      name: "Chat Streaming Workspace",
+      directory: repo.directory,
+    });
+
+    await openNewChat(page, app.baseUrl);
+    await page.getByLabel("Name").fill("Streaming Chat Session");
+    await page.locator("#chat-workspace").selectOption(workspace.id);
+    await page.getByRole("button", { name: "Create chat" }).click();
+
+    const chatId = await waitForChatId(app, "Streaming Chat Session");
+    await page.waitForURL(new RegExp(`#\\/chat\\/${chatId}$`));
+
+    await page.getByLabel("Message").fill("Please stream a response with reasoning.");
+    await page.getByRole("button", { name: "Send" }).click();
+
+    const reasoningContent = await waitForCondition(
+      async () => {
+        const chat = await app.getChat(chatId);
+        if (chat.state.status !== "streaming") {
+          return null;
+        }
+        return chat.state.logs.find((log: { details?: Record<string, unknown> }) =>
+          log.details?.["logKind"] === "reasoning")?.details?.["responseContent"] ?? null;
+      },
+      (value) => typeof value === "string" && value.length > 0,
+      "reasoning log content while streaming",
+      30_000,
+    );
+
+    expect(typeof reasoningContent).toBe("string");
+    await waitForVisible(page.getByText(new RegExp(String(reasoningContent).slice(0, 12), "i")));
+
+    await waitForChatToIdle(app, chatId);
+    await waitForVisible(page.getByText(/Mock ACP is streaming a realistic looking response/i));
+  });
+});
+
 test("creates an SSH session and surfaces terminal connection errors in the route", async () => {
   await withBrowserTest(async ({ app, page }) => {
     const repo = await app.createGitRepository("ssh-browser");
