@@ -8,16 +8,16 @@ mock.module("@monaco-editor/react", () => ({
   default: ({ value }: { value?: string }) => <div aria-label="Monaco editor">{value ?? ""}</div>,
 }));
 
-mock.module("@/components/SshSessionDetails", () => ({
-  SshSessionDetails: ({ sshSessionId }: { sshSessionId: string }) => (
-    <div>Embedded SSH session: {sshSessionId}</div>
-  ),
-}));
-
-const { App } = await import("@/App");
-
 const api = createMockApi();
 const ws = createMockWebSocket();
+
+function installEmbeddedSshSessionMock() {
+  mock.module("@/components/SshSessionDetails", () => ({
+    SshSessionDetails: ({ sshSessionId }: { sshSessionId: string }) => (
+      <div>Embedded SSH session: {sshSessionId}</div>
+    ),
+  }));
+}
 
 describe("App workspace files route", () => {
   beforeEach(() => {
@@ -36,6 +36,8 @@ describe("App workspace files route", () => {
   });
 
   test("renders the workspace files screen from the hash route", async () => {
+    installEmbeddedSshSessionMock();
+    const { App } = await import("@/App");
     const workspace = createWorkspace({
       id: "workspace-files-1",
       name: "Files Route Workspace",

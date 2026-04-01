@@ -19,24 +19,24 @@ mock.module("@monaco-editor/react", () => ({
   ),
 }));
 
-mock.module("@/components/SshSessionDetails", () => ({
-  SshSessionDetails: ({
-    sshSessionId,
-    forcedFocusMode,
-  }: {
-    sshSessionId: string;
-    forcedFocusMode?: boolean;
-  }) => (
-    <div>
-      Embedded SSH session: {sshSessionId}
-      {forcedFocusMode ? " (focused)" : ""}
-    </div>
-  ),
-}));
-
-const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
-
 const api = createMockApi();
+
+function installEmbeddedSshSessionMock() {
+  mock.module("@/components/SshSessionDetails", () => ({
+    SshSessionDetails: ({
+      sshSessionId,
+      forcedFocusMode,
+    }: {
+      sshSessionId: string;
+      forcedFocusMode?: boolean;
+    }) => (
+      <div>
+        Embedded SSH session: {sshSessionId}
+        {forcedFocusMode ? " (focused)" : ""}
+      </div>
+    ),
+  }));
+}
 
 function createFileEntry(overrides?: Partial<{
   name: string;
@@ -68,6 +68,8 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("opens files from the tree and enables saving edited content", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
     const workspace = createWorkspace({
       id: "workspace-1",
       name: "Editor Workspace",
@@ -154,6 +156,8 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("shows existing SSH sessions and can create a new terminal session", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
     const workspace = createWorkspace({
       id: "workspace-ssh",
       name: "SSH Workspace",
@@ -212,6 +216,8 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("can collapse and expand the file explorer pane", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
     const workspace = createWorkspace({
       id: "workspace-collapse",
       name: "Explorer Collapse",
@@ -247,6 +253,8 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("removes non-essential legends and keeps refresh actions icon-only", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
     const workspace = createWorkspace({
       id: "workspace-chrome",
       name: "Minimal Chrome",
@@ -317,6 +325,8 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("toggles hidden files from the explorer toolbar", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
     const workspace = createWorkspace({
       id: "workspace-hidden-files",
       name: "Hidden Files",
