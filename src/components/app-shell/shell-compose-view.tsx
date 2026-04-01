@@ -37,7 +37,7 @@ interface ComposeViewProps {
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   updateServer: (
     id: string,
-    request: import("../../types").UpdateSshServerRequest,
+    request?: import("../../types").UpdateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
   composeServerSessionCount: number;

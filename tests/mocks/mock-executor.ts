@@ -35,11 +35,13 @@ export class TestCommandExecutor implements CommandExecutor {
         ...(options?.env ? { env: { ...process.env, ...options.env } } : {}),
       });
 
-      const stdout = await new Response(proc.stdout).text();
-      const stderr = await new Response(proc.stderr).text();
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
       options?.onStdoutChunk?.(stdout);
       options?.onStderrChunk?.(stderr);
-      const exitCode = await proc.exited;
       
       return {
         success: exitCode === 0,

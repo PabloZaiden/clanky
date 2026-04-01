@@ -74,7 +74,7 @@ interface ShellMainContentProps {
   ) => Promise<SshServer | null>;
   updateServer: (
     id: string,
-    request: import("../../types").UpdateSshServerRequest,
+    request?: import("../../types").UpdateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
