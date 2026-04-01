@@ -26,11 +26,16 @@ import { sanitizeBranchName } from "../utils";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+const DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call initializeDatabase() first.";
 
 interface ActiveChatStream {
   stream: EventStream<AgentEvent>;
   promptPromise: Promise<void>;
   generation: number;
+}
+
+function isDatabaseNotInitializedError(error: unknown): boolean {
+  return error instanceof Error && error.message === DATABASE_NOT_INITIALIZED_MESSAGE;
 }
 
 export interface CreateChatOptions {
@@ -311,16 +316,8 @@ export class ChatManager {
       await this.emitChatError(updating, message);
       throw error;
     }
-
-    this.activeStreams.get(chatId)?.stream.close();
-
-    const stopped = await this.updateChatStateAndReturn(updating, {
+    const interrupted = await this.updateChatStateAndReturn(updating, {
       ...updating.state,
-      status: "idle",
-      interruptRequested: false,
-      completedAt: undefined,
-      activeMessageId: undefined,
-      lastActivityAt: createTimestamp(),
       error: reason
         ? {
             message: reason,
@@ -329,12 +326,10 @@ export class ChatManager {
           }
         : updating.state.error,
     });
-    this.emitter.emit({
-      type: "chat.interrupted",
-      chatId,
-      timestamp: stopped.state.lastActivityAt ?? createTimestamp(),
-    });
-    return stopped;
+    if (!this.activeStreams.has(chatId)) {
+      return this.completeInterruptedChat(interrupted);
+    }
+    return interrupted;
   }
 
   async deleteChat(chatId: string): Promise<boolean> {
@@ -608,6 +603,7 @@ export class ChatManager {
         }
 
         const now = createTimestamp();
+        const isInterrupted = chat.state.status === "interrupting" || chat.state.interruptRequested;
         chat = await this.updateChatStateAndReturn(chat, {
           ...chat.state,
           lastActivityAt: now,
@@ -621,6 +617,9 @@ export class ChatManager {
             responseLogContent = "";
             reasoningLogId = null;
             reasoningLogContent = "";
+            if (isInterrupted) {
+              break;
+            }
             chat = await this.emitChatLog(chat, "agent", "AI started generating response", { logKind: "system" });
             chat = await this.updateChatStateAndReturn(chat, {
               ...chat.state,
@@ -630,6 +629,9 @@ export class ChatManager {
             break;
 
           case "message.delta":
+            if (isInterrupted) {
+              break;
+            }
             responseContent += event.content;
             responseLogContent += event.content;
             chat = await this.emitChatLog(chat, "agent", "AI generating response...", {
@@ -640,6 +642,9 @@ export class ChatManager {
             break;
 
           case "reasoning.delta":
+            if (isInterrupted) {
+              break;
+            }
             reasoningLogContent += event.content;
             chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
               logKind: "reasoning",
@@ -649,6 +654,9 @@ export class ChatManager {
             break;
 
           case "tool.start": {
+            if (isInterrupted) {
+              break;
+            }
             const toolId = `chat-tool-${crypto.randomUUID()}`;
             toolInputs.set(event.toolName, event.input);
             chat = await this.appendToolCall(chat, {
@@ -662,6 +670,9 @@ export class ChatManager {
           }
 
           case "tool.complete": {
+            if (isInterrupted) {
+              break;
+            }
             const toolName = event.toolName;
             const existing = [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
             chat = await this.upsertToolCall(chat, {
@@ -676,7 +687,11 @@ export class ChatManager {
           }
 
           case "session.status":
-            if (event.status === "idle" && chat.state.status !== "interrupting") {
+            if (event.status === "idle" && (chat.state.status === "interrupting" || chat.state.interruptRequested)) {
+              chat = await this.completeInterruptedChat(chat);
+              this.clearActiveStream(chatId, generation);
+              return;
+            } else if (event.status === "idle") {
               chat = await this.updateChatStateAndReturn(chat, {
                 ...chat.state,
                 status: "idle",
@@ -687,6 +702,11 @@ export class ChatManager {
             break;
 
           case "message.complete": {
+            if (isInterrupted) {
+              chat = await this.completeInterruptedChat(chat);
+              this.clearActiveStream(chatId, generation);
+              return;
+            }
             chat = await this.emitChatLog(chat, "agent", "AI finished generating response", {
               logKind: "system",
               responseLength: responseContent.length,
@@ -700,19 +720,27 @@ export class ChatManager {
                 timestamp: now,
               });
             }
-            chat = await this.updateChatStateAndReturn(chat, {
-              ...chat.state,
-              status: chat.state.interruptRequested ? "interrupting" : "idle",
-              activeMessageId: undefined,
-              interruptRequested: false,
-              lastActivityAt: now,
-            });
+            if (chat.state.interruptRequested || chat.state.status === "interrupting") {
+              chat = await this.completeInterruptedChat(chat);
+            } else {
+              chat = await this.updateChatStateAndReturn(chat, {
+                ...chat.state,
+                status: "idle",
+                activeMessageId: undefined,
+                interruptRequested: false,
+                lastActivityAt: now,
+              });
+            }
             this.clearActiveStream(chatId, generation);
             return;
           }
 
           case "error":
             if (this.shouldSuppressStreamError(chatId, generation, event.message)) {
+              chat = await loadChat(chatId) ?? chat;
+              if (chat.state.status === "interrupting" || chat.state.interruptRequested) {
+                await this.completeInterruptedChat(chat);
+              }
               this.clearActiveStream(chatId, generation);
               return;
             }
@@ -737,9 +765,13 @@ export class ChatManager {
     } catch (error) {
       const message = String(error);
       if (this.shouldSuppressStreamError(chatId, generation, message)) {
+        const interruptedChat = await this.loadChatIfAvailable(chatId);
+        if (interruptedChat && (interruptedChat.state.status === "interrupting" || interruptedChat.state.interruptRequested)) {
+          await this.completeInterruptedChat(interruptedChat);
+        }
         return;
       }
-      chat = await loadChat(chatId);
+      chat = await this.loadChatIfAvailable(chatId);
       if (chat && this.isActiveStreamGeneration(chatId, generation)) {
         await this.emitChatError(chat, message);
       }
@@ -862,6 +894,24 @@ export class ChatManager {
     return this.emitChatError(chat, message);
   }
 
+  private async completeInterruptedChat(chat: Chat): Promise<Chat> {
+    const now = createTimestamp();
+    const updated = await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      status: "idle",
+      interruptRequested: false,
+      completedAt: undefined,
+      activeMessageId: undefined,
+      lastActivityAt: now,
+    });
+    this.emitter.emit({
+      type: "chat.interrupted",
+      chatId: chat.config.id,
+      timestamp: now,
+    });
+    return updated;
+  }
+
   private async configureSessionModel(backend: Backend, sessionId: string, desiredModel: string): Promise<void> {
     try {
       await backend.setConfigOption(sessionId, "model", desiredModel);
@@ -933,6 +983,17 @@ export class ChatManager {
       });
     }
     return updated;
+  }
+
+  private async loadChatIfAvailable(chatId: string): Promise<Chat | null> {
+    try {
+      return await loadChat(chatId);
+    } catch (error) {
+      if (isDatabaseNotInitializedError(error)) {
+        return null;
+      }
+      throw error;
+    }
   }
 }
 

@@ -296,6 +296,78 @@ describe("ChatDetails", () => {
     });
   });
 
+  test("ignores stale interrupt websocket events after newer chat activity", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "idle",
+        lastActivityAt: "2025-01-01T00:00:10.000Z",
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Idle")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.status",
+        chatId: CHAT_ID,
+        status: "streaming",
+        timestamp: "2025-01-01T00:00:05.000Z",
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.interrupted",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:05.500Z",
+      });
+    });
+
+    expect(getByText("Idle")).toBeTruthy();
+  });
+
+  test("ignores stale cancellation errors after newer chat activity", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "idle",
+        lastActivityAt: "2025-01-01T00:00:10.000Z",
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Idle")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.error",
+        chatId: CHAT_ID,
+        message: "Operation cancelled by user",
+        timestamp: "2025-01-01T00:00:05.000Z",
+      });
+    });
+
+    expect(queryByText("Operation cancelled by user")).toBeNull();
+    expect(getByText("Idle")).toBeTruthy();
+  });
+
   test("updates streaming logs in place when websocket events reuse the same log id", async () => {
     api.get("/api/chats/:id", () => createChat({
       state: {

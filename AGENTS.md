@@ -285,6 +285,7 @@ test("hello world", () => {
 - Unit tests should be written alongside implementation, not after
 - Scenario tests should cover multiple combinations and edge cases
 - UI-only changes may rely on manual testing, but automated tests are preferred when possible
+- Live agent providers may be used for manual investigation and final validation when needed, but committed automated tests **MUST** use mocks or local test doubles and **MUST NOT** depend on live agents or external providers
 - **100%** of the tests **MUST** pass before considering a feature complete
 - A flaky test that fails intermittently **MUST** be fixed. A lot of times, flaky tests indicate deeper issues, race conditions, or bad mock implementations.
 - **Tests MUST be deterministic**: Tests should never have conditional expectations based on timing or race conditions. If a test sometimes expects one outcome and sometimes another, the test is flaky and must be fixed. Use polling helpers, explicit waits, or control execution flow to ensure deterministic behavior.

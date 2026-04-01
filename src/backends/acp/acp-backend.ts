@@ -75,6 +75,9 @@ export class AcpBackend implements Backend {
   /** Whether the active async prompt has produced meaningful activity */
   private sessionPromptHasActivity = new Map<string, boolean>();
 
+  /** Ignore status-only completion signals until fresh prompt activity arrives after an abort */
+  private sessionIgnoreStatusUntilActivity = new Set<string>();
+
   /** Track reasoning part identity per session to separate distinct reasoning parts */
   private sessionReasoningPartKeys = new Map<string, string>();
 
@@ -209,6 +212,7 @@ export class AcpBackend implements Backend {
     this.sessionMessageStarted.clear();
     this.sessionPromptSequences.clear();
     this.sessionPromptHasActivity.clear();
+    this.sessionIgnoreStatusUntilActivity.clear();
     this.sessionReasoningPartKeys.clear();
     this.sessionLastReasoningChunkSignature.clear();
     this.sessionCache.clear();
@@ -491,7 +495,8 @@ export class AcpBackend implements Backend {
           return;
         }
         const hasActivePrompt = this.sessionPromptSequences.has(sessionId);
-        if (hasActivePrompt && (status === "busy" || status === "retry")) {
+        const ignoreStatusUntilActivity = this.sessionIgnoreStatusUntilActivity.has(sessionId);
+        if (hasActivePrompt && !ignoreStatusUntilActivity && (status === "busy" || status === "retry")) {
           this.sessionPromptHasActivity.set(sessionId, true);
         }
         this.emitSessionEvent(sessionId, {
@@ -502,7 +507,7 @@ export class AcpBackend implements Backend {
           message: getString(message.params["message"]),
         });
         const hasPromptActivity = this.sessionPromptHasActivity.get(sessionId) ?? false;
-        if (status === "idle" && hasActivePrompt && hasPromptActivity) {
+        if (status === "idle" && hasActivePrompt && hasPromptActivity && !ignoreStatusUntilActivity) {
           this.emitSessionEvent(sessionId, {
             type: "message.complete",
             content: "",
@@ -510,6 +515,7 @@ export class AcpBackend implements Backend {
           this.sessionMessageStarted.delete(sessionId);
           this.sessionPromptSequences.delete(sessionId);
           this.sessionPromptHasActivity.delete(sessionId);
+          this.sessionIgnoreStatusUntilActivity.delete(sessionId);
           this.sessionReasoningPartKeys.delete(sessionId);
           this.sessionLastReasoningChunkSignature.delete(sessionId);
         }
@@ -571,6 +577,7 @@ export class AcpBackend implements Backend {
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
       }
+      this.sessionIgnoreStatusUntilActivity.delete(sessionId);
       const text = getString(content["text"]) ?? "";
       if (!this.sessionMessageStarted.get(sessionId)) {
         this.sessionMessageStarted.set(sessionId, true);
@@ -592,6 +599,7 @@ export class AcpBackend implements Backend {
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
       }
+      this.sessionIgnoreStatusUntilActivity.delete(sessionId);
       const text = getString(content["text"]) ?? "";
       if (text.length > 0) {
         let reasoningText = text;
@@ -620,6 +628,7 @@ export class AcpBackend implements Backend {
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
       }
+      this.sessionIgnoreStatusUntilActivity.delete(sessionId);
       const toolCallId = firstString(updateObj["toolCallId"], content["toolCallId"]);
       const toolName = firstString(
         content["toolName"],
@@ -645,6 +654,7 @@ export class AcpBackend implements Backend {
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
       }
+      this.sessionIgnoreStatusUntilActivity.delete(sessionId);
       const toolCallId = firstString(updateObj["toolCallId"], content["toolCallId"]);
       const toolName = firstString(
         content["toolName"],
@@ -1303,6 +1313,15 @@ export class AcpBackend implements Backend {
         if (this.sessionPromptSequences.get(sessionId) !== sequence) {
           return;
         }
+        const hasPromptActivity = this.sessionPromptHasActivity.get(sessionId) ?? false;
+        const messageStarted = this.sessionMessageStarted.get(sessionId) ?? false;
+        if (!hasPromptActivity && !messageStarted) {
+          log.debug("[AcpBackend] Async prompt RPC completed before activity; waiting for session updates", {
+            sessionId,
+            sequence,
+          });
+          return;
+        }
         log.debug("[AcpBackend] Async prompt RPC completed", { sessionId, sequence });
         this.emitSessionEvent(sessionId, {
           type: "message.complete",
@@ -1311,6 +1330,7 @@ export class AcpBackend implements Backend {
         this.sessionMessageStarted.delete(sessionId);
         this.sessionPromptSequences.delete(sessionId);
         this.sessionPromptHasActivity.delete(sessionId);
+        this.sessionIgnoreStatusUntilActivity.delete(sessionId);
         this.sessionReasoningPartKeys.delete(sessionId);
         this.sessionLastReasoningChunkSignature.delete(sessionId);
       })
@@ -1337,6 +1357,7 @@ export class AcpBackend implements Backend {
         this.sessionMessageStarted.delete(sessionId);
         this.sessionPromptSequences.delete(sessionId);
         this.sessionPromptHasActivity.delete(sessionId);
+        this.sessionIgnoreStatusUntilActivity.delete(sessionId);
         this.sessionReasoningPartKeys.delete(sessionId);
         this.sessionLastReasoningChunkSignature.delete(sessionId);
       });
@@ -1347,11 +1368,18 @@ export class AcpBackend implements Backend {
    */
   async abortSession(sessionId: string): Promise<void> {
     this.ensureConnected();
-
     const cancellationMethods = ["session/cancel", "session/abort", "session/stop"];
     for (const method of cancellationMethods) {
       try {
         await this.sendRpcRequest(method, { sessionId }, 5_000);
+        if (this.sessionPromptSequences.has(sessionId)) {
+          this.sessionPromptSequences.set(sessionId, (this.sessionPromptSequences.get(sessionId) ?? 0) + 1);
+          this.sessionPromptHasActivity.set(sessionId, false);
+          this.sessionMessageStarted.set(sessionId, false);
+          this.sessionIgnoreStatusUntilActivity.add(sessionId);
+          this.sessionReasoningPartKeys.delete(sessionId);
+          this.sessionLastReasoningChunkSignature.delete(sessionId);
+        }
         return;
       } catch (error) {
         const message = String(error);
