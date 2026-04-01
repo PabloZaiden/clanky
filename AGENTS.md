@@ -11,6 +11,8 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 - Track the status of the work in that document.
 - After checking the document, update what the next steps to work on are, and what's important to know about it to be able to continue working on it later.
 - Make sure that the goals you are trying to achieve are written down, in a way that you can properly verify them later.
+- When you need to fix a bug, first make sure you can reproduce it locally unless the user is explicit that reproduction is not needed. Trying to fix a bug before reproducing it can make things worse.
+- When you need to see how something works in the UI, use Playwright.
 - Don't say something is done until you have verified that all the goals are met.
 - The general loop then is:
 
@@ -285,6 +287,7 @@ test("hello world", () => {
 - Unit tests should be written alongside implementation, not after
 - Scenario tests should cover multiple combinations and edge cases
 - UI-only changes may rely on manual testing, but automated tests are preferred when possible
+- If you need to validate real agent scenarios for a new feature or to reproduce a bug, use a local Copilot CLI unless the user explicitly says otherwise. Mocks usually do not work well for this kind of manual validation.
 - Live agent providers may be used for manual investigation and final validation when needed, but committed automated tests **MUST** use mocks or local test doubles and **MUST NOT** depend on live agents or external providers
 - **100%** of the tests **MUST** pass before considering a feature complete
 - A flaky test that fails intermittently **MUST** be fixed. A lot of times, flaky tests indicate deeper issues, race conditions, or bad mock implementations.
