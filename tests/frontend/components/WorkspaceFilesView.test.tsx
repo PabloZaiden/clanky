@@ -394,43 +394,43 @@ describe("WorkspaceFilesView", () => {
     api.get("/api/workspaces/:id/files", (req) => {
       const url = new URL(req.url, "http://localhost");
       const path = url.searchParams.get("path") ?? "";
-      const showHidden = url.searchParams.get("showHidden") === "true";
 
       if (path === "src") {
         return {
           workspaceId: workspace.id,
           directory: "src",
-          entries: showHidden
-            ? [
-                createFileEntry({
-                  name: ".secret.ts",
-                  path: "src/.secret.ts",
-                  kind: "file",
-                  size: 5,
-                  versionToken: "101:5",
-                }),
-                createFileEntry({
-                  name: "index.ts",
-                  path: "src/index.ts",
-                  kind: "file",
-                  size: 20,
-                  versionToken: "100:20",
-                }),
-              ]
-            : [createFileEntry({
-                name: "index.ts",
-                path: "src/index.ts",
-                kind: "file",
-                size: 20,
-                versionToken: "100:20",
-              })],
+          entries: [
+            createFileEntry({
+              name: ".secret.ts",
+              path: "src/.secret.ts",
+              kind: "file",
+              size: 5,
+              versionToken: "101:5",
+            }),
+            createFileEntry({
+              name: "index.ts",
+              path: "src/index.ts",
+              kind: "file",
+              size: 20,
+              versionToken: "100:20",
+            }),
+          ],
         };
       }
 
       return {
         workspaceId: workspace.id,
         directory: "",
-        entries: [createFileEntry()],
+        entries: [
+          createFileEntry(),
+          createFileEntry({
+            name: ".env",
+            path: ".env",
+            kind: "file",
+            size: 10,
+            versionToken: "99:10",
+          }),
+        ],
       };
     });
 
@@ -445,19 +445,23 @@ describe("WorkspaceFilesView", () => {
 
     await waitFor(() => {
       expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
-      expect(getByRole("button", { name: "Show hidden files" })).toBeInTheDocument();
+      expect(getByRole("button", { name: "Hide hidden files" })).toBeInTheDocument();
+      expect(getByRole("button", { name: /\.env/i })).toBeInTheDocument();
     });
 
     await user.click(getByRole("button", { name: /src/i }));
     await waitFor(() => {
+      expect(getByRole("button", { name: /\.secret\.ts/i })).toBeInTheDocument();
       expect(getByRole("button", { name: /index.ts/i })).toBeInTheDocument();
     });
-    expect(queryByRole("button", { name: /\.secret\.ts/i })).not.toBeInTheDocument();
+    expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
 
-    await user.click(getByRole("button", { name: "Show hidden files" }));
+    await user.click(getByRole("button", { name: "Hide hidden files" }));
     await waitFor(() => {
-      expect(getByRole("button", { name: /\.secret\.ts/i })).toBeInTheDocument();
-      expect(getByRole("button", { name: "Hide hidden files" })).toBeInTheDocument();
+      expect(queryByRole("button", { name: /\.env/i })).not.toBeInTheDocument();
+      expect(queryByRole("button", { name: /\.secret\.ts/i })).not.toBeInTheDocument();
+      expect(getByRole("button", { name: "Show hidden files" })).toBeInTheDocument();
     });
+    expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
   });
 });

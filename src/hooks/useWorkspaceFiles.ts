@@ -83,7 +83,7 @@ export function useWorkspaceFiles(
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
   const [currentFile, setCurrentFile] = useState<WorkspaceFileEntry | null>(null);
-  const [showHiddenFiles, setShowHiddenFiles] = useState(false);
+  const [showHiddenFiles, setShowHiddenFiles] = useState(true);
   const [editorContent, setEditorContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
   const [loadingTree, setLoadingTree] = useState(true);
@@ -96,15 +96,15 @@ export function useWorkspaceFiles(
 
   const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
 
-  const loadDirectory = useCallback(async (path: string, includeHidden: boolean) => {
-    return await listWorkspaceFilesApi(workspaceId, path, includeHidden);
+  const loadDirectory = useCallback(async (path: string) => {
+    return await listWorkspaceFilesApi(workspaceId, path);
   }, [workspaceId]);
 
   const refreshTree = useCallback(async (path = "") => {
     try {
       setLoadingTree(true);
       setError(null);
-      const response = await loadDirectory(path, showHiddenFiles);
+      const response = await loadDirectory(path);
       setDirectoryEntries((currentEntries) => ({
         ...currentEntries,
         [path]: response.entries,
@@ -120,35 +120,11 @@ export function useWorkspaceFiles(
     } finally {
       setLoadingTree(false);
     }
-  }, [loadDirectory, showHiddenFiles]);
+  }, [loadDirectory]);
 
   const toggleShowHiddenFiles = useCallback(async () => {
-    const nextShowHiddenFiles = !showHiddenFiles;
-    const directoriesToRefresh = Array.from(new Set(["", ...expandedDirectories]));
-
-    try {
-      setLoadingTree(true);
-      setError(null);
-      const responses = await Promise.all(
-        directoriesToRefresh.map(async (path) => ({
-          path,
-          response: await loadDirectory(path, nextShowHiddenFiles),
-        })),
-      );
-      setDirectoryEntries((currentEntries) => {
-        const nextEntries = { ...currentEntries };
-        for (const { path, response } of responses) {
-          nextEntries[path] = response.entries;
-        }
-        return nextEntries;
-      });
-      setShowHiddenFiles(nextShowHiddenFiles);
-    } catch (requestError) {
-      setError(String(requestError));
-    } finally {
-      setLoadingTree(false);
-    }
-  }, [expandedDirectories, loadDirectory, showHiddenFiles]);
+    setShowHiddenFiles((currentValue) => !currentValue);
+  }, []);
 
   const openFile = useCallback(async (path: string) => {
     try {
@@ -295,12 +271,12 @@ export function useWorkspaceFiles(
     setExpandedDirectories([]);
     setCurrentDirectory("");
     setCurrentFile(null);
-    setShowHiddenFiles(false);
+    setShowHiddenFiles(true);
     setEditorContent("");
     setSavedContent("");
     setConflictState(null);
     setAutoReloadedAt(null);
-    void loadDirectory("", false)
+    void loadDirectory("")
       .then((response) => {
         setDirectoryEntries({ "": response.entries });
       })

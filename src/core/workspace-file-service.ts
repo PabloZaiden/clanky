@@ -141,8 +141,9 @@ class WorkspaceFileService {
       throw new Error("Requested path is not a directory");
     }
 
+    const includeHidden = options?.includeHidden ?? true;
     const names = await executor.listDirectory(absolutePath, {
-      includeHidden: options?.includeHidden,
+      includeHidden,
     });
     const entries = (await Promise.all(
       names.map(async (name) => {
