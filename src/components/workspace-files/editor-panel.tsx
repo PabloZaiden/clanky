@@ -83,7 +83,7 @@ export function WorkspaceEditorPanel({
             theme="vs-dark"
             language={detectLanguage(filePath)}
             value={value}
-            onChange={(nextValue) => onChange(nextValue ?? "")}
+            onChange={(nextValue: string | undefined) => onChange(nextValue ?? "")}
             options={{
               minimap: { enabled: false },
               fontSize: 14,
