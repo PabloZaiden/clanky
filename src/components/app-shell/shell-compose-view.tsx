@@ -35,6 +35,12 @@ interface ComposeViewProps {
     options?: { name?: string; connectionMode?: SshConnectionMode },
   ) => Promise<SshServerSession>;
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
+  updateServer: (
+    id: string,
+    request: import("../../types").UpdateSshServerRequest,
+    password?: string,
+  ) => Promise<SshServer | null>;
+  composeServerSessionCount: number;
   provisioning: UseProvisioningJobResult;
   workspacesSaving: boolean;
 }
@@ -60,6 +66,8 @@ export function ComposeView(props: ComposeViewProps) {
     createSession,
     createStandaloneSession,
     createServer,
+    updateServer,
+    composeServerSessionCount,
     provisioning,
     workspacesSaving,
   } = props;
@@ -142,9 +150,18 @@ export function ComposeView(props: ComposeViewProps) {
   return (
     <SshServerComposer
       headerOffsetClassName={shellHeaderOffsetClassName}
-      onCancel={() => navigateWithinShell({ view: "home" })}
+      initialServer={composeServer}
+      relatedSessionCount={composeServerSessionCount}
+      onCancel={() =>
+        navigateWithinShell(
+          composeServer
+            ? { view: "ssh-server", serverId: composeServer.config.id }
+            : { view: "home" },
+        )
+      }
       onNavigate={navigateWithinShell}
       onCreateServer={createServer}
+      onUpdateServer={updateServer}
     />
   );
 }

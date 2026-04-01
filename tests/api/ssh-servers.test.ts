@@ -103,11 +103,26 @@ describe("Standalone SSH servers API integration", () => {
     const updateResponse = await fetch(`${baseUrl}/api/ssh-servers/${created.config.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Renamed host" }),
+      body: JSON.stringify({
+        name: "Renamed host",
+        address: "ssh.internal.example",
+        username: "builder",
+        repositoriesBasePath: "/srv/repos",
+      }),
     });
     expect(updateResponse.ok).toBe(true);
-    const updated = await updateResponse.json() as { config: { name: string } };
+    const updated = await updateResponse.json() as {
+      config: {
+        name: string;
+        address: string;
+        username: string;
+        repositoriesBasePath?: string;
+      };
+    };
     expect(updated.config.name).toBe("Renamed host");
+    expect(updated.config.address).toBe("ssh.internal.example");
+    expect(updated.config.username).toBe("builder");
+    expect(updated.config.repositoriesBasePath).toBe("/srv/repos");
 
     const deleteResponse = await fetch(`${baseUrl}/api/ssh-servers/${created.config.id}`, {
       method: "DELETE",

@@ -53,6 +53,7 @@ interface ShellMainContentProps {
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
   composeServer: SshServer | null;
+  composeServerSessionCount: number;
   selectedServer: SshServer | null;
 
   // Loop actions
@@ -69,6 +70,11 @@ interface ShellMainContentProps {
   ) => Promise<import("../../types/ssh-server").SshServerSession>;
   createServer: (
     request: import("../../types").CreateSshServerRequest,
+    password?: string,
+  ) => Promise<SshServer | null>;
+  updateServer: (
+    id: string,
+    request: import("../../types").UpdateSshServerRequest,
     password?: string,
   ) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
@@ -341,6 +347,9 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
+        onEditServer={() =>
+          navigateWithinShell({ view: "compose", kind: "ssh-server", scopeId: selectedServer.config.id })
+        }
         onDeleteServer={async () => {
           const deleted = await deleteServer(selectedServer.config.id);
           if (!deleted) {
@@ -443,6 +452,8 @@ function renderMainContent(props: ShellMainContentProps) {
         createSession={props.createSession}
         createStandaloneSession={props.createStandaloneSession}
         createServer={props.createServer}
+        updateServer={props.updateServer}
+        composeServerSessionCount={props.composeServerSessionCount}
         provisioning={props.provisioning}
         workspacesSaving={workspacesSaving}
       />

@@ -1,49 +1,92 @@
 import { useId, useState, type FormEvent } from "react";
 import { useSshServers, useToast } from "../../hooks";
+import type { SshServer } from "../../types/ssh-server";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel, InlineField } from "./shell-panel";
 
 export function SshServerComposer({
   headerOffsetClassName,
+  initialServer,
+  relatedSessionCount = 0,
   onCancel,
   onNavigate,
   onCreateServer,
+  onUpdateServer,
 }: {
   headerOffsetClassName?: string;
+  initialServer?: SshServer | null;
+  relatedSessionCount?: number;
   onCancel: () => void;
   onNavigate: (route: ShellRoute) => void;
   onCreateServer: ReturnType<typeof useSshServers>["createServer"];
+  onUpdateServer: ReturnType<typeof useSshServers>["updateServer"];
 }) {
   const toast = useToast();
   const formId = useId();
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState("");
-  const [username, setUsername] = useState("");
-  const [repositoriesBasePath, setRepositoriesBasePath] = useState("");
+  const isEditing = Boolean(initialServer);
+  const [name, setName] = useState(initialServer?.config.name ?? "");
+  const [address, setAddress] = useState(initialServer?.config.address ?? "");
+  const [username, setUsername] = useState(initialServer?.config.username ?? "");
+  const [repositoriesBasePath, setRepositoriesBasePath] = useState(initialServer?.config.repositoriesBasePath ?? "");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!name.trim() || !address.trim() || !username.trim()) {
+    const nextName = name.trim();
+    const nextAddress = address.trim();
+    const nextUsername = username.trim();
+    const nextRepositoriesBasePath = repositoriesBasePath.trim() || undefined;
+    const nextPassword = password.trim() || undefined;
+
+    if (!nextName || !nextAddress || !nextUsername) {
       toast.error("Name, address, and username are required.");
       return;
     }
 
+    if (initialServer) {
+      const hasChanges =
+        nextName !== initialServer.config.name
+        || nextAddress !== initialServer.config.address
+        || nextUsername !== initialServer.config.username
+        || nextRepositoriesBasePath !== initialServer.config.repositoriesBasePath
+        || Boolean(nextPassword);
+
+      if (!hasChanges) {
+        toast.success("SSH server is already up to date.");
+        onNavigate({ view: "ssh-server", serverId: initialServer.config.id });
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
-      const server = await onCreateServer(
-        {
-          name: name.trim(),
-          address: address.trim(),
-          username: username.trim(),
-          repositoriesBasePath: repositoriesBasePath.trim() || undefined,
-        },
-        password.trim() || undefined,
-      );
+      const server = initialServer
+        ? await onUpdateServer(
+          initialServer.config.id,
+          {
+            ...(nextName !== initialServer.config.name ? { name: nextName } : {}),
+            ...(nextAddress !== initialServer.config.address ? { address: nextAddress } : {}),
+            ...(nextUsername !== initialServer.config.username ? { username: nextUsername } : {}),
+            ...(nextRepositoriesBasePath !== initialServer.config.repositoriesBasePath
+              ? { repositoriesBasePath: nextRepositoriesBasePath ?? null }
+              : {}),
+          },
+          nextPassword,
+        )
+        : await onCreateServer(
+          {
+            name: nextName,
+            address: nextAddress,
+            username: nextUsername,
+            repositoriesBasePath: nextRepositoriesBasePath,
+          },
+          nextPassword,
+        );
+
       if (!server) {
-        toast.error("Failed to create SSH server");
+        toast.error(initialServer ? "Failed to update SSH server" : "Failed to create SSH server");
         return;
       }
       onNavigate({ view: "ssh-server", serverId: server.config.id });
@@ -55,7 +98,8 @@ export function SshServerComposer({
   return (
     <ShellPanel
       eyebrow="SSH server"
-      title="Register a standalone SSH server"
+      title={isEditing ? `Edit ${initialServer?.config.name ?? "SSH server"}` : "Register a standalone SSH server"}
+      description={isEditing ? "Update the saved host metadata and optional client-only password." : undefined}
       variant="compact"
       headerOffsetClassName={headerOffsetClassName}
       badges={(
@@ -67,12 +111,18 @@ export function SshServerComposer({
             Cancel
           </Button>
           <Button type="submit" form={formId} size="sm" loading={submitting}>
-            Create SSH Server
+            {isEditing ? "Save Changes" : "Create SSH Server"}
           </Button>
         </>
       )}
     >
       <form id={formId} className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>
+        {isEditing && relatedSessionCount > 0 && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+            {relatedSessionCount} standalone session{relatedSessionCount === 1 ? "" : "s"} already use this server.
+            Changes to the address, username, or base path apply to future connections and provisioning actions.
+          </div>
+        )}
         <div className="grid gap-4 lg:grid-cols-2">
           <InlineField id="server-name" label="Server name" value={name} onChange={setName} placeholder="Production host" required />
           <InlineField id="server-address" label="Address" value={address} onChange={setAddress} placeholder="server.example.com" required />

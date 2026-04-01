@@ -86,7 +86,11 @@ export function useSshServers(): UseSshServersResult {
       if (password?.trim()) {
         await saveStandaloneSshServerPassword(server.config.id, password);
       }
-      setServers((prev) => prev.map((item) => item.config.id === id ? server : item));
+      setServers((prev) =>
+        prev
+          .map((item) => item.config.id === id ? server : item)
+          .sort((left, right) => left.config.name.localeCompare(right.config.name)),
+      );
       return server;
     } catch (err) {
       setError(String(err));
