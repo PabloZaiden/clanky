@@ -1,15 +1,16 @@
 /**
- * Hook for managing workspace file explorer state.
+ * Hook for managing file explorer state for workspace and server targets.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WorkspaceFileEntry } from "../types";
 import {
+  type FileExplorerTarget,
   WorkspaceFileConflictError,
-  getWorkspaceFileMetadataApi,
-  listWorkspaceFilesApi,
-  readWorkspaceFileApi,
-  writeWorkspaceFileApi,
+  getFileExplorerFileMetadataApi,
+  listFileExplorerFilesApi,
+  readFileExplorerFileApi,
+  writeFileExplorerFileApi,
 } from "./workspaceFileActions";
 
 export interface WorkspaceFileConflictState {
@@ -18,7 +19,7 @@ export interface WorkspaceFileConflictState {
   currentFile: WorkspaceFileEntry | null;
 }
 
-export interface UseWorkspaceFilesResult {
+export interface UseFileExplorerResult {
   directoryEntries: Record<string, WorkspaceFileEntry[]>;
   expandedDirectories: string[];
   currentDirectory: string;
@@ -46,6 +47,8 @@ export interface UseWorkspaceFilesResult {
   checkForExternalChanges: () => Promise<void>;
 }
 
+export type UseWorkspaceFilesResult = UseFileExplorerResult;
+
 function getParentDirectory(path: string): string {
   const lastSlash = path.lastIndexOf("/");
   return lastSlash >= 0 ? path.slice(0, lastSlash) : "";
@@ -72,12 +75,14 @@ function upsertDirectoryEntry(
   };
 }
 
-export function useWorkspaceFiles(
-  workspaceId: string,
+export function useFileExplorer(
+  target: FileExplorerTarget,
   options?: {
     pollIntervalMs?: number;
   },
-): UseWorkspaceFilesResult {
+): UseFileExplorerResult {
+  const targetType = target.type;
+  const targetId = target.id;
   const pollIntervalMs = options?.pollIntervalMs ?? 5000;
   const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileEntry[]>>({});
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
@@ -97,8 +102,8 @@ export function useWorkspaceFiles(
   const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
 
   const loadDirectory = useCallback(async (path: string) => {
-    return await listWorkspaceFilesApi(workspaceId, path);
-  }, [workspaceId]);
+    return await listFileExplorerFilesApi({ type: targetType, id: targetId }, path);
+  }, [targetId, targetType]);
 
   const refreshTree = useCallback(async (path = "") => {
     try {
@@ -131,7 +136,7 @@ export function useWorkspaceFiles(
       setLoadingFile(true);
       setError(null);
       setConflictState(null);
-      const response = await readWorkspaceFileApi(workspaceId, path);
+      const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path);
       setCurrentDirectory(getParentDirectory(response.file.path));
       setCurrentFile(response.file);
       setEditorContent(response.content);
@@ -142,7 +147,7 @@ export function useWorkspaceFiles(
     } finally {
       setLoadingFile(false);
     }
-  }, [workspaceId]);
+  }, [targetId, targetType]);
 
   const refreshCurrentFile = useCallback(async (options?: { force?: boolean }) => {
     if (!currentFile) {
@@ -171,7 +176,7 @@ export function useWorkspaceFiles(
       setSavingFile(true);
       setError(null);
       setConflictState(null);
-      const response = await writeWorkspaceFileApi(workspaceId, {
+      const response = await writeFileExplorerFileApi({ type: targetType, id: targetId }, {
         path: currentFile.path,
         content: editorContent,
         expectedVersionToken: currentFile.versionToken,
@@ -195,7 +200,7 @@ export function useWorkspaceFiles(
     } finally {
       setSavingFile(false);
     }
-  }, [currentFile, editorContent, workspaceId]);
+  }, [currentFile, editorContent, targetId, targetType]);
 
   const discardLocalChangesAndReload = useCallback(async () => {
     setConflictState(null);
@@ -213,8 +218,11 @@ export function useWorkspaceFiles(
     }
 
     try {
-      const response = await getWorkspaceFileMetadataApi(workspaceId, currentFile.path);
-      const metadata = response.file;
+        const response = await getFileExplorerFileMetadataApi(
+          { type: targetType, id: targetId },
+          currentFile.path,
+        );
+        const metadata = response.file;
       if (metadata.versionToken === currentFile.versionToken) {
         return;
       }
@@ -228,7 +236,10 @@ export function useWorkspaceFiles(
         return;
       }
 
-      const readResponse = await readWorkspaceFileApi(workspaceId, currentFile.path);
+      const readResponse = await readFileExplorerFileApi(
+        { type: targetType, id: targetId },
+        currentFile.path,
+      );
       setCurrentFile(readResponse.file);
       setEditorContent(readResponse.content);
       setSavedContent(readResponse.content);
@@ -245,7 +256,7 @@ export function useWorkspaceFiles(
       }
       setError(String(requestError));
     }
-  }, [currentFile, isDirty, loadingFile, savingFile, workspaceId]);
+  }, [currentFile, isDirty, loadingFile, savingFile, targetId, targetType]);
 
   const toggleDirectory = useCallback(async (path: string) => {
     const isExpanded = expandedDirectories.includes(path);
@@ -286,7 +297,7 @@ export function useWorkspaceFiles(
       .finally(() => {
         setLoadingTree(false);
       });
-  }, [loadDirectory, workspaceId]);
+  }, [loadDirectory, targetId, targetType]);
 
   useEffect(() => {
     if (pollTimerRef.current !== null) {
@@ -337,4 +348,22 @@ export function useWorkspaceFiles(
     dismissConflict,
     checkForExternalChanges,
   };
+}
+
+export function useWorkspaceFiles(
+  workspaceId: string,
+  options?: {
+    pollIntervalMs?: number;
+  },
+): UseWorkspaceFilesResult {
+  return useFileExplorer({ type: "workspace", id: workspaceId }, options);
+}
+
+export function useServerFiles(
+  serverId: string,
+  options?: {
+    pollIntervalMs?: number;
+  },
+): UseFileExplorerResult {
+  return useFileExplorer({ type: "server", id: serverId }, options);
 }

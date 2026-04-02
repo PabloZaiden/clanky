@@ -44,6 +44,30 @@ export interface WorkspaceFileWriteResponse {
   overwritten: boolean;
 }
 
+export interface SshServerFileListResponse {
+  serverId: string;
+  directory: string;
+  entries: WorkspaceFileEntry[];
+}
+
+export interface SshServerFileReadResponse {
+  serverId: string;
+  file: WorkspaceFileEntry;
+  content: string;
+}
+
+export interface SshServerFileMetadataResponse {
+  serverId: string;
+  file: WorkspaceFileEntry;
+}
+
+export interface SshServerFileWriteResponse {
+  success: true;
+  serverId: string;
+  file: WorkspaceFileEntry;
+  overwritten: boolean;
+}
+
 export interface WorkspaceFileConflictResponse {
   error: "file_conflict";
   message: string;

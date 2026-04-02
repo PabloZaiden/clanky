@@ -240,7 +240,10 @@ export function ShellSidebarNav({
               return (
                 <SectionItem
                   key={server.config.id}
-                  active={route.view === "ssh-server" && route.serverId === server.config.id}
+                  active={
+                    (route.view === "ssh-server" || route.view === "server-files" || route.view === "server-arise")
+                    && route.serverId === server.config.id
+                  }
                   title={server.config.name}
                   subtitle={`${server.config.username}@${server.config.address}`}
                   badge={serverSessions.length > 0 ? String(serverSessions.length) : undefined}

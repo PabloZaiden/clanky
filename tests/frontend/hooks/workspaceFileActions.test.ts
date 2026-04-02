@@ -1,101 +1,107 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  WorkspaceFileConflictError,
-  getWorkspaceFileMetadataApi,
-  listWorkspaceFilesApi,
-  readWorkspaceFileApi,
-  writeWorkspaceFileApi,
-} from "@/hooks";
-import { createMockApi, MockApiError } from "../helpers/mock-api";
+
+import { listServerFilesApi, writeServerFileApi } from "@/hooks/workspaceFileActions";
+import { storeSshServerPassword } from "@/lib/ssh-browser-credentials";
+import { createMockApi } from "../helpers/mock-api";
 
 const api = createMockApi();
+const TEST_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAsKNhd9E/OQ+lbqKlfYjv
+69xGawOr9J0cMf2Qj3jWXaXv6mm1xrDBMYNboWkjxV6AZAG9zDJO6s8eP/rj7s3P
+7dfmoHGRfqoItqqt6WkKxZxjrnDc0l43wcdGaGm0fL5f4enJv+0Ft9Y+BSHhMl+m
+ENb+JvTFFK3bz38eLI8Td2RLIqjQ+bTR0M55VdlyIJvtZ4bAzn9IdABzd8hIp/Fq
+ZI97s5nsyDqX5ePG7e9UY9kfF4sxhQ1jlwmkIYlQmVl3zY6fWihc+YVHL7XWE/90
+cwJp+7qyc0w90j+5vMuJcfFm7F8FG7Zz+oOkkeNbeqMHEaJwVIi9vtHbljH5jtmd
+Tib0ROswpXTuhp2cDEgfZiF5m6o6Yws1eIqUhYaEfpOUqseYjPe6Klbjyl90m7Xq
+QpPbjq5q7UL/ase5r4n4t0JgcLZw1oP98rVAx+VFE+UViVd9qqH7CFhxxR9t7LFa
+NwUWw/pj0oI3Qul2lJfXaogfXzdcguVRik/yi0zQ5p5ArRBPEtmeNcEqA9x1ApNQ
+h8ND8r3lVAjFrX8+pj1fmPSxaIXgQPywAzr5kgdWz3BOEkrd5alvd+6kLxC2ErMA
+tYXzrp47C+1F7elWjBhHsqlhHSl7zQxqXqetisXZ4uEyv+4S0M3O+Q+iLeidcbLQ
+Vrt5VIv2q/QnK29KDywKJrsCAwEAAQ==
+-----END PUBLIC KEY-----`;
 
-describe("workspace file action helpers", () => {
-  beforeEach(() => {
-    api.reset();
-    api.install();
-  });
+beforeEach(() => {
+  api.reset();
+  api.install();
+});
 
-  afterEach(() => {
-    api.uninstall();
-  });
+afterEach(() => {
+  api.uninstall();
+});
 
-  test("lists workspace files", async () => {
-    api.get("/api/workspaces/:id/files", () => ({
-      workspaceId: "workspace-1",
-      directory: "",
-      entries: [
-        {
-          name: "src",
-          path: "src",
-          kind: "directory",
-          size: 0,
-          modifiedAt: "2026-01-01T00:00:00.000Z",
-          versionToken: "123:0",
-        },
-      ],
+describe("server file explorer actions", () => {
+  test("sends the exchanged credential token when listing server files", async () => {
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
     }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "token-123",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+    api.get("/api/ssh-servers/:id/files", (req) => {
+      expect(req.params["id"]).toBe("server-1");
+      expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("token-123");
+      return {
+        serverId: "server-1",
+        directory: "",
+        entries: [],
+      };
+    });
 
-    const response = await listWorkspaceFilesApi("workspace-1");
-    expect(response.entries).toHaveLength(1);
-    expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(1);
+    await storeSshServerPassword("server-1", "super-secret");
+    const response = await listServerFilesApi("server-1");
+
+    expect(response.serverId).toBe("server-1");
+    expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(1);
   });
 
-  test("reads file content", async () => {
-    api.get("/api/workspaces/:id/files/content", () => ({
-      workspaceId: "workspace-1",
-      file: {
-        name: "index.ts",
+  test("writes server files through the standalone server endpoint", async () => {
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "token-456",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/files/write", (req) => {
+      expect(req.params["id"]).toBe("server-1");
+      expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("token-456");
+      expect(req.body).toEqual({
         path: "src/index.ts",
-        kind: "file",
-        size: 20,
-        modifiedAt: "2026-01-01T00:00:00.000Z",
-        versionToken: "123:20",
-      },
-      content: "export const value = 1;\n",
-    }));
-
-    const response = await readWorkspaceFileApi("workspace-1", "src/index.ts");
-    expect(response.content).toContain("value = 1");
-  });
-
-  test("fetches workspace file metadata", async () => {
-    api.get("/api/workspaces/:id/files/metadata", () => ({
-      workspaceId: "workspace-1",
-      file: {
-        name: "index.ts",
-        path: "src/index.ts",
-        kind: "file",
-        size: 20,
-        modifiedAt: "2026-01-01T00:00:00.000Z",
-        versionToken: "123:20",
-      },
-    }));
-
-    const response = await getWorkspaceFileMetadataApi("workspace-1", "src/index.ts");
-    expect(response.file.versionToken).toBe("123:20");
-  });
-
-  test("throws a typed conflict error on save conflict", async () => {
-    api.post("/api/workspaces/:id/files/write", () => {
-      throw new MockApiError(409, {
-        error: "file_conflict",
-        message: "File changed outside the editor",
-        currentFile: {
+        content: "export const value = 2;\n",
+        expectedVersionToken: "token-a",
+      });
+      return {
+        success: true,
+        serverId: "server-1",
+        file: {
           name: "index.ts",
           path: "src/index.ts",
           kind: "file",
-          size: 30,
-          modifiedAt: "2026-01-01T00:00:00.000Z",
-          versionToken: "456:30",
+          size: 24,
+          modifiedAt: new Date().toISOString(),
+          versionToken: "token-b",
         },
-      });
+        overwritten: false,
+      };
     });
 
-    await expect(writeWorkspaceFileApi("workspace-1", {
+    await storeSshServerPassword("server-1", "super-secret");
+    const response = await writeServerFileApi("server-1", {
       path: "src/index.ts",
       content: "export const value = 2;\n",
-      expectedVersionToken: "123:20",
-    })).rejects.toBeInstanceOf(WorkspaceFileConflictError);
+      expectedVersionToken: "token-a",
+    });
+
+    expect(response.serverId).toBe("server-1");
+    expect(response.file.versionToken).toBe("token-b");
   });
 });

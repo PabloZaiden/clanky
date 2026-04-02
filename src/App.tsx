@@ -73,6 +73,13 @@ function parseHash(): ShellRoute {
     }
   }
 
+  if (hash.startsWith("/server-files/")) {
+    const serverId = hash.slice(14);
+    if (serverId) {
+      return { view: "server-files", serverId };
+    }
+  }
+
   if (hash.startsWith("/server-arise/")) {
     const serverId = hash.slice(14);
     if (serverId) {
@@ -125,6 +132,9 @@ function navigateTo(route: ShellRoute) {
       return;
     case "ssh-server":
       window.location.hash = `/server/${route.serverId}`;
+      return;
+    case "server-files":
+      window.location.hash = `/server-files/${route.serverId}`;
       return;
     case "server-arise":
       window.location.hash = `/server-arise/${route.serverId}`;

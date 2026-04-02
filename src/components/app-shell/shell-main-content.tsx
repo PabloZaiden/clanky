@@ -18,6 +18,7 @@ import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { WorkspaceFilesView } from "./workspace-files-view";
+import { ServerFilesView } from "./server-files-view";
 import type { ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
@@ -360,6 +361,32 @@ function renderMainContent(props: ShellMainContentProps) {
           navigateWithinShell({ view: "home" });
           return true;
         }}
+      />
+    );
+  }
+
+  if (route.view === "server-files") {
+    if (!selectedServer) {
+      return (
+        <ShellPanel
+          eyebrow="SSH server"
+          title="Server not found"
+          description="The selected SSH server no longer exists."
+        >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Use the sidebar or home button to continue.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    return (
+      <ServerFilesView
+        server={selectedServer}
+        sessions={sessionsByServerId[selectedServer.config.id] ?? []}
+        headerOffsetClassName={shellHeaderOffsetClassName}
+        createStandaloneSession={props.createStandaloneSession}
+        onNavigate={navigateWithinShell}
       />
     );
   }
