@@ -604,10 +604,6 @@ export class ChatManager {
 
         const now = createTimestamp();
         const isInterrupted = chat.state.status === "interrupting" || chat.state.interruptRequested;
-        chat = await this.updateChatStateAndReturn(chat, {
-          ...chat.state,
-          lastActivityAt: now,
-        });
 
         switch (event.type) {
           case "message.start":
@@ -634,11 +630,17 @@ export class ChatManager {
             }
             responseContent += event.content;
             responseLogContent += event.content;
-            chat = await this.emitChatLog(chat, "agent", "AI generating response...", {
-              logKind: "response",
-              responseContent: responseLogContent,
-            }, responseLogId ?? undefined);
-            responseLogId = chat.state.logs.at(-1)?.id ?? responseLogId;
+            ({
+              chat,
+              messageId: currentMessageId,
+              responseLogId,
+            } = await this.updateStreamingAssistantProgress(chat, {
+              messageId: currentMessageId,
+              content: responseContent,
+              responseLogId,
+              responseLogContent,
+              timestamp: now,
+            }));
             break;
 
           case "reasoning.delta":
@@ -712,12 +714,16 @@ export class ChatManager {
               responseLength: responseContent.length,
             });
             const finalContent = responseContent || event.content;
+            const existingAssistantMessage = this.findMessage(
+              chat,
+              currentMessageId ?? chat.state.activeMessageId,
+            );
             if (finalContent.length > 0 || currentMessageId) {
               chat = await this.appendMessage(chat, {
                 id: currentMessageId ?? `chat-assistant-${crypto.randomUUID()}`,
                 role: "assistant",
                 content: finalContent,
-                timestamp: now,
+                timestamp: existingAssistantMessage?.timestamp ?? now,
               });
             }
             if (chat.state.interruptRequested || chat.state.status === "interrupting") {
@@ -797,6 +803,83 @@ export class ChatManager {
       timestamp: message.timestamp,
     });
     return updated;
+  }
+
+  private findMessage(chat: Chat, messageId?: string): MessageData | undefined {
+    if (!messageId) {
+      return undefined;
+    }
+    return chat.state.messages.find((message) => message.id === messageId);
+  }
+
+  private async updateStreamingAssistantProgress(
+    chat: Chat,
+    {
+      messageId,
+      content,
+      responseLogId,
+      responseLogContent,
+      timestamp,
+    }: {
+      messageId: string | null;
+      content: string;
+      responseLogId: string | null;
+      responseLogContent: string;
+      timestamp: string;
+    },
+  ): Promise<{ chat: Chat; messageId: string; responseLogId: string }> {
+    const existingMessage = this.findMessage(chat, messageId ?? chat.state.activeMessageId);
+    const nextMessageId = existingMessage?.id
+      ?? messageId
+      ?? chat.state.activeMessageId
+      ?? `chat-assistant-${crypto.randomUUID()}`;
+    const assistantMessage: MessageData = {
+      id: nextMessageId,
+      role: "assistant",
+      content,
+      timestamp: existingMessage?.timestamp ?? timestamp,
+    };
+    const responseLog: LoopLogEntry = {
+      id: responseLogId ?? `chat-log-${crypto.randomUUID()}`,
+      level: "agent",
+      message: "AI generating response...",
+      details: {
+        logKind: "response",
+        responseContent: responseLogContent,
+      },
+      timestamp,
+    };
+    const nextMessages = chat.state.messages.some((existing) => existing.id === assistantMessage.id)
+      ? chat.state.messages.map((existing) => existing.id === assistantMessage.id ? assistantMessage : existing)
+      : [...chat.state.messages, assistantMessage];
+    const existingLogIndex = chat.state.logs.findIndex((logEntry) => logEntry.id === responseLog.id);
+    const nextLogs = existingLogIndex >= 0
+      ? chat.state.logs.map((logEntry, index) => index === existingLogIndex ? responseLog : logEntry)
+      : [...chat.state.logs, responseLog];
+    const updated = await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      activeMessageId: nextMessageId,
+      messages: nextMessages,
+      logs: nextLogs,
+      lastActivityAt: timestamp,
+    });
+    this.emitter.emit({
+      type: "chat.message",
+      chatId: chat.config.id,
+      message: assistantMessage,
+      timestamp,
+    });
+    this.emitter.emit({
+      type: "chat.log",
+      chatId: chat.config.id,
+      log: responseLog,
+      timestamp,
+    });
+    return {
+      chat: updated,
+      messageId: nextMessageId,
+      responseLogId: responseLog.id,
+    };
   }
 
   private async emitChatLog(
@@ -896,12 +979,16 @@ export class ChatManager {
 
   private async completeInterruptedChat(chat: Chat): Promise<Chat> {
     const now = createTimestamp();
+    const activeMessageId = chat.state.activeMessageId;
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: "idle",
       interruptRequested: false,
       completedAt: undefined,
       activeMessageId: undefined,
+      messages: activeMessageId
+        ? chat.state.messages.filter((message) => message.id !== activeMessageId)
+        : chat.state.messages,
       lastActivityAt: now,
     });
     this.emitter.emit({
