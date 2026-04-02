@@ -81,6 +81,14 @@ export function SshServerView({
           </Button>
           <Button
             size="sm"
+            variant="secondary"
+            onClick={() => onNavigate({ view: "server-files", serverId: server.config.id })}
+            disabled={deleteSubmitting}
+          >
+            Open Editor
+          </Button>
+          <Button
+            size="sm"
             onClick={() => onNavigate({ view: "compose", kind: "ssh-session", scopeId: server.config.id })}
             disabled={deleteSubmitting}
           >

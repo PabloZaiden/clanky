@@ -21,7 +21,7 @@ function mapFileError(error: unknown): Response {
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  if ((error as { name?: string } | null)?.name === "WorkspaceFileConflictError") {
+  if ((error as { name?: string } | null)?.name === "FileExplorerConflictError") {
     const currentFile = (error as { currentFile?: WorkspaceFileEntry | null }).currentFile ?? null;
     return Response.json({
       error: "file_conflict",

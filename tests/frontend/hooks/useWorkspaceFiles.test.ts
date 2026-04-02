@@ -1,9 +1,24 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { renderHook, waitFor, act } from "@testing-library/react";
-import { useWorkspaceFiles } from "@/hooks";
+import { useServerFiles, useWorkspaceFiles } from "@/hooks";
+import { storeSshServerPassword } from "@/lib/ssh-browser-credentials";
 import { createMockApi, MockApiError } from "../helpers/mock-api";
 
 const api = createMockApi();
+const TEST_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAsKNhd9E/OQ+lbqKlfYjv
+69xGawOr9J0cMf2Qj3jWXaXv6mm1xrDBMYNboWkjxV6AZAG9zDJO6s8eP/rj7s3P
+7dfmoHGRfqoItqqt6WkKxZxjrnDc0l43wcdGaGm0fL5f4enJv+0Ft9Y+BSHhMl+m
+ENb+JvTFFK3bz38eLI8Td2RLIqjQ+bTR0M55VdlyIJvtZ4bAzn9IdABzd8hIp/Fq
+ZI97s5nsyDqX5ePG7e9UY9kfF4sxhQ1jlwmkIYlQmVl3zY6fWihc+YVHL7XWE/90
+cwJp+7qyc0w90j+5vMuJcfFm7F8FG7Zz+oOkkeNbeqMHEaJwVIi9vtHbljH5jtmd
+Tib0ROswpXTuhp2cDEgfZiF5m6o6Yws1eIqUhYaEfpOUqseYjPe6Klbjyl90m7Xq
+QpPbjq5q7UL/ase5r4n4t0JgcLZw1oP98rVAx+VFE+UViVd9qqH7CFhxxR9t7LFa
+NwUWw/pj0oI3Qul2lJfXaogfXzdcguVRik/yi0zQ5p5ArRBPEtmeNcEqA9x1ApNQ
+h8ND8r3lVAjFrX8+pj1fmPSxaIXgQPywAzr5kgdWz3BOEkrd5alvd+6kLxC2ErMA
+tYXzrp47C+1F7elWjBhHsqlhHSl7zQxqXqetisXZ4uEyv+4S0M3O+Q+iLeidcbLQ
+Vrt5VIv2q/QnK29KDywKJrsCAwEAAQ==
+-----END PUBLIC KEY-----`;
 
 function createDirectoryEntry(overrides?: Partial<{
   name: string;
@@ -353,5 +368,67 @@ describe("useWorkspaceFiles", () => {
 
     expect(result.current.conflictState?.kind).toBe("reload_conflict");
     expect(result.current.savedContent).toBe("export const value = 1;\n");
+  });
+
+  test("reuses the exchanged SSH credential token across repeated server metadata checks", async () => {
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "token-123",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+    api.get("/api/ssh-servers/:id/files", () => ({
+      serverId: "server-1",
+      directory: "",
+      entries: [],
+    }));
+    api.get("/api/ssh-servers/:id/files/content", () => ({
+      serverId: "server-1",
+      file: createDirectoryEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "100:20",
+      }),
+      content: "export const value = 1;\n",
+    }));
+    api.get("/api/ssh-servers/:id/files/metadata", () => ({
+      serverId: "server-1",
+      file: createDirectoryEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "100:20",
+      }),
+    }));
+
+    await storeSshServerPassword("server-1", "super-secret");
+
+    const { result } = renderHook(() => useServerFiles("server-1"));
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.openFile("src/index.ts");
+    });
+
+    const publicKeyCallCountBeforePolling = api.calls("/api/ssh-servers/:id/public-key", "GET").length;
+    const credentialCallCountBeforePolling = api.calls("/api/ssh-servers/:id/credentials", "POST").length;
+
+    await act(async () => {
+      await result.current.checkForExternalChanges();
+      await result.current.checkForExternalChanges();
+    });
+
+    expect(api.calls("/api/ssh-servers/:id/public-key", "GET")).toHaveLength(publicKeyCallCountBeforePolling);
+    expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(credentialCallCountBeforePolling);
   });
 });

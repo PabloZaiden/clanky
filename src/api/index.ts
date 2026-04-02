@@ -29,6 +29,7 @@ import { gitRoutes } from "./git";
 import { workspacesRoutes } from "./workspaces";
 import { agentsMdRoutes } from "./agents-md";
 import { sshServersRoutes } from "./ssh-servers";
+import { sshServerFilesRoutes } from "./ssh-server-files";
 import { sshSessionsRoutes } from "./ssh-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats";
@@ -58,6 +59,7 @@ export const apiRoutes = {
   ...workspacesRoutes,
   ...agentsMdRoutes,
   ...sshServersRoutes,
+  ...sshServerFilesRoutes,
   ...sshSessionsRoutes,
   ...provisioningRoutes,
   ...chatsRoutes,
@@ -73,6 +75,7 @@ export * from "./git";
 export * from "./workspaces";
 export * from "./agents-md";
 export * from "./ssh-servers";
+export * from "./ssh-server-files";
 export * from "./port-forwards";
 export * from "./ssh-sessions";
 export * from "./websocket";

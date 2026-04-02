@@ -1,0 +1,266 @@
+/**
+ * Generic file explorer service for executor-backed roots.
+ */
+
+import { posix as pathPosix } from "node:path";
+import type {
+  WorkspaceFileEntry,
+} from "../types";
+import type { CommandExecutor } from "./command-executor";
+
+const LIST_SEPARATOR = "\t";
+
+export interface FileExplorerTarget {
+  id: string;
+  rootDirectory: string;
+  pathScopeLabel: string;
+  executor: CommandExecutor;
+}
+
+export interface FileExplorerListResult {
+  directory: string;
+  entries: WorkspaceFileEntry[];
+}
+
+export interface FileExplorerReadResult {
+  file: WorkspaceFileEntry;
+  content: string;
+}
+
+export interface FileExplorerWriteResult {
+  success: true;
+  file: WorkspaceFileEntry;
+  overwritten: boolean;
+}
+
+export class FileExplorerConflictError extends Error {
+  readonly currentFile: WorkspaceFileEntry | null;
+
+  constructor(message: string, currentFile: WorkspaceFileEntry | null) {
+    super(message);
+    this.name = "FileExplorerConflictError";
+    this.currentFile = currentFile;
+  }
+}
+
+function normalizeRootDirectory(directory: string): string {
+  const normalized = pathPosix.normalize(directory.trim());
+  return normalized === "." ? "/" : normalized.replace(/\/+$/, "") || "/";
+}
+
+function toRelativePath(rootDirectory: string, absolutePath: string): string {
+  const root = normalizeRootDirectory(rootDirectory);
+  const normalizedPath = pathPosix.normalize(absolutePath);
+  const relativePath = pathPosix.relative(root, normalizedPath);
+  return relativePath === "." ? "" : relativePath;
+}
+
+function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): string {
+  const root = normalizeRootDirectory(target.rootDirectory);
+  const trimmedPath = requestedPath.trim();
+  if (!trimmedPath || trimmedPath === ".") {
+    return root;
+  }
+
+  const normalizedPath = trimmedPath.startsWith("/")
+    ? pathPosix.normalize(trimmedPath)
+    : pathPosix.normalize(pathPosix.join(root, trimmedPath));
+  const relativePath = pathPosix.relative(root, normalizedPath);
+
+  if (relativePath && (relativePath.startsWith("..") || pathPosix.isAbsolute(relativePath))) {
+    throw new Error(`Requested path must stay within the ${target.pathScopeLabel} directory`);
+  }
+
+  return normalizedPath;
+}
+
+function parseModifiedAt(timestampSeconds: string): string {
+  const timestamp = Number.parseFloat(timestampSeconds);
+  if (!Number.isFinite(timestamp)) {
+    throw new Error(`Invalid file timestamp: ${timestampSeconds}`);
+  }
+  return new Date(timestamp * 1000).toISOString();
+}
+
+function buildVersionToken(timestampSeconds: string, size: number, contentHash?: string): string {
+  return contentHash
+    ? `${timestampSeconds}:${size}:${contentHash}`
+    : `${timestampSeconds}:${size}`;
+}
+
+async function runMetadataCommand(
+  executor: CommandExecutor,
+  absolutePath: string,
+): Promise<{ kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string } | null> {
+  const result = await executor.exec(
+    "bash",
+    [
+      "-lc",
+      "if [ ! -e \"$1\" ]; then exit 2; fi; if [ -d \"$1\" ]; then typeFlag=d; hash=-; else typeFlag=f; if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$1\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$1\" | cut -d' ' -f1); else hash=; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$1\"); modified=$(stat -c '%Y' \"$1\"); else size=$(stat -f '%z' \"$1\"); modified=$(stat -f '%m' \"$1\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"",
+      "file-explorer-metadata",
+      absolutePath,
+    ],
+    {
+      logFailures: false,
+    },
+  );
+
+  if (!result.success) {
+    if (result.exitCode === 2) {
+      return null;
+    }
+    throw new Error(result.stderr.trim() || "Failed to read file metadata");
+  }
+
+  const [typeFlag, sizeText, timestampSeconds, contentHash] = result.stdout.trim().split(LIST_SEPARATOR);
+  if (!typeFlag || !sizeText || !timestampSeconds) {
+    throw new Error("Failed to parse file metadata");
+  }
+
+  const size = Number.parseInt(sizeText, 10);
+  if (!Number.isFinite(size)) {
+    throw new Error(`Invalid metadata size: ${sizeText}`);
+  }
+
+  return {
+    kind: typeFlag === "d" ? "directory" : "file",
+    size,
+    modifiedAt: parseModifiedAt(timestampSeconds),
+    versionToken: buildVersionToken(
+      timestampSeconds,
+      size,
+      typeFlag === "f" && contentHash && contentHash !== "-" ? contentHash : undefined,
+    ),
+  };
+}
+
+function toFileEntry(
+  target: FileExplorerTarget,
+  absolutePath: string,
+  metadata: { kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string },
+): WorkspaceFileEntry {
+  return {
+    name: pathPosix.basename(absolutePath),
+    path: toRelativePath(target.rootDirectory, absolutePath),
+    kind: metadata.kind,
+    size: metadata.size,
+    modifiedAt: metadata.modifiedAt,
+    versionToken: metadata.versionToken,
+  };
+}
+
+export class FileExplorerService {
+  async listDirectory(
+    target: FileExplorerTarget,
+    requestedPath = "",
+    options?: { includeHidden?: boolean },
+  ): Promise<FileExplorerListResult> {
+    const absolutePath = resolveTargetPath(target, requestedPath);
+    const metadata = await runMetadataCommand(target.executor, absolutePath);
+
+    if (!metadata) {
+      throw new Error("Requested path does not exist");
+    }
+    if (metadata.kind !== "directory") {
+      throw new Error("Requested path is not a directory");
+    }
+
+    const includeHidden = options?.includeHidden ?? true;
+    const names = await target.executor.listDirectory(absolutePath, {
+      includeHidden,
+    });
+    const entries = (await Promise.all(
+      names.map(async (name) => {
+        const entryPath = pathPosix.join(absolutePath, name);
+        const entryMetadata = await runMetadataCommand(target.executor, entryPath);
+        if (!entryMetadata) {
+          return null;
+        }
+
+        return toFileEntry(target, entryPath, entryMetadata);
+      }),
+    ))
+      .filter((entry): entry is WorkspaceFileEntry => entry !== null)
+      .sort((left, right) => {
+        if (left.kind !== right.kind) {
+          return left.kind === "directory" ? -1 : 1;
+        }
+        return left.name.localeCompare(right.name);
+      });
+
+    return {
+      directory: toRelativePath(target.rootDirectory, absolutePath),
+      entries,
+    };
+  }
+
+  async readFile(target: FileExplorerTarget, requestedPath: string): Promise<FileExplorerReadResult> {
+    const absolutePath = resolveTargetPath(target, requestedPath);
+    const metadata = await runMetadataCommand(target.executor, absolutePath);
+
+    if (!metadata) {
+      throw new Error("Requested file does not exist");
+    }
+    if (metadata.kind !== "file") {
+      throw new Error("Requested path is not a file");
+    }
+
+    const content = await target.executor.readFile(absolutePath);
+    if (content === null) {
+      throw new Error("Requested file does not exist");
+    }
+
+    return {
+      file: toFileEntry(target, absolutePath, metadata),
+      content,
+    };
+  }
+
+  async getMetadata(target: FileExplorerTarget, requestedPath: string): Promise<WorkspaceFileEntry | null> {
+    const absolutePath = resolveTargetPath(target, requestedPath);
+    const metadata = await runMetadataCommand(target.executor, absolutePath);
+    return metadata ? toFileEntry(target, absolutePath, metadata) : null;
+  }
+
+  async writeFile(
+    target: FileExplorerTarget,
+    requestedPath: string,
+    content: string,
+    options?: {
+      expectedVersionToken?: string | null;
+      overwrite?: boolean;
+    },
+  ): Promise<FileExplorerWriteResult> {
+    const absolutePath = resolveTargetPath(target, requestedPath);
+    const currentFile = await this.getMetadata(target, requestedPath);
+
+    if (currentFile && currentFile.kind !== "file") {
+      throw new Error("Requested path is not a file");
+    }
+
+    if (
+      !options?.overwrite
+      && (currentFile?.versionToken ?? null) !== (options?.expectedVersionToken ?? null)
+    ) {
+      throw new FileExplorerConflictError("File changed outside the editor", currentFile);
+    }
+
+    const wroteFile = await target.executor.writeFile(absolutePath, content);
+    if (!wroteFile) {
+      throw new Error("Failed to write file");
+    }
+
+    const updatedFile = await this.getMetadata(target, requestedPath);
+    if (!updatedFile) {
+      throw new Error("File was written but metadata could not be read");
+    }
+
+    return {
+      success: true,
+      file: updatedFile,
+      overwritten: Boolean(options?.overwrite && currentFile),
+    };
+  }
+}
+
+export const fileExplorerService = new FileExplorerService();

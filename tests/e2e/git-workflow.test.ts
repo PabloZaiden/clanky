@@ -10,6 +10,7 @@ import {
   setupTestContext,
   teardownTestContext,
   waitForEvent,
+  waitForLoopStatus,
   countEvents,
   getEvents,
   testModelFields,
@@ -145,17 +146,16 @@ describe("Git Workflow", () => {
       await Bun.$`git commit -m "Add test file"`.cwd(ctx.workDir).quiet();
 
       await ctx.manager.startLoop(loop.config.id);
-      await waitForEvent(ctx.events, "loop.completed");
+      const finalLoop = await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
 
       // Check that git commit events were emitted
       getEvents(ctx.events, "loop.git.commit");
       // Note: commits only happen if there are changes
       // Since mock backend doesn't actually change files, we may not have commits
       // But we can verify the git info is set up correctly
-      
-      const finalLoop = await ctx.manager.getLoop(loop.config.id);
-      expect(finalLoop!.state.git).toBeDefined();
-      expect(Array.isArray(finalLoop!.state.git!.commits)).toBe(true);
+
+      expect(finalLoop.state.git).toBeDefined();
+      expect(Array.isArray(finalLoop.state.git!.commits)).toBe(true);
     });
 
     test("uses custom commit scope", async () => {

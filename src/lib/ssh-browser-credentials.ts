@@ -9,6 +9,14 @@ import type {
 const log = createLogger("sshBrowserCredentials");
 const SSH_CREDENTIAL_STORAGE_PREFIX = "ralpher.sshServerCredential.";
 
+interface CachedSshCredentialToken {
+  credentialToken: string;
+  expiresAt: number;
+  storedAt: string;
+}
+
+const exchangedCredentialTokenCache = new Map<string, CachedSshCredentialToken>();
+
 export interface StoredSshServerCredential {
   encryptedCredential: SshServerEncryptedCredential;
   storedAt: string;
@@ -53,6 +61,49 @@ function resolveFetch(fetchFn?: FetchLike): FetchLike {
 
 function getStorageKey(serverId: string): string {
   return `${SSH_CREDENTIAL_STORAGE_PREFIX}${serverId}`;
+}
+
+function getNow(dependencies: SshBrowserCredentialDependencies): Date {
+  return (dependencies.now ?? (() => new Date()))();
+}
+
+function clearCachedCredentialToken(serverId: string): void {
+  exchangedCredentialTokenCache.delete(serverId);
+}
+
+function getCachedCredentialToken(
+  serverId: string,
+  storedCredential: StoredSshServerCredential,
+  dependencies: SshBrowserCredentialDependencies,
+): string | null {
+  const cachedToken = exchangedCredentialTokenCache.get(serverId);
+  if (!cachedToken) {
+    return null;
+  }
+
+  if (cachedToken.storedAt !== storedCredential.storedAt || cachedToken.expiresAt <= getNow(dependencies).getTime()) {
+    exchangedCredentialTokenCache.delete(serverId);
+    return null;
+  }
+
+  return cachedToken.credentialToken;
+}
+
+function cacheCredentialToken(
+  serverId: string,
+  storedCredential: StoredSshServerCredential,
+  exchange: SshCredentialExchangeResponse,
+): void {
+  const expiresAt = Date.parse(exchange.expiresAt);
+  if (!Number.isFinite(expiresAt)) {
+    return;
+  }
+
+  exchangedCredentialTokenCache.set(serverId, {
+    credentialToken: exchange.credentialToken,
+    expiresAt,
+    storedAt: storedCredential.storedAt,
+  });
 }
 
 function decodePemToArrayBuffer(publicKeyPem: string): ArrayBuffer {
@@ -129,6 +180,7 @@ export function clearStoredSshServerCredential(
   serverId: string,
   dependencies: SshBrowserCredentialDependencies = {},
 ): void {
+  clearCachedCredentialToken(serverId);
   resolveStorage(dependencies.storage)?.removeItem(getStorageKey(serverId));
 }
 
@@ -183,6 +235,7 @@ export function saveStoredSshServerCredential(
   encryptedCredential: SshServerEncryptedCredential,
   dependencies: SshBrowserCredentialDependencies = {},
 ): StoredSshServerCredential {
+  clearCachedCredentialToken(serverId);
   const storage = resolveStorage(dependencies.storage);
   if (!storage) {
     throw new Error("Browser storage is not available in this environment");
@@ -231,7 +284,13 @@ export async function getStoredSshCredentialToken(
 ): Promise<string | null> {
   const storedCredential = getStoredSshServerCredential(serverId, dependencies);
   if (!storedCredential) {
+    clearCachedCredentialToken(serverId);
     return null;
+  }
+
+  const cachedCredentialToken = getCachedCredentialToken(serverId, storedCredential, dependencies);
+  if (cachedCredentialToken) {
+    return cachedCredentialToken;
   }
 
   const publicKey = await fetchSshServerPublicKey(serverId, dependencies);
@@ -246,6 +305,7 @@ export async function getStoredSshCredentialToken(
       storedCredential.encryptedCredential,
       dependencies,
     );
+    cacheCredentialToken(serverId, storedCredential, exchange);
     return exchange.credentialToken;
   } catch (error) {
     const code = (error as Error & { code?: string }).code;
