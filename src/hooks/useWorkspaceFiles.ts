@@ -83,6 +83,7 @@ export function useFileExplorer(
 ): UseFileExplorerResult {
   const targetType = target.type;
   const targetId = target.id;
+  const startDirectory = target.startDirectory;
   const pollIntervalMs = options?.pollIntervalMs ?? 5000;
   const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileEntry[]>>({});
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
@@ -102,8 +103,8 @@ export function useFileExplorer(
   const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
 
   const loadDirectory = useCallback(async (path: string) => {
-    return await listFileExplorerFilesApi({ type: targetType, id: targetId }, path);
-  }, [targetId, targetType]);
+    return await listFileExplorerFilesApi({ type: targetType, id: targetId }, path, { startDirectory });
+  }, [startDirectory, targetId, targetType]);
 
   const refreshTree = useCallback(async (path = "") => {
     try {
@@ -136,7 +137,7 @@ export function useFileExplorer(
       setLoadingFile(true);
       setError(null);
       setConflictState(null);
-      const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path);
+      const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path, { startDirectory });
       setCurrentDirectory(getParentDirectory(response.file.path));
       setCurrentFile(response.file);
       setEditorContent(response.content);
@@ -147,7 +148,7 @@ export function useFileExplorer(
     } finally {
       setLoadingFile(false);
     }
-  }, [targetId, targetType]);
+  }, [startDirectory, targetId, targetType]);
 
   const refreshCurrentFile = useCallback(async (options?: { force?: boolean }) => {
     if (!currentFile) {
@@ -181,7 +182,7 @@ export function useFileExplorer(
         content: editorContent,
         expectedVersionToken: currentFile.versionToken,
         overwrite: options?.overwrite,
-      });
+      }, { startDirectory });
       setCurrentFile(response.file);
       setSavedContent(editorContent);
       setDirectoryEntries((currentEntries) => upsertDirectoryEntry(currentEntries, response.file));
@@ -200,7 +201,7 @@ export function useFileExplorer(
     } finally {
       setSavingFile(false);
     }
-  }, [currentFile, editorContent, targetId, targetType]);
+  }, [currentFile, editorContent, startDirectory, targetId, targetType]);
 
   const discardLocalChangesAndReload = useCallback(async () => {
     setConflictState(null);
@@ -221,6 +222,7 @@ export function useFileExplorer(
       const response = await getFileExplorerFileMetadataApi(
         { type: targetType, id: targetId },
         currentFile.path,
+        { startDirectory },
       );
       const metadata = response.file;
       if (metadata.versionToken === currentFile.versionToken) {
@@ -239,6 +241,7 @@ export function useFileExplorer(
       const readResponse = await readFileExplorerFileApi(
         { type: targetType, id: targetId },
         currentFile.path,
+        { startDirectory },
       );
       setCurrentFile(readResponse.file);
       setEditorContent(readResponse.content);
@@ -256,7 +259,7 @@ export function useFileExplorer(
       }
       setError(String(requestError));
     }
-  }, [currentFile, isDirty, loadingFile, savingFile, targetId, targetType]);
+  }, [currentFile, isDirty, loadingFile, savingFile, startDirectory, targetId, targetType]);
 
   const toggleDirectory = useCallback(async (path: string) => {
     const isExpanded = expandedDirectories.includes(path);
@@ -297,7 +300,7 @@ export function useFileExplorer(
       .finally(() => {
         setLoadingTree(false);
       });
-  }, [loadDirectory, targetId, targetType]);
+  }, [loadDirectory, startDirectory, targetId, targetType]);
 
   useEffect(() => {
     if (pollTimerRef.current !== null) {

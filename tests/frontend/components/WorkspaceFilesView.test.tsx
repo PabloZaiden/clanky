@@ -464,4 +464,110 @@ describe("WorkspaceFilesView", () => {
     });
     expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
   });
+
+  test("navigates to a custom explorer root from the shared root picker", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-root-picker",
+      name: "Root Picker",
+      directory: "/workspaces/root-picker",
+    });
+    const onNavigate = mock(() => {});
+
+    api.get("/api/workspaces/:id/files", () => ({
+      workspaceId: workspace.id,
+      directory: "",
+      entries: [],
+    }));
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByLabelText("Explorer root directory")).toHaveValue("/workspaces/root-picker");
+    });
+
+    await user.clear(getByLabelText("Explorer root directory"));
+    await user.type(getByLabelText("Explorer root directory"), "/var/tmp/project");
+    await user.click(getByRole("button", { name: "Apply root" }));
+
+    expect(onNavigate).toHaveBeenCalledWith({
+      view: "workspace-files",
+      workspaceId: workspace.id,
+      startDirectory: "/var/tmp/project",
+    });
+  });
+
+  test("resets explorer tree state when the start directory changes", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-root-sync",
+      name: "Root Sync",
+      directory: "/workspaces/root-sync",
+    });
+
+    api.get("/api/workspaces/:id/files", (req) => {
+      const url = new URL(req.url, "http://localhost");
+      const startDirectory = url.searchParams.get("startDirectory") ?? "";
+
+      if (startDirectory === "/alt/root") {
+        return {
+          workspaceId: workspace.id,
+          directory: "",
+          entries: [createFileEntry({
+            name: "packages",
+            path: "packages",
+            kind: "directory",
+          })],
+        };
+      }
+
+      return {
+        workspaceId: workspace.id,
+        directory: "",
+        entries: [createFileEntry({
+          name: "src",
+          path: "src",
+          kind: "directory",
+        })],
+      };
+    });
+
+    const { getByRole, queryByRole, rerender } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        startDirectory={workspace.directory}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+
+    rerender(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        startDirectory="/alt/root"
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /packages/i })).toBeInTheDocument();
+    });
+    expect(queryByRole("button", { name: /src/i })).not.toBeInTheDocument();
+  });
 });

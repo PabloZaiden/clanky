@@ -48,6 +48,48 @@ function normalizeRootDirectory(directory: string): string {
   return normalized === "." ? "/" : normalized.replace(/\/+$/, "") || "/";
 }
 
+export async function resolveFileExplorerRootDirectory(
+  executor: CommandExecutor,
+  defaultRootDirectory: string,
+  requestedStartDirectory?: string,
+): Promise<string> {
+  const normalizedDefaultRootDirectory = normalizeRootDirectory(defaultRootDirectory);
+  const trimmedStartDirectory = requestedStartDirectory?.trim();
+  if (!trimmedStartDirectory) {
+    return normalizedDefaultRootDirectory;
+  }
+
+  const normalizedRootDirectory = normalizeRootDirectory(trimmedStartDirectory);
+  if (normalizedRootDirectory === normalizedDefaultRootDirectory) {
+    return normalizedRootDirectory;
+  }
+
+  const result = await executor.exec(
+    "bash",
+    [
+      "-lc",
+      "if [ -d \"$1\" ]; then printf 'directory'; elif [ -e \"$1\" ]; then printf 'file'; else printf 'missing'; fi",
+      "file-explorer-root-type",
+      normalizedRootDirectory,
+    ],
+    {
+      logFailures: false,
+    },
+  );
+  if (!result.success) {
+    throw new Error(result.stderr.trim() || "Failed to resolve start directory");
+  }
+
+  const pathType = result.stdout.trim();
+  if (pathType === "directory") {
+    return normalizedRootDirectory;
+  }
+  if (pathType === "file") {
+    throw new Error("Requested start directory is not a directory");
+  }
+  throw new Error("Requested start directory does not exist");
+}
+
 function toRelativePath(rootDirectory: string, absolutePath: string): string {
   const root = normalizeRootDirectory(rootDirectory);
   const normalizedPath = pathPosix.normalize(absolutePath);

@@ -45,6 +45,7 @@ describe("server file explorer actions", () => {
     api.get("/api/ssh-servers/:id/files", (req) => {
       expect(req.params["id"]).toBe("server-1");
       expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("token-123");
+      expect(new URL(req.url, "http://localhost").searchParams.get("startDirectory")).toBe("/srv/apps");
       return {
         serverId: "server-1",
         directory: "",
@@ -53,7 +54,7 @@ describe("server file explorer actions", () => {
     });
 
     await storeSshServerPassword("server-1", "super-secret");
-    const response = await listServerFilesApi("server-1");
+    const response = await listServerFilesApi("server-1", "", { startDirectory: "/srv/apps" });
 
     expect(response.serverId).toBe("server-1");
     expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(1);
@@ -78,6 +79,7 @@ describe("server file explorer actions", () => {
         path: "src/index.ts",
         content: "export const value = 2;\n",
         expectedVersionToken: "token-a",
+        startDirectory: "/srv/apps",
       });
       return {
         success: true,
@@ -99,7 +101,7 @@ describe("server file explorer actions", () => {
       path: "src/index.ts",
       content: "export const value = 2;\n",
       expectedVersionToken: "token-a",
-    });
+    }, { startDirectory: "/srv/apps" });
 
     expect(response.serverId).toBe("server-1");
     expect(response.file.versionToken).toBe("token-b");

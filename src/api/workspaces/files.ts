@@ -29,13 +29,19 @@ function mapFileError(error: unknown): Response {
       currentFile,
     }, { status: 409 });
   }
+  if (message.includes("start directory does not exist")) {
+    return errorResponse("start_directory_not_found", message, 404);
+  }
+  if (message.includes("start directory is not a directory")) {
+    return errorResponse("invalid_start_directory_type", message, 400);
+  }
   if (message.includes("does not exist")) {
     return errorResponse("file_not_found", message, 404);
   }
   if (message.includes("not a directory") || message.includes("not a file")) {
     return errorResponse("invalid_path_type", message, 400);
   }
-  if (message.includes("must stay within the workspace directory")) {
+  if (message.includes("must stay within the active workspace explorer root")) {
     return errorResponse("invalid_workspace_path", message, 400);
   }
   return errorResponse("workspace_file_error", message, 500);
@@ -71,7 +77,10 @@ export const workspaceFilesRoutes = {
         return Response.json(await workspaceFileService.listDirectory(
           workspaceResult,
           validation.data.path,
-          { includeHidden: true },
+          {
+            includeHidden: true,
+            startDirectory: validation.data.startDirectory,
+          },
         ));
       } catch (error) {
         log.error("Failed to list workspace files", {
@@ -97,7 +106,9 @@ export const workspaceFilesRoutes = {
       }
 
       try {
-        return Response.json(await workspaceFileService.readFile(workspaceResult, validation.data.path));
+        return Response.json(await workspaceFileService.readFile(workspaceResult, validation.data.path, {
+          startDirectory: validation.data.startDirectory,
+        }));
       } catch (error) {
         log.error("Failed to read workspace file", {
           workspaceId: req.params.id,
@@ -122,7 +133,9 @@ export const workspaceFilesRoutes = {
       }
 
       try {
-        const file = await workspaceFileService.getMetadata(workspaceResult, validation.data.path);
+        const file = await workspaceFileService.getMetadata(workspaceResult, validation.data.path, {
+          startDirectory: validation.data.startDirectory,
+        });
         if (!file) {
           return errorResponse("file_not_found", "Requested file does not exist", 404);
         }
@@ -161,6 +174,7 @@ export const workspaceFilesRoutes = {
           {
             expectedVersionToken: validation.data.expectedVersionToken ?? null,
             overwrite: validation.data.overwrite,
+            startDirectory: validation.data.startDirectory,
           },
         ));
       } catch (error) {

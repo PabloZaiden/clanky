@@ -12,12 +12,14 @@ import { tmpdir } from "os";
 describe("workspace files API integration", () => {
   let dataDir: string;
   let workDir: string;
+  let alternateRootDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
 
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "ralpher-workspace-files-data-"));
     workDir = await mkdtemp(join(tmpdir(), "ralpher-workspace-files-work-"));
+    alternateRootDir = await mkdtemp(join(tmpdir(), "ralpher-workspace-files-alt-"));
     process.env["RALPHER_DATA_DIR"] = dataDir;
 
     await ensureDataDirectories();
@@ -29,6 +31,8 @@ describe("workspace files API integration", () => {
     await writeFile(join(workDir, "src", "index.ts"), "export const value = 1;\n");
     await Bun.$`git -C ${workDir} add .`.quiet();
     await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
+    await mkdir(join(alternateRootDir, "notes"), { recursive: true });
+    await writeFile(join(alternateRootDir, "notes", "todo.txt"), "alternate root note\n");
 
     backendManager.setBackendForTesting(createMockBackend());
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
@@ -47,6 +51,7 @@ describe("workspace files API integration", () => {
     backendManager.resetForTesting();
     await rm(dataDir, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
+    await rm(alternateRootDir, { recursive: true, force: true });
     delete process.env["RALPHER_DATA_DIR"];
   });
 
@@ -226,5 +231,62 @@ describe("workspace files API integration", () => {
     expect(response.status).toBe(400);
     const data = await response.json() as { error: string };
     expect(data.error).toBe("invalid_workspace_path");
+  });
+
+  test("can use an alternate absolute start directory for workspace operations", async () => {
+    const workspace = await createWorkspace();
+    const startDirectory = encodeURIComponent(alternateRootDir);
+
+    const listResponse = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files?startDirectory=${startDirectory}`,
+    );
+    expect(listResponse.ok).toBe(true);
+    const listData = await listResponse.json() as {
+      directory: string;
+      entries: Array<{ name: string; path: string }>;
+    };
+    expect(listData.directory).toBe("");
+    expect(listData.entries.map((entry) => entry.name)).toEqual(["notes"]);
+
+    const readResponse = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/content?path=${encodeURIComponent("notes/todo.txt")}&startDirectory=${startDirectory}`,
+    );
+    expect(readResponse.ok).toBe(true);
+    const readData = await readResponse.json() as { content: string; file: { path: string } };
+    expect(readData.file.path).toBe("notes/todo.txt");
+    expect(readData.content).toBe("alternate root note\n");
+
+    const metadataResponse = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/metadata?path=${encodeURIComponent("notes/todo.txt")}&startDirectory=${startDirectory}`,
+    );
+    const metadata = await metadataResponse.json() as { file: { versionToken: string } };
+
+    const writeResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/write`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: "notes/todo.txt",
+        content: "updated alternate root note\n",
+        expectedVersionToken: metadata.file.versionToken,
+        startDirectory: alternateRootDir,
+      }),
+    });
+    expect(writeResponse.ok).toBe(true);
+
+    expect(await Bun.file(join(alternateRootDir, "notes", "todo.txt")).text()).toBe("updated alternate root note\n");
+  });
+
+  test("returns an explicit error when the workspace start directory does not exist", async () => {
+    const workspace = await createWorkspace();
+    const missingStartDirectory = encodeURIComponent(join(alternateRootDir, "missing-root"));
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files?startDirectory=${missingStartDirectory}`,
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: "start_directory_not_found",
+    });
   });
 });

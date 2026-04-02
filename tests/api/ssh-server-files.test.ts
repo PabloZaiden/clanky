@@ -13,18 +13,22 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 describe("Standalone SSH server files API integration", () => {
   let dataDir: string;
   let workDir: string;
+  let alternateRootDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
 
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-files-data-"));
     workDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-files-work-"));
+    alternateRootDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-files-alt-"));
     process.env["RALPHER_DATA_DIR"] = dataDir;
 
     await ensureDataDirectories();
     await mkdir(join(workDir, "src"), { recursive: true });
     await writeFile(join(workDir, "README.md"), "# Server files\n");
     await writeFile(join(workDir, "src", "index.ts"), "export const serverValue = 1;\n");
+    await mkdir(join(alternateRootDir, "logs"), { recursive: true });
+    await writeFile(join(alternateRootDir, "logs", "output.log"), "server alt root\n");
 
     sshServerManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
@@ -43,6 +47,7 @@ describe("Standalone SSH server files API integration", () => {
     delete process.env["RALPHER_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
+    await rm(alternateRootDir, { recursive: true, force: true });
   });
 
   beforeEach(() => {
@@ -208,6 +213,85 @@ describe("Standalone SSH server files API integration", () => {
     expect(await response.json()).toMatchObject({
       error: "not_found",
       message: "SSH server not found: missing-server",
+    });
+  });
+
+  test("can use an alternate absolute start directory for standalone server operations", async () => {
+    const createdServer = await createServer();
+    const startDirectory = encodeURIComponent(alternateRootDir);
+
+    const listToken = await issueCredentialToken(createdServer.config.id);
+    const listResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files?startDirectory=${startDirectory}`,
+      {
+        headers: {
+          "x-ralpher-ssh-credential-token": listToken,
+        },
+      },
+    );
+    expect(listResponse.ok).toBe(true);
+    const listData = await listResponse.json() as {
+      entries: Array<{ name: string }>;
+    };
+    expect(listData.entries.map((entry) => entry.name)).toEqual(["logs"]);
+
+    const metadataToken = await issueCredentialToken(createdServer.config.id);
+    const metadataResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/metadata?path=${encodeURIComponent("logs/output.log")}&startDirectory=${startDirectory}`,
+      {
+        headers: {
+          "x-ralpher-ssh-credential-token": metadataToken,
+        },
+      },
+    );
+    const metadata = await metadataResponse.json() as { file: { versionToken: string } };
+
+    const writeToken = await issueCredentialToken(createdServer.config.id);
+    const writeResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/write`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-ralpher-ssh-credential-token": writeToken,
+      },
+      body: JSON.stringify({
+        path: "logs/output.log",
+        content: "server alt root updated\n",
+        expectedVersionToken: metadata.file.versionToken,
+        startDirectory: alternateRootDir,
+      }),
+    });
+    expect(writeResponse.ok).toBe(true);
+
+    const readToken = await issueCredentialToken(createdServer.config.id);
+    const readResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/content?path=${encodeURIComponent("logs/output.log")}&startDirectory=${startDirectory}`,
+      {
+        headers: {
+          "x-ralpher-ssh-credential-token": readToken,
+        },
+      },
+    );
+    const readData = await readResponse.json() as { content: string };
+    expect(readData.content).toBe("server alt root updated\n");
+  });
+
+  test("returns an explicit error when the standalone server start directory does not exist", async () => {
+    const createdServer = await createServer();
+    const missingStartDirectory = encodeURIComponent(join(alternateRootDir, "missing-root"));
+    const credentialToken = await issueCredentialToken(createdServer.config.id);
+
+    const response = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files?startDirectory=${missingStartDirectory}`,
+      {
+        headers: {
+          "x-ralpher-ssh-credential-token": credentialToken,
+        },
+      },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: "start_directory_not_found",
     });
   });
 });
