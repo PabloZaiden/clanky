@@ -104,4 +104,25 @@ describe("server file explorer actions", () => {
     expect(response.serverId).toBe("server-1");
     expect(response.file.versionToken).toBe("token-b");
   });
+
+  test("uses a target-agnostic fallback error message for server explorer requests", async () => {
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "token-789",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+    api.get("/api/ssh-servers/:id/files", () => null, 502);
+
+    await storeSshServerPassword("server-1", "super-secret");
+
+    await expect(listServerFilesApi("server-1")).rejects.toThrow(
+      "File explorer request failed with status 502",
+    );
+  });
 });

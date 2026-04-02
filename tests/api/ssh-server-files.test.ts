@@ -196,4 +196,18 @@ describe("Standalone SSH server files API integration", () => {
     const invalidPathData = await invalidPathResponse.json() as { error: string };
     expect(invalidPathData.error).toBe("invalid_server_path");
   });
+
+  test("returns not_found when the standalone server does not exist", async () => {
+    const response = await fetch(`${baseUrl}/api/ssh-servers/missing-server/files`, {
+      headers: {
+        "x-ralpher-ssh-credential-token": "token-123",
+      },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      error: "not_found",
+      message: "SSH server not found: missing-server",
+    });
+  });
 });

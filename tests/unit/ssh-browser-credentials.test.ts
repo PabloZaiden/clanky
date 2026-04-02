@@ -97,6 +97,45 @@ describe("ssh-browser-credentials", () => {
     ]);
   });
 
+  test("reuses a cached exchanged token until it expires", async () => {
+    const storage = new MemoryStorage();
+    const encryptedCredential = await encryptSshServerPassword("secret", TEST_PUBLIC_KEY_RESPONSE);
+    saveStoredSshServerCredential("server-1", encryptedCredential, {
+      storage,
+      now: () => new Date("2026-01-02T03:00:00.000Z"),
+    });
+
+    const calls: string[] = [];
+    const fetchFn = async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(`${String(input)} ${init?.method ?? "GET"}`);
+      if (!init?.method || init.method === "GET") {
+        return createJsonResponse(TEST_PUBLIC_KEY_RESPONSE);
+      }
+      return createJsonResponse({
+        credentialToken: "token-123",
+        expiresAt: "2026-01-02T03:05:00.000Z",
+      });
+    };
+
+    const firstToken = await getStoredSshCredentialToken("server-1", {
+      storage,
+      fetchFn,
+      now: () => new Date("2026-01-02T03:00:00.000Z"),
+    });
+    const secondToken = await getStoredSshCredentialToken("server-1", {
+      storage,
+      fetchFn,
+      now: () => new Date("2026-01-02T03:02:00.000Z"),
+    });
+
+    expect(firstToken).toBe("token-123");
+    expect(secondToken).toBe("token-123");
+    expect(calls).toEqual([
+      "/api/ssh-servers/server-1/public-key GET",
+      "/api/ssh-servers/server-1/credentials POST",
+    ]);
+  });
+
   test("clears stale stored credentials when the server key changes", async () => {
     const storage = new MemoryStorage();
     saveStoredSshServerCredential("server-1", {

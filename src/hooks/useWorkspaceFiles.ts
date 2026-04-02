@@ -218,11 +218,11 @@ export function useFileExplorer(
     }
 
     try {
-        const response = await getFileExplorerFileMetadataApi(
-          { type: targetType, id: targetId },
-          currentFile.path,
-        );
-        const metadata = response.file;
+      const response = await getFileExplorerFileMetadataApi(
+        { type: targetType, id: targetId },
+        currentFile.path,
+      );
+      const metadata = response.file;
       if (metadata.versionToken === currentFile.versionToken) {
         return;
       }

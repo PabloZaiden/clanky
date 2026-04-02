@@ -55,7 +55,7 @@ async function parseWorkspaceFileError(response: Response): Promise<never> {
     throw new WorkspaceFileConflictError(conflict.message, conflict.currentFile);
   }
 
-  throw new Error(body?.message ?? `Workspace file request failed with status ${response.status}`);
+  throw new Error(body?.message ?? `File explorer request failed with status ${response.status}`);
 }
 
 async function buildFileExplorerRequestInit(

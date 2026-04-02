@@ -35,6 +35,9 @@ function mapFileError(error: unknown): Response {
   if (message.includes("does not exist")) {
     return errorResponse("file_not_found", message, 404);
   }
+  if (message.includes("SSH server not found")) {
+    return errorResponse("not_found", message, 404);
+  }
   if (message.includes("not a directory") || message.includes("not a file")) {
     return errorResponse("invalid_path_type", message, 400);
   }
