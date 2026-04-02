@@ -48,6 +48,20 @@ function normalizeRootDirectory(directory: string): string {
   return normalized === "." ? "/" : normalized.replace(/\/+$/, "") || "/";
 }
 
+export async function resolveFileExplorerRootDirectory(
+  executor: CommandExecutor,
+  requestedRootDirectory: string,
+): Promise<string> {
+  const normalizedRootDirectory = normalizeRootDirectory(requestedRootDirectory);
+  if (await executor.directoryExists(normalizedRootDirectory)) {
+    return normalizedRootDirectory;
+  }
+  if (await executor.fileExists(normalizedRootDirectory)) {
+    throw new Error("Requested start directory is not a directory");
+  }
+  throw new Error("Requested start directory does not exist");
+}
+
 function toRelativePath(rootDirectory: string, absolutePath: string): string {
   const root = normalizeRootDirectory(rootDirectory);
   const normalizedPath = pathPosix.normalize(absolutePath);

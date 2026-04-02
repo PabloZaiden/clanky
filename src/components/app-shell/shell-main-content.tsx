@@ -294,6 +294,7 @@ function renderMainContent(props: ShellMainContentProps) {
         workspace={selectedWorkspace}
         sessions={sessions}
         headerOffsetClassName={shellHeaderOffsetClassName}
+        startDirectory={route.startDirectory}
         createSession={props.createSession}
         onNavigate={navigateWithinShell}
       />
@@ -385,6 +386,7 @@ function renderMainContent(props: ShellMainContentProps) {
         server={selectedServer}
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
         headerOffsetClassName={shellHeaderOffsetClassName}
+        startDirectory={route.startDirectory}
         createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
       />

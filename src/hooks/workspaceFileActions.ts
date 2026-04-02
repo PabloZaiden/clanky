@@ -26,11 +26,12 @@ interface ApiErrorBody {
 
 export interface WorkspaceFileRequestOptions {
   signal?: AbortSignal;
+  startDirectory?: string;
 }
 
 export type FileExplorerTarget =
-  | { type: "workspace"; id: string }
-  | { type: "server"; id: string };
+  | { type: "workspace"; id: string; startDirectory?: string }
+  | { type: "server"; id: string; startDirectory?: string };
 
 export class WorkspaceFileConflictError extends Error {
   readonly currentFile: WorkspaceFileEntry | null;
@@ -86,14 +87,27 @@ function getFileExplorerBasePath(target: FileExplorerTarget): string {
     : `/api/ssh-servers/${target.id}/files`;
 }
 
+function buildFileExplorerSearchParams(
+  target: FileExplorerTarget,
+  values: Record<string, string>,
+  options?: WorkspaceFileRequestOptions,
+): URLSearchParams {
+  const searchParams = new URLSearchParams(values);
+  const startDirectory = options?.startDirectory ?? target.startDirectory;
+  if (startDirectory) {
+    searchParams.set("startDirectory", startDirectory);
+  }
+  return searchParams;
+}
+
 export async function listFileExplorerFilesApi(
   target: FileExplorerTarget,
   path = "",
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileListResponse | SshServerFileListResponse> {
-  const searchParams = new URLSearchParams({
+  const searchParams = buildFileExplorerSearchParams(target, {
     path,
-  });
+  }, options);
   const response = await appFetch(
     `${getFileExplorerBasePath(target)}?${searchParams.toString()}`,
     await buildFileExplorerRequestInit(target, options),
@@ -109,8 +123,11 @@ export async function readFileExplorerFileApi(
   path: string,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileReadResponse | SshServerFileReadResponse> {
+  const searchParams = buildFileExplorerSearchParams(target, {
+    path,
+  }, options);
   const response = await appFetch(
-    `${getFileExplorerBasePath(target)}/content?path=${encodeURIComponent(path)}`,
+    `${getFileExplorerBasePath(target)}/content?${searchParams.toString()}`,
     await buildFileExplorerRequestInit(target, options),
   );
   if (!response.ok) {
@@ -124,8 +141,11 @@ export async function getFileExplorerFileMetadataApi(
   path: string,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileMetadataResponse | SshServerFileMetadataResponse> {
+  const searchParams = buildFileExplorerSearchParams(target, {
+    path,
+  }, options);
   const response = await appFetch(
-    `${getFileExplorerBasePath(target)}/metadata?path=${encodeURIComponent(path)}`,
+    `${getFileExplorerBasePath(target)}/metadata?${searchParams.toString()}`,
     await buildFileExplorerRequestInit(target, options),
   );
   if (!response.ok) {
@@ -139,12 +159,16 @@ export async function writeFileExplorerFileApi(
   request: WriteWorkspaceFileRequest,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileWriteResponse | SshServerFileWriteResponse> {
+  const startDirectory = options?.startDirectory ?? target.startDirectory;
   const requestOptions = await buildFileExplorerRequestInit(target, options, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify({
+      ...request,
+      ...(startDirectory ? { startDirectory } : {}),
+    }),
   });
   const response = await appFetch(`${getFileExplorerBasePath(target)}/write`, requestOptions);
   if (!response.ok) {

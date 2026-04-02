@@ -7,8 +7,17 @@ import { AppShell, type ShellRoute } from "./components/AppShell";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
 import "./index.css";
 
+function parseHashPath(hash: string): { path: string; searchParams: URLSearchParams } {
+  const [path = "", query = ""] = hash.split("?", 2);
+  return {
+    path,
+    searchParams: new URLSearchParams(query),
+  };
+}
+
 function parseHash(): ShellRoute {
-  const hash = window.location.hash.slice(1);
+  const { path: hash, searchParams } = parseHashPath(window.location.hash.slice(1));
+  const startDirectory = searchParams.get("startDirectory")?.trim() || undefined;
 
   if (hash.startsWith("/loop/")) {
     const loopId = hash.slice(6);
@@ -55,7 +64,7 @@ function parseHash(): ShellRoute {
   if (hash.startsWith("/workspace-files/")) {
     const workspaceId = hash.slice(17);
     if (workspaceId) {
-      return { view: "workspace-files", workspaceId };
+      return { view: "workspace-files", workspaceId, startDirectory };
     }
   }
 
@@ -76,7 +85,7 @@ function parseHash(): ShellRoute {
   if (hash.startsWith("/server-files/")) {
     const serverId = hash.slice(14);
     if (serverId) {
-      return { view: "server-files", serverId };
+      return { view: "server-files", serverId, startDirectory };
     }
   }
 
@@ -107,6 +116,17 @@ function parseHash(): ShellRoute {
   return { view: "home" };
 }
 
+function buildExplorerHash(path: string, startDirectory?: string): string {
+  if (!startDirectory) {
+    return path;
+  }
+
+  const searchParams = new URLSearchParams({
+    startDirectory,
+  });
+  return `${path}?${searchParams.toString()}`;
+}
+
 function navigateTo(route: ShellRoute) {
   switch (route.view) {
     case "home":
@@ -125,7 +145,7 @@ function navigateTo(route: ShellRoute) {
       window.location.hash = `/workspace/${route.workspaceId}`;
       return;
     case "workspace-files":
-      window.location.hash = `/workspace-files/${route.workspaceId}`;
+      window.location.hash = buildExplorerHash(`/workspace-files/${route.workspaceId}`, route.startDirectory);
       return;
     case "workspace-settings":
       window.location.hash = `/workspace-settings/${route.workspaceId}`;
@@ -134,7 +154,7 @@ function navigateTo(route: ShellRoute) {
       window.location.hash = `/server/${route.serverId}`;
       return;
     case "server-files":
-      window.location.hash = `/server-files/${route.serverId}`;
+      window.location.hash = buildExplorerHash(`/server-files/${route.serverId}`, route.startDirectory);
       return;
     case "server-arise":
       window.location.hash = `/server-arise/${route.serverId}`;

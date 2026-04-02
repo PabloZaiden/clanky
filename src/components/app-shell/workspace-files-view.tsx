@@ -6,6 +6,7 @@ interface WorkspaceFilesViewProps {
   workspace: Workspace;
   sessions: SshSession[];
   headerOffsetClassName?: string;
+  startDirectory?: string;
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   onNavigate: (route: ShellRoute) => void;
 }
@@ -14,6 +15,7 @@ export function WorkspaceFilesView({
   workspace,
   sessions,
   headerOffsetClassName,
+  startDirectory,
   createSession,
   onNavigate,
 }: WorkspaceFilesViewProps) {
@@ -24,11 +26,12 @@ export function WorkspaceFilesView({
     <FileExplorerView
       title={`${workspace.name} editor`}
       description={workspace.directory}
+      defaultRootDirectory={workspace.directory}
       headerOffsetClassName={headerOffsetClassName}
       backLabel="Back to workspace"
       backRoute={{ view: "workspace", workspaceId: workspace.id }}
       onNavigate={onNavigate}
-      target={{ type: "workspace", id: workspace.id }}
+      target={{ type: "workspace", id: workspace.id, startDirectory }}
       sessions={workspaceSessions}
       hasTerminal={hasSshTransport}
       emptyTerminalMessage={hasSshTransport

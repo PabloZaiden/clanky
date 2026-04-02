@@ -3,7 +3,7 @@
  */
 
 import { backendManager } from "./backend-manager";
-import { fileExplorerService } from "./file-explorer-service";
+import { fileExplorerService, resolveFileExplorerRootDirectory } from "./file-explorer-service";
 import type {
   Workspace,
   WorkspaceFileListResponse,
@@ -12,18 +12,27 @@ import type {
 } from "../types";
 
 class WorkspaceFileService {
+  private async getTarget(workspace: Workspace, startDirectory?: string) {
+    const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+    const rootDirectory = await resolveFileExplorerRootDirectory(
+      executor,
+      startDirectory?.trim() || workspace.directory,
+    );
+    return {
+      id: workspace.id,
+      rootDirectory,
+      pathScopeLabel: "active workspace explorer root",
+      executor,
+    };
+  }
+
   async listDirectory(
     workspace: Workspace,
     requestedPath = "",
-    options?: { includeHidden?: boolean },
+    options?: { includeHidden?: boolean; startDirectory?: string },
   ): Promise<WorkspaceFileListResponse> {
-    const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
-    const response = await fileExplorerService.listDirectory({
-      id: workspace.id,
-      rootDirectory: workspace.directory,
-      pathScopeLabel: "workspace",
-      executor,
-    }, requestedPath, options);
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.listDirectory(target, requestedPath, options);
 
     return {
       workspaceId: workspace.id,
@@ -32,14 +41,13 @@ class WorkspaceFileService {
     };
   }
 
-  async readFile(workspace: Workspace, requestedPath: string): Promise<WorkspaceFileReadResponse> {
-    const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
-    const response = await fileExplorerService.readFile({
-      id: workspace.id,
-      rootDirectory: workspace.directory,
-      pathScopeLabel: "workspace",
-      executor,
-    }, requestedPath);
+  async readFile(
+    workspace: Workspace,
+    requestedPath: string,
+    options?: { startDirectory?: string },
+  ): Promise<WorkspaceFileReadResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.readFile(target, requestedPath);
 
     return {
       workspaceId: workspace.id,
@@ -48,14 +56,13 @@ class WorkspaceFileService {
     };
   }
 
-  async getMetadata(workspace: Workspace, requestedPath: string) {
-    const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
-    return await fileExplorerService.getMetadata({
-      id: workspace.id,
-      rootDirectory: workspace.directory,
-      pathScopeLabel: "workspace",
-      executor,
-    }, requestedPath);
+  async getMetadata(
+    workspace: Workspace,
+    requestedPath: string,
+    options?: { startDirectory?: string },
+  ) {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    return await fileExplorerService.getMetadata(target, requestedPath);
   }
 
   async writeFile(
@@ -65,15 +72,11 @@ class WorkspaceFileService {
     options?: {
       expectedVersionToken?: string | null;
       overwrite?: boolean;
+      startDirectory?: string;
     },
   ): Promise<WorkspaceFileWriteResponse> {
-    const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
-    const response = await fileExplorerService.writeFile({
-      id: workspace.id,
-      rootDirectory: workspace.directory,
-      pathScopeLabel: "workspace",
-      executor,
-    }, requestedPath, content, options);
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.writeFile(target, requestedPath, content, options);
 
     return {
       success: response.success,

@@ -8,6 +8,7 @@ interface ServerFilesViewProps {
   server: SshServer;
   sessions: SshServerSession[];
   headerOffsetClassName?: string;
+  startDirectory?: string;
   createStandaloneSession: (
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode },
@@ -19,6 +20,7 @@ export function ServerFilesView({
   server,
   sessions,
   headerOffsetClassName,
+  startDirectory,
   createStandaloneSession,
   onNavigate,
 }: ServerFilesViewProps) {
@@ -26,11 +28,12 @@ export function ServerFilesView({
     <FileExplorerView
       title={`${server.config.name} editor`}
       description={server.config.repositoriesBasePath?.trim() || "/"}
+      defaultRootDirectory={server.config.repositoriesBasePath?.trim() || "/"}
       headerOffsetClassName={headerOffsetClassName}
       backLabel="Back to server"
       backRoute={{ view: "ssh-server", serverId: server.config.id }}
       onNavigate={onNavigate}
-      target={{ type: "server", id: server.config.id }}
+      target={{ type: "server", id: server.config.id, startDirectory }}
       sessions={sessions}
       hasTerminal={true}
       emptyTerminalMessage="Choose an existing standalone SSH session or create a new one."

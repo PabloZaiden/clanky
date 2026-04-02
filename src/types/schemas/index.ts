@@ -79,6 +79,7 @@ export {
 // Workspace file explorer schemas
 export {
   WorkspaceRelativePathSchema,
+  WorkspaceStartDirectorySchema,
   ListWorkspaceFilesRequestSchema,
   GetWorkspaceFileRequestSchema,
   WriteWorkspaceFileRequestSchema,

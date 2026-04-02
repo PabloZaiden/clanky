@@ -75,4 +75,43 @@ describe("App workspace files route", () => {
       expect(getByRole("heading", { name: "Integrated terminal" })).toBeInTheDocument();
     });
   });
+
+  test("passes the hash start directory through the initial explorer request", async () => {
+    installEmbeddedSshSessionMock();
+    const { App } = await import("@/App");
+    const workspace = createWorkspace({
+      id: "workspace-files-root",
+      name: "Files Route Root",
+      directory: "/workspaces/files-route-root",
+    });
+
+    api.get("/api/loops", () => []);
+    api.get("/api/chats", () => []);
+    api.get("/api/workspaces", () => [workspace]);
+    api.get("/api/ssh-sessions", () => []);
+    api.get("/api/ssh-servers", () => []);
+    api.get("/api/config", () => ({ remoteOnly: false }));
+    api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
+    api.get("/api/preferences/last-model", () => null);
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/models", () => []);
+    api.get("/api/workspaces/:id/files", (req) => {
+      const startDirectory = new URL(req.url, "http://localhost").searchParams.get("startDirectory");
+      expect(startDirectory).toBe("/opt/project");
+      return {
+        workspaceId: workspace.id,
+        directory: "",
+        entries: [],
+      };
+    });
+
+    const { getByRole } = renderWithUser(<App />, {
+      route: "#/workspace-files/workspace-files-root?startDirectory=%2Fopt%2Fproject",
+    });
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Files Route Root editor" })).toBeInTheDocument();
+    });
+  });
 });

@@ -3,7 +3,11 @@
  */
 
 import { sshCredentialManager } from "../core/ssh-credential-manager";
-import { fileExplorerService, type FileExplorerTarget } from "../core/file-explorer-service";
+import {
+  fileExplorerService,
+  resolveFileExplorerRootDirectory,
+  type FileExplorerTarget,
+} from "../core/file-explorer-service";
 import { sshServerManager } from "../core/ssh-server-manager";
 import { createLogger } from "../core/logger";
 import { type WorkspaceFileEntry } from "../types";
@@ -32,16 +36,22 @@ function mapFileError(error: unknown): Response {
       currentFile,
     }, { status: 409 });
   }
-  if (message.includes("does not exist")) {
-    return errorResponse("file_not_found", message, 404);
-  }
   if (message.includes("SSH server not found")) {
     return errorResponse("not_found", message, 404);
+  }
+  if (message.includes("start directory does not exist")) {
+    return errorResponse("start_directory_not_found", message, 404);
+  }
+  if (message.includes("start directory is not a directory")) {
+    return errorResponse("invalid_start_directory_type", message, 400);
+  }
+  if (message.includes("does not exist")) {
+    return errorResponse("file_not_found", message, 404);
   }
   if (message.includes("not a directory") || message.includes("not a file")) {
     return errorResponse("invalid_path_type", message, 400);
   }
-  if (message.includes("must stay within the server directory")) {
+  if (message.includes("must stay within the active server explorer root")) {
     return errorResponse("invalid_server_path", message, 400);
   }
   if (message.includes("credential token")) {
@@ -63,7 +73,10 @@ function parseSearchParams<T extends Record<string, unknown>>(
   );
 }
 
-async function getServerFileTarget(req: Request & { params: { id: string } }): Promise<FileExplorerTarget> {
+async function getServerFileTarget(
+  req: Request & { params: { id: string } },
+  startDirectory?: string,
+): Promise<FileExplorerTarget> {
   const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim();
   if (!credentialToken) {
     throw new Error("SSH credential token is required for standalone server file access");
@@ -76,11 +89,15 @@ async function getServerFileTarget(req: Request & { params: { id: string } }): P
 
   const password = sshCredentialManager.consumeToken(server.config.id, credentialToken);
   const connection = await sshServerManager.getCommandExecutor(server.config.id, password);
+  const rootDirectory = await resolveFileExplorerRootDirectory(
+    connection.executor,
+    startDirectory?.trim() || server.config.repositoriesBasePath?.trim() || "/",
+  );
 
   return {
     id: server.config.id,
-    rootDirectory: server.config.repositoriesBasePath?.trim() || "/",
-    pathScopeLabel: "server",
+    rootDirectory,
+    pathScopeLabel: "active server explorer root",
     executor: connection.executor,
   };
 }
@@ -94,7 +111,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req);
+        const target = await getServerFileTarget(req, validation.data.startDirectory);
         const response = await fileExplorerService.listDirectory(
           target,
           validation.data.path,
@@ -124,7 +141,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req);
+        const target = await getServerFileTarget(req, validation.data.startDirectory);
         const response = await fileExplorerService.readFile(target, validation.data.path);
         return Response.json({
           serverId: req.params.id,
@@ -150,7 +167,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req);
+        const target = await getServerFileTarget(req, validation.data.startDirectory);
         const file = await fileExplorerService.getMetadata(target, validation.data.path);
         if (!file) {
           return errorResponse("file_not_found", "Requested file does not exist", 404);
@@ -178,7 +195,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req);
+        const target = await getServerFileTarget(req, validation.data.startDirectory);
         const response = await fileExplorerService.writeFile(
           target,
           validation.data.path,

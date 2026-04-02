@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import type { SshSession } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useToast } from "../../hooks";
@@ -32,11 +32,12 @@ type ExplorerSession = SshSession | SshServerSession;
 interface FileExplorerViewProps {
   title: string;
   description: string;
+  defaultRootDirectory: string;
   backLabel: string;
   backRoute: ShellRoute;
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
-  target: { type: "workspace" | "server"; id: string };
+  target: { type: "workspace" | "server"; id: string; startDirectory?: string };
   sessions: ExplorerSession[];
   hasTerminal: boolean;
   emptyTerminalMessage: string;
@@ -48,6 +49,7 @@ interface FileExplorerViewProps {
 export function FileExplorerView({
   title,
   description,
+  defaultRootDirectory,
   backLabel,
   backRoute,
   headerOffsetClassName,
@@ -65,6 +67,8 @@ export function FileExplorerView({
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
+  const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
   const selectableSessions = useMemo(
     () => sessions.map((session) => ({
       id: session.config.id,
@@ -78,6 +82,10 @@ export function FileExplorerView({
       setSelectedSessionId(selectableSessions[0].id);
     }
   }, [selectableSessions, selectedSessionId]);
+
+  useEffect(() => {
+    setRootInputValue(activeRootDirectory);
+  }, [activeRootDirectory]);
 
   async function handleCreateTerminal() {
     try {
@@ -109,13 +117,43 @@ export function FileExplorerView({
   }
 
   const conflictState = explorer.conflictState;
+  const normalizedRootInputValue = rootInputValue.trim();
+  const rootChanged = normalizedRootInputValue !== activeRootDirectory;
   const tabButtonClassName = (pane: ExplorerPane, compact = false) => [
     "inline-flex min-h-[36px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition",
     compact ? "w-full justify-center lg:w-9 lg:px-0" : "w-full justify-center",
     activePane === pane
       ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
       : "bg-white text-gray-600 hover:bg-gray-100 dark:bg-neutral-900 dark:text-gray-300 dark:hover:bg-neutral-800",
-  ].join(" ");
+    ].join(" ");
+
+  function buildExplorerRoute(startDirectory?: string): ShellRoute {
+    if (target.type === "workspace") {
+      return {
+        view: "workspace-files",
+        workspaceId: target.id,
+        startDirectory,
+      };
+    }
+    return {
+      view: "server-files",
+      serverId: target.id,
+      startDirectory,
+    };
+  }
+
+  function applyRootDirectory(directory: string) {
+    const normalizedDirectory = directory.trim();
+    const nextStartDirectory = normalizedDirectory && normalizedDirectory !== defaultRootDirectory.trim()
+      ? normalizedDirectory
+      : undefined;
+    onNavigate(buildExplorerRoute(nextStartDirectory));
+  }
+
+  function handleRootSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    applyRootDirectory(rootInputValue);
+  }
 
   return (
     <ShellPanel
@@ -130,7 +168,54 @@ export function FileExplorerView({
       )}
       bodyClassName="h-full min-h-0"
     >
-      <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
+      <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
+        <form
+          className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-neutral-900"
+          onSubmit={handleRootSubmit}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Explorer root</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Set the directory where the file tree starts.
+              </p>
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              Default: {defaultRootDirectory}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 lg:flex-row">
+            <input
+              type="text"
+              value={rootInputValue}
+              onChange={(event) => setRootInputValue(event.target.value)}
+              aria-label="Explorer root directory"
+              placeholder={defaultRootDirectory}
+              className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
+            />
+            <div className="flex gap-2">
+              <Button
+                type="submit"
+                size="sm"
+                variant="secondary"
+                disabled={!normalizedRootInputValue || !rootChanged}
+              >
+                Apply root
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={activeRootDirectory === defaultRootDirectory.trim()}
+                onClick={() => applyRootDirectory(defaultRootDirectory)}
+              >
+                Reset root
+              </Button>
+            </div>
+          </div>
+        </form>
+
+        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
         <div
           data-testid={`${testIdPrefix}-explorer-column`}
           className={[
@@ -252,6 +337,7 @@ export function FileExplorerView({
               </div>
             </section>
           )}
+        </div>
         </div>
       </div>
 

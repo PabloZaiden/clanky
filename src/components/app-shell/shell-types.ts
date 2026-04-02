@@ -47,10 +47,10 @@ export type ShellRoute =
   | { view: "chat"; chatId: string }
   | { view: "ssh"; sshSessionId: string }
   | { view: "workspace"; workspaceId: string }
-  | { view: "workspace-files"; workspaceId: string }
+  | { view: "workspace-files"; workspaceId: string; startDirectory?: string }
   | { view: "workspace-settings"; workspaceId: string }
   | { view: "ssh-server"; serverId: string }
-  | { view: "server-files"; serverId: string }
+  | { view: "server-files"; serverId: string; startDirectory?: string }
   | { view: "server-arise"; serverId: string }
   | {
       view: "compose";
