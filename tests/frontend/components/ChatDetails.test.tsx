@@ -262,6 +262,81 @@ describe("ChatDetails", () => {
     });
   });
 
+  test("does not request reconnect while the chat websocket is healthy", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        session: { id: "session-1" },
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+    api.post("/api/chats/:id/reconnect", () => createChat(), 200);
+
+    renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID)).toBeTruthy();
+    });
+
+    expect(api.calls("/api/chats/:id/reconnect", "POST")).toHaveLength(0);
+  });
+
+  test("updates a streamed assistant message in place from websocket message events", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        session: { id: "session-1" },
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.message",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:02.000Z",
+        message: {
+          id: "assistant-streaming",
+          role: "assistant",
+          content: "Partial answer",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        },
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.message",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:03.000Z",
+        message: {
+          id: "assistant-streaming",
+          role: "assistant",
+          content: "Partial answer completed",
+          timestamp: "2025-01-01T00:00:03.000Z",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Partial answer completed")).toBeTruthy();
+    });
+
+    expect(queryByText("Partial answer")).toBeNull();
+  });
+
   test("treats interrupt websocket events as returning to idle", async () => {
     api.get("/api/chats/:id", () => createChat({
       state: {
@@ -368,7 +443,7 @@ describe("ChatDetails", () => {
     expect(getByText("Idle")).toBeTruthy();
   });
 
-  test("updates streaming logs in place when websocket events reuse the same log id", async () => {
+  test("does not render response logs in chat mode when websocket events stream response log updates", async () => {
     api.get("/api/chats/:id", () => createChat({
       state: {
         id: CHAT_ID,
@@ -423,10 +498,11 @@ describe("ChatDetails", () => {
     });
 
     await waitFor(() => {
-      expect(getByText("Bravo final chunk")).toBeTruthy();
+      expect(getByText("Repo pairing")).toBeTruthy();
     });
 
     expect(queryByText("Alpha chunk")).toBeNull();
+    expect(queryByText("Bravo final chunk")).toBeNull();
   });
 
   test("preserves newer local state when chat.updated carries a stale snapshot", async () => {
