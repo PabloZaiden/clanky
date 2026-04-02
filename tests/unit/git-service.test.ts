@@ -8,6 +8,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
 import { GitService, BranchMismatchError, GitCommandError } from "../../src/core/git-service";
+import { cleanupTempGitRepository, createTempGitRepository } from "../helpers/git-fixtures";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 describe("GitService", () => {
@@ -56,20 +57,11 @@ describe("GitService", () => {
   }
 
   async function createGitServiceTestContext(): Promise<GitServiceTestContext> {
-    const testDir = await mkdtemp(join(tmpdir(), "ralpher-git-test-"));
+    const testDir = await createTempGitRepository({
+      prefix: "ralpher-git-test-",
+      initialCommit: "readme",
+    });
     const git = new GitService(new TestCommandExecutor());
-
-    await Bun.$`git init`.cwd(testDir).quiet();
-    await Bun.$`git config user.email "test@test.com"`.cwd(testDir).quiet();
-    await Bun.$`git config user.name "Test User"`.cwd(testDir).quiet();
-    // Disable repo-local maintenance in ephemeral test repos so git stash/pop
-    // does not occasionally stall when the full suite creates a lot of objects.
-    await Bun.$`git config gc.auto 0`.cwd(testDir).quiet();
-    await Bun.$`git config maintenance.auto false`.cwd(testDir).quiet();
-
-    await writeFile(join(testDir, "README.md"), "# Test\n");
-    await Bun.$`git add -A`.cwd(testDir).quiet();
-    await Bun.$`git commit -m "Initial commit"`.cwd(testDir).quiet();
 
     return {
       testDir,
@@ -78,7 +70,7 @@ describe("GitService", () => {
   }
 
   async function teardownGitServiceTestContext(ctx: GitServiceTestContext): Promise<void> {
-    await rm(ctx.testDir, { recursive: true, force: true });
+    await cleanupTempGitRepository(ctx.testDir);
   }
 
   async function withGitServiceTest(
@@ -90,6 +82,10 @@ describe("GitService", () => {
     } finally {
       await teardownGitServiceTestContext(ctx);
     }
+  }
+
+  function getCommandCalls(executor: ScriptedCommandExecutor): string[][] {
+    return executor.calls.map(({ command, args }) => [command, ...args]);
   }
 
   describe("isGitRepo", () => {
@@ -741,119 +737,144 @@ describe("GitService", () => {
 
   describe("pull", () => {
     test("returns false when no remote is configured", async () => {
-      await withGitServiceTest(async (context) => {
-        const { testDir, git } = context;
-        void testDir;
-        void git;
-        // Our test repo has no remote configured
-        const result = await git.pull(testDir);
-        expect(result).toBe(false);
-      });
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: false,
+          stdout: "",
+          stderr: "error: No such remote 'origin'\n",
+          exitCode: 2,
+        },
+      ]);
+      const git = new GitService(executor);
+
+      await expect(git.pull("/repo")).resolves.toBe(false);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+      ]);
     });
 
     test("returns false when remote branch does not exist", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "/tmp/origin.git\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: couldn't find remote ref non-existent-branch\n",
+          exitCode: 128,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
-
-        const { testDir, git } = context;
-
-        void testDir;
-
-        void git;
-        // Create a bare remote repo
-        const remoteDir = await mkdtemp(join(tmpdir(), "ralpher-remote-"));
-        try {
-          await Bun.$`git init --bare ${remoteDir}`.quiet();
-          await Bun.$`git -C ${testDir} remote add origin ${remoteDir}`.quiet();
-          
-          // Try to pull a branch that doesn't exist on remote
-          const result = await git.pull(testDir, "non-existent-branch");
-          expect(result).toBe(false);
-        } finally {
-          await rm(remoteDir, { recursive: true });
-        }
-
-      });
-
+      await expect(git.pull("/repo", "non-existent-branch")).resolves.toBe(false);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+        ["git", "-C", "/repo", "fetch", "origin", "non-existent-branch"],
+      ]);
     });
 
     test("successfully pulls when remote has changes", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "/tmp/origin.git\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "Updating 123..456\nFast-forward\n",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
-
-        const { testDir, git } = context;
-
-        void testDir;
-
-        void git;
-        // Create a bare remote repo
-        const remoteDir = await mkdtemp(join(tmpdir(), "ralpher-remote-"));
-        try {
-          await Bun.$`git init --bare ${remoteDir}`.quiet();
-          await Bun.$`git -C ${testDir} remote add origin ${remoteDir}`.quiet();
-          
-          // Push current branch to remote
-          const currentBranch = await git.getCurrentBranch(testDir);
-          await Bun.$`git -C ${testDir} push -u origin ${currentBranch}`.quiet();
-          
-          // Clone the remote to a second working copy and make a change
-          const otherClone = await mkdtemp(join(tmpdir(), "ralpher-clone-"));
-          try {
-            await Bun.$`git clone ${remoteDir} ${otherClone}`.quiet();
-            await Bun.$`git -C ${otherClone} config user.email "other@test.com"`.quiet();
-            await Bun.$`git -C ${otherClone} config user.name "Other User"`.quiet();
-            await writeFile(join(otherClone, "new-from-remote.txt"), "Remote content\n");
-            await Bun.$`git -C ${otherClone} add -A`.quiet();
-            await Bun.$`git -C ${otherClone} commit -m "Add file from other clone"`.quiet();
-            await Bun.$`git -C ${otherClone} push`.quiet();
-          } finally {
-            await rm(otherClone, { recursive: true });
-          }
-          
-          // Now pull in original repo - should succeed
-          const result = await git.pull(testDir, currentBranch);
-          expect(result).toBe(true);
-          
-          // Verify the file now exists
-          const file = Bun.file(join(testDir, "new-from-remote.txt"));
-          const exists = await file.exists();
-          expect(exists).toBe(true);
-        } finally {
-          await rm(remoteDir, { recursive: true });
-        }
-
-      });
-
+      await expect(git.pull("/repo", "main")).resolves.toBe(true);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+        ["git", "-C", "/repo", "fetch", "origin", "main"],
+        ["git", "-C", "/repo", "merge", "--ff-only", "origin/main"],
+      ]);
     });
 
     test("uses current branch when no branch name is specified", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "/tmp/origin.git\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "feature/current\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "Already up to date.\n",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
+      await expect(git.pull("/repo")).resolves.toBe(true);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+        ["git", "-C", "/repo", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "-C", "/repo", "fetch", "origin", "feature/current"],
+        ["git", "-C", "/repo", "merge", "--ff-only", "origin/feature/current"],
+      ]);
+    });
 
-        const { testDir, git } = context;
+    test("returns false when fast-forward merge is not possible", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "/tmp/origin.git\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: Not possible to fast-forward, aborting.\n",
+          exitCode: 128,
+        },
+      ]);
+      const git = new GitService(executor);
 
-        void testDir;
-
-        void git;
-        // Create a bare remote repo
-        const remoteDir = await mkdtemp(join(tmpdir(), "ralpher-remote-"));
-        try {
-          await Bun.$`git init --bare ${remoteDir}`.quiet();
-          await Bun.$`git -C ${testDir} remote add origin ${remoteDir}`.quiet();
-          
-          // Push current branch to remote
-          const currentBranch = await git.getCurrentBranch(testDir);
-          await Bun.$`git -C ${testDir} push -u origin ${currentBranch}`.quiet();
-          
-          // Pull without specifying branch - should succeed and use current branch
-          const result = await git.pull(testDir);
-          expect(result).toBe(true);
-        } finally {
-          await rm(remoteDir, { recursive: true });
-        }
-
-      });
-
+      await expect(git.pull("/repo", "main")).resolves.toBe(false);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+        ["git", "-C", "/repo", "fetch", "origin", "main"],
+        ["git", "-C", "/repo", "merge", "--ff-only", "origin/main"],
+      ]);
     });
   });
 
@@ -975,175 +996,130 @@ describe("GitService", () => {
 
   describe("getDefaultBranch", () => {
     test("returns branch from origin/HEAD when set", async () => {
-      await withGitServiceTest(async (context) => {
-        const { testDir, git } = context;
-        void testDir;
-        void git;
-        // Create a bare remote repo
-        const remoteDir = await mkdtemp(join(tmpdir(), "ralpher-remote-"));
-        try {
-          await Bun.$`git init --bare ${remoteDir}`.quiet();
-          await Bun.$`git -C ${testDir} remote add origin ${remoteDir}`.quiet();
-          
-          // Push current branch to remote
-          const currentBranch = await git.getCurrentBranch(testDir);
-          await Bun.$`git -C ${testDir} push -u origin ${currentBranch}`.quiet();
-          
-          // Set origin/HEAD to point to our branch
-          await Bun.$`git -C ${testDir} remote set-head origin ${currentBranch}`.quiet();
-          
-          const defaultBranch = await git.getDefaultBranch(testDir);
-          expect(defaultBranch).toBe(currentBranch);
-        } finally {
-          await rm(remoteDir, { recursive: true });
-        }
-      });
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "refs/remotes/origin/develop\n",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
+
+      await expect(git.getDefaultBranch("/repo")).resolves.toBe("develop");
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "symbolic-ref", "refs/remotes/origin/HEAD"],
+      ]);
     });
 
     test("falls back to main when origin/HEAD is not set but main exists", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref\n",
+          exitCode: 128,
+        },
+        {
+          success: true,
+          stdout: "deadbeef\n",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
-
-        const { testDir, git } = context;
-
-        void testDir;
-
-        void git;
-        // Our test repo should already have main or master
-        const currentBranch = await git.getCurrentBranch(testDir);
-        
-        // If the current branch is "main", this test is valid
-        if (currentBranch === "main") {
-          const defaultBranch = await git.getDefaultBranch(testDir);
-          expect(defaultBranch).toBe("main");
-        } else {
-          // Create a "main" branch if it doesn't exist
-          await git.createBranch(testDir, "main");
-          await git.checkoutBranch(testDir, currentBranch);
-          
-          const defaultBranch = await git.getDefaultBranch(testDir);
-          expect(defaultBranch).toBe("main");
-        }
-
-      });
-
+      await expect(git.getDefaultBranch("/repo")).resolves.toBe("main");
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "symbolic-ref", "refs/remotes/origin/HEAD"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
+      ]);
     });
 
     test("falls back to master when main does not exist but master does", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref\n",
+          exitCode: 128,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: Needed a single revision\n",
+          exitCode: 128,
+        },
+        {
+          success: true,
+          stdout: "deadbeef\n",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
-
-        const { testDir, git } = context;
-
-        void testDir;
-
-        void git;
-        const currentBranch = await git.getCurrentBranch(testDir);
-        
-        // If the current branch is "master", this test is valid
-        if (currentBranch === "master") {
-          const defaultBranch = await git.getDefaultBranch(testDir);
-          expect(defaultBranch).toBe("master");
-        } else {
-          // Create a repo with only "master" branch
-          const masterRepoDir = await mkdtemp(join(tmpdir(), "ralpher-master-repo-"));
-          try {
-            // Initialize with master as default branch
-            await Bun.$`git -c init.defaultBranch=master init ${masterRepoDir}`.quiet();
-            await Bun.$`git -C ${masterRepoDir} config user.email "test@test.com"`.quiet();
-            await Bun.$`git -C ${masterRepoDir} config user.name "Test User"`.quiet();
-            await writeFile(join(masterRepoDir, "README.md"), "# Test\n");
-            await Bun.$`git -C ${masterRepoDir} add -A`.quiet();
-            await Bun.$`git -C ${masterRepoDir} commit -m "Initial commit"`.quiet();
-            
-            // Create a new GitService for this repo
-            const executor = new TestCommandExecutor();
-            const masterGit = new GitService(executor);
-            
-            const defaultBranch = await masterGit.getDefaultBranch(masterRepoDir);
-            expect(defaultBranch).toBe("master");
-          } finally {
-            await rm(masterRepoDir, { recursive: true });
-          }
-        }
-
-      });
-
+      await expect(git.getDefaultBranch("/repo")).resolves.toBe("master");
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "symbolic-ref", "refs/remotes/origin/HEAD"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "master"],
+      ]);
     });
 
     test("falls back to current branch when neither main nor master exists", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref\n",
+          exitCode: 128,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: Needed a single revision\n",
+          exitCode: 128,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: Needed a single revision\n",
+          exitCode: 128,
+        },
+        {
+          success: true,
+          stdout: "develop\n",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
-
-        const { testDir, git } = context;
-
-        void testDir;
-
-        void git;
-        // Create a repo with a custom default branch name
-        const customRepoDir = await mkdtemp(join(tmpdir(), "ralpher-custom-repo-"));
-        try {
-          // Initialize with a custom default branch
-          await Bun.$`git -c init.defaultBranch=develop init ${customRepoDir}`.quiet();
-          await Bun.$`git -C ${customRepoDir} config user.email "test@test.com"`.quiet();
-          await Bun.$`git -C ${customRepoDir} config user.name "Test User"`.quiet();
-          await writeFile(join(customRepoDir, "README.md"), "# Test\n");
-          await Bun.$`git -C ${customRepoDir} add -A`.quiet();
-          await Bun.$`git -C ${customRepoDir} commit -m "Initial commit"`.quiet();
-          
-          // Create a new GitService for this repo
-          const executor = new TestCommandExecutor();
-          const customGit = new GitService(executor);
-          
-          const defaultBranch = await customGit.getDefaultBranch(customRepoDir);
-          expect(defaultBranch).toBe("develop");
-        } finally {
-          await rm(customRepoDir, { recursive: true });
-        }
-
-      });
-
+      await expect(git.getDefaultBranch("/repo")).resolves.toBe("develop");
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "symbolic-ref", "refs/remotes/origin/HEAD"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "master"],
+        ["git", "-C", "/repo", "rev-parse", "--abbrev-ref", "HEAD"],
+      ]);
     });
 
     test("prefers origin/HEAD over local main branch", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "refs/remotes/origin/develop\n",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
-
-        const { testDir, git } = context;
-
-        void testDir;
-
-        void git;
-        // Create a bare remote repo
-        const remoteDir = await mkdtemp(join(tmpdir(), "ralpher-remote-"));
-        try {
-          await Bun.$`git init --bare ${remoteDir}`.quiet();
-          await Bun.$`git -C ${testDir} remote add origin ${remoteDir}`.quiet();
-          
-          // Get current branch
-          const currentBranch = await git.getCurrentBranch(testDir);
-          
-          // Create a "develop" branch and push it
-          await git.createBranch(testDir, "develop");
-          await writeFile(join(testDir, "develop.txt"), "develop\n");
-          await git.commit(testDir, "Develop commit");
-          await Bun.$`git -C ${testDir} push -u origin develop`.quiet();
-          
-          // Go back to original branch and push it
-          await git.checkoutBranch(testDir, currentBranch);
-          await Bun.$`git -C ${testDir} push -u origin ${currentBranch}`.quiet();
-          
-          // Set origin/HEAD to develop (not main/master)
-          await Bun.$`git -C ${testDir} remote set-head origin develop`.quiet();
-          
-          const defaultBranch = await git.getDefaultBranch(testDir);
-          expect(defaultBranch).toBe("develop");
-        } finally {
-          await rm(remoteDir, { recursive: true });
-        }
-
-      });
-
+      await expect(git.getDefaultBranch("/repo")).resolves.toBe("develop");
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "symbolic-ref", "refs/remotes/origin/HEAD"],
+      ]);
     });
   });
 
@@ -1549,86 +1525,92 @@ describe("GitService", () => {
 
   describe("fetchBranch", () => {
     test("returns false when no remote is configured", async () => {
-      await withGitServiceTest(async (context) => {
-        const { testDir, git } = context;
-        void testDir;
-        void git;
-        const result = await git.fetchBranch(testDir, "main");
-        expect(result).toBe(false);
-      });
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: false,
+          stdout: "",
+          stderr: "error: No such remote 'origin'\n",
+          exitCode: 2,
+        },
+      ]);
+      const git = new GitService(executor);
+
+      await expect(git.fetchBranch("/repo", "main")).resolves.toBe(false);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+      ]);
     });
 
     test("returns false when remote branch does not exist", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "/tmp/origin.git\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: couldn't find remote ref non-existent-branch\n",
+          exitCode: 128,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
-
-        const { testDir, git } = context;
-
-        void testDir;
-
-        void git;
-        const remoteDir = await mkdtemp(join(tmpdir(), "ralpher-remote-"));
-        try {
-          await Bun.$`git init --bare ${remoteDir}`.quiet();
-          await Bun.$`git -C ${testDir} remote add origin ${remoteDir}`.quiet();
-  
-          const currentBranch = await git.getCurrentBranch(testDir);
-          await Bun.$`git -C ${testDir} push -u origin ${currentBranch}`.quiet();
-  
-          const result = await git.fetchBranch(testDir, "non-existent-branch");
-          expect(result).toBe(false);
-        } finally {
-          await rm(remoteDir, { recursive: true });
-        }
-
-      });
-
+      await expect(git.fetchBranch("/repo", "non-existent-branch")).resolves.toBe(false);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+        ["git", "-C", "/repo", "fetch", "origin", "non-existent-branch"],
+      ]);
     });
 
     test("successfully fetches an existing remote branch", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "/tmp/origin.git\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
 
-      await withGitServiceTest(async (context) => {
+      await expect(git.fetchBranch("/repo", "main")).resolves.toBe(true);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+        ["git", "-C", "/repo", "fetch", "origin", "main"],
+      ]);
+    });
 
-        const { testDir, git } = context;
+    test("returns false for other fetch failures without retrying", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: "/tmp/origin.git\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: unable to access remote\n",
+          exitCode: 128,
+        },
+      ]);
+      const git = new GitService(executor);
 
-        void testDir;
-
-        void git;
-        const remoteDir = await mkdtemp(join(tmpdir(), "ralpher-remote-"));
-        try {
-          await Bun.$`git init --bare ${remoteDir}`.quiet();
-          await Bun.$`git -C ${testDir} remote add origin ${remoteDir}`.quiet();
-  
-          const currentBranch = await git.getCurrentBranch(testDir);
-          await Bun.$`git -C ${testDir} push -u origin ${currentBranch}`.quiet();
-  
-          // Create a second clone, add a commit, push
-          const otherClone = await mkdtemp(join(tmpdir(), "ralpher-clone-"));
-          try {
-            await Bun.$`git clone ${remoteDir} ${otherClone}`.quiet();
-            await Bun.$`git -C ${otherClone} config user.email "other@test.com"`.quiet();
-            await Bun.$`git -C ${otherClone} config user.name "Other User"`.quiet();
-            await writeFile(join(otherClone, "remote-file.txt"), "remote content\n");
-            await Bun.$`git -C ${otherClone} add -A`.quiet();
-            await Bun.$`git -C ${otherClone} commit -m "Remote commit"`.quiet();
-            await Bun.$`git -C ${otherClone} push`.quiet();
-          } finally {
-            await rm(otherClone, { recursive: true });
-          }
-  
-          // Fetch should succeed and update the remote tracking ref
-          const result = await git.fetchBranch(testDir, currentBranch);
-          expect(result).toBe(true);
-  
-          // Verify the remote tracking ref was updated (origin/<branch> has the new commit)
-          const logResult = await Bun.$`git -C ${testDir} log --oneline origin/${currentBranch} -1`.text();
-          expect(logResult).toContain("Remote commit");
-        } finally {
-          await rm(remoteDir, { recursive: true });
-        }
-
-      });
-
+      await expect(git.fetchBranch("/repo", "main")).resolves.toBe(false);
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "remote", "get-url", "origin"],
+        ["git", "-C", "/repo", "fetch", "origin", "main"],
+      ]);
     });
   });
 

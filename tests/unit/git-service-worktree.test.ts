@@ -5,10 +5,10 @@
  */
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink } from "fs/promises";
-import { tmpdir } from "os";
+import { mkdir, readFile, rm, symlink } from "fs/promises";
 import { join } from "path";
 import { GitService } from "../../src/core/git-service";
+import { cleanupTempGitRepository, createTempGitRepository } from "../helpers/git-fixtures";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 describe("GitService Worktree Operations", () => {
@@ -16,21 +16,18 @@ describe("GitService Worktree Operations", () => {
   let git: GitService;
 
   beforeEach(async () => {
-    // Create a temp directory for each test
     // Resolve symlinks (macOS /var → /private/var) to match git's resolved paths
-    testDir = await realpath(await mkdtemp(join(tmpdir(), "ralpher-worktree-test-")));
+    testDir = await createTempGitRepository({
+      prefix: "ralpher-worktree-test-",
+      resolveRealpath: true,
+      initialCommit: "empty",
+    });
     const executor = new TestCommandExecutor();
     git = new GitService(executor);
-
-    // Initialize a git repo with an initial commit
-    await Bun.$`git init ${testDir}`.quiet();
-    await Bun.$`git -C ${testDir} config user.email "test@test.com"`.quiet();
-    await Bun.$`git -C ${testDir} config user.name "Test User"`.quiet();
-    await Bun.$`git -C ${testDir} commit --allow-empty -m "Initial commit"`.quiet();
   });
 
   afterEach(async () => {
-    await rm(testDir, { recursive: true, force: true });
+    await cleanupTempGitRepository(testDir);
   });
 
   describe("createWorktree", () => {
