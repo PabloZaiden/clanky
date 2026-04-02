@@ -16,8 +16,8 @@ describe("SshCredentialManager", () => {
     });
 
     expect(exchange.credentialToken).toBeString();
-    expect(manager.consumeToken("server-1", exchange.credentialToken)).toBe("secret-password");
-    expect(manager.consumeToken("server-1", exchange.credentialToken)).toBe("secret-password");
+    expect(manager.getPasswordForToken("server-1", exchange.credentialToken)).toBe("secret-password");
+    expect(manager.getPasswordForToken("server-1", exchange.credentialToken)).toBe("secret-password");
 
     decryptSpy.mockRestore();
   });
@@ -35,7 +35,7 @@ describe("SshCredentialManager", () => {
     });
     now = 1_020;
 
-    expect(() => manager.consumeToken("server-1", exchange.credentialToken)).toThrow(
+    expect(() => manager.getPasswordForToken("server-1", exchange.credentialToken)).toThrow(
       "SSH credential token is missing or expired",
     );
 
@@ -53,7 +53,7 @@ describe("SshCredentialManager", () => {
       ciphertext: "ciphertext",
     });
 
-    expect(() => manager.consumeToken("server-2", exchange.credentialToken)).toThrow(
+    expect(() => manager.getPasswordForToken("server-2", exchange.credentialToken)).toThrow(
       "SSH credential token does not belong to the requested server",
     );
 

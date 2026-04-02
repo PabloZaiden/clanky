@@ -87,7 +87,7 @@ async function getServerFileTarget(
     throw new Error(`SSH server not found: ${req.params.id}`);
   }
 
-  const password = sshCredentialManager.consumeToken(server.config.id, credentialToken);
+  const password = sshCredentialManager.getPasswordForToken(server.config.id, credentialToken);
   const connection = await sshServerManager.getCommandExecutor(server.config.id, password);
   const rootDirectory = await resolveFileExplorerRootDirectory(
     connection.executor,

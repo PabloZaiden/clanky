@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { SshSession } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useToast } from "../../hooks";
@@ -143,33 +143,56 @@ export function FileExplorerView({
     };
   }
 
-  function applyRootDirectory(directory: string) {
+  const applyRootDirectory = useCallback((directory: string) => {
     const normalizedDirectory = directory.trim();
     const nextStartDirectory = normalizedDirectory && normalizedDirectory !== defaultRootDirectory.trim()
       ? normalizedDirectory
       : undefined;
     onNavigate(buildExplorerRoute(nextStartDirectory));
-  }
+  }, [defaultRootDirectory, onNavigate, target.id, target.type]);
 
-  function openRootPicker() {
+  const openRootPicker = useCallback(() => {
     setRootInputValue(activeRootDirectory);
     setRootPickerOpen(true);
-  }
+  }, [activeRootDirectory]);
 
-  function closeRootPicker() {
+  const closeRootPicker = useCallback(() => {
     setRootInputValue(activeRootDirectory);
     setRootPickerOpen(false);
-  }
+  }, [activeRootDirectory]);
 
-  function applyRootAndClose(directory: string) {
+  const applyRootAndClose = useCallback((directory: string) => {
     applyRootDirectory(directory);
     setRootPickerOpen(false);
-  }
+  }, [applyRootDirectory]);
 
-  function handleRootSubmit(event: FormEvent<HTMLFormElement>) {
+  const handleRootSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     applyRootAndClose(rootInputValue);
-  }
+  }, [applyRootAndClose, rootInputValue]);
+
+  const handleToggleExplorerCollapsed = useCallback(() => {
+    setExplorerCollapsed((current) => !current);
+  }, []);
+
+  const handleOpenFile = useCallback(async (path: string) => {
+    setActivePane("editor");
+    await explorer.openFile(path);
+  }, [explorer.openFile]);
+
+  const explorerToolbarActions = useMemo(() => (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={openRootPicker}
+      aria-label="Change explorer root"
+      title="Change explorer root"
+      className="w-9 px-0"
+      icon={<GearIcon size="h-4 w-4" />}
+    >
+      <span className="sr-only">Change explorer root</span>
+    </Button>
+  ), [openRootPicker]);
 
   return (
     <ShellPanel
@@ -204,27 +227,12 @@ export function FileExplorerView({
                 showHiddenFiles={explorer.showHiddenFiles}
                 loading={explorer.loadingTree}
                 collapsed={explorerCollapsed}
-                toolbarActions={(
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={openRootPicker}
-                    aria-label="Change explorer root"
-                    title="Change explorer root"
-                    className="w-9 px-0"
-                    icon={<GearIcon size="h-4 w-4" />}
-                  >
-                    <span className="sr-only">Change explorer root</span>
-                  </Button>
-                )}
-                onRefresh={() => explorer.refreshTree("")}
+                toolbarActions={explorerToolbarActions}
+                onRefresh={explorer.refreshTree}
                 onToggleShowHiddenFiles={explorer.toggleShowHiddenFiles}
-                onToggleCollapsed={() => setExplorerCollapsed((current) => !current)}
+                onToggleCollapsed={handleToggleExplorerCollapsed}
                 onToggleDirectory={explorer.toggleDirectory}
-                onOpenFile={async (path: string) => {
-                  setActivePane("editor");
-                  await explorer.openFile(path);
-                }}
+                onOpenFile={handleOpenFile}
               />
             </div>
             <div

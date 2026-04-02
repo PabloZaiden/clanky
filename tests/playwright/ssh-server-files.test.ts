@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 
 import { waitForVisible, withBrowserTest } from "./support/browser-test";
 
-async function saveStandaloneServerPassword(baseUrl: string, serverId: string, page: import("playwright").Page): Promise<void> {
+async function saveStandaloneServerPassword(serverId: string, page: import("playwright").Page): Promise<void> {
   await page.evaluate(async ({ serverId }) => {
     const response = await fetch(`/api/ssh-servers/${serverId}/public-key`);
     if (!response.ok) {
@@ -61,7 +61,7 @@ async function saveStandaloneServerPassword(baseUrl: string, serverId: string, p
         storedAt: new Date().toISOString(),
       }),
     );
-  }, { baseUrl, serverId });
+  }, { serverId });
 }
 
 test("explores a standalone SSH server and changes the root to a parent directory", async () => {
@@ -91,7 +91,7 @@ test("explores a standalone SSH server and changes the root to a parent director
       const server = await createResponse.json() as { config: { id: string } };
 
       await page.goto(`${app.baseUrl}/#/server-files/${server.config.id}`);
-      await saveStandaloneServerPassword(app.baseUrl, server.config.id, page);
+      await saveStandaloneServerPassword(server.config.id, page);
       await page.reload();
 
       await waitForVisible(page.getByRole("heading", { name: "Playwright SSH Server editor" }));

@@ -37,7 +37,7 @@ export const provisioningRoutes = {
 
         const credentialToken = validation.data.credentialToken?.trim();
         const password = credentialToken
-          ? sshCredentialManager.consumeToken(server.config.id, credentialToken)
+          ? sshCredentialManager.getPasswordForToken(server.config.id, credentialToken)
           : undefined;
 
         const snapshot = await provisioningManager.startJob({

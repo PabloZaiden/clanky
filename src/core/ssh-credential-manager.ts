@@ -54,7 +54,7 @@ export class SshCredentialManager {
     };
   }
 
-  consumeToken(serverId: string, token: string): string {
+  getPasswordForToken(serverId: string, token: string): string {
     this.evictExpiredTokens();
     const record = this.tokens.get(token);
     if (!record) {
