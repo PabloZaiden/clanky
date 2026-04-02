@@ -1,0 +1,126 @@
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { renderWithUser, waitFor } from "../helpers/render";
+import { createMockApi } from "../helpers/mock-api";
+import { storeSshServerPassword } from "@/lib/ssh-browser-credentials";
+import type { SshServer } from "@/types";
+
+mock.module("@monaco-editor/react", () => ({
+  default: ({
+    value,
+    onChange,
+  }: {
+    value?: string;
+    onChange?: (value: string) => void;
+  }) => (
+    <textarea
+      aria-label="Monaco editor"
+      value={value ?? ""}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  ),
+}));
+
+const api = createMockApi();
+
+function createServer(): SshServer {
+  return {
+    config: {
+      id: "server-1",
+      name: "Build Box",
+      address: "10.0.0.5",
+      username: "vscode",
+      repositoriesBasePath: "/srv/app/current",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    publicKey: {
+      algorithm: "RSA-OAEP-256",
+      publicKey: "public-key",
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    },
+  };
+}
+
+describe("ServerFilesView", () => {
+  beforeEach(() => {
+    api.reset();
+    api.install();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    api.uninstall();
+    mock.restore();
+  });
+
+  test("resets the SSH-backed explorer root from the shared root picker dialog", async () => {
+    const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+    const onNavigate = mock((_route: unknown) => {});
+    const server = createServer();
+
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: `-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAsKNhd9E/OQ+lbqKlfYjv
+69xGawOr9J0cMf2Qj3jWXaXv6mm1xrDBMYNboWkjxV6AZAG9zDJO6s8eP/rj7s3P
+7dfmoHGRfqoItqqt6WkKxZxjrnDc0l43wcdGaGm0fL5f4enJv+0Ft9Y+BSHhMl+m
+ENb+JvTFFK3bz38eLI8Td2RLIqjQ+bTR0M55VdlyIJvtZ4bAzn9IdABzd8hIp/Fq
+ZI97s5nsyDqX5ePG7e9UY9kfF4sxhQ1jlwmkIYlQmVl3zY6fWihc+YVHL7XWE/90
+cwJp+7qyc0w90j+5vMuJcfFm7F8FG7Zz+oOkkeNbeqMHEaJwVIi9vtHbljH5jtmd
+Tib0ROswpXTuhp2cDEgfZiF5m6o6Yws1eIqUhYaEfpOUqseYjPe6Klbjyl90m7Xq
+QpPbjq5q7UL/ase5r4n4t0JgcLZw1oP98rVAx+VFE+UViVd9qqH7CFhxxR9t7LFa
+NwUWw/pj0oI3Qul2lJfXaogfXzdcguVRik/yi0zQ5p5ArRBPEtmeNcEqA9x1ApNQ
+h8ND8r3lVAjFrX8+pj1fmPSxaIXgQPywAzr5kgdWz3BOEkrd5alvd+6kLxC2ErMA
+tYXzrp47C+1F7elWjBhHsqlhHSl7zQxqXqetisXZ4uEyv+4S0M3O+Q+iLeidcbLQ
+Vrt5VIv2q/QnK29KDywKJrsCAwEAAQ==
+-----END PUBLIC KEY-----`,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "token-123",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+    api.get("/api/ssh-servers/:id/files", () => ({
+      serverId: server.config.id,
+      directory: "",
+      entries: [],
+    }));
+
+    await storeSshServerPassword(server.config.id, "super-secret");
+
+    const { getByLabelText, getByRole, queryByLabelText, user } = renderWithUser(
+      <ServerFilesView
+        server={server}
+        sessions={[]}
+        startDirectory="/srv/app"
+        createStandaloneSession={async () => {
+          throw new Error("not used");
+        }}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Change explorer root" })).toBeInTheDocument();
+    });
+    expect(queryByLabelText("Explorer root directory")).not.toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: "Change explorer root" }));
+    await waitFor(() => {
+      expect(getByLabelText("Explorer root directory")).toHaveValue("/srv/app");
+    });
+
+    await user.click(getByRole("button", { name: "Reset root" }));
+
+    expect(onNavigate).toHaveBeenCalledWith({
+      view: "server-files",
+      serverId: server.config.id,
+      startDirectory: undefined,
+    });
+    expect(queryByLabelText("Explorer root directory")).not.toBeInTheDocument();
+  });
+});

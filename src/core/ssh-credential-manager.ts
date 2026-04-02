@@ -65,7 +65,6 @@ export class SshCredentialManager {
       throw new Error("SSH credential token does not belong to the requested server");
     }
 
-    this.tokens.delete(token);
     return record.password;
   }
 

@@ -3,7 +3,7 @@ import type { SshSession } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useToast } from "../../hooks";
 import { SshSessionDetails } from "../SshSessionDetails";
-import { Button } from "../common";
+import { Button, GearIcon, Modal } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
@@ -66,6 +66,7 @@ export function FileExplorerView({
   const explorer = useFileExplorer(target);
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  const [rootPickerOpen, setRootPickerOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
@@ -150,9 +151,24 @@ export function FileExplorerView({
     onNavigate(buildExplorerRoute(nextStartDirectory));
   }
 
+  function openRootPicker() {
+    setRootInputValue(activeRootDirectory);
+    setRootPickerOpen(true);
+  }
+
+  function closeRootPicker() {
+    setRootInputValue(activeRootDirectory);
+    setRootPickerOpen(false);
+  }
+
+  function applyRootAndClose(directory: string) {
+    applyRootDirectory(directory);
+    setRootPickerOpen(false);
+  }
+
   function handleRootSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    applyRootDirectory(rootInputValue);
+    applyRootAndClose(rootInputValue);
   }
 
   return (
@@ -169,52 +185,6 @@ export function FileExplorerView({
       bodyClassName="h-full min-h-0"
     >
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-        <form
-          className="flex flex-col gap-2 rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-neutral-900"
-          onSubmit={handleRootSubmit}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Explorer root</h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                Set the directory where the file tree starts.
-              </p>
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Default: {defaultRootDirectory}
-            </div>
-          </div>
-          <div className="flex flex-col gap-2 lg:flex-row">
-            <input
-              type="text"
-              value={rootInputValue}
-              onChange={(event) => setRootInputValue(event.target.value)}
-              aria-label="Explorer root directory"
-              placeholder={defaultRootDirectory}
-              className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
-            />
-            <div className="flex gap-2">
-              <Button
-                type="submit"
-                size="sm"
-                variant="secondary"
-                disabled={!normalizedRootInputValue || !rootChanged}
-              >
-                Apply root
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={activeRootDirectory === defaultRootDirectory.trim()}
-                onClick={() => applyRootDirectory(defaultRootDirectory)}
-              >
-                Reset root
-              </Button>
-            </div>
-          </div>
-        </form>
-
         <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
         <div
           data-testid={`${testIdPrefix}-explorer-column`}
@@ -234,6 +204,19 @@ export function FileExplorerView({
                 showHiddenFiles={explorer.showHiddenFiles}
                 loading={explorer.loadingTree}
                 collapsed={explorerCollapsed}
+                toolbarActions={(
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={openRootPicker}
+                    aria-label="Change explorer root"
+                    title="Change explorer root"
+                    className="w-9 px-0"
+                    icon={<GearIcon size="h-4 w-4" />}
+                  >
+                    <span className="sr-only">Change explorer root</span>
+                  </Button>
+                )}
                 onRefresh={() => explorer.refreshTree("")}
                 onToggleShowHiddenFiles={explorer.toggleShowHiddenFiles}
                 onToggleCollapsed={() => setExplorerCollapsed((current) => !current)}
@@ -370,6 +353,59 @@ export function FileExplorerView({
           });
         }}
       />
+
+      <Modal
+        isOpen={rootPickerOpen}
+        onClose={closeRootPicker}
+        title="Change explorer root"
+        description="Choose the directory where the file tree should start."
+        size="md"
+        footer={(
+          <>
+            <Button variant="ghost" onClick={closeRootPicker}>
+              Cancel
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={activeRootDirectory === defaultRootDirectory.trim()}
+              onClick={() => applyRootAndClose(defaultRootDirectory)}
+            >
+              Reset root
+            </Button>
+            <Button
+              type="submit"
+              form="explorer-root-picker-form"
+              variant="secondary"
+              disabled={!normalizedRootInputValue || !rootChanged}
+            >
+              Apply root
+            </Button>
+          </>
+        )}
+      >
+        <form id="explorer-root-picker-form" className="flex flex-col gap-4" onSubmit={handleRootSubmit}>
+          <div className="space-y-1">
+            <label
+              htmlFor={`${testIdPrefix}-explorer-root-directory`}
+              className="text-sm font-medium text-gray-900 dark:text-gray-100"
+            >
+              Explorer root directory
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Default: {defaultRootDirectory}
+            </p>
+          </div>
+          <input
+            id={`${testIdPrefix}-explorer-root-directory`}
+            type="text"
+            value={rootInputValue}
+            onChange={(event) => setRootInputValue(event.target.value)}
+            aria-label="Explorer root directory"
+            placeholder={defaultRootDirectory}
+            className="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
+          />
+        </form>
+      </Modal>
     </ShellPanel>
   );
 }

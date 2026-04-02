@@ -1,3 +1,4 @@
+import { memo, useMemo, type ReactNode } from "react";
 import type { WorkspaceFileEntry } from "../../types";
 import { Button, RefreshIcon } from "../common";
 
@@ -78,6 +79,7 @@ interface WorkspaceFileTreeProps {
   showHiddenFiles: boolean;
   loading: boolean;
   collapsed: boolean;
+  toolbarActions?: ReactNode;
   onRefresh: () => Promise<void>;
   onToggleShowHiddenFiles: () => Promise<void>;
   onToggleCollapsed: () => void;
@@ -143,19 +145,37 @@ function renderDirectory(
   });
 }
 
-export function WorkspaceFileTree({
+function WorkspaceFileTreeComponent({
   entriesByDirectory,
   expandedDirectories,
   currentFilePath,
   showHiddenFiles,
   loading,
   collapsed,
+  toolbarActions,
   onRefresh,
   onToggleShowHiddenFiles,
   onToggleCollapsed,
   onToggleDirectory,
   onOpenFile,
 }: WorkspaceFileTreeProps) {
+  const renderedTree = useMemo(() => renderDirectory(
+    "",
+    entriesByDirectory,
+    expandedDirectories,
+    currentFilePath,
+    showHiddenFiles,
+    onToggleDirectory,
+    onOpenFile,
+  ), [
+    currentFilePath,
+    entriesByDirectory,
+    expandedDirectories,
+    onOpenFile,
+    onToggleDirectory,
+    showHiddenFiles,
+  ]);
+
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
       <div
@@ -178,6 +198,7 @@ export function WorkspaceFileTree({
           </div>
         )}
         <div className={collapsed ? "flex items-center gap-2 lg:flex-col" : "flex items-center gap-2"}>
+          {toolbarActions}
           <Button
             variant="ghost"
             size="sm"
@@ -223,17 +244,11 @@ export function WorkspaceFileTree({
       </div>
       {!collapsed && (
         <div className="min-h-0 flex-1 overflow-auto p-2">
-          {renderDirectory(
-            "",
-            entriesByDirectory,
-            expandedDirectories,
-            currentFilePath,
-            showHiddenFiles,
-            onToggleDirectory,
-            onOpenFile,
-          )}
+          {renderedTree}
         </div>
       )}
     </section>
   );
 }
+
+export const WorkspaceFileTree = memo(WorkspaceFileTreeComponent);
