@@ -120,7 +120,7 @@ test("shows reasoning during streaming and keeps the final assistant answer visi
     );
 
     expect(typeof reasoningContent).toBe("string");
-    await waitForVisible(page.getByText(new RegExp(String(reasoningContent).slice(0, 12), "i")));
+    await waitForVisible(page.getByText(String(reasoningContent).slice(0, 12), { exact: false }));
 
     await waitForChatToIdle(app, chatId);
     await waitForVisible(page.getByText(/Mock ACP is streaming a realistic looking response/i));

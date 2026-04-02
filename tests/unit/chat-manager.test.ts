@@ -738,6 +738,7 @@ describe("ChatManager", () => {
     });
 
     backendManager.setBackendForTesting(new ProgressiveStreamingBackend());
+    const updateChatStateSpy = spyOn(chatPersistence, "updateChatState");
 
     const manager = new ChatManager();
     const chat = await manager.createChat({
@@ -762,6 +763,20 @@ describe("ChatManager", () => {
         log.details?.["logKind"] === "reasoning"
         && log.details?.["responseContent"] === "Working through the transcript shape."),
     ).toBe(true);
+    const streamingAssistant = streaming.state.messages.find((message) =>
+      message.role === "assistant" && message.content === "Hello");
+    expect(streamingAssistant?.timestamp).toBeDefined();
+
+    const firstPartialAssistantPersist = updateChatStateSpy.mock.calls
+      .map(([, state]) => state)
+      .find((state) =>
+        state.messages.some((message) => message.role === "assistant" && message.content === "Hello"),
+      );
+    expect(
+      firstPartialAssistantPersist?.logs.some((log) =>
+        log.details?.["logKind"] === "response"
+        && log.details?.["responseContent"] === "Hello"),
+    ).toBe(true);
 
     const completed = await waitForChat(chat.config.id, (current) =>
       current.state.status === "idle"
@@ -773,6 +788,9 @@ describe("ChatManager", () => {
         .filter((message) => message.role === "assistant")
         .map((message) => message.content),
     ).toEqual(["Hello world"]);
+    const completedAssistant = completed.state.messages.find((message) =>
+      message.role === "assistant" && message.content === "Hello world");
+    expect(completedAssistant?.timestamp).toBe(streamingAssistant?.timestamp);
   });
 
   test("emits chat.status events for starting, streaming, and idle transitions", async () => {
