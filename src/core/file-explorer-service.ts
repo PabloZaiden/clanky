@@ -176,6 +176,65 @@ async function runMetadataCommand(
   };
 }
 
+async function runMetadataBatchCommand(
+  executor: CommandExecutor,
+  absolutePaths: string[],
+): Promise<Array<{ kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string } | null>> {
+  if (absolutePaths.length === 0) {
+    return [];
+  }
+
+  const result = await executor.exec(
+    "bash",
+    [
+      "-lc",
+      "for path in \"$@\"; do if [ ! -e \"$path\" ]; then printf 'missing\\n'; continue; fi; if [ -d \"$path\" ]; then typeFlag=d; hash=-; else typeFlag=f; if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$path\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$path\" | cut -d' ' -f1); else hash=; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$path\"); modified=$(stat -c '%Y' \"$path\"); else size=$(stat -f '%z' \"$path\"); modified=$(stat -f '%m' \"$path\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"; done",
+      "file-explorer-batch-metadata",
+      ...absolutePaths,
+    ],
+    {
+      logFailures: false,
+    },
+  );
+
+  if (!result.success) {
+    throw new Error(result.stderr.trim() || "Failed to read file metadata");
+  }
+
+  const lines = result.stdout.endsWith("\n")
+    ? result.stdout.slice(0, -1).split("\n")
+    : result.stdout.split("\n");
+  if (lines.length !== absolutePaths.length) {
+    throw new Error("Failed to parse file metadata");
+  }
+
+  return lines.map((line) => {
+    if (line === "missing") {
+      return null;
+    }
+    const [typeFlag, sizeText, timestampSeconds, contentHash] = line.split(LIST_SEPARATOR);
+    if (!typeFlag || !sizeText || !timestampSeconds) {
+      throw new Error("Failed to parse file metadata");
+    }
+
+    const size = Number.parseInt(sizeText, 10);
+    if (!Number.isFinite(size)) {
+      throw new Error(`Invalid metadata size: ${sizeText}`);
+    }
+
+    return {
+      kind: typeFlag === "d" ? "directory" : "file",
+      size,
+      modifiedAt: parseModifiedAt(timestampSeconds),
+      versionToken: buildVersionToken(
+        timestampSeconds,
+        size,
+        typeFlag === "f" && contentHash && contentHash !== "-" ? contentHash : undefined,
+      ),
+    };
+  });
+}
+
 function toFileEntry(
   target: FileExplorerTarget,
   absolutePath: string,
@@ -211,17 +270,16 @@ export class FileExplorerService {
     const names = await target.executor.listDirectory(absolutePath, {
       includeHidden,
     });
-    const entries = (await Promise.all(
-      names.map(async (name) => {
-        const entryPath = pathPosix.join(absolutePath, name);
-        const entryMetadata = await runMetadataCommand(target.executor, entryPath);
+    const entryPaths = names.map((name) => pathPosix.join(absolutePath, name));
+    const metadataEntries = await runMetadataBatchCommand(target.executor, entryPaths);
+    const entries = metadataEntries
+      .map((entryMetadata, index) => {
         if (!entryMetadata) {
           return null;
         }
 
-        return toFileEntry(target, entryPath, entryMetadata);
-      }),
-    ))
+        return toFileEntry(target, entryPaths[index]!, entryMetadata);
+      })
       .filter((entry): entry is WorkspaceFileEntry => entry !== null)
       .sort((left, right) => {
         if (left.kind !== right.kind) {

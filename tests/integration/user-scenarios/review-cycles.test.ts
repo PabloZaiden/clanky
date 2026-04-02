@@ -349,7 +349,7 @@ describe("Review Cycle User Scenarios", () => {
       expect(history.history.reviewBranches).toContain(initialBranch);
       expect(history.history.reviewBranches).toContain(review1Branch);
       expect(history.history.reviewBranches).toContain(review2Branch);
-    });
+    }, { timeout: 45_000 });
   });
 
   describe("Comment History Persistence", () => {

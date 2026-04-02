@@ -275,6 +275,74 @@ describe("Standalone SSH server files API integration", () => {
     expect(readData.content).toBe("server alt root updated\n");
   });
 
+  test("reuses the same credential token across root changes and parent-directory navigation", async () => {
+    const parentRootDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-files-parent-"));
+    const configuredRootDir = join(parentRootDir, "project");
+    try {
+      await mkdir(join(configuredRootDir, "src"), { recursive: true });
+      await writeFile(join(configuredRootDir, "src", "index.ts"), "export const nestedValue = 1;\n");
+      await mkdir(join(parentRootDir, "shared"), { recursive: true });
+      await writeFile(join(parentRootDir, "shared", "notes.txt"), "parent root\n");
+
+      const response = await fetch(`${baseUrl}/api/ssh-servers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Server Files Parent Root",
+          address: "ssh.example.com",
+          username: "deploy",
+          repositoriesBasePath: configuredRootDir,
+        }),
+      });
+      expect(response.status).toBe(201);
+      const createdServer = await response.json() as { config: { id: string } };
+
+      const credentialToken = await issueCredentialToken(createdServer.config.id);
+
+      const initialListResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files`, {
+        headers: {
+          "x-ralpher-ssh-credential-token": credentialToken,
+        },
+      });
+      expect(initialListResponse.ok).toBe(true);
+      const initialListData = await initialListResponse.json() as {
+        entries: Array<{ name: string }>;
+      };
+      expect(initialListData.entries.map((entry) => entry.name)).toEqual(["src"]);
+
+      const parentStartDirectory = encodeURIComponent(parentRootDir);
+      const parentListResponse = await fetch(
+        `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files?startDirectory=${parentStartDirectory}`,
+        {
+          headers: {
+            "x-ralpher-ssh-credential-token": credentialToken,
+          },
+        },
+      );
+      expect(parentListResponse.ok).toBe(true);
+      const parentListData = await parentListResponse.json() as {
+        entries: Array<{ name: string }>;
+      };
+      expect(parentListData.entries.map((entry) => entry.name)).toEqual(["project", "shared"]);
+
+      const parentReadResponse = await fetch(
+        `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/content?path=${encodeURIComponent("shared/notes.txt")}&startDirectory=${parentStartDirectory}`,
+        {
+          headers: {
+            "x-ralpher-ssh-credential-token": credentialToken,
+          },
+        },
+      );
+      expect(parentReadResponse.ok).toBe(true);
+      expect(await parentReadResponse.json()).toMatchObject({
+        content: "parent root\n",
+        file: { path: "shared/notes.txt" },
+      });
+    } finally {
+      await rm(parentRootDir, { recursive: true, force: true });
+    }
+  });
+
   test("returns an explicit error when the standalone server start directory does not exist", async () => {
     const createdServer = await createServer();
     const missingStartDirectory = encodeURIComponent(join(alternateRootDir, "missing-root"));

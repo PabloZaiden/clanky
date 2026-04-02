@@ -465,7 +465,7 @@ describe("WorkspaceFilesView", () => {
     expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
   });
 
-  test("navigates to a custom explorer root from the shared root picker", async () => {
+  test("opens the shared root picker on demand and navigates to a custom explorer root", async () => {
     installEmbeddedSshSessionMock();
     const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
     const workspace = createWorkspace({
@@ -481,7 +481,7 @@ describe("WorkspaceFilesView", () => {
       entries: [],
     }));
 
-    const { getByLabelText, getByRole, user } = renderWithUser(
+    const { getByLabelText, getByRole, queryByLabelText, user } = renderWithUser(
       <WorkspaceFilesView
         workspace={workspace}
         sessions={[]}
@@ -491,8 +491,20 @@ describe("WorkspaceFilesView", () => {
     );
 
     await waitFor(() => {
+      expect(getByRole("button", { name: "Change explorer root" })).toBeInTheDocument();
+    });
+    expect(queryByLabelText("Explorer root directory")).not.toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: "Change explorer root" }));
+
+    await waitFor(() => {
       expect(getByLabelText("Explorer root directory")).toHaveValue("/workspaces/root-picker");
     });
+
+    await user.click(getByRole("button", { name: "Cancel" }));
+    expect(queryByLabelText("Explorer root directory")).not.toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: "Change explorer root" }));
 
     await user.clear(getByLabelText("Explorer root directory"));
     await user.type(getByLabelText("Explorer root directory"), "/var/tmp/project");

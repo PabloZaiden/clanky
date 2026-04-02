@@ -173,7 +173,7 @@ export class SshServerManager {
       if (!credentialToken) {
         throw new Error("SSH credential token is required to delete persistent standalone SSH sessions");
       }
-      const password = sshCredentialManager.consumeToken(server.id, credentialToken);
+      const password = sshCredentialManager.getPasswordForToken(server.id, credentialToken);
       const executor = this.buildExecutor(server, password);
       const result = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand(session)], {
         cwd: "/",
@@ -195,7 +195,7 @@ export class SshServerManager {
     if (!trimmedToken) {
       throw new Error("SSH credential token is required for standalone terminal connections");
     }
-    const password = sshCredentialManager.consumeToken(server.id, trimmedToken);
+    const password = sshCredentialManager.getPasswordForToken(server.id, trimmedToken);
     const target = getSshConnectionTargetFromServer(server, password);
     return {
       session,

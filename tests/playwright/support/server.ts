@@ -17,6 +17,7 @@ import {
   getServerDevelopmentConfig,
   getServerRuntimeConfig,
 } from "../../../src/core/server-config";
+import { sshServerManager } from "../../../src/core/ssh-server-manager";
 import { ensureDataDirectories } from "../../../src/persistence/database";
 import { resetStaleLoops } from "../../../src/persistence/loops";
 import { TestCommandExecutor } from "../../mocks/mock-executor";
@@ -44,6 +45,7 @@ function registerServerShutdown(servers: StoppableServer[]): void {
 }
 
 backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+sshServerManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
 let staticAssetServer: Server<undefined> | undefined;
 

@@ -1,5 +1,11 @@
-import { describe, expect, spyOn, test } from "bun:test";
-import { resolveFileExplorerRootDirectory } from "../../src/core/file-explorer-service";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  fileExplorerService,
+  resolveFileExplorerRootDirectory,
+} from "../../src/core/file-explorer-service";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 describe("resolveFileExplorerRootDirectory", () => {
@@ -43,5 +49,38 @@ describe("resolveFileExplorerRootDirectory", () => {
     ]);
     expect(directoryExistsSpy).not.toHaveBeenCalled();
     expect(fileExistsSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("fileExplorerService.listDirectory", () => {
+  const tempDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(tempDirectories.splice(0).map(async (directory) => {
+      await rm(directory, { recursive: true, force: true });
+    }));
+  });
+
+  test("uses a single metadata batch call for directory entries", async () => {
+    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-service-"));
+    tempDirectories.push(rootDirectory);
+    await mkdir(join(rootDirectory, "src"), { recursive: true });
+    await writeFile(join(rootDirectory, "README.md"), "# hello\n");
+    await writeFile(join(rootDirectory, "package.json"), "{}\n");
+
+    const executor = new TestCommandExecutor();
+    const execSpy = spyOn(executor, "exec");
+
+    const result = await fileExplorerService.listDirectory({
+      id: "workspace-1",
+      rootDirectory,
+      pathScopeLabel: "workspace root",
+      executor,
+    });
+
+    expect(result.entries.map((entry) => entry.name)).toEqual(["src", "package.json", "README.md"]);
+    expect(execSpy).toHaveBeenCalledTimes(2);
+    expect(execSpy.mock.calls[1]?.[0]).toBe("bash");
+    expect(execSpy.mock.calls[1]?.[1]?.[2]).toBe("file-explorer-batch-metadata");
   });
 });

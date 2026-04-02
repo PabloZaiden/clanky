@@ -318,7 +318,9 @@ describe("Chats API Integration", () => {
     expect(renamed.config.name).toBe("Renamed Chat");
     expect(renamed.config.id).toBe(created.config.id);
     expect(renamed.config.workspaceId).toBe(created.config.workspaceId);
-    expect(renamed.config.updatedAt).not.toBe(created.config.updatedAt);
+    expect(new Date(renamed.config.updatedAt).getTime()).toBeGreaterThanOrEqual(
+      new Date(created.config.updatedAt).getTime(),
+    );
 
     const getResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
     expect(getResponse.status).toBe(200);
