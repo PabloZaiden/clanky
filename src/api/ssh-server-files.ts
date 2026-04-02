@@ -91,7 +91,8 @@ async function getServerFileTarget(
   const connection = await sshServerManager.getCommandExecutor(server.config.id, password);
   const rootDirectory = await resolveFileExplorerRootDirectory(
     connection.executor,
-    startDirectory?.trim() || server.config.repositoriesBasePath?.trim() || "/",
+    server.config.repositoriesBasePath?.trim() || "/",
+    startDirectory,
   );
 
   return {

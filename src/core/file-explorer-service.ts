@@ -50,13 +50,41 @@ function normalizeRootDirectory(directory: string): string {
 
 export async function resolveFileExplorerRootDirectory(
   executor: CommandExecutor,
-  requestedRootDirectory: string,
+  defaultRootDirectory: string,
+  requestedStartDirectory?: string,
 ): Promise<string> {
-  const normalizedRootDirectory = normalizeRootDirectory(requestedRootDirectory);
-  if (await executor.directoryExists(normalizedRootDirectory)) {
+  const normalizedDefaultRootDirectory = normalizeRootDirectory(defaultRootDirectory);
+  const trimmedStartDirectory = requestedStartDirectory?.trim();
+  if (!trimmedStartDirectory) {
+    return normalizedDefaultRootDirectory;
+  }
+
+  const normalizedRootDirectory = normalizeRootDirectory(trimmedStartDirectory);
+  if (normalizedRootDirectory === normalizedDefaultRootDirectory) {
     return normalizedRootDirectory;
   }
-  if (await executor.fileExists(normalizedRootDirectory)) {
+
+  const result = await executor.exec(
+    "bash",
+    [
+      "-lc",
+      "if [ -d \"$1\" ]; then printf 'directory'; elif [ -e \"$1\" ]; then printf 'file'; else printf 'missing'; fi",
+      "file-explorer-root-type",
+      normalizedRootDirectory,
+    ],
+    {
+      logFailures: false,
+    },
+  );
+  if (!result.success) {
+    throw new Error(result.stderr.trim() || "Failed to resolve start directory");
+  }
+
+  const pathType = result.stdout.trim();
+  if (pathType === "directory") {
+    return normalizedRootDirectory;
+  }
+  if (pathType === "file") {
     throw new Error("Requested start directory is not a directory");
   }
   throw new Error("Requested start directory does not exist");

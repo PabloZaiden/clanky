@@ -16,7 +16,8 @@ class WorkspaceFileService {
     const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
     const rootDirectory = await resolveFileExplorerRootDirectory(
       executor,
-      startDirectory?.trim() || workspace.directory,
+      workspace.directory,
+      startDirectory,
     );
     return {
       id: workspace.id,
