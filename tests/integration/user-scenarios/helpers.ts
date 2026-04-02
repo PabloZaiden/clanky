@@ -166,9 +166,10 @@ export class ConfigurableMockBackend implements LoopBackend {
 
     (async () => {
       // Wait for the prompt to be sent (with timeout for safety)
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Mock backend timeout waiting for prompt")), 30000)
-      );
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("Mock backend timeout waiting for prompt")), 30000);
+      });
 
       try {
         await Promise.race([promptPromise, timeoutPromise]);
@@ -177,6 +178,10 @@ export class ConfigurableMockBackend implements LoopBackend {
         push({ type: "error", message: String(error) });
         end();
         return;
+      } finally {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
       }
 
       // Get the next response

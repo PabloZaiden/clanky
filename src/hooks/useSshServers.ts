@@ -27,7 +27,7 @@ export interface UseSshServersResult {
   error: string | null;
   refresh: () => Promise<void>;
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
-  updateServer: (id: string, request: UpdateSshServerRequest, password?: string) => Promise<SshServer | null>;
+  updateServer: (id: string, request?: UpdateSshServerRequest, password?: string) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
   createSession: (
     serverId: string,
@@ -77,22 +77,32 @@ export function useSshServers(): UseSshServersResult {
 
   const updateServer = useCallback(async (
     id: string,
-    request: UpdateSshServerRequest,
+    request?: UpdateSshServerRequest,
     password?: string,
   ): Promise<SshServer | null> => {
     try {
       setError(null);
-      const server = await updateSshServerApi(id, request);
+      const currentServer = servers.find((item) => item.config.id === id) ?? null;
+      const server = request && Object.keys(request).length > 0
+        ? await updateSshServerApi(id, request)
+        : currentServer;
+      if (!server) {
+        throw new Error("SSH server not found");
+      }
       if (password?.trim()) {
         await saveStandaloneSshServerPassword(server.config.id, password);
       }
-      setServers((prev) => prev.map((item) => item.config.id === id ? server : item));
+      setServers((prev) =>
+        prev
+          .map((item) => item.config.id === id ? server : item)
+          .sort((left, right) => left.config.name.localeCompare(right.config.name)),
+      );
       return server;
     } catch (err) {
       setError(String(err));
       return null;
     }
-  }, []);
+  }, [servers]);
 
   const deleteServer = useCallback(async (id: string): Promise<boolean> => {
     try {

@@ -10,12 +10,14 @@ export function SshServerView({
   sessions,
   headerOffsetClassName,
   onNavigate,
+  onEditServer,
   onDeleteServer,
 }: {
   server: SshServer;
   sessions: SshServerSession[];
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
+  onEditServer: () => void;
   onDeleteServer: () => Promise<boolean>;
 }) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -61,6 +63,14 @@ export function SshServerView({
               Arise
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={onEditServer}
+            disabled={deleteSubmitting}
+          >
+            Edit Server
+          </Button>
           <Button
             size="sm"
             variant="danger"
