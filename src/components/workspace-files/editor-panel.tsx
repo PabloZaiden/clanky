@@ -18,6 +18,7 @@ function detectLanguage(path: string | undefined): string {
 
 interface WorkspaceEditorPanelProps {
   filePath?: string;
+  pendingFilePath?: string | null;
   value: string;
   loading: boolean;
   saving: boolean;
@@ -30,6 +31,7 @@ interface WorkspaceEditorPanelProps {
 
 export function WorkspaceEditorPanel({
   filePath,
+  pendingFilePath,
   value,
   loading,
   saving,
@@ -39,18 +41,21 @@ export function WorkspaceEditorPanel({
   onRefresh,
   onSave,
 }: WorkspaceEditorPanelProps) {
-  const statusText = dirty
-    ? "Unsaved changes"
-    : autoReloadedAt
-      ? `Auto-reloaded at ${new Date(autoReloadedAt).toLocaleTimeString()}`
-      : null;
+  const displayPath = pendingFilePath ?? filePath;
+  const statusText = loading
+    ? `Loading ${pendingFilePath ?? filePath ?? "file"}...`
+    : dirty
+      ? "Unsaved changes"
+      : autoReloadedAt
+        ? `Auto-reloaded at ${new Date(autoReloadedAt).toLocaleTimeString()}`
+        : null;
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {filePath ?? "No file selected"}
+            {displayPath ?? "No file selected"}
           </h2>
           {statusText && (
             <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -77,7 +82,15 @@ export function WorkspaceEditorPanel({
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {filePath ? (
+        {loading && pendingFilePath ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-400 border-t-transparent dark:border-gray-500" />
+            <div>
+              <p className="font-medium text-gray-700 dark:text-gray-200">Loading selected file</p>
+              <p className="mt-1 break-all">{pendingFilePath}</p>
+            </div>
+          </div>
+        ) : filePath ? (
           <MonacoEditor
             height="100%"
             theme="vs-dark"

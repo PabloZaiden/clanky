@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
-import { renderWithUser, waitFor } from "../helpers/render";
+import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createSshSession, createWorkspace } from "../helpers/factories";
 
 mock.module("@monaco-editor/react", () => ({
@@ -152,6 +152,125 @@ describe("WorkspaceFilesView", () => {
     await waitFor(() => {
       expect(api.calls("/api/workspaces/:id/files/write", "POST")).toHaveLength(1);
     });
+  });
+
+  test("shows the pending file name and ignores stale file responses during rapid switching", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-race",
+      name: "Race Workspace",
+      directory: "/workspaces/race-workspace",
+    });
+
+    let resolveFirstRead: ((value: unknown) => void) | null = null;
+    let resolveSecondRead: ((value: unknown) => void) | null = null;
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry()],
+        src: [
+          createFileEntry({
+            name: "first.ts",
+            path: "src/first.ts",
+            kind: "file",
+            size: 20,
+            versionToken: "100:20",
+          }),
+          createFileEntry({
+            name: "second.ts",
+            path: "src/second.ts",
+            kind: "file",
+            size: 21,
+            versionToken: "101:21",
+          }),
+        ],
+      }),
+    }));
+
+    api.get("/api/workspaces/:id/files/content", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path");
+      if (path === "src/first.ts") {
+        return new Promise((resolve) => {
+          resolveFirstRead = resolve;
+        });
+      }
+      if (path === "src/second.ts") {
+        return new Promise((resolve) => {
+          resolveSecondRead = resolve;
+        });
+      }
+      throw new Error(`Unexpected file path: ${path}`);
+    });
+
+    const { getAllByText, getByLabelText, getByRole, getByText, queryByText, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /src/i }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: /first.ts/i })).toBeInTheDocument();
+      expect(getByRole("button", { name: /second.ts/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /first.ts/i }));
+    await waitFor(() => {
+      expect(getByText("Loading src/first.ts...")).toBeInTheDocument();
+      expect(getByText("Loading selected file")).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /second.ts/i }));
+    await waitFor(() => {
+      expect(getByText("Loading src/second.ts...")).toBeInTheDocument();
+      expect(getAllByText("src/second.ts")).toHaveLength(2);
+    });
+
+    await act(async () => {
+      resolveSecondRead?.({
+        workspaceId: workspace.id,
+        file: createFileEntry({
+          name: "second.ts",
+          path: "src/second.ts",
+          kind: "file",
+          size: 21,
+          versionToken: "101:21",
+        }),
+        content: "export const second = 2;\n",
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText("Monaco editor")).toHaveValue("export const second = 2;\n");
+      expect(queryByText("Loading selected file")).not.toBeInTheDocument();
+    });
+
+    await act(async () => {
+      resolveFirstRead?.({
+        workspaceId: workspace.id,
+        file: createFileEntry({
+          name: "first.ts",
+          path: "src/first.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        }),
+        content: "export const first = 1;\n",
+      });
+      await Promise.resolve();
+    });
+
+    expect(getByLabelText("Monaco editor")).toHaveValue("export const second = 2;\n");
   });
 
   test("shows existing SSH sessions and can create a new terminal session", async () => {
