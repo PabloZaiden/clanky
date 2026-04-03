@@ -11,7 +11,6 @@ import type {
   BranchInfo,
   Workspace,
   CreateLoopRequest,
-  SshServer,
 } from "../../types";
 import { CreateLoopForm } from "../CreateLoopForm";
 import type { CreateLoopFormActionState } from "../CreateLoopForm";
@@ -25,7 +24,6 @@ import { handleCreateLoopSubmit } from "./loop-submit-handlers";
 
 export interface CreateEditLoopModalProps {
   loops: Loop[];
-  sshServers: SshServer[];
 
   showCreateModal: boolean;
   editDraftId: string | null;
@@ -182,7 +180,6 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
           workspaces={props.workspaces}
           workspacesLoading={props.workspacesLoading}
           workspaceError={props.workspaceError}
-          registeredSshServers={props.sshServers}
         />
       )}
     </Modal>

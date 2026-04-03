@@ -89,7 +89,6 @@ export function ComposeView(props: ComposeViewProps) {
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
-        servers={servers}
       />
     );
   }

@@ -95,6 +95,34 @@ describe("CreateLoopForm", () => {
       expect(getByText("Workspace")).toBeInTheDocument();
     });
 
+    test("shows only workspace names in the loop creation dropdown", () => {
+      const workspaces = [
+        createWorkspace({
+          id: "ws-1",
+          name: "Project A",
+          directory: "/workspaces/project-a",
+          serverSettings: {
+            agent: {
+              provider: "opencode",
+              transport: "ssh",
+              hostname: "remote.example",
+              port: 2222,
+            },
+          },
+        }),
+      ];
+      const { getByLabelText } = renderWithUser(
+        <CreateLoopForm {...defaultProps({ workspaces })} />
+      );
+      const select = getByLabelText("Workspace *") as HTMLSelectElement;
+      const workspaceOption = Array.from(select.options).find(
+        (option) => option.value === "ws-1"
+      );
+
+      expect(workspaceOption).toBeDefined();
+      expect(workspaceOption?.text).toBe("Project A");
+    });
+
     test("renders base branch selector", () => {
       const { getByLabelText } = renderWithUser(
         <CreateLoopForm {...defaultProps()} />

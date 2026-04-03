@@ -10,7 +10,6 @@ import {
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
-import type { SshServer } from "../../types/ssh-server";
 
 interface ComposeLoopViewProps {
   composeWorkspace: Workspace | null;
@@ -23,7 +22,6 @@ interface ComposeLoopViewProps {
   workspaces: Workspace[];
   workspacesLoading: boolean;
   workspaceError: string | null;
-  servers: SshServer[];
 }
 
 export function ComposeLoopView(props: ComposeLoopViewProps) {
@@ -38,7 +36,6 @@ export function ComposeLoopView(props: ComposeLoopViewProps) {
     workspaces,
     workspacesLoading,
     workspaceError,
-    servers,
   } = props;
 
   const handleComposeCancel = () =>
@@ -125,7 +122,6 @@ export function ComposeLoopView(props: ComposeLoopViewProps) {
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
-        registeredSshServers={servers}
         renderActions={setComposeActionState}
       />
     </ShellPanel>

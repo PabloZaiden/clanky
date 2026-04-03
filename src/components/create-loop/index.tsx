@@ -45,7 +45,6 @@ export function CreateLoopForm({
   workspaces = [],
   workspacesLoading = false,
   workspaceError = null,
-  registeredSshServers = [],
   renderActions,
   leadingActions,
 }: CreateLoopFormProps) {
@@ -118,7 +117,7 @@ export function CreateLoopForm({
           selectedWorkspaceId={selectedWorkspaceId}
           onSelect={handleWorkspaceSelect}
           error={workspaceError}
-          registeredSshServers={registeredSshServers}
+          showServerDetails={false}
         />
         {planningWarning && !planMode && (
           <div className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-800 dark:text-amber-300">

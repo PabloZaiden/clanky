@@ -37,7 +37,7 @@ describe("WorkspaceSelector", () => {
   });
 
   describe("workspace options", () => {
-    test("renders workspace options with server labels", () => {
+    test("renders workspace options with server labels by default", () => {
       const workspaces = [
         createWorkspace({ name: "Project A" }),
         createWorkspace({
@@ -60,6 +60,37 @@ describe("WorkspaceSelector", () => {
       expect(optionTexts.some((text) => text.includes("Project A"))).toBe(true);
       expect(optionTexts.some((text) => text.includes("Project B"))).toBe(true);
       expect(optionTexts.some((text) => text.includes("remote.example"))).toBe(true);
+    });
+
+    test("renders workspace names only when server details are hidden", () => {
+      const workspaces = [
+        createWorkspace({ name: "Project A" }),
+        createWorkspace({
+          name: "Project B",
+          serverSettings: {
+            agent: {
+              provider: "opencode",
+              transport: "ssh",
+              hostname: "remote.example",
+              port: 2222,
+            },
+          },
+        }),
+      ];
+      const { getByRole } = renderWithUser(
+        <WorkspaceSelector
+          workspaces={workspaces}
+          onSelect={mock()}
+          showServerDetails={false}
+        />
+      );
+      const select = getByRole("combobox") as HTMLSelectElement;
+      const optionTexts = Array.from(select.options).map((option) => option.text);
+      const projectAOptionText = optionTexts.find((text) => text.startsWith("Project A"));
+      const projectBOptionText = optionTexts.find((text) => text.startsWith("Project B"));
+
+      expect(projectAOptionText).toBe("Project A");
+      expect(projectBOptionText).toBe("Project B");
     });
 
     test("keeps the selected workspace in the dropdown without extra detail text", () => {
@@ -85,6 +116,7 @@ describe("WorkspaceSelector", () => {
       );
       const select = getByRole("combobox") as HTMLSelectElement;
       expect(select.value).toBe("ws-1");
+      expect(Array.from(select.options).some((option) => option.text.includes("selected.example"))).toBe(true);
       expect(queryByText("/home/user/project")).not.toBeInTheDocument();
     });
 
