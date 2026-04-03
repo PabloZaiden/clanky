@@ -115,10 +115,12 @@ describe("CreateLoopForm", () => {
         <CreateLoopForm {...defaultProps({ workspaces })} />
       );
       const select = getByLabelText("Workspace *") as HTMLSelectElement;
-      const optionTexts = Array.from(select.options).map((option) => option.text);
+      const workspaceOption = Array.from(select.options).find(
+        (option) => option.value === "ws-1"
+      );
 
-      expect(optionTexts).toContain("Project A");
-      expect(optionTexts.some((text) => text.includes("remote.example"))).toBe(false);
+      expect(workspaceOption).toBeDefined();
+      expect(workspaceOption?.text).toBe("Project A");
     });
 
     test("renders base branch selector", () => {

@@ -111,7 +111,6 @@ export function DashboardModals(props: DashboardModalsProps) {
       {/* Create/Edit modal */}
       <CreateEditLoopModal
         loops={props.loops}
-        sshServers={props.sshServers}
         showCreateModal={props.showCreateModal}
         editDraftId={props.editDraftId}
         formActionState={props.formActionState}

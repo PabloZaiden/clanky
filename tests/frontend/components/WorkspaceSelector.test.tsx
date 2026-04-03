@@ -86,10 +86,11 @@ describe("WorkspaceSelector", () => {
       );
       const select = getByRole("combobox") as HTMLSelectElement;
       const optionTexts = Array.from(select.options).map((option) => option.text);
+      const projectAOptionText = optionTexts.find((text) => text.startsWith("Project A"));
+      const projectBOptionText = optionTexts.find((text) => text.startsWith("Project B"));
 
-      expect(optionTexts).toContain("Project A");
-      expect(optionTexts).toContain("Project B");
-      expect(optionTexts.some((text) => text.includes("remote.example"))).toBe(false);
+      expect(projectAOptionText).toBe("Project A");
+      expect(projectBOptionText).toBe("Project B");
     });
 
     test("keeps the selected workspace in the dropdown without extra detail text", () => {
