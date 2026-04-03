@@ -4,6 +4,7 @@
  * - GET/PUT /api/preferences/last-model
  * - GET/PUT /api/preferences/last-directory
  * - GET/PUT /api/preferences/markdown-rendering
+ * - GET/PUT /api/preferences/file-explorer-full-tree
  * - GET/PUT /api/preferences/log-level
  * - GET/PUT /api/preferences/dashboard-view-mode
  *
@@ -17,6 +18,8 @@ import {
   setLastDirectory,
   getMarkdownRenderingEnabled,
   setMarkdownRenderingEnabled,
+  getFileExplorerFullTreeEnabled,
+  setFileExplorerFullTreeEnabled,
   getLogLevelPreference,
   setLogLevelPreference,
   DEFAULT_LOG_LEVEL,
@@ -36,6 +39,7 @@ import {
   SetLastModelRequestSchema,
   SetLastDirectoryRequestSchema,
   SetMarkdownRenderingRequestSchema,
+  SetFileExplorerFullTreeRequestSchema,
   SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
 } from "../../types/schemas";
@@ -162,6 +166,42 @@ export const preferencesRoutes = {
         return Response.json({ success: true });
       } catch (error) {
         logPreferenceSaveFailure("markdown-rendering", error);
+        return errorResponse("save_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/preferences/file-explorer-full-tree": {
+    /**
+     * GET /api/preferences/file-explorer-full-tree - Get file explorer loading preference.
+     *
+     * @returns Boolean indicating if the explorer should load the full tree at once
+     */
+    async GET(): Promise<Response> {
+      const enabled = await getFileExplorerFullTreeEnabled();
+      return Response.json({ enabled });
+    },
+
+    /**
+     * PUT /api/preferences/file-explorer-full-tree - Set file explorer loading preference.
+     *
+     * Request Body:
+     * - enabled (required): Boolean - true to load the full tree at once, false for lazy loading
+     *
+     * @returns Success response
+     */
+    async PUT(req: Request): Promise<Response> {
+      const result = await parseAndValidate(SetFileExplorerFullTreeRequestSchema, req);
+      if (!result.success) {
+        return result.response;
+      }
+
+      try {
+        await setFileExplorerFullTreeEnabled(result.data.enabled);
+
+        return Response.json({ success: true });
+      } catch (error) {
+        logPreferenceSaveFailure("file-explorer-full-tree", error);
         return errorResponse("save_failed", String(error), 500);
       }
     },

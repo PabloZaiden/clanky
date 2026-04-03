@@ -9,6 +9,9 @@ import type {
 import type { CommandExecutor } from "./command-executor";
 
 const LIST_SEPARATOR = "\t";
+const FULL_TREE_MAX_ENTRIES = 10_000;
+const FULL_TREE_TIMEOUT_MS = 15_000;
+const FULL_TREE_ENTRY_LIMIT_EXIT_CODE = 3;
 
 export interface FileExplorerTarget {
   id: string;
@@ -20,6 +23,10 @@ export interface FileExplorerTarget {
 export interface FileExplorerListResult {
   directory: string;
   entries: WorkspaceFileEntry[];
+}
+
+export interface FileExplorerTreeResult {
+  entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
 }
 
 export interface FileExplorerReadResult {
@@ -250,6 +257,99 @@ function toFileEntry(
   };
 }
 
+function sortEntries(entries: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
+  return [...entries].sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "directory" ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function toEntriesByDirectory(entries: WorkspaceFileEntry[]): Record<string, WorkspaceFileEntry[]> {
+  const entriesByDirectory: Record<string, WorkspaceFileEntry[]> = {
+    "": [],
+  };
+
+  for (const entry of entries) {
+    const parentDirectory = pathPosix.dirname(entry.path);
+    const directoryKey = parentDirectory === "." ? "" : parentDirectory;
+    entriesByDirectory[directoryKey] ??= [];
+    entriesByDirectory[directoryKey].push(entry);
+    if (entry.kind === "directory" && !entriesByDirectory[entry.path]) {
+      entriesByDirectory[entry.path] = [];
+    }
+  }
+
+  for (const [directory, directoryEntries] of Object.entries(entriesByDirectory)) {
+    entriesByDirectory[directory] = sortEntries(directoryEntries);
+  }
+
+  return entriesByDirectory;
+}
+
+async function runFullTreeCommand(
+  target: FileExplorerTarget,
+): Promise<WorkspaceFileEntry[]> {
+  const result = await target.executor.exec(
+    "bash",
+    [
+      "-lc",
+      `root="$1"; maxEntries="$2"; if [ ! -d "$root" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport "$root"; else find "$root" -mindepth 1 -print; fi; }; entryCount=0; while IFS= read -r path; do if [ -z "$path" ] || [ "$path" = "$root" ]; then continue; fi; entryCount=$((entryCount + 1)); if [ "$entryCount" -gt "$maxEntries" ]; then exit ${FULL_TREE_ENTRY_LIMIT_EXIT_CODE}; fi; if [ -d "$path" ]; then typeFlag=d; else typeFlag=f; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' "$path"); modified=$(stat -c '%Y' "$path"); else size=$(stat -f '%z' "$path"); modified=$(stat -f '%m' "$path"); fi; printf '%s\\t%s\\t%s\\t%s\\n' "$path" "$typeFlag" "$size" "$modified"; done < <(emit_paths)`,
+      "file-explorer-tree",
+      target.rootDirectory,
+      String(FULL_TREE_MAX_ENTRIES),
+    ],
+    {
+      logFailures: false,
+      timeout: FULL_TREE_TIMEOUT_MS,
+    },
+  );
+
+  if (!result.success) {
+    if (result.exitCode === 2) {
+      throw new Error("Requested path does not exist");
+    }
+    if (result.exitCode === FULL_TREE_ENTRY_LIMIT_EXIT_CODE) {
+      throw new Error(
+        `File tree is too large to load at once. Choose a narrower explorer root or turn off "Load everything at once" (limit: ${FULL_TREE_MAX_ENTRIES} entries).`,
+      );
+    }
+    if (result.exitCode === 124) {
+      throw new Error(
+        "Loading the full file tree took too long. Choose a narrower explorer root or turn off \"Load everything at once\".",
+      );
+    }
+    throw new Error(result.stderr.trim() || "Failed to load file tree");
+  }
+
+  if (!result.stdout.trim()) {
+    return [];
+  }
+
+  return result.stdout
+    .trimEnd()
+    .split("\n")
+    .map((line) => {
+      const [absolutePath, typeFlag, sizeText, timestampSeconds] = line.split(LIST_SEPARATOR);
+      if (!absolutePath || !typeFlag || !sizeText || !timestampSeconds) {
+        throw new Error("Failed to parse file tree");
+      }
+
+      const size = Number.parseInt(sizeText, 10);
+      if (!Number.isFinite(size)) {
+        throw new Error(`Invalid metadata size: ${sizeText}`);
+      }
+
+      return toFileEntry(target, absolutePath, {
+        kind: typeFlag === "d" ? "directory" : "file",
+        size,
+        modifiedAt: parseModifiedAt(timestampSeconds),
+        versionToken: buildVersionToken(timestampSeconds, size),
+      });
+    });
+}
+
 export class FileExplorerService {
   async listDirectory(
     target: FileExplorerTarget,
@@ -280,17 +380,20 @@ export class FileExplorerService {
 
         return toFileEntry(target, entryPaths[index]!, entryMetadata);
       })
-      .filter((entry): entry is WorkspaceFileEntry => entry !== null)
-      .sort((left, right) => {
-        if (left.kind !== right.kind) {
-          return left.kind === "directory" ? -1 : 1;
-        }
-        return left.name.localeCompare(right.name);
-      });
+      .filter((entry): entry is WorkspaceFileEntry => entry !== null);
 
     return {
       directory: toRelativePath(target.rootDirectory, absolutePath),
-      entries,
+      entries: sortEntries(entries),
+    };
+  }
+
+  async loadTree(
+    target: FileExplorerTarget,
+  ): Promise<FileExplorerTreeResult> {
+    const entries = await runFullTreeCommand(target);
+    return {
+      entriesByDirectory: toEntriesByDirectory(entries),
     };
   }
 

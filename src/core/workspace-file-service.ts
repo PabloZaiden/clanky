@@ -8,6 +8,7 @@ import type {
   Workspace,
   WorkspaceFileListResponse,
   WorkspaceFileReadResponse,
+  WorkspaceFileTreeResponse,
   WorkspaceFileWriteResponse,
 } from "../types";
 
@@ -54,6 +55,19 @@ class WorkspaceFileService {
       workspaceId: workspace.id,
       file: response.file,
       content: response.content,
+    };
+  }
+
+  async loadTree(
+    workspace: Workspace,
+    options?: { startDirectory?: string },
+  ): Promise<WorkspaceFileTreeResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.loadTree(target);
+
+    return {
+      workspaceId: workspace.id,
+      entriesByDirectory: response.entriesByDirectory,
     };
   }
 

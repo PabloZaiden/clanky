@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { SshSession } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
-import { useFileExplorer, useToast } from "../../hooks";
+import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { SshSessionDetails } from "../SshSessionDetails";
 import { Button, GearIcon, Modal } from "../common";
@@ -87,13 +87,18 @@ export function FileExplorerView({
   const [serverPassword, setServerPassword] = useState("");
   const [serverPasswordError, setServerPasswordError] = useState<string | null>(null);
   const [serverPasswordSubmitting, setServerPasswordSubmitting] = useState(false);
-  const explorer = useFileExplorer(target, { enabled: !startupBlockedByPassword });
+  const fullTreePreference = useFileExplorerFullTreePreference();
+  const explorer = useFileExplorer(target, {
+    enabled: !startupBlockedByPassword && !fullTreePreference.loading,
+    loadFullTree: fullTreePreference.enabled,
+  });
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
+  const [loadFullTreeInput, setLoadFullTreeInput] = useState(fullTreePreference.enabled);
   const selectableSessions = useMemo(
     () => sessions.map((session) => ({
       id: session.config.id,
@@ -115,6 +120,10 @@ export function FileExplorerView({
   useEffect(() => {
     setRootInputValue(activeRootDirectory);
   }, [activeRootDirectory]);
+
+  useEffect(() => {
+    setLoadFullTreeInput(fullTreePreference.enabled);
+  }, [fullTreePreference.enabled]);
 
   useEffect(() => {
     const requiresPasswordBeforeStart = target.type === "server" && !hasStoredServerCredential;
@@ -171,6 +180,8 @@ export function FileExplorerView({
   const conflictState = explorer.conflictState;
   const normalizedRootInputValue = rootInputValue.trim();
   const rootChanged = normalizedRootInputValue !== activeRootDirectory;
+  const modeChanged = loadFullTreeInput !== fullTreePreference.enabled;
+  const pickerHasChanges = rootChanged || modeChanged;
   const tabButtonClassName = (pane: ExplorerPane, compact = false) => [
     "inline-flex min-h-[36px] items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition",
     compact ? "w-full justify-center lg:w-9 lg:px-0" : "w-full justify-center",
@@ -207,22 +218,47 @@ export function FileExplorerView({
 
   const openRootPicker = useCallback(() => {
     setRootInputValue(activeRootDirectory);
+    setLoadFullTreeInput(fullTreePreference.enabled);
     setRootPickerOpen(true);
-  }, [activeRootDirectory]);
+  }, [activeRootDirectory, fullTreePreference.enabled]);
 
   const closeRootPicker = useCallback(() => {
     setRootInputValue(activeRootDirectory);
+    setLoadFullTreeInput(fullTreePreference.enabled);
     setRootPickerOpen(false);
-  }, [activeRootDirectory]);
+  }, [activeRootDirectory, fullTreePreference.enabled]);
 
-  const applyRootAndClose = useCallback((directory: string) => {
-    applyRootDirectory(directory);
+  const applyRootAndClose = useCallback(async (directory: string) => {
+    const nextRootChanged = directory.trim() !== activeRootDirectory;
+
+    if (modeChanged) {
+      try {
+        await fullTreePreference.setEnabled(loadFullTreeInput);
+      } catch (error) {
+        toast.error(String(error));
+        return;
+      }
+    }
+
+    if (nextRootChanged) {
+      applyRootDirectory(directory);
+      setRootPickerOpen(false);
+      return;
+    }
+
     setRootPickerOpen(false);
-  }, [applyRootDirectory]);
+  }, [
+    applyRootDirectory,
+    fullTreePreference,
+    loadFullTreeInput,
+    activeRootDirectory,
+    modeChanged,
+    toast,
+  ]);
 
-  const handleRootSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+  const handleRootSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    applyRootAndClose(rootInputValue);
+    await applyRootAndClose(rootInputValue);
   }, [applyRootAndClose, rootInputValue]);
 
   const handleToggleExplorerCollapsed = useCallback(() => {
@@ -468,29 +504,31 @@ export function FileExplorerView({
         description="Choose the directory where the file tree should start."
         size="md"
         footer={(
-          <>
-            <Button variant="ghost" onClick={closeRootPicker}>
-              Cancel
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={activeRootDirectory === defaultRootDirectory.trim()}
-              onClick={() => applyRootAndClose(defaultRootDirectory)}
-            >
-              Reset root
-            </Button>
-            <Button
-              type="submit"
-              form="explorer-root-picker-form"
-              variant="secondary"
-              disabled={!normalizedRootInputValue || !rootChanged}
-            >
-              Apply root
-            </Button>
-          </>
-        )}
-      >
-        <form id="explorer-root-picker-form" className="flex flex-col gap-4" onSubmit={handleRootSubmit}>
+           <>
+             <Button variant="ghost" onClick={closeRootPicker}>
+               Cancel
+             </Button>
+             <Button
+               variant="ghost"
+               disabled={activeRootDirectory === defaultRootDirectory.trim()}
+               onClick={() => {
+                 void applyRootAndClose(defaultRootDirectory);
+               }}
+              >
+               Reset root
+              </Button>
+              <Button
+               type="submit"
+               form="explorer-root-picker-form"
+               variant="secondary"
+               disabled={!normalizedRootInputValue || !pickerHasChanges || fullTreePreference.loading || fullTreePreference.saving}
+              >
+               Apply changes
+              </Button>
+            </>
+          )}
+        >
+         <form id="explorer-root-picker-form" className="flex flex-col gap-4" onSubmit={handleRootSubmit}>
           <div className="space-y-1">
             <label
               htmlFor={`${testIdPrefix}-explorer-root-directory`}
@@ -507,10 +545,31 @@ export function FileExplorerView({
             type="text"
             value={rootInputValue}
             onChange={(event) => setRootInputValue(event.target.value)}
-            aria-label="Explorer root directory"
+           aria-label="Explorer root directory"
             placeholder={defaultRootDirectory}
             className="min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
           />
+          <label className="flex items-start gap-3 rounded-lg border border-gray-200 px-3 py-3 dark:border-gray-700">
+            <input
+              type="checkbox"
+              checked={loadFullTreeInput}
+              onChange={(event) => setLoadFullTreeInput(event.target.checked)}
+              disabled={fullTreePreference.loading || fullTreePreference.saving}
+              aria-describedby={`${testIdPrefix}-load-full-tree-description`}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-900 dark:text-neutral-100"
+            />
+            <span className="space-y-1">
+              <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">
+                Load everything at once
+              </span>
+              <span
+                id={`${testIdPrefix}-load-full-tree-description`}
+                className="block text-xs text-gray-500 dark:text-gray-400"
+              >
+                When enabled, the explorer loads the full tree from this root in one request. Turn it off to keep lazy-loading directories as you expand them.
+              </span>
+            </span>
+          </label>
         </form>
       </Modal>
 

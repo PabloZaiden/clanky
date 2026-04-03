@@ -9,6 +9,7 @@ import {
   type FileExplorerTarget,
   WorkspaceFileConflictError,
   getFileExplorerFileMetadataApi,
+  loadFileExplorerTreeApi,
   listFileExplorerFilesApi,
   readFileExplorerFileApi,
   writeFileExplorerFileApi,
@@ -96,6 +97,7 @@ export function useFileExplorer(
   target: FileExplorerTarget,
   options?: {
     enabled?: boolean;
+    loadFullTree?: boolean;
     pollIntervalMs?: number;
   },
 ): UseFileExplorerResult {
@@ -103,6 +105,7 @@ export function useFileExplorer(
   const targetId = target.id;
   const startDirectory = target.startDirectory;
   const enabled = options?.enabled ?? true;
+  const loadFullTree = options?.loadFullTree ?? true;
   const pollIntervalMs = options?.pollIntervalMs ?? 5000;
   const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileEntry[]>>({});
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
@@ -131,11 +134,20 @@ export function useFileExplorer(
     return await listFileExplorerFilesApi({ type: targetType, id: targetId }, path, { startDirectory });
   }, [startDirectory, targetId, targetType]);
 
+  const loadTree = useCallback(async () => {
+    return await loadFileExplorerTreeApi({ type: targetType, id: targetId }, { startDirectory });
+  }, [startDirectory, targetId, targetType]);
+
   const refreshTree = useCallback(async (path = "") => {
     try {
       setLoadingTree(true);
       setError(null);
       setErrorCode(null);
+      if (loadFullTree) {
+        const response = await loadTree();
+        setDirectoryEntries(response.entriesByDirectory);
+        return;
+      }
       const response = await loadDirectory(path);
       setDirectoryEntries((currentEntries) => ({
         ...currentEntries,
@@ -152,7 +164,7 @@ export function useFileExplorer(
     } finally {
       setLoadingTree(false);
     }
-  }, [applyErrorState, loadDirectory]);
+  }, [applyErrorState, loadDirectory, loadFullTree, loadTree]);
 
   const toggleShowHiddenFiles = useCallback(async () => {
     setShowHiddenFiles((currentValue) => !currentValue);
@@ -297,10 +309,10 @@ export function useFileExplorer(
     }
 
     setExpandedDirectories((currentPaths) => [...currentPaths, path]);
-    if (!directoryEntries[path]) {
+    if (!loadFullTree && !directoryEntries[path]) {
       await refreshTree(path);
     }
-  }, [directoryEntries, expandedDirectories, refreshTree]);
+  }, [directoryEntries, expandedDirectories, loadFullTree, refreshTree]);
 
   const dismissConflict = useCallback(() => {
     setConflictState(null);
@@ -323,6 +335,20 @@ export function useFileExplorer(
       setLoadingTree(false);
       return;
     }
+    if (loadFullTree) {
+      void loadTree()
+        .then((response) => {
+          setDirectoryEntries(response.entriesByDirectory);
+        })
+        .catch((requestError) => {
+          applyErrorState(requestError);
+        })
+        .finally(() => {
+          setLoadingTree(false);
+        });
+      return;
+    }
+
     void loadDirectory("")
       .then((response) => {
         setDirectoryEntries({ "": response.entries });
@@ -333,7 +359,7 @@ export function useFileExplorer(
       .finally(() => {
         setLoadingTree(false);
       });
-  }, [applyErrorState, enabled, loadDirectory, startDirectory, targetId, targetType]);
+  }, [applyErrorState, enabled, loadDirectory, loadFullTree, loadTree, startDirectory, targetId, targetType]);
 
   useEffect(() => {
     if (pollTimerRef.current !== null) {
@@ -390,6 +416,7 @@ export function useFileExplorer(
 export function useWorkspaceFiles(
   workspaceId: string,
   options?: {
+    loadFullTree?: boolean;
     pollIntervalMs?: number;
   },
 ): UseWorkspaceFilesResult {
@@ -399,6 +426,7 @@ export function useWorkspaceFiles(
 export function useServerFiles(
   serverId: string,
   options?: {
+    loadFullTree?: boolean;
     pollIntervalMs?: number;
   },
 ): UseFileExplorerResult {

@@ -129,6 +129,35 @@ describe("workspace files API integration", () => {
     expect(data.file.kind).toBe("file");
   });
 
+  test("loads the full file tree from the selected root", async () => {
+    const workspace = await createWorkspace();
+
+    const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/tree`);
+    expect(response.ok).toBe(true);
+
+    const data = await response.json() as {
+      entriesByDirectory: Record<string, Array<{ name: string; path: string; kind: string }>>;
+    };
+    expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "README.md"]);
+    expect(data.entriesByDirectory["src"]?.map((entry) => entry.path)).toEqual(["src/index.ts"]);
+  });
+
+  test("loads the full file tree from an alternate root", async () => {
+    const workspace = await createWorkspace();
+    const startDirectory = encodeURIComponent(alternateRootDir);
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/tree?startDirectory=${startDirectory}`,
+    );
+    expect(response.ok).toBe(true);
+
+    const data = await response.json() as {
+      entriesByDirectory: Record<string, Array<{ name: string; path: string }>>;
+    };
+    expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["notes"]);
+    expect(data.entriesByDirectory["notes"]?.map((entry) => entry.path)).toEqual(["notes/todo.txt"]);
+  });
+
   test("returns metadata for a single file", async () => {
     const workspace = await createWorkspace();
 

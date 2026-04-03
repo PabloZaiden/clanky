@@ -13,10 +13,12 @@ import type {
   SshServerFileListResponse,
   SshServerFileMetadataResponse,
   SshServerFileReadResponse,
+  SshServerFileTreeResponse,
   SshServerFileWriteResponse,
   WorkspaceFileListResponse,
   WorkspaceFileMetadataResponse,
   WorkspaceFileReadResponse,
+  WorkspaceFileTreeResponse,
   WorkspaceFileWriteResponse,
   WriteWorkspaceFileRequest,
 } from "../types";
@@ -189,6 +191,21 @@ export async function readFileExplorerFileApi(
   return await response.json() as WorkspaceFileReadResponse | SshServerFileReadResponse;
 }
 
+export async function loadFileExplorerTreeApi(
+  target: FileExplorerTarget,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileTreeResponse | SshServerFileTreeResponse> {
+  const searchParams = buildFileExplorerSearchParams(target, {}, options);
+  const response = await appFetch(
+    `${getFileExplorerBasePath(target)}/tree?${searchParams.toString()}`,
+    await buildFileExplorerRequestInit(target, options),
+  );
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.json() as WorkspaceFileTreeResponse | SshServerFileTreeResponse;
+}
+
 export async function getFileExplorerFileMetadataApi(
   target: FileExplorerTarget,
   path: string,
@@ -257,6 +274,14 @@ export async function getWorkspaceFileMetadataApi(
   return response as WorkspaceFileMetadataResponse;
 }
 
+export async function loadWorkspaceFileTreeApi(
+  workspaceId: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileTreeResponse> {
+  const response = await loadFileExplorerTreeApi({ type: "workspace", id: workspaceId }, options);
+  return response as WorkspaceFileTreeResponse;
+}
+
 export async function writeWorkspaceFileApi(
   workspaceId: string,
   request: WriteWorkspaceFileRequest,
@@ -291,6 +316,14 @@ export async function getServerFileMetadataApi(
 ): Promise<SshServerFileMetadataResponse> {
   const response = await getFileExplorerFileMetadataApi({ type: "server", id: serverId }, path, options);
   return response as SshServerFileMetadataResponse;
+}
+
+export async function loadServerFileTreeApi(
+  serverId: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<SshServerFileTreeResponse> {
+  const response = await loadFileExplorerTreeApi({ type: "server", id: serverId }, options);
+  return response as SshServerFileTreeResponse;
 }
 
 export async function writeServerFileApi(

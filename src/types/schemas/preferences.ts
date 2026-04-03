@@ -31,6 +31,14 @@ export const SetMarkdownRenderingRequestSchema = z.object({
 });
 
 /**
+ * Schema for setting file explorer full-tree loading preference
+ * - PUT /api/preferences/file-explorer-full-tree
+ */
+export const SetFileExplorerFullTreeRequestSchema = z.object({
+  enabled: z.boolean({ error: "enabled must be a boolean" }),
+});
+
+/**
  * Schema for setting log level - PUT /api/preferences/log-level
  */
 export const SetLogLevelRequestSchema = z.object({
@@ -43,4 +51,3 @@ export const SetLogLevelRequestSchema = z.object({
 export const SetDashboardViewModeRequestSchema = z.object({
   mode: z.enum(["rows", "cards"], { error: "mode must be 'rows' or 'cards'" }),
 });
-

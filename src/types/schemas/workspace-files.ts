@@ -12,6 +12,10 @@ export const ListWorkspaceFilesRequestSchema = z.object({
   startDirectory: WorkspaceStartDirectorySchema.optional(),
 });
 
+export const GetWorkspaceFileTreeRequestSchema = z.object({
+  startDirectory: WorkspaceStartDirectorySchema.optional(),
+});
+
 export const GetWorkspaceFileRequestSchema = z.object({
   path: WorkspaceRelativePathSchema.min(1, "path is required"),
   startDirectory: WorkspaceStartDirectorySchema.optional(),

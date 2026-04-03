@@ -33,6 +33,11 @@ const VALID_VIEW_MODES: DashboardViewMode[] = ["rows", "cards"];
 export const DEFAULT_VIEW_MODE: DashboardViewMode = "rows";
 
 /**
+ * Default file explorer loading mode when no preference is set.
+ */
+export const DEFAULT_FILE_EXPLORER_FULL_TREE = true;
+
+/**
  * Valid log level names.
  */
 export type LogLevelName = "silly" | "trace" | "debug" | "info" | "warn" | "error" | "fatal";
@@ -57,6 +62,8 @@ export interface UserPreferences {
   lastDirectory?: string;
   /** Whether markdown rendering is enabled (defaults to true) */
   markdownRenderingEnabled?: boolean;
+  /** Whether the file explorer loads the entire tree in one request (defaults to true) */
+  fileExplorerFullTreeEnabled?: boolean;
   /** Log level for both frontend and backend (defaults to "info") */
   logLevel?: LogLevelName;
   /** Dashboard view mode (defaults to "rows") */
@@ -82,7 +89,11 @@ function getPreference(key: string): string | null {
 function setPreference(key: string, value: string): void {
   log.debug("Setting preference", { key });
   const db = getDatabase();
-  const stmt = db.prepare("INSERT OR REPLACE INTO preferences (key, value) VALUES (?, ?)");
+  const stmt = db.prepare(`
+    INSERT INTO preferences (key, value)
+    VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `);
   stmt.run(key, value);
   log.trace("Preference set", { key });
 }
@@ -160,6 +171,32 @@ export async function getMarkdownRenderingEnabled(): Promise<boolean> {
 export async function setMarkdownRenderingEnabled(enabled: boolean): Promise<void> {
   log.debug("Setting markdown rendering preference", { enabled });
   setPreference("markdownRenderingEnabled", String(enabled));
+}
+
+/**
+ * Get whether the file explorer should load the full tree at once.
+ * Defaults to true if not set.
+ */
+export async function getFileExplorerFullTreeEnabled(): Promise<boolean> {
+  log.debug("Getting file explorer full-tree preference");
+  const value = getPreference("fileExplorerFullTreeEnabled");
+  if (value === null) {
+    log.trace("File explorer full-tree preference not set, using default", {
+      default: DEFAULT_FILE_EXPLORER_FULL_TREE,
+    });
+    return DEFAULT_FILE_EXPLORER_FULL_TREE;
+  }
+  const enabled = value === "true";
+  log.trace("File explorer full-tree preference", { enabled });
+  return enabled;
+}
+
+/**
+ * Set whether the file explorer should load the full tree at once.
+ */
+export async function setFileExplorerFullTreeEnabled(enabled: boolean): Promise<void> {
+  log.debug("Setting file explorer full-tree preference", { enabled });
+  setPreference("fileExplorerFullTreeEnabled", String(enabled));
 }
 
 /**

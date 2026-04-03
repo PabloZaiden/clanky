@@ -76,6 +76,9 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   defaultRoute("/api/preferences/markdown-rendering", () => ({
     enabled: true,
   })),
+  defaultRoute("/api/preferences/file-explorer-full-tree", () => ({
+    enabled: true,
+  })),
   defaultRoute("/api/preferences/dashboard-view-mode", () => ({
     mode: "rows",
   })),

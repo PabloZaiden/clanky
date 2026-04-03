@@ -101,7 +101,7 @@ test("explores a standalone SSH server and changes the root to a parent director
       await page.getByRole("button", { name: "Change explorer root" }).click();
       await waitForVisible(page.getByLabel("Explorer root directory"));
       await page.getByLabel("Explorer root directory").fill(parentRoot);
-      await page.getByRole("button", { name: "Apply root" }).click();
+      await page.getByRole("button", { name: "Apply changes" }).click();
 
       await waitForVisible(page.getByRole("button", { name: "project" }));
       await waitForVisible(page.getByRole("button", { name: "shared" }));
