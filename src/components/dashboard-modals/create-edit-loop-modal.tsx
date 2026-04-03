@@ -182,7 +182,6 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
           workspaces={props.workspaces}
           workspacesLoading={props.workspacesLoading}
           workspaceError={props.workspaceError}
-          registeredSshServers={props.sshServers}
         />
       )}
     </Modal>

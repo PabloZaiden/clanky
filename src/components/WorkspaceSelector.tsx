@@ -23,6 +23,8 @@ export interface WorkspaceSelectorProps {
   error?: string | null;
   /** Registered SSH servers for friendly label resolution */
   registeredSshServers?: readonly SshServer[];
+  /** Whether to append server details to each workspace label */
+  showServerDetails?: boolean;
 }
 
 export function WorkspaceSelector({
@@ -32,6 +34,7 @@ export function WorkspaceSelector({
   onSelect,
   error,
   registeredSshServers = [],
+  showServerDetails = true,
 }: WorkspaceSelectorProps) {
   // Handle workspace selection from dropdown
   function handleWorkspaceChange(e: ChangeEvent<HTMLSelectElement>) {
@@ -75,7 +78,9 @@ export function WorkspaceSelector({
         
         {workspaces.map((workspace) => (
           <option key={workspace.id} value={workspace.id}>
-            {`${workspace.name} — ${getServerLabel(workspace.serverSettings, registeredSshServers)}`}
+            {showServerDetails
+              ? `${workspace.name} — ${getServerLabel(workspace.serverSettings, registeredSshServers)}`
+              : workspace.name}
           </option>
         ))}
       </select>

@@ -172,7 +172,6 @@ function renderMainContent(props: ShellMainContentProps) {
           branchesLoading={dashboardData.branchesLoading}
           currentBranch={dashboardData.currentBranch}
           defaultBranch={dashboardData.defaultBranch}
-          registeredSshServers={servers}
           workspaceError={workspaceError}
           workspacesLoading={workspacesLoading}
           headerOffsetClassName={shellHeaderOffsetClassName}

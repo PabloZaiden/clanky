@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { CreateLoopRequest, ModelInfo, BranchInfo, SshServer } from "../../types";
+import type { CreateLoopRequest, ModelInfo, BranchInfo } from "../../types";
 import type { ComposerImageAttachment } from "../../types/message-attachments";
 import type { Workspace } from "../../types/workspace";
 
@@ -90,8 +90,6 @@ export interface CreateLoopFormProps {
   workspacesLoading?: boolean;
   /** Workspace-related error */
   workspaceError?: string | null;
-  /** Registered SSH servers for workspace label resolution */
-  registeredSshServers?: readonly SshServer[];
   /** Transient image attachments for the initial prompt */
   attachments?: ComposerImageAttachment[];
   /** 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Loop, SshServer, Workspace } from "../../types";
+import type { Loop, Workspace } from "../../types";
 import { appFetch } from "../../lib/public-path";
 import { useDashboardData, useToast } from "../../hooks";
 import {
@@ -27,7 +27,6 @@ export function DraftLoopComposer({
   branchesLoading,
   currentBranch,
   defaultBranch,
-  registeredSshServers,
   workspaceError,
   workspacesLoading,
   headerOffsetClassName,
@@ -46,7 +45,6 @@ export function DraftLoopComposer({
   branchesLoading: boolean;
   currentBranch: string;
   defaultBranch: string;
-  registeredSshServers: readonly SshServer[];
   workspaceError: string | null;
   workspacesLoading: boolean;
   headerOffsetClassName?: string;
@@ -255,7 +253,6 @@ export function DraftLoopComposer({
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
-        registeredSshServers={registeredSshServers}
         renderActions={setActionState}
       />
 
