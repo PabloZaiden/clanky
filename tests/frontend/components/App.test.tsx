@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { fireEvent } from "@testing-library/react";
 import { App } from "@/App";
 import type { Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
@@ -609,6 +610,80 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(window.location.hash).toBe("#/loop/loop-1");
     });
+  });
+
+  test("opens a sidebar loop in a new tab on cmd-click", async () => {
+    const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
+    const loop = createLoop({
+      config: { id: "loop-1", name: "Sidebar Loop", workspaceId: workspace.id },
+      state: { status: "running", startedAt: isoNow(), currentIteration: 1 },
+    });
+    setupDefaultApi({ workspaces: [workspace], loops: [loop] });
+
+    const openCalls: Array<{ url: string | URL | undefined; target: string | undefined; features: string | undefined }> = [];
+    const originalWindowOpen = window.open;
+    window.open = ((url?: string | URL, target?: string, features?: string) => {
+      openCalls.push({ url, target, features });
+      return null;
+    }) as typeof window.open;
+
+    try {
+      const { getAllByText } = renderWithUser(<App />);
+
+      await waitFor(() => {
+        expect(getAllByText("Sidebar Loop").length).toBeGreaterThan(0);
+      });
+
+      fireEvent.click(getAllByText("Sidebar Loop")[0]!, { metaKey: true });
+
+      expect(openCalls).toEqual([
+        {
+          url: "http://localhost:3000/#/loop/loop-1",
+          target: "_blank",
+          features: "noopener,noreferrer",
+        },
+      ]);
+      expect(window.location.hash).not.toBe("#/loop/loop-1");
+    } finally {
+      window.open = originalWindowOpen;
+    }
+  });
+
+  test("opens a sidebar loop in a new tab on ctrl-click", async () => {
+    const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
+    const loop = createLoop({
+      config: { id: "loop-1", name: "Sidebar Loop", workspaceId: workspace.id },
+      state: { status: "running", startedAt: isoNow(), currentIteration: 1 },
+    });
+    setupDefaultApi({ workspaces: [workspace], loops: [loop] });
+
+    const openCalls: Array<{ url: string | URL | undefined; target: string | undefined; features: string | undefined }> = [];
+    const originalWindowOpen = window.open;
+    window.open = ((url?: string | URL, target?: string, features?: string) => {
+      openCalls.push({ url, target, features });
+      return null;
+    }) as typeof window.open;
+
+    try {
+      const { getAllByText } = renderWithUser(<App />);
+
+      await waitFor(() => {
+        expect(getAllByText("Sidebar Loop").length).toBeGreaterThan(0);
+      });
+
+      fireEvent.click(getAllByText("Sidebar Loop")[0]!, { ctrlKey: true });
+
+      expect(openCalls).toEqual([
+        {
+          url: "http://localhost:3000/#/loop/loop-1",
+          target: "_blank",
+          features: "noopener,noreferrer",
+        },
+      ]);
+      expect(window.location.hash).not.toBe("#/loop/loop-1");
+    } finally {
+      window.open = originalWindowOpen;
+    }
   });
 
   test("shows 'Plan Ready' for ready planning loops in the sidebar", async () => {

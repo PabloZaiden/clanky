@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { AppShell, type ShellRoute } from "./components/AppShell";
+import { getHashForShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
 import "./index.css";
 
@@ -116,64 +117,8 @@ function parseHash(): ShellRoute {
   return { view: "home" };
 }
 
-function buildExplorerHash(path: string, startDirectory?: string): string {
-  if (!startDirectory) {
-    return path;
-  }
-
-  const searchParams = new URLSearchParams({
-    startDirectory,
-  });
-  return `${path}?${searchParams.toString()}`;
-}
-
 function navigateTo(route: ShellRoute) {
-  switch (route.view) {
-    case "home":
-      window.location.hash = "/";
-      return;
-    case "loop":
-      window.location.hash = `/loop/${route.loopId}`;
-      return;
-    case "ssh":
-      window.location.hash = `/ssh/${route.sshSessionId}`;
-      return;
-    case "chat":
-      window.location.hash = `/chat/${route.chatId}`;
-      return;
-    case "workspace":
-      window.location.hash = `/workspace/${route.workspaceId}`;
-      return;
-    case "workspace-files":
-      window.location.hash = buildExplorerHash(`/workspace-files/${route.workspaceId}`, route.startDirectory);
-      return;
-    case "workspace-settings":
-      window.location.hash = `/workspace-settings/${route.workspaceId}`;
-      return;
-    case "ssh-server":
-      window.location.hash = `/server/${route.serverId}`;
-      return;
-    case "server-files":
-      window.location.hash = buildExplorerHash(`/server-files/${route.serverId}`, route.startDirectory);
-      return;
-    case "server-arise":
-      window.location.hash = `/server-arise/${route.serverId}`;
-      return;
-    case "settings":
-      window.location.hash = "/settings";
-      return;
-    case "rebuild-workspace":
-      window.location.hash = `/rebuild-workspace/${route.workspaceId}`;
-      return;
-    case "restart-workspace":
-      window.location.hash = `/restart-workspace/${route.workspaceId}`;
-      return;
-    case "compose":
-      window.location.hash = route.scopeId
-        ? `/new/${route.kind}/${route.scopeId}`
-        : `/new/${route.kind}`;
-      return;
-  }
+  window.location.hash = getHashForShellRoute(route);
 }
 
 export function App() {

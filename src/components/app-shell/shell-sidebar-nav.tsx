@@ -1,8 +1,10 @@
+import type { MouseEvent } from "react";
 import type { Chat, Loop, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import { getLoopStatusLabel } from "../../utils";
 import { GearIcon, RefreshIcon, SidebarIcon, getChatStatusBadgeVariant, getLoopStatusBadgeVariant } from "../common";
 import type { BadgeVariant } from "../common";
+import { getShellRouteUrl, isModifiedNavigationClick } from "./shell-navigation";
 import { ShellSection, SectionItem, WorkspaceGroupedSectionItems, EmptySection } from "./shell-sidebar";
 import type { ShellRoute, SidebarSectionId, WorkspaceSidebarGroup } from "./shell-types";
 
@@ -61,6 +63,15 @@ export function ShellSidebarNav({
   sessionsByServerId,
   version,
 }: ShellSidebarNavProps) {
+  function handleSidebarItemClick(event: MouseEvent<HTMLButtonElement>, nextRoute: ShellRoute) {
+    if (isModifiedNavigationClick(event)) {
+      window.open(getShellRouteUrl(nextRoute), "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    navigateWithinShell(nextRoute);
+  }
+
   return (
     <aside
       hidden={sidebarCollapsed && !sidebarOpen}
@@ -135,7 +146,7 @@ export function ShellSidebarNav({
                 }
                 title={workspace.name}
                 subtitle={workspace.directory}
-                onClick={() => navigateWithinShell({ view: "workspace", workspaceId: workspace.id })}
+                onClick={(event) => handleSidebarItemClick(event, { view: "workspace", workspaceId: workspace.id })}
               />
             ))
           )}
@@ -167,7 +178,7 @@ export function ShellSidebarNav({
                     loop.state.status,
                     loop.state.planMode?.isPlanReady ?? false,
                   )}
-                  onClick={() => navigateWithinShell({ view: "loop", loopId: loop.config.id })}
+                  onClick={(event) => handleSidebarItemClick(event, { view: "loop", loopId: loop.config.id })}
                 />
               )}
             />
@@ -193,7 +204,7 @@ export function ShellSidebarNav({
                 subtitle={workspaceName}
                 badge={chat.state.status}
                 badgeVariant={getChatStatusBadgeVariant(chat.state.status)}
-                onClick={() => navigateWithinShell({ view: "chat", chatId: chat.config.id })}
+                onClick={(event) => handleSidebarItemClick(event, { view: "chat", chatId: chat.config.id })}
               />
             ))
           )}
@@ -218,7 +229,7 @@ export function ShellSidebarNav({
                 subtitle={session.subtitle}
                 badge={session.badge}
                 badgeVariant={session.badgeVariant}
-                onClick={() => navigateWithinShell({ view: "ssh", sshSessionId: session.id })}
+                onClick={(event) => handleSidebarItemClick(event, { view: "ssh", sshSessionId: session.id })}
               />
             ))
           )}
@@ -242,12 +253,12 @@ export function ShellSidebarNav({
                   key={server.config.id}
                   active={
                     (route.view === "ssh-server" || route.view === "server-files" || route.view === "server-arise")
-                    && route.serverId === server.config.id
+                   && route.serverId === server.config.id
                   }
                   title={server.config.name}
                   subtitle={`${server.config.username}@${server.config.address}`}
                   badge={serverSessions.length > 0 ? String(serverSessions.length) : undefined}
-                  onClick={() => navigateWithinShell({ view: "ssh-server", serverId: server.config.id })}
+                  onClick={(event) => handleSidebarItemClick(event, { view: "ssh-server", serverId: server.config.id })}
                 />
               );
             })

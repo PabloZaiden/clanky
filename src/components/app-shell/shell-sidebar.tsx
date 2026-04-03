@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type MouseEvent } from "react";
 import type { Loop } from "../../types";
 import { StatusBadge, type BadgeVariant } from "../common";
 import { getWorkspaceGroupCollapseKey } from "./shell-types";
@@ -75,7 +75,7 @@ export interface SectionItemProps {
   badge?: string;
   badgeVariant?: BadgeVariant;
   nested?: boolean;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }
 
 export function SectionItem({
