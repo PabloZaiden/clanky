@@ -27,16 +27,26 @@ export function ServerPasswordModal({
     void onSubmit();
   }, [onSubmit]);
 
+  const handleClose = useCallback(() => {
+    if (submitting) {
+      return;
+    }
+
+    onClose();
+  }, [onClose, submitting]);
+
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title="SSH password required"
       description={`Enter the SSH password for ${serverName} before opening its code explorer.`}
       size="sm"
+      showCloseButton={!submitting}
+      closeOnOverlayClick={!submitting}
       footer={(
         <>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" onClick={handleClose} disabled={submitting}>
             Cancel
           </Button>
           <Button

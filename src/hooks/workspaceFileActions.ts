@@ -82,7 +82,6 @@ export async function requireFileExplorerServerCredentialToken(serverId: string)
     if (
       errorCode === "invalid_credential_token"
       || errorCode === "invalid_encrypted_credential"
-      || errorCode === "not_found"
     ) {
       throw createInvalidSshCredentialError();
     }

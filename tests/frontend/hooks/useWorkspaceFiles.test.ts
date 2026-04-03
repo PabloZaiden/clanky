@@ -459,4 +459,31 @@ describe("useWorkspaceFiles", () => {
 
     expect(result.current.error).toBe("The SSH password for this server was rejected. Enter it again.");
   });
+
+  test("preserves not_found server errors instead of classifying them as credential failures", async () => {
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => {
+      throw new MockApiError(404, {
+        error: "not_found",
+        message: "SSH server not found",
+      });
+    });
+
+    await storeSshServerPassword("server-1", "super-secret");
+
+    const { result } = renderHook(() => useServerFiles("server-1"));
+
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    expect(result.current.error).toBe("SSH server not found");
+    expect(result.current.errorCode).toBeNull();
+  });
 });

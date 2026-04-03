@@ -33,8 +33,8 @@ function FileIcon() {
 type ExplorerPane = "editor" | "terminal";
 type ExplorerSession = SshSession | SshServerSession;
 
-function isServerCredentialErrorMessage(message: string | null): boolean {
-  return message?.includes("SSH password for this server") ?? false;
+function isServerCredentialErrorCode(errorCode: string | null): boolean {
+  return errorCode === "missing_ssh_credential" || errorCode === "invalid_ssh_credential";
 }
 
 interface FileExplorerViewProps {
@@ -125,9 +125,7 @@ export function FileExplorerView({
     }
 
     if (
-      explorer.errorCode === "missing_ssh_credential"
-      || explorer.errorCode === "invalid_ssh_credential"
-      || isServerCredentialErrorMessage(explorer.error)
+      isServerCredentialErrorCode(explorer.errorCode)
     ) {
       setServerPassword("");
       setServerPasswordError(explorer.error);

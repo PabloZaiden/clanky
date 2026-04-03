@@ -313,7 +313,7 @@ export async function getStoredSshCredentialToken(
     return exchange.credentialToken;
   } catch (error) {
     const code = (error as Error & { code?: string }).code;
-    if (code === "invalid_encrypted_credential" || code === "not_found") {
+    if (code === "invalid_encrypted_credential") {
       clearStoredSshServerCredential(serverId, dependencies);
       return null;
     }

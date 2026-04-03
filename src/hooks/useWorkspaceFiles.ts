@@ -86,7 +86,6 @@ function getFileExplorerCredentialErrorCode(requestError: unknown): FileExplorer
     errorCode === "invalid_ssh_credential"
     || errorCode === "invalid_credential_token"
     || errorCode === "invalid_encrypted_credential"
-    || errorCode === "not_found"
   ) {
     return "invalid_ssh_credential";
   }

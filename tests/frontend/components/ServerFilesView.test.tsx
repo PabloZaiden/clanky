@@ -170,4 +170,71 @@ describe("ServerFilesView", () => {
       expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(1);
     });
   });
+
+  test("keeps the SSH password modal open while the password submission is still running", async () => {
+    const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+    const onNavigate = mock((_route: unknown) => {});
+    const server = createServer();
+    let resolveCredentialExchange = () => {};
+
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", async () => {
+      await new Promise<void>((resolve) => {
+        resolveCredentialExchange = resolve;
+      });
+      return {
+        credentialToken: "token-123",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      };
+    });
+    api.get("/api/ssh-servers/:id/files", () => ({
+      serverId: server.config.id,
+      directory: "",
+      entries: [],
+    }));
+
+    const { getByLabelText, getByRole, queryByLabelText, queryByText, user } = renderWithUser(
+      <ServerFilesView
+        server={server}
+        sessions={[]}
+        createStandaloneSession={async () => {
+          throw new Error("not used");
+        }}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(queryByText(`Enter the SSH password for ${server.config.name} before opening its code explorer.`))
+        .toBeInTheDocument();
+    });
+
+    await user.type(getByLabelText("SSH password"), "super-secret");
+    await user.click(getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(1);
+      expect(getByRole("button", { name: "Cancel" })).toBeDisabled();
+    });
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+
+    expect(queryByText(`Enter the SSH password for ${server.config.name} before opening its code explorer.`))
+      .toBeInTheDocument();
+    expect(queryByLabelText("Close")).not.toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(0);
+
+    resolveCredentialExchange();
+
+    await waitFor(() => {
+      expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(1);
+    });
+  });
 });
