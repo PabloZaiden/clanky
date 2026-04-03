@@ -253,7 +253,7 @@ describe("ServerFilesView", () => {
     });
   });
 
-  test("falls back to lazy-loading and shows an explorer alert when full-tree loading fails", async () => {
+  test("shows the full-tree loading error without falling back to lazy-loading", async () => {
     const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
     const server = createServer();
 
@@ -274,40 +274,9 @@ describe("ServerFilesView", () => {
         message: "Loading the full file tree took too long. Choose a narrower explorer root or turn off \"Load everything at once\".",
       });
     });
-    api.get("/api/ssh-servers/:id/files", (req) => {
-      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
-      if (path === "src") {
-        return {
-          serverId: server.config.id,
-          directory: "src",
-          entries: [{
-            name: "index.ts",
-            path: "src/index.ts",
-            kind: "file",
-            size: 20,
-            modifiedAt: "2026-01-01T00:00:00.000Z",
-            versionToken: "100:20",
-          }],
-        };
-      }
-
-      return {
-        serverId: server.config.id,
-        directory: "",
-        entries: [{
-          name: "src",
-          path: "src",
-          kind: "directory",
-          size: 0,
-          modifiedAt: "2026-01-01T00:00:00.000Z",
-          versionToken: "100:0",
-        }],
-      };
-    });
-
     await storeSshServerPassword(server.config.id, "super-secret");
 
-    const { getByRole, user } = renderWithUser(
+    const { getByRole, queryByRole } = renderWithUser(
       <ServerFilesView
         server={server}
         sessions={[]}
@@ -319,17 +288,11 @@ describe("ServerFilesView", () => {
     );
 
     await waitFor(() => {
-      expect(getByRole("alert").textContent).toContain("Showing the current directory instead.");
-      expect(getByRole("button", { name: "src" })).toBeInTheDocument();
+      expect(getByRole("alert").textContent).toContain("Loading the full file tree took too long.");
     });
 
-    await user.click(getByRole("button", { name: "src" }));
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "index.ts" })).toBeInTheDocument();
-    });
-
+    expect(queryByRole("button", { name: "src" })).not.toBeInTheDocument();
     expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(1);
-    expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(2);
+    expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(0);
   });
 });

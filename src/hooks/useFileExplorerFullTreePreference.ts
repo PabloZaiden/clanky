@@ -17,7 +17,7 @@ export interface UseFileExplorerFullTreePreferenceResult {
 
 export function useFileExplorerFullTreePreference(): UseFileExplorerFullTreePreferenceResult {
   const log = createLogger("useFileExplorerFullTreePreference");
-  const [enabled, setEnabledState] = useState(false);
+  const [enabled, setEnabledState] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

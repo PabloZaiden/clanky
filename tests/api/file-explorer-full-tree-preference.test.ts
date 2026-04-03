@@ -26,12 +26,12 @@ describe("File Explorer Full Tree Preference API", () => {
     await rm(testDataDir, { recursive: true });
   });
 
-  test("GET returns enabled: false by default", async () => {
+  test("GET returns enabled: true by default", async () => {
     const { preferencesRoutes } = await import("../../src/api/models");
     const response = await preferencesRoutes["/api/preferences/file-explorer-full-tree"].GET();
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ enabled: false });
+    expect(await response.json()).toEqual({ enabled: true });
   });
 
   test("PUT updates the persisted preference", async () => {

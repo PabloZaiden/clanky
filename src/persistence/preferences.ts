@@ -35,7 +35,7 @@ export const DEFAULT_VIEW_MODE: DashboardViewMode = "rows";
 /**
  * Default file explorer loading mode when no preference is set.
  */
-export const DEFAULT_FILE_EXPLORER_FULL_TREE = false;
+export const DEFAULT_FILE_EXPLORER_FULL_TREE = true;
 
 /**
  * Valid log level names.

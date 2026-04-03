@@ -98,16 +98,6 @@ function isAbortError(requestError: unknown): boolean {
   return requestError instanceof DOMException && requestError.name === "AbortError";
 }
 
-function getRequestErrorMessage(requestError: unknown): string {
-  return requestError instanceof Error ? requestError.message : String(requestError);
-}
-
-function canFallbackFromFullTreeError(requestError: unknown): boolean {
-  const message = getRequestErrorMessage(requestError);
-  return message.includes("File tree is too large to load at once")
-    || message.includes("Loading the full file tree took too long");
-}
-
 export function useFileExplorer(
   target: FileExplorerTarget,
   options?: {
@@ -178,31 +168,15 @@ export function useFileExplorer(
     });
   }, []);
 
-  const fallbackToDirectoryListing = useCallback(async (path: string, requestError: unknown) => {
-    const response = await loadDirectory(path);
-    setEffectiveLoadFullTree(false);
-    applyDirectoryResponse(path, response);
-    setError(`${getRequestErrorMessage(requestError)} Showing the current directory instead.`);
-    setErrorCode(null);
-  }, [applyDirectoryResponse, loadDirectory]);
-
   const refreshTree = useCallback(async (path = "") => {
     try {
       setLoadingTree(true);
       setError(null);
       setErrorCode(null);
       if (effectiveLoadFullTree) {
-        try {
-          const response = await loadTree();
-          setDirectoryEntries(response.entriesByDirectory);
-          return;
-        } catch (requestError) {
-          if (!canFallbackFromFullTreeError(requestError)) {
-            throw requestError;
-          }
-          await fallbackToDirectoryListing(path, requestError);
-          return;
-        }
+        const response = await loadTree();
+        setDirectoryEntries(response.entriesByDirectory);
+        return;
       }
       const response = await loadDirectory(path);
       applyDirectoryResponse(path, response);
@@ -211,7 +185,7 @@ export function useFileExplorer(
     } finally {
       setLoadingTree(false);
     }
-  }, [applyDirectoryResponse, applyErrorState, effectiveLoadFullTree, fallbackToDirectoryListing, loadDirectory, loadTree]);
+  }, [applyDirectoryResponse, applyErrorState, effectiveLoadFullTree, loadDirectory, loadTree]);
 
   const toggleShowHiddenFiles = useCallback(async () => {
     setShowHiddenFiles((currentValue) => !currentValue);
@@ -440,16 +414,8 @@ export function useFileExplorer(
         .then((response) => {
           setDirectoryEntries(response.entriesByDirectory);
         })
-        .catch(async (requestError) => {
-          if (!canFallbackFromFullTreeError(requestError)) {
-            applyErrorState(requestError);
-            return;
-          }
-          try {
-            await fallbackToDirectoryListing("", requestError);
-          } catch (fallbackError) {
-            applyErrorState(fallbackError);
-          }
+        .catch((requestError) => {
+          applyErrorState(requestError);
         })
         .finally(() => {
           setLoadingTree(false);
@@ -471,7 +437,6 @@ export function useFileExplorer(
     applyDirectoryResponse,
     applyErrorState,
     enabled,
-    fallbackToDirectoryListing,
     invalidateFileLoad,
     loadDirectory,
     loadFullTree,

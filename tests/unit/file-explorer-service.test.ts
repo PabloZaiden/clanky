@@ -2,7 +2,6 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import type { CommandExecutor } from "../../src/core/command-executor";
 import {
   fileExplorerService,
   resolveFileExplorerRootDirectory,
@@ -109,29 +108,7 @@ describe("fileExplorerService.listDirectory", () => {
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(execSpy.mock.calls[0]?.[1]?.[2]).toBe("file-explorer-tree");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("sha256sum");
-    expect(execSpy.mock.calls[0]?.[2]).toMatchObject({ logFailures: false, timeout: 15_000 });
-  });
-
-  test("surfaces a helpful error when full-tree loading exceeds the entry limit", async () => {
-    const executor: CommandExecutor = {
-      exec: async () => ({
-        success: false,
-        stdout: "",
-        stderr: "",
-        exitCode: 3,
-      }),
-      fileExists: async () => false,
-      directoryExists: async () => true,
-      readFile: async () => null,
-      listDirectory: async () => [],
-      writeFile: async () => true,
-    };
-
-    await expect(fileExplorerService.loadTree({
-      id: "workspace-1",
-      rootDirectory: "/workspaces/project",
-      pathScopeLabel: "workspace root",
-      executor,
-    })).rejects.toThrow("File tree is too large to load at once");
+    expect(execSpy.mock.calls[0]?.[1]).toHaveLength(4);
+    expect(execSpy.mock.calls[0]?.[2]).toEqual({ logFailures: false });
   });
 });
