@@ -187,6 +187,30 @@ describe("ssh-browser-credentials", () => {
     expect(getStoredSshServerCredential("server-1", { storage })).toBeNull();
   });
 
+  test("preserves stored credentials when the server is not found during exchange", async () => {
+    const storage = new MemoryStorage();
+    const encryptedCredential = await encryptSshServerPassword("secret", TEST_PUBLIC_KEY_RESPONSE);
+    saveStoredSshServerCredential("server-1", encryptedCredential, { storage });
+
+    await expect(getStoredSshCredentialToken("server-1", {
+      storage,
+      fetchFn: async (_input, init) => {
+        if (!init?.method || init.method === "GET") {
+          return createJsonResponse(TEST_PUBLIC_KEY_RESPONSE);
+        }
+        return createJsonResponse({
+          error: "not_found",
+          message: "SSH server not found",
+        }, 404);
+      },
+    })).rejects.toMatchObject({
+      message: "SSH server not found",
+      code: "not_found",
+    });
+
+    expect(getStoredSshServerCredential("server-1", { storage })).not.toBeNull();
+  });
+
   test("can explicitly clear stored credentials", async () => {
     const storage = new MemoryStorage();
     const encryptedCredential = await encryptSshServerPassword("secret", TEST_PUBLIC_KEY_RESPONSE);
