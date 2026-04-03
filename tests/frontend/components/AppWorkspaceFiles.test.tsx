@@ -115,7 +115,7 @@ describe("App workspace files route", () => {
     });
   });
 
-  test("renders the loop files screen from the hash route and starts in the loop directory", async () => {
+  test("renders the loop files screen from the hash route, preserving the full loop id", async () => {
     installEmbeddedSshSessionMock();
     const { App } = await import("@/App");
     const workspace = createWorkspace({
@@ -131,10 +131,11 @@ describe("App workspace files route", () => {
         },
       },
     });
-    const worktreePath = "/workspaces/loop-files/.ralph-worktrees/loop-files-1";
+    const loopId = "xloop-files-1";
+    const worktreePath = `/workspaces/loop-files/.ralph-worktrees/${loopId}`;
     const loop = createLoopWithStatus("running", {
       config: {
-        id: "loop-files-1",
+        id: loopId,
         name: "Loop Files Route",
         workspaceId: workspace.id,
         directory: workspace.directory,
@@ -172,7 +173,7 @@ describe("App workspace files route", () => {
     });
 
     const { getByRole } = renderWithUser(<App />, {
-      route: "#/loop-files/loop-files-1",
+      route: `#/loop-files/${loopId}`,
     });
 
     await waitFor(() => {
