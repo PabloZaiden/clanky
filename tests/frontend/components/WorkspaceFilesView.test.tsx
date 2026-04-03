@@ -215,6 +215,63 @@ describe("WorkspaceFilesView", () => {
     });
   });
 
+  test("constrains long terminal names in the shared selector layout", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-ssh-long-name",
+      name: "Long SSH Workspace",
+      directory: "/workspaces/ssh-long-name",
+      serverSettings: {
+        agent: {
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "remote.example",
+          username: "tester",
+        },
+      },
+    });
+    const longSessionName = "Show only workspace names in loop creation worktrees terminal session";
+    const session = createSshSession({
+      config: {
+        id: "session-long-name",
+        workspaceId: workspace.id,
+        name: longSessionName,
+      },
+    });
+
+    api.get("/api/workspaces/:id/files", () => ({
+      workspaceId: workspace.id,
+      directory: "",
+      entries: [],
+    }));
+
+    const { getByRole, getByTestId, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[session]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Terminals" }));
+    await waitFor(() => {
+      expect(getByRole("combobox", { name: "Select workspace SSH session" })).toBeInTheDocument();
+    });
+
+    const terminalControls = getByTestId("workspace-terminal-controls");
+    const terminalSelect = getByTestId("workspace-terminal-select");
+
+    expect(terminalControls).toHaveClass("flex-col");
+    expect(terminalControls).toHaveClass("md:flex-row");
+    expect(terminalSelect).toHaveClass("w-full");
+    expect(terminalSelect).toHaveClass("max-w-full");
+    expect(terminalSelect).toHaveClass("md:w-[20rem]");
+    expect(terminalSelect).toHaveClass("lg:w-[24rem]");
+    expect(terminalSelect).toHaveAttribute("title", longSessionName);
+  });
+
   test("can collapse and expand the file explorer pane", async () => {
     installEmbeddedSshSessionMock();
     const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");

@@ -101,6 +101,10 @@ export function FileExplorerView({
     })),
     [sessions],
   );
+  const selectedSessionName = useMemo(
+    () => selectableSessions.find((session) => session.id === selectedSessionId)?.name ?? "",
+    [selectableSessions, selectedSessionId],
+  );
 
   useEffect(() => {
     if (!selectedSessionId && selectableSessions[0]?.id) {
@@ -375,15 +379,20 @@ export function FileExplorerView({
             />
           ) : (
             <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800">
+              <div className="flex flex-col items-stretch gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800 md:flex-row md:items-center md:justify-between">
                 <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Integrated terminal</h2>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div
+                  data-testid={`${testIdPrefix}-terminal-controls`}
+                  className="flex min-w-0 flex-col items-stretch gap-2 md:flex-row md:items-center md:justify-end"
+                >
                   <select
+                    data-testid={`${testIdPrefix}-terminal-select`}
                     value={selectedSessionId}
                     onChange={(event) => setSelectedSessionId(event.target.value)}
                     disabled={!hasTerminal || selectableSessions.length === 0}
-                    className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
+                    className="min-w-0 w-full max-w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 md:w-[20rem] lg:w-[24rem] dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
                     aria-label={terminalSelectLabel}
+                    title={selectedSessionName || undefined}
                   >
                     <option value="">Select SSH session</option>
                     {selectableSessions.map((session) => (
