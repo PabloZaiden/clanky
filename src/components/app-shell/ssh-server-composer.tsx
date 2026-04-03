@@ -76,10 +76,11 @@ export function SshServerComposer({
 
     setSubmitting(true);
     try {
+      const updateRequest = initialServer ? buildSshServerUpdateRequest(initialServer, nextValues) : undefined;
       const server = initialServer
         ? await onUpdateServer(
           initialServer.config.id,
-          buildSshServerUpdateRequest(initialServer, nextValues),
+          updateRequest,
           nextValues.password,
         )
         : await onCreateServer(

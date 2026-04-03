@@ -31,19 +31,19 @@ export function DeleteSshServerSection({
     setDeleting(true);
     try {
       const deleted = await onDeleteServer();
-      setShowConfirm(false);
       if (!deleted) {
+        setDeleting(false);
         toast.error(`Failed to delete SSH server "${server.config.name}"`);
         return;
       }
 
+      setShowConfirm(false);
+      setDeleting(false);
       toast.success(`Deleted SSH server "${server.config.name}"`);
       onDeleted?.();
     } catch (error) {
-      setShowConfirm(false);
-      toast.error(String(error));
-    } finally {
       setDeleting(false);
+      toast.error(String(error));
     }
   }
 
@@ -83,4 +83,3 @@ export function DeleteSshServerSection({
     </div>
   );
 }
-

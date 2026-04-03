@@ -79,6 +79,7 @@ export function SshServerSettingsForm({
     }
 
     setSubmitting(true);
+    let shouldNotifySaved = false;
     try {
       const updatedServer = await onSave(server.config.id, request, trimmedValues.password);
       if (!updatedServer) {
@@ -87,9 +88,13 @@ export function SshServerSettingsForm({
       }
 
       toast.success(`Saved SSH server "${updatedServer.config.name}"`);
-      onSaved?.();
+      shouldNotifySaved = true;
     } finally {
       setSubmitting(false);
+    }
+
+    if (shouldNotifySaved) {
+      onSaved?.();
     }
   }
 
@@ -115,4 +120,3 @@ export function SshServerSettingsForm({
     </>
   );
 }
-
