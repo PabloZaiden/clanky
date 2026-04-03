@@ -3,7 +3,10 @@
  */
 
 import { appFetch } from "../lib/public-path";
-import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
+import {
+  getStoredSshCredentialToken,
+  getStoredSshServerCredential,
+} from "../lib/ssh-browser-credentials";
 import type {
   WorkspaceFileConflictResponse,
   WorkspaceFileEntry,
@@ -43,6 +46,55 @@ export class WorkspaceFileConflictError extends Error {
   }
 }
 
+export type FileExplorerCredentialErrorCode = "missing_ssh_credential" | "invalid_ssh_credential";
+
+export class FileExplorerCredentialError extends Error {
+  readonly code: FileExplorerCredentialErrorCode;
+
+  constructor(message: string, code: FileExplorerCredentialErrorCode) {
+    super(message);
+    this.name = "FileExplorerCredentialError";
+    this.code = code;
+  }
+}
+
+function createMissingSshCredentialError(): FileExplorerCredentialError {
+  return new FileExplorerCredentialError("Enter the SSH password for this server.", "missing_ssh_credential");
+}
+
+function createInvalidSshCredentialError(message?: string): FileExplorerCredentialError {
+  return new FileExplorerCredentialError(
+    message ?? "The SSH password for this server was rejected. Enter it again.",
+    "invalid_ssh_credential",
+  );
+}
+
+export async function requireFileExplorerServerCredentialToken(serverId: string): Promise<string> {
+  const hadStoredCredential = getStoredSshServerCredential(serverId) !== null;
+
+  try {
+    const credentialToken = await getStoredSshCredentialToken(serverId);
+    if (credentialToken) {
+      return credentialToken;
+    }
+  } catch (error) {
+    const errorCode = (error as Error & { code?: string }).code;
+    if (
+      errorCode === "invalid_credential_token"
+      || errorCode === "invalid_encrypted_credential"
+    ) {
+      throw createInvalidSshCredentialError();
+    }
+    throw error;
+  }
+
+  if (hadStoredCredential) {
+    throw createInvalidSshCredentialError();
+  }
+
+  throw createMissingSshCredentialError();
+}
+
 async function parseWorkspaceFileError(response: Response): Promise<never> {
   let body: ApiErrorBody | null = null;
   try {
@@ -56,6 +108,10 @@ async function parseWorkspaceFileError(response: Response): Promise<never> {
     throw new WorkspaceFileConflictError(conflict.message, conflict.currentFile);
   }
 
+  if (body?.error === "invalid_credential_token") {
+    throw createInvalidSshCredentialError("The SSH password for this server expired or was rejected. Enter it again.");
+  }
+
   throw new Error(body?.message ?? `File explorer request failed with status ${response.status}`);
 }
 
@@ -67,10 +123,7 @@ async function buildFileExplorerRequestInit(
   const headers = new Headers(init?.headers);
 
   if (target.type === "server") {
-    const credentialToken = await getStoredSshCredentialToken(target.id);
-    if (!credentialToken) {
-      throw new Error("Enter the SSH password for this server.");
-    }
+    const credentialToken = await requireFileExplorerServerCredentialToken(target.id);
     headers.set("x-ralpher-ssh-credential-token", credentialToken);
   }
 

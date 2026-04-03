@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { listServerFilesApi, writeServerFileApi } from "@/hooks/workspaceFileActions";
-import { storeSshServerPassword } from "@/lib/ssh-browser-credentials";
+import { clearStoredSshServerCredential, storeSshServerPassword } from "@/lib/ssh-browser-credentials";
 import { createMockApi } from "../helpers/mock-api";
 
 const api = createMockApi();
@@ -23,6 +23,8 @@ Vrt5VIv2q/QnK29KDywKJrsCAwEAAQ==
 beforeEach(() => {
   api.reset();
   api.install();
+  window.localStorage.clear();
+  clearStoredSshServerCredential("server-1");
 });
 
 afterEach(() => {
