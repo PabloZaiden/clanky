@@ -2,13 +2,17 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import type { SshSession } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useToast } from "../../hooks";
+import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { SshSessionDetails } from "../SshSessionDetails";
 import { Button, GearIcon, Modal } from "../common";
+import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
 import { WorkspaceEditorPanel } from "../workspace-files/editor-panel";
 import { WorkspaceFileConflictModal } from "../workspace-files/conflict-modal";
+import { ServerPasswordModal } from "./server-password-modal";
+import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 
 function TerminalIcon() {
   return (
@@ -29,6 +33,10 @@ function FileIcon() {
 type ExplorerPane = "editor" | "terminal";
 type ExplorerSession = SshSession | SshServerSession;
 
+function isServerCredentialErrorMessage(message: string | null): boolean {
+  return message?.includes("SSH password for this server") ?? false;
+}
+
 interface FileExplorerViewProps {
   title: string;
   description: string;
@@ -44,6 +52,7 @@ interface FileExplorerViewProps {
   terminalSelectLabel: string;
   onCreateTerminal: () => Promise<ExplorerSession>;
   testIdPrefix: "workspace" | "server";
+  credentialPromptName?: string;
 }
 
 export function FileExplorerView({
@@ -61,9 +70,22 @@ export function FileExplorerView({
   terminalSelectLabel,
   onCreateTerminal,
   testIdPrefix,
+  credentialPromptName,
 }: FileExplorerViewProps) {
   const toast = useToast();
-  const explorer = useFileExplorer(target);
+  const hasStoredServerCredential = target.type === "server"
+    ? getStoredSshServerCredential(target.id) !== null
+    : true;
+  const [startupBlockedByPassword, setStartupBlockedByPassword] = useState(
+    target.type === "server" && !hasStoredServerCredential,
+  );
+  const [serverPasswordModalOpen, setServerPasswordModalOpen] = useState(
+    target.type === "server" && !hasStoredServerCredential,
+  );
+  const [serverPassword, setServerPassword] = useState("");
+  const [serverPasswordError, setServerPasswordError] = useState<string | null>(null);
+  const [serverPasswordSubmitting, setServerPasswordSubmitting] = useState(false);
+  const explorer = useFileExplorer(target, { enabled: !startupBlockedByPassword });
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
@@ -87,6 +109,31 @@ export function FileExplorerView({
   useEffect(() => {
     setRootInputValue(activeRootDirectory);
   }, [activeRootDirectory]);
+
+  useEffect(() => {
+    const requiresPasswordBeforeStart = target.type === "server" && !hasStoredServerCredential;
+    setStartupBlockedByPassword(requiresPasswordBeforeStart);
+    setServerPasswordModalOpen(requiresPasswordBeforeStart);
+    setServerPassword("");
+    setServerPasswordError(null);
+    setServerPasswordSubmitting(false);
+  }, [hasStoredServerCredential, target.id, target.type]);
+
+  useEffect(() => {
+    if (target.type !== "server") {
+      return;
+    }
+
+    if (
+      explorer.errorCode === "missing_ssh_credential"
+      || explorer.errorCode === "invalid_ssh_credential"
+      || isServerCredentialErrorMessage(explorer.error)
+    ) {
+      setServerPassword("");
+      setServerPasswordError(explorer.error);
+      setServerPasswordModalOpen(true);
+    }
+  }, [explorer.error, explorer.errorCode, target.type]);
 
   async function handleCreateTerminal() {
     try {
@@ -174,6 +221,46 @@ export function FileExplorerView({
   const handleToggleExplorerCollapsed = useCallback(() => {
     setExplorerCollapsed((current) => !current);
   }, []);
+
+  const handleCloseServerPasswordModal = useCallback(() => {
+    setServerPasswordModalOpen(false);
+    setServerPassword("");
+    setServerPasswordError(null);
+    if (startupBlockedByPassword) {
+      onNavigate(backRoute);
+    }
+  }, [backRoute, onNavigate, startupBlockedByPassword]);
+
+  const handleSubmitServerPassword = useCallback(async () => {
+    if (target.type !== "server") {
+      return;
+    }
+
+    const trimmedPassword = serverPassword.trim();
+    if (!trimmedPassword) {
+      setServerPasswordError("Enter the SSH password for this server.");
+      return;
+    }
+
+    try {
+      setServerPasswordSubmitting(true);
+      setServerPasswordError(null);
+      await storeSshServerPassword(target.id, trimmedPassword);
+      await requireFileExplorerServerCredentialToken(target.id);
+      const shouldStartExplorer = startupBlockedByPassword;
+      setStartupBlockedByPassword(false);
+      setServerPassword("");
+      setServerPasswordModalOpen(false);
+
+      if (!shouldStartExplorer) {
+        await explorer.refreshTree(explorer.currentDirectory);
+      }
+    } catch (error) {
+      setServerPasswordError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setServerPasswordSubmitting(false);
+    }
+  }, [explorer, serverPassword, startupBlockedByPassword, target]);
 
   const handleOpenFile = useCallback(async (path: string) => {
     setActivePane("editor");
@@ -414,6 +501,17 @@ export function FileExplorerView({
           />
         </form>
       </Modal>
+
+      <ServerPasswordModal
+        isOpen={serverPasswordModalOpen}
+        serverName={credentialPromptName ?? title}
+        password={serverPassword}
+        error={serverPasswordError}
+        submitting={serverPasswordSubmitting}
+        onPasswordChange={setServerPassword}
+        onClose={handleCloseServerPasswordModal}
+        onSubmit={handleSubmitServerPassword}
+      />
     </ShellPanel>
   );
 }

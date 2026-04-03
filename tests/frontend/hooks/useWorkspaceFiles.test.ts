@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useServerFiles, useWorkspaceFiles } from "@/hooks";
-import { storeSshServerPassword } from "@/lib/ssh-browser-credentials";
+import { clearStoredSshServerCredential, storeSshServerPassword } from "@/lib/ssh-browser-credentials";
 import { createMockApi, MockApiError } from "../helpers/mock-api";
 
 const api = createMockApi();
@@ -42,6 +42,8 @@ describe("useWorkspaceFiles", () => {
   beforeEach(() => {
     api.reset();
     api.install();
+    window.localStorage.clear();
+    clearStoredSshServerCredential("server-1");
   });
 
   afterEach(() => {
@@ -430,5 +432,31 @@ describe("useWorkspaceFiles", () => {
 
     expect(api.calls("/api/ssh-servers/:id/public-key", "GET")).toHaveLength(publicKeyCallCountBeforePolling);
     expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(credentialCallCountBeforePolling);
+  });
+
+  test("surfaces an invalid SSH credential error when the stored password is rejected", async () => {
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => {
+      throw new MockApiError(400, {
+        error: "invalid_encrypted_credential",
+        message: "Invalid SSH password",
+      });
+    });
+
+    await storeSshServerPassword("server-1", "wrong-password");
+
+    const { result } = renderHook(() => useServerFiles("server-1"));
+
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    expect(result.current.error).toBe("The SSH password for this server was rejected. Enter it again.");
   });
 });
