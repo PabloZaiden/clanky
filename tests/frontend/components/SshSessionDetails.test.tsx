@@ -2204,4 +2204,32 @@ describe("SshSessionDetails", () => {
     expect(lastTerminal).toBe(terminalBeforeToggle);
     expect(lastTerminal!.element).not.toBeNull();
   });
+
+  test("constrains the forced focus terminal layout to the terminal container", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "Embedded Focus Terminal" } }),
+    );
+
+    renderWithUser(
+      <div className="flex h-[480px] min-h-0 flex-col overflow-hidden">
+        <SshSessionDetails sshSessionId="ssh-focus-embedded" forcedFocusMode={true} />
+      </div>,
+    );
+
+    await waitFor(() => {
+      expect(lastTerminal).not.toBeNull();
+      expect(lastTerminal?.canvas).not.toBeNull();
+    });
+
+    const terminalContainer = lastTerminal!.canvas!.parentElement;
+    expect(terminalContainer).not.toBeNull();
+
+    const terminalWrapper = terminalContainer!.parentElement;
+    expect(terminalWrapper).not.toBeNull();
+    expect(terminalWrapper!.className).toContain("overflow-hidden");
+
+    const mainContent = terminalWrapper!.parentElement;
+    expect(mainContent).not.toBeNull();
+    expect(mainContent!.className).toContain("overflow-hidden");
+  });
 });

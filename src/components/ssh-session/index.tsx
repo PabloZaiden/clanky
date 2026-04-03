@@ -315,7 +315,7 @@ export function SshSessionDetails({
       <div
         className={
           isFocusMode
-            ? "flex min-h-0 flex-1 flex-col"
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden"
             : "flex-1 min-h-0 flex flex-col gap-2 overflow-hidden p-2 sm:p-3"
         }
       >
@@ -347,8 +347,8 @@ export function SshSessionDetails({
         <div
           className={
             isFocusMode
-              ? "min-h-0 flex flex-1 flex-col overflow-visible bg-[#1e1e1e]"
-              : "min-h-0 flex flex-1 flex-col overflow-visible rounded-sm border border-gray-200 dark:border-gray-700 bg-[#1e1e1e] dark:bg-[#1e1e1e]"
+              ? "min-h-0 flex flex-1 flex-col overflow-hidden bg-[#1e1e1e]"
+              : "min-h-0 flex flex-1 flex-col overflow-hidden rounded-sm border border-gray-200 dark:border-gray-700 bg-[#1e1e1e] dark:bg-[#1e1e1e]"
           }
         >
           <div
