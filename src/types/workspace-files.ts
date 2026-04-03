@@ -5,6 +5,7 @@
 import type { z } from "zod";
 import {
   GetWorkspaceFileRequestSchema,
+  GetWorkspaceFileTreeRequestSchema,
   ListWorkspaceFilesRequestSchema,
   WriteWorkspaceFileRequestSchema,
 } from "./schemas/workspace-files";
@@ -24,6 +25,11 @@ export interface WorkspaceFileListResponse {
   workspaceId: string;
   directory: string;
   entries: WorkspaceFileEntry[];
+}
+
+export interface WorkspaceFileTreeResponse {
+  workspaceId: string;
+  entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
 }
 
 export interface WorkspaceFileReadResponse {
@@ -48,6 +54,11 @@ export interface SshServerFileListResponse {
   serverId: string;
   directory: string;
   entries: WorkspaceFileEntry[];
+}
+
+export interface SshServerFileTreeResponse {
+  serverId: string;
+  entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
 }
 
 export interface SshServerFileReadResponse {
@@ -75,5 +86,6 @@ export interface WorkspaceFileConflictResponse {
 }
 
 export type ListWorkspaceFilesRequest = z.input<typeof ListWorkspaceFilesRequestSchema>;
+export type GetWorkspaceFileTreeRequest = z.input<typeof GetWorkspaceFileTreeRequestSchema>;
 export type GetWorkspaceFileRequest = z.input<typeof GetWorkspaceFileRequestSchema>;
 export type WriteWorkspaceFileRequest = z.input<typeof WriteWorkspaceFileRequestSchema>;

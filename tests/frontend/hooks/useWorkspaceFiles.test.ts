@@ -38,6 +38,12 @@ function createDirectoryEntry(overrides?: Partial<{
   };
 }
 
+function createTreeResponse(
+  entriesByDirectory: Record<string, ReturnType<typeof createDirectoryEntry>[]>,
+) {
+  return { entriesByDirectory };
+}
+
 describe("useWorkspaceFiles", () => {
   beforeEach(() => {
     api.reset();
@@ -51,19 +57,21 @@ describe("useWorkspaceFiles", () => {
   });
 
   test("loads the root tree on mount", async () => {
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: "workspace-1",
-      directory: "",
-      entries: [
-        createDirectoryEntry(),
-        createDirectoryEntry({
-          name: "README.md",
-          path: "README.md",
-          kind: "file",
-          size: 10,
-          versionToken: "100:10",
-        }),
-      ],
+      ...createTreeResponse({
+        "": [
+          createDirectoryEntry(),
+          createDirectoryEntry({
+            name: "README.md",
+            path: "README.md",
+            kind: "file",
+            size: 10,
+            versionToken: "100:10",
+          }),
+        ],
+        src: [],
+      }),
     }));
 
     const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
@@ -76,6 +84,64 @@ describe("useWorkspaceFiles", () => {
   });
 
   test("toggles hidden files locally without refreshing expanded directories", async () => {
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: "workspace-1",
+      ...createTreeResponse({
+        "": [
+          createDirectoryEntry(),
+          createDirectoryEntry({
+            name: ".env",
+            path: ".env",
+            kind: "file",
+            size: 10,
+            versionToken: "100:10",
+          }),
+        ],
+        src: [
+          createDirectoryEntry({
+            name: ".secret.ts",
+            path: "src/.secret.ts",
+            kind: "file",
+            size: 5,
+            versionToken: "101:5",
+          }),
+          createDirectoryEntry({
+            name: "index.ts",
+            path: "src/index.ts",
+            kind: "file",
+            size: 20,
+            versionToken: "100:20",
+          }),
+        ],
+      }),
+    }));
+
+    const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
+
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.toggleDirectory("src");
+    });
+
+    expect(result.current.directoryEntries[""]?.map((entry) => entry.name)).toEqual(["src", ".env"]);
+    expect(result.current.directoryEntries["src"]?.map((entry) => entry.name)).toEqual([".secret.ts", "index.ts"]);
+    expect(result.current.showHiddenFiles).toBe(true);
+    expect(api.calls("/api/workspaces/:id/files/tree", "GET")).toHaveLength(1);
+
+    await act(async () => {
+      await result.current.toggleShowHiddenFiles();
+    });
+
+    expect(result.current.showHiddenFiles).toBe(false);
+    expect(result.current.directoryEntries[""]?.map((entry) => entry.name)).toEqual(["src", ".env"]);
+    expect(result.current.directoryEntries["src"]?.map((entry) => entry.name)).toEqual([".secret.ts", "index.ts"]);
+    expect(api.calls("/api/workspaces/:id/files/tree", "GET")).toHaveLength(1);
+  });
+
+  test("supports opting back into lazy-loading mode", async () => {
     api.get("/api/workspaces/:id/files", (req) => {
       const url = new URL(req.url, "http://localhost");
       const path = url.searchParams.get("path") ?? "";
@@ -119,7 +185,7 @@ describe("useWorkspaceFiles", () => {
       };
     });
 
-    const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
+    const { result } = renderHook(() => useWorkspaceFiles("workspace-1", { loadFullTree: false }));
 
     await waitFor(() => {
       expect(result.current.loadingTree).toBe(false);
@@ -145,16 +211,17 @@ describe("useWorkspaceFiles", () => {
   });
 
   test("opens a file, tracks dirty state, and saves successfully", async () => {
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: "workspace-1",
-      directory: "",
-      entries: [createDirectoryEntry({
-        name: "index.ts",
-        path: "src/index.ts",
-        kind: "file",
-        size: 20,
-        versionToken: "100:20",
-      })],
+      ...createTreeResponse({
+        "": [createDirectoryEntry({
+          name: "index.ts",
+          path: "src/index.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        })],
+      }),
     }));
     api.get("/api/workspaces/:id/files/content", () => ({
       workspaceId: "workspace-1",
@@ -204,10 +271,11 @@ describe("useWorkspaceFiles", () => {
   });
 
   test("surfaces save conflicts", async () => {
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: "workspace-1",
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
     api.get("/api/workspaces/:id/files/content", () => ({
       workspaceId: "workspace-1",
@@ -256,10 +324,11 @@ describe("useWorkspaceFiles", () => {
   });
 
   test("auto-reloads clean files when metadata changes externally", async () => {
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: "workspace-1",
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
     api.get("/api/workspaces/:id/files/content", (req) => ({
       workspaceId: "workspace-1",
@@ -324,10 +393,11 @@ describe("useWorkspaceFiles", () => {
   });
 
   test("prompts instead of auto-reloading when local edits exist", async () => {
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: "workspace-1",
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
     api.get("/api/workspaces/:id/files/content", () => ({
       workspaceId: "workspace-1",
@@ -384,10 +454,11 @@ describe("useWorkspaceFiles", () => {
       credentialToken: "token-123",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     }));
-    api.get("/api/ssh-servers/:id/files", () => ({
+    api.get("/api/ssh-servers/:id/files/tree", () => ({
       serverId: "server-1",
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
     api.get("/api/ssh-servers/:id/files/content", () => ({
       serverId: "server-1",

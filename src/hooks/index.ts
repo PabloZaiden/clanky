@@ -12,6 +12,10 @@ export { useSshServers, type UseSshServersResult } from "./useSshServers";
 export { useLoopPortForwards, type UseLoopPortForwardsResult } from "./useLoopPortForwards";
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useMarkdownPreference, type UseMarkdownPreferenceResult } from "./useMarkdownPreference";
+export {
+  useFileExplorerFullTreePreference,
+  type UseFileExplorerFullTreePreferenceResult,
+} from "./useFileExplorerFullTreePreference";
 export { useLogLevelPreference, type UseLogLevelPreferenceResult } from "./useLogLevelPreference";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
 export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdStatus, type OptimizeResult } from "./useAgentsMdOptimizer";

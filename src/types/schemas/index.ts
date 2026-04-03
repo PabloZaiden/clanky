@@ -65,6 +65,7 @@ export {
   SetLastModelRequestSchema,
   SetLastDirectoryRequestSchema,
   SetMarkdownRenderingRequestSchema,
+  SetFileExplorerFullTreeRequestSchema,
   SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
 } from "./preferences";
@@ -81,6 +82,7 @@ export {
   WorkspaceRelativePathSchema,
   WorkspaceStartDirectorySchema,
   ListWorkspaceFilesRequestSchema,
+  GetWorkspaceFileTreeRequestSchema,
   GetWorkspaceFileRequestSchema,
   WriteWorkspaceFileRequestSchema,
 } from "./workspace-files";

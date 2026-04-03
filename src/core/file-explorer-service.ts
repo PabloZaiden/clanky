@@ -22,6 +22,10 @@ export interface FileExplorerListResult {
   entries: WorkspaceFileEntry[];
 }
 
+export interface FileExplorerTreeResult {
+  entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
+}
+
 export interface FileExplorerReadResult {
   file: WorkspaceFileEntry;
   content: string;
@@ -250,6 +254,90 @@ function toFileEntry(
   };
 }
 
+function sortEntries(entries: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
+  return [...entries].sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "directory" ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name);
+  });
+}
+
+function toEntriesByDirectory(entries: WorkspaceFileEntry[]): Record<string, WorkspaceFileEntry[]> {
+  const entriesByDirectory: Record<string, WorkspaceFileEntry[]> = {
+    "": [],
+  };
+
+  for (const entry of entries) {
+    const parentDirectory = pathPosix.dirname(entry.path);
+    const directoryKey = parentDirectory === "." ? "" : parentDirectory;
+    entriesByDirectory[directoryKey] = [...(entriesByDirectory[directoryKey] ?? []), entry];
+    if (entry.kind === "directory" && !entriesByDirectory[entry.path]) {
+      entriesByDirectory[entry.path] = [];
+    }
+  }
+
+  for (const [directory, directoryEntries] of Object.entries(entriesByDirectory)) {
+    entriesByDirectory[directory] = sortEntries(directoryEntries);
+  }
+
+  return entriesByDirectory;
+}
+
+async function runFullTreeCommand(
+  target: FileExplorerTarget,
+): Promise<WorkspaceFileEntry[]> {
+  const result = await target.executor.exec(
+    "bash",
+    [
+      "-lc",
+      "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport \"$root\"; else find \"$root\" -mindepth 1 -print; fi; }; emit_paths | while IFS= read -r path; do if [ -z \"$path\" ] || [ \"$path\" = \"$root\" ]; then continue; fi; if [ -d \"$path\" ]; then typeFlag=d; hash=-; else typeFlag=f; if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$path\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$path\" | cut -d' ' -f1); else hash=; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$path\"); modified=$(stat -c '%Y' \"$path\"); else size=$(stat -f '%z' \"$path\"); modified=$(stat -f '%m' \"$path\"); fi; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$path\" \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"; done",
+      "file-explorer-tree",
+      target.rootDirectory,
+    ],
+    {
+      logFailures: false,
+    },
+  );
+
+  if (!result.success) {
+    if (result.exitCode === 2) {
+      throw new Error("Requested path does not exist");
+    }
+    throw new Error(result.stderr.trim() || "Failed to load file tree");
+  }
+
+  if (!result.stdout.trim()) {
+    return [];
+  }
+
+  return result.stdout
+    .trimEnd()
+    .split("\n")
+    .map((line) => {
+      const [absolutePath, typeFlag, sizeText, timestampSeconds, contentHash] = line.split(LIST_SEPARATOR);
+      if (!absolutePath || !typeFlag || !sizeText || !timestampSeconds) {
+        throw new Error("Failed to parse file tree");
+      }
+
+      const size = Number.parseInt(sizeText, 10);
+      if (!Number.isFinite(size)) {
+        throw new Error(`Invalid metadata size: ${sizeText}`);
+      }
+
+      return toFileEntry(target, absolutePath, {
+        kind: typeFlag === "d" ? "directory" : "file",
+        size,
+        modifiedAt: parseModifiedAt(timestampSeconds),
+        versionToken: buildVersionToken(
+          timestampSeconds,
+          size,
+          typeFlag === "f" && contentHash && contentHash !== "-" ? contentHash : undefined,
+        ),
+      });
+    });
+}
+
 export class FileExplorerService {
   async listDirectory(
     target: FileExplorerTarget,
@@ -270,9 +358,9 @@ export class FileExplorerService {
     const names = await target.executor.listDirectory(absolutePath, {
       includeHidden,
     });
-    const entryPaths = names.map((name) => pathPosix.join(absolutePath, name));
-    const metadataEntries = await runMetadataBatchCommand(target.executor, entryPaths);
-    const entries = metadataEntries
+      const entryPaths = names.map((name) => pathPosix.join(absolutePath, name));
+      const metadataEntries = await runMetadataBatchCommand(target.executor, entryPaths);
+      const entries = metadataEntries
       .map((entryMetadata, index) => {
         if (!entryMetadata) {
           return null;
@@ -281,16 +369,20 @@ export class FileExplorerService {
         return toFileEntry(target, entryPaths[index]!, entryMetadata);
       })
       .filter((entry): entry is WorkspaceFileEntry => entry !== null)
-      .sort((left, right) => {
-        if (left.kind !== right.kind) {
-          return left.kind === "directory" ? -1 : 1;
-        }
-        return left.name.localeCompare(right.name);
-      });
+      ;
 
     return {
       directory: toRelativePath(target.rootDirectory, absolutePath),
-      entries,
+      entries: sortEntries(entries),
+    };
+  }
+
+  async loadTree(
+    target: FileExplorerTarget,
+  ): Promise<FileExplorerTreeResult> {
+    const entries = await runFullTreeCommand(target);
+    return {
+      entriesByDirectory: toEntriesByDirectory(entries),
     };
   }
 

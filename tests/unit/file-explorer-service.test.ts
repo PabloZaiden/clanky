@@ -83,4 +83,29 @@ describe("fileExplorerService.listDirectory", () => {
     expect(execSpy.mock.calls[1]?.[0]).toBe("bash");
     expect(execSpy.mock.calls[1]?.[1]?.[2]).toBe("file-explorer-batch-metadata");
   });
+
+  test("loads the full tree with a single traversal command and preserves empty directories", async () => {
+    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-tree-"));
+    tempDirectories.push(rootDirectory);
+    await mkdir(join(rootDirectory, "src", "nested"), { recursive: true });
+    await mkdir(join(rootDirectory, "empty-dir"), { recursive: true });
+    await writeFile(join(rootDirectory, "src", "nested", "index.ts"), "export const value = 1;\n");
+
+    const executor = new TestCommandExecutor();
+    const execSpy = spyOn(executor, "exec");
+
+    const result = await fileExplorerService.loadTree({
+      id: "workspace-1",
+      rootDirectory,
+      pathScopeLabel: "workspace root",
+      executor,
+    });
+
+    expect(Object.keys(result.entriesByDirectory).sort()).toEqual(["", "empty-dir", "src", "src/nested"]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["empty-dir", "src"]);
+    expect(result.entriesByDirectory["src/nested"]?.map((entry) => entry.path)).toEqual(["src/nested/index.ts"]);
+    expect(result.entriesByDirectory["empty-dir"]).toEqual([]);
+    expect(execSpy).toHaveBeenCalledTimes(1);
+    expect(execSpy.mock.calls[0]?.[1]?.[2]).toBe("file-explorer-tree");
+  });
 });

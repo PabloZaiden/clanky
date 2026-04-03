@@ -13,6 +13,7 @@ import { createLogger } from "../core/logger";
 import { type WorkspaceFileEntry } from "../types";
 import {
   GetWorkspaceFileRequestSchema,
+  GetWorkspaceFileTreeRequestSchema,
   ListWorkspaceFilesRequestSchema,
   WriteWorkspaceFileRequestSchema,
 } from "../types/schemas";
@@ -153,6 +154,30 @@ export const sshServerFilesRoutes = {
         log.error("Failed to read standalone SSH server file", {
           serverId: req.params.id,
           path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/files/tree": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = parseSearchParams(GetWorkspaceFileTreeRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory);
+        const response = await fileExplorerService.loadTree(target);
+        return Response.json({
+          serverId: req.params.id,
+          entriesByDirectory: response.entriesByDirectory,
+        });
+      } catch (error) {
+        log.error("Failed to load standalone SSH server file tree", {
+          serverId: req.params.id,
           error: String(error),
         });
         return mapFileError(error);

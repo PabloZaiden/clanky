@@ -7,6 +7,7 @@ import { workspaceFileService } from "../../core/workspace-file-service";
 import { type WorkspaceFileEntry } from "../../types";
 import {
   GetWorkspaceFileRequestSchema,
+  GetWorkspaceFileTreeRequestSchema,
   ListWorkspaceFilesRequestSchema,
   WriteWorkspaceFileRequestSchema,
 } from "../../types/schemas";
@@ -113,6 +114,32 @@ export const workspaceFilesRoutes = {
         log.error("Failed to read workspace file", {
           workspaceId: req.params.id,
           path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/tree": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = parseSearchParams(GetWorkspaceFileTreeRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        return Response.json(await workspaceFileService.loadTree(workspaceResult, {
+          startDirectory: validation.data.startDirectory,
+        }));
+      } catch (error) {
+        log.error("Failed to load workspace file tree", {
+          workspaceId: req.params.id,
           error: String(error),
         });
         return mapFileError(error);

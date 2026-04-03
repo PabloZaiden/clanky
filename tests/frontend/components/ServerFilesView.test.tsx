@@ -57,11 +57,23 @@ function createServer(): SshServer {
   };
 }
 
+function createTreeResponse(entriesByDirectory: Record<string, Array<{
+  name: string;
+  path: string;
+  kind: "file" | "directory";
+  size: number;
+  modifiedAt: string;
+  versionToken: string;
+}>>) {
+  return { entriesByDirectory };
+}
+
 describe("ServerFilesView", () => {
   beforeEach(() => {
     api.reset();
     api.install();
     window.localStorage.clear();
+    api.get("/api/preferences/file-explorer-full-tree", () => ({ enabled: true }));
   });
 
   afterEach(() => {
@@ -85,10 +97,11 @@ describe("ServerFilesView", () => {
       credentialToken: "token-123",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     }));
-    api.get("/api/ssh-servers/:id/files", () => ({
+    api.get("/api/ssh-servers/:id/files/tree", () => ({
       serverId: server.config.id,
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
 
     await storeSshServerPassword(server.config.id, "super-secret");
@@ -140,10 +153,11 @@ describe("ServerFilesView", () => {
       credentialToken: "token-123",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     }));
-    api.get("/api/ssh-servers/:id/files", () => ({
+    api.get("/api/ssh-servers/:id/files/tree", () => ({
       serverId: server.config.id,
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
 
     const { getByLabelText, getByRole, queryByText, user } = renderWithUser(
@@ -161,13 +175,13 @@ describe("ServerFilesView", () => {
       expect(queryByText(`Enter the SSH password for ${server.config.name} before opening its code explorer.`))
         .toBeInTheDocument();
     });
-    expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(0);
+    expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(0);
 
     await user.type(getByLabelText("SSH password"), "super-secret");
     await user.click(getByRole("button", { name: "Continue" }));
 
     await waitFor(() => {
-      expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(1);
+      expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(1);
     });
   });
 
@@ -193,10 +207,11 @@ describe("ServerFilesView", () => {
         expiresAt: new Date(Date.now() + 60_000).toISOString(),
       };
     });
-    api.get("/api/ssh-servers/:id/files", () => ({
+    api.get("/api/ssh-servers/:id/files/tree", () => ({
       serverId: server.config.id,
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
 
     const { getByLabelText, getByRole, queryByLabelText, queryByText, user } = renderWithUser(
@@ -229,12 +244,12 @@ describe("ServerFilesView", () => {
       .toBeInTheDocument();
     expect(queryByLabelText("Close")).not.toBeInTheDocument();
     expect(onNavigate).not.toHaveBeenCalled();
-    expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(0);
+    expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(0);
 
     resolveCredentialExchange();
 
     await waitFor(() => {
-      expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(1);
+      expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(1);
     });
   });
 });

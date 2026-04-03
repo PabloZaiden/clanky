@@ -56,10 +56,17 @@ function createFileEntry(overrides?: Partial<{
   };
 }
 
+function createTreeResponse(
+  entriesByDirectory: Record<string, ReturnType<typeof createFileEntry>[]>,
+) {
+  return { entriesByDirectory };
+}
+
 describe("WorkspaceFilesView", () => {
   beforeEach(() => {
     api.reset();
     api.install();
+    api.get("/api/preferences/file-explorer-full-tree", () => ({ enabled: true }));
   });
 
   afterEach(() => {
@@ -76,27 +83,19 @@ describe("WorkspaceFilesView", () => {
       directory: "/workspaces/editor-workspace",
     });
 
-    api.get("/api/workspaces/:id/files", (req) => {
-      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
-      if (path === "src") {
-        return {
-          workspaceId: workspace.id,
-          directory: "src",
-          entries: [createFileEntry({
-            name: "index.ts",
-            path: "src/index.ts",
-            kind: "file",
-            size: 20,
-            versionToken: "100:20",
-          })],
-        };
-      }
-      return {
-        workspaceId: workspace.id,
-        directory: "",
-        entries: [createFileEntry()],
-      };
-    });
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry()],
+        src: [createFileEntry({
+          name: "index.ts",
+          path: "src/index.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        })],
+      }),
+    }));
 
     api.get("/api/workspaces/:id/files/content", () => ({
       workspaceId: workspace.id,
@@ -186,10 +185,11 @@ describe("WorkspaceFilesView", () => {
       },
     }));
 
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: workspace.id,
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
 
     const { getByRole, getByText, queryByText, user } = renderWithUser(
@@ -240,10 +240,11 @@ describe("WorkspaceFilesView", () => {
       },
     });
 
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: workspace.id,
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
 
     const { getByRole, getByTestId, user } = renderWithUser(
@@ -281,10 +282,12 @@ describe("WorkspaceFilesView", () => {
       directory: "/workspaces/explorer-collapse",
     });
 
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: workspace.id,
-      directory: "",
-      entries: [createFileEntry()],
+      ...createTreeResponse({
+        "": [createFileEntry()],
+        src: [],
+      }),
     }));
 
     const { getByRole, queryByRole, user } = renderWithUser(
@@ -318,10 +321,12 @@ describe("WorkspaceFilesView", () => {
       directory: "/workspaces/mobile-explorer-collapse",
     });
 
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: workspace.id,
-      directory: "",
-      entries: [createFileEntry()],
+      ...createTreeResponse({
+        "": [createFileEntry()],
+        src: [],
+      }),
     }));
 
     const { getByRole, getByTestId, queryByRole, user } = renderWithUser(
@@ -376,27 +381,19 @@ describe("WorkspaceFilesView", () => {
       directory: "/workspaces/minimal-chrome",
     });
 
-    api.get("/api/workspaces/:id/files", (req) => {
-      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
-      if (path === "src") {
-        return {
-          workspaceId: workspace.id,
-          directory: "src",
-          entries: [createFileEntry({
-            name: "index.ts",
-            path: "src/index.ts",
-            kind: "file",
-            size: 20,
-            versionToken: "100:20",
-          })],
-        };
-      }
-      return {
-        workspaceId: workspace.id,
-        directory: "",
-        entries: [createFileEntry()],
-      };
-    });
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry()],
+        src: [createFileEntry({
+          name: "index.ts",
+          path: "src/index.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        })],
+      }),
+    }));
 
     api.get("/api/workspaces/:id/files/content", () => ({
       workspaceId: workspace.id,
@@ -448,37 +445,10 @@ describe("WorkspaceFilesView", () => {
       directory: "/workspaces/hidden-files",
     });
 
-    api.get("/api/workspaces/:id/files", (req) => {
-      const url = new URL(req.url, "http://localhost");
-      const path = url.searchParams.get("path") ?? "";
-
-      if (path === "src") {
-        return {
-          workspaceId: workspace.id,
-          directory: "src",
-          entries: [
-            createFileEntry({
-              name: ".secret.ts",
-              path: "src/.secret.ts",
-              kind: "file",
-              size: 5,
-              versionToken: "101:5",
-            }),
-            createFileEntry({
-              name: "index.ts",
-              path: "src/index.ts",
-              kind: "file",
-              size: 20,
-              versionToken: "100:20",
-            }),
-          ],
-        };
-      }
-
-      return {
-        workspaceId: workspace.id,
-        directory: "",
-        entries: [
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [
           createFileEntry(),
           createFileEntry({
             name: ".env",
@@ -488,8 +458,24 @@ describe("WorkspaceFilesView", () => {
             versionToken: "99:10",
           }),
         ],
-      };
-    });
+        src: [
+          createFileEntry({
+            name: ".secret.ts",
+            path: "src/.secret.ts",
+            kind: "file",
+            size: 5,
+            versionToken: "101:5",
+          }),
+          createFileEntry({
+            name: "index.ts",
+            path: "src/index.ts",
+            kind: "file",
+            size: 20,
+            versionToken: "100:20",
+          }),
+        ],
+      }),
+    }));
 
     const { getByRole, queryByRole, user } = renderWithUser(
       <WorkspaceFilesView
@@ -511,7 +497,7 @@ describe("WorkspaceFilesView", () => {
       expect(getByRole("button", { name: /\.secret\.ts/i })).toBeInTheDocument();
       expect(getByRole("button", { name: /index.ts/i })).toBeInTheDocument();
     });
-    expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
+    expect(api.calls("/api/workspaces/:id/files/tree", "GET")).toHaveLength(1);
 
     await user.click(getByRole("button", { name: "Hide hidden files" }));
     await waitFor(() => {
@@ -519,10 +505,10 @@ describe("WorkspaceFilesView", () => {
       expect(queryByRole("button", { name: /\.secret\.ts/i })).not.toBeInTheDocument();
       expect(getByRole("button", { name: "Show hidden files" })).toBeInTheDocument();
     });
-    expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
+    expect(api.calls("/api/workspaces/:id/files/tree", "GET")).toHaveLength(1);
   });
 
-  test("opens the shared root picker on demand and navigates to a custom explorer root", async () => {
+  test("opens the shared root picker on demand, shows the mode checkbox, and saves mode changes", async () => {
     installEmbeddedSshSessionMock();
     const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
     const workspace = createWorkspace({
@@ -532,10 +518,61 @@ describe("WorkspaceFilesView", () => {
     });
     const onNavigate = mock(() => {});
 
-    api.get("/api/workspaces/:id/files", () => ({
+    api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: workspace.id,
-      directory: "",
-      entries: [],
+      ...createTreeResponse({
+        "": [],
+      }),
+    }));
+    api.put("/api/preferences/file-explorer-full-tree", () => ({ success: true }), 200);
+
+    const { getByLabelText, getByRole, queryByLabelText, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={onNavigate}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Change explorer root" })).toBeInTheDocument();
+    });
+    expect(queryByLabelText("Explorer root directory")).not.toBeInTheDocument();
+
+    await user.click(getByRole("button", { name: "Change explorer root" }));
+
+    await waitFor(() => {
+      expect(getByLabelText("Explorer root directory")).toHaveValue("/workspaces/root-picker");
+      expect(getByLabelText("Load everything at once")).toBeChecked();
+    });
+
+    await user.click(getByLabelText("Load everything at once"));
+    await user.click(getByRole("button", { name: "Apply changes" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/preferences/file-explorer-full-tree", "PUT")).toHaveLength(1);
+    });
+
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(queryByLabelText("Explorer root directory")).not.toBeInTheDocument();
+  });
+
+  test("navigates to a custom explorer root from the shared root picker", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-root-picker-nav",
+      name: "Root Picker",
+      directory: "/workspaces/root-picker",
+    });
+    const onNavigate = mock(() => {});
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [],
+      }),
     }));
 
     const { getByLabelText, getByRole, queryByLabelText, user } = renderWithUser(
@@ -558,14 +595,9 @@ describe("WorkspaceFilesView", () => {
       expect(getByLabelText("Explorer root directory")).toHaveValue("/workspaces/root-picker");
     });
 
-    await user.click(getByRole("button", { name: "Cancel" }));
-    expect(queryByLabelText("Explorer root directory")).not.toBeInTheDocument();
-
-    await user.click(getByRole("button", { name: "Change explorer root" }));
-
     await user.clear(getByLabelText("Explorer root directory"));
     await user.type(getByLabelText("Explorer root directory"), "/var/tmp/project");
-    await user.click(getByRole("button", { name: "Apply root" }));
+    await user.click(getByRole("button", { name: "Apply changes" }));
 
     expect(onNavigate).toHaveBeenCalledWith({
       view: "workspace-files",
@@ -583,30 +615,34 @@ describe("WorkspaceFilesView", () => {
       directory: "/workspaces/root-sync",
     });
 
-    api.get("/api/workspaces/:id/files", (req) => {
+    api.get("/api/workspaces/:id/files/tree", (req) => {
       const url = new URL(req.url, "http://localhost");
       const startDirectory = url.searchParams.get("startDirectory") ?? "";
 
       if (startDirectory === "/alt/root") {
         return {
           workspaceId: workspace.id,
-          directory: "",
-          entries: [createFileEntry({
-            name: "packages",
-            path: "packages",
-            kind: "directory",
-          })],
+          ...createTreeResponse({
+            "": [createFileEntry({
+              name: "packages",
+              path: "packages",
+              kind: "directory",
+            })],
+            packages: [],
+          }),
         };
       }
 
       return {
         workspaceId: workspace.id,
-        directory: "",
-        entries: [createFileEntry({
-          name: "src",
-          path: "src",
-          kind: "directory",
-        })],
+        ...createTreeResponse({
+          "": [createFileEntry({
+            name: "src",
+            path: "src",
+            kind: "directory",
+          })],
+          src: [],
+        }),
       };
     });
 
