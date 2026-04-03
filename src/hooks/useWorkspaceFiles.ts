@@ -98,6 +98,16 @@ function isAbortError(requestError: unknown): boolean {
   return requestError instanceof DOMException && requestError.name === "AbortError";
 }
 
+function getRequestErrorMessage(requestError: unknown): string {
+  return requestError instanceof Error ? requestError.message : String(requestError);
+}
+
+function canFallbackFromFullTreeError(requestError: unknown): boolean {
+  const message = getRequestErrorMessage(requestError);
+  return message.includes("File tree is too large to load at once")
+    || message.includes("Loading the full file tree took too long");
+}
+
 export function useFileExplorer(
   target: FileExplorerTarget,
   options?: {
@@ -112,6 +122,7 @@ export function useFileExplorer(
   const enabled = options?.enabled ?? true;
   const loadFullTree = options?.loadFullTree ?? true;
   const pollIntervalMs = options?.pollIntervalMs ?? 5000;
+  const [effectiveLoadFullTree, setEffectiveLoadFullTree] = useState(loadFullTree);
   const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileEntry[]>>({});
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
@@ -151,33 +162,56 @@ export function useFileExplorer(
     return await loadFileExplorerTreeApi({ type: targetType, id: targetId }, { startDirectory });
   }, [startDirectory, targetId, targetType]);
 
+  const applyDirectoryResponse = useCallback((
+    path: string,
+    response: { entries: WorkspaceFileEntry[] },
+  ) => {
+    setDirectoryEntries((currentEntries) => ({
+      ...currentEntries,
+      [path]: response.entries,
+    }));
+    setExpandedDirectories((currentPaths) => {
+      if (!path || currentPaths.includes(path)) {
+        return currentPaths;
+      }
+      return [...currentPaths, path];
+    });
+  }, []);
+
+  const fallbackToDirectoryListing = useCallback(async (path: string, requestError: unknown) => {
+    const response = await loadDirectory(path);
+    setEffectiveLoadFullTree(false);
+    applyDirectoryResponse(path, response);
+    setError(`${getRequestErrorMessage(requestError)} Showing the current directory instead.`);
+    setErrorCode(null);
+  }, [applyDirectoryResponse, loadDirectory]);
+
   const refreshTree = useCallback(async (path = "") => {
     try {
       setLoadingTree(true);
       setError(null);
       setErrorCode(null);
-      if (loadFullTree) {
-        const response = await loadTree();
-        setDirectoryEntries(response.entriesByDirectory);
-        return;
+      if (effectiveLoadFullTree) {
+        try {
+          const response = await loadTree();
+          setDirectoryEntries(response.entriesByDirectory);
+          return;
+        } catch (requestError) {
+          if (!canFallbackFromFullTreeError(requestError)) {
+            throw requestError;
+          }
+          await fallbackToDirectoryListing(path, requestError);
+          return;
+        }
       }
       const response = await loadDirectory(path);
-      setDirectoryEntries((currentEntries) => ({
-        ...currentEntries,
-        [path]: response.entries,
-      }));
-      setExpandedDirectories((currentPaths) => {
-        if (!path || currentPaths.includes(path)) {
-          return currentPaths;
-        }
-        return [...currentPaths, path];
-      });
+      applyDirectoryResponse(path, response);
     } catch (requestError) {
       applyErrorState(requestError);
     } finally {
       setLoadingTree(false);
     }
-  }, [applyErrorState, loadDirectory, loadFullTree, loadTree]);
+  }, [applyDirectoryResponse, applyErrorState, effectiveLoadFullTree, fallbackToDirectoryListing, loadDirectory, loadTree]);
 
   const toggleShowHiddenFiles = useCallback(async () => {
     setShowHiddenFiles((currentValue) => !currentValue);
@@ -372,10 +406,10 @@ export function useFileExplorer(
     }
 
     setExpandedDirectories((currentPaths) => [...currentPaths, path]);
-    if (!loadFullTree && !directoryEntries[path]) {
+    if (!effectiveLoadFullTree && !directoryEntries[path]) {
       await refreshTree(path);
     }
-  }, [directoryEntries, expandedDirectories, loadFullTree, refreshTree]);
+  }, [directoryEntries, effectiveLoadFullTree, expandedDirectories, refreshTree]);
 
   const dismissConflict = useCallback(() => {
     setConflictState(null);
@@ -396,6 +430,7 @@ export function useFileExplorer(
     setSavedContent("");
     setConflictState(null);
     setAutoReloadedAt(null);
+    setEffectiveLoadFullTree(loadFullTree);
     if (!enabled) {
       setLoadingTree(false);
       return;
@@ -405,8 +440,16 @@ export function useFileExplorer(
         .then((response) => {
           setDirectoryEntries(response.entriesByDirectory);
         })
-        .catch((requestError) => {
-          applyErrorState(requestError);
+        .catch(async (requestError) => {
+          if (!canFallbackFromFullTreeError(requestError)) {
+            applyErrorState(requestError);
+            return;
+          }
+          try {
+            await fallbackToDirectoryListing("", requestError);
+          } catch (fallbackError) {
+            applyErrorState(fallbackError);
+          }
         })
         .finally(() => {
           setLoadingTree(false);
@@ -416,7 +459,7 @@ export function useFileExplorer(
 
     void loadDirectory("")
       .then((response) => {
-        setDirectoryEntries({ "": response.entries });
+        applyDirectoryResponse("", response);
       })
       .catch((requestError) => {
         applyErrorState(requestError);
@@ -424,7 +467,19 @@ export function useFileExplorer(
       .finally(() => {
         setLoadingTree(false);
       });
-  }, [applyErrorState, enabled, invalidateFileLoad, loadDirectory, loadFullTree, loadTree, startDirectory, targetId, targetType]);
+  }, [
+    applyDirectoryResponse,
+    applyErrorState,
+    enabled,
+    fallbackToDirectoryListing,
+    invalidateFileLoad,
+    loadDirectory,
+    loadFullTree,
+    loadTree,
+    startDirectory,
+    targetId,
+    targetType,
+  ]);
 
   useEffect(() => {
     return () => {

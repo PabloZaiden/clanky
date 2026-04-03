@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { renderWithUser, waitFor } from "../helpers/render";
-import { createMockApi } from "../helpers/mock-api";
+import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { storeSshServerPassword } from "@/lib/ssh-browser-credentials";
 import type { SshServer } from "@/types";
 
@@ -251,5 +251,85 @@ describe("ServerFilesView", () => {
     await waitFor(() => {
       expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(1);
     });
+  });
+
+  test("falls back to lazy-loading and shows an explorer alert when full-tree loading fails", async () => {
+    const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+    const server = createServer();
+
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "token-123",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+    api.get("/api/ssh-servers/:id/files/tree", () => {
+      throw new MockApiError(500, {
+        error: "ssh_server_file_error",
+        message: "Loading the full file tree took too long. Choose a narrower explorer root or turn off \"Load everything at once\".",
+      });
+    });
+    api.get("/api/ssh-servers/:id/files", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      if (path === "src") {
+        return {
+          serverId: server.config.id,
+          directory: "src",
+          entries: [{
+            name: "index.ts",
+            path: "src/index.ts",
+            kind: "file",
+            size: 20,
+            modifiedAt: "2026-01-01T00:00:00.000Z",
+            versionToken: "100:20",
+          }],
+        };
+      }
+
+      return {
+        serverId: server.config.id,
+        directory: "",
+        entries: [{
+          name: "src",
+          path: "src",
+          kind: "directory",
+          size: 0,
+          modifiedAt: "2026-01-01T00:00:00.000Z",
+          versionToken: "100:0",
+        }],
+      };
+    });
+
+    await storeSshServerPassword(server.config.id, "super-secret");
+
+    const { getByRole, user } = renderWithUser(
+      <ServerFilesView
+        server={server}
+        sessions={[]}
+        createStandaloneSession={async () => {
+          throw new Error("not used");
+        }}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("alert").textContent).toContain("Showing the current directory instead.");
+      expect(getByRole("button", { name: "src" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "src" }));
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "index.ts" })).toBeInTheDocument();
+    });
+
+    expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(1);
+    expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(2);
   });
 });

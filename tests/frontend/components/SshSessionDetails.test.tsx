@@ -898,6 +898,38 @@ describe("SshSessionDetails", () => {
     });
   });
 
+  test("marks the terminal as disconnected when a terminal.error arrives before readiness", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Terminal Error" } }),
+    );
+
+    const { getByText } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-terminal-error-1" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(getByText("SSH Terminal Error")).toBeTruthy();
+      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
+      expect(lastTerminal).not.toBeNull();
+    });
+
+    const terminalConnection = ws.getConnections("/api/ssh-terminal")[0]!;
+
+    await act(async () => {
+      ws.sendEventTo(terminalConnection, {
+        type: "terminal.error",
+        message: "SSH terminal is not connected",
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("disconnected")).toBeTruthy();
+    });
+
+    expect(lastTerminal?.writes.some((chunk) => chunk.includes("SSH terminal is not connected"))).toBe(true);
+    expect(terminalConnection.instance.readyState).toBe(WebSocket.CLOSED);
+  });
+
   test("keeps the terminal mounted during SSH session status refreshes", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Refresh Stable" } }),

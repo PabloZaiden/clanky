@@ -166,7 +166,15 @@ export function useSshLifecycle({
             void connectTerminal({ refreshStandaloneCredential: true });
             return;
           }
+          terminalReadyRef.current = false;
+          lastSentResizeRef.current = null;
+          pendingOscColorQueryRef.current = "";
+          clearSelectedTerminalText();
+          setSocketStatus("closed");
           showErrorToast(data.message);
+          if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+            ws.close();
+          }
         }
         if (data.type === "terminal.closed") {
           terminalReadyRef.current = false;

@@ -26,9 +26,9 @@ describe("File Explorer Full Tree Preference", () => {
     await rm(testDataDir, { recursive: true });
   });
 
-  test("returns true by default when not set", async () => {
+  test("returns false by default when not set", async () => {
     const { getFileExplorerFullTreeEnabled } = await import("../../src/persistence/preferences");
-    expect(await getFileExplorerFullTreeEnabled()).toBe(true);
+    expect(await getFileExplorerFullTreeEnabled()).toBe(false);
   });
 
   test("persists false when lazy loading is selected", async () => {

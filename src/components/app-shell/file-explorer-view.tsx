@@ -356,6 +356,7 @@ export function FileExplorerView({
                 currentFilePath={explorer.currentFile?.path}
                 showHiddenFiles={explorer.showHiddenFiles}
                 loading={explorer.loadingTree}
+                error={explorer.error}
                 collapsed={explorerCollapsed}
                 toolbarActions={explorerToolbarActions}
                 onRefresh={explorer.refreshTree}
