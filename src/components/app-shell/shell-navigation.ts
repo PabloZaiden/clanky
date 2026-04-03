@@ -19,6 +19,8 @@ export function getHashForShellRoute(route: ShellRoute): string {
       return "/";
     case "loop":
       return `/loop/${route.loopId}`;
+    case "loop-files":
+      return buildExplorerHash(`/loop-files/${route.loopId}`, route.startDirectory);
     case "ssh":
       return `/ssh/${route.sshSessionId}`;
     case "chat":

@@ -27,6 +27,13 @@ function parseHash(): ShellRoute {
     }
   }
 
+  if (hash.startsWith("/loop-files/")) {
+    const loopId = hash.slice(12);
+    if (loopId) {
+      return { view: "loop-files", loopId, startDirectory };
+    }
+  }
+
   if (hash.startsWith("/ssh/")) {
     const sshSessionId = hash.slice(5);
     if (sshSessionId) {

@@ -44,6 +44,7 @@ export type ShellRoute =
   | { view: "home" }
   | { view: "settings" }
   | { view: "loop"; loopId: string }
+  | { view: "loop-files"; loopId: string; startDirectory?: string }
   | { view: "chat"; chatId: string }
   | { view: "ssh"; sshSessionId: string }
   | { view: "workspace"; workspaceId: string }

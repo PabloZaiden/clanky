@@ -11,6 +11,13 @@ describe("shell navigation helpers", () => {
     expect(getHashForShellRoute({ view: "loop", loopId: "loop-1" })).toBe("/loop/loop-1");
     expect(
       getHashForShellRoute({
+        view: "loop-files",
+        loopId: "loop-1",
+        startDirectory: "/workspaces/frontend/.ralph-worktrees/loop-1",
+      }),
+    ).toBe("/loop-files/loop-1?startDirectory=%2Fworkspaces%2Ffrontend%2F.ralph-worktrees%2Floop-1");
+    expect(
+      getHashForShellRoute({
         view: "workspace-files",
         workspaceId: "workspace-1",
         startDirectory: "/workspaces/frontend/src",
