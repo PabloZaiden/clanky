@@ -1969,10 +1969,10 @@ describe("SshSessionDetails", () => {
     await waitFor(() => {
       expect(queryByText("SSH password required")).toBeNull();
       expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(1);
+      expect(globalThis.localStorage?.getItem("ralpher.sshServerCredential.server-1")).toBeTruthy();
     });
 
     expect(credentialServerId).toBe("server-1");
-    expect(globalThis.localStorage?.getItem("ralpher.sshServerCredential.server-1")).toBeTruthy();
   });
 
   test("keeps the standalone password prompt open and shows a toast when password submission fails", async () => {

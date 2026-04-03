@@ -37,16 +37,28 @@ export function SshServerSettingsView({
       variant="compact"
       headerOffsetClassName={shellHeaderOffsetClassName}
       actions={(
-        <Button
-          type="submit"
-          form="ssh-server-settings-shell-form"
-          size="sm"
-          loading={submitting}
-          disabled={!formValid || submitting}
-        >
-          <span className="sm:hidden">Save</span>
-          <span className="hidden sm:inline">Save Changes</span>
-        </Button>
+        <>
+          {server.config.repositoriesBasePath && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => navigateWithinShell({ view: "server-arise", serverId: server.config.id })}
+            >
+              Arise
+            </Button>
+          )}
+          <Button
+            type="submit"
+            form="ssh-server-settings-shell-form"
+            size="sm"
+            loading={submitting}
+            disabled={!formValid || submitting}
+          >
+            <span className="sm:hidden">Save</span>
+            <span className="hidden sm:inline">Save Changes</span>
+          </Button>
+        </>
       )}
     >
       <SshServerSettingsForm
@@ -63,4 +75,3 @@ export function SshServerSettingsView({
     </ShellPanel>
   );
 }
-

@@ -80,9 +80,9 @@ export function ServerAriseView({
               <Button
                 type="button"
                 size="sm"
-                onClick={() => navigateWithinShell({ view: "ssh-server", serverId: server.config.id })}
+                onClick={() => navigateWithinShell({ view: "ssh-server-settings", serverId: server.config.id })}
               >
-                Back to Server
+                Back to Settings
               </Button>
             )}
             {(provisioningStatus === "running" || provisioningStatus === "pending") && (
@@ -104,7 +104,7 @@ export function ServerAriseView({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => navigateWithinShell({ view: "ssh-server", serverId: server.config.id })}
+              onClick={() => navigateWithinShell({ view: "ssh-server-settings", serverId: server.config.id })}
             >
               Cancel
             </Button>
