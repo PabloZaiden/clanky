@@ -1,11 +1,15 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { createSshSession } from "../helpers/factories";
 import { act, renderWithUser, waitFor } from "../helpers/render";
+import {
+  lastMockTerminal as lastTerminal,
+  lastMockTerminalOptions as lastTerminalOptions,
+  resetGhosttyWebMockState,
+} from "../helpers/mock-ghostty-web";
 
 let clipboardWrites: string[] = [];
-let lastTerminalOptions: Record<string, unknown> | null = null;
 const originalDocumentFonts = "fonts" in document ? document.fonts : undefined;
 const expectedTerminalTheme = {
   background: "#1e1e1e",
@@ -58,188 +62,6 @@ function mockDocumentFonts(availableFontFamilies: readonly string[]) {
   });
 }
 
-class MockTerminal {
-  cols = 80;
-  rows = 24;
-  dataHandler: ((data: string) => void) | null = null;
-  resizeHandler: ((size: { cols: number; rows: number }) => void) | null = null;
-  selectionChangeHandler: (() => void) | null = null;
-  writes: string[] = [];
-  focusCalls = 0;
-  element: HTMLDivElement | null = null;
-  canvas: HTMLCanvasElement | null = null;
-  wheelHandler: ((event: WheelEvent) => boolean) | undefined;
-  keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
-  mouseTracking = false;
-  modes: Record<number, boolean> = {};
-  selectionText = "";
-  wasmTerm = {};
-  renderer: {
-    getCanvas: () => HTMLCanvasElement;
-    getMetrics: () => { width: number; height: number; baseline: number };
-    remeasureFont: () => void;
-    resize: () => void;
-    render: () => void;
-  } | null = null;
-
-  constructor(options?: Record<string, unknown>) {
-    lastTerminal = this;
-    lastTerminalOptions = options ?? null;
-  }
-
-  loadAddon(addon: { activate?: (terminal: MockTerminal) => void }) {
-    addon.activate?.(this);
-  }
-  open(parent?: HTMLElement) {
-    if (!(parent instanceof HTMLDivElement)) {
-      return;
-    }
-
-    this.element = parent;
-    const canvas = document.createElement("canvas");
-    Object.defineProperty(canvas, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({
-        left: 0,
-        top: 0,
-        right: 800,
-        bottom: 480,
-        width: 800,
-        height: 480,
-        x: 0,
-        y: 0,
-        toJSON: () => null,
-      }),
-    });
-    parent.appendChild(canvas);
-    this.canvas = canvas;
-    canvas.addEventListener("wheel", (event) => {
-      this.wheelHandler?.(event as WheelEvent);
-    });
-    this.renderer = {
-      getCanvas: () => canvas,
-      getMetrics: () => ({ width: 10, height: 20, baseline: 16 }),
-      remeasureFont: () => {},
-      resize: () => {},
-      render: () => {},
-    };
-  }
-  focus() {
-    this.focusCalls += 1;
-  }
-  write(data: string) {
-    this.writes.push(data);
-  }
-  writeln(data: string) {
-    this.writes.push(`${data}\n`);
-  }
-  resize(cols: number, rows: number) {
-    this.cols = cols;
-    this.rows = rows;
-    this.resizeHandler?.({ cols, rows });
-  }
-  getViewportY() {
-    return 0;
-  }
-
-  onData(handler: (data: string) => void) {
-    this.dataHandler = handler;
-    return {
-      dispose: () => {
-        this.dataHandler = null;
-      },
-    };
-  }
-
-  onResize(handler: (size: { cols: number; rows: number }) => void) {
-    this.resizeHandler = handler;
-    return {
-      dispose: () => {
-        this.resizeHandler = null;
-      },
-    };
-  }
-
-  onSelectionChange(handler: () => void) {
-    this.selectionChangeHandler = handler;
-    return {
-      dispose: () => {
-        this.selectionChangeHandler = null;
-      },
-    };
-  }
-
-  attachCustomWheelEventHandler(handler?: (event: WheelEvent) => boolean) {
-    this.wheelHandler = handler;
-  }
-
-  attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
-    this.keyHandler = handler;
-  }
-
-  getMode(mode: number) {
-    return this.modes[mode] ?? false;
-  }
-
-  hasMouseTracking() {
-    return this.mouseTracking;
-  }
-
-  getSelection() {
-    return this.selectionText;
-  }
-
-  hasSelection() {
-    return this.selectionText.length > 0;
-  }
-
-  clearSelection() {
-    this.selectionText = "";
-    this.selectionChangeHandler?.();
-  }
-
-  setSelection(text: string) {
-    this.selectionText = text;
-    this.selectionChangeHandler?.();
-  }
-
-  dispose() {
-    this.dataHandler = null;
-    this.resizeHandler = null;
-    this.selectionChangeHandler = null;
-    this.canvas?.remove();
-    this.canvas = null;
-    this.element = null;
-    this.renderer = null;
-    this.wheelHandler = undefined;
-    this.keyHandler = undefined;
-  }
-}
-
-class MockFitAddon {
-  terminal: MockTerminal | null = null;
-
-  activate(terminal: MockTerminal) {
-    this.terminal = terminal;
-  }
-  fit() {}
-  observeResize() {}
-  proposeDimensions() {
-    if (!this.terminal) {
-      return undefined;
-    }
-    return { cols: this.terminal.cols, rows: this.terminal.rows };
-  }
-}
-
-let lastTerminal: MockTerminal | null = null;
-
-mock.module("ghostty-web", () => ({
-  init: async () => {},
-  Terminal: MockTerminal,
-  FitAddon: MockFitAddon,
-}));
-
 // Import from the internal module path to avoid mock.module pollution from other
 // test files (e.g. AppWorkspaceFiles, WorkspaceFilesView) that mock
 // "@/components/SshSessionDetails" with a stub. Bun's mock.module is permanent
@@ -269,8 +91,7 @@ describe("SshSessionDetails", () => {
     api.install();
     ws.reset();
     ws.install();
-    lastTerminal = null;
-    lastTerminalOptions = null;
+    resetGhosttyWebMockState();
     clipboardWrites = [];
     restoreDocumentFonts();
     // Default to non-focus mode for tests that don't specifically test focus mode,
@@ -2155,7 +1976,7 @@ describe("SshSessionDetails", () => {
 
     // Unmount and re-render — should start in normal mode (preference was persisted)
     unmount();
-    lastTerminal = null;
+    resetGhosttyWebMockState();
 
     const { queryByText: queryByText2, getByText: getByText2 } = renderWithUser(
       <SshSessionDetails sshSessionId="ssh-focus-3" onBack={() => {}} />,
@@ -2203,5 +2024,33 @@ describe("SshSessionDetails", () => {
     // Still the same terminal instance
     expect(lastTerminal).toBe(terminalBeforeToggle);
     expect(lastTerminal!.element).not.toBeNull();
+  });
+
+  test("constrains the forced focus terminal layout to the terminal container", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "Embedded Focus Terminal" } }),
+    );
+
+    renderWithUser(
+      <div className="flex h-[480px] min-h-0 flex-col overflow-hidden">
+        <SshSessionDetails sshSessionId="ssh-focus-embedded" forcedFocusMode={true} />
+      </div>,
+    );
+
+    await waitFor(() => {
+      expect(lastTerminal).not.toBeNull();
+      expect(lastTerminal?.canvas).not.toBeNull();
+    });
+
+    const terminalContainer = lastTerminal!.canvas!.parentElement;
+    expect(terminalContainer).not.toBeNull();
+
+    const terminalWrapper = terminalContainer!.parentElement;
+    expect(terminalWrapper).not.toBeNull();
+    expect(terminalWrapper!.className).toContain("overflow-hidden");
+
+    const mainContent = terminalWrapper!.parentElement;
+    expect(mainContent).not.toBeNull();
+    expect(mainContent!.className).toContain("overflow-hidden");
   });
 });
