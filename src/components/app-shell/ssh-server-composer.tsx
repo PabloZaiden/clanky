@@ -1,9 +1,16 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useToast } from "../../hooks";
 import type { CreateSshServerRequest, SshServer, UpdateSshServerRequest } from "../../types";
-import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
+import { Badge, Button } from "../common";
 import type { ShellRoute } from "./shell-types";
-import { ShellPanel, InlineField } from "./shell-panel";
+import { ShellPanel } from "./shell-panel";
+import { SshServerFields } from "./ssh-server-fields";
+import {
+  buildSshServerUpdateRequest,
+  createSshServerFormValues,
+  trimSshServerFormValues,
+  type SshServerFormValues,
+} from "./ssh-server-form-utils";
 
 interface SshServerComposerProps {
   headerOffsetClassName?: string;
@@ -27,19 +34,11 @@ export function SshServerComposer({
   const toast = useToast();
   const formId = useId();
   const isEditing = Boolean(initialServer);
-  const [name, setName] = useState(initialServer?.config.name ?? "");
-  const [address, setAddress] = useState(initialServer?.config.address ?? "");
-  const [username, setUsername] = useState(initialServer?.config.username ?? "");
-  const [repositoriesBasePath, setRepositoriesBasePath] = useState(initialServer?.config.repositoriesBasePath ?? "");
-  const [password, setPassword] = useState("");
+  const [values, setValues] = useState<SshServerFormValues>(() => createSshServerFormValues(initialServer));
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    setName(initialServer?.config.name ?? "");
-    setAddress(initialServer?.config.address ?? "");
-    setUsername(initialServer?.config.username ?? "");
-    setRepositoriesBasePath(initialServer?.config.repositoriesBasePath ?? "");
-    setPassword("");
+    setValues(createSshServerFormValues(initialServer));
   }, [
     initialServer?.config.id,
     initialServer?.config.name,
@@ -48,26 +47,25 @@ export function SshServerComposer({
     initialServer?.config.repositoriesBasePath,
   ]);
 
+  function handleChange(field: keyof SshServerFormValues, value: string) {
+    setValues((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextName = name.trim();
-    const nextAddress = address.trim();
-    const nextUsername = username.trim();
-    const nextRepositoriesBasePath = repositoriesBasePath.trim() || undefined;
-    const nextPassword = password.trim() || undefined;
+    const nextValues = trimSshServerFormValues(values);
 
-    if (!nextName || !nextAddress || !nextUsername) {
+    if (!nextValues.name || !nextValues.address || !nextValues.username) {
       toast.error("Name, address, and username are required.");
       return;
     }
 
     if (initialServer) {
-      const hasChanges =
-        nextName !== initialServer.config.name
-        || nextAddress !== initialServer.config.address
-        || nextUsername !== initialServer.config.username
-        || nextRepositoriesBasePath !== initialServer.config.repositoriesBasePath
-        || Boolean(nextPassword);
+      const request = buildSshServerUpdateRequest(initialServer, nextValues);
+      const hasChanges = Boolean(request) || Boolean(nextValues.password);
 
       if (!hasChanges) {
         toast.success("SSH server is already up to date.");
@@ -78,30 +76,21 @@ export function SshServerComposer({
 
     setSubmitting(true);
     try {
+      const updateRequest = initialServer ? buildSshServerUpdateRequest(initialServer, nextValues) : undefined;
       const server = initialServer
         ? await onUpdateServer(
           initialServer.config.id,
-          (() => {
-            const patch = {
-              ...(nextName !== initialServer.config.name ? { name: nextName } : {}),
-              ...(nextAddress !== initialServer.config.address ? { address: nextAddress } : {}),
-              ...(nextUsername !== initialServer.config.username ? { username: nextUsername } : {}),
-              ...(nextRepositoriesBasePath !== initialServer.config.repositoriesBasePath
-                ? { repositoriesBasePath: nextRepositoriesBasePath ?? null }
-                : {}),
-            };
-            return Object.keys(patch).length > 0 ? patch : undefined;
-          })(),
-          nextPassword,
+          updateRequest,
+          nextValues.password,
         )
         : await onCreateServer(
           {
-            name: nextName,
-            address: nextAddress,
-            username: nextUsername,
-            repositoriesBasePath: nextRepositoriesBasePath,
+            name: nextValues.name,
+            address: nextValues.address,
+            username: nextValues.username,
+            repositoriesBasePath: nextValues.repositoriesBasePath,
           },
-          nextPassword,
+          nextValues.password,
         );
 
       if (!server) {
@@ -136,35 +125,13 @@ export function SshServerComposer({
       )}
     >
       <form id={formId} className="space-y-6" onSubmit={(event) => void handleSubmit(event)}>
-        {isEditing && relatedSessionCount > 0 && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-            {relatedSessionCount} standalone session{relatedSessionCount === 1 ? "" : "s"} already using this server.
-            Changes to the address, username, or base path apply to future connections and provisioning actions.
-          </div>
-        )}
-        <div className="grid gap-4 lg:grid-cols-2">
-          <InlineField id="server-name" label="Server name" value={name} onChange={setName} placeholder="Production host" required />
-          <InlineField id="server-address" label="Address" value={address} onChange={setAddress} placeholder="server.example.com" required />
-          <InlineField id="server-username" label="Username" value={username} onChange={setUsername} placeholder="ubuntu" required />
-          <InlineField
-            id="server-repositories-base-path"
-            label="Repositories base path"
-            value={repositoriesBasePath}
-            onChange={setRepositoriesBasePath}
-            placeholder="/workspaces"
-            help="Default base path for cloning repositories during automatic provisioning."
-          />
-          <InlineField
-            id="server-password"
-            label="Client-only password"
-            value={password}
-            onChange={setPassword}
-            placeholder="Optional"
-            type="password"
-            help="Stored encrypted in this client to streamline persistent standalone sessions."
-            inputProps={PASSWORD_INPUT_PROPS}
-          />
-        </div>
+        <SshServerFields
+          values={values}
+          onChange={handleChange}
+          isEditing={isEditing}
+          relatedSessionCount={relatedSessionCount}
+          disabled={submitting}
+        />
       </form>
     </ShellPanel>
   );

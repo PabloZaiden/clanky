@@ -16,6 +16,7 @@ import { DraftLoopComposer } from "./shell-composers";
 import { ComposeView } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
+import { SshServerSettingsView } from "./ssh-server-settings-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { WorkspaceFilesView } from "./workspace-files-view";
 import { ServerFilesView } from "./server-files-view";
@@ -138,7 +139,6 @@ function renderMainContent(props: ShellMainContentProps) {
     exportConfig,
     importConfig,
     workspacesSaving,
-    toast,
   } = props;
 
   if (shellLoading && route.view === "home") {
@@ -349,19 +349,34 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
-        onEditServer={() =>
-          navigateWithinShell({ view: "compose", kind: "ssh-server", scopeId: selectedServer.config.id })
-        }
-        onDeleteServer={async () => {
-          const deleted = await deleteServer(selectedServer.config.id);
-          if (!deleted) {
-            toast.error(`Failed to delete SSH server "${selectedServer.config.name}"`);
-            return false;
-          }
-          toast.success(`Deleted SSH server "${selectedServer.config.name}"`);
-          navigateWithinShell({ view: "home" });
-          return true;
-        }}
+        onOpenSettings={() => navigateWithinShell({ view: "ssh-server-settings", serverId: selectedServer.config.id })}
+      />
+    );
+  }
+
+  if (route.view === "ssh-server-settings") {
+    if (!selectedServer) {
+      return (
+        <ShellPanel
+          eyebrow="SSH server settings"
+          title="Server not found"
+          description="The selected SSH server no longer exists."
+        >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Use the sidebar or home button to continue.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    return (
+      <SshServerSettingsView
+        server={selectedServer}
+        relatedSessionCount={sessionsByServerId[selectedServer.config.id]?.length ?? 0}
+        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
+        updateServer={props.updateServer}
+        deleteServer={async () => await deleteServer(selectedServer.config.id)}
+        navigateWithinShell={navigateWithinShell}
       />
     );
   }

@@ -100,13 +100,29 @@ afterEach(() => {
 });
 
 describe("ssh server management scenario", () => {
-  test("editing a standalone SSH server opens the composer with existing values", async () => {
+  test("opening SSH server settings shows the existing values and saves changes back to the server route", async () => {
     setupBaseApi();
     const server = createServer();
     const sessions: SshServerSession[] = [createStandaloneSession(server.config.id)];
 
     api.get("/api/ssh-servers", () => [server]);
     api.get("/api/ssh-servers/:id/sessions", () => sessions);
+
+    api.patch("/api/ssh-servers/:id", (req) => {
+      expect(req.params["id"]).toBe("server-1");
+      expect(req.body).toEqual({
+        name: "Build Box Updated",
+      });
+
+      return {
+        ...server,
+        config: {
+          ...server.config,
+          name: "Build Box Updated",
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    });
 
     const { getByRole, getByText, user } = renderWithUser(<App />, {
       route: "#/server/server-1",
@@ -116,11 +132,11 @@ describe("ssh server management scenario", () => {
       expect(getByRole("heading", { name: "Build Box" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Edit Server" }));
+    await user.click(getByRole("button", { name: "Open SSH server settings" }));
 
     await waitFor(() => {
-      expect(window.location.hash).toBe("#/new/ssh-server/server-1");
-      expect(getByRole("heading", { name: "Edit Build Box" })).toBeTruthy();
+      expect(window.location.hash).toBe("#/server-settings/server-1");
+      expect(getByRole("heading", { name: "SSH Server Settings" })).toBeTruthy();
     });
 
     const nameInput = document.querySelector("#server-name") as HTMLInputElement | null;
@@ -133,6 +149,15 @@ describe("ssh server management scenario", () => {
     expect(usernameInput?.value).toBe("vscode");
     expect(basePathInput?.value).toBe("/workspaces");
     expect(getByText(/future connections and provisioning actions/i)).toBeTruthy();
+
+    await user.type(nameInput!, " Updated");
+    await user.click(getByRole("button", { name: /Save/ }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/ssh-servers/:id", "PATCH")).toHaveLength(1);
+      expect(window.location.hash).toBe("#/server/server-1");
+      expect(getByRole("heading", { name: "Build Box Updated" })).toBeTruthy();
+    });
   });
 
   test("direct edit routes hydrate the composer after SSH servers finish loading", async () => {

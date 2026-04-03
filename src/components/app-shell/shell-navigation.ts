@@ -31,6 +31,8 @@ export function getHashForShellRoute(route: ShellRoute): string {
       return `/workspace-settings/${route.workspaceId}`;
     case "ssh-server":
       return `/server/${route.serverId}`;
+    case "ssh-server-settings":
+      return `/server-settings/${route.serverId}`;
     case "server-files":
       return buildExplorerHash(`/server-files/${route.serverId}`, route.startDirectory);
     case "server-arise":

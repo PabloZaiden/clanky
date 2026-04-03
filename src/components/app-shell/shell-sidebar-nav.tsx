@@ -252,8 +252,13 @@ export function ShellSidebarNav({
                 <SectionItem
                   key={server.config.id}
                   active={
-                    (route.view === "ssh-server" || route.view === "server-files" || route.view === "server-arise")
-                   && route.serverId === server.config.id
+                    (
+                      route.view === "ssh-server"
+                      || route.view === "ssh-server-settings"
+                      || route.view === "server-files"
+                      || route.view === "server-arise"
+                    )
+                    && route.serverId === server.config.id
                   }
                   title={server.config.name}
                   subtitle={`${server.config.username}@${server.config.address}`}

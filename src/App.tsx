@@ -69,6 +69,13 @@ function parseHash(): ShellRoute {
     }
   }
 
+  if (hash.startsWith("/server-settings/")) {
+    const serverId = hash.slice(17);
+    if (serverId) {
+      return { view: "ssh-server-settings", serverId };
+    }
+  }
+
   if (hash.startsWith("/workspace/")) {
     const workspaceId = hash.slice(11);
     if (workspaceId) {

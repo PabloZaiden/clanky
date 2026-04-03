@@ -43,28 +43,40 @@ function createSession(): SshServerSession {
 
 describe("SshServerView", () => {
   const onNavigate = mock((_route: unknown) => {});
-  const onEditServer = mock(() => {});
-  const onDeleteServer = mock(async () => true);
+  const onOpenSettings = mock(() => {});
 
   beforeEach(() => {
     onNavigate.mockClear();
-    onEditServer.mockClear();
-    onDeleteServer.mockClear();
+    onOpenSettings.mockClear();
   });
 
-  test("opens the server editor route from the server detail view", async () => {
+  test("opens the SSH server settings route from the detail view", async () => {
     const { getByRole, user } = renderWithUser(
       <SshServerView
         server={createServer()}
         sessions={[createSession()]}
         onNavigate={onNavigate}
-        onEditServer={onEditServer}
-        onDeleteServer={onDeleteServer}
+        onOpenSettings={onOpenSettings}
       />,
     );
 
-    await user.click(getByRole("button", { name: "Open Editor" }));
+    await user.click(getByRole("button", { name: "Open SSH server settings" }));
 
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  test("groups editor and session actions in the action menu", async () => {
+    const { getByRole, user } = renderWithUser(
+      <SshServerView
+        server={createServer()}
+        sessions={[createSession()]}
+        onNavigate={onNavigate}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "SSH server actions for Build Box" }));
+    await user.click(getByRole("menuitem", { name: "Open Editor" }));
     expect(onNavigate).toHaveBeenCalledWith({ view: "server-files", serverId: "server-1" });
   });
 });
