@@ -9,9 +9,6 @@ import type {
 import type { CommandExecutor } from "./command-executor";
 
 const LIST_SEPARATOR = "\t";
-const FULL_TREE_MAX_ENTRIES = 10_000;
-const FULL_TREE_TIMEOUT_MS = 15_000;
-const FULL_TREE_ENTRY_LIMIT_EXIT_CODE = 3;
 
 export interface FileExplorerTarget {
   id: string;
@@ -295,30 +292,18 @@ async function runFullTreeCommand(
     "bash",
     [
       "-lc",
-      `root="$1"; maxEntries="$2"; if [ ! -d "$root" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport "$root"; else find "$root" -mindepth 1 -print; fi; }; entryCount=0; while IFS= read -r path; do if [ -z "$path" ] || [ "$path" = "$root" ]; then continue; fi; entryCount=$((entryCount + 1)); if [ "$entryCount" -gt "$maxEntries" ]; then exit ${FULL_TREE_ENTRY_LIMIT_EXIT_CODE}; fi; if [ -d "$path" ]; then typeFlag=d; else typeFlag=f; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' "$path"); modified=$(stat -c '%Y' "$path"); else size=$(stat -f '%z' "$path"); modified=$(stat -f '%m' "$path"); fi; printf '%s\\t%s\\t%s\\t%s\\n' "$path" "$typeFlag" "$size" "$modified"; done < <(emit_paths)`,
+      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport "$root"; else find "$root" -mindepth 1 -print; fi; }; while IFS= read -r path; do if [ -z "$path" ] || [ "$path" = "$root" ]; then continue; fi; if [ -d "$path" ]; then typeFlag=d; else typeFlag=f; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' "$path"); modified=$(stat -c '%Y' "$path"); else size=$(stat -f '%z' "$path"); modified=$(stat -f '%m' "$path"); fi; printf '%s\\t%s\\t%s\\t%s\\n' "$path" "$typeFlag" "$size" "$modified"; done < <(emit_paths)`,
       "file-explorer-tree",
       target.rootDirectory,
-      String(FULL_TREE_MAX_ENTRIES),
     ],
     {
       logFailures: false,
-      timeout: FULL_TREE_TIMEOUT_MS,
     },
   );
 
   if (!result.success) {
     if (result.exitCode === 2) {
       throw new Error("Requested path does not exist");
-    }
-    if (result.exitCode === FULL_TREE_ENTRY_LIMIT_EXIT_CODE) {
-      throw new Error(
-        `File tree is too large to load at once. Choose a narrower explorer root or turn off "Load everything at once" (limit: ${FULL_TREE_MAX_ENTRIES} entries).`,
-      );
-    }
-    if (result.exitCode === 124) {
-      throw new Error(
-        "Loading the full file tree took too long. Choose a narrower explorer root or turn off \"Load everything at once\".",
-      );
     }
     throw new Error(result.stderr.trim() || "Failed to load file tree");
   }

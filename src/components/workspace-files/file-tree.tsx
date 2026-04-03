@@ -78,6 +78,7 @@ interface WorkspaceFileTreeProps {
   currentFilePath?: string;
   showHiddenFiles: boolean;
   loading: boolean;
+  error?: string | null;
   collapsed: boolean;
   toolbarActions?: ReactNode;
   onRefresh: () => Promise<void>;
@@ -151,6 +152,7 @@ function WorkspaceFileTreeComponent({
   currentFilePath,
   showHiddenFiles,
   loading,
+  error,
   collapsed,
   toolbarActions,
   onRefresh,
@@ -244,6 +246,14 @@ function WorkspaceFileTreeComponent({
       </div>
       {!collapsed && (
         <div className="min-h-0 flex-1 overflow-auto p-2">
+          {error && (
+            <div
+              role="alert"
+              className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+            >
+              {error}
+            </div>
+          )}
           {renderedTree}
         </div>
       )}

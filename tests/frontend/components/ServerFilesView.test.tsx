@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { renderWithUser, waitFor } from "../helpers/render";
-import { createMockApi } from "../helpers/mock-api";
+import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { storeSshServerPassword } from "@/lib/ssh-browser-credentials";
 import type { SshServer } from "@/types";
 
@@ -251,5 +251,48 @@ describe("ServerFilesView", () => {
     await waitFor(() => {
       expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(1);
     });
+  });
+
+  test("shows the full-tree loading error without falling back to lazy-loading", async () => {
+    const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+    const server = createServer();
+
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "token-123",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+    api.get("/api/ssh-servers/:id/files/tree", () => {
+      throw new MockApiError(500, {
+        error: "ssh_server_file_error",
+        message: "Loading the full file tree took too long. Choose a narrower explorer root or turn off \"Load everything at once\".",
+      });
+    });
+    await storeSshServerPassword(server.config.id, "super-secret");
+
+    const { getByRole, queryByRole } = renderWithUser(
+      <ServerFilesView
+        server={server}
+        sessions={[]}
+        createStandaloneSession={async () => {
+          throw new Error("not used");
+        }}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("alert").textContent).toContain("Loading the full file tree took too long.");
+    });
+
+    expect(queryByRole("button", { name: "src" })).not.toBeInTheDocument();
+    expect(api.calls("/api/ssh-servers/:id/files/tree", "GET")).toHaveLength(1);
+    expect(api.calls("/api/ssh-servers/:id/files", "GET")).toHaveLength(0);
   });
 });
