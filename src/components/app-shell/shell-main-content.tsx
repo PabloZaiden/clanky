@@ -20,6 +20,7 @@ import { SshServerSettingsView } from "./ssh-server-settings-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { WorkspaceFilesView } from "./workspace-files-view";
 import { ServerFilesView } from "./server-files-view";
+import { LoopFilesView } from "./loop-files-view";
 import type { ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
@@ -194,6 +195,38 @@ function renderMainContent(props: ShellMainContentProps) {
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "ssh", sshSessionId })}
+        onOpenLoopFiles={(loopId) => navigateWithinShell({ view: "loop-files", loopId })}
+      />
+    );
+  }
+
+  if (route.view === "loop-files") {
+    if (!selectedLoop) {
+      return shellLoading ? (
+        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading loop explorer…</div>
+      ) : (
+        <ShellPanel
+          eyebrow="Loop"
+          title="Loop not found"
+          description="The selected loop no longer exists."
+        >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Use the sidebar or home button to continue.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    const loopWorkspace = workspaces.find((workspace) => workspace.id === selectedLoop.config.workspaceId) ?? null;
+
+    return (
+      <LoopFilesView
+        loop={selectedLoop}
+        workspace={loopWorkspace}
+        sessions={sessions}
+        headerOffsetClassName={shellHeaderOffsetClassName}
+        startDirectory={route.startDirectory}
+        onNavigate={navigateWithinShell}
       />
     );
   }

@@ -53,6 +53,7 @@ interface FileExplorerViewProps {
   onCreateTerminal: () => Promise<ExplorerSession>;
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
+  buildRoute?: (startDirectory?: string) => ShellRoute;
 }
 
 export function FileExplorerView({
@@ -71,6 +72,7 @@ export function FileExplorerView({
   onCreateTerminal,
   testIdPrefix,
   credentialPromptName,
+  buildRoute,
 }: FileExplorerViewProps) {
   const toast = useToast();
   const hasStoredServerCredential = target.type === "server"
@@ -174,6 +176,9 @@ export function FileExplorerView({
     ].join(" ");
 
   function buildExplorerRoute(startDirectory?: string): ShellRoute {
+    if (buildRoute) {
+      return buildRoute(startDirectory);
+    }
     if (target.type === "workspace") {
       return {
         view: "workspace-files",
@@ -194,7 +199,7 @@ export function FileExplorerView({
       ? normalizedDirectory
       : undefined;
     onNavigate(buildExplorerRoute(nextStartDirectory));
-  }, [defaultRootDirectory, onNavigate, target.id, target.type]);
+  }, [buildRoute, defaultRootDirectory, onNavigate, target.id, target.type]);
 
   const openRootPicker = useCallback(() => {
     setRootInputValue(activeRootDirectory);

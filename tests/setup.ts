@@ -99,6 +99,10 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   const dataDir = await mkdtemp(join(tmpdir(), "ralpher-test-data-"));
   const workDir = await mkdtemp(join(tmpdir(), "ralpher-test-work-"));
 
+  // Start every test context from a fresh database connection so suite-order
+  // leaks from earlier tests cannot leave persistence pointed at another temp dir.
+  closeDatabase();
+
   // Set env var for persistence
   process.env["RALPHER_DATA_DIR"] = dataDir;
   await ensureDataDirectories();
