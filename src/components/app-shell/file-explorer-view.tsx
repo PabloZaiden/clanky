@@ -404,6 +404,7 @@ export function FileExplorerView({
           {activePane === "editor" ? (
             <WorkspaceEditorPanel
               filePath={explorer.currentFile?.path}
+              pendingFilePath={explorer.pendingFilePath}
               value={explorer.editorContent}
               loading={explorer.loadingFile}
               saving={explorer.savingFile}
