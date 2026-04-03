@@ -1,6 +1,5 @@
-import { useState } from "react";
 import type { SshServer, SshServerSession } from "../../types";
-import { Badge, Button, ConfirmModal } from "../common";
+import { ActionMenu, Badge, Button, GearIcon, type ActionMenuItem } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel, SummaryCard } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
@@ -10,34 +9,24 @@ export function SshServerView({
   sessions,
   headerOffsetClassName,
   onNavigate,
-  onEditServer,
-  onDeleteServer,
+  onOpenSettings,
 }: {
   server: SshServer;
   sessions: SshServerSession[];
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
-  onEditServer: () => void;
-  onDeleteServer: () => Promise<boolean>;
+  onOpenSettings: () => void;
 }) {
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
-
-  async function handleDeleteServer() {
-    try {
-      setDeleteSubmitting(true);
-      const deleted = await onDeleteServer();
-      if (deleted) {
-        setDeleteConfirmOpen(false);
-      }
-    } finally {
-      setDeleteSubmitting(false);
-    }
-  }
-
-  const deleteMessage = sessions.length === 0
-    ? `Delete "${server.config.name}"? This removes the saved SSH server metadata from Ralpher and any saved browser credential for this server.`
-    : `Delete "${server.config.name}" and its ${sessions.length} standalone session${sessions.length === 1 ? "" : "s"}? This removes the saved SSH server metadata from Ralpher, any saved browser credential for this server, and cannot be undone.`;
+  const actionItems: ActionMenuItem[] = [
+    {
+      label: "Open Editor",
+      onClick: () => onNavigate({ view: "server-files", serverId: server.config.id }),
+    },
+    {
+      label: "New Session",
+      onClick: () => onNavigate({ view: "compose", kind: "ssh-session", scopeId: server.config.id }),
+    },
+  ];
 
   return (
     <ShellPanel
@@ -58,42 +47,22 @@ export function SshServerView({
               size="sm"
               variant="secondary"
               onClick={() => onNavigate({ view: "server-arise", serverId: server.config.id })}
-              disabled={deleteSubmitting}
             >
               Arise
             </Button>
           )}
           <Button
+            variant="ghost"
             size="sm"
-            variant="secondary"
-            onClick={onEditServer}
-            disabled={deleteSubmitting}
+            onClick={onOpenSettings}
+            title="SSH Server Settings"
+            aria-label="Open SSH server settings"
+            className="min-h-[44px] min-w-[44px] px-1.5 sm:min-h-0 sm:min-w-0"
+            icon={<GearIcon size="h-5 w-5" />}
           >
-            Edit Server
+            {null}
           </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={() => setDeleteConfirmOpen(true)}
-            disabled={deleteSubmitting}
-          >
-            Delete Server
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => onNavigate({ view: "server-files", serverId: server.config.id })}
-            disabled={deleteSubmitting}
-          >
-            Open Editor
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => onNavigate({ view: "compose", kind: "ssh-session", scopeId: server.config.id })}
-            disabled={deleteSubmitting}
-          >
-            New Session
-          </Button>
+          <ActionMenu items={actionItems} ariaLabel={`SSH server actions for ${server.config.name}`} />
         </>
       )}
     >
@@ -143,17 +112,6 @@ export function SshServerView({
           )}
         </div>
       </div>
-
-      <ConfirmModal
-        isOpen={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-        onConfirm={() => void handleDeleteServer()}
-        title="Delete SSH Server"
-        message={deleteMessage}
-        confirmLabel="Delete Server"
-        loading={deleteSubmitting}
-        variant="danger"
-      />
     </ShellPanel>
   );
 }

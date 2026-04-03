@@ -542,7 +542,7 @@ describe("App shell", () => {
     });
   });
 
-  test("lets users delete an SSH server from the shell detail route", async () => {
+  test("lets users delete an SSH server from the shell settings route", async () => {
     const server = createSshServer({ id: "server-1", name: "Deploy host" });
     setupDefaultApi({ sshServers: [server] });
     localStorage.setItem("ralpher.sshServerCredential.server-1", JSON.stringify({
@@ -563,17 +563,23 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Deploy host" })).toBeTruthy();
-      expect(getByRole("button", { name: "Delete Server" })).toBeTruthy();
-      expect(getByRole("button", { name: "New Session" })).toBeTruthy();
+      expect(getByRole("button", { name: "Open SSH server settings" })).toBeTruthy();
+      expect(getByRole("button", { name: "SSH server actions for Deploy host" })).toBeTruthy();
+      expect(queryByRole("button", { name: "Delete Server" })).toBeNull();
     });
 
-    const deleteButton = getByRole("button", { name: "Delete Server" });
-    const newSessionButton = getByRole("button", { name: "New Session" });
-    expect(deleteButton.compareDocumentPosition(newSessionButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(0);
-
-    await user.click(deleteButton);
+    await user.click(getByRole("button", { name: "Open SSH server settings" }));
 
     await waitFor(() => {
+      expect(window.location.hash).toBe("#/server-settings/server-1");
+      expect(getByRole("heading", { name: "SSH Server Settings" })).toBeTruthy();
+      expect(getByRole("button", { name: "Delete SSH Server" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Delete SSH Server" }));
+
+    await waitFor(() => {
+      expect(getByRole("dialog")).toBeTruthy();
       expect(getByText('Delete "Deploy host"? This removes the saved SSH server metadata from Ralpher and any saved browser credential for this server.')).toBeTruthy();
     });
 

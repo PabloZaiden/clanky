@@ -50,6 +50,7 @@ export type ShellRoute =
   | { view: "workspace-files"; workspaceId: string; startDirectory?: string }
   | { view: "workspace-settings"; workspaceId: string }
   | { view: "ssh-server"; serverId: string }
+  | { view: "ssh-server-settings"; serverId: string }
   | { view: "server-files"; serverId: string; startDirectory?: string }
   | { view: "server-arise"; serverId: string }
   | {

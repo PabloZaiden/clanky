@@ -68,6 +68,13 @@ function parseHash(): ShellRoute {
     }
   }
 
+  if (hash.startsWith("/server-settings/")) {
+    const serverId = hash.slice(17);
+    if (serverId) {
+      return { view: "ssh-server-settings", serverId };
+    }
+  }
+
   if (hash.startsWith("/workspace/")) {
     const workspaceId = hash.slice(11);
     if (workspaceId) {
@@ -152,6 +159,9 @@ function navigateTo(route: ShellRoute) {
       return;
     case "ssh-server":
       window.location.hash = `/server/${route.serverId}`;
+      return;
+    case "ssh-server-settings":
+      window.location.hash = `/server-settings/${route.serverId}`;
       return;
     case "server-files":
       window.location.hash = buildExplorerHash(`/server-files/${route.serverId}`, route.startDirectory);

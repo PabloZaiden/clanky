@@ -180,7 +180,10 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
     ? (sessionsByServerId[composeServer.config.id]?.length ?? 0)
     : 0;
   const selectedServer =
-    route.view === "ssh-server" || route.view === "server-files" || route.view === "server-arise"
+    route.view === "ssh-server"
+      || route.view === "ssh-server-settings"
+      || route.view === "server-files"
+      || route.view === "server-arise"
       ? (servers.find((s) => s.config.id === route.serverId) ?? null)
       : null;
 
