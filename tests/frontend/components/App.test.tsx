@@ -1037,17 +1037,26 @@ describe("App shell", () => {
     });
   });
 
-  test("shows an Arise action for servers with automatic provisioning and navigates to the server-level flow", async () => {
+  test("shows Arise in SSH server settings instead of the server overview and navigates to the server-level flow", async () => {
     const server = createSshServer({
       id: "server-1",
       repositoriesBasePath: "/workspaces",
     });
     setupDefaultApi({ sshServers: [server] });
 
-    const { getByRole, user } = renderWithUser(<App />, { route: "#/server/server-1" });
+    const { getByRole, queryByRole, user } = renderWithUser(<App />, { route: "#/server/server-1" });
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Build host" })).toBeTruthy();
+      expect(queryByRole("button", { name: "Arise" })).toBeNull();
+      expect(getByRole("button", { name: "Open SSH server settings" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Open SSH server settings" }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/server-settings/server-1");
+      expect(getByRole("heading", { name: "SSH Server Settings" })).toBeTruthy();
       expect(getByRole("button", { name: "Arise" })).toBeTruthy();
     });
 
@@ -1057,6 +1066,7 @@ describe("App shell", () => {
       expect(window.location.hash).toBe("#/server-arise/server-1");
       expect(getByRole("heading", { name: "Arise Build host" })).toBeTruthy();
       expect(getByRole("button", { name: "Run devbox arise" })).toBeTruthy();
+      expect(getByRole("button", { name: "Cancel" })).toBeTruthy();
     });
   });
 });

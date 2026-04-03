@@ -42,15 +42,6 @@ export function SshServerView({
       )}
       actions={(
         <>
-          {server.config.repositoriesBasePath && (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => onNavigate({ view: "server-arise", serverId: server.config.id })}
-            >
-              Arise
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="sm"
