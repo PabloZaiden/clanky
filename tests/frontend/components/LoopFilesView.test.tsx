@@ -119,4 +119,78 @@ describe("LoopFilesView", () => {
       expect(getByText("Embedded SSH session: loop-session-1 (focused)")).toBeInTheDocument();
     });
   });
+
+  test("keeps long loop terminal names shrink-safe in the explorer header", async () => {
+    installEmbeddedSshSessionMock();
+    const { LoopFilesView } = await import("@/components/app-shell/loop-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-loop-files-long-name",
+      name: "Loop Workspace",
+      directory: "/workspaces/loop-files-long-name",
+      serverSettings: {
+        agent: {
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "remote.example",
+          username: "tester",
+        },
+      },
+    });
+    const loop = createLoopWithStatus("running", {
+      config: {
+        id: "loop-ssh-long-name",
+        name: "Loop SSH",
+        workspaceId: workspace.id,
+        directory: workspace.directory,
+        useWorktree: true,
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "loop-ssh-route",
+          commits: [],
+          worktreePath: "/workspaces/loop-files-long-name/.ralph-worktrees/loop-ssh-long-name",
+        },
+      },
+    });
+    const longSessionName = "Show only workspace names in loop creation worktrees terminal session";
+    const loopSession = createSshSession({
+      config: {
+        id: "loop-session-long-name",
+        workspaceId: workspace.id,
+        loopId: loop.config.id,
+        name: longSessionName,
+      },
+    });
+
+    api.get("/api/workspaces/:id/files", () => ({
+      workspaceId: workspace.id,
+      directory: "",
+      entries: [],
+    }));
+
+    const { getByRole, getByTestId, user } = renderWithUser(
+      <LoopFilesView
+        loop={loop}
+        workspace={workspace}
+        sessions={[loopSession]}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Terminals" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "Terminals" }));
+
+    const terminalControls = getByTestId("workspace-terminal-controls");
+    const terminalSelect = getByTestId("workspace-terminal-select");
+
+    expect(terminalControls).toHaveClass("flex-col");
+    expect(terminalControls).toHaveClass("md:flex-row");
+    expect(terminalSelect).toHaveAttribute("title", longSessionName);
+    expect(terminalSelect).toHaveClass("w-full");
+    expect(terminalSelect).toHaveClass("max-w-full");
+  });
 });
