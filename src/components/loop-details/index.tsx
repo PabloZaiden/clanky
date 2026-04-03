@@ -26,6 +26,7 @@ import { useLogFocusMode } from "./use-log-focus-mode";
 import { LoopDetailsModals } from "./loop-details-modals";
 import { LoopDetailsTabContent } from "./loop-details-tab-content";
 import { getFocusModeViewportStyle, useVisualViewport } from "../ssh-session/use-visual-viewport";
+import { getHashForShellRoute } from "../app-shell/shell-navigation";
 
 export interface LoopDetailsProps {
   /** Loop ID to display */
@@ -38,6 +39,8 @@ export interface LoopDetailsProps {
   headerOffsetClassName?: string;
   /** Navigate to the SSH session details view */
   onSelectSshSession?: (sshSessionId: string) => void;
+  /** Navigate to the loop-scoped code explorer view */
+  onOpenLoopFiles?: (loopId: string) => void;
 }
 
 export function LoopDetails({
@@ -46,6 +49,7 @@ export function LoopDetails({
   showBackButton = true,
   headerOffsetClassName,
   onSelectSshSession,
+  onOpenLoopFiles,
 }: LoopDetailsProps) {
   const {
     loop, loading, error, messages, toolCalls, logs, gitChangeCounter,
@@ -71,7 +75,16 @@ export function LoopDetails({
     getDiff, getPlan, getStatusFile, getPullRequestDestination, setTabsWithUpdates,
   });
   const actions = useLoopActions({
-    onBack, onSelectSshSession, toast,
+    onBack,
+    onSelectSshSession,
+    onOpenLoopFiles: () => {
+      if (onOpenLoopFiles) {
+        onOpenLoopFiles(loopId);
+        return;
+      }
+      window.location.hash = getHashForShellRoute({ view: "loop-files", loopId });
+    },
+    toast,
     accept, push, updateBranch, remove, purge, markMerged,
     addressReviewComments, acceptPlan, discardPlan, connectViaSsh, update,
     fetchReviewComments: content.fetchReviewComments,

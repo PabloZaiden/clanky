@@ -598,6 +598,42 @@ describe("actions tab content", () => {
   });
 
   describe("info tab content", () => {
+    test("opens the loop code explorer from the info tab", async () => {
+      setupDefaultApi({
+        state: {
+          git: {
+            originalBranch: "main",
+            workingBranch: "loop-code-explorer",
+            commits: [],
+            worktreePath: "/workspaces/test-project/.ralph-worktrees/loop-1",
+          },
+        },
+      });
+      const openedLoopFiles: string[] = [];
+      const { getByText, user } = renderWithUser(
+        <LoopDetails
+          loopId={LOOP_ID}
+          onOpenLoopFiles={(loopId) => {
+            openedLoopFiles.push(loopId);
+          }}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(getByText("Test Loop")).toBeTruthy();
+      });
+
+      await user.click(getByText("Info"));
+
+      await waitFor(() => {
+        expect(getByText("Open code explorer")).toBeTruthy();
+      });
+
+      await user.click(getByText("Open code explorer"));
+
+      expect(openedLoopFiles).toEqual([LOOP_ID]);
+    });
+
     test("port-forward form only shows the remote port and submits only that value", async () => {
       setupDefaultApi();
       api.post("/api/loops/:id/port-forwards", (req) => {

@@ -12,6 +12,7 @@ import { log } from "../../lib/logger";
 interface UseLoopActionsOptions {
   onBack?: () => void;
   onSelectSshSession?: (sshSessionId: string) => void;
+  onOpenLoopFiles?: () => void;
   toast: ToastContextValue;
   accept: () => Promise<AcceptPlanResult | unknown>;
   push: () => Promise<PushLoopResult | unknown>;
@@ -62,12 +63,14 @@ export interface UseLoopActionsResult {
   handleAcceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<void>;
   handleDiscardPlan: () => Promise<void>;
   handleConnectViaSsh: () => Promise<void>;
+  handleOpenLoopFiles: () => void;
   handleRename: (newName: string) => Promise<void>;
 }
 
 export function useLoopActions({
   onBack,
   onSelectSshSession,
+  onOpenLoopFiles,
   toast,
   accept,
   push,
@@ -204,6 +207,10 @@ export function useLoopActions({
     }
   }
 
+  function handleOpenLoopFiles() {
+    onOpenLoopFiles?.();
+  }
+
   async function handleRename(newName: string) {
     await update({ name: newName });
   }
@@ -238,6 +245,7 @@ export function useLoopActions({
     handleAcceptPlan,
     handleDiscardPlan,
     handleConnectViaSsh,
+    handleOpenLoopFiles,
     handleRename,
   };
 }

@@ -171,7 +171,7 @@ export function ShellSidebarNav({
               renderItem={(loop) => (
                 <SectionItem
                   key={loop.config.id}
-                  active={route.view === "loop" && route.loopId === loop.config.id}
+                  active={(route.view === "loop" || route.view === "loop-files") && route.loopId === loop.config.id}
                   title={loop.config.name}
                   badge={getLoopStatusLabel(loop)}
                   badgeVariant={getLoopStatusBadgeVariant(

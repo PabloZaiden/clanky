@@ -8,6 +8,8 @@ import { getHashForShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
 import "./index.css";
 
+const LOOP_FILES_HASH_PREFIX = "/loop-files/";
+
 function parseHashPath(hash: string): { path: string; searchParams: URLSearchParams } {
   const [path = "", query = ""] = hash.split("?", 2);
   return {
@@ -24,6 +26,13 @@ function parseHash(): ShellRoute {
     const loopId = hash.slice(6);
     if (loopId) {
       return { view: "loop", loopId };
+    }
+  }
+
+  if (hash.startsWith(LOOP_FILES_HASH_PREFIX)) {
+    const loopId = hash.slice(LOOP_FILES_HASH_PREFIX.length);
+    if (loopId) {
+      return { view: "loop-files", loopId, startDirectory };
     }
   }
 

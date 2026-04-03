@@ -157,7 +157,9 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
   ) as string[];
 
   const selectedLoop =
-    route.view === "loop" ? (loops.find((loop) => loop.config.id === route.loopId) ?? null) : null;
+    route.view === "loop" || route.view === "loop-files"
+      ? (loops.find((loop) => loop.config.id === route.loopId) ?? null)
+      : null;
   const selectedChat =
     route.view === "chat" ? (chats.find((chat) => chat.config.id === route.chatId) ?? null) : null;
   const selectedWorkspace =

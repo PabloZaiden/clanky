@@ -110,6 +110,7 @@ export function LoopDetailsTabContent({
         <InfoTab
           loop={loop}
           labels={labels}
+          onOpenLoopFiles={actions.handleOpenLoopFiles}
           sshConnecting={actions.sshConnecting}
           onConnectViaSsh={actions.handleConnectViaSsh}
           newForwardPort={portForward.newForwardPort}
