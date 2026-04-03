@@ -272,7 +272,11 @@ export async function exchangeSshServerCredential(
     const errorData = await response.json() as Record<string, unknown>;
     const message = (errorData["message"] as string | undefined) ?? "Failed to exchange SSH credential";
     const error = new Error(message);
-    (error as Error & { code?: string }).code = errorData["code"] as string | undefined;
+    (error as Error & { code?: string }).code = (
+      errorData["code"] as string | undefined
+    ) ?? (
+      errorData["error"] as string | undefined
+    );
     throw error;
   }
   return await response.json() as SshCredentialExchangeResponse;
@@ -309,7 +313,7 @@ export async function getStoredSshCredentialToken(
     return exchange.credentialToken;
   } catch (error) {
     const code = (error as Error & { code?: string }).code;
-    if (code === "invalid_encrypted_credential" || code === "not_found") {
+    if (code === "invalid_encrypted_credential") {
       clearStoredSshServerCredential(serverId, dependencies);
       return null;
     }

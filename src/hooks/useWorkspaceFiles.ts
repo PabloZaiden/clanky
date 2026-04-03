@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WorkspaceFileEntry } from "../types";
 import {
+  type FileExplorerCredentialErrorCode,
   type FileExplorerTarget,
   WorkspaceFileConflictError,
   getFileExplorerFileMetadataApi,
@@ -31,6 +32,7 @@ export interface UseFileExplorerResult {
   loadingFile: boolean;
   savingFile: boolean;
   error: string | null;
+  errorCode: FileExplorerCredentialErrorCode | null;
   isDirty: boolean;
   conflictState: WorkspaceFileConflictState | null;
   autoReloadedAt: string | null;
@@ -75,15 +77,32 @@ function upsertDirectoryEntry(
   };
 }
 
+function getFileExplorerCredentialErrorCode(requestError: unknown): FileExplorerCredentialErrorCode | null {
+  const errorCode = (requestError as { code?: unknown } | null)?.code;
+  if (errorCode === "missing_ssh_credential") {
+    return "missing_ssh_credential";
+  }
+  if (
+    errorCode === "invalid_ssh_credential"
+    || errorCode === "invalid_credential_token"
+    || errorCode === "invalid_encrypted_credential"
+  ) {
+    return "invalid_ssh_credential";
+  }
+  return null;
+}
+
 export function useFileExplorer(
   target: FileExplorerTarget,
   options?: {
+    enabled?: boolean;
     pollIntervalMs?: number;
   },
 ): UseFileExplorerResult {
   const targetType = target.type;
   const targetId = target.id;
   const startDirectory = target.startDirectory;
+  const enabled = options?.enabled ?? true;
   const pollIntervalMs = options?.pollIntervalMs ?? 5000;
   const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileEntry[]>>({});
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
@@ -96,11 +115,17 @@ export function useFileExplorer(
   const [loadingFile, setLoadingFile] = useState(false);
   const [savingFile, setSavingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<FileExplorerCredentialErrorCode | null>(null);
   const [conflictState, setConflictState] = useState<WorkspaceFileConflictState | null>(null);
   const [autoReloadedAt, setAutoReloadedAt] = useState<string | null>(null);
   const pollTimerRef = useRef<number | null>(null);
 
   const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
+
+  const applyErrorState = useCallback((requestError: unknown) => {
+    setError(requestError instanceof Error ? requestError.message : String(requestError));
+    setErrorCode(getFileExplorerCredentialErrorCode(requestError));
+  }, []);
 
   const loadDirectory = useCallback(async (path: string) => {
     return await listFileExplorerFilesApi({ type: targetType, id: targetId }, path, { startDirectory });
@@ -110,6 +135,7 @@ export function useFileExplorer(
     try {
       setLoadingTree(true);
       setError(null);
+      setErrorCode(null);
       const response = await loadDirectory(path);
       setDirectoryEntries((currentEntries) => ({
         ...currentEntries,
@@ -122,11 +148,11 @@ export function useFileExplorer(
         return [...currentPaths, path];
       });
     } catch (requestError) {
-      setError(String(requestError));
+      applyErrorState(requestError);
     } finally {
       setLoadingTree(false);
     }
-  }, [loadDirectory]);
+  }, [applyErrorState, loadDirectory]);
 
   const toggleShowHiddenFiles = useCallback(async () => {
     setShowHiddenFiles((currentValue) => !currentValue);
@@ -136,6 +162,7 @@ export function useFileExplorer(
     try {
       setLoadingFile(true);
       setError(null);
+      setErrorCode(null);
       setConflictState(null);
       const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path, { startDirectory });
       setCurrentDirectory(getParentDirectory(response.file.path));
@@ -144,11 +171,11 @@ export function useFileExplorer(
       setSavedContent(response.content);
       setAutoReloadedAt(null);
     } catch (requestError) {
-      setError(String(requestError));
+      applyErrorState(requestError);
     } finally {
       setLoadingFile(false);
     }
-  }, [startDirectory, targetId, targetType]);
+  }, [applyErrorState, startDirectory, targetId, targetType]);
 
   const refreshCurrentFile = useCallback(async (options?: { force?: boolean }) => {
     if (!currentFile) {
@@ -176,6 +203,7 @@ export function useFileExplorer(
     try {
       setSavingFile(true);
       setError(null);
+      setErrorCode(null);
       setConflictState(null);
       const response = await writeFileExplorerFileApi({ type: targetType, id: targetId }, {
         path: currentFile.path,
@@ -196,12 +224,12 @@ export function useFileExplorer(
         });
         return false;
       }
-      setError(String(requestError));
+      applyErrorState(requestError);
       return false;
     } finally {
       setSavingFile(false);
     }
-  }, [currentFile, editorContent, startDirectory, targetId, targetType]);
+  }, [applyErrorState, currentFile, editorContent, startDirectory, targetId, targetType]);
 
   const discardLocalChangesAndReload = useCallback(async () => {
     setConflictState(null);
@@ -257,9 +285,9 @@ export function useFileExplorer(
         });
         return;
       }
-      setError(String(requestError));
+      applyErrorState(requestError);
     }
-  }, [currentFile, isDirty, loadingFile, savingFile, startDirectory, targetId, targetType]);
+  }, [applyErrorState, currentFile, isDirty, loadingFile, savingFile, startDirectory, targetId, targetType]);
 
   const toggleDirectory = useCallback(async (path: string) => {
     const isExpanded = expandedDirectories.includes(path);
@@ -281,6 +309,7 @@ export function useFileExplorer(
   useEffect(() => {
     setLoadingTree(true);
     setError(null);
+    setErrorCode(null);
     setDirectoryEntries({});
     setExpandedDirectories([]);
     setCurrentDirectory("");
@@ -290,17 +319,21 @@ export function useFileExplorer(
     setSavedContent("");
     setConflictState(null);
     setAutoReloadedAt(null);
+    if (!enabled) {
+      setLoadingTree(false);
+      return;
+    }
     void loadDirectory("")
       .then((response) => {
         setDirectoryEntries({ "": response.entries });
       })
       .catch((requestError) => {
-        setError(String(requestError));
+        applyErrorState(requestError);
       })
       .finally(() => {
         setLoadingTree(false);
       });
-  }, [loadDirectory, startDirectory, targetId, targetType]);
+  }, [applyErrorState, enabled, loadDirectory, startDirectory, targetId, targetType]);
 
   useEffect(() => {
     if (pollTimerRef.current !== null) {
@@ -336,6 +369,7 @@ export function useFileExplorer(
     loadingFile,
     savingFile,
     error,
+    errorCode,
     isDirty,
     conflictState,
     autoReloadedAt,

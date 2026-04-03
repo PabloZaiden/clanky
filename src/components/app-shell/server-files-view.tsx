@@ -40,6 +40,7 @@ export function ServerFilesView({
       terminalSelectLabel="Select standalone SSH session"
       onCreateTerminal={async () => await createStandaloneSession(server.config.id)}
       testIdPrefix="server"
+      credentialPromptName={server.config.name}
     />
   );
 }
