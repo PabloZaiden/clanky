@@ -442,6 +442,116 @@ describe("useWorkspaceFiles", () => {
     expect(result.current.savedContent).toBe("export const value = 1;\n");
   });
 
+  test("ignores stale poll reloads after a newer file is opened", async () => {
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: "workspace-1",
+      ...createTreeResponse({
+        "": [],
+      }),
+    }));
+
+    let firstFileReadCount = 0;
+    let resolveStaleReload: ((value: unknown) => void) | null = null;
+
+    api.get("/api/workspaces/:id/files/content", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path");
+
+      if (path === "src/first.ts") {
+        firstFileReadCount += 1;
+        if (firstFileReadCount === 1) {
+          return {
+            workspaceId: "workspace-1",
+            file: createDirectoryEntry({
+              name: "first.ts",
+              path: "src/first.ts",
+              kind: "file",
+              size: 20,
+              versionToken: "100:20",
+            }),
+            content: "export const first = 1;\n",
+          };
+        }
+        return new Promise((resolve) => {
+          resolveStaleReload = resolve;
+        });
+      }
+
+      if (path === "src/second.ts") {
+        return {
+          workspaceId: "workspace-1",
+          file: createDirectoryEntry({
+            name: "second.ts",
+            path: "src/second.ts",
+            kind: "file",
+            size: 21,
+            versionToken: "101:21",
+          }),
+          content: "export const second = 2;\n",
+        };
+      }
+
+      throw new Error(`Unexpected file path: ${path}`);
+    });
+
+    api.get("/api/workspaces/:id/files/metadata", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path");
+      if (path !== "src/first.ts") {
+        throw new Error(`Unexpected metadata path: ${path}`);
+      }
+      return {
+        workspaceId: "workspace-1",
+        file: createDirectoryEntry({
+          name: "first.ts",
+          path: "src/first.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "200:20",
+        }),
+      };
+    });
+
+    const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.openFile("src/first.ts");
+    });
+
+    let stalePollPromise: Promise<void> | null = null;
+    await act(async () => {
+      stalePollPromise = result.current.checkForExternalChanges();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(resolveStaleReload).not.toBeNull();
+    });
+
+    await act(async () => {
+      await result.current.openFile("src/second.ts");
+    });
+
+    await act(async () => {
+      resolveStaleReload?.({
+        workspaceId: "workspace-1",
+        file: createDirectoryEntry({
+          name: "first.ts",
+          path: "src/first.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "200:20",
+        }),
+        content: "export const first = 200;\n",
+      });
+      await stalePollPromise;
+    });
+
+    expect(result.current.currentFile?.path).toBe("src/second.ts");
+    expect(result.current.savedContent).toBe("export const second = 2;\n");
+  });
+
   test("reuses the exchanged SSH credential token across repeated server metadata checks", async () => {
     api.get("/api/ssh-servers/:id/public-key", () => ({
       algorithm: "RSA-OAEP-256",

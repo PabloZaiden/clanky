@@ -132,6 +132,11 @@ export function useFileExplorer(
 
   const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
   const loadingFile = pendingFilePath !== null;
+  const currentFileRef = useRef<WorkspaceFileEntry | null>(currentFile);
+  const isDirtyRef = useRef(isDirty);
+
+  currentFileRef.current = currentFile;
+  isDirtyRef.current = isDirty;
 
   const applyErrorState = useCallback((requestError: unknown) => {
     setError(requestError instanceof Error ? requestError.message : String(requestError));
@@ -178,10 +183,15 @@ export function useFileExplorer(
     setShowHiddenFiles((currentValue) => !currentValue);
   }, []);
 
-  const openFile = useCallback(async (path: string) => {
+  const invalidateFileLoad = useCallback(() => {
     fileLoadAbortControllerRef.current?.abort();
-    const requestId = fileLoadRequestIdRef.current + 1;
-    fileLoadRequestIdRef.current = requestId;
+    fileLoadAbortControllerRef.current = null;
+    fileLoadRequestIdRef.current += 1;
+  }, []);
+
+  const openFile = useCallback(async (path: string) => {
+    invalidateFileLoad();
+    const requestId = fileLoadRequestIdRef.current;
     const abortController = new AbortController();
     fileLoadAbortControllerRef.current = abortController;
 
@@ -208,14 +218,17 @@ export function useFileExplorer(
       }
       applyErrorState(requestError);
     } finally {
-      if (fileLoadAbortControllerRef.current === abortController) {
+      const isLatestRequest = fileLoadRequestIdRef.current === requestId;
+      const isActiveRequest = !abortController.signal.aborted;
+
+      if (isActiveRequest && isLatestRequest && fileLoadAbortControllerRef.current === abortController) {
         fileLoadAbortControllerRef.current = null;
       }
-      if (fileLoadRequestIdRef.current === requestId) {
+      if (isActiveRequest && isLatestRequest) {
         setPendingFilePath(null);
       }
     }
-  }, [applyErrorState, startDirectory, targetId, targetType]);
+  }, [applyErrorState, invalidateFileLoad, startDirectory, targetId, targetType]);
 
   const refreshCurrentFile = useCallback(async (options?: { force?: boolean }) => {
     if (!currentFile) {
@@ -282,22 +295,34 @@ export function useFileExplorer(
   }, [saveCurrentFile]);
 
   const checkForExternalChanges = useCallback(async () => {
-    if (!currentFile || loadingFile || savingFile) {
+    const activeFile = currentFileRef.current;
+    if (!activeFile || loadingFile || savingFile) {
       return;
     }
+
+    const pollRequestId = fileLoadRequestIdRef.current;
 
     try {
       const response = await getFileExplorerFileMetadataApi(
         { type: targetType, id: targetId },
-        currentFile.path,
+        activeFile.path,
         { startDirectory },
       );
-      const metadata = response.file;
-      if (metadata.versionToken === currentFile.versionToken) {
+      const latestCurrentFile = currentFileRef.current;
+      if (
+        fileLoadRequestIdRef.current !== pollRequestId
+        || latestCurrentFile?.path !== activeFile.path
+        || latestCurrentFile.versionToken !== activeFile.versionToken
+      ) {
         return;
       }
 
-      if (isDirty) {
+      const metadata = response.file;
+      if (metadata.versionToken === latestCurrentFile.versionToken) {
+        return;
+      }
+
+      if (isDirtyRef.current) {
         setConflictState({
           kind: "reload_conflict",
           message: "This file changed outside the editor while you have unsaved changes.",
@@ -308,9 +333,19 @@ export function useFileExplorer(
 
       const readResponse = await readFileExplorerFileApi(
         { type: targetType, id: targetId },
-        currentFile.path,
+        activeFile.path,
         { startDirectory },
       );
+      const latestFileBeforeApply = currentFileRef.current;
+      if (
+        fileLoadRequestIdRef.current !== pollRequestId
+        || latestFileBeforeApply?.path !== activeFile.path
+        || latestFileBeforeApply.versionToken !== activeFile.versionToken
+        || isDirtyRef.current
+      ) {
+        return;
+      }
+
       setCurrentFile(readResponse.file);
       setEditorContent(readResponse.content);
       setSavedContent(readResponse.content);
@@ -327,7 +362,7 @@ export function useFileExplorer(
       }
       applyErrorState(requestError);
     }
-  }, [applyErrorState, currentFile, isDirty, loadingFile, savingFile, startDirectory, targetId, targetType]);
+  }, [applyErrorState, loadingFile, savingFile, startDirectory, targetId, targetType]);
 
   const toggleDirectory = useCallback(async (path: string) => {
     const isExpanded = expandedDirectories.includes(path);
@@ -347,9 +382,7 @@ export function useFileExplorer(
   }, []);
 
   useEffect(() => {
-    fileLoadAbortControllerRef.current?.abort();
-    fileLoadAbortControllerRef.current = null;
-    fileLoadRequestIdRef.current += 1;
+    invalidateFileLoad();
     setLoadingTree(true);
     setError(null);
     setErrorCode(null);
@@ -391,14 +424,13 @@ export function useFileExplorer(
       .finally(() => {
         setLoadingTree(false);
       });
-  }, [applyErrorState, enabled, loadDirectory, loadFullTree, loadTree, startDirectory, targetId, targetType]);
+  }, [applyErrorState, enabled, invalidateFileLoad, loadDirectory, loadFullTree, loadTree, startDirectory, targetId, targetType]);
 
   useEffect(() => {
     return () => {
-      fileLoadAbortControllerRef.current?.abort();
-      fileLoadAbortControllerRef.current = null;
+      invalidateFileLoad();
     };
-  }, []);
+  }, [invalidateFileLoad]);
 
   useEffect(() => {
     if (pollTimerRef.current !== null) {
