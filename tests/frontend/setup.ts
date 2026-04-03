@@ -7,12 +7,19 @@
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { cleanup } from "@testing-library/react";
-import { afterEach, beforeEach, expect } from "bun:test";
+import { afterEach, beforeEach, expect, mock } from "bun:test";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { resolveDefaultApiRoute } from "./helpers/default-api-routes";
+import { MockFitAddon, MockTerminal, resetGhosttyWebMockState } from "./helpers/mock-ghostty-web";
 
 // Extend Bun's expect with jest-dom matchers (toBeInTheDocument, toHaveTextContent, etc.)
 expect.extend(matchers);
+
+mock.module("ghostty-web", () => ({
+  init: async () => {},
+  Terminal: MockTerminal,
+  FitAddon: MockFitAddon,
+}));
 
 // Register happy-dom globals (window, document, navigator, etc.)
 GlobalRegistrator.register();
@@ -109,6 +116,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   globalThis.fetch = frontendFetchGuard;
   window.fetch = frontendFetchGuard;
+  resetGhosttyWebMockState();
 });
 
 // Reset location before each test so pathname-based public base path inference
@@ -120,4 +128,5 @@ beforeEach(() => {
   window.sessionStorage.clear();
   globalThis.fetch = frontendFetchGuard;
   window.fetch = frontendFetchGuard;
+  resetGhosttyWebMockState();
 });
