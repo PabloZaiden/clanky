@@ -9,6 +9,9 @@ import type {
 import type { CommandExecutor } from "./command-executor";
 
 const LIST_SEPARATOR = "\t";
+const FULL_TREE_MAX_ENTRIES = 10_000;
+const FULL_TREE_TIMEOUT_MS = 15_000;
+const FULL_TREE_ENTRY_LIMIT_EXIT_CODE = 3;
 
 export interface FileExplorerTarget {
   id: string;
@@ -271,7 +274,8 @@ function toEntriesByDirectory(entries: WorkspaceFileEntry[]): Record<string, Wor
   for (const entry of entries) {
     const parentDirectory = pathPosix.dirname(entry.path);
     const directoryKey = parentDirectory === "." ? "" : parentDirectory;
-    entriesByDirectory[directoryKey] = [...(entriesByDirectory[directoryKey] ?? []), entry];
+    entriesByDirectory[directoryKey] ??= [];
+    entriesByDirectory[directoryKey].push(entry);
     if (entry.kind === "directory" && !entriesByDirectory[entry.path]) {
       entriesByDirectory[entry.path] = [];
     }
@@ -291,18 +295,30 @@ async function runFullTreeCommand(
     "bash",
     [
       "-lc",
-      "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport \"$root\"; else find \"$root\" -mindepth 1 -print; fi; }; emit_paths | while IFS= read -r path; do if [ -z \"$path\" ] || [ \"$path\" = \"$root\" ]; then continue; fi; if [ -d \"$path\" ]; then typeFlag=d; hash=-; else typeFlag=f; if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$path\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$path\" | cut -d' ' -f1); else hash=; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$path\"); modified=$(stat -c '%Y' \"$path\"); else size=$(stat -f '%z' \"$path\"); modified=$(stat -f '%m' \"$path\"); fi; printf '%s\\t%s\\t%s\\t%s\\t%s\\n' \"$path\" \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"; done",
+      `root="$1"; maxEntries="$2"; if [ ! -d "$root" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport "$root"; else find "$root" -mindepth 1 -print; fi; }; entryCount=0; while IFS= read -r path; do if [ -z "$path" ] || [ "$path" = "$root" ]; then continue; fi; entryCount=$((entryCount + 1)); if [ "$entryCount" -gt "$maxEntries" ]; then exit ${FULL_TREE_ENTRY_LIMIT_EXIT_CODE}; fi; if [ -d "$path" ]; then typeFlag=d; else typeFlag=f; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' "$path"); modified=$(stat -c '%Y' "$path"); else size=$(stat -f '%z' "$path"); modified=$(stat -f '%m' "$path"); fi; printf '%s\\t%s\\t%s\\t%s\\n' "$path" "$typeFlag" "$size" "$modified"; done < <(emit_paths)`,
       "file-explorer-tree",
       target.rootDirectory,
+      String(FULL_TREE_MAX_ENTRIES),
     ],
     {
       logFailures: false,
+      timeout: FULL_TREE_TIMEOUT_MS,
     },
   );
 
   if (!result.success) {
     if (result.exitCode === 2) {
       throw new Error("Requested path does not exist");
+    }
+    if (result.exitCode === FULL_TREE_ENTRY_LIMIT_EXIT_CODE) {
+      throw new Error(
+        `File tree is too large to load at once. Choose a narrower explorer root or turn off "Load everything at once" (limit: ${FULL_TREE_MAX_ENTRIES} entries).`,
+      );
+    }
+    if (result.exitCode === 124) {
+      throw new Error(
+        "Loading the full file tree took too long. Choose a narrower explorer root or turn off \"Load everything at once\".",
+      );
     }
     throw new Error(result.stderr.trim() || "Failed to load file tree");
   }
@@ -315,7 +331,7 @@ async function runFullTreeCommand(
     .trimEnd()
     .split("\n")
     .map((line) => {
-      const [absolutePath, typeFlag, sizeText, timestampSeconds, contentHash] = line.split(LIST_SEPARATOR);
+      const [absolutePath, typeFlag, sizeText, timestampSeconds] = line.split(LIST_SEPARATOR);
       if (!absolutePath || !typeFlag || !sizeText || !timestampSeconds) {
         throw new Error("Failed to parse file tree");
       }
@@ -329,11 +345,7 @@ async function runFullTreeCommand(
         kind: typeFlag === "d" ? "directory" : "file",
         size,
         modifiedAt: parseModifiedAt(timestampSeconds),
-        versionToken: buildVersionToken(
-          timestampSeconds,
-          size,
-          typeFlag === "f" && contentHash && contentHash !== "-" ? contentHash : undefined,
-        ),
+        versionToken: buildVersionToken(timestampSeconds, size),
       });
     });
 }
@@ -358,9 +370,9 @@ export class FileExplorerService {
     const names = await target.executor.listDirectory(absolutePath, {
       includeHidden,
     });
-      const entryPaths = names.map((name) => pathPosix.join(absolutePath, name));
-      const metadataEntries = await runMetadataBatchCommand(target.executor, entryPaths);
-      const entries = metadataEntries
+    const entryPaths = names.map((name) => pathPosix.join(absolutePath, name));
+    const metadataEntries = await runMetadataBatchCommand(target.executor, entryPaths);
+    const entries = metadataEntries
       .map((entryMetadata, index) => {
         if (!entryMetadata) {
           return null;
@@ -368,8 +380,7 @@ export class FileExplorerService {
 
         return toFileEntry(target, entryPaths[index]!, entryMetadata);
       })
-      .filter((entry): entry is WorkspaceFileEntry => entry !== null)
-      ;
+      .filter((entry): entry is WorkspaceFileEntry => entry !== null);
 
     return {
       directory: toRelativePath(target.rootDirectory, absolutePath),

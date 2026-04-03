@@ -555,14 +555,17 @@ export function FileExplorerView({
               checked={loadFullTreeInput}
               onChange={(event) => setLoadFullTreeInput(event.target.checked)}
               disabled={fullTreePreference.loading || fullTreePreference.saving}
-              aria-label="Load everything at once"
+              aria-describedby={`${testIdPrefix}-load-full-tree-description`}
               className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-900 dark:text-neutral-100"
             />
             <span className="space-y-1">
               <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">
                 Load everything at once
               </span>
-              <span className="block text-xs text-gray-500 dark:text-gray-400">
+              <span
+                id={`${testIdPrefix}-load-full-tree-description`}
+                className="block text-xs text-gray-500 dark:text-gray-400"
+              >
                 When enabled, the explorer loads the full tree from this root in one request. Turn it off to keep lazy-loading directories as you expand them.
               </span>
             </span>
