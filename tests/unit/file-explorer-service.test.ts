@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
@@ -107,11 +107,33 @@ describe("fileExplorerService.listDirectory", () => {
     expect(result.entriesByDirectory["empty-dir"]).toEqual([]);
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(execSpy.mock.calls[0]?.[1]?.[2]).toBe("file-explorer-tree");
-    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("tree -afiF --noreport");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" -mindepth 1");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("sha256sum");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("stat -c");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("if [ -d \"$path\" ]");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("tree -afiF --noreport");
     expect(execSpy.mock.calls[0]?.[1]).toHaveLength(4);
     expect(execSpy.mock.calls[0]?.[2]).toEqual({ logFailures: false });
+  });
+
+  test("loads executables and symlinks without tree suffix markers in the parsed paths", async () => {
+    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-links-"));
+    tempDirectories.push(rootDirectory);
+    await mkdir(join(rootDirectory, "src"), { recursive: true });
+    await writeFile(join(rootDirectory, "src", "index.ts"), "export const value = 1;\n");
+    await writeFile(join(rootDirectory, "run.sh"), "#!/usr/bin/env bash\necho hello\n");
+    await chmod(join(rootDirectory, "run.sh"), 0o755);
+    await symlink(join(rootDirectory, "src", "index.ts"), join(rootDirectory, "index-link"));
+
+    const result = await fileExplorerService.loadTree({
+      id: "workspace-1",
+      rootDirectory,
+      pathScopeLabel: "workspace root",
+      executor: new TestCommandExecutor(),
+    });
+
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["src", "index-link", "run.sh"]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.path)).toEqual(["src", "index-link", "run.sh"]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "file", "file"]);
   });
 });

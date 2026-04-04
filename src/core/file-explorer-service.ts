@@ -313,8 +313,12 @@ function toEntriesByDirectory(entries: WorkspaceFileNode[]): Record<string, Work
   return entriesByDirectory;
 }
 
+function normalizeFullTreeLine(line: string): string {
+  return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
 function parseFullTreeLine(target: FileExplorerTarget, line: string): WorkspaceFileNode {
-  const rawAbsolutePath = line.trim();
+  const rawAbsolutePath = normalizeFullTreeLine(line);
   if (!rawAbsolutePath) {
     throw new Error("Failed to parse file tree");
   }
@@ -338,7 +342,7 @@ async function runFullTreeCommand(
     "bash",
     [
       "-lc",
-      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; if command -v tree >/dev/null 2>&1; then tree -afiF --noreport "$root"; else find "$root" -mindepth 1 \\( -type d -exec printf '%s/\\n' '{}' ';' -o -exec printf '%s\\n' '{}' ';' \\); fi`,
+      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; find "$root" -mindepth 1 \\( -type d -exec printf '%s/\\n' '{}' ';' -o -exec printf '%s\\n' '{}' ';' \\)`,
       "file-explorer-tree",
       target.rootDirectory,
     ],
@@ -362,10 +366,10 @@ async function runFullTreeCommand(
     .trimEnd()
     .split("\n")
     .filter((line) => {
-      const trimmedLine = line.trim();
-      return trimmedLine.length > 0
-        && trimmedLine !== normalizedRootDirectory
-        && trimmedLine !== `${normalizedRootDirectory}/`;
+      const normalizedLine = normalizeFullTreeLine(line);
+      return normalizedLine.length > 0
+        && normalizedLine !== normalizedRootDirectory
+        && normalizedLine !== `${normalizedRootDirectory}/`;
     })
     .map((line) => parseFullTreeLine(target, line));
 }
