@@ -335,7 +335,9 @@ export function FileExplorerView({
           {backLabel}
         </Button>
       )}
-      bodyClassName="h-full min-h-0"
+      bodyClassName="flex h-full min-h-0 flex-col"
+      bodyContainerClassName="flex-1 min-h-0 overflow-hidden px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
+      bodyContainerTestId={`${testIdPrefix}-shell-body`}
     >
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
         <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden lg:flex-row">
