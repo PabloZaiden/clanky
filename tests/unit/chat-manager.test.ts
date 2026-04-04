@@ -508,6 +508,156 @@ class ProgressiveStreamingBackend implements Backend {
   }
 }
 
+class InterleavedResponseBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `interleaved-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "Alpha response Beta after reasoning",
+      parts: [{ type: "text", text: "Alpha response Beta after reasoning" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, _prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "message.start",
+        messageId: "assistant-interleaved",
+      });
+    }, 0);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.delta",
+        content: "Alpha response",
+      });
+    }, 25);
+    setTimeout(() => {
+      subscription.push({
+        type: "reasoning.delta",
+        content: "Need more context.",
+      });
+    }, 50);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.delta",
+        content: "Beta after reasoning",
+      });
+    }, 75);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.complete",
+        content: "Alpha responseBeta after reasoning",
+      });
+      subscription.end();
+    }, 120);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://interleaved-response-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 class IdleStatusInterruptBackend implements Backend {
   readonly name = "acp";
 
@@ -791,6 +941,52 @@ describe("ChatManager", () => {
     const completedAssistant = completed.state.messages.find((message) =>
       message.role === "assistant" && message.content === "Hello world");
     expect(completedAssistant?.timestamp).toBe(streamingAssistant?.timestamp);
+  });
+
+  test("creates a new assistant block when response streaming resumes after reasoning", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new InterleavedResponseBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Interleaved Response Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Explain the issue in parts",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.role === "assistant" && message.content === "Beta after reasoning"),
+    );
+
+    const assistantMessages = completed.state.messages.filter((message) => message.role === "assistant");
+    expect(assistantMessages.map((message) => message.content)).toEqual([
+      "Alpha response",
+      "Beta after reasoning",
+    ]);
+
+    const responseLogs = completed.state.logs.filter((log) => log.details?.["logKind"] === "response");
+    expect(responseLogs.map((log) => log.details?.["responseContent"])).toEqual([
+      "Alpha response",
+      "Beta after reasoning",
+    ]);
+
+    const reasoningLogs = completed.state.logs.filter((log) => log.details?.["logKind"] === "reasoning");
+    expect(reasoningLogs.map((log) => log.details?.["responseContent"])).toEqual([
+      "Need more context.",
+    ]);
+
+    expect(assistantMessages[0]?.timestamp.localeCompare(reasoningLogs[0]?.timestamp ?? "")).toBeLessThan(0);
+    expect(reasoningLogs[0]?.timestamp.localeCompare(assistantMessages[1]?.timestamp ?? "")).toBeLessThan(0);
   });
 
   test("emits chat.status events for starting, streaming, and idle transitions", async () => {
