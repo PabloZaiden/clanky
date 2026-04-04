@@ -10,6 +10,7 @@ import {
 } from "../utils/public-base-path";
 
 let configuredPublicBasePath: string | undefined;
+export const PASSKEY_AUTH_REQUIRED_EVENT = "ralpher:passkey-auth-required";
 
 export function setConfiguredPublicBasePath(basePath?: string | null): void {
   if (basePath == null) {
@@ -56,5 +57,9 @@ export function appWebSocketUrl(path: string): string {
 }
 
 export async function appFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(appPath(path), init);
+  const response = await fetch(appPath(path), init);
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.dispatchEvent(new Event(PASSKEY_AUTH_REQUIRED_EVENT));
+  }
+  return response;
 }

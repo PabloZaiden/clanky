@@ -13,3 +13,4 @@ export * from "./ssh-sessions";
 export * from "./ssh-servers";
 export * from "./ssh-server-keys";
 export * from "./forwarded-ports";
+export * from "./passkey-auth";

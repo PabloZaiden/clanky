@@ -830,10 +830,12 @@ describe("App shell", () => {
       expect(getByRole("button", { name: "Expand Workspaces section" })).toBeTruthy();
     });
 
-    const persistedState = JSON.parse(window.localStorage.getItem("ralpher.sidebarSectionCollapseState") ?? "{}") as Record<string, boolean>;
-    expect(persistedState["workspaces"]).toBe(true);
-    expect(persistedState["loops"]).toBe(false);
-    expect("drafts" in persistedState).toBe(false);
+    await waitFor(() => {
+      const persistedState = JSON.parse(window.localStorage.getItem("ralpher.sidebarSectionCollapseState") ?? "{}") as Record<string, boolean>;
+      expect(persistedState["workspaces"]).toBe(true);
+      expect(persistedState["loops"]).toBe(false);
+      expect("drafts" in persistedState).toBe(false);
+    });
   });
 
   test("shows draft loops under Loops and removes workspace subgroup counts", async () => {
@@ -870,10 +872,16 @@ describe("App shell", () => {
 
     try {
       const { getByLabelText, user } = renderWithUser(<App />);
-      const sidebar = document.querySelector("aside");
 
+      await waitFor(() => {
+        expect(getByLabelText("Hide sidebar")).toBeTruthy();
+      });
+
+      const sidebar = document.querySelector("aside");
       expect(sidebar).toBeTruthy();
-      expect(getByLabelText("Hide sidebar")).toBeTruthy();
+      if (!(sidebar instanceof HTMLElement)) {
+        throw new Error("Expected sidebar element to exist");
+      }
 
       await user.click(getByLabelText("Hide sidebar"));
 

@@ -12,6 +12,10 @@ import {
   wrapRoutesWithBasicAuth,
   wrapRouteHandler,
 } from "./api/basic-auth";
+import {
+  wrapRouteHandlerWithPasskeyAuth,
+  wrapRoutesWithPasskeyAuth,
+} from "./api/passkey-guard";
 import { wrapRoutesWithLogging, wrapRouteHandlerWithLogging } from "./api/request-logging";
 import { portForwardProxyRoutes } from "./api/port-forwards";
 import { ensureDataDirectories } from "./persistence/database";
@@ -74,21 +78,33 @@ try {
 
   const runtimeConfig = getServerRuntimeConfig();
   const development = getServerDevelopmentConfig();
+  const publicPasskeyRoutes = new Set([
+    "/api/config",
+    "/api/passkey-auth/status",
+    "/api/passkey-auth/registration/options",
+    "/api/passkey-auth/registration/verify",
+    "/api/passkey-auth/authentication/options",
+    "/api/passkey-auth/authentication/verify",
+    "/api/passkey-auth/logout",
+  ]);
   staticAssetServer = runtimeConfig.basicAuth.enabled
     ? createStaticAssetServer(index, development)
     : undefined;
   const staticRoute = staticAssetServer
     ? createAuthenticatedStaticRoute(staticAssetServer, runtimeConfig.basicAuth)
     : index;
-  const protectedApiRoutes = wrapRoutesWithBasicAuth(apiRoutes, runtimeConfig.basicAuth);
+  const protectedApiRoutes = wrapRoutesWithBasicAuth(
+    wrapRoutesWithPasskeyAuth(apiRoutes, publicPasskeyRoutes),
+    runtimeConfig.basicAuth,
+  );
   const loggedApiRoutes = wrapRoutesWithLogging(protectedApiRoutes);
   const protectedPortForwardRoutes = wrapRoutesWithBasicAuth(
-    portForwardProxyRoutes,
+    wrapRoutesWithPasskeyAuth(portForwardProxyRoutes),
     runtimeConfig.basicAuth,
   );
   const websocketRoute = wrapRouteHandlerWithLogging(
     wrapRouteHandler(
-      (req: Request, server: Server<WebSocketData>) => {
+      wrapRouteHandlerWithPasskeyAuth((req: Request, server: Server<WebSocketData>) => {
         const url = new URL(req.url);
         const loopId = url.searchParams.get("loopId") ?? undefined;
         const chatId = url.searchParams.get("chatId") ?? undefined;
@@ -114,14 +130,14 @@ try {
 
         // Upgrade failed
         return new Response("WebSocket upgrade failed", { status: 400 });
-      },
+      }),
       runtimeConfig.basicAuth,
     ),
     "/api/ws",
   );
   const sshTerminalRoute = wrapRouteHandlerWithLogging(
     wrapRouteHandler(
-      (req: Request, server: Server<WebSocketData>) => {
+      wrapRouteHandlerWithPasskeyAuth((req: Request, server: Server<WebSocketData>) => {
         const url = new URL(req.url);
         const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
         const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
@@ -141,7 +157,7 @@ try {
 
         // Upgrade failed
         return new Response("WebSocket upgrade failed", { status: 400 });
-      },
+      }),
       runtimeConfig.basicAuth,
     ),
     "/api/ssh-terminal",
