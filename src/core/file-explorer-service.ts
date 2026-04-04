@@ -313,14 +313,36 @@ function toEntriesByDirectory(entries: WorkspaceFileNode[]): Record<string, Work
   return entriesByDirectory;
 }
 
+function normalizeFullTreeLine(line: string): string {
+  return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
+function parseFullTreeLine(target: FileExplorerTarget, line: string): WorkspaceFileNode {
+  const rawAbsolutePath = normalizeFullTreeLine(line);
+  if (!rawAbsolutePath) {
+    throw new Error("Failed to parse file tree");
+  }
+
+  const isDirectory = rawAbsolutePath.endsWith("/");
+  const absolutePath = isDirectory
+    ? rawAbsolutePath.slice(0, -1)
+    : rawAbsolutePath;
+  if (!absolutePath) {
+    throw new Error("Failed to parse file tree");
+  }
+
+  return toFileNode(target, absolutePath, isDirectory ? "directory" : "file");
+}
+
 async function runFullTreeCommand(
   target: FileExplorerTarget,
 ): Promise<WorkspaceFileNode[]> {
+  const normalizedRootDirectory = normalizeRootDirectory(target.rootDirectory);
   const result = await target.executor.exec(
     "bash",
     [
       "-lc",
-      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport "$root"; else find "$root" -mindepth 1 -print; fi; }; while IFS= read -r path; do if [ -z "$path" ] || [ "$path" = "$root" ]; then continue; fi; if [ -d "$path" ]; then typeFlag=d; else typeFlag=f; fi; printf '%s\\t%s\\n' "$path" "$typeFlag"; done < <(emit_paths)`,
+      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; find "$root" -mindepth 1 \\( -type d -o -xtype d \\) -printf '%p/\\n' -o -printf '%p\\n'`,
       "file-explorer-tree",
       target.rootDirectory,
     ],
@@ -343,13 +365,13 @@ async function runFullTreeCommand(
   return result.stdout
     .trimEnd()
     .split("\n")
-    .map((line) => {
-      const [absolutePath, typeFlag] = line.split(LIST_SEPARATOR);
-      if (!absolutePath || !typeFlag) {
-        throw new Error("Failed to parse file tree");
-      }
-      return toFileNode(target, absolutePath, typeFlag === "d" ? "directory" : "file");
-    });
+    .filter((line) => {
+      const normalizedLine = normalizeFullTreeLine(line);
+      return normalizedLine.length > 0
+        && normalizedLine !== normalizedRootDirectory
+        && normalizedLine !== `${normalizedRootDirectory}/`;
+    })
+    .map((line) => parseFullTreeLine(target, line));
 }
 
 export class FileExplorerService {
