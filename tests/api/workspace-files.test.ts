@@ -165,6 +165,25 @@ describe("workspace files API integration", () => {
     }
   });
 
+  test("keeps broken symlinks as file entries without failing tree loading", async () => {
+    const workspace = await createWorkspace();
+    const brokenLinkPath = join(workDir, "broken-link");
+    await symlink(join(workDir, "missing-target"), brokenLinkPath);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/tree`);
+      expect(response.ok).toBe(true);
+
+      const data = await response.json() as {
+        entriesByDirectory: Record<string, Array<{ name: string; path: string; kind: string }>>;
+      };
+      expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "broken-link", "README.md"]);
+      expect(data.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "file", "file"]);
+    } finally {
+      await rm(brokenLinkPath, { force: true });
+    }
+  });
+
   test("loads the full file tree from an alternate root", async () => {
     const workspace = await createWorkspace();
     const startDirectory = encodeURIComponent(alternateRootDir);

@@ -108,12 +108,15 @@ describe("fileExplorerService.listDirectory", () => {
     expect(result.entriesByDirectory["empty-dir"]).toEqual([]);
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(execSpy.mock.calls[0]?.[1]?.[2]).toBe("file-explorer-tree");
-    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" ! -path \"$root\" -exec stat -Lc");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" ! -path \"$root\" -exec stat -c $'base\\t%n\\t%f\\n' {} +");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" ! -path \"$root\" -type l -exec stat -Lc $'link\\t%n\\t%f\\n' {} + 2>/dev/null || true");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("stat --version >/dev/null 2>&1");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("sha256sum");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("-mindepth");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("-xtype");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("-printf");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("%F");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("%HT");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("if [ -d \"$path\" ]");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("tree ");
     expect(execSpy.mock.calls[0]?.[1]).toHaveLength(4);
@@ -149,14 +152,17 @@ describe("fileExplorerService.listDirectory", () => {
       async exec(command: string, args: string[], _options?: CommandOptions): Promise<CommandResult> {
         expect(command).toBe("bash");
         expect(args[2]).toBe("file-explorer-tree");
-        expect(args[1]).toContain("stat -Lf");
+        expect(args[1]).toContain("stat -f $'base\\t%N\\t%p\\n'");
+        expect(args[1]).toContain("stat -Lf $'link\\t%N\\t%p\\n'");
         return {
           success: true,
           stdout: [
-            `${rootDirectory}/src\tDirectory`,
-            `${rootDirectory}/src-link\tDirectory`,
-            `${rootDirectory}/index-link\tRegular File`,
-            `${rootDirectory}/run.sh\tRegular File`,
+            `base\t${rootDirectory}/src\t040755`,
+            `base\t${rootDirectory}/src-link\t120777`,
+            `base\t${rootDirectory}/index-link\t120777`,
+            `base\t${rootDirectory}/run.sh\t100755`,
+            `link\t${rootDirectory}/src-link\t040755`,
+            `link\t${rootDirectory}/index-link\t100644`,
           ].join("\n"),
           stderr: "",
           exitCode: 0,
@@ -187,6 +193,52 @@ describe("fileExplorerService.listDirectory", () => {
     });
 
     expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["src", "src-link", "index-link", "run.sh"]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "file", "file"]);
+    expect(result.entriesByDirectory["src-link"]).toEqual([]);
+  });
+
+  test("keeps broken symlinks as file entries when link-target stat calls fail", async () => {
+    const rootDirectory = "/workspace/project";
+    const executor: CommandExecutor = {
+      async exec(_command: string, _args: string[], _options?: CommandOptions): Promise<CommandResult> {
+        return {
+          success: true,
+          stdout: [
+            `base\t${rootDirectory}/src\t41ed`,
+            `base\t${rootDirectory}/src-link\t41ed`,
+            `base\t${rootDirectory}/broken-link\ta1ff`,
+            `base\t${rootDirectory}/index-link\ta1ff`,
+            `link\t${rootDirectory}/index-link\t81a4`,
+          ].join("\n"),
+          stderr: "",
+          exitCode: 0,
+        };
+      },
+      async fileExists(_path: string): Promise<boolean> {
+        return false;
+      },
+      async directoryExists(_path: string): Promise<boolean> {
+        return false;
+      },
+      async readFile(_path: string): Promise<string | null> {
+        return null;
+      },
+      async listDirectory(_path: string, _options?: { includeHidden?: boolean }): Promise<string[]> {
+        return [];
+      },
+      async writeFile(_path: string, _content: string): Promise<boolean> {
+        return false;
+      },
+    };
+
+    const result = await fileExplorerService.loadTree({
+      id: "workspace-1",
+      rootDirectory,
+      pathScopeLabel: "workspace root",
+      executor,
+    });
+
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["src", "src-link", "broken-link", "index-link"]);
     expect(result.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "file", "file"]);
     expect(result.entriesByDirectory["src-link"]).toEqual([]);
   });

@@ -317,27 +317,73 @@ function normalizeFullTreeLine(line: string): string {
   return line.endsWith("\r") ? line.slice(0, -1) : line;
 }
 
-function parseFullTreeLine(target: FileExplorerTarget, line: string): WorkspaceFileNode {
+function parseModeText(modeText: string): { mode: number; base: 8 | 16 } {
+  if (/^[0-7]+$/.test(modeText)) {
+    return {
+      mode: Number.parseInt(modeText, 8),
+      base: 8,
+    };
+  }
+  if (/^[0-9a-fA-F]+$/.test(modeText)) {
+    return {
+      mode: Number.parseInt(modeText, 16),
+      base: 16,
+    };
+  }
+  throw new Error(`Invalid file mode: ${modeText}`);
+}
+
+function parseModeKind(modeText: string): "directory" | "file" | "symlink" {
+  const { mode, base } = parseModeText(modeText);
+  const fileType = base === 8 ? mode & 0o170000 : mode & 0xf000;
+  if (fileType === (base === 8 ? 0o040000 : 0x4000)) {
+    return "directory";
+  }
+  if (fileType === (base === 8 ? 0o120000 : 0xa000)) {
+    return "symlink";
+  }
+  return "file";
+}
+
+function parseFullTreeLine(line: string): {
+  source: "base" | "link";
+  absolutePath: string;
+  kind: "directory" | "file" | "symlink";
+} {
   const normalizedLine = normalizeFullTreeLine(line);
   if (!normalizedLine) {
     throw new Error("Failed to parse file tree");
   }
 
-  const separatorIndex = normalizedLine.lastIndexOf(LIST_SEPARATOR);
-  if (separatorIndex <= 0 || separatorIndex === normalizedLine.length - 1) {
+  const firstSeparatorIndex = normalizedLine.indexOf(LIST_SEPARATOR);
+  const lastSeparatorIndex = normalizedLine.lastIndexOf(LIST_SEPARATOR);
+  if (
+    firstSeparatorIndex <= 0
+    || lastSeparatorIndex <= firstSeparatorIndex
+    || lastSeparatorIndex === normalizedLine.length - 1
+  ) {
     throw new Error("Failed to parse file tree");
   }
 
-  const absolutePath = normalizedLine.slice(0, separatorIndex);
-  const typeText = normalizedLine.slice(separatorIndex + LIST_SEPARATOR.length).trim().toLowerCase();
+  const source = normalizedLine.slice(0, firstSeparatorIndex);
+  if (source !== "base" && source !== "link") {
+    throw new Error("Failed to parse file tree");
+  }
+
+  const absolutePath = normalizedLine.slice(firstSeparatorIndex + LIST_SEPARATOR.length, lastSeparatorIndex);
+  const modeText = normalizedLine.slice(lastSeparatorIndex + LIST_SEPARATOR.length).trim();
   if (!absolutePath) {
     throw new Error("Failed to parse file tree");
   }
-  if (!typeText) {
+  if (!modeText) {
     throw new Error("Failed to parse file tree");
   }
 
-  return toFileNode(target, absolutePath, typeText.includes("directory") ? "directory" : "file");
+  return {
+    source,
+    absolutePath,
+    kind: parseModeKind(modeText),
+  };
 }
 
 async function runFullTreeCommand(
@@ -347,7 +393,7 @@ async function runFullTreeCommand(
     "bash",
     [
       "-lc",
-      "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi; if stat --version >/dev/null 2>&1; then find \"$root\" ! -path \"$root\" -exec stat -Lc $'%n\\t%F\\n' {} +; else find \"$root\" ! -path \"$root\" -exec stat -Lf $'%N\\t%HT\\n' {} +; fi",
+      "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi; if stat --version >/dev/null 2>&1; then find \"$root\" ! -path \"$root\" -exec stat -c $'base\\t%n\\t%f\\n' {} +; find \"$root\" ! -path \"$root\" -type l -exec stat -Lc $'link\\t%n\\t%f\\n' {} + 2>/dev/null || true; else find \"$root\" ! -path \"$root\" -exec stat -f $'base\\t%N\\t%p\\n' {} +; find \"$root\" ! -path \"$root\" -type l -exec stat -Lf $'link\\t%N\\t%p\\n' {} + 2>/dev/null || true; fi",
       "file-explorer-tree",
       target.rootDirectory,
     ],
@@ -367,13 +413,36 @@ async function runFullTreeCommand(
     return [];
   }
 
-  return result.stdout
+  const parsedEntries = result.stdout
     .trimEnd()
     .split("\n")
-    .filter((line) => {
-      return normalizeFullTreeLine(line).length > 0;
-    })
-    .map((line) => parseFullTreeLine(target, line))
+    .filter((line) => normalizeFullTreeLine(line).length > 0)
+    .map((line) => parseFullTreeLine(line))
+    .reduce<{
+      baseEntries: Array<{ absolutePath: string; kind: "directory" | "file" | "symlink" }>;
+      linkKinds: Map<string, "directory" | "file">;
+    }>((accumulator, entry) => {
+      if (entry.source === "link") {
+        accumulator.linkKinds.set(entry.absolutePath, entry.kind === "directory" ? "directory" : "file");
+        return accumulator;
+      }
+
+      accumulator.baseEntries.push({
+        absolutePath: entry.absolutePath,
+        kind: entry.kind,
+      });
+      return accumulator;
+    }, {
+      baseEntries: [],
+      linkKinds: new Map<string, "directory" | "file">(),
+    });
+
+  return parsedEntries.baseEntries
+    .map((entry) => toFileNode(
+      target,
+      entry.absolutePath,
+      entry.kind === "symlink" ? parsedEntries.linkKinds.get(entry.absolutePath) ?? "file" : entry.kind,
+    ))
     .filter((entry) => entry.path.length > 0);
 }
 
