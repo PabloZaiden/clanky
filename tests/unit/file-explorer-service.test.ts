@@ -124,6 +124,7 @@ describe("fileExplorerService.listDirectory", () => {
     await writeFile(join(rootDirectory, "run.sh"), "#!/usr/bin/env bash\necho hello\n");
     await chmod(join(rootDirectory, "run.sh"), 0o755);
     await symlink(join(rootDirectory, "src", "index.ts"), join(rootDirectory, "index-link"));
+    await symlink(join(rootDirectory, "src"), join(rootDirectory, "src-link"));
 
     const result = await fileExplorerService.loadTree({
       id: "workspace-1",
@@ -132,8 +133,9 @@ describe("fileExplorerService.listDirectory", () => {
       executor: new TestCommandExecutor(),
     });
 
-    expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["src", "index-link", "run.sh"]);
-    expect(result.entriesByDirectory[""]?.map((entry) => entry.path)).toEqual(["src", "index-link", "run.sh"]);
-    expect(result.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "file", "file"]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["src", "src-link", "index-link", "run.sh"]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.path)).toEqual(["src", "src-link", "index-link", "run.sh"]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "file", "file"]);
+    expect(result.entriesByDirectory["src-link"]).toEqual([]);
   });
 });

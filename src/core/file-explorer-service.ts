@@ -342,7 +342,7 @@ async function runFullTreeCommand(
     "bash",
     [
       "-lc",
-      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; find "$root" -mindepth 1 \\( -type d -exec printf '%s/\\n' '{}' ';' -o -exec printf '%s\\n' '{}' ';' \\)`,
+      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; find "$root" -mindepth 1 \\( -type d -o -xtype d \\) -printf '%p/\\n' -o -printf '%p\\n'`,
       "file-explorer-tree",
       target.rootDirectory,
     ],
