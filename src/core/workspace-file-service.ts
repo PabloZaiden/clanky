@@ -6,6 +6,7 @@ import { backendManager } from "./backend-manager";
 import { fileExplorerService, resolveFileExplorerRootDirectory } from "./file-explorer-service";
 import type {
   Workspace,
+  WorkspaceFileMetadataResponse,
   WorkspaceFileListResponse,
   WorkspaceFileReadResponse,
   WorkspaceFileTreeResponse,
@@ -75,7 +76,7 @@ class WorkspaceFileService {
     workspace: Workspace,
     requestedPath: string,
     options?: { startDirectory?: string },
-  ) {
+  ): Promise<WorkspaceFileMetadataResponse["file"] | null> {
     const target = await this.getTarget(workspace, options?.startDirectory);
     return await fileExplorerService.getMetadata(target, requestedPath);
   }

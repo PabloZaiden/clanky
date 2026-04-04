@@ -61,7 +61,7 @@ describe("fileExplorerService.listDirectory", () => {
     }));
   });
 
-  test("uses a single metadata batch call for directory entries", async () => {
+  test("uses a single lightweight batch call for directory entries", async () => {
     const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-service-"));
     tempDirectories.push(rootDirectory);
     await mkdir(join(rootDirectory, "src"), { recursive: true });
@@ -81,7 +81,7 @@ describe("fileExplorerService.listDirectory", () => {
     expect(result.entries.map((entry) => entry.name)).toEqual(["src", "package.json", "README.md"]);
     expect(execSpy).toHaveBeenCalledTimes(2);
     expect(execSpy.mock.calls[1]?.[0]).toBe("bash");
-    expect(execSpy.mock.calls[1]?.[1]?.[2]).toBe("file-explorer-batch-metadata");
+    expect(execSpy.mock.calls[1]?.[1]?.[2]).toBe("file-explorer-batch-nodes");
   });
 
   test("loads the full tree with a single traversal command and preserves empty directories", async () => {
@@ -108,6 +108,7 @@ describe("fileExplorerService.listDirectory", () => {
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(execSpy.mock.calls[0]?.[1]?.[2]).toBe("file-explorer-tree");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("sha256sum");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("stat -c");
     expect(execSpy.mock.calls[0]?.[1]).toHaveLength(4);
     expect(execSpy.mock.calls[0]?.[2]).toEqual({ logFailures: false });
   });

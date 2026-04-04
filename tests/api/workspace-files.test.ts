@@ -80,7 +80,7 @@ describe("workspace files API integration", () => {
     return await response.json() as { id: string };
   }
 
-  test("lists root directory entries with metadata", async () => {
+  test("lists root directory entries as lightweight explorer nodes", async () => {
     const workspace = await createWorkspace();
 
     const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files`);
@@ -88,16 +88,16 @@ describe("workspace files API integration", () => {
 
     const data = await response.json() as {
       directory: string;
-      entries: Array<{ name: string; path: string; kind: string; versionToken: string }>;
+      entries: Array<{ name: string; path: string; kind: string; versionToken?: string }>;
     };
     expect(data.directory).toBe("");
     expect(data.entries.map((entry) => entry.name)).toEqual([".git", "src", "README.md"]);
     expect(data.entries.find((entry) => entry.name === ".git")?.kind).toBe("directory");
     expect(data.entries.find((entry) => entry.name === "README.md")?.path).toBe("README.md");
-    expect(data.entries[0]?.versionToken.length).toBeGreaterThan(0);
+    expect(data.entries[0]?.versionToken).toBeUndefined();
   });
 
-  test("ignores showHidden query params and always returns full directory entries", async () => {
+  test("ignores showHidden query params and always returns lightweight directory entries", async () => {
     const workspace = await createWorkspace();
 
     const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files?showHidden=false`);
