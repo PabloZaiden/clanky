@@ -78,7 +78,7 @@ test("keeps the embedded terminal panel inside the visible explorer body", async
 
     await waitForCondition(
       async () => await app.listSshSessions(),
-      (sessions) => sessions.length === 1,
+      (sessions) => sessions.some((session) => session.workspaceId === workspace.id),
       "workspace file explorer SSH session creation",
     );
     await waitForCondition(
