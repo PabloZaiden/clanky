@@ -107,8 +107,10 @@ describe("fileExplorerService.listDirectory", () => {
     expect(result.entriesByDirectory["empty-dir"]).toEqual([]);
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(execSpy.mock.calls[0]?.[1]?.[2]).toBe("file-explorer-tree");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("tree -afiF --noreport");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("sha256sum");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("stat -c");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("if [ -d \"$path\" ]");
     expect(execSpy.mock.calls[0]?.[1]).toHaveLength(4);
     expect(execSpy.mock.calls[0]?.[2]).toEqual({ logFailures: false });
   });
