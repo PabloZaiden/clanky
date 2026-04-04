@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WorkspaceFileEntry } from "../types";
+import type { WorkspaceFileEntry, WorkspaceFileNode } from "../types";
 import {
   type FileExplorerCredentialErrorCode,
   type FileExplorerTarget,
@@ -22,7 +22,7 @@ export interface WorkspaceFileConflictState {
 }
 
 export interface UseFileExplorerResult {
-  directoryEntries: Record<string, WorkspaceFileEntry[]>;
+  directoryEntries: Record<string, WorkspaceFileNode[]>;
   expandedDirectories: string[];
   currentDirectory: string;
   currentFile: WorkspaceFileEntry | null;
@@ -59,9 +59,9 @@ function getParentDirectory(path: string): string {
 }
 
 function upsertDirectoryEntry(
-  directoryEntries: Record<string, WorkspaceFileEntry[]>,
-  entry: WorkspaceFileEntry,
-): Record<string, WorkspaceFileEntry[]> {
+  directoryEntries: Record<string, WorkspaceFileNode[]>,
+  entry: WorkspaceFileNode,
+): Record<string, WorkspaceFileNode[]> {
   const parentDirectory = getParentDirectory(entry.path);
   const currentEntries = directoryEntries[parentDirectory] ?? [];
   const nextEntries = currentEntries.some((currentEntry) => currentEntry.path === entry.path)
@@ -113,7 +113,7 @@ export function useFileExplorer(
   const loadFullTree = options?.loadFullTree ?? true;
   const pollIntervalMs = options?.pollIntervalMs ?? 5000;
   const [effectiveLoadFullTree, setEffectiveLoadFullTree] = useState(loadFullTree);
-  const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileEntry[]>>({});
+  const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileNode[]>>({});
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
   const [currentFile, setCurrentFile] = useState<WorkspaceFileEntry | null>(null);
@@ -154,7 +154,7 @@ export function useFileExplorer(
 
   const applyDirectoryResponse = useCallback((
     path: string,
-    response: { entries: WorkspaceFileEntry[] },
+    response: { entries: WorkspaceFileNode[] },
   ) => {
     setDirectoryEntries((currentEntries) => ({
       ...currentEntries,

@@ -12,10 +12,13 @@ import {
 
 export type WorkspaceFileKind = "file" | "directory";
 
-export interface WorkspaceFileEntry {
+export interface WorkspaceFileNode {
   name: string;
   path: string;
   kind: WorkspaceFileKind;
+}
+
+export interface WorkspaceFileEntry extends WorkspaceFileNode {
   size: number;
   modifiedAt: string;
   versionToken: string;
@@ -24,12 +27,12 @@ export interface WorkspaceFileEntry {
 export interface WorkspaceFileListResponse {
   workspaceId: string;
   directory: string;
-  entries: WorkspaceFileEntry[];
+  entries: WorkspaceFileNode[];
 }
 
 export interface WorkspaceFileTreeResponse {
   workspaceId: string;
-  entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
+  entriesByDirectory: Record<string, WorkspaceFileNode[]>;
 }
 
 export interface WorkspaceFileReadResponse {
@@ -53,12 +56,12 @@ export interface WorkspaceFileWriteResponse {
 export interface SshServerFileListResponse {
   serverId: string;
   directory: string;
-  entries: WorkspaceFileEntry[];
+  entries: WorkspaceFileNode[];
 }
 
 export interface SshServerFileTreeResponse {
   serverId: string;
-  entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
+  entriesByDirectory: Record<string, WorkspaceFileNode[]>;
 }
 
 export interface SshServerFileReadResponse {

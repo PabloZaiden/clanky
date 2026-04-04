@@ -1,5 +1,5 @@
 import { memo, useMemo, type ReactNode } from "react";
-import type { WorkspaceFileEntry } from "../../types";
+import type { WorkspaceFileNode } from "../../types";
 import { Button, RefreshIcon } from "../common";
 
 function Chevron({ expanded }: { expanded: boolean }) {
@@ -73,7 +73,7 @@ function HiddenFilesIcon({ visible }: { visible: boolean }) {
 }
 
 interface WorkspaceFileTreeProps {
-  entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
+  entriesByDirectory: Record<string, WorkspaceFileNode[]>;
   expandedDirectories: string[];
   currentFilePath?: string;
   showHiddenFiles: boolean;
@@ -88,13 +88,13 @@ interface WorkspaceFileTreeProps {
   onOpenFile: (path: string) => Promise<void>;
 }
 
-function isHiddenEntry(entry: WorkspaceFileEntry): boolean {
+function isHiddenEntry(entry: WorkspaceFileNode): boolean {
   return entry.name.startsWith(".");
 }
 
 function renderDirectory(
   path: string,
-  entriesByDirectory: Record<string, WorkspaceFileEntry[]>,
+  entriesByDirectory: Record<string, WorkspaceFileNode[]>,
   expandedDirectories: string[],
   currentFilePath: string | undefined,
   showHiddenFiles: boolean,

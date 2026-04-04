@@ -5,6 +5,7 @@
 import { posix as pathPosix } from "node:path";
 import type {
   WorkspaceFileEntry,
+  WorkspaceFileNode,
 } from "../types";
 import type { CommandExecutor } from "./command-executor";
 
@@ -19,11 +20,11 @@ export interface FileExplorerTarget {
 
 export interface FileExplorerListResult {
   directory: string;
-  entries: WorkspaceFileEntry[];
+  entries: WorkspaceFileNode[];
 }
 
 export interface FileExplorerTreeResult {
-  entriesByDirectory: Record<string, WorkspaceFileEntry[]>;
+  entriesByDirectory: Record<string, WorkspaceFileNode[]>;
 }
 
 export interface FileExplorerReadResult {
@@ -180,10 +181,44 @@ async function runMetadataCommand(
   };
 }
 
-async function runMetadataBatchCommand(
+async function runNodeTypeCommand(
+  executor: CommandExecutor,
+  absolutePath: string,
+): Promise<"file" | "directory" | null> {
+  const result = await executor.exec(
+    "bash",
+    [
+      "-lc",
+      "if [ ! -e \"$1\" ]; then exit 2; fi; if [ -d \"$1\" ]; then printf 'd'; else printf 'f'; fi",
+      "file-explorer-node-type",
+      absolutePath,
+    ],
+    {
+      logFailures: false,
+    },
+  );
+
+  if (!result.success) {
+    if (result.exitCode === 2) {
+      return null;
+    }
+    throw new Error(result.stderr.trim() || "Failed to inspect path");
+  }
+
+  const output = result.stdout.trim();
+  if (output === "d") {
+    return "directory";
+  }
+  if (output === "f") {
+    return "file";
+  }
+  throw new Error("Failed to parse path inspection result");
+}
+
+async function runNodeBatchCommand(
   executor: CommandExecutor,
   absolutePaths: string[],
-): Promise<Array<{ kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string } | null>> {
+): Promise<Array<{ kind: "file" | "directory" } | null>> {
   if (absolutePaths.length === 0) {
     return [];
   }
@@ -192,8 +227,8 @@ async function runMetadataBatchCommand(
     "bash",
     [
       "-lc",
-      "for path in \"$@\"; do if [ ! -e \"$path\" ]; then printf 'missing\\n'; continue; fi; if [ -d \"$path\" ]; then typeFlag=d; hash=-; else typeFlag=f; if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$path\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$path\" | cut -d' ' -f1); else hash=; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$path\"); modified=$(stat -c '%Y' \"$path\"); else size=$(stat -f '%z' \"$path\"); modified=$(stat -f '%m' \"$path\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"; done",
-      "file-explorer-batch-metadata",
+      "for path in \"$@\"; do if [ ! -e \"$path\" ]; then printf 'missing\\n'; continue; fi; if [ -d \"$path\" ]; then printf 'd\\n'; else printf 'f\\n'; fi; done",
+      "file-explorer-batch-nodes",
       ...absolutePaths,
     ],
     {
@@ -202,41 +237,36 @@ async function runMetadataBatchCommand(
   );
 
   if (!result.success) {
-    throw new Error(result.stderr.trim() || "Failed to read file metadata");
+    throw new Error(result.stderr.trim() || "Failed to inspect directory entries");
   }
 
   const lines = result.stdout.endsWith("\n")
     ? result.stdout.slice(0, -1).split("\n")
     : result.stdout.split("\n");
   if (lines.length !== absolutePaths.length) {
-    throw new Error("Failed to parse file metadata");
+    throw new Error("Failed to parse directory entries");
   }
 
   return lines.map((line) => {
     if (line === "missing") {
       return null;
     }
-    const [typeFlag, sizeText, timestampSeconds, contentHash] = line.split(LIST_SEPARATOR);
-    if (!typeFlag || !sizeText || !timestampSeconds) {
-      throw new Error("Failed to parse file metadata");
-    }
-
-    const size = Number.parseInt(sizeText, 10);
-    if (!Number.isFinite(size)) {
-      throw new Error(`Invalid metadata size: ${sizeText}`);
+    if (line !== "d" && line !== "f") {
+      throw new Error("Failed to parse directory entries");
     }
 
     return {
-      kind: typeFlag === "d" ? "directory" : "file",
-      size,
-      modifiedAt: parseModifiedAt(timestampSeconds),
-      versionToken: buildVersionToken(
-        timestampSeconds,
-        size,
-        typeFlag === "f" && contentHash && contentHash !== "-" ? contentHash : undefined,
-      ),
+      kind: line === "d" ? "directory" : "file",
     };
   });
+}
+
+function toFileNode(target: FileExplorerTarget, absolutePath: string, kind: "file" | "directory"): WorkspaceFileNode {
+  return {
+    name: pathPosix.basename(absolutePath),
+    path: toRelativePath(target.rootDirectory, absolutePath),
+    kind,
+  };
 }
 
 function toFileEntry(
@@ -245,16 +275,14 @@ function toFileEntry(
   metadata: { kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string },
 ): WorkspaceFileEntry {
   return {
-    name: pathPosix.basename(absolutePath),
-    path: toRelativePath(target.rootDirectory, absolutePath),
-    kind: metadata.kind,
+    ...toFileNode(target, absolutePath, metadata.kind),
     size: metadata.size,
     modifiedAt: metadata.modifiedAt,
     versionToken: metadata.versionToken,
   };
 }
 
-function sortEntries(entries: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
+function sortEntries<T extends WorkspaceFileNode>(entries: T[]): T[] {
   return [...entries].sort((left, right) => {
     if (left.kind !== right.kind) {
       return left.kind === "directory" ? -1 : 1;
@@ -263,8 +291,8 @@ function sortEntries(entries: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
   });
 }
 
-function toEntriesByDirectory(entries: WorkspaceFileEntry[]): Record<string, WorkspaceFileEntry[]> {
-  const entriesByDirectory: Record<string, WorkspaceFileEntry[]> = {
+function toEntriesByDirectory(entries: WorkspaceFileNode[]): Record<string, WorkspaceFileNode[]> {
+  const entriesByDirectory: Record<string, WorkspaceFileNode[]> = {
     "": [],
   };
 
@@ -287,12 +315,12 @@ function toEntriesByDirectory(entries: WorkspaceFileEntry[]): Record<string, Wor
 
 async function runFullTreeCommand(
   target: FileExplorerTarget,
-): Promise<WorkspaceFileEntry[]> {
+): Promise<WorkspaceFileNode[]> {
   const result = await target.executor.exec(
     "bash",
     [
       "-lc",
-      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport "$root"; else find "$root" -mindepth 1 -print; fi; }; while IFS= read -r path; do if [ -z "$path" ] || [ "$path" = "$root" ]; then continue; fi; if [ -d "$path" ]; then typeFlag=d; else typeFlag=f; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' "$path"); modified=$(stat -c '%Y' "$path"); else size=$(stat -f '%z' "$path"); modified=$(stat -f '%m' "$path"); fi; printf '%s\\t%s\\t%s\\t%s\\n' "$path" "$typeFlag" "$size" "$modified"; done < <(emit_paths)`,
+      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; emit_paths() { if command -v tree >/dev/null 2>&1; then tree -afi --noreport "$root"; else find "$root" -mindepth 1 -print; fi; }; while IFS= read -r path; do if [ -z "$path" ] || [ "$path" = "$root" ]; then continue; fi; if [ -d "$path" ]; then typeFlag=d; else typeFlag=f; fi; printf '%s\\t%s\\n' "$path" "$typeFlag"; done < <(emit_paths)`,
       "file-explorer-tree",
       target.rootDirectory,
     ],
@@ -316,22 +344,11 @@ async function runFullTreeCommand(
     .trimEnd()
     .split("\n")
     .map((line) => {
-      const [absolutePath, typeFlag, sizeText, timestampSeconds] = line.split(LIST_SEPARATOR);
-      if (!absolutePath || !typeFlag || !sizeText || !timestampSeconds) {
+      const [absolutePath, typeFlag] = line.split(LIST_SEPARATOR);
+      if (!absolutePath || !typeFlag) {
         throw new Error("Failed to parse file tree");
       }
-
-      const size = Number.parseInt(sizeText, 10);
-      if (!Number.isFinite(size)) {
-        throw new Error(`Invalid metadata size: ${sizeText}`);
-      }
-
-      return toFileEntry(target, absolutePath, {
-        kind: typeFlag === "d" ? "directory" : "file",
-        size,
-        modifiedAt: parseModifiedAt(timestampSeconds),
-        versionToken: buildVersionToken(timestampSeconds, size),
-      });
+      return toFileNode(target, absolutePath, typeFlag === "d" ? "directory" : "file");
     });
 }
 
@@ -342,12 +359,12 @@ export class FileExplorerService {
     options?: { includeHidden?: boolean },
   ): Promise<FileExplorerListResult> {
     const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
+    const pathKind = await runNodeTypeCommand(target.executor, absolutePath);
 
-    if (!metadata) {
+    if (!pathKind) {
       throw new Error("Requested path does not exist");
     }
-    if (metadata.kind !== "directory") {
+    if (pathKind !== "directory") {
       throw new Error("Requested path is not a directory");
     }
 
@@ -356,16 +373,16 @@ export class FileExplorerService {
       includeHidden,
     });
     const entryPaths = names.map((name) => pathPosix.join(absolutePath, name));
-    const metadataEntries = await runMetadataBatchCommand(target.executor, entryPaths);
-    const entries = metadataEntries
+    const nodeEntries = await runNodeBatchCommand(target.executor, entryPaths);
+    const entries = nodeEntries
       .map((entryMetadata, index) => {
         if (!entryMetadata) {
           return null;
         }
 
-        return toFileEntry(target, entryPaths[index]!, entryMetadata);
+        return toFileNode(target, entryPaths[index]!, entryMetadata.kind);
       })
-      .filter((entry): entry is WorkspaceFileEntry => entry !== null);
+      .filter((entry): entry is WorkspaceFileNode => entry !== null);
 
     return {
       directory: toRelativePath(target.rootDirectory, absolutePath),
