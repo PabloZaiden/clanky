@@ -112,10 +112,11 @@ export async function initializeDatabase(): Promise<void> {
  * here should only be updated during future clean-cut resets that fold
  * accumulated migrations back in.
  *
- * Exception: the chats table and its indexes intentionally remain here because
- * older databases can already contain reused schema_migrations version numbers
- * from pre-reset eras. Recreating chats during baseline startup is the repair
- * path that keeps /api/chats available even when the old migration IDs collide.
+ * Exception: the chats and passkey_credentials tables, plus their indexes,
+ * intentionally remain here because older databases can already contain reused
+ * schema_migrations version numbers from pre-reset eras. Recreating these
+ * schema objects during baseline startup is the repair path that keeps the app
+ * working even when newer migration IDs collide with legacy history.
  */
 function createTables(database: Database): void {
   // Wrap all schema creation in a transaction
@@ -261,6 +262,25 @@ function createTables(database: Database): void {
       CREATE TABLE IF NOT EXISTS preferences (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      )
+    `);
+
+    // Passkey credentials table - stores the app-wide WebAuthn credential.
+    // Keep this in the base schema so startup repairs legacy databases whose
+    // schema_migrations versions may already include the passkey migration ID.
+    database.run(`
+      CREATE TABLE IF NOT EXISTS passkey_credentials (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        credential_id TEXT NOT NULL,
+        public_key BLOB NOT NULL,
+        counter INTEGER NOT NULL,
+        device_type TEXT NOT NULL,
+        backed_up INTEGER NOT NULL DEFAULT 0,
+        transports TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_used_at TEXT
       )
     `);
 
@@ -453,6 +473,12 @@ function createTables(database: Database): void {
       WHERE status IN ('starting', 'active', 'stopping')
     `);
 
+    // Passkey credentials index
+    database.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_passkey_credentials_credential_id
+      ON passkey_credentials(credential_id)
+    `);
+
     // Note: No index needed for sessions - composite primary key (backend_name, loop_id)
     // already provides efficient lookup
   });
@@ -493,18 +519,21 @@ export function resetDatabase(): void {
   log.warn("Resetting database - dropping all tables");
   
   // Wrap DROP operations in a transaction.
-  // FK dependency order: review_comments → loops → workspaces.
-  // review_comments references loops(id), loops references workspaces(id),
-  // so we must drop in reverse dependency order to satisfy FK constraints.
+  // FK dependency order: review_comments → loops/chats → workspaces.
+  // review_comments references loops(id), and loops/chats reference
+  // workspaces(id), so we must drop in reverse dependency order to satisfy
+  // FK constraints.
   const dropAllTables = db.transaction(() => {
     db!.run("DROP TABLE IF EXISTS forwarded_ports");
     db!.run("DROP TABLE IF EXISTS review_comments");
     db!.run("DROP TABLE IF EXISTS ssh_server_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_sessions");
     db!.run("DROP TABLE IF EXISTS loops");
+    db!.run("DROP TABLE IF EXISTS chats");
     db!.run("DROP TABLE IF EXISTS ssh_servers");
     db!.run("DROP TABLE IF EXISTS workspaces");
     db!.run("DROP TABLE IF EXISTS sessions");
+    db!.run("DROP TABLE IF EXISTS passkey_credentials");
     db!.run("DROP TABLE IF EXISTS preferences");
     db!.run("DROP TABLE IF EXISTS schema_migrations");
   });

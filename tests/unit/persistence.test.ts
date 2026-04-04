@@ -151,6 +151,94 @@ describe("Persistence", () => {
 
       expect(row?.name).toBe("chats");
     });
+
+    test("initializeDatabase repairs passkey credentials when a legacy migration version collides", async () => {
+      const { Database } = await import("bun:sqlite");
+      const databasePath = join(testDataDir, "ralpher.db");
+      const legacyDb = new Database(databasePath);
+
+      legacyDb.run(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        3,
+        "legacy_reset_three",
+        "2025-01-01T00:00:00.000Z",
+      ]);
+      legacyDb.close();
+
+      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      const { hasRegisteredPasskeys } = await import("../../src/persistence/passkey-auth");
+      await initializeDatabase();
+
+      const row = getDatabase().query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'passkey_credentials'",
+      ).get() as { name: string } | null;
+      const index = getDatabase().query(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_passkey_credentials_credential_id'",
+      ).get() as { name: string } | null;
+
+      expect(row?.name).toBe("passkey_credentials");
+      expect(index?.name).toBe("idx_passkey_credentials_credential_id");
+      await expect(hasRegisteredPasskeys()).resolves.toBe(false);
+    });
+
+    test("resetDatabase drops chats and passkey credentials before recreating the schema", async () => {
+      const { ensureDataDirectories, getDatabase, resetDatabase } = await import("../../src/persistence/database");
+      const { createWorkspace } = await import("../../src/persistence/workspaces");
+
+      await ensureDataDirectories();
+      await createWorkspace({
+        id: testWorkspaceId,
+        name: "Test Workspace",
+        directory: "/tmp/test",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: getDefaultServerSettings(),
+      });
+
+      const now = new Date().toISOString();
+      const db = getDatabase();
+      db.run(
+        `
+          INSERT INTO chats (
+            id, name, workspace_id, directory, created_at, updated_at, interrupt_requested
+          ) VALUES (?, ?, ?, ?, ?, ?, 0)
+        `,
+        ["chat-before-reset", "Chat Before Reset", testWorkspaceId, "/tmp/test", now, now],
+      );
+      db.run(
+        `
+          INSERT INTO passkey_credentials (
+            id, name, credential_id, public_key, counter, device_type, backed_up, transports, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          "passkey-before-reset",
+          "Primary passkey",
+          "credential-before-reset",
+          new Uint8Array([1, 2, 3]),
+          0,
+          "singleDevice",
+          0,
+          "[]",
+          now,
+          now,
+        ],
+      );
+
+      resetDatabase();
+
+      const chatsRow = db.query("SELECT COUNT(*) AS count FROM chats").get() as { count: number };
+      const passkeysRow = db.query("SELECT COUNT(*) AS count FROM passkey_credentials").get() as { count: number };
+
+      expect(chatsRow.count).toBe(0);
+      expect(passkeysRow.count).toBe(0);
+    });
   });
 
   describe("loops", () => {
