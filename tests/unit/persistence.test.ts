@@ -151,6 +151,41 @@ describe("Persistence", () => {
 
       expect(row?.name).toBe("chats");
     });
+
+    test("initializeDatabase repairs passkey credentials when a legacy migration version collides", async () => {
+      const { Database } = await import("bun:sqlite");
+      const databasePath = join(testDataDir, "ralpher.db");
+      const legacyDb = new Database(databasePath);
+
+      legacyDb.run(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        3,
+        "legacy_reset_three",
+        "2025-01-01T00:00:00.000Z",
+      ]);
+      legacyDb.close();
+
+      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      const { hasRegisteredPasskeys } = await import("../../src/persistence/passkey-auth");
+      await initializeDatabase();
+
+      const row = getDatabase().query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'passkey_credentials'",
+      ).get() as { name: string } | null;
+      const index = getDatabase().query(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_passkey_credentials_credential_id'",
+      ).get() as { name: string } | null;
+
+      expect(row?.name).toBe("passkey_credentials");
+      expect(index?.name).toBe("idx_passkey_credentials_credential_id");
+      await expect(hasRegisteredPasskeys()).resolves.toBe(false);
+    });
   });
 
   describe("loops", () => {
