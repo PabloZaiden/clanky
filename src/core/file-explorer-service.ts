@@ -318,31 +318,36 @@ function normalizeFullTreeLine(line: string): string {
 }
 
 function parseFullTreeLine(target: FileExplorerTarget, line: string): WorkspaceFileNode {
-  const rawAbsolutePath = normalizeFullTreeLine(line);
-  if (!rawAbsolutePath) {
+  const normalizedLine = normalizeFullTreeLine(line);
+  if (!normalizedLine) {
     throw new Error("Failed to parse file tree");
   }
 
-  const isDirectory = rawAbsolutePath.endsWith("/");
-  const absolutePath = isDirectory
-    ? rawAbsolutePath.slice(0, -1)
-    : rawAbsolutePath;
+  const separatorIndex = normalizedLine.lastIndexOf(LIST_SEPARATOR);
+  if (separatorIndex <= 0 || separatorIndex === normalizedLine.length - 1) {
+    throw new Error("Failed to parse file tree");
+  }
+
+  const absolutePath = normalizedLine.slice(0, separatorIndex);
+  const typeText = normalizedLine.slice(separatorIndex + LIST_SEPARATOR.length).trim().toLowerCase();
   if (!absolutePath) {
     throw new Error("Failed to parse file tree");
   }
+  if (!typeText) {
+    throw new Error("Failed to parse file tree");
+  }
 
-  return toFileNode(target, absolutePath, isDirectory ? "directory" : "file");
+  return toFileNode(target, absolutePath, typeText.includes("directory") ? "directory" : "file");
 }
 
 async function runFullTreeCommand(
   target: FileExplorerTarget,
 ): Promise<WorkspaceFileNode[]> {
-  const normalizedRootDirectory = normalizeRootDirectory(target.rootDirectory);
   const result = await target.executor.exec(
     "bash",
     [
       "-lc",
-      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; find "$root" -mindepth 1 \\( -type d -o -xtype d \\) -printf '%p/\\n' -o -printf '%p\\n'`,
+      "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi; if stat --version >/dev/null 2>&1; then find \"$root\" ! -path \"$root\" -exec stat -Lc $'%n\\t%F\\n' {} +; else find \"$root\" ! -path \"$root\" -exec stat -Lf $'%N\\t%HT\\n' {} +; fi",
       "file-explorer-tree",
       target.rootDirectory,
     ],
@@ -366,12 +371,10 @@ async function runFullTreeCommand(
     .trimEnd()
     .split("\n")
     .filter((line) => {
-      const normalizedLine = normalizeFullTreeLine(line);
-      return normalizedLine.length > 0
-        && normalizedLine !== normalizedRootDirectory
-        && normalizedLine !== `${normalizedRootDirectory}/`;
+      return normalizeFullTreeLine(line).length > 0;
     })
-    .map((line) => parseFullTreeLine(target, line));
+    .map((line) => parseFullTreeLine(target, line))
+    .filter((entry) => entry.path.length > 0);
 }
 
 export class FileExplorerService {

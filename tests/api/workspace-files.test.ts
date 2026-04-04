@@ -6,7 +6,7 @@ import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { serve, type Server } from "bun";
 import { join } from "path";
-import { mkdtemp, rm, mkdir, writeFile } from "fs/promises";
+import { mkdtemp, rm, mkdir, symlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 
 describe("workspace files API integration", () => {
@@ -140,6 +140,29 @@ describe("workspace files API integration", () => {
     };
     expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "README.md"]);
     expect(data.entriesByDirectory["src"]?.map((entry) => entry.path)).toEqual(["src/index.ts"]);
+  });
+
+  test("keeps symlinked directories as directory entries without traversing into them", async () => {
+    const workspace = await createWorkspace();
+    const directoryLinkPath = join(workDir, "src-link");
+    const fileLinkPath = join(workDir, "readme-link");
+    await symlink(join(workDir, "src"), directoryLinkPath);
+    await symlink(join(workDir, "README.md"), fileLinkPath);
+
+    try {
+      const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/tree`);
+      expect(response.ok).toBe(true);
+
+      const data = await response.json() as {
+        entriesByDirectory: Record<string, Array<{ name: string; path: string; kind: string }>>;
+      };
+      expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "src-link", "readme-link", "README.md"]);
+      expect(data.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "directory", "file", "file"]);
+      expect(data.entriesByDirectory["src-link"]).toEqual([]);
+    } finally {
+      await rm(directoryLinkPath, { force: true });
+      await rm(fileLinkPath, { force: true });
+    }
   });
 
   test("loads the full file tree from an alternate root", async () => {

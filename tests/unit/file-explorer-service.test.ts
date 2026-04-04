@@ -2,6 +2,7 @@ import { chmod, mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
 import {
   fileExplorerService,
   resolveFileExplorerRootDirectory,
@@ -107,9 +108,12 @@ describe("fileExplorerService.listDirectory", () => {
     expect(result.entriesByDirectory["empty-dir"]).toEqual([]);
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(execSpy.mock.calls[0]?.[1]?.[2]).toBe("file-explorer-tree");
-    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" -mindepth 1");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" ! -path \"$root\" -exec stat -Lc");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("stat --version >/dev/null 2>&1");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("sha256sum");
-    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("stat -c");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("-mindepth");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("-xtype");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("-printf");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("if [ -d \"$path\" ]");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("tree ");
     expect(execSpy.mock.calls[0]?.[1]).toHaveLength(4);
@@ -135,6 +139,54 @@ describe("fileExplorerService.listDirectory", () => {
 
     expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["src", "src-link", "index-link", "run.sh"]);
     expect(result.entriesByDirectory[""]?.map((entry) => entry.path)).toEqual(["src", "src-link", "index-link", "run.sh"]);
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "file", "file"]);
+    expect(result.entriesByDirectory["src-link"]).toEqual([]);
+  });
+
+  test("parses BSD stat output for symlink targets without needing GNU find flags", async () => {
+    const rootDirectory = "/workspace/project";
+    const executor: CommandExecutor = {
+      async exec(command: string, args: string[], _options?: CommandOptions): Promise<CommandResult> {
+        expect(command).toBe("bash");
+        expect(args[2]).toBe("file-explorer-tree");
+        expect(args[1]).toContain("stat -Lf");
+        return {
+          success: true,
+          stdout: [
+            `${rootDirectory}/src\tDirectory`,
+            `${rootDirectory}/src-link\tDirectory`,
+            `${rootDirectory}/index-link\tRegular File`,
+            `${rootDirectory}/run.sh\tRegular File`,
+          ].join("\n"),
+          stderr: "",
+          exitCode: 0,
+        };
+      },
+      async fileExists(_path: string): Promise<boolean> {
+        return false;
+      },
+      async directoryExists(_path: string): Promise<boolean> {
+        return false;
+      },
+      async readFile(_path: string): Promise<string | null> {
+        return null;
+      },
+      async listDirectory(_path: string, _options?: { includeHidden?: boolean }): Promise<string[]> {
+        return [];
+      },
+      async writeFile(_path: string, _content: string): Promise<boolean> {
+        return false;
+      },
+    };
+
+    const result = await fileExplorerService.loadTree({
+      id: "workspace-1",
+      rootDirectory,
+      pathScopeLabel: "workspace root",
+      executor,
+    });
+
+    expect(result.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual(["src", "src-link", "index-link", "run.sh"]);
     expect(result.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "file", "file"]);
     expect(result.entriesByDirectory["src-link"]).toEqual([]);
   });
