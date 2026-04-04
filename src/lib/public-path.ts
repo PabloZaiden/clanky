@@ -8,6 +8,7 @@ import {
   getPublicBasePathFromPathname,
   normalizePublicBasePath,
 } from "../utils/public-base-path";
+import { isPasskeyAuthRequiredResponse } from "./passkey-auth-http";
 
 let configuredPublicBasePath: string | undefined;
 export const PASSKEY_AUTH_REQUIRED_EVENT = "ralpher:passkey-auth-required";
@@ -58,7 +59,11 @@ export function appWebSocketUrl(path: string): string {
 
 export async function appFetch(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(appPath(path), init);
-  if (response.status === 401 && typeof window !== "undefined") {
+  if (
+    response.status === 401 &&
+    typeof window !== "undefined" &&
+    isPasskeyAuthRequiredResponse(response)
+  ) {
     window.dispatchEvent(new Event(PASSKEY_AUTH_REQUIRED_EVENT));
   }
   return response;

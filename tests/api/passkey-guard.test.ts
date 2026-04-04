@@ -3,6 +3,7 @@ import {
   wrapRouteHandlerWithPasskeyAuth,
   wrapRoutesWithPasskeyAuth,
 } from "../../src/api/passkey-guard";
+import { PASSKEY_AUTH_REQUIRED_HEADER } from "../../src/lib/passkey-auth-http";
 import { savePasskey } from "../../src/persistence/passkey-auth";
 import { setupTestContext, teardownTestContext, type TestContext } from "../setup";
 
@@ -69,6 +70,7 @@ describe("passkey guard", () => {
 
     expect(publicResponse.status).toBe(200);
     expect(protectedResponse.status).toBe(401);
+    expect(protectedResponse.headers.get(PASSKEY_AUTH_REQUIRED_HEADER)).toBe("true");
     expect(await protectedResponse.json()).toEqual({
       error: "authentication_required",
       message: "Passkey authentication is required",

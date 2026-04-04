@@ -3,6 +3,7 @@
  */
 
 import { isPasskeyRequestAuthorized } from "../core/passkey-auth";
+import { PASSKEY_AUTH_REQUIRED_HEADER } from "../lib/passkey-auth-http";
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -19,7 +20,12 @@ function createPasskeyUnauthorizedResponse(): Response {
       error: "authentication_required",
       message: "Passkey authentication is required",
     },
-    { status: 401 },
+    {
+      status: 401,
+      headers: {
+        [PASSKEY_AUTH_REQUIRED_HEADER]: "true",
+      },
+    },
   );
 }
 

@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { createLogger } from "../../src/lib/logger";
+import { PASSKEY_AUTH_REQUIRED_HEADER } from "../../src/lib/passkey-auth-http";
 import {
   appAbsoluteUrl,
   appFetch,
   appPath,
+  PASSKEY_AUTH_REQUIRED_EVENT,
   appWebSocketUrl,
   setConfiguredPublicBasePath,
 } from "../../src/lib/public-path";
@@ -77,6 +79,50 @@ describe("public path helpers", () => {
       errorSpy.mockRestore();
       globalThis.fetch = originalFetch;
     }
+  });
+
+  test("appFetch dispatches the auth-required event only for passkey-tagged 401 responses", async () => {
+    window.location.href = "https://example.com/ralpher/";
+
+    const originalFetch = globalThis.fetch;
+    const receivedEventTypes: string[] = [];
+    const handleAuthRequired = (event: Event) => {
+      receivedEventTypes.push(event.type);
+    };
+
+    window.addEventListener(PASSKEY_AUTH_REQUIRED_EVENT, handleAuthRequired);
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url = typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+      if (url.endsWith("/plain-401")) {
+        return Promise.resolve(new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+
+      return Promise.resolve(new Response(JSON.stringify({ error: "authentication_required" }), {
+        status: 401,
+        headers: {
+          "Content-Type": "application/json",
+          [PASSKEY_AUTH_REQUIRED_HEADER]: "true",
+        },
+      }));
+    }) as typeof fetch;
+
+    try {
+      await appFetch("/plain-401");
+      await appFetch("/flagged-401");
+    } finally {
+      window.removeEventListener(PASSKEY_AUTH_REQUIRED_EVENT, handleAuthRequired);
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(receivedEventTypes).toEqual([PASSKEY_AUTH_REQUIRED_EVENT]);
   });
 
   test("prefers the configured server-provided base path when available", () => {

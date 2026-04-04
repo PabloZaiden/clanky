@@ -17,6 +17,7 @@ import {
   PasskeyAuthError,
   removeConfiguredPasskeys,
 } from "../core/passkey-auth";
+import { PASSKEY_AUTH_REQUIRED_HEADER } from "../lib/passkey-auth-http";
 import type { PasskeyAuthStatusResponse } from "../types/api";
 import { errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
@@ -46,11 +47,15 @@ async function requirePasskeyManagementAccess(req: Request): Promise<void> {
 
 function passkeyErrorResponse(error: unknown): Response {
   if (error instanceof PasskeyAuthError) {
-    return errorResponse(error.code, error.message, error.status);
+    const response = errorResponse(error.code, error.message, error.status);
+    if (error.code === "authentication_required" && error.status === 401) {
+      response.headers.set(PASSKEY_AUTH_REQUIRED_HEADER, "true");
+    }
+    return response;
   }
 
   log.error("Unexpected passkey auth failure", { error: String(error) });
-  return errorResponse("passkey_auth_failed", String(error), 500);
+  return errorResponse("passkey_auth_failed", "An unexpected error occurred", 500);
 }
 
 export const passkeyAuthRoutes = {

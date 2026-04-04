@@ -6,15 +6,15 @@ describe("getRequestOriginInfo", () => {
     const info = getRequestOriginInfo(
       new Request("http://internal-host:3000/api/passkey-auth/registration/verify", {
         headers: {
-          origin: "https://ralpher.zaiden.duckdns.org:12443",
+          origin: "https://ralpher.example.test:12443",
           host: "internal-host:3000",
         },
       }),
     );
 
     expect(info).toEqual({
-      origin: "https://ralpher.zaiden.duckdns.org:12443",
-      hostname: "ralpher.zaiden.duckdns.org",
+      origin: "https://ralpher.example.test:12443",
+      hostname: "ralpher.example.test",
       secure: true,
     });
   });
@@ -23,15 +23,15 @@ describe("getRequestOriginInfo", () => {
     const info = getRequestOriginInfo(
       new Request("http://internal-host:3000/api/passkey-auth/registration/options", {
         headers: {
-          referer: "https://ralpher.zaiden.duckdns.org:12443/settings",
+          referer: "https://ralpher.example.test:12443/settings",
           host: "internal-host:3000",
         },
       }),
     );
 
     expect(info).toEqual({
-      origin: "https://ralpher.zaiden.duckdns.org:12443",
-      hostname: "ralpher.zaiden.duckdns.org",
+      origin: "https://ralpher.example.test:12443",
+      hostname: "ralpher.example.test",
       secure: true,
     });
   });
@@ -40,15 +40,15 @@ describe("getRequestOriginInfo", () => {
     const info = getRequestOriginInfo(
       new Request("http://internal-host:3000/api/passkey-auth/registration/options", {
         headers: {
-          "x-forwarded-host": "ralpher.zaiden.duckdns.org:12443",
+          "x-forwarded-host": "ralpher.example.test:12443",
           "x-forwarded-proto": "https",
         },
       }),
     );
 
     expect(info).toEqual({
-      origin: "https://ralpher.zaiden.duckdns.org:12443",
-      hostname: "ralpher.zaiden.duckdns.org",
+      origin: "https://ralpher.example.test:12443",
+      hostname: "ralpher.example.test",
       secure: true,
     });
   });
