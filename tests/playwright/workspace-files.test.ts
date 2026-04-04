@@ -19,7 +19,7 @@ test("opens the workspace file explorer and browses files", async () => {
     await page.getByRole("button", { name: "src" }).click();
     await waitForVisible(page.getByRole("button", { name: "index.ts" }));
     await page.getByRole("button", { name: "index.ts" }).click();
-    await waitForVisible(page.getByText("src/index.ts"));
+    await waitForVisible(page.getByRole("heading", { name: "src/index.ts" }));
 
     const readmeVisible = await waitForCondition(
       async () => await page.getByText("Select a file from the explorer to start editing.").count(),
@@ -57,5 +57,54 @@ test("can re-expand the collapsed explorer on mobile", async () => {
 
     await page.getByRole("button", { name: "src" }).click();
     await waitForVisible(page.getByRole("button", { name: "index.ts" }));
+  });
+});
+
+test("keeps the embedded terminal panel inside the visible explorer body", async () => {
+  await withBrowserTest(async ({ app, page }) => {
+    const repo = await app.createGitRepository("workspace-files-terminal-browser");
+    const workspace = await app.createWorkspace({
+      name: "Workspace Files Terminal Browser",
+      directory: repo.directory,
+      transport: "ssh",
+    });
+
+    await page.goto(`${app.baseUrl}/#/workspace-files/${workspace.id}`);
+    await waitForVisible(page.getByRole("heading", { name: "Workspace Files Terminal Browser editor" }));
+
+    await page.getByRole("button", { name: "Terminals" }).click();
+    await waitForVisible(page.getByRole("heading", { name: "Integrated terminal" }));
+    await page.getByRole("button", { name: "New terminal" }).click();
+
+    await waitForCondition(
+      async () => await app.listSshSessions(),
+      (sessions) => sessions.some((session: { config: { workspaceId: string } }) => session.config.workspaceId === workspace.id),
+      "workspace file explorer SSH session creation",
+    );
+    await waitForCondition(
+      async () => await page.getByRole("combobox", { name: "Select workspace SSH session" }).inputValue(),
+      (value) => value.length > 0,
+      "workspace terminal selector to pick the created session",
+    );
+
+    const shellBody = page.getByTestId("workspace-shell-body");
+    const terminalPanel = page
+      .getByRole("heading", { name: "Integrated terminal" })
+      .locator("xpath=ancestor::section[1]");
+
+    const shellOverflowY = await shellBody.evaluate((element) => getComputedStyle(element).overflowY);
+    expect(shellOverflowY).toBe("hidden");
+
+    const measuredBoxes = await waitForCondition(
+      async () => ({
+        shellBox: await shellBody.boundingBox(),
+        terminalBox: await terminalPanel.boundingBox(),
+      }),
+      (boxes) => boxes.shellBox !== null && boxes.terminalBox !== null && boxes.terminalBox.height > 0,
+      "embedded terminal panel layout to stabilize",
+    );
+    const { shellBox, terminalBox } = measuredBoxes;
+
+    expect(terminalBox!.y + terminalBox!.height).toBeLessThanOrEqual(shellBox!.y + shellBox!.height + 1);
   });
 });

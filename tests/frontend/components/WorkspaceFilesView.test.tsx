@@ -392,6 +392,56 @@ describe("WorkspaceFilesView", () => {
     expect(terminalSelect).toHaveAttribute("title", longSessionName);
   });
 
+  test("uses a non-scrolling shell body for the embedded terminal explorer layout", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-terminal-shell-body",
+      name: "Terminal Shell Body",
+      directory: "/workspaces/terminal-shell-body",
+      serverSettings: {
+        agent: {
+          provider: "opencode",
+          transport: "ssh",
+          hostname: "remote.example",
+          username: "tester",
+        },
+      },
+    });
+    const session = createSshSession({
+      config: {
+        id: "session-shell-body",
+        workspaceId: workspace.id,
+        name: "Embedded Shell Session",
+      },
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [],
+      }),
+    }));
+
+    const { getByRole, getByTestId, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[session]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Terminals" }));
+    await waitFor(() => {
+      expect(getByRole("combobox", { name: "Select workspace SSH session" })).toBeInTheDocument();
+    });
+
+    const shellBody = getByTestId("workspace-shell-body");
+    expect(shellBody).toHaveClass("overflow-hidden");
+    expect(shellBody).not.toHaveClass("overflow-y-auto");
+  });
+
   test("can collapse and expand the file explorer pane", async () => {
     installEmbeddedSshSessionMock();
     const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");

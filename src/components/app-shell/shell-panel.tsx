@@ -9,6 +9,8 @@ export function ShellPanel({
   badges,
   variant = "card",
   bodyClassName,
+  bodyContainerClassName,
+  bodyContainerTestId,
   headerOffsetClassName,
   children,
 }: {
@@ -20,6 +22,8 @@ export function ShellPanel({
   badges?: React.ReactNode;
   variant?: "card" | "compact";
   bodyClassName?: string;
+  bodyContainerClassName?: string;
+  bodyContainerTestId?: string;
   headerOffsetClassName?: string;
   children: React.ReactNode;
 }) {
@@ -53,7 +57,10 @@ export function ShellPanel({
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-5 pb-[calc(6rem+var(--safe-area-inset-bottom))] sm:px-6 sm:pb-5 lg:px-8 lg:py-6">
+        <div
+          data-testid={bodyContainerTestId}
+          className={bodyContainerClassName ?? "flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-5 pb-[calc(6rem+var(--safe-area-inset-bottom))] sm:px-6 sm:pb-5 lg:px-8 lg:py-6"}
+        >
           <div className={bodyClassName ?? "space-y-6"}>
             {children}
           </div>
