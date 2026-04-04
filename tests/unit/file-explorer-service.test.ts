@@ -111,7 +111,7 @@ describe("fileExplorerService.listDirectory", () => {
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("sha256sum");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("stat -c");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("if [ -d \"$path\" ]");
-    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("tree -afiF --noreport");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("tree ");
     expect(execSpy.mock.calls[0]?.[1]).toHaveLength(4);
     expect(execSpy.mock.calls[0]?.[2]).toEqual({ logFailures: false });
   });
