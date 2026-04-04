@@ -272,7 +272,7 @@ function createTables(database: Database): void {
       CREATE TABLE IF NOT EXISTS passkey_credentials (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        credential_id TEXT NOT NULL UNIQUE,
+        credential_id TEXT NOT NULL,
         public_key BLOB NOT NULL,
         counter INTEGER NOT NULL,
         device_type TEXT NOT NULL,
@@ -519,15 +519,17 @@ export function resetDatabase(): void {
   log.warn("Resetting database - dropping all tables");
   
   // Wrap DROP operations in a transaction.
-  // FK dependency order: review_comments → loops → workspaces.
-  // review_comments references loops(id), loops references workspaces(id),
-  // so we must drop in reverse dependency order to satisfy FK constraints.
+  // FK dependency order: review_comments → loops/chats → workspaces.
+  // review_comments references loops(id), and loops/chats reference
+  // workspaces(id), so we must drop in reverse dependency order to satisfy
+  // FK constraints.
   const dropAllTables = db.transaction(() => {
     db!.run("DROP TABLE IF EXISTS forwarded_ports");
     db!.run("DROP TABLE IF EXISTS review_comments");
     db!.run("DROP TABLE IF EXISTS ssh_server_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_sessions");
     db!.run("DROP TABLE IF EXISTS loops");
+    db!.run("DROP TABLE IF EXISTS chats");
     db!.run("DROP TABLE IF EXISTS ssh_servers");
     db!.run("DROP TABLE IF EXISTS workspaces");
     db!.run("DROP TABLE IF EXISTS sessions");

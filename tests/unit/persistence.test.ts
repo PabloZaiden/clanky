@@ -186,6 +186,59 @@ describe("Persistence", () => {
       expect(index?.name).toBe("idx_passkey_credentials_credential_id");
       await expect(hasRegisteredPasskeys()).resolves.toBe(false);
     });
+
+    test("resetDatabase drops chats and passkey credentials before recreating the schema", async () => {
+      const { ensureDataDirectories, getDatabase, resetDatabase } = await import("../../src/persistence/database");
+      const { createWorkspace } = await import("../../src/persistence/workspaces");
+
+      await ensureDataDirectories();
+      await createWorkspace({
+        id: testWorkspaceId,
+        name: "Test Workspace",
+        directory: "/tmp/test",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: getDefaultServerSettings(),
+      });
+
+      const now = new Date().toISOString();
+      const db = getDatabase();
+      db.run(
+        `
+          INSERT INTO chats (
+            id, name, workspace_id, directory, created_at, updated_at, interrupt_requested
+          ) VALUES (?, ?, ?, ?, ?, ?, 0)
+        `,
+        ["chat-before-reset", "Chat Before Reset", testWorkspaceId, "/tmp/test", now, now],
+      );
+      db.run(
+        `
+          INSERT INTO passkey_credentials (
+            id, name, credential_id, public_key, counter, device_type, backed_up, transports, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          "passkey-before-reset",
+          "Primary passkey",
+          "credential-before-reset",
+          new Uint8Array([1, 2, 3]),
+          0,
+          "singleDevice",
+          0,
+          "[]",
+          now,
+          now,
+        ],
+      );
+
+      resetDatabase();
+
+      const chatsRow = db.query("SELECT COUNT(*) AS count FROM chats").get() as { count: number };
+      const passkeysRow = db.query("SELECT COUNT(*) AS count FROM passkey_credentials").get() as { count: number };
+
+      expect(chatsRow.count).toBe(0);
+      expect(passkeysRow.count).toBe(0);
+    });
   });
 
   describe("loops", () => {
