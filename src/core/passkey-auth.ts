@@ -29,6 +29,7 @@ import {
 } from "../persistence/passkey-auth";
 import { createLogger } from "./logger";
 import { getPublicBasePathFromForwardedPrefix } from "../utils/public-base-path";
+import { getRequestOriginInfo } from "../utils/request-origin";
 
 const log = createLogger("core:passkey-auth");
 
@@ -95,21 +96,6 @@ export function isPasskeyAuthDisabled(): boolean {
 
 function getCookiePath(req: Request): string {
   return getPublicBasePathFromForwardedPrefix(req.headers.get("x-forwarded-prefix")) || "/";
-}
-
-function getRequestOriginInfo(req: Request): { origin: string; rpID: string; secure: boolean } {
-  const url = new URL(req.url);
-  const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const host = forwardedHost || req.headers.get("host") || url.host;
-  const protocol = (forwardedProto || url.protocol.replace(":", "")).toLowerCase();
-  const origin = `${protocol}://${host}`;
-  const rpID = new URL(origin).hostname;
-  return {
-    origin,
-    rpID,
-    secure: protocol === "https",
-  };
 }
 
 function secureEquals(left: string, right: string): boolean {
@@ -355,7 +341,7 @@ export async function beginPasskeyRegistration(
     throw new PasskeyAuthError("passkey_exists", "A passkey is already configured. Remove it before registering a new one.", 409);
   }
 
-  const { rpID } = getRequestOriginInfo(req);
+  const { hostname: rpID } = getRequestOriginInfo(req);
   const secret = await getOrCreatePasskeyAuthSecret();
   const options = await generateRegistrationOptions({
     rpName: PASSKEY_RP_NAME,
@@ -387,7 +373,7 @@ export async function completePasskeyRegistration(
 
   const secret = await getOrCreatePasskeyAuthSecret();
   const challengeCookie = getChallengeCookie(req, secret, "registration");
-  const { origin, rpID } = getRequestOriginInfo(req);
+  const { origin, hostname: rpID } = getRequestOriginInfo(req);
 
   let verification;
   try {
@@ -443,7 +429,7 @@ export async function beginPasskeyAuthentication(
     throw new PasskeyAuthError("passkey_missing", "No passkey is configured", 409);
   }
 
-  const { rpID } = getRequestOriginInfo(req);
+  const { hostname: rpID } = getRequestOriginInfo(req);
   const secret = await getOrCreatePasskeyAuthSecret();
   const options = await generateAuthenticationOptions({
     rpID,
@@ -471,7 +457,7 @@ export async function completePasskeyAuthentication(
     throw new PasskeyAuthError("passkey_not_found", "Passkey credential is not registered", 404);
   }
 
-  const { origin, rpID } = getRequestOriginInfo(req);
+  const { origin, hostname: rpID } = getRequestOriginInfo(req);
   let verification;
   try {
     verification = await verifyAuthenticationResponse({
