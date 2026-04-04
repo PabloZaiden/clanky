@@ -588,6 +588,7 @@ export class ChatManager {
     let currentResponseLogId: string | null = null;
     let currentResponseLogContent = "";
     let currentResponseTimestamp: string | null = null;
+    let totalResponseLength = 0;
     let responseSegmentCount = 0;
     let currentReasoningLogId: string | null = null;
     let currentReasoningLogContent = "";
@@ -617,6 +618,7 @@ export class ChatManager {
             currentResponseLogId = null;
             currentResponseLogContent = "";
             currentResponseTimestamp = null;
+            totalResponseLength = 0;
             responseSegmentCount = 0;
             currentReasoningLogId = null;
             currentReasoningLogContent = "";
@@ -647,6 +649,7 @@ export class ChatManager {
             }
             currentResponseContent += event.content;
             currentResponseLogContent += event.content;
+            totalResponseLength += event.content.length;
             ({
               chat,
               messageId: currentResponseMessageId,
@@ -731,9 +734,12 @@ export class ChatManager {
               this.clearActiveStream(chatId, generation);
               return;
             }
+            const completedResponseLength = event.content.length > 0
+              ? event.content.length
+              : totalResponseLength;
             chat = await this.emitChatLog(chat, "agent", "AI finished generating response", {
               logKind: "system",
-              responseLength: currentResponseContent.length || event.content.length,
+              responseLength: completedResponseLength,
             });
             if (currentResponseContent.length === 0 && event.content.length > 0) {
               responseSegmentCount += 1;
@@ -742,6 +748,7 @@ export class ChatManager {
               currentResponseLogId = `chat-log-${crypto.randomUUID()}`;
               currentResponseLogContent = event.content;
               currentResponseTimestamp = now;
+              totalResponseLength = event.content.length;
               currentStreamBlockKind = "response";
               ({
                 chat,

@@ -547,8 +547,8 @@ class InterleavedResponseBackend implements Backend {
   async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
     return {
       id: `msg-${crypto.randomUUID()}`,
-      content: "Alpha response Beta after reasoning",
-      parts: [{ type: "text", text: "Alpha response Beta after reasoning" }],
+      content: "Alpha responseBeta after reasoning",
+      parts: [{ type: "text", text: "Alpha responseBeta after reasoning" }],
     };
   }
 
@@ -984,6 +984,9 @@ describe("ChatManager", () => {
     expect(reasoningLogs.map((log) => log.details?.["responseContent"])).toEqual([
       "Need more context.",
     ]);
+
+    const completionLog = completed.state.logs.find((log) => log.message === "AI finished generating response");
+    expect(completionLog?.details?.["responseLength"]).toBe("Alpha responseBeta after reasoning".length);
 
     expect(assistantMessages[0]?.timestamp.localeCompare(reasoningLogs[0]?.timestamp ?? "")).toBeLessThan(0);
     expect(reasoningLogs[0]?.timestamp.localeCompare(assistantMessages[1]?.timestamp ?? "")).toBeLessThan(0);
