@@ -122,10 +122,11 @@ export function SshSessionDetails({
   });
 
   const { isFocusMode, toggleFocusMode } = useFocusMode(forcedFocusMode);
+  const usesViewportAwareFocusMode = isFocusMode && !forcedFocusMode;
 
   // Track the visual viewport so the focus-mode layout can shrink when the
   // mobile on-screen keyboard is visible.
-  const viewport = useVisualViewport(isFocusMode);
+  const viewport = useVisualViewport(usesViewportAwareFocusMode);
 
   // Re-fit the terminal whenever the visual viewport height changes (keyboard
   // appears/disappears). A double-rAF delay lets the CSS layout settle first.
@@ -155,7 +156,7 @@ export function SshSessionDetails({
     };
   }, [viewport?.height, connection.syncTerminalSize]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const focusModeContainerStyle = getFocusModeViewportStyle(isFocusMode, viewport);
+  const focusModeContainerStyle = getFocusModeViewportStyle(usesViewportAwareFocusMode, viewport);
 
   useTerminalRenderer({
     sessionConfigId: session?.config.id,

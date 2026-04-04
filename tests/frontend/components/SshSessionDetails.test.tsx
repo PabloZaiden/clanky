@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { createSshSession } from "../helpers/factories";
@@ -2063,26 +2063,58 @@ describe("SshSessionDetails", () => {
       createSshSession({ config: { id: req.params["id"]!, name: "Embedded Focus Terminal" } }),
     );
 
-    renderWithUser(
+    const addViewportListener = mock(() => {});
+    const removeViewportListener = mock(() => {});
+    const originalVisualViewport = window.visualViewport;
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: {
+        height: 777,
+        offsetTop: 19,
+        addEventListener: addViewportListener,
+        removeEventListener: removeViewportListener,
+      },
+    });
+
+    const { container, unmount } = renderWithUser(
       <div className="flex h-[480px] min-h-0 flex-col overflow-hidden">
         <SshSessionDetails sshSessionId="ssh-focus-embedded" forcedFocusMode={true} />
       </div>,
     );
 
-    await waitFor(() => {
-      expect(lastTerminal).not.toBeNull();
-      expect(lastTerminal?.canvas).not.toBeNull();
-    });
+    try {
+      await waitFor(() => {
+        expect(lastTerminal).not.toBeNull();
+        expect(lastTerminal?.canvas).not.toBeNull();
+      });
 
-    const terminalContainer = lastTerminal!.canvas!.parentElement;
-    expect(terminalContainer).not.toBeNull();
+      const terminalContainer = lastTerminal!.canvas!.parentElement;
+      expect(terminalContainer).not.toBeNull();
 
-    const terminalWrapper = terminalContainer!.parentElement;
-    expect(terminalWrapper).not.toBeNull();
-    expect(terminalWrapper!.className).toContain("overflow-hidden");
+      const terminalWrapper = terminalContainer!.parentElement;
+      expect(terminalWrapper).not.toBeNull();
+      expect(terminalWrapper!.className).toContain("overflow-hidden");
 
-    const mainContent = terminalWrapper!.parentElement;
-    expect(mainContent).not.toBeNull();
-    expect(mainContent!.className).toContain("overflow-hidden");
+      const mainContent = terminalWrapper!.parentElement;
+      expect(mainContent).not.toBeNull();
+      expect(mainContent!.className).toContain("overflow-hidden");
+
+      const embeddedRoot = container.firstElementChild?.firstElementChild;
+      expect(embeddedRoot).toBeInstanceOf(HTMLDivElement);
+      expect((embeddedRoot as HTMLDivElement).style.height).toBe("");
+      expect((embeddedRoot as HTMLDivElement).style.transform).toBe("");
+      expect(addViewportListener).not.toHaveBeenCalled();
+      expect(removeViewportListener).not.toHaveBeenCalled();
+    } finally {
+      unmount();
+      if (originalVisualViewport === undefined) {
+        Reflect.deleteProperty(window, "visualViewport");
+      } else {
+        Object.defineProperty(window, "visualViewport", {
+          configurable: true,
+          value: originalVisualViewport,
+        });
+      }
+    }
   });
 });
