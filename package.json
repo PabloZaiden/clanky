@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
+    "@simplewebauthn/browser": "13.3.0",
+    "@simplewebauthn/server": "13.3.0",
     "@tailwindcss/typography": "0.5.19",
     "bun-plugin-tailwind": "0.1.2",
     "ghostty-web": "0.4.0",

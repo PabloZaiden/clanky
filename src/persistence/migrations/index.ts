@@ -68,6 +68,7 @@ const KNOWN_TABLE_NAMES = new Set([
   "forwarded_ports",
   "workspaces",
   "preferences",
+  "passkey_credentials",
   "review_comments",
   "schema_migrations",
 ]);
@@ -171,6 +172,30 @@ export const migrations: Migration[] = [
       `);
       db.run("DROP INDEX IF EXISTS idx_chats_workspace_id");
       db.run("DROP INDEX IF EXISTS idx_chats_directory");
+    },
+  },
+  {
+    version: 3,
+    name: "create_passkey_credentials_table",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS passkey_credentials (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          credential_id TEXT NOT NULL UNIQUE,
+          public_key BLOB NOT NULL,
+          counter INTEGER NOT NULL,
+          device_type TEXT NOT NULL,
+          backed_up INTEGER NOT NULL DEFAULT 0,
+          transports TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_used_at TEXT
+        )
+      `);
+      db.run(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_passkey_credentials_credential_id ON passkey_credentials(credential_id)"
+      );
     },
   },
 ];

@@ -5,6 +5,7 @@ import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/wor
 import type { WorkspaceGroup } from "../../hooks/useLoopGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
+import type { UsePasskeyAuthResult } from "../../hooks/usePasskeyAuth";
 import { AppSettingsPanel } from "../AppSettingsModal";
 import { ChatDetails } from "../ChatDetails";
 import { LoopDetails } from "../LoopDetails";
@@ -87,6 +88,7 @@ interface ShellMainContentProps {
 
   // Dashboard data
   dashboardData: UseDashboardDataResult;
+  passkeyAuth: UsePasskeyAuthResult;
 
   // Compose state
   composeActionState: CreateLoopFormActionState | null;
@@ -135,6 +137,7 @@ function renderMainContent(props: ShellMainContentProps) {
     deleteServer,
     deleteWorkspace,
     dashboardData,
+    passkeyAuth,
     createChat,
     workspaceSettings,
     exportConfig,
@@ -552,6 +555,15 @@ function renderMainContent(props: ShellMainContentProps) {
           onExportConfig={exportConfig}
           onImportConfig={importConfig}
           configSaving={workspacesSaving}
+          passkeyAuthStatus={passkeyAuth.status}
+          basicAuthEnabled={passkeyAuth.basicAuthEnabled}
+          registeringPasskey={passkeyAuth.registering}
+          loggingOutPasskey={passkeyAuth.loggingOut}
+          removingPasskey={passkeyAuth.removingPasskey}
+          refreshingPasskeyAuth={passkeyAuth.refreshing}
+          onRegisterPasskey={passkeyAuth.registerPasskey}
+          onLogoutPasskey={passkeyAuth.logout}
+          onRemovePasskey={passkeyAuth.removePasskey}
         />
       </ShellPanel>
     );

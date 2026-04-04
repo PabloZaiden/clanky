@@ -3,11 +3,13 @@
  */
 
 import { Button, Modal } from "../common";
+import type { PasskeyAuthStatusResponse } from "../../types/api";
 import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/workspace";
 import { DisplaySettingsSection } from "./display-settings-section";
 import { DeveloperSettingsSection } from "./developer-settings-section";
 import { ImportExportSection } from "./import-export-section";
 import { DangerZoneSection } from "./danger-zone-section";
+import { PasskeyAuthSection } from "./passkey-auth-section";
 
 export interface AppSettingsPanelProps {
   /** Callback to reset all settings (destructive - deletes database) */
@@ -24,6 +26,24 @@ export interface AppSettingsPanelProps {
   onImportConfig?: (data: WorkspaceExportData) => Promise<WorkspaceImportResult | null>;
   /** Whether an export/import operation is in progress */
   configSaving?: boolean;
+  /** Current passkey-auth status for this browser */
+  passkeyAuthStatus?: PasskeyAuthStatusResponse;
+  /** Whether transport-level basic auth is also enabled */
+  basicAuthEnabled?: boolean;
+  /** Whether passkey registration is in progress */
+  registeringPasskey?: boolean;
+  /** Whether passkey logout is in progress */
+  loggingOutPasskey?: boolean;
+  /** Whether passkey removal is in progress */
+  removingPasskey?: boolean;
+  /** Whether passkey status is refreshing */
+  refreshingPasskeyAuth?: boolean;
+  /** Callback to register a passkey */
+  onRegisterPasskey?: (name?: string) => Promise<boolean>;
+  /** Callback to log out the current browser passkey session */
+  onLogoutPasskey?: () => Promise<boolean>;
+  /** Callback to remove the configured passkey */
+  onRemovePasskey?: () => Promise<boolean>;
 }
 
 export interface AppSettingsModalProps extends AppSettingsPanelProps {
@@ -42,11 +62,33 @@ export function AppSettingsPanel({
   onExportConfig,
   onImportConfig,
   configSaving = false,
+  passkeyAuthStatus,
+  basicAuthEnabled = false,
+  registeringPasskey = false,
+  loggingOutPasskey = false,
+  removingPasskey = false,
+  refreshingPasskeyAuth = false,
+  onRegisterPasskey,
+  onLogoutPasskey,
+  onRemovePasskey,
 }: AppSettingsPanelProps) {
   return (
     <div className="space-y-6">
       <DisplaySettingsSection />
       <DeveloperSettingsSection />
+      {passkeyAuthStatus ? (
+        <PasskeyAuthSection
+          status={passkeyAuthStatus}
+          basicAuthEnabled={basicAuthEnabled}
+          registering={registeringPasskey}
+          loggingOut={loggingOutPasskey}
+          removingPasskey={removingPasskey}
+          refreshing={refreshingPasskeyAuth}
+          onRegisterPasskey={onRegisterPasskey}
+          onLogout={onLogoutPasskey}
+          onRemovePasskey={onRemovePasskey}
+        />
+      ) : null}
       <ImportExportSection
         onExportConfig={onExportConfig}
         onImportConfig={onImportConfig}

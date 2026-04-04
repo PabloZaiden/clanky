@@ -147,6 +147,7 @@ describe("migration infrastructure", () => {
       db.run("CREATE TABLE workspaces (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE forwarded_ports (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE preferences (key TEXT PRIMARY KEY)");
+      db.run("CREATE TABLE passkey_credentials (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE review_comments (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)");
 
@@ -159,6 +160,7 @@ describe("migration infrastructure", () => {
       expect(getTableColumns(db, "workspaces")).toContain("id");
       expect(getTableColumns(db, "forwarded_ports")).toContain("id");
       expect(getTableColumns(db, "preferences")).toContain("key");
+      expect(getTableColumns(db, "passkey_credentials")).toContain("id");
       expect(getTableColumns(db, "review_comments")).toContain("id");
       expect(getTableColumns(db, "schema_migrations")).toContain("version");
     });
@@ -249,6 +251,34 @@ describe("migration infrastructure", () => {
       ]));
       expect(indexNames).not.toContain("idx_chats_workspace_id");
       expect(indexNames).not.toContain("idx_chats_directory");
+    });
+  });
+
+  describe("passkey credentials migration", () => {
+    test("creates the passkey credentials table and index", () => {
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(tableExists(db, "passkey_credentials")).toBe(true);
+
+      const columns = getTableColumns(db, "passkey_credentials");
+      expect(columns).toEqual(expect.arrayContaining([
+        "credential_id",
+        "public_key",
+        "counter",
+        "device_type",
+        "backed_up",
+        "transports",
+      ]));
+
+      const indexes = db.query(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'index' AND tbl_name = 'passkey_credentials'
+        ORDER BY name
+      `).all() as Array<{ name: string }>;
+
+      expect(indexes.map((index) => index.name)).toContain("idx_passkey_credentials_credential_id");
     });
   });
 

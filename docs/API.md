@@ -24,6 +24,8 @@ Authorization: Basic cmFscGhlcjpzZWNyZXQ=
 
 This built-in auth applies to REST requests, websocket upgrade requests, and browser requests for the SPA.
 
+Ralpher also supports optional passkey authentication as an application-session layer. When a passkey is registered from the UI, protected API requests require the browser to hold a valid passkey session cookie. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass only the passkey requirement without affecting HTTP Basic auth.
+
 ## Response Format
 
 All responses are JSON. Successful responses return the requested data directly. Error responses follow this format:

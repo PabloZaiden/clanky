@@ -159,6 +159,7 @@ When the server starts, it logs the effective listening address and whether buil
 | `RALPHER_PORT` | Server port | `3000` |
 | `RALPHER_PASSWORD` | Enable built-in HTTP Basic auth for every request when this is non-empty after trimming | unset |
 | `RALPHER_USERNAME` | Username for built-in HTTP Basic auth when `RALPHER_PASSWORD` enables it | `ralpher` |
+| `RALPHER_DISABLE_PASSKEY` | Bypass passkey session enforcement even if a passkey is registered (`true`/`1`/`yes`) | unset |
 | `RALPHER_DATA_DIR` | Data directory for persistence | `./data` |
 | `RALPHER_REMOTE_ONLY` | Disable local `stdio` transport and only allow `ssh` transport (`true`/`1`/`yes`) | unset |
 | `RALPHER_MOCK_ACP` | Replace local ACP CLI launches with Ralpher's built-in fake ACP runtime for testing (`true`/`1`/`yes`) | unset |
@@ -175,6 +176,21 @@ RALPHER_HOST=127.0.0.1 RALPHER_PASSWORD=secret ralpher
 ```
 
 Startup logs explain both the effective bind address and whether auth is enabled or disabled. They also mention `RALPHER_HOST`, `RALPHER_PASSWORD`, and `RALPHER_USERNAME` so it is clear which env vars to change.
+
+### Passkey App Sessions
+
+Passkey auth is a separate application-session layer on top of transport access. By default, Ralpher stays open. Once you register a passkey from **Settings**, the browser must complete a passkey login before it can access protected app data, internal APIs, websocket upgrades, and browser-facing proxy endpoints. After login, the browser stays authenticated with a persistent `HttpOnly` session cookie, so reloads do not require re-authentication.
+
+This layer is independent from built-in HTTP Basic auth:
+
+1. no Basic auth and no passkey
+2. Basic auth only
+3. passkey only
+4. Basic auth and passkey together
+
+Use **Settings** to register a passkey, log out the current browser session, or remove the configured passkey. Removing the passkey returns the app to the default-open behavior.
+
+If you need an emergency bypass without deleting stored passkeys, set `RALPHER_DISABLE_PASSKEY=true`. This disables only the passkey requirement; it does not disable reverse-proxy auth or Ralpher's optional built-in HTTP Basic auth.
 
 ### Data Storage
 

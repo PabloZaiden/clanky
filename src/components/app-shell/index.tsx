@@ -10,6 +10,7 @@ import {
   useToast,
   useWorkspaces,
 } from "../../hooks";
+import type { UsePasskeyAuthResult } from "../../hooks";
 import { getSshSessionStatusBadgeVariant } from "../common";
 import { getSshConnectionModeLabel, groupSidebarChatsByWorkspace, groupSidebarItemsByWorkspace } from "./shell-types";
 import { ShellSidebarNav } from "./shell-sidebar-nav";
@@ -24,9 +25,10 @@ export type { ShellRoute } from "./shell-types";
 interface AppShellProps {
   route: import("./shell-types").ShellRoute;
   onNavigate: (route: import("./shell-types").ShellRoute) => void;
+  passkeyAuth: UsePasskeyAuthResult;
 }
 
-export function AppShell({ route, onNavigate }: AppShellProps) {
+export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const toast = useToast();
   const {
     chats,
@@ -259,6 +261,7 @@ export function AppShell({ route, onNavigate }: AppShellProps) {
         exportConfig={exportConfig}
         importConfig={importConfig}
         dashboardData={dashboardData}
+        passkeyAuth={passkeyAuth}
         composeActionState={composeState.composeActionState}
         setComposeActionState={composeState.setComposeActionState}
         handleLoopSubmit={composeState.handleLoopSubmit}

@@ -4,8 +4,10 @@
 
 import { useEffect, useState } from "react";
 import { AppShell, type ShellRoute } from "./components/AppShell";
+import { PasskeyAuthScreen } from "./components/PasskeyAuthScreen";
 import { getHashForShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
+import { usePasskeyAuth } from "./hooks";
 import "./index.css";
 
 const LOOP_FILES_HASH_PREFIX = "/loop-files/";
@@ -139,6 +141,7 @@ function navigateTo(route: ShellRoute) {
 
 export function App() {
   const [route, setRoute] = useState<ShellRoute>(parseHash);
+  const passkeyAuth = usePasskeyAuth();
 
   useEffect(() => {
     function handleHashChange() {
@@ -149,9 +152,33 @@ export function App() {
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
+  if (passkeyAuth.loading) {
+    return (
+      <LogLevelInitializer>
+        <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 text-sm text-gray-500 dark:bg-neutral-950 dark:text-gray-400">
+          Loading…
+        </div>
+      </LogLevelInitializer>
+    );
+  }
+
+  if (passkeyAuth.status.passkeyRequired && !passkeyAuth.status.authenticated) {
+    return (
+      <LogLevelInitializer>
+        <PasskeyAuthScreen
+          basicAuthEnabled={passkeyAuth.basicAuthEnabled}
+          loading={passkeyAuth.refreshing}
+          authenticating={passkeyAuth.authenticating}
+          error={passkeyAuth.error}
+          onAuthenticate={passkeyAuth.loginWithPasskey}
+        />
+      </LogLevelInitializer>
+    );
+  }
+
   return (
     <LogLevelInitializer>
-      <AppShell route={route} onNavigate={navigateTo} />
+      <AppShell route={route} onNavigate={navigateTo} passkeyAuth={passkeyAuth} />
     </LogLevelInitializer>
   );
 }
