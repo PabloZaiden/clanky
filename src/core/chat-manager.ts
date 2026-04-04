@@ -582,12 +582,17 @@ export class ChatManager {
       return;
     }
 
-    let responseContent = "";
-    let responseLogId: string | null = null;
-    let responseLogContent = "";
-    let reasoningLogId: string | null = null;
-    let reasoningLogContent = "";
-    let currentMessageId: string | null = null;
+    let currentTurnMessageId: string | null = null;
+    let currentResponseMessageId: string | null = null;
+    let currentResponseContent = "";
+    let currentResponseLogId: string | null = null;
+    let currentResponseLogContent = "";
+    let currentResponseTimestamp: string | null = null;
+    let totalResponseLength = 0;
+    let responseSegmentCount = 0;
+    let currentReasoningLogId: string | null = null;
+    let currentReasoningLogContent = "";
+    let currentStreamBlockKind: "response" | "reasoning" | null = null;
     const toolInputs = new Map<string, unknown>();
 
     try {
@@ -607,19 +612,24 @@ export class ChatManager {
 
         switch (event.type) {
           case "message.start":
-            currentMessageId = event.messageId;
-            responseContent = "";
-            responseLogId = null;
-            responseLogContent = "";
-            reasoningLogId = null;
-            reasoningLogContent = "";
+            currentTurnMessageId = event.messageId;
+            currentResponseMessageId = null;
+            currentResponseContent = "";
+            currentResponseLogId = null;
+            currentResponseLogContent = "";
+            currentResponseTimestamp = null;
+            totalResponseLength = 0;
+            responseSegmentCount = 0;
+            currentReasoningLogId = null;
+            currentReasoningLogContent = "";
+            currentStreamBlockKind = null;
             if (isInterrupted) {
               break;
             }
             chat = await this.emitChatLog(chat, "agent", "AI started generating response", { logKind: "system" });
             chat = await this.updateChatStateAndReturn(chat, {
               ...chat.state,
-              activeMessageId: currentMessageId,
+              activeMessageId: undefined,
               lastActivityAt: now,
             });
             break;
@@ -628,18 +638,29 @@ export class ChatManager {
             if (isInterrupted) {
               break;
             }
-            responseContent += event.content;
-            responseLogContent += event.content;
+            if (currentStreamBlockKind !== "response") {
+              responseSegmentCount += 1;
+              currentResponseMessageId = this.createResponseSegmentMessageId(currentTurnMessageId, responseSegmentCount);
+              currentResponseContent = "";
+              currentResponseLogId = `chat-log-${crypto.randomUUID()}`;
+              currentResponseLogContent = "";
+              currentResponseTimestamp = now;
+              currentStreamBlockKind = "response";
+            }
+            currentResponseContent += event.content;
+            currentResponseLogContent += event.content;
+            totalResponseLength += event.content.length;
             ({
               chat,
-              messageId: currentMessageId,
-              responseLogId,
+              messageId: currentResponseMessageId,
+              responseLogId: currentResponseLogId,
             } = await this.updateStreamingAssistantProgress(chat, {
-              messageId: currentMessageId,
-              content: responseContent,
-              responseLogId,
-              responseLogContent,
-              timestamp: now,
+              messageId: currentResponseMessageId,
+              content: currentResponseContent,
+              responseLogId: currentResponseLogId,
+              responseLogContent: currentResponseLogContent,
+              timestamp: currentResponseTimestamp ?? now,
+              activityTimestamp: now,
             }));
             break;
 
@@ -647,12 +668,16 @@ export class ChatManager {
             if (isInterrupted) {
               break;
             }
-            reasoningLogContent += event.content;
+            if (currentStreamBlockKind !== "reasoning") {
+              currentReasoningLogId = `chat-log-${crypto.randomUUID()}`;
+              currentReasoningLogContent = "";
+              currentStreamBlockKind = "reasoning";
+            }
+            currentReasoningLogContent += event.content;
             chat = await this.emitChatLog(chat, "agent", "AI reasoning...", {
               logKind: "reasoning",
-              responseContent: reasoningLogContent,
-            }, reasoningLogId ?? undefined);
-            reasoningLogId = chat.state.logs.at(-1)?.id ?? reasoningLogId;
+              responseContent: currentReasoningLogContent,
+            }, currentReasoningLogId ?? undefined, now);
             break;
 
           case "tool.start": {
@@ -709,22 +734,34 @@ export class ChatManager {
               this.clearActiveStream(chatId, generation);
               return;
             }
+            const completedResponseLength = event.content.length > 0
+              ? event.content.length
+              : totalResponseLength;
             chat = await this.emitChatLog(chat, "agent", "AI finished generating response", {
               logKind: "system",
-              responseLength: responseContent.length,
+              responseLength: completedResponseLength,
             });
-            const finalContent = responseContent || event.content;
-            const existingAssistantMessage = this.findMessage(
-              chat,
-              currentMessageId ?? chat.state.activeMessageId,
-            );
-            if (finalContent.length > 0 || currentMessageId) {
-              chat = await this.appendMessage(chat, {
-                id: currentMessageId ?? `chat-assistant-${crypto.randomUUID()}`,
-                role: "assistant",
-                content: finalContent,
-                timestamp: existingAssistantMessage?.timestamp ?? now,
-              });
+            if (currentResponseContent.length === 0 && event.content.length > 0) {
+              responseSegmentCount += 1;
+              currentResponseMessageId = this.createResponseSegmentMessageId(currentTurnMessageId, responseSegmentCount);
+              currentResponseContent = event.content;
+              currentResponseLogId = `chat-log-${crypto.randomUUID()}`;
+              currentResponseLogContent = event.content;
+              currentResponseTimestamp = now;
+              totalResponseLength = event.content.length;
+              currentStreamBlockKind = "response";
+              ({
+                chat,
+                messageId: currentResponseMessageId,
+                responseLogId: currentResponseLogId,
+              } = await this.updateStreamingAssistantProgress(chat, {
+                messageId: currentResponseMessageId,
+                content: currentResponseContent,
+                responseLogId: currentResponseLogId,
+                responseLogContent: currentResponseLogContent,
+                timestamp: currentResponseTimestamp,
+                activityTimestamp: now,
+              }));
             }
             if (chat.state.interruptRequested || chat.state.status === "interrupting") {
               chat = await this.completeInterruptedChat(chat);
@@ -812,6 +849,13 @@ export class ChatManager {
     return chat.state.messages.find((message) => message.id === messageId);
   }
 
+  private createResponseSegmentMessageId(turnMessageId: string | null, segmentCount: number): string {
+    if (!turnMessageId) {
+      return `chat-assistant-${crypto.randomUUID()}`;
+    }
+    return segmentCount === 1 ? turnMessageId : `${turnMessageId}-segment-${segmentCount}`;
+  }
+
   private async updateStreamingAssistantProgress(
     chat: Chat,
     {
@@ -820,18 +864,22 @@ export class ChatManager {
       responseLogId,
       responseLogContent,
       timestamp,
+      activityTimestamp,
     }: {
       messageId: string | null;
       content: string;
       responseLogId: string | null;
       responseLogContent: string;
       timestamp: string;
+      activityTimestamp: string;
     },
   ): Promise<{ chat: Chat; messageId: string; responseLogId: string }> {
-    const existingMessage = this.findMessage(chat, messageId ?? chat.state.activeMessageId);
+    const existingMessage = this.findMessage(chat, messageId ?? undefined);
+    const existingLog = responseLogId
+      ? chat.state.logs.find((logEntry) => logEntry.id === responseLogId)
+      : undefined;
     const nextMessageId = existingMessage?.id
       ?? messageId
-      ?? chat.state.activeMessageId
       ?? `chat-assistant-${crypto.randomUUID()}`;
     const assistantMessage: MessageData = {
       id: nextMessageId,
@@ -847,7 +895,7 @@ export class ChatManager {
         logKind: "response",
         responseContent: responseLogContent,
       },
-      timestamp,
+      timestamp: existingLog?.timestamp ?? timestamp,
     };
     const nextMessages = chat.state.messages.some((existing) => existing.id === assistantMessage.id)
       ? chat.state.messages.map((existing) => existing.id === assistantMessage.id ? assistantMessage : existing)
@@ -861,19 +909,19 @@ export class ChatManager {
       activeMessageId: nextMessageId,
       messages: nextMessages,
       logs: nextLogs,
-      lastActivityAt: timestamp,
+      lastActivityAt: activityTimestamp,
     });
     this.emitter.emit({
       type: "chat.message",
       chatId: chat.config.id,
       message: assistantMessage,
-      timestamp,
+      timestamp: activityTimestamp,
     });
     this.emitter.emit({
       type: "chat.log",
       chatId: chat.config.id,
       log: responseLog,
-      timestamp,
+      timestamp: activityTimestamp,
     });
     return {
       chat: updated,
@@ -888,13 +936,18 @@ export class ChatManager {
     message: string,
     details?: Record<string, unknown>,
     id?: string,
+    timestamp?: string,
   ): Promise<Chat> {
+    const existing = id
+      ? chat.state.logs.find((logEntry) => logEntry.id === id)
+      : undefined;
+    const activityTimestamp = timestamp ?? createTimestamp();
     const entry: LoopLogEntry = {
       id: id ?? `chat-log-${crypto.randomUUID()}`,
       level,
       message,
       details,
-      timestamp: createTimestamp(),
+      timestamp: existing?.timestamp ?? activityTimestamp,
     };
     const existingIndex = chat.state.logs.findIndex((logEntry) => logEntry.id === entry.id);
     const logs = existingIndex >= 0
@@ -903,13 +956,13 @@ export class ChatManager {
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
       logs,
-      lastActivityAt: entry.timestamp,
+      lastActivityAt: activityTimestamp,
     });
     this.emitter.emit({
       type: "chat.log",
       chatId: chat.config.id,
       log: entry,
-      timestamp: entry.timestamp,
+      timestamp: activityTimestamp,
     });
     return updated;
   }

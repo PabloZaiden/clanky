@@ -505,6 +505,96 @@ describe("ChatDetails", () => {
     expect(queryByText("Bravo final chunk")).toBeNull();
   });
 
+  test("keeps reasoning between separate assistant response blocks during websocket updates", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        session: { id: "session-1" },
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { container, getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.message",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:02.000Z",
+        message: {
+          id: "assistant-part-1",
+          role: "assistant",
+          content: "Alpha response",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        },
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.log",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:03.000Z",
+        log: {
+          id: "reasoning-1",
+          level: "agent",
+          message: "AI reasoning...",
+          details: {
+            logKind: "reasoning",
+            responseContent: "Need more context.",
+          },
+          timestamp: "2025-01-01T00:00:03.000Z",
+        },
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.message",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:04.000Z",
+        message: {
+          id: "assistant-part-2",
+          role: "assistant",
+          content: "Beta after reasoning",
+          timestamp: "2025-01-01T00:00:04.000Z",
+        },
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.log",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:05.000Z",
+        log: {
+          id: "reasoning-1",
+          level: "agent",
+          message: "AI reasoning...",
+          details: {
+            logKind: "reasoning",
+            responseContent: "Need more context, refined.",
+          },
+          timestamp: "2025-01-01T00:00:03.000Z",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Alpha response")).toBeTruthy();
+      expect(getByText("Need more context, refined.")).toBeTruthy();
+      expect(getByText("Beta after reasoning")).toBeTruthy();
+    });
+
+    expect(queryByText("Need more context.")).toBeNull();
+
+    const transcript = container.querySelector("#chat-transcript");
+    const text = transcript?.textContent ?? "";
+    expect(text.indexOf("Alpha response")).toBeLessThan(text.indexOf("Need more context, refined."));
+    expect(text.indexOf("Need more context, refined.")).toBeLessThan(text.indexOf("Beta after reasoning"));
+  });
+
   test("preserves newer local state when chat.updated carries a stale snapshot", async () => {
     const currentChat = createChat({
       config: {

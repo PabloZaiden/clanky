@@ -63,12 +63,6 @@ function upsertById<T extends { id: string; timestamp?: string }>(items: T[], it
   });
 }
 
-function appendLog(logs: LoopLogEntry[], log: LoopLogEntry): LoopLogEntry[] {
-  const next = logs.filter((entry) => entry.id !== log.id);
-  next.push(log);
-  return next.sort((left, right) => left.timestamp.localeCompare(right.timestamp));
-}
-
 function isCancellationMessage(message: string): boolean {
   const normalized = message.toLowerCase();
   return normalized.includes("request cancelled")
@@ -184,7 +178,7 @@ export function ChatDetails({
             state: {
               ...current.state,
               lastActivityAt: event.timestamp,
-              logs: appendLog(current.state.logs, event.log),
+              logs: upsertById(current.state.logs as LoopLogEntry[], event.log),
             },
           };
         case "chat.interrupted":
