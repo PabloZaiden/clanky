@@ -95,11 +95,16 @@ test("keeps the embedded terminal panel inside the visible explorer body", async
     const shellOverflowY = await shellBody.evaluate((element) => getComputedStyle(element).overflowY);
     expect(shellOverflowY).toBe("hidden");
 
-    const shellBox = await shellBody.boundingBox();
-    const terminalBox = await terminalPanel.boundingBox();
+    const measuredBoxes = await waitForCondition(
+      async () => ({
+        shellBox: await shellBody.boundingBox(),
+        terminalBox: await terminalPanel.boundingBox(),
+      }),
+      (boxes) => boxes.shellBox !== null && boxes.terminalBox !== null && boxes.terminalBox.height > 0,
+      "embedded terminal panel layout to stabilize",
+    );
+    const { shellBox, terminalBox } = measuredBoxes;
 
-    expect(shellBox).not.toBeNull();
-    expect(terminalBox).not.toBeNull();
     expect(terminalBox!.y + terminalBox!.height).toBeLessThanOrEqual(shellBox!.y + shellBox!.height + 1);
   });
 });

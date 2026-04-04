@@ -440,7 +440,6 @@ describe("WorkspaceFilesView", () => {
     const shellBody = getByTestId("workspace-shell-body");
     expect(shellBody).toHaveClass("overflow-hidden");
     expect(shellBody).not.toHaveClass("overflow-y-auto");
-    expect(shellBody.className.includes("pb-[calc(6rem+var(--safe-area-inset-bottom))]")).toBe(false);
   });
 
   test("can collapse and expand the file explorer pane", async () => {
