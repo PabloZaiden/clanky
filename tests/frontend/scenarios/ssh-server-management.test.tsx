@@ -281,6 +281,10 @@ describe("ssh server management scenario", () => {
       expect(getByRole("heading", { name: "SSH Server Settings" })).toBeTruthy();
     });
 
+    expect(getByText(/This check verifies SSH connectivity,/)).toHaveTextContent(
+      /This check verifies SSH connectivity,\s*bash,\s*dtach,\s*and\s*devbox when provisioning is enabled for the server\./,
+    );
+
     await user.click(getByRole("button", { name: "Check prerequisites" }));
 
     await waitFor(() => {
