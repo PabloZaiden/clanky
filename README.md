@@ -18,7 +18,7 @@ Ralpher is a web dashboard and REST API for running, reviewing, and iterating on
 - **Fresh context, persistent progress.** Ralph Loops use `.planning/plan.md` and `.planning/status.md` to keep long tasks moving across clean agent context windows.
 - **Safer automation.** Each loop works in its own branch/worktree, commits iteration-by-iteration, and can be merged or discarded deliberately.
 - **Operational visibility.** The dashboard gives you logs, diffs, plan review, loop controls, and follow-up flows in one place.
-- **Local or remote execution.** Workspaces can use local `stdio` providers or remote `ssh` transports, with optional SSH sessions and port forwarding.
+- **Local or remote execution.** Workspaces can use local `stdio` transport or remote `ssh` transports, with optional SSH sessions and port forwarding.
 
 <details>
 <summary><strong>More screenshots</strong></summary>
@@ -114,12 +114,14 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 | `RALPHER_DATA_DIR` | Data directory for SQLite persistence | `./data` |
 | `RALPHER_REMOTE_ONLY` | Disables local `stdio` transport | unset |
 | `RALPHER_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
+| `RALPHER_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
 | `RALPHER_LOG_LEVEL` | Server log level override | `info` |
 
 ### Auth notes
 
 - Built-in HTTP Basic auth is optional and applies to browser requests, API requests, and WebSocket upgrades.
 - Passkey authentication is a separate app-session layer you can enable from **Settings**.
+- Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override; it does not disable HTTP Basic auth.
 - In production, Ralpher is typically deployed behind a reverse proxy that handles authentication and authorization.
 
 ### Docker
