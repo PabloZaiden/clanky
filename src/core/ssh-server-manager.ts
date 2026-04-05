@@ -6,10 +6,12 @@ import {
   DEFAULT_SSH_CONNECTION_MODE,
   type CreateSshServerRequest,
   type CreateSshServerSessionRequest,
+  type CheckSshServerPrerequisitesRequest,
   type DeleteSshServerSessionRequest,
   type SshConnectionMode,
   type SshServer,
   type SshServerConfig,
+  type SshServerPrerequisiteReport,
   type SshSessionStatus,
   type SshServerSession,
   type UpdateSshServerRequest,
@@ -122,8 +124,8 @@ export class SshServerManager {
 
   async checkPrerequisites(
     serverId: string,
-    request: { credentialToken?: string } = {},
-  ): Promise<import("../types").SshServerPrerequisiteReport> {
+    request: CheckSshServerPrerequisitesRequest = {},
+  ): Promise<SshServerPrerequisiteReport> {
     const server = await this.requireServerConfig(serverId);
     const credentialToken = request.credentialToken?.trim();
     const password = credentialToken

@@ -94,10 +94,6 @@ export type SshServerPrerequisiteSummaryStatus =
   | "missing_requirements"
   | "connection_failed";
 
-export interface CheckSshServerPrerequisitesRequest {
-  credentialToken?: string;
-}
-
 export interface SshServerPrerequisiteCheck {
   id: SshServerPrerequisiteId;
   label: string;

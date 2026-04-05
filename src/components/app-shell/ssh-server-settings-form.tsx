@@ -83,7 +83,7 @@ export function SshServerSettingsForm({
       setPrerequisiteReport(report);
     } catch (error) {
       setPrerequisiteReport(null);
-      setPrerequisiteError(String(error));
+      setPrerequisiteError(error instanceof Error ? error.message : String(error));
     } finally {
       setCheckingPrerequisites(false);
     }
