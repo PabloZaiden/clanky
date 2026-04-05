@@ -82,6 +82,7 @@ export function SshServerPrerequisitesSection({
       {!report && !error && (
         <p className="text-sm text-gray-600 dark:text-gray-400">
           This check verifies SSH connectivity, <code>bash</code>, <code>dtach</code>, and
+          {" "}
           <code>devbox</code> when provisioning is enabled for the server.
         </p>
       )}
