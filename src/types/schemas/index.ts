@@ -97,6 +97,7 @@ export {
   SshCredentialTokenSchema,
   CreateSshServerSessionRequestSchema,
   DeleteSshServerSessionRequestSchema,
+  CheckSshServerPrerequisitesRequestSchema,
   type SshKeyAlgorithm,
   type CreateSshServerRequest,
   type UpdateSshServerRequest,
@@ -105,6 +106,7 @@ export {
   type SshCredentialToken,
   type CreateSshServerSessionRequest,
   type DeleteSshServerSessionRequest,
+  type CheckSshServerPrerequisitesRequest,
 } from "./ssh-server";
 
 // Provisioning schemas

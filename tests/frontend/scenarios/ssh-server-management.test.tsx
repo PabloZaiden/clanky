@@ -220,4 +220,75 @@ describe("ssh server management scenario", () => {
     expect(api.calls("/api/ssh-servers/:id", "PATCH")).toHaveLength(0);
     expect(localStorage.getItem("ralpher.sshServerCredential.server-1")).toBeTruthy();
   });
+
+  test("checks server prerequisites from SSH server settings", async () => {
+    setupBaseApi();
+    const server = createServer();
+
+    api.get("/api/ssh-servers", () => [server]);
+    api.get("/api/ssh-servers/:id/sessions", () => []);
+    api.post("/api/ssh-servers/:id/prerequisites/check", (req) => {
+      expect(req.params["id"]).toBe("server-1");
+      return {
+        serverId: "server-1",
+        checkedAt: "2026-04-05T15:00:00.000Z",
+        summary: {
+          status: "missing_requirements",
+          availableCount: 2,
+          missingCount: 1,
+          notApplicableCount: 1,
+          unknownCount: 0,
+        },
+        checks: [
+          {
+            id: "ssh_connection",
+            label: "SSH connectivity",
+            status: "available",
+            details: "Ralpher can connect to this host and execute remote commands.",
+            requiredFor: ["Connecting to this SSH server"],
+          },
+          {
+            id: "bash",
+            label: "bash",
+            status: "available",
+            details: "bash is available on the remote host.",
+            requiredFor: ["Standalone SSH sessions", "Automatic provisioning", "devbox arise"],
+          },
+          {
+            id: "dtach",
+            label: "dtach",
+            status: "missing",
+            details: "dtach is not installed or not available on PATH on the remote host.",
+            requiredFor: ["Persistent SSH sessions"],
+            installHint: "Install dtach with your package manager.",
+          },
+          {
+            id: "devbox",
+            label: "devbox",
+            status: "not_applicable",
+            details: "Automatic provisioning is disabled for this server because no repositories base path is configured.",
+            requiredFor: ["Automatic provisioning", "devbox arise"],
+          },
+        ],
+      };
+    });
+
+    const { getByRole, getByText, user } = renderWithUser(<App />, {
+      route: "#/server-settings/server-1",
+    });
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "SSH Server Settings" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Check prerequisites" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/ssh-servers/:id/prerequisites/check", "POST")).toHaveLength(1);
+      expect(getByText("Missing requirements")).toBeTruthy();
+      expect(getByText("dtach")).toBeTruthy();
+      expect(getByText("Install hint:")).toBeTruthy();
+      expect(getByText("Not applicable")).toBeTruthy();
+    });
+  });
 });

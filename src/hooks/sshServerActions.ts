@@ -1,8 +1,10 @@
 import type {
+  CheckSshServerPrerequisitesRequest,
   CreateSshServerRequest,
   ListSshServersResponse,
   SshServer,
   SshConnectionMode,
+  SshServerPrerequisiteReport,
   SshServerSession,
   UpdateSshServerRequest,
 } from "../types";
@@ -59,6 +61,14 @@ async function resolveCredentialToken(serverId: string, password?: string): Prom
     throw new Error("Enter the SSH password for this server.");
   }
   return token;
+}
+
+async function resolveOptionalCredentialToken(serverId: string, password?: string): Promise<string | undefined> {
+  const trimmedPassword = password?.trim();
+  if (trimmedPassword) {
+    await storeSshServerPassword(serverId, trimmedPassword);
+  }
+  return (await getStoredSshCredentialToken(serverId)) ?? undefined;
 }
 
 export async function listSshServersApi(): Promise<ListSshServersResponse> {
@@ -155,4 +165,28 @@ export async function saveStandaloneSshServerPassword(serverId: string, password
   await storeSshServerPassword(serverId, password.trim());
   log.debug("Saved encrypted standalone SSH password to browser storage", { serverId });
   return true;
+}
+
+export async function checkSshServerPrerequisitesApi(options: {
+  serverId: string;
+  password?: string;
+}): Promise<SshServerPrerequisiteReport> {
+  const credentialToken = await resolveOptionalCredentialToken(options.serverId, options.password);
+  const request: CheckSshServerPrerequisitesRequest = credentialToken
+    ? { credentialToken }
+    : {};
+  const hasBody = Object.keys(request).length > 0;
+  return await apiCall<SshServerPrerequisiteReport>(
+    `/api/ssh-servers/${options.serverId}/prerequisites/check`,
+    hasBody
+      ? {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      }
+      : {
+        method: "POST",
+      },
+    "Check SSH server prerequisites",
+  );
 }

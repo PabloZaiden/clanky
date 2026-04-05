@@ -6,10 +6,12 @@ import {
   DEFAULT_SSH_CONNECTION_MODE,
   type CreateSshServerRequest,
   type CreateSshServerSessionRequest,
+  type CheckSshServerPrerequisitesRequest,
   type DeleteSshServerSessionRequest,
   type SshConnectionMode,
   type SshServer,
   type SshServerConfig,
+  type SshServerPrerequisiteReport,
   type SshSessionStatus,
   type SshServerSession,
   type UpdateSshServerRequest,
@@ -37,6 +39,7 @@ import { sshSessionEventEmitter } from "./event-emitter";
 import type { SshConnectionTarget } from "./ssh-connection-target";
 import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
+import { checkSshServerPrerequisites } from "./ssh-server-prerequisites";
 
 type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;
 
@@ -117,6 +120,18 @@ export class SshServerManager {
       server,
       executor: this.buildExecutor(server, password ?? ""),
     };
+  }
+
+  async checkPrerequisites(
+    serverId: string,
+    request: CheckSshServerPrerequisitesRequest = {},
+  ): Promise<SshServerPrerequisiteReport> {
+    const server = await this.requireServerConfig(serverId);
+    const credentialToken = request.credentialToken?.trim();
+    const password = credentialToken
+      ? sshCredentialManager.getPasswordForToken(server.id, credentialToken)
+      : undefined;
+    return await checkSshServerPrerequisites(server, this.buildExecutor(server, password ?? ""));
   }
 
   async createSession(serverId: string, request: CreateSshServerSessionRequest): Promise<SshServerSession> {

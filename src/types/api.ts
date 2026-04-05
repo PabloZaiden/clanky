@@ -32,6 +32,7 @@ import {
   CreateSshServerSessionRequestSchema,
   SshCredentialExchangeRequestSchema,
   DeleteSshServerSessionRequestSchema,
+  CheckSshServerPrerequisitesRequestSchema,
 } from "./schemas";
 import type { z } from "zod";
 
@@ -176,6 +177,11 @@ export type SshCredentialExchangeRequest = z.infer<typeof SshCredentialExchangeR
  * Request body for DELETE /api/ssh-server-sessions/:id.
  */
 export type DeleteSshServerSessionRequest = z.infer<typeof DeleteSshServerSessionRequestSchema>;
+
+/**
+ * Request body for POST /api/ssh-servers/:id/prerequisites/check.
+ */
+export type CheckSshServerPrerequisitesRequest = z.infer<typeof CheckSshServerPrerequisitesRequestSchema>;
 
 /**
  * Response from GET /api/ssh-servers.

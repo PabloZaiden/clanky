@@ -9,6 +9,7 @@ import { createLogger } from "../core/logger";
 import { errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import {
+  CheckSshServerPrerequisitesRequestSchema,
   CreateSshServerRequestSchema,
   CreateSshServerSessionRequestSchema,
   DeleteSshServerSessionRequestSchema,
@@ -180,6 +181,27 @@ export const sshServersRoutes = {
         return Response.json(session, { status: 201 });
       } catch (error) {
         log.error("Failed to create standalone SSH server session", {
+          serverId: req.params.id,
+          error: String(error),
+        });
+        return mapSshServerError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/prerequisites/check": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(CheckSshServerPrerequisitesRequestSchema, req, {
+        allowEmptyBody: true,
+      });
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        return Response.json(await sshServerManager.checkPrerequisites(req.params.id, validation.data));
+      } catch (error) {
+        log.error("Failed to check standalone SSH server prerequisites", {
           serverId: req.params.id,
           error: String(error),
         });
