@@ -11,7 +11,54 @@ import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 class SshServerApiExecutor extends TestCommandExecutor {
+  constructor(
+    private readonly options: {
+      connectionAvailable?: boolean;
+      bashAvailable?: boolean;
+      dtachAvailable?: boolean;
+      devboxAvailable?: boolean;
+    } = {},
+  ) {
+    super();
+  }
+
   override async exec(command: string, args: string[], options?: Parameters<TestCommandExecutor["exec"]>[2]) {
+    if (command === "true") {
+      const available = this.options.connectionAvailable ?? true;
+      return {
+        success: available,
+        stdout: "",
+        stderr: available ? "" : "ssh connection failed",
+        exitCode: available ? 0 : 255,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v bash")) {
+      const available = this.options.bashAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/bin/bash\n" : "",
+        stderr: available ? "" : "bash missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v devbox")) {
+      const available = this.options.devboxAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/devbox\n" : "",
+        stderr: available ? "" : "devbox missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v dtach")) {
+      const available = this.options.dtachAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "dtach - version 0.9\n" : "",
+        stderr: available ? "" : "dtach missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
     if (command === "bash" && args[0] === "-lc" && args[1]?.includes("command -v dtach")) {
       return {
         success: true,
@@ -28,12 +75,14 @@ describe("Standalone SSH servers API integration", () => {
   let dataDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
+  let executorFactory: () => TestCommandExecutor;
 
   beforeAll(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-servers-api-"));
     process.env["RALPHER_DATA_DIR"] = dataDir;
     await ensureDataDirectories();
-    sshServerManager.setExecutorFactoryForTesting(() => new SshServerApiExecutor());
+    executorFactory = () => new SshServerApiExecutor();
+    sshServerManager.setExecutorFactoryForTesting(() => executorFactory());
 
     server = serve({
       port: 0,
@@ -52,6 +101,7 @@ describe("Standalone SSH servers API integration", () => {
   });
 
   beforeEach(() => {
+    executorFactory = () => new SshServerApiExecutor();
     const db = getDatabase();
     db.run("DELETE FROM ssh_server_sessions");
     db.run("DELETE FROM ssh_servers");
@@ -227,5 +277,61 @@ describe("Standalone SSH servers API integration", () => {
 
     const getDeletedSessionResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
     expect(getDeletedSessionResponse.status).toBe(404);
+  });
+
+  test("checks standalone SSH server prerequisites through the API", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Provision Host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "/workspaces",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const checkResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/prerequisites/check`, {
+      method: "POST",
+    });
+    expect(checkResponse.ok).toBe(true);
+    const report = await checkResponse.json() as {
+      summary: { status: string };
+      checks: Array<{ id: string; status: string }>;
+    };
+    expect(report.summary.status).toBe("ready");
+    expect(report.checks.map((check) => [check.id, check.status])).toEqual([
+      ["ssh_connection", "available"],
+      ["bash", "available"],
+      ["dtach", "available"],
+      ["devbox", "available"],
+    ]);
+  });
+
+  test("marks devbox as not applicable and reports missing dtach when needed", async () => {
+    executorFactory = () => new SshServerApiExecutor({ dtachAvailable: false });
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Terminal Host",
+        address: "ssh.example.com",
+        username: "deploy",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const checkResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/prerequisites/check`, {
+      method: "POST",
+    });
+    expect(checkResponse.ok).toBe(true);
+    const report = await checkResponse.json() as {
+      summary: { status: string };
+      checks: Array<{ id: string; status: string }>;
+    };
+    expect(report.summary.status).toBe("missing_requirements");
+    expect(report.checks.find((check) => check.id === "dtach")?.status).toBe("missing");
+    expect(report.checks.find((check) => check.id === "devbox")?.status).toBe("not_applicable");
   });
 });

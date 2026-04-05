@@ -76,3 +76,46 @@ export interface SshServerSession {
   config: SshServerSessionConfig;
   state: SshSessionState;
 }
+
+export type SshServerPrerequisiteId =
+  | "ssh_connection"
+  | "bash"
+  | "dtach"
+  | "devbox";
+
+export type SshServerPrerequisiteStatus =
+  | "available"
+  | "missing"
+  | "not_applicable"
+  | "unknown";
+
+export type SshServerPrerequisiteSummaryStatus =
+  | "ready"
+  | "missing_requirements"
+  | "connection_failed";
+
+export interface CheckSshServerPrerequisitesRequest {
+  credentialToken?: string;
+}
+
+export interface SshServerPrerequisiteCheck {
+  id: SshServerPrerequisiteId;
+  label: string;
+  status: SshServerPrerequisiteStatus;
+  details: string;
+  requiredFor: string[];
+  installHint?: string;
+}
+
+export interface SshServerPrerequisiteReport {
+  serverId: string;
+  checkedAt: string;
+  summary: {
+    status: SshServerPrerequisiteSummaryStatus;
+    availableCount: number;
+    missingCount: number;
+    notApplicableCount: number;
+    unknownCount: number;
+  };
+  checks: SshServerPrerequisiteCheck[];
+}

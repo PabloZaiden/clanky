@@ -50,6 +50,10 @@ export const DeleteSshServerSessionRequestSchema = z.object({
   credentialToken: SshCredentialTokenSchema.optional(),
 });
 
+export const CheckSshServerPrerequisitesRequestSchema = z.object({
+  credentialToken: SshCredentialTokenSchema.optional(),
+});
+
 export type SshKeyAlgorithm = z.infer<typeof SshKeyAlgorithmSchema>;
 export type CreateSshServerRequest = z.infer<typeof CreateSshServerRequestSchema>;
 export type UpdateSshServerRequest = z.infer<typeof UpdateSshServerRequestSchema>;
@@ -58,3 +62,4 @@ export type SshCredentialExchangeRequest = z.infer<typeof SshCredentialExchangeR
 export type SshCredentialToken = z.infer<typeof SshCredentialTokenSchema>;
 export type CreateSshServerSessionRequest = z.infer<typeof CreateSshServerSessionRequestSchema>;
 export type DeleteSshServerSessionRequest = z.infer<typeof DeleteSshServerSessionRequestSchema>;
+export type CheckSshServerPrerequisitesRequest = z.infer<typeof CheckSshServerPrerequisitesRequestSchema>;
