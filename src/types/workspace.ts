@@ -49,6 +49,8 @@ export interface Workspace {
   repoUrl?: string;
   /** Base path on the remote host used during provisioning */
   basePath?: string;
+  /** Optional devcontainer definition subpath used during provisioning */
+  devcontainerSubpath?: string;
   /** Agent provider used during provisioning */
   provider?: AgentProvider;
 }

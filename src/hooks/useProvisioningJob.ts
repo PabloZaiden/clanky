@@ -17,6 +17,7 @@ export interface StartProvisioningJobRequest {
   sshServerId: string;
   repoUrl: string;
   basePath: string;
+  devcontainerSubpath?: string;
   provider: AgentProvider;
   password?: string;
   mode?: "provision" | "rebuild" | "restart" | "arise";
@@ -198,6 +199,9 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           sshServerId: request.sshServerId,
           repoUrl: request.repoUrl.trim(),
           basePath: request.basePath.trim(),
+          ...(request.devcontainerSubpath?.trim()
+            ? { devcontainerSubpath: request.devcontainerSubpath.trim() }
+            : {}),
           provider: request.provider,
           ...(credentialToken ? { credentialToken } : {}),
           ...(request.mode ? { mode: request.mode } : {}),

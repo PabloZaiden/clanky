@@ -48,6 +48,7 @@ export interface ProvisioningJobConfig {
   sshServerId: string;
   repoUrl: string;
   basePath: string;
+  devcontainerSubpath?: string;
   provider: AgentProvider;
   mode?: ProvisioningJobMode;
   /** For rebuild/restart mode: directory where the repo lives on the host */

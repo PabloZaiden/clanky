@@ -55,9 +55,14 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
  */
 export async function updateWorkspace(
   id: string,
-  updates: Partial<Pick<Workspace, "name" | "serverSettings">>
+  updates: Partial<Pick<Workspace, "name" | "serverSettings" | "devcontainerSubpath">>
 ): Promise<Workspace | null> {
-  log.debug("Updating workspace", { id, hasNameUpdate: updates.name !== undefined, hasSettingsUpdate: updates.serverSettings !== undefined });
+  log.debug("Updating workspace", {
+    id,
+    hasNameUpdate: updates.name !== undefined,
+    hasSettingsUpdate: updates.serverSettings !== undefined,
+    hasDevcontainerSubpathUpdate: updates.devcontainerSubpath !== undefined,
+  });
   const db = getDatabase();
 
   const setClauses: string[] = [];
@@ -73,6 +78,11 @@ export async function updateWorkspace(
     values.push(JSON.stringify(updates.serverSettings));
     setClauses.push("server_fingerprint = ?");
     values.push(getServerFingerprint(updates.serverSettings));
+  }
+
+  if (updates.devcontainerSubpath !== undefined) {
+    setClauses.push("devcontainer_subpath = ?");
+    values.push(updates.devcontainerSubpath || null);
   }
 
   if (setClauses.length === 0) {

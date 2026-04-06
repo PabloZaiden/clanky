@@ -12,6 +12,8 @@ interface AutomaticWorkspaceFormProps {
   onRepoUrlChange: (url: string) => void;
   basePath: string;
   onBasePathChange: (path: string) => void;
+  devcontainerSubpath: string;
+  onDevcontainerSubpathChange: (subpath: string) => void;
   provider: AgentProvider;
   onProviderChange: (provider: AgentProvider) => void;
   password: string;
@@ -27,6 +29,8 @@ export function AutomaticWorkspaceForm({
   onRepoUrlChange,
   basePath,
   onBasePathChange,
+  devcontainerSubpath,
+  onDevcontainerSubpathChange,
   provider,
   onProviderChange,
   password,
@@ -97,6 +101,26 @@ export function AutomaticWorkspaceForm({
           required
           className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 font-mono"
         />
+      </div>
+
+      <div>
+        <label
+          htmlFor="automatic-devcontainer-subpath"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+        >
+          Devcontainer Subpath
+        </label>
+        <input
+          type="text"
+          id="automatic-devcontainer-subpath"
+          value={devcontainerSubpath}
+          onChange={(e) => onDevcontainerSubpathChange(e.target.value)}
+          placeholder=".devcontainer/backend/devcontainer.json"
+          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 font-mono"
+        />
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Optional. Only set this when the repository exposes multiple devcontainer definitions and devbox needs a specific one.
+        </p>
       </div>
 
       <div>

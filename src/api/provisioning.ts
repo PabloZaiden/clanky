@@ -45,6 +45,7 @@ export const provisioningRoutes = {
           sshServerId: validation.data.sshServerId,
           repoUrl: validation.data.repoUrl,
           basePath: validation.data.basePath,
+          devcontainerSubpath: validation.data.devcontainerSubpath,
           provider: validation.data.provider,
           mode: validation.data.mode,
           targetDirectory: validation.data.targetDirectory,

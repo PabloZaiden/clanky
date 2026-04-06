@@ -52,6 +52,7 @@ export function RebuildWorkspaceView({
       sshServerId,
       repoUrl: workspace.repoUrl ?? "",
       basePath: workspace.basePath ?? "",
+      devcontainerSubpath: workspace.devcontainerSubpath,
       provider: workspace.provider ?? "copilot",
       password,
       mode,
@@ -227,6 +228,15 @@ export function RebuildWorkspaceView({
               value={workspace.provider ?? "copilot"}
               onChange={() => {}}
               disabled
+            />
+
+            <InlineField
+              id={`${mode}-devcontainer-subpath`}
+              label="Devcontainer subpath"
+              value={workspace.devcontainerSubpath ?? ""}
+              onChange={() => {}}
+              disabled
+              help="If set, devbox will reuse this devcontainer definition during rebuild or restart."
             />
 
             {!selectedServerHasStoredCredential && sshServerId && (

@@ -5,6 +5,7 @@ export interface StartProvisioningJobOptions {
   sshServerId: string;
   repoUrl: string;
   basePath: string;
+  devcontainerSubpath?: string;
   provider: AgentProvider;
   mode?: ProvisioningJobMode;
   password?: string;

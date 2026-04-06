@@ -19,6 +19,7 @@ export function workspaceToRow(workspace: Workspace): Record<string, unknown> {
     ssh_server_id: workspace.sshServerId ?? null,
     repo_url: workspace.repoUrl ?? null,
     base_path: workspace.basePath ?? null,
+    devcontainer_subpath: workspace.devcontainerSubpath ?? null,
     provider: workspace.provider ?? null,
   };
 }
@@ -35,6 +36,7 @@ export function rowToWorkspace(row: Record<string, unknown>): Workspace {
     sshServerId: (row["ssh_server_id"] as string | null) ?? undefined,
     repoUrl: (row["repo_url"] as string | null) ?? undefined,
     basePath: (row["base_path"] as string | null) ?? undefined,
+    devcontainerSubpath: (row["devcontainer_subpath"] as string | null) ?? undefined,
     provider: (row["provider"] as AgentProvider | null) ?? undefined,
   };
 }

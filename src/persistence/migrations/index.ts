@@ -198,6 +198,20 @@ export const migrations: Migration[] = [
       );
     },
   },
+  {
+    version: 4,
+    name: "add_workspace_devcontainer_subpath",
+    up: (db) => {
+      if (!tableExists(db, "workspaces")) {
+        return;
+      }
+      const columns = getTableColumns(db, "workspaces");
+      if (columns.includes("devcontainer_subpath")) {
+        return;
+      }
+      db.run("ALTER TABLE workspaces ADD COLUMN devcontainer_subpath TEXT");
+    },
+  },
 ];
 
 /**

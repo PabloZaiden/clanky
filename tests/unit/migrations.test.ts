@@ -282,6 +282,33 @@ describe("migration infrastructure", () => {
     });
   });
 
+  describe("workspace devcontainer subpath migration", () => {
+    test("adds devcontainer_subpath to existing workspaces tables", () => {
+      db.run(`
+        CREATE TABLE workspaces (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          server_fingerprint TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          server_settings TEXT NOT NULL DEFAULT '{}',
+          source_directory TEXT,
+          ssh_server_id TEXT,
+          repo_url TEXT,
+          base_path TEXT,
+          provider TEXT
+        )
+      `);
+
+      runMigrations(db);
+      runMigrations(db);
+
+      const columns = getTableColumns(db, "workspaces");
+      expect(columns).toContain("devcontainer_subpath");
+    });
+  });
+
   describe("migration execution with mock migration", () => {
     test("applies a mock migration and records it", () => {
       // Create a table to migrate
