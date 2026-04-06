@@ -28,6 +28,8 @@ export interface UseWorkspaceCreateResult {
   setAutomaticRepoUrl: (url: string) => void;
   automaticBasePath: string;
   setAutomaticBasePath: (path: string) => void;
+  automaticDevcontainerSubpath: string;
+  setAutomaticDevcontainerSubpath: (subpath: string) => void;
   automaticProvider: AgentProvider;
   setAutomaticProvider: (provider: AgentProvider) => void;
   automaticPassword: string;
@@ -68,6 +70,7 @@ export function useWorkspaceCreate({
   const [automaticServerId, setAutomaticServerId] = useState("");
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
+  const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
   const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>("copilot");
   const [automaticPassword, setAutomaticPassword] = useState("");
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
@@ -105,6 +108,7 @@ export function useWorkspaceCreate({
     setAutomaticServerId(servers[0]?.config.id ?? "");
     setAutomaticRepoUrl("");
     setAutomaticBasePath("/workspaces");
+    setAutomaticDevcontainerSubpath("");
     setAutomaticProvider("copilot");
     setAutomaticPassword("");
   }, [provisioning.activeJobId, provisioning.snapshot?.job.state.status, route, servers]);
@@ -164,6 +168,7 @@ export function useWorkspaceCreate({
     setAutomaticServerId(config.sshServerId);
     setAutomaticRepoUrl(config.repoUrl);
     setAutomaticBasePath(config.basePath);
+    setAutomaticDevcontainerSubpath(config.devcontainerSubpath ?? "");
     setAutomaticProvider(config.provider);
     setAutomaticPassword("");
     provisioning.clearActiveJob();
@@ -189,6 +194,7 @@ export function useWorkspaceCreate({
           sshServerId: automaticServerId,
           repoUrl: automaticRepoUrl.trim(),
           basePath: automaticBasePath.trim(),
+          devcontainerSubpath: automaticDevcontainerSubpath.trim(),
           provider: automaticProvider,
           password: automaticPassword,
         });
@@ -243,6 +249,8 @@ export function useWorkspaceCreate({
     setAutomaticRepoUrl,
     automaticBasePath,
     setAutomaticBasePath,
+    automaticDevcontainerSubpath,
+    setAutomaticDevcontainerSubpath,
     automaticProvider,
     setAutomaticProvider,
     automaticPassword,

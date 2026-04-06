@@ -18,6 +18,7 @@ interface ProvisioningSnapshotResponse {
   job: {
     config: {
       id: string;
+      devcontainerSubpath?: string;
     };
     state: {
       status: string;
@@ -120,12 +121,14 @@ describe("Provisioning API integration", () => {
         sshServerId: sshServer.config.id,
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
+        devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
         provider: "copilot",
       }),
     });
 
     expect(response.status).toBe(201);
     const started = await response.json() as ProvisioningSnapshotResponse;
+    expect(started.job.config.devcontainerSubpath).toBe(".devcontainer/backend/devcontainer.json");
     const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
     expect(completed.job.state.status).toBe("completed");
     expect(completed.job.state.workspaceId).toBeTruthy();

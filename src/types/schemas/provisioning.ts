@@ -11,6 +11,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   sshServerId: RequiredTrimmedStringSchema,
   repoUrl: z.string().trim().optional().default(""),
   basePath: z.string().trim().optional().default(""),
+  devcontainerSubpath: z.string().trim().optional(),
   provider: AgentProviderSchema.default("copilot"),
   credentialToken: SshCredentialTokenSchema.optional(),
   mode: ProvisioningJobModeSchema,

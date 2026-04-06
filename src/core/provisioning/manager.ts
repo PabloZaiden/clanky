@@ -27,6 +27,22 @@ import type { ProvisioningJobRecord, StartProvisioningJobOptions } from "./types
 
 const log = createLogger("core:provisioning-manager");
 
+function normalizeOptionalValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function buildDevboxArgs(
+  command: "up" | "rebuild",
+  devcontainerSubpath?: string,
+): string[] {
+  const args: string[] = [command];
+  if (devcontainerSubpath) {
+    args.push("--devcontainer-subpath", devcontainerSubpath);
+  }
+  return args;
+}
+
 export class ProvisioningManager {
   private readonly jobs = new Map<string, ProvisioningJobRecord>();
 
@@ -47,10 +63,11 @@ export class ProvisioningManager {
           sshServerId: options.sshServerId.trim(),
           repoUrl: options.repoUrl.trim(),
           basePath: options.basePath.trim(),
+          devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
           provider: options.provider,
           mode,
-          targetDirectory: options.targetDirectory?.trim(),
-          workspaceId: options.workspaceId?.trim(),
+          targetDirectory: normalizeOptionalValue(options.targetDirectory),
+          workspaceId: normalizeOptionalValue(options.workspaceId),
           createdAt: now,
         },
         state: {
@@ -219,7 +236,7 @@ export class ProvisioningManager {
         step: "devbox_up",
         label: "Running devbox up",
         command: "devbox",
-        args: ["up"],
+        args: buildDevboxArgs("up", record.job.config.devcontainerSubpath),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
@@ -331,6 +348,7 @@ export class ProvisioningManager {
         sshServerId: record.job.config.sshServerId,
         repoUrl: record.job.config.repoUrl,
         basePath: record.job.config.basePath,
+        devcontainerSubpath: record.job.config.devcontainerSubpath,
         provider: record.job.config.provider,
       };
       await createWorkspace(workspace);
@@ -474,6 +492,21 @@ export class ProvisioningManager {
         );
       }
 
+      const workspace = await getWorkspace(workspaceId);
+      if (!workspace) {
+        throw new ProvisioningFailedError(
+          "workspace_not_found",
+          "verify_devbox",
+          `Workspace ${workspaceId} not found`,
+        );
+      }
+
+      const devcontainerSubpath =
+        record.job.config.devcontainerSubpath ?? workspace.devcontainerSubpath;
+      if (devcontainerSubpath && record.job.config.devcontainerSubpath !== devcontainerSubpath) {
+        record.job.config.devcontainerSubpath = devcontainerSubpath;
+      }
+
       const { server, executor } = await sshServerManager.getCommandExecutor(
         record.job.config.sshServerId,
         password,
@@ -512,7 +545,7 @@ export class ProvisioningManager {
         step: action.step,
         label: action.commandLabel,
         command: "devbox",
-        args: action.args,
+        args: buildDevboxArgs(action.step === "devbox_rebuild" ? "rebuild" : "up", devcontainerSubpath),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
@@ -608,7 +641,12 @@ export class ProvisioningManager {
       );
 
       // Update the existing workspace's server settings (port/password may change after rebuild)
-      const updatedWorkspace = await updateWorkspace(workspaceId, { serverSettings });
+      const updatedWorkspace = await updateWorkspace(workspaceId, {
+        serverSettings,
+        ...(devcontainerSubpath !== workspace.devcontainerSubpath
+          ? { devcontainerSubpath }
+          : {}),
+      });
       if (!updatedWorkspace) {
         throw new ProvisioningFailedError(
           "workspace_not_found",

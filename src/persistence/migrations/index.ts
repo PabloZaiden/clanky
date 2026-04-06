@@ -106,7 +106,8 @@ export function tableExists(db: Database, tableName: string): boolean {
  *
  * Note: Legacy migrations (v1-v16) were removed in the first clean-cut reset.
  * Migrations v1-v13 (post-reset) were removed in the second clean-cut reset.
- * All schema changes are now part of the base schema in database.ts.
+ * New schema changes added after that reset remain here until a future reset
+ * intentionally folds them back into the base schema in database.ts.
  */
 export const migrations: Migration[] = [
   {
@@ -196,6 +197,20 @@ export const migrations: Migration[] = [
       db.run(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_passkey_credentials_credential_id ON passkey_credentials(credential_id)"
       );
+    },
+  },
+  {
+    version: 4,
+    name: "add_workspace_devcontainer_subpath",
+    up: (db) => {
+      if (!tableExists(db, "workspaces")) {
+        return;
+      }
+      const columns = getTableColumns(db, "workspaces");
+      if (columns.includes("devcontainer_subpath")) {
+        return;
+      }
+      db.run("ALTER TABLE workspaces ADD COLUMN devcontainer_subpath TEXT");
     },
   },
 ];

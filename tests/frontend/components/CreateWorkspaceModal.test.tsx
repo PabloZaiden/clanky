@@ -121,6 +121,7 @@ describe("CreateWorkspaceModal", () => {
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
     await user.clear(getByLabelText("Remote Base Path *"));
     await user.type(getByLabelText("Remote Base Path *"), "/srv/workspaces");
+    await user.type(getByLabelText("Devcontainer Subpath"), ".devcontainer/backend/devcontainer.json");
 
     await user.click(getByRole("button", { name: "Start Provisioning" }));
 
@@ -135,6 +136,7 @@ describe("CreateWorkspaceModal", () => {
       sshServerId: "server-1",
       repoUrl: "git@github.com:owner/repo.git",
       basePath: "/srv/workspaces",
+      devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
       provider: "copilot",
     });
     expect(ws.getConnections("/api/ws")[0]?.queryParams["provisioningJobId"]).toBe("job-1");
@@ -191,6 +193,7 @@ describe("CreateWorkspaceModal", () => {
     await user.click(getByRole("button", { name: "Automatic" }));
     await user.type(getByLabelText("Workspace Name *"), "Provisioned Workspace");
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
+    await user.type(getByLabelText("Devcontainer Subpath"), ".devcontainer/backend/devcontainer.json");
     await user.click(getByRole("button", { name: "Start Provisioning" }));
 
     await waitFor(() => {
@@ -218,13 +221,41 @@ describe("CreateWorkspaceModal", () => {
   });
 
   test("returns to the automatic form after failure with the previous configuration prefilled", async () => {
-    const startedSnapshot = createSnapshot("running");
-    const failedSnapshot = createSnapshot("failed", {
-      error: {
-        code: "clone_failed",
-        message: "Failed to clone repository",
+    const startedSnapshot = {
+      ...createSnapshot("running"),
+      job: {
+        ...createSnapshot("running").job,
+        config: {
+          ...createSnapshot("running").job.config,
+          devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
+        },
       },
-    });
+    };
+    const failedSnapshot = {
+      ...createSnapshot("failed", {
+        error: {
+          code: "clone_failed",
+          message: "Failed to clone repository",
+        },
+      }),
+      job: {
+        ...createSnapshot("failed", {
+          error: {
+            code: "clone_failed",
+            message: "Failed to clone repository",
+          },
+        }).job,
+        config: {
+          ...createSnapshot("failed", {
+            error: {
+              code: "clone_failed",
+              message: "Failed to clone repository",
+            },
+          }).job.config,
+          devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
+        },
+      },
+    };
 
     api.post("/api/provisioning-jobs", () => startedSnapshot);
     api.get("/api/provisioning-jobs/:id", () => failedSnapshot);
@@ -258,6 +289,7 @@ describe("CreateWorkspaceModal", () => {
     expect((getByRole("textbox", { name: "Workspace Name *" }) as HTMLInputElement).value).toBe("Provisioned Workspace");
     expect((getByRole("textbox", { name: "Git Repository URL *" }) as HTMLInputElement).value).toBe("git@github.com:owner/repo.git");
     expect((getByRole("textbox", { name: "Remote Base Path *" }) as HTMLInputElement).value).toBe("/workspaces");
+    expect((getByRole("textbox", { name: "Devcontainer Subpath" }) as HTMLInputElement).value).toBe(".devcontainer/backend/devcontainer.json");
 
     await user.clear(getByRole("textbox", { name: "Remote Base Path *" }));
     await user.type(getByRole("textbox", { name: "Remote Base Path *" }), "/srv/workspaces");
@@ -272,6 +304,7 @@ describe("CreateWorkspaceModal", () => {
       sshServerId: "server-1",
       repoUrl: "git@github.com:owner/repo.git",
       basePath: "/srv/workspaces",
+      devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
       provider: "copilot",
     });
   });
@@ -286,6 +319,7 @@ describe("CreateWorkspaceModal", () => {
           sshServerId: "server-1",
           repoUrl: "git@github.com:test/project.git",
           basePath: "/custom/path",
+          devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
           provider: "copilot",
           createdAt: new Date().toISOString(),
         },
@@ -334,6 +368,7 @@ describe("CreateWorkspaceModal", () => {
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:test/project.git");
     await user.clear(getByLabelText("Remote Base Path *"));
     await user.type(getByLabelText("Remote Base Path *"), "/custom/path");
+    await user.type(getByLabelText("Devcontainer Subpath"), ".devcontainer/backend/devcontainer.json");
 
     // Submit
     await user.click(getByRole("button", { name: "Start Provisioning" }));
@@ -359,6 +394,7 @@ describe("CreateWorkspaceModal", () => {
     expect((getByRole("textbox", { name: "Workspace Name *" }) as HTMLInputElement).value).toBe("My Test Workspace");
     expect((getByRole("textbox", { name: "Git Repository URL *" }) as HTMLInputElement).value).toBe("git@github.com:test/project.git");
     expect((getByRole("textbox", { name: "Remote Base Path *" }) as HTMLInputElement).value).toBe("/custom/path");
+    expect((getByRole("textbox", { name: "Devcontainer Subpath" }) as HTMLInputElement).value).toBe(".devcontainer/backend/devcontainer.json");
     // Password is intentionally empty after going back (security)
     expect(window.localStorage.getItem("ralpher.activeProvisioningJobId")).toBeNull();
   });

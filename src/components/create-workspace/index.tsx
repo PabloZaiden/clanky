@@ -61,6 +61,7 @@ export function CreateWorkspaceModal({
     automaticServerId: string;
     automaticRepoUrl: string;
     automaticBasePath: string;
+    automaticDevcontainerSubpath: string;
     automaticProvider: AgentProvider;
   } | null>(null);
 
@@ -71,6 +72,7 @@ export function CreateWorkspaceModal({
   const [automaticServerId, setAutomaticServerId] = useState("");
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
+  const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
   const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>("copilot");
   const [automaticPassword, setAutomaticPassword] = useState("");
 
@@ -106,6 +108,7 @@ export function CreateWorkspaceModal({
     setAutomaticServerId(registeredSshServers[0]?.config.id ?? "");
     setAutomaticRepoUrl("");
     setAutomaticBasePath("/workspaces");
+    setAutomaticDevcontainerSubpath("");
     setAutomaticProvider("copilot");
     setAutomaticPassword("");
     setServerSettings(defaultServerSettings);
@@ -141,6 +144,7 @@ export function CreateWorkspaceModal({
         automaticServerId,
         automaticRepoUrl: automaticRepoUrl.trim(),
         automaticBasePath: automaticBasePath.trim(),
+        automaticDevcontainerSubpath: automaticDevcontainerSubpath.trim(),
         automaticProvider,
       };
       const snapshot = await provisioning.startJob({
@@ -148,6 +152,7 @@ export function CreateWorkspaceModal({
         sshServerId: automaticServerId,
         repoUrl: automaticRepoUrl.trim(),
         basePath: automaticBasePath.trim(),
+        devcontainerSubpath: automaticDevcontainerSubpath.trim(),
         provider: automaticProvider,
         password: automaticPassword,
       });
@@ -234,6 +239,7 @@ export function CreateWorkspaceModal({
       automaticServerId: config.sshServerId,
       automaticRepoUrl: config.repoUrl,
       automaticBasePath: config.basePath,
+      automaticDevcontainerSubpath: config.devcontainerSubpath ?? "",
       automaticProvider: config.provider,
     } : (refMatchesActiveJob ? saved : null);
 
@@ -243,6 +249,7 @@ export function CreateWorkspaceModal({
       setAutomaticServerId(values.automaticServerId);
       setAutomaticRepoUrl(values.automaticRepoUrl);
       setAutomaticBasePath(values.automaticBasePath);
+      setAutomaticDevcontainerSubpath(values.automaticDevcontainerSubpath);
       setAutomaticProvider(values.automaticProvider);
       setAutomaticPassword("");
     }
@@ -318,6 +325,8 @@ export function CreateWorkspaceModal({
               onRepoUrlChange={setAutomaticRepoUrl}
               basePath={automaticBasePath}
               onBasePathChange={setAutomaticBasePath}
+              devcontainerSubpath={automaticDevcontainerSubpath}
+              onDevcontainerSubpathChange={setAutomaticDevcontainerSubpath}
               provider={automaticProvider}
               onProviderChange={setAutomaticProvider}
               password={automaticPassword}

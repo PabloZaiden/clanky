@@ -4,7 +4,8 @@
  * These tests verify that the migration infrastructure works correctly.
  * Legacy migration tests (v1-v16) were removed in the first clean-cut reset.
  * Migration tests (v1-v13) were removed in the second clean-cut reset.
- * The base schema now contains all columns directly.
+ * The base schema contains the reset baseline, and newer schema additions stay
+ * covered by explicit migration tests until a future clean-cut reset folds them in.
  */
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
@@ -279,6 +280,33 @@ describe("migration infrastructure", () => {
       `).all() as Array<{ name: string }>;
 
       expect(indexes.map((index) => index.name)).toContain("idx_passkey_credentials_credential_id");
+    });
+  });
+
+  describe("workspace devcontainer subpath migration", () => {
+    test("adds devcontainer_subpath to existing workspaces tables", () => {
+      db.run(`
+        CREATE TABLE workspaces (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          server_fingerprint TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          server_settings TEXT NOT NULL DEFAULT '{}',
+          source_directory TEXT,
+          ssh_server_id TEXT,
+          repo_url TEXT,
+          base_path TEXT,
+          provider TEXT
+        )
+      `);
+
+      runMigrations(db);
+      runMigrations(db);
+
+      const columns = getTableColumns(db, "workspaces");
+      expect(columns).toContain("devcontainer_subpath");
     });
   });
 

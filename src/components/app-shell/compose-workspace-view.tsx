@@ -51,6 +51,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticRepoUrl,
     automaticBasePath,
     setAutomaticBasePath,
+    automaticDevcontainerSubpath,
+    setAutomaticDevcontainerSubpath,
     automaticProvider,
     setAutomaticProvider,
     automaticPassword,
@@ -276,6 +278,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 placeholder="/workspaces"
                 required
                 help="Parent directory where the repo should be cloned."
+              />
+
+              <InlineField
+                id="automatic-devcontainer-subpath"
+                label="Devcontainer subpath"
+                value={automaticDevcontainerSubpath}
+                onChange={setAutomaticDevcontainerSubpath}
+                placeholder=".devcontainer/backend/devcontainer.json"
+                help="Optional. Use when the repository contains multiple devcontainer definitions and devbox needs a specific one."
               />
 
               <div>

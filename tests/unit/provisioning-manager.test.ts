@@ -159,6 +159,7 @@ describe("ProvisioningManager", () => {
       sshServerId: server.config.id,
       repoUrl: "git@github.com:octocat/example.git",
       basePath: "/workspaces",
+      devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
       provider: "copilot",
     });
 
@@ -170,7 +171,16 @@ describe("ProvisioningManager", () => {
     expect(workspace?.sshServerId).toBe(server.config.id);
     expect(workspace?.repoUrl).toBe("git@github.com:octocat/example.git");
     expect(workspace?.basePath).toBe("/workspaces");
+    expect(workspace?.devcontainerSubpath).toBe(".devcontainer/backend/devcontainer.json");
     expect(workspace?.provider).toBe("copilot");
+    expect(started.job.config.devcontainerSubpath).toBe(".devcontainer/backend/devcontainer.json");
+
+    const devboxUpCall = executor.calls.find((call) => call.command === "devbox" && call.args[0] === "up");
+    expect(devboxUpCall?.args).toEqual([
+      "up",
+      "--devcontainer-subpath",
+      ".devcontainer/backend/devcontainer.json",
+    ]);
   });
 
   test("rebuilds an existing devbox workspace without cloning", async () => {
@@ -190,6 +200,7 @@ describe("ProvisioningManager", () => {
       sshServerId: server.config.id,
       repoUrl: "git@github.com:octocat/example.git",
       basePath: "/workspaces",
+      devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
       provider: "copilot",
     });
     const provisioned = await waitForProvisioningStatus(manager, provisionSnapshot.job.config.id, ["completed"]);
@@ -222,12 +233,14 @@ describe("ProvisioningManager", () => {
     // Verify rebuild used devbox rebuild instead of devbox up
     const rebuildCalls = rebuildExecutor.calls.map((c) => `${c.command} ${c.args.join(" ")}`);
     expect(rebuildCalls.some((c) => c.includes("devbox rebuild"))).toBe(true);
+    expect(rebuildCalls.some((c) => c.includes("--devcontainer-subpath .devcontainer/backend/devcontainer.json"))).toBe(true);
     expect(rebuildCalls.some((c) => c.includes("devbox up"))).toBe(false);
     expect(rebuildCalls.some((c) => c.includes("git clone"))).toBe(false);
 
     // Verify workspace server settings were updated
     const updatedWorkspace = await getWorkspace(workspaceId);
     expect(updatedWorkspace?.serverSettings.agent.transport).toBe("ssh");
+    expect(updatedWorkspace?.devcontainerSubpath).toBe(".devcontainer/backend/devcontainer.json");
 
     // Verify final log message
     expect(rebuilt.logs.at(-1)?.text).toContain("rebuilt successfully");
