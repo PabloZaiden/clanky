@@ -135,7 +135,6 @@ function createTables(database: Database): void {
         ssh_server_id TEXT,
         repo_url TEXT,
         base_path TEXT,
-        devcontainer_subpath TEXT,
         provider TEXT
       )
     `);
