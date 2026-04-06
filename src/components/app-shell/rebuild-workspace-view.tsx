@@ -232,11 +232,11 @@ export function RebuildWorkspaceView({
 
             <InlineField
               id={`${mode}-devcontainer-subpath`}
-              label="Devcontainer subpath"
+              label="Devcontainer variant"
               value={workspace.devcontainerSubpath ?? ""}
               onChange={() => {}}
               disabled
-              help="If set, devbox will reuse this devcontainer definition during rebuild or restart."
+              help="If set, devbox will reuse this devcontainer variant during rebuild or restart."
             />
 
             {!selectedServerHasStoredCredential && sshServerId && (

@@ -282,10 +282,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
 
               <InlineField
                 id="automatic-devcontainer-subpath"
-                label="Devcontainer subpath"
+                label="Devcontainer variant"
                 value={automaticDevcontainerSubpath}
                 onChange={setAutomaticDevcontainerSubpath}
-                placeholder=".devcontainer/backend/devcontainer.json"
+                placeholder="backend"
                 help="Optional. Use when the repository contains multiple devcontainer definitions and devbox needs a specific one."
               />
 
