@@ -286,7 +286,8 @@ test("hello world", () => {
 - Every bug fix **SHOULD** have a scenario test covering the fix in a real-world context
 - Unit tests should be written alongside implementation, not after
 - Scenario tests should cover multiple combinations and edge cases
-- UI-only changes may rely on manual testing, but automated tests are preferred when possible
+- Do **NOT** add automated tests for text-only changes or other minor UI copy/presentation tweaks that do not affect behavior or functionality
+- UI-only changes that alter behavior should still be tested, but purely cosmetic or wording-only changes may rely on manual review
 - If you need to validate real agent scenarios for a new feature or to reproduce a bug, use a local Copilot CLI unless the user explicitly says otherwise. Mocks usually do not work well for this kind of manual validation.
 - Live agent providers may be used for manual investigation and final validation when needed, but committed automated tests **MUST** use mocks or local test doubles and **MUST NOT** depend on live agents or external providers
 - **100%** of the tests **MUST** pass before considering a feature complete
@@ -503,11 +504,12 @@ When you need to add a new column, table, or modify the schema:
 }
 ```
 
-2. **Do NOT modify the base schema** in `src/persistence/database.ts`. New columns/tables should only be added via migrations to ensure existing databases are properly upgraded.
+2. **Do NOT modify the base schema** in `src/persistence/database.ts` for ordinary schema evolution. New columns/tables should be added via migrations so existing databases are properly upgraded. The exception is startup-time compatibility repair for legacy databases when clean-cut resets or reused migration version numbers mean `schema_migrations` can no longer be trusted to describe the live schema.
 
 3. **Add a test** in `tests/unit/migrations.test.ts` to verify:
    - The migration applies correctly to databases without the new column
    - The migration is idempotent (doesn't fail if run twice)
+   - If legacy databases may already contain colliding `schema_migrations` entries, add initialization-level coverage (for example in `tests/unit/persistence.test.ts`) that proves startup still repairs the live schema before application code writes to it
 
 ### Migration Guidelines
 
@@ -515,6 +517,7 @@ When you need to add a new column, table, or modify the schema:
 - **Use sequential version numbers** starting from 1
 - **Use descriptive snake_case names** - e.g., `add_user_preferences`
 - **Test migrations thoroughly**
+- **Verify real upgrade paths, not just happy-path migrations** — if older databases can carry reused migration version numbers after resets, make startup repair the schema directly and add tests for that legacy mismatch case
 
 ### Resetting the Database
 

@@ -29,6 +29,14 @@ const registeredSshServers = [
   },
 ];
 
+function getAutomaticDevcontainerVariantInput(): HTMLInputElement {
+  const input = document.getElementById("automatic-devcontainer-subpath");
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("Expected automatic devcontainer variant input");
+  }
+  return input;
+}
+
 function createSnapshot(
   status: ProvisioningJobSnapshot["job"]["state"]["status"],
   overrides: Partial<ProvisioningJobSnapshot["job"]["state"]> = {},
@@ -121,7 +129,7 @@ describe("CreateWorkspaceModal", () => {
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
     await user.clear(getByLabelText("Remote Base Path *"));
     await user.type(getByLabelText("Remote Base Path *"), "/srv/workspaces");
-    await user.type(getByLabelText("Devcontainer Subpath"), ".devcontainer/backend/devcontainer.json");
+    await user.type(getAutomaticDevcontainerVariantInput(), ".devcontainer/backend/devcontainer.json");
 
     await user.click(getByRole("button", { name: "Start Provisioning" }));
 
@@ -193,7 +201,7 @@ describe("CreateWorkspaceModal", () => {
     await user.click(getByRole("button", { name: "Automatic" }));
     await user.type(getByLabelText("Workspace Name *"), "Provisioned Workspace");
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
-    await user.type(getByLabelText("Devcontainer Subpath"), ".devcontainer/backend/devcontainer.json");
+    await user.type(getAutomaticDevcontainerVariantInput(), ".devcontainer/backend/devcontainer.json");
     await user.click(getByRole("button", { name: "Start Provisioning" }));
 
     await waitFor(() => {
@@ -289,7 +297,7 @@ describe("CreateWorkspaceModal", () => {
     expect((getByRole("textbox", { name: "Workspace Name *" }) as HTMLInputElement).value).toBe("Provisioned Workspace");
     expect((getByRole("textbox", { name: "Git Repository URL *" }) as HTMLInputElement).value).toBe("git@github.com:owner/repo.git");
     expect((getByRole("textbox", { name: "Remote Base Path *" }) as HTMLInputElement).value).toBe("/workspaces");
-    expect((getByRole("textbox", { name: "Devcontainer Subpath" }) as HTMLInputElement).value).toBe(".devcontainer/backend/devcontainer.json");
+    expect(getAutomaticDevcontainerVariantInput().value).toBe(".devcontainer/backend/devcontainer.json");
 
     await user.clear(getByRole("textbox", { name: "Remote Base Path *" }));
     await user.type(getByRole("textbox", { name: "Remote Base Path *" }), "/srv/workspaces");
@@ -368,7 +376,7 @@ describe("CreateWorkspaceModal", () => {
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:test/project.git");
     await user.clear(getByLabelText("Remote Base Path *"));
     await user.type(getByLabelText("Remote Base Path *"), "/custom/path");
-    await user.type(getByLabelText("Devcontainer Subpath"), ".devcontainer/backend/devcontainer.json");
+    await user.type(getAutomaticDevcontainerVariantInput(), ".devcontainer/backend/devcontainer.json");
 
     // Submit
     await user.click(getByRole("button", { name: "Start Provisioning" }));
@@ -394,7 +402,7 @@ describe("CreateWorkspaceModal", () => {
     expect((getByRole("textbox", { name: "Workspace Name *" }) as HTMLInputElement).value).toBe("My Test Workspace");
     expect((getByRole("textbox", { name: "Git Repository URL *" }) as HTMLInputElement).value).toBe("git@github.com:test/project.git");
     expect((getByRole("textbox", { name: "Remote Base Path *" }) as HTMLInputElement).value).toBe("/custom/path");
-    expect((getByRole("textbox", { name: "Devcontainer Subpath" }) as HTMLInputElement).value).toBe(".devcontainer/backend/devcontainer.json");
+    expect(getAutomaticDevcontainerVariantInput().value).toBe(".devcontainer/backend/devcontainer.json");
     // Password is intentionally empty after going back (security)
     expect(window.localStorage.getItem("ralpher.activeProvisioningJobId")).toBeNull();
   });

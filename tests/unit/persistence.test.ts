@@ -187,6 +187,64 @@ describe("Persistence", () => {
       await expect(hasRegisteredPasskeys()).resolves.toBe(false);
     });
 
+    test("initializeDatabase repairs workspaces when a legacy migration version collides", async () => {
+      const { Database } = await import("bun:sqlite");
+      const databasePath = join(testDataDir, "ralpher.db");
+      const legacyDb = new Database(databasePath);
+
+      legacyDb.run(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        4,
+        "legacy_reset_four",
+        "2025-01-01T00:00:00.000Z",
+      ]);
+      legacyDb.run(`
+        CREATE TABLE workspaces (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          server_fingerprint TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          server_settings TEXT NOT NULL DEFAULT '{}',
+          source_directory TEXT,
+          ssh_server_id TEXT,
+          repo_url TEXT,
+          base_path TEXT,
+          provider TEXT
+        )
+      `);
+      legacyDb.close();
+
+      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      const { createWorkspace } = await import("../../src/persistence/workspaces");
+      await initializeDatabase();
+
+      await expect(createWorkspace({
+        id: "repaired-workspace",
+        name: "Repaired Workspace",
+        directory: "/tmp/repaired",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: getDefaultServerSettings(),
+        devcontainerSubpath: "backend",
+      })).resolves.toBeUndefined();
+
+      const columns = getDatabase().query("PRAGMA table_info(workspaces)").all() as Array<{ name: string }>;
+      const workspaceRow = getDatabase().query(
+        "SELECT devcontainer_subpath FROM workspaces WHERE id = ?",
+      ).get("repaired-workspace") as { devcontainer_subpath: string | null } | null;
+
+      expect(columns.some((column) => column.name === "devcontainer_subpath")).toBe(true);
+      expect(workspaceRow?.devcontainer_subpath).toBe("backend");
+    });
+
     test("resetDatabase drops chats and passkey credentials before recreating the schema", async () => {
       const { ensureDataDirectories, getDatabase, resetDatabase } = await import("../../src/persistence/database");
       const { createWorkspace } = await import("../../src/persistence/workspaces");
