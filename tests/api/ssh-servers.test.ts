@@ -17,6 +17,10 @@ class SshServerApiExecutor extends TestCommandExecutor {
       bashAvailable?: boolean;
       dtachAvailable?: boolean;
       devboxAvailable?: boolean;
+      dockerAvailable?: boolean;
+      devcontainerAvailable?: boolean;
+      gitAvailable?: boolean;
+      ghAvailable?: boolean;
     } = {},
   ) {
     super();
@@ -47,6 +51,42 @@ class SshServerApiExecutor extends TestCommandExecutor {
         success: available,
         stdout: available ? "/usr/bin/devbox\n" : "",
         stderr: available ? "" : "devbox missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v docker")) {
+      const available = this.options.dockerAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/docker\n" : "",
+        stderr: available ? "" : "docker missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v devcontainer")) {
+      const available = this.options.devcontainerAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/devcontainer\n" : "",
+        stderr: available ? "" : "devcontainer missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v git")) {
+      const available = this.options.gitAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/git\n" : "",
+        stderr: available ? "" : "git missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v gh")) {
+      const available = this.options.ghAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/gh\n" : "",
+        stderr: available ? "" : "gh missing",
         exitCode: available ? 0 : 127,
       };
     }
@@ -297,7 +337,7 @@ describe("Standalone SSH servers API integration", () => {
     });
     expect(checkResponse.ok).toBe(true);
     const report = await checkResponse.json() as {
-      summary: { status: string };
+      summary: { status: string; notApplicableCount: number };
       checks: Array<{ id: string; status: string }>;
     };
     expect(report.summary.status).toBe("ready");
@@ -306,10 +346,14 @@ describe("Standalone SSH servers API integration", () => {
       ["bash", "available"],
       ["dtach", "available"],
       ["devbox", "available"],
+      ["docker", "available"],
+      ["devcontainer", "available"],
+      ["git", "available"],
+      ["gh", "available"],
     ]);
   });
 
-  test("marks devbox as not applicable and reports missing dtach when needed", async () => {
+  test("marks automatic provisioning requirements as not applicable and reports missing dtach when needed", async () => {
     executorFactory = () => new SshServerApiExecutor({ dtachAvailable: false });
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
@@ -327,11 +371,16 @@ describe("Standalone SSH servers API integration", () => {
     });
     expect(checkResponse.ok).toBe(true);
     const report = await checkResponse.json() as {
-      summary: { status: string };
+      summary: { status: string; notApplicableCount: number };
       checks: Array<{ id: string; status: string }>;
     };
     expect(report.summary.status).toBe("missing_requirements");
     expect(report.checks.find((check) => check.id === "dtach")?.status).toBe("missing");
-    expect(report.checks.find((check) => check.id === "devbox")?.status).toBe("not_applicable");
+    expect(report.summary.notApplicableCount).toBe(5);
+    expect(
+      report.checks
+        .filter((check) => ["devbox", "docker", "devcontainer", "git", "gh"].includes(check.id))
+        .every((check) => check.status === "not_applicable"),
+    ).toBe(true);
   });
 });

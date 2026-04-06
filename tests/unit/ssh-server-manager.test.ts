@@ -17,6 +17,10 @@ class SshServerTestExecutor extends TestCommandExecutor {
       bashAvailable?: boolean;
       dtachAvailable?: boolean;
       devboxAvailable?: boolean;
+      dockerAvailable?: boolean;
+      devcontainerAvailable?: boolean;
+      gitAvailable?: boolean;
+      ghAvailable?: boolean;
     } = {},
   ) {
     super();
@@ -54,6 +58,42 @@ class SshServerTestExecutor extends TestCommandExecutor {
         success: available,
         stdout: available ? "/usr/bin/devbox\n" : "",
         stderr: available ? "" : "devbox missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v docker")) {
+      const available = this.options.dockerAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/docker\n" : "",
+        stderr: available ? "" : "docker missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v devcontainer")) {
+      const available = this.options.devcontainerAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/devcontainer\n" : "",
+        stderr: available ? "" : "devcontainer missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v git")) {
+      const available = this.options.gitAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/git\n" : "",
+        stderr: available ? "" : "git missing",
+        exitCode: available ? 0 : 127,
+      };
+    }
+    if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v gh")) {
+      const available = this.options.ghAvailable ?? true;
+      return {
+        success: available,
+        stdout: available ? "/usr/bin/gh\n" : "",
+        stderr: available ? "" : "gh missing",
         exitCode: available ? 0 : 127,
       };
     }
@@ -189,16 +229,20 @@ describe("SshServerManager", () => {
 
     const report = await sshServerManager.checkPrerequisites(server.config.id);
     expect(report.summary.status).toBe("ready");
-    expect(report.summary.availableCount).toBe(4);
+    expect(report.summary.availableCount).toBe(8);
     expect(report.checks.map((check) => [check.id, check.status])).toEqual([
       ["ssh_connection", "available"],
       ["bash", "available"],
       ["dtach", "available"],
       ["devbox", "available"],
+      ["docker", "available"],
+      ["devcontainer", "available"],
+      ["git", "available"],
+      ["gh", "available"],
     ]);
   });
 
-  test("marks devbox as not applicable when provisioning is not configured", async () => {
+  test("marks automatic provisioning requirements as not applicable when provisioning is not configured", async () => {
     const server = await sshServerManager.createServer({
       name: "Terminal Host",
       address: "ssh.example.com",
@@ -206,9 +250,12 @@ describe("SshServerManager", () => {
     });
 
     const report = await sshServerManager.checkPrerequisites(server.config.id);
-    const devboxCheck = report.checks.find((check) => check.id === "devbox");
-    expect(devboxCheck?.status).toBe("not_applicable");
-    expect(report.summary.notApplicableCount).toBe(1);
+    expect(
+      report.checks
+        .filter((check) => ["devbox", "docker", "devcontainer", "git", "gh"].includes(check.id))
+        .every((check) => check.status === "not_applicable"),
+    ).toBe(true);
+    expect(report.summary.notApplicableCount).toBe(5);
   });
 
   test("reports missing dtach and failed connectivity explicitly", async () => {
@@ -234,5 +281,28 @@ describe("SshServerManager", () => {
     expect(connectionReport.summary.status).toBe("connection_failed");
     expect(connectionReport.checks.find((check) => check.id === "ssh_connection")?.status).toBe("missing");
     expect(connectionReport.checks.find((check) => check.id === "bash")?.status).toBe("unknown");
+    expect(connectionReport.checks.find((check) => check.id === "docker")?.status).toBe("unknown");
+  });
+
+  test("reports missing automatic provisioning dependencies individually", async () => {
+    sshServerManager.setExecutorFactoryForTesting(() => new SshServerTestExecutor({
+      dockerAvailable: false,
+      devcontainerAvailable: false,
+      ghAvailable: false,
+    }));
+    const server = await sshServerManager.createServer({
+      name: "Provision Host",
+      address: "ssh.example.com",
+      username: "deploy",
+      repositoriesBasePath: "/workspaces",
+    });
+
+    const report = await sshServerManager.checkPrerequisites(server.config.id);
+    expect(report.summary.status).toBe("missing_requirements");
+    expect(report.summary.missingCount).toBe(3);
+    expect(report.checks.find((check) => check.id === "docker")?.status).toBe("missing");
+    expect(report.checks.find((check) => check.id === "devcontainer")?.status).toBe("missing");
+    expect(report.checks.find((check) => check.id === "gh")?.status).toBe("missing");
+    expect(report.checks.find((check) => check.id === "git")?.status).toBe("available");
   });
 });
