@@ -81,7 +81,11 @@ export type SshServerPrerequisiteId =
   | "ssh_connection"
   | "bash"
   | "dtach"
-  | "devbox";
+  | "devbox"
+  | "docker"
+  | "devcontainer"
+  | "git"
+  | "gh";
 
 export type SshServerPrerequisiteStatus =
   | "available"

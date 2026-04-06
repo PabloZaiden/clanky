@@ -236,7 +236,7 @@ describe("ssh server management scenario", () => {
           status: "missing_requirements",
           availableCount: 2,
           missingCount: 1,
-          notApplicableCount: 1,
+          notApplicableCount: 5,
           unknownCount: 0,
         },
         checks: [
@@ -269,11 +269,39 @@ describe("ssh server management scenario", () => {
             details: "Automatic provisioning is disabled for this server because no repositories base path is configured.",
             requiredFor: ["Automatic provisioning", "devbox arise"],
           },
+          {
+            id: "docker",
+            label: "docker",
+            status: "not_applicable",
+            details: "Automatic provisioning is disabled for this server because no repositories base path is configured.",
+            requiredFor: ["Automatic provisioning"],
+          },
+          {
+            id: "devcontainer",
+            label: "devcontainer",
+            status: "not_applicable",
+            details: "Automatic provisioning is disabled for this server because no repositories base path is configured.",
+            requiredFor: ["Automatic provisioning"],
+          },
+          {
+            id: "git",
+            label: "git",
+            status: "not_applicable",
+            details: "Automatic provisioning is disabled for this server because no repositories base path is configured.",
+            requiredFor: ["Automatic provisioning"],
+          },
+          {
+            id: "gh",
+            label: "gh",
+            status: "not_applicable",
+            details: "Automatic provisioning is disabled for this server because no repositories base path is configured.",
+            requiredFor: ["Automatic provisioning"],
+          },
         ],
       };
     });
 
-    const { getByRole, getByText, user } = renderWithUser(<App />, {
+    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />, {
       route: "#/server-settings/server-1",
     });
 
@@ -282,7 +310,7 @@ describe("ssh server management scenario", () => {
     });
 
     expect(getByText(/This check verifies SSH connectivity,/)).toHaveTextContent(
-      /This check verifies SSH connectivity,\s*bash,\s*dtach,\s*and\s*devbox when provisioning is enabled for the server\./,
+      /This check verifies SSH connectivity,\s*bash,\s*dtach,\s*and the automatic provisioning toolchain:\s*devbox,\s*docker,\s*devcontainer,\s*git,\s*and\s*gh\./,
     );
 
     await user.click(getByRole("button", { name: "Check prerequisites" }));
@@ -292,7 +320,7 @@ describe("ssh server management scenario", () => {
       expect(getByText("Missing requirements")).toBeTruthy();
       expect(getByText("dtach")).toBeTruthy();
       expect(getByText("Install hint:")).toBeTruthy();
-      expect(getByText("Not applicable")).toBeTruthy();
+      expect(getAllByText("Not applicable")).toHaveLength(5);
     });
   });
 });

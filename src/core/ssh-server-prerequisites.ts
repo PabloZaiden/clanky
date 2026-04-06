@@ -11,6 +11,9 @@ import type {
 import type { CommandExecutor } from "./command-executor";
 import { buildPersistentSessionBackendInstallHint } from "./ssh-persistent-session";
 
+const automaticProvisioningDisabledDetail =
+  "Automatic provisioning is disabled for this server because no repositories base path is configured.";
+
 function missingCommandDetail(command: string): string {
   return `${command} is not installed or not available on PATH on the remote host.`;
 }
@@ -37,6 +40,53 @@ function createCheck(
   };
 }
 
+const automaticProvisioningChecks: Array<{
+  id: Extract<
+    SshServerPrerequisiteCheck["id"],
+    "devbox" | "docker" | "devcontainer" | "git" | "gh"
+  >;
+  label: string;
+  command: string;
+  requiredFor: string[];
+  installHint: string;
+}> = [
+  {
+    id: "devbox",
+    label: "devbox",
+    command: "devbox",
+    requiredFor: ["Automatic provisioning", "devbox arise"],
+    installHint: "Install devbox and ensure it is available on PATH before using automatic provisioning or devbox arise.",
+  },
+  {
+    id: "docker",
+    label: "docker",
+    command: "docker",
+    requiredFor: ["Automatic provisioning"],
+    installHint: "Install Docker and ensure the docker CLI is available on PATH before using automatic provisioning.",
+  },
+  {
+    id: "devcontainer",
+    label: "devcontainer",
+    command: "devcontainer",
+    requiredFor: ["Automatic provisioning"],
+    installHint: "Install the devcontainer CLI and ensure it is available on PATH before using automatic provisioning.",
+  },
+  {
+    id: "git",
+    label: "git",
+    command: "git",
+    requiredFor: ["Automatic provisioning"],
+    installHint: "Install git and ensure it is available on PATH before using automatic provisioning.",
+  },
+  {
+    id: "gh",
+    label: "gh",
+    command: "gh",
+    requiredFor: ["Automatic provisioning"],
+    installHint: "Install GitHub CLI (gh) and ensure it is available on PATH before using automatic provisioning.",
+  },
+];
+
 async function runCommandProbe(
   executor: CommandExecutor,
   id: SshServerPrerequisiteCheck["id"],
@@ -57,6 +107,52 @@ async function runCommandProbe(
       : missingCommandDetail(command),
     requiredFor,
     result.success ? undefined : installHint,
+  );
+}
+
+function createAutomaticProvisioningNotApplicableChecks(): SshServerPrerequisiteCheck[] {
+  return automaticProvisioningChecks.map((check) =>
+    createCheck(
+      check.id,
+      check.label,
+      "not_applicable",
+      automaticProvisioningDisabledDetail,
+      check.requiredFor,
+    )
+  );
+}
+
+function createAutomaticProvisioningUnknownChecks(): SshServerPrerequisiteCheck[] {
+  return automaticProvisioningChecks.map((check) =>
+    createCheck(
+      check.id,
+      check.label,
+      "unknown",
+      unavailableAfterConnectionFailureDetail(check.label),
+      check.requiredFor,
+    )
+  );
+}
+
+async function runAutomaticProvisioningChecks(
+  executor: CommandExecutor,
+  repositoriesBasePath?: string,
+): Promise<SshServerPrerequisiteCheck[]> {
+  if (!repositoriesBasePath?.trim()) {
+    return createAutomaticProvisioningNotApplicableChecks();
+  }
+
+  return await Promise.all(
+    automaticProvisioningChecks.map((check) =>
+      runCommandProbe(
+        executor,
+        check.id,
+        check.label,
+        check.command,
+        check.requiredFor,
+        check.installHint,
+      )
+    ),
   );
 }
 
@@ -117,22 +213,20 @@ export async function checkSshServerPrerequisites(
         unavailableAfterConnectionFailureDetail("dtach"),
         ["Persistent SSH sessions"],
       ),
-      createCheck(
-        "devbox",
-        "devbox",
-        server.repositoriesBasePath?.trim() ? "unknown" : "not_applicable",
-        server.repositoriesBasePath?.trim()
-          ? unavailableAfterConnectionFailureDetail("devbox")
-          : "Automatic provisioning is disabled for this server because no repositories base path is configured.",
-        ["Automatic provisioning", "devbox arise"],
-      ),
+    ];
+    const provisioningChecks = server.repositoriesBasePath?.trim()
+      ? createAutomaticProvisioningUnknownChecks()
+      : createAutomaticProvisioningNotApplicableChecks();
+    const checksWithProvisioning: SshServerPrerequisiteCheck[] = [
+      ...checks,
+      ...provisioningChecks,
     ];
 
     return {
       serverId: server.id,
       checkedAt,
-      summary: buildSummary(checks),
-      checks,
+      summary: buildSummary(checksWithProvisioning),
+      checks: checksWithProvisioning,
     };
   }
 
@@ -159,22 +253,7 @@ export async function checkSshServerPrerequisites(
     ["Persistent SSH sessions"],
     dtachResult.success ? undefined : buildPersistentSessionBackendInstallHint(),
   );
-  const devboxCheck = server.repositoriesBasePath?.trim()
-    ? await runCommandProbe(
-      executor,
-      "devbox",
-      "devbox",
-      "devbox",
-      ["Automatic provisioning", "devbox arise"],
-      "Install devbox and ensure it is available on PATH before using automatic provisioning or devbox arise.",
-    )
-    : createCheck(
-      "devbox",
-      "devbox",
-      "not_applicable",
-      "Automatic provisioning is disabled for this server because no repositories base path is configured.",
-      ["Automatic provisioning", "devbox arise"],
-    );
+  const provisioningChecks = await runAutomaticProvisioningChecks(executor, server.repositoriesBasePath);
 
   const checks: SshServerPrerequisiteCheck[] = [
     createCheck(
@@ -186,7 +265,7 @@ export async function checkSshServerPrerequisites(
     ),
     bashCheck,
     dtachCheck,
-    devboxCheck,
+    ...provisioningChecks,
   ];
 
   return {

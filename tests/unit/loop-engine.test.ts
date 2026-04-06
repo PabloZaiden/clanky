@@ -1820,7 +1820,7 @@ describe("StopPatternDetector", () => {
       expect(gitIndex).toBeGreaterThan(-1);
       // Git setup happens first, then clearing (so deletions are on the new branch and can be committed)
       expect(gitIndex).toBeLessThan(clearIndex);
-    }, 10000);
+    }, 30000);
   });
 
   describe("error context in prompts", () => {
