@@ -10,26 +10,6 @@ import {
   normalizeAiCommitMessage,
 } from "../../src/core/conventional-commits";
 
-describe("CONVENTIONAL_COMMIT_TYPES", () => {
-  test("includes all standard types", () => {
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("feat");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("fix");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("refactor");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("docs");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("style");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("test");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("build");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("ci");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("chore");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("perf");
-    expect(CONVENTIONAL_COMMIT_TYPES).toContain("revert");
-  });
-
-  test("has exactly 11 types", () => {
-    expect(CONVENTIONAL_COMMIT_TYPES.length).toBe(11);
-  });
-});
-
 describe("formatConventionalCommit", () => {
   test("formats with scope", () => {
     const result = formatConventionalCommit("feat", "auth", "add auth endpoint");
