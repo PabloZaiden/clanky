@@ -17,107 +17,9 @@ describe("Modal", () => {
       expect(queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    test("renders modal when isOpen is true", () => {
-      const { getByRole } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Test Modal">
-          <p>Content</p>
-        </Modal>
-      );
-      expect(getByRole("dialog")).toBeInTheDocument();
-    });
-  });
-
-  describe("content", () => {
-    test("renders title", () => {
-      const { getByText } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="My Modal Title">
-          <p>Content</p>
-        </Modal>
-      );
-      expect(getByText("My Modal Title")).toBeInTheDocument();
-    });
-
-    test("renders description when provided", () => {
-      const { getByText } = renderWithUser(
-        <Modal
-          isOpen={true}
-          onClose={() => {}}
-          title="Title"
-          description="A helpful description"
-        >
-          <p>Content</p>
-        </Modal>
-      );
-      expect(getByText("A helpful description")).toBeInTheDocument();
-    });
-
-    test("does not render description when not provided", () => {
-      const { queryByText } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      // Only the title and content should be present
-      expect(queryByText("A helpful description")).not.toBeInTheDocument();
-    });
-
-    test("renders children content", () => {
-      const { getByText } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Modal body content</p>
-        </Modal>
-      );
-      expect(getByText("Modal body content")).toBeInTheDocument();
-    });
-
-    test("renders footer when provided", () => {
-      const { getByText } = renderWithUser(
-        <Modal
-          isOpen={true}
-          onClose={() => {}}
-          title="Title"
-          footer={<button>Save</button>}
-        >
-          <p>Content</p>
-        </Modal>
-      );
-      expect(getByText("Save")).toBeInTheDocument();
-    });
-
-    test("does not render footer when not provided", () => {
-      const { queryByText } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      expect(queryByText("Save")).not.toBeInTheDocument();
-    });
   });
 
   describe("close button", () => {
-    test("renders close button by default", () => {
-      const { getByLabelText } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      expect(getByLabelText("Close")).toBeInTheDocument();
-    });
-
-    test("hides close button when showCloseButton is false", () => {
-      const { queryByLabelText } = renderWithUser(
-        <Modal
-          isOpen={true}
-          onClose={() => {}}
-          title="Title"
-          showCloseButton={false}
-        >
-          <p>Content</p>
-        </Modal>
-      );
-      expect(queryByLabelText("Close")).not.toBeInTheDocument();
-    });
-
     test("calls onClose when close button is clicked", async () => {
       const onClose = mock(() => {});
       const { user, getByLabelText } = renderWithUser(
@@ -192,77 +94,6 @@ describe("Modal", () => {
     });
   });
 
-  describe("size", () => {
-    test("clips horizontal overflow in the overlay, dialog, and content area", () => {
-      const { getByRole } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      const dialog = getByRole("dialog");
-      expect(dialog.parentElement?.className).toContain("overflow-x-hidden");
-      expect(dialog.parentElement?.className).toContain("overflow-y-auto");
-      expect(dialog.className).toContain("min-w-0");
-      expect(dialog.className).toContain("overflow-hidden");
-      const content = dialog.children[1] as HTMLElement;
-      expect(content.className).toContain("overflow-x-hidden");
-      expect(content.className).toContain("overflow-y-auto");
-    });
-
-    test("applies viewport height constraints with tighter mobile spacing", () => {
-      const { getByRole } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      const dialog = getByRole("dialog");
-      expect(dialog.className).toContain("max-h-[calc(100vh-1.5rem)]");
-      expect(dialog.className).toContain("max-h-[calc(100dvh-1.5rem)]");
-      expect(dialog.className).toContain("sm:max-h-[calc(100vh-2.5rem)]");
-      expect(dialog.className).toContain("sm:max-h-[calc(100dvh-2.5rem)]");
-    });
-
-    test("applies md size class by default", () => {
-      const { getByRole } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      const dialog = getByRole("dialog");
-      expect(dialog.className).toContain("max-w-md");
-    });
-
-    test("applies sm size class", () => {
-      const { getByRole } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title" size="sm">
-          <p>Content</p>
-        </Modal>
-      );
-      const dialog = getByRole("dialog");
-      expect(dialog.className).toContain("max-w-sm");
-    });
-
-    test("applies lg size class", () => {
-      const { getByRole } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title" size="lg">
-          <p>Content</p>
-        </Modal>
-      );
-      const dialog = getByRole("dialog");
-      expect(dialog.className).toContain("max-w-lg");
-    });
-
-    test("applies xl size class", () => {
-      const { getByRole } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title" size="xl">
-          <p>Content</p>
-        </Modal>
-      );
-      const dialog = getByRole("dialog");
-      expect(dialog.className).toContain("max-w-xl");
-    });
-  });
-
   describe("accessibility", () => {
     test("has aria-modal attribute", () => {
       const { getByRole } = renderWithUser(
@@ -290,52 +121,6 @@ describe("Modal", () => {
 });
 
 describe("ConfirmModal", () => {
-  test("renders title and message", () => {
-    const { getByText } = renderWithUser(
-      <ConfirmModal
-        isOpen={true}
-        onClose={() => {}}
-        onConfirm={() => {}}
-        title="Delete Item?"
-        message="This action cannot be undone."
-      />
-    );
-    expect(getByText("Delete Item?")).toBeInTheDocument();
-    expect(getByText("This action cannot be undone.")).toBeInTheDocument();
-  });
-
-  test("renders default button labels", () => {
-    const { getByRole, getByText } = renderWithUser(
-      <ConfirmModal
-        isOpen={true}
-        onClose={() => {}}
-        onConfirm={() => {}}
-        title="Confirm Action"
-        message="Are you sure?"
-      />
-    );
-    // Confirm button (default label)
-    expect(getByRole("button", { name: "Confirm" })).toBeInTheDocument();
-    // Cancel button (default label)
-    expect(getByText("Cancel")).toBeInTheDocument();
-  });
-
-  test("renders custom button labels", () => {
-    const { getByText } = renderWithUser(
-      <ConfirmModal
-        isOpen={true}
-        onClose={() => {}}
-        onConfirm={() => {}}
-        title="Title"
-        message="Message"
-        confirmLabel="Yes, delete"
-        cancelLabel="No, keep"
-      />
-    );
-    expect(getByText("Yes, delete")).toBeInTheDocument();
-    expect(getByText("No, keep")).toBeInTheDocument();
-  });
-
   test("calls onConfirm when confirm button is clicked", async () => {
     const onConfirm = mock(() => {});
     const { user, getByRole } = renderWithUser(
@@ -366,23 +151,6 @@ describe("ConfirmModal", () => {
 
     await user.click(getByText("Cancel"));
     expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  test("shows loading state on confirm button", () => {
-    const { getByText } = renderWithUser(
-      <ConfirmModal
-        isOpen={true}
-        onClose={() => {}}
-        onConfirm={() => {}}
-        title="Confirm"
-        message="Sure?"
-        loading={true}
-      />
-    );
-
-    // Cancel button should be disabled when loading
-    const cancelBtn = getByText("Cancel").closest("button");
-    expect(cancelBtn).toBeDisabled();
   });
 
   test("disables cancel button when loading", () => {

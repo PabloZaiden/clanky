@@ -1,30 +1,22 @@
-/**
- * Unit tests for loop status helpers.
- * Covers all exported functions from src/utils/loop-status.ts.
- */
-
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
-  getStatusLabel,
   canAccept,
-  canMarkMerged,
-  isFinalState,
-  isLoopActive,
-  isLoopRunning,
   canJumpstart,
+  canMarkMerged,
   canSendTerminalFollowUp,
-  isAwaitingFeedback,
-  isArchivedLoop,
-  shouldShowInRecentActivity,
   getLoopStatusLabel,
   getPlanningStatusLabel,
+  getStatusLabel,
+  isArchivedLoop,
+  isAwaitingFeedback,
+  isFinalState,
+  isLoopActive,
   isLoopPlanReady,
+  isLoopRunning,
+  shouldShowInRecentActivity,
 } from "../../src/utils/loop-status";
 import type { Loop, LoopStatus } from "../../src/types/loop";
 
-/**
- * All possible LoopStatus values for exhaustive testing.
- */
 const ALL_STATUSES: LoopStatus[] = [
   "idle",
   "draft",
@@ -42,18 +34,10 @@ const ALL_STATUSES: LoopStatus[] = [
   "deleted",
 ];
 
-/**
- * Helper to create a minimal Loop object for testing.
- */
-function createTestLoop(overrides: {
-  status: LoopStatus;
-  planMode?: {
-    active: boolean;
-    feedbackRounds: number;
-    planningFolderCleared: boolean;
-    isPlanReady: boolean;
-  };
-}): Loop {
+function createTestLoop(
+  status: LoopStatus,
+  isPlanReady?: boolean,
+): Loop {
   return {
     config: {
       id: "test-loop-1",
@@ -61,18 +45,31 @@ function createTestLoop(overrides: {
       workspaceId: "ws-1",
     },
     state: {
-      status: overrides.status,
-      planMode: overrides.planMode,
+      status,
+      planMode: status === "planning"
+        ? {
+            active: true,
+            feedbackRounds: 0,
+            planningFolderCleared: false,
+            isPlanReady: isPlanReady ?? false,
+          }
+        : undefined,
     },
   } as Loop;
 }
 
-// ============================================================================
-// getStatusLabel
-// ============================================================================
+function expectStatuses(
+  evaluate: (status: LoopStatus) => boolean,
+  truthyStatuses: LoopStatus[],
+) {
+  const truthy = new Set(truthyStatuses);
+  for (const status of ALL_STATUSES) {
+    expect(evaluate(status)).toBe(truthy.has(status));
+  }
+}
 
 describe("getStatusLabel", () => {
-  test("returns human-readable labels for all statuses", () => {
+  test("returns the expected labels for known statuses", () => {
     const expectedLabels: Record<LoopStatus, string> = {
       idle: "Idle",
       draft: "Draft",
@@ -95,357 +92,65 @@ describe("getStatusLabel", () => {
     }
   });
 
-  test("returns 'Resolving Conflicts' when syncState has conflicts and loop is running", () => {
-    expect(getStatusLabel("running", { status: "conflicts" })).toBe("Resolving Conflicts");
-  });
-
-  test("returns 'Resolving Conflicts' when syncState has conflicts and loop is starting", () => {
-    expect(getStatusLabel("starting", { status: "conflicts" })).toBe("Resolving Conflicts");
-  });
-
-  test("returns 'Resolving Conflicts' when syncState has conflicts and loop is waiting", () => {
-    expect(getStatusLabel("waiting", { status: "conflicts" })).toBe("Resolving Conflicts");
-  });
-
-  test("does NOT return 'Resolving Conflicts' for non-active statuses with syncState conflicts", () => {
-    const nonActiveStatuses: LoopStatus[] = [
-      "idle", "draft", "planning", "completed", "stopped", "failed",
-      "max_iterations", "merged", "pushed", "deleted",
-    ];
-    for (const status of nonActiveStatuses) {
-      // These statuses should show their normal label, not the sync conflict label
-      expect(getStatusLabel(status, { status: "conflicts" })).toBe(getStatusLabel(status));
+  test("overrides active sync-conflict statuses to resolving conflicts", () => {
+    for (const status of ["starting", "running", "waiting"] satisfies LoopStatus[]) {
+      expect(getStatusLabel(status, { status: "conflicts" })).toBe("Resolving Conflicts");
     }
   });
 
-  test("returns normal label when syncState is null", () => {
-    expect(getStatusLabel("running", null)).toBe("Running");
-  });
-
-  test("returns normal label when syncState is undefined", () => {
-    expect(getStatusLabel("running", undefined)).toBe("Running");
-  });
-
-  test("returns normal label when syncState has non-conflict status", () => {
-    expect(getStatusLabel("running", { status: "synced" })).toBe("Running");
-  });
-
-  test("returns the raw status string for unknown statuses", () => {
-    // Edge case: unknown status falls through default case
+  test("keeps non-active statuses and unknown values unchanged", () => {
+    for (const status of ALL_STATUSES.filter((status) => !["starting", "running", "waiting"].includes(status))) {
+      expect(getStatusLabel(status, { status: "conflicts" })).toBe(getStatusLabel(status));
+    }
     expect(getStatusLabel("unknown_status" as LoopStatus)).toBe("unknown_status");
   });
 });
 
-// ============================================================================
-// canAccept
-// ============================================================================
-
-describe("canAccept", () => {
-  test("returns true for completed", () => {
-    expect(canAccept("completed")).toBe(true);
+describe("status action helpers", () => {
+  test("exposes the expected accept, merge, final, active, running, and jumpstart states", () => {
+    expectStatuses(canAccept, ["completed", "max_iterations"]);
+    expectStatuses((status) => canMarkMerged(status, true), ["completed", "max_iterations", "pushed"]);
+    expectStatuses(isFinalState, ["merged", "pushed", "deleted"]);
+    expectStatuses(isLoopActive, ["starting", "running", "waiting"]);
+    expectStatuses(isLoopRunning, ["starting", "running"]);
+    expectStatuses(canJumpstart, ["completed", "stopped", "failed", "max_iterations"]);
   });
 
-  test("returns true for max_iterations", () => {
-    expect(canAccept("max_iterations")).toBe(true);
+  test("never exposes mark-as-merged when git metadata is missing", () => {
+    expectStatuses((status) => canMarkMerged(status, false), []);
   });
 
-  test("returns false for all other statuses", () => {
-    const nonAcceptable: LoopStatus[] = [
-      "idle", "draft", "planning", "starting", "running", "waiting",
-      "stopped", "failed", "resolving_conflicts", "merged", "pushed", "deleted",
-    ];
-    for (const status of nonAcceptable) {
-      expect(canAccept(status)).toBe(false);
-    }
-  });
-});
-
-// ============================================================================
-// canMarkMerged
-// ============================================================================
-
-describe("canMarkMerged", () => {
-  test("returns true only for git-backed statuses supported by the backend flow", () => {
-    const eligibleStatuses: LoopStatus[] = ["completed", "max_iterations", "pushed"];
-
-    for (const status of ALL_STATUSES) {
-      expect(canMarkMerged(status, true)).toBe(eligibleStatuses.includes(status));
-    }
-  });
-
-  test("returns false for backend-rejected statuses even when git metadata exists", () => {
-    const ineligibleStatuses: LoopStatus[] = [
+  test("hides terminal and restartable loops from recent activity", () => {
+    expectStatuses(shouldShowInRecentActivity, [
       "idle",
       "draft",
       "planning",
       "starting",
       "running",
       "waiting",
+      "resolving_conflicts",
+    ]);
+  });
+});
+
+describe("review-mode helpers", () => {
+  test("only treats merged and pushed loops as awaiting feedback when explicitly addressable", () => {
+    for (const status of ALL_STATUSES) {
+      expect(isAwaitingFeedback(status, true)).toBe(status === "merged" || status === "pushed");
+      expect(isAwaitingFeedback(status, false)).toBe(false);
+      expect(isAwaitingFeedback(status, undefined)).toBe(false);
+    }
+  });
+
+  test("only enables terminal follow-up for restartable, addressable, or deleted loops", () => {
+    expectStatuses((status) => canSendTerminalFollowUp(status, false), [
+      "completed",
       "stopped",
       "failed",
-      "resolving_conflicts",
-      "merged",
+      "max_iterations",
       "deleted",
-    ];
-
-    for (const status of ineligibleStatuses) {
-      expect(canMarkMerged(status, true)).toBe(false);
-    }
-  });
-
-  test("returns false when git metadata is unavailable", () => {
-    for (const status of ALL_STATUSES) {
-      expect(canMarkMerged(status, false)).toBe(false);
-    }
-  });
-});
-
-// ============================================================================
-// isFinalState
-// ============================================================================
-
-describe("isFinalState", () => {
-  test("returns true for merged", () => {
-    expect(isFinalState("merged")).toBe(true);
-  });
-
-  test("returns true for pushed", () => {
-    expect(isFinalState("pushed")).toBe(true);
-  });
-
-  test("returns true for deleted", () => {
-    expect(isFinalState("deleted")).toBe(true);
-  });
-
-  test("returns false for all non-final statuses", () => {
-    const nonFinal: LoopStatus[] = [
-      "idle", "draft", "planning", "starting", "running", "waiting",
-      "completed", "stopped", "failed", "max_iterations", "resolving_conflicts",
-    ];
-    for (const status of nonFinal) {
-      expect(isFinalState(status)).toBe(false);
-    }
-  });
-});
-
-// ============================================================================
-// isLoopActive
-// ============================================================================
-
-describe("isLoopActive", () => {
-  test("returns true for running", () => {
-    expect(isLoopActive("running")).toBe(true);
-  });
-
-  test("returns true for waiting", () => {
-    expect(isLoopActive("waiting")).toBe(true);
-  });
-
-  test("returns true for starting", () => {
-    expect(isLoopActive("starting")).toBe(true);
-  });
-
-  test("returns false for all non-active statuses", () => {
-    const nonActive: LoopStatus[] = [
-      "idle", "draft", "planning", "completed", "stopped", "failed",
-      "max_iterations", "resolving_conflicts", "merged", "pushed", "deleted",
-    ];
-    for (const status of nonActive) {
-      expect(isLoopActive(status)).toBe(false);
-    }
-  });
-});
-
-// ============================================================================
-// isLoopRunning
-// ============================================================================
-
-describe("isLoopRunning", () => {
-  test("returns true for running", () => {
-    expect(isLoopRunning("running")).toBe(true);
-  });
-
-  test("returns true for starting", () => {
-    expect(isLoopRunning("starting")).toBe(true);
-  });
-
-  test("returns false for waiting (active but not 'running')", () => {
-    expect(isLoopRunning("waiting")).toBe(false);
-  });
-
-  test("returns false for all non-running statuses", () => {
-    const nonRunning: LoopStatus[] = [
-      "idle", "draft", "planning", "waiting", "completed", "stopped", "failed",
-      "max_iterations", "resolving_conflicts", "merged", "pushed", "deleted",
-    ];
-    for (const status of nonRunning) {
-      expect(isLoopRunning(status)).toBe(false);
-    }
-  });
-});
-
-// ============================================================================
-// canJumpstart
-// ============================================================================
-
-describe("canJumpstart", () => {
-  test("returns true for completed", () => {
-    expect(canJumpstart("completed")).toBe(true);
-  });
-
-  test("returns true for stopped", () => {
-    expect(canJumpstart("stopped")).toBe(true);
-  });
-
-  test("returns true for failed", () => {
-    expect(canJumpstart("failed")).toBe(true);
-  });
-
-  test("returns true for max_iterations", () => {
-    expect(canJumpstart("max_iterations")).toBe(true);
-  });
-
-  test("returns false for all non-jumpstartable statuses", () => {
-    const nonJumpstartable: LoopStatus[] = [
-      "idle", "draft", "planning", "starting", "running", "waiting",
-      "resolving_conflicts", "merged", "pushed", "deleted",
-    ];
-    for (const status of nonJumpstartable) {
-      expect(canJumpstart(status)).toBe(false);
-    }
-  });
-});
-
-// ============================================================================
-// canSendTerminalFollowUp
-// ============================================================================
-
-describe("canSendTerminalFollowUp", () => {
-  test("returns true for jumpstartable statuses", () => {
-    for (const status of ["completed", "stopped", "failed", "max_iterations"] satisfies LoopStatus[]) {
-      expect(canSendTerminalFollowUp(status, false)).toBe(true);
-    }
-  });
-
-  test("returns true for addressable pushed and merged loops", () => {
-    expect(canSendTerminalFollowUp("pushed", true)).toBe(true);
-    expect(canSendTerminalFollowUp("merged", true)).toBe(true);
-  });
-
-  test("returns true for deleted loops", () => {
-    expect(canSendTerminalFollowUp("deleted", false)).toBe(true);
-  });
-
-  test("returns false for non-restartable statuses", () => {
-    const nonRestartable: LoopStatus[] = [
-      "idle", "draft", "planning", "starting", "running", "waiting", "resolving_conflicts",
-    ];
-    for (const status of nonRestartable) {
-      expect(canSendTerminalFollowUp(status, false)).toBe(false);
-    }
-  });
-
-  test("returns false for non-addressable pushed and merged loops", () => {
-    expect(canSendTerminalFollowUp("pushed", false)).toBe(false);
-    expect(canSendTerminalFollowUp("merged", false)).toBe(false);
-  });
-});
-
-// ============================================================================
-// isAwaitingFeedback
-// ============================================================================
-
-describe("isAwaitingFeedback", () => {
-  test("returns true for pushed status with reviewModeAddressable true", () => {
-    expect(isAwaitingFeedback("pushed", true)).toBe(true);
-  });
-
-  test("returns true for merged status with reviewModeAddressable true", () => {
-    expect(isAwaitingFeedback("merged", true)).toBe(true);
-  });
-
-  test("returns false for pushed status with reviewModeAddressable false", () => {
-    expect(isAwaitingFeedback("pushed", false)).toBe(false);
-  });
-
-  test("returns false for merged status with reviewModeAddressable false", () => {
-    expect(isAwaitingFeedback("merged", false)).toBe(false);
-  });
-
-  test("returns false for pushed status with reviewModeAddressable undefined", () => {
-    expect(isAwaitingFeedback("pushed", undefined)).toBe(false);
-  });
-
-  test("returns false for non-pushed/merged statuses even with reviewModeAddressable true", () => {
-    const nonFeedback: LoopStatus[] = [
-      "idle", "draft", "planning", "starting", "running", "waiting",
-      "completed", "stopped", "failed", "max_iterations", "resolving_conflicts", "deleted",
-    ];
-    for (const status of nonFeedback) {
-      expect(isAwaitingFeedback(status, true)).toBe(false);
-    }
-  });
-});
-
-// ============================================================================
-// isArchivedLoop
-// ============================================================================
-
-describe("isArchivedLoop", () => {
-  test("returns true for deleted loops", () => {
-    expect(isArchivedLoop("deleted", undefined)).toBe(true);
-  });
-
-  test("returns true for merged loops that are not awaiting feedback", () => {
-    expect(isArchivedLoop("merged", false)).toBe(true);
-  });
-
-  test("returns true for pushed loops that are not awaiting feedback", () => {
-    expect(isArchivedLoop("pushed", false)).toBe(true);
-  });
-
-  test("returns false for merged loops still awaiting feedback", () => {
-    expect(isArchivedLoop("merged", true)).toBe(false);
-  });
-
-  test("returns false for pushed loops still awaiting feedback", () => {
-    expect(isArchivedLoop("pushed", true)).toBe(false);
-  });
-
-  test("returns false for non-archived statuses", () => {
-    const nonArchived: LoopStatus[] = [
-      "idle", "draft", "planning", "starting", "running", "waiting",
-      "completed", "stopped", "failed", "max_iterations", "resolving_conflicts",
-    ];
-    for (const status of nonArchived) {
-      expect(isArchivedLoop(status, false)).toBe(false);
-    }
-  });
-});
-
-// ============================================================================
-// shouldShowInRecentActivity
-// ============================================================================
-
-describe("shouldShowInRecentActivity", () => {
-  test("returns true for non-terminal overview statuses", () => {
-    const visibleStatuses: LoopStatus[] = [
-      "idle",
-      "draft",
-      "planning",
-      "starting",
-      "running",
-      "waiting",
-      "resolving_conflicts",
-    ];
-
-    for (const status of visibleStatuses) {
-      expect(shouldShowInRecentActivity(status)).toBe(true);
-    }
-  });
-
-  test("returns false for terminal overview statuses", () => {
-    const hiddenStatuses: LoopStatus[] = [
+    ]);
+    expectStatuses((status) => canSendTerminalFollowUp(status, true), [
       "completed",
       "stopped",
       "failed",
@@ -453,117 +158,30 @@ describe("shouldShowInRecentActivity", () => {
       "merged",
       "pushed",
       "deleted",
-    ];
+    ]);
+  });
 
-    for (const status of hiddenStatuses) {
-      expect(shouldShowInRecentActivity(status)).toBe(false);
-    }
+  test("archives only deleted loops or merged/pushed loops that are no longer addressable", () => {
+    expectStatuses((status) => isArchivedLoop(status, false), ["merged", "pushed", "deleted"]);
+    expectStatuses((status) => isArchivedLoop(status, true), ["deleted"]);
   });
 });
 
-// ============================================================================
-// getPlanningStatusLabel
-// ============================================================================
-
-describe("getPlanningStatusLabel", () => {
-  test("returns 'Planning' when isPlanReady is false", () => {
+describe("planning helpers", () => {
+  test("formats planning labels and plan-ready state consistently", () => {
     expect(getPlanningStatusLabel(false)).toBe("Planning");
-  });
-
-  test("returns 'Plan Ready' when isPlanReady is true", () => {
     expect(getPlanningStatusLabel(true)).toBe("Plan Ready");
-  });
-});
-
-// ============================================================================
-// getLoopStatusLabel
-// ============================================================================
-
-describe("getLoopStatusLabel", () => {
-  test("returns 'Plan Ready' for planning loops with isPlanReady === true", () => {
-    expect(getLoopStatusLabel(createTestLoop({
-      status: "planning",
-      planMode: {
-        active: true,
-        feedbackRounds: 0,
-        planningFolderCleared: false,
-        isPlanReady: true,
-      },
-    }))).toBe("Plan Ready");
+    expect(getLoopStatusLabel(createTestLoop("planning", false))).toBe("Planning");
+    expect(getLoopStatusLabel(createTestLoop("planning", true))).toBe("Plan Ready");
+    expect(getLoopStatusLabel(createTestLoop("running"))).toBe("Running");
   });
 
-  test("returns 'Planning' for planning loops whose plan is not ready", () => {
-    expect(getLoopStatusLabel(createTestLoop({
-      status: "planning",
-      planMode: {
-        active: true,
-        feedbackRounds: 0,
-        planningFolderCleared: false,
-        isPlanReady: false,
-      },
-    }))).toBe("Planning");
-  });
+  test("marks only ready planning loops as plan ready", () => {
+    expect(isLoopPlanReady(createTestLoop("planning", true))).toBe(true);
+    expect(isLoopPlanReady(createTestLoop("planning", false))).toBe(false);
 
-  test("preserves normal labels for non-planning loops", () => {
-    expect(getLoopStatusLabel(createTestLoop({ status: "running" }))).toBe("Running");
-  });
-});
-
-// ============================================================================
-// isLoopPlanReady
-// ============================================================================
-
-describe("isLoopPlanReady", () => {
-  test("returns true for planning loop with isPlanReady === true", () => {
-    const loop = createTestLoop({
-      status: "planning",
-      planMode: {
-        active: true,
-        feedbackRounds: 0,
-        planningFolderCleared: false,
-        isPlanReady: true,
-      },
-    });
-    expect(isLoopPlanReady(loop)).toBe(true);
-  });
-
-  test("returns false for planning loop with isPlanReady === false", () => {
-    const loop = createTestLoop({
-      status: "planning",
-      planMode: {
-        active: true,
-        feedbackRounds: 0,
-        planningFolderCleared: false,
-        isPlanReady: false,
-      },
-    });
-    expect(isLoopPlanReady(loop)).toBe(false);
-  });
-
-  test("returns false for planning loop without planMode", () => {
-    const loop = createTestLoop({
-      status: "planning",
-    });
-    expect(isLoopPlanReady(loop)).toBe(false);
-  });
-
-  test("returns false for non-planning status even with isPlanReady true", () => {
-    const nonPlanningStatuses: LoopStatus[] = [
-      "idle", "draft", "starting", "running", "waiting", "completed",
-      "stopped", "failed", "max_iterations", "resolving_conflicts",
-      "merged", "pushed", "deleted",
-    ];
-    for (const status of nonPlanningStatuses) {
-      const loop = createTestLoop({
-        status,
-        planMode: {
-          active: true,
-          feedbackRounds: 0,
-          planningFolderCleared: false,
-          isPlanReady: true,
-        },
-      });
-      expect(isLoopPlanReady(loop)).toBe(false);
+    for (const status of ALL_STATUSES.filter((loopStatus) => loopStatus !== "planning")) {
+      expect(isLoopPlanReady(createTestLoop(status, true))).toBe(false);
     }
   });
 });

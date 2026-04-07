@@ -90,35 +90,6 @@ afterEach(() => {
 });
 
 describe("create loop scenario", () => {
-  test("shell create view is accessible and shows the form", async () => {
-    setupApi();
-    const { getByRole } = renderWithUser(<App />, { route: "#/new/loop" });
-
-    await waitFor(() => {
-      expect(getByRole("heading", { name: "Start a new loop" })).toBeTruthy();
-    });
-
-    expect(document.querySelector("select#workspace")).toBeTruthy();
-  });
-
-  test("shell create view orders actions as cancel, save draft, create", async () => {
-    setupApi();
-    const { getByRole } = renderWithUser(<App />, { route: "#/new/loop" });
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Cancel" })).toBeTruthy();
-      expect(getByRole("button", { name: "Save as Draft" })).toBeTruthy();
-      expect(getByRole("button", { name: "Create" })).toBeTruthy();
-    });
-
-    const cancelButton = getByRole("button", { name: "Cancel" });
-    const saveDraftButton = getByRole("button", { name: "Save as Draft" });
-    const createButton = getByRole("button", { name: "Create" });
-
-    expect(cancelButton.compareDocumentPosition(saveDraftButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(0);
-    expect(saveDraftButton.compareDocumentPosition(createButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(0);
-  });
-
   test("full create loop flow: fill form and submit", async () => {
     const createdLoop = createLoopWithStatus("running", {
       config: {

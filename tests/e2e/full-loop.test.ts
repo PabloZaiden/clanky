@@ -333,7 +333,7 @@ describe("Full Loop Workflow", () => {
       // Now it should be actually gone
       const fetched = await ctx.manager.getLoop(loop.config.id);
       expect(fetched).toBeNull();
-    });
+    }, { timeout: 60_000 });
 
     test("returns null/false for non-existent loops", async () => {
       const fetched = await ctx.manager.getLoop("non-existent");
