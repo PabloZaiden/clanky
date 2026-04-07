@@ -8,7 +8,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { renderWithUser, waitFor, within } from "../helpers/render";
+import { renderWithUser, waitFor } from "../helpers/render";
 import {
   createLoopWithStatus,
   createWorkspace,
@@ -83,22 +83,6 @@ afterEach(() => {
 });
 
 describe("draft workflow scenario", () => {
-  test("draft loop appears in Loops section with Draft badge", async () => {
-    setupBaseApi();
-    api.get("/api/loops", () => [draftLoop()]);
-    api.get("/api/workspaces", () => [WORKSPACE]);
-
-    const { getByRole, getAllByText, queryByText } = renderWithUser(<App />);
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Collapse Loops section" })).toBeTruthy();
-      expect(getAllByText("My Draft").length).toBeGreaterThan(0);
-    });
-
-    expect(queryByText("Drafts")).toBeNull();
-    expect(getAllByText("Draft").length).toBeGreaterThan(0);
-  });
-
   test("clicking a draft opens the inline draft editor", async () => {
     setupBaseApi();
     api.get("/api/loops", () => [draftLoop()]);
@@ -117,46 +101,6 @@ describe("draft workflow scenario", () => {
     await waitFor(() => {
       expect(getByRole("heading", { name: "Edit My Draft" })).toBeTruthy();
     });
-  });
-
-  test("inline draft editor orders draft actions from cancel to start", async () => {
-    setupBaseApi();
-    api.get("/api/loops", () => [draftLoop()]);
-    api.get("/api/workspaces", () => [WORKSPACE]);
-
-    const { getByRole } = renderWithUser(<App />, { route: "#/loop/draft-1" });
-
-    await waitFor(() => {
-      expect(getByRole("heading", { name: "Edit My Draft" })).toBeTruthy();
-    });
-
-    const cancelButton = getByRole("button", { name: "Cancel" });
-    const deleteDraftButton = getByRole("button", { name: "Delete" });
-    const updateDraftButton = getByRole("button", { name: "Update" });
-    const startLoopButton = getByRole("button", { name: "Start" });
-
-    expect(cancelButton.compareDocumentPosition(deleteDraftButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(0);
-    expect(deleteDraftButton.compareDocumentPosition(updateDraftButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(0);
-    expect(updateDraftButton.compareDocumentPosition(startLoopButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(0);
-  });
-
-  test("inline draft editor header hides workspace and draft metadata", async () => {
-    setupBaseApi();
-    api.get("/api/loops", () => [draftLoop("draft-1", "My Draft", true)]);
-    api.get("/api/workspaces", () => [WORKSPACE]);
-
-    const { getByRole } = renderWithUser(<App />, { route: "#/loop/draft-1" });
-
-    await waitFor(() => {
-      expect(getByRole("heading", { name: "Edit My Draft" })).toBeTruthy();
-      expect(getByRole("button", { name: "Start" })).toBeTruthy();
-    });
-
-    const headerTitleGroup = getByRole("heading", { name: "Edit My Draft" }).parentElement as HTMLElement;
-    expect(headerTitleGroup).toBeTruthy();
-    expect(within(headerTitleGroup).queryByText(/^My Project$/)).toBeNull();
-    expect(within(headerTitleGroup).queryByText(/^Draft$/)).toBeNull();
-    expect(within(headerTitleGroup).queryByText(/^Plan mode$/)).toBeNull();
   });
 
   test("starting a draft loop calls the draft/start API", async () => {

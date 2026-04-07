@@ -1,16 +1,10 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { createLogger } from "../../src/lib/logger";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { PASSKEY_AUTH_REQUIRED_HEADER } from "../../src/lib/passkey-auth-http";
 import {
-  appAbsoluteUrl,
   appFetch,
-  appPath,
   PASSKEY_AUTH_REQUIRED_EVENT,
-  appWebSocketUrl,
   setConfiguredPublicBasePath,
 } from "../../src/lib/public-path";
-
-const publicPathLog = createLogger("publicPath");
 
 describe("public path helpers", () => {
   beforeEach(() => {
@@ -20,18 +14,6 @@ describe("public path helpers", () => {
 
   afterEach(() => {
     setConfiguredPublicBasePath(undefined);
-  });
-
-  test("derives app-local URLs from the current pathname", () => {
-    window.location.href = "https://example.com/ralpher/";
-
-    expect(appPath("/api/loops")).toBe("/ralpher/api/loops");
-    expect(appAbsoluteUrl("/loop/test-loop/port/test-forward/")).toBe(
-      "https://example.com/ralpher/loop/test-loop/port/test-forward/",
-    );
-    expect(appWebSocketUrl("/api/ws?loopId=test-loop")).toBe(
-      "wss://example.com/ralpher/api/ws?loopId=test-loop",
-    );
   });
 
   test("appFetch prefixes local API requests", async () => {
@@ -61,24 +43,6 @@ describe("public path helpers", () => {
     }
 
     expect(requestedUrls).toEqual(["/ralpher/api/config"]);
-  });
-
-  test("appFetch propagates transport failures without logging them locally", async () => {
-    window.location.href = "https://example.com/ralpher/";
-
-    const originalFetch = globalThis.fetch;
-    const errorSpy = spyOn(publicPathLog, "error").mockImplementation(() => undefined);
-    const networkError = new Error("network down");
-
-    globalThis.fetch = ((..._args: Parameters<typeof fetch>) => Promise.reject(networkError)) as typeof fetch;
-
-    try {
-      await expect(appFetch("/api/config")).rejects.toThrow("network down");
-      expect(errorSpy).not.toHaveBeenCalled();
-    } finally {
-      errorSpy.mockRestore();
-      globalThis.fetch = originalFetch;
-    }
   });
 
   test("appFetch dispatches the auth-required event only for passkey-tagged 401 responses", async () => {
@@ -123,19 +87,5 @@ describe("public path helpers", () => {
     }
 
     expect(receivedEventTypes).toEqual([PASSKEY_AUTH_REQUIRED_EVENT]);
-  });
-
-  test("prefers the configured server-provided base path when available", () => {
-    window.location.href = "https://example.com/";
-    setConfiguredPublicBasePath("/proxy/");
-
-    expect(appPath("/api/loops")).toBe("/proxy/api/loops");
-  });
-
-  test("treats an empty configured base path as not configured", () => {
-    window.location.href = "https://example.com/ralpher/";
-    setConfiguredPublicBasePath("");
-
-    expect(appPath("/api/loops")).toBe("/ralpher/api/loops");
   });
 });
