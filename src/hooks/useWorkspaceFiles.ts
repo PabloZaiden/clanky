@@ -98,6 +98,18 @@ function isAbortError(requestError: unknown): boolean {
   return requestError instanceof DOMException && requestError.name === "AbortError";
 }
 
+function findDirectoryNode(
+  directoryEntries: Record<string, WorkspaceFileNode[]>,
+  path: string,
+): WorkspaceFileNode | null {
+  const parentDirectory = getParentDirectory(path);
+  return directoryEntries[parentDirectory]?.find((entry) => entry.path === path) ?? null;
+}
+
+function isWithinLazySubtree(path: string, lazySubtreeRoots: string[]): boolean {
+  return lazySubtreeRoots.some((rootPath) => path === rootPath || path.startsWith(`${rootPath}/`));
+}
+
 export function useFileExplorer(
   target: FileExplorerTarget,
   options?: {
@@ -127,6 +139,7 @@ export function useFileExplorer(
   const [errorCode, setErrorCode] = useState<FileExplorerCredentialErrorCode | null>(null);
   const [conflictState, setConflictState] = useState<WorkspaceFileConflictState | null>(null);
   const [autoReloadedAt, setAutoReloadedAt] = useState<string | null>(null);
+  const [lazySubtreeRoots, setLazySubtreeRoots] = useState<string[]>([]);
   const pollTimerRef = useRef<number | null>(null);
   const fileLoadAbortControllerRef = useRef<AbortController | null>(null);
   const fileLoadRequestIdRef = useRef(0);
@@ -155,11 +168,15 @@ export function useFileExplorer(
   const applyDirectoryResponse = useCallback((
     path: string,
     response: { entries: WorkspaceFileNode[] },
+    options?: { markAsLazySubtreeRoot?: boolean },
   ) => {
     setDirectoryEntries((currentEntries) => ({
       ...currentEntries,
       [path]: response.entries,
     }));
+    if (options?.markAsLazySubtreeRoot) {
+      setLazySubtreeRoots((currentPaths) => currentPaths.includes(path) ? currentPaths : [...currentPaths, path]);
+    }
     setExpandedDirectories((currentPaths) => {
       if (!path || currentPaths.includes(path)) {
         return currentPaths;
@@ -173,19 +190,28 @@ export function useFileExplorer(
       setLoadingTree(true);
       setError(null);
       setErrorCode(null);
-      if (effectiveLoadFullTree) {
+      const directoryNode = path ? findDirectoryNode(directoryEntries, path) : null;
+      const shouldLoadDirectory = path.length > 0 && (
+        !effectiveLoadFullTree
+        || Boolean(directoryNode?.loadOnExpand)
+        || isWithinLazySubtree(path, lazySubtreeRoots)
+      );
+      if (effectiveLoadFullTree && !shouldLoadDirectory) {
         const response = await loadTree();
         setDirectoryEntries(response.entriesByDirectory);
+        setLazySubtreeRoots([]);
         return;
       }
       const response = await loadDirectory(path);
-      applyDirectoryResponse(path, response);
+      applyDirectoryResponse(path, response, {
+        markAsLazySubtreeRoot: effectiveLoadFullTree && path.length > 0,
+      });
     } catch (requestError) {
       applyErrorState(requestError);
     } finally {
       setLoadingTree(false);
     }
-  }, [applyDirectoryResponse, applyErrorState, effectiveLoadFullTree, loadDirectory, loadTree]);
+  }, [applyDirectoryResponse, applyErrorState, directoryEntries, effectiveLoadFullTree, lazySubtreeRoots, loadDirectory, loadTree]);
 
   const toggleShowHiddenFiles = useCallback(async () => {
     setShowHiddenFiles((currentValue) => !currentValue);
@@ -380,10 +406,16 @@ export function useFileExplorer(
     }
 
     setExpandedDirectories((currentPaths) => [...currentPaths, path]);
-    if (!effectiveLoadFullTree && !directoryEntries[path]) {
+    const directoryNode = findDirectoryNode(directoryEntries, path);
+    const shouldLoadDirectory = directoryEntries[path] === undefined && (
+      !effectiveLoadFullTree
+      || Boolean(directoryNode?.loadOnExpand)
+      || isWithinLazySubtree(path, lazySubtreeRoots)
+    );
+    if (shouldLoadDirectory) {
       await refreshTree(path);
     }
-  }, [directoryEntries, effectiveLoadFullTree, expandedDirectories, refreshTree]);
+  }, [directoryEntries, effectiveLoadFullTree, expandedDirectories, lazySubtreeRoots, refreshTree]);
 
   const dismissConflict = useCallback(() => {
     setConflictState(null);
@@ -404,6 +436,7 @@ export function useFileExplorer(
     setSavedContent("");
     setConflictState(null);
     setAutoReloadedAt(null);
+    setLazySubtreeRoots([]);
     setEffectiveLoadFullTree(loadFullTree);
     if (!enabled) {
       setLoadingTree(false);
@@ -413,6 +446,7 @@ export function useFileExplorer(
       void loadTree()
         .then((response) => {
           setDirectoryEntries(response.entriesByDirectory);
+          setLazySubtreeRoots([]);
         })
         .catch((requestError) => {
           applyErrorState(requestError);
@@ -426,6 +460,7 @@ export function useFileExplorer(
     void loadDirectory("")
       .then((response) => {
         applyDirectoryResponse("", response);
+        setLazySubtreeRoots([]);
       })
       .catch((requestError) => {
         applyErrorState(requestError);

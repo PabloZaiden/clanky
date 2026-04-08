@@ -16,6 +16,7 @@ export interface WorkspaceFileNode {
   name: string;
   path: string;
   kind: WorkspaceFileKind;
+  loadOnExpand?: boolean;
 }
 
 export interface WorkspaceFileEntry extends WorkspaceFileNode {

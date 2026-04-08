@@ -24,6 +24,7 @@ function createDirectoryEntry(overrides?: Partial<{
   name: string;
   path: string;
   kind: "file" | "directory";
+  loadOnExpand: boolean;
   size: number;
   modifiedAt: string;
   versionToken: string;
@@ -32,6 +33,7 @@ function createDirectoryEntry(overrides?: Partial<{
     name: overrides?.name ?? "src",
     path: overrides?.path ?? "src",
     kind: overrides?.kind ?? "directory",
+    loadOnExpand: overrides?.loadOnExpand,
     size: overrides?.size ?? 0,
     modifiedAt: overrides?.modifiedAt ?? "2026-01-01T00:00:00.000Z",
     versionToken: overrides?.versionToken ?? "100:0",
@@ -207,6 +209,80 @@ describe("useWorkspaceFiles", () => {
     expect(result.current.showHiddenFiles).toBe(false);
     expect(result.current.directoryEntries[""]?.map((entry) => entry.name)).toEqual(["src", ".env"]);
     expect(result.current.directoryEntries["src"]?.map((entry) => entry.name)).toEqual([".secret.ts", "index.ts"]);
+    expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
+  });
+
+  test("defers heavy full-tree directories and lazily loads their subtree on expand", async () => {
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: "workspace-1",
+      ...createTreeResponse({
+        "": [
+          createDirectoryEntry({
+            name: "node_modules",
+            path: "node_modules",
+            loadOnExpand: true,
+          }),
+        ],
+      }),
+    }));
+    api.get("/api/workspaces/:id/files", (req) => {
+      const url = new URL(req.url, "http://localhost");
+      const path = url.searchParams.get("path") ?? "";
+
+      if (path === "node_modules") {
+        return {
+          workspaceId: "workspace-1",
+          directory: "node_modules",
+          entries: [
+            createDirectoryEntry({
+              name: "pkg",
+              path: "node_modules/pkg",
+              kind: "directory",
+            }),
+          ],
+        };
+      }
+
+      if (path === "node_modules/pkg") {
+        return {
+          workspaceId: "workspace-1",
+          directory: "node_modules/pkg",
+          entries: [
+            createDirectoryEntry({
+              name: "index.js",
+              path: "node_modules/pkg/index.js",
+              kind: "file",
+            }),
+          ],
+        };
+      }
+
+      throw new MockApiError(500, {
+        error: "unexpected_path",
+        message: `Unexpected path: ${path}`,
+      });
+    });
+
+    const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
+
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    expect(result.current.directoryEntries[""]?.map((entry) => entry.name)).toEqual(["node_modules"]);
+    expect(result.current.directoryEntries["node_modules"]).toBeUndefined();
+
+    await act(async () => {
+      await result.current.toggleDirectory("node_modules");
+    });
+
+    expect(result.current.directoryEntries["node_modules"]?.map((entry) => entry.name)).toEqual(["pkg"]);
+
+    await act(async () => {
+      await result.current.toggleDirectory("node_modules/pkg");
+    });
+
+    expect(result.current.directoryEntries["node_modules/pkg"]?.map((entry) => entry.name)).toEqual(["index.js"]);
     expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
   });
 
