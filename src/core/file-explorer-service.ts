@@ -10,6 +10,37 @@ import type {
 import type { CommandExecutor } from "./command-executor";
 
 const LIST_SEPARATOR = "\t";
+const FULL_TREE_DEFERRED_DIRECTORY_NAMES = [
+  ".git",
+  "node_modules",
+  ".next",
+  "dist",
+  "build",
+  "coverage",
+  "vendor",
+  "target",
+  "obj",
+  "bin",
+  ".venv",
+  "venv",
+  "env",
+  "__pycache__",
+  ".tox",
+  ".nox",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".gradle",
+  ".terraform",
+  ".dart_tool",
+  ".pub-cache",
+  ".nuget",
+  "Pods",
+] as const;
+const FULL_TREE_DEFERRED_DIRECTORY_NAME_SET = new Set<string>(FULL_TREE_DEFERRED_DIRECTORY_NAMES);
+const FULL_TREE_DEFERRED_FIND_PATTERN = FULL_TREE_DEFERRED_DIRECTORY_NAMES
+  .map((name) => `-name '${name}'`)
+  .join(" -o ");
 
 export interface FileExplorerTarget {
   id: string;
@@ -261,11 +292,21 @@ async function runNodeBatchCommand(
   });
 }
 
-function toFileNode(target: FileExplorerTarget, absolutePath: string, kind: "file" | "directory"): WorkspaceFileNode {
+function isDeferredFullTreeDirectory(absolutePath: string): boolean {
+  return FULL_TREE_DEFERRED_DIRECTORY_NAME_SET.has(pathPosix.basename(absolutePath));
+}
+
+function toFileNode(
+  target: FileExplorerTarget,
+  absolutePath: string,
+  kind: "file" | "directory",
+  options?: { loadOnExpand?: boolean },
+): WorkspaceFileNode {
   return {
     name: pathPosix.basename(absolutePath),
     path: toRelativePath(target.rootDirectory, absolutePath),
     kind,
+    ...(options?.loadOnExpand ? { loadOnExpand: true } : {}),
   };
 }
 
@@ -301,7 +342,7 @@ function toEntriesByDirectory(entries: WorkspaceFileNode[]): Record<string, Work
     const directoryKey = parentDirectory === "." ? "" : parentDirectory;
     entriesByDirectory[directoryKey] ??= [];
     entriesByDirectory[directoryKey].push(entry);
-    if (entry.kind === "directory" && !entriesByDirectory[entry.path]) {
+    if (entry.kind === "directory" && !entry.loadOnExpand && !entriesByDirectory[entry.path]) {
       entriesByDirectory[entry.path] = [];
     }
   }
@@ -389,11 +430,15 @@ function parseFullTreeLine(line: string): {
 async function runFullTreeCommand(
   target: FileExplorerTarget,
 ): Promise<WorkspaceFileNode[]> {
+  const gnuFindCommand = `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec stat -c $'base\\t%n\\t%f\\n' {} + \\) -o -exec stat -c $'base\\t%n\\t%f\\n' {} +`;
+  const gnuLinkFindCommand = `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune \\) -o -type l -exec stat -Lc $'link\\t%n\\t%f\\n' {} +`;
+  const bsdFindCommand = `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune -exec stat -f $'base\\t%N\\t%p\\n' {} + \\) -o -exec stat -f $'base\\t%N\\t%p\\n' {} +`;
+  const bsdLinkFindCommand = `find "$root" ! -path "$root" \\( -type d \\( ${FULL_TREE_DEFERRED_FIND_PATTERN} \\) -prune \\) -o -type l -exec stat -Lf $'link\\t%N\\t%p\\n' {} +`;
   const result = await target.executor.exec(
     "bash",
     [
       "-lc",
-      "root=\"$1\"; if [ ! -d \"$root\" ]; then exit 2; fi; if stat --version >/dev/null 2>&1; then find \"$root\" ! -path \"$root\" -exec stat -c $'base\\t%n\\t%f\\n' {} +; find \"$root\" ! -path \"$root\" -type l -exec stat -Lc $'link\\t%n\\t%f\\n' {} + 2>/dev/null || true; else find \"$root\" ! -path \"$root\" -exec stat -f $'base\\t%N\\t%p\\n' {} +; find \"$root\" ! -path \"$root\" -type l -exec stat -Lf $'link\\t%N\\t%p\\n' {} + 2>/dev/null || true; fi",
+      `root="$1"; if [ ! -d "$root" ]; then exit 2; fi; if stat --version >/dev/null 2>&1; then ${gnuFindCommand}; ${gnuLinkFindCommand} 2>/dev/null || true; else ${bsdFindCommand}; ${bsdLinkFindCommand} 2>/dev/null || true; fi`,
       "file-explorer-tree",
       target.rootDirectory,
     ],
@@ -442,6 +487,9 @@ async function runFullTreeCommand(
       target,
       entry.absolutePath,
       entry.kind === "symlink" ? parsedEntries.linkKinds.get(entry.absolutePath) ?? "file" : entry.kind,
+      {
+        loadOnExpand: entry.kind === "directory" && isDeferredFullTreeDirectory(entry.absolutePath),
+      },
     ))
     .filter((entry) => entry.path.length > 0);
 }

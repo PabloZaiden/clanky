@@ -9,6 +9,20 @@ import {
 } from "../../src/core/file-explorer-service";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
+const EXPECTED_DEFERRED_DIRECTORY_NAMES = [
+  ".git",
+  "node_modules",
+  "vendor",
+  "target",
+  "obj",
+  "bin",
+  ".venv",
+  "__pycache__",
+  ".gradle",
+  ".terraform",
+  "Pods",
+] as const;
+
 describe("resolveFileExplorerRootDirectory", () => {
   test("returns the default root without probing when no custom start directory is provided", async () => {
     const executor = new TestCommandExecutor();
@@ -108,8 +122,12 @@ describe("fileExplorerService.listDirectory", () => {
     expect(result.entriesByDirectory["empty-dir"]).toEqual([]);
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(execSpy.mock.calls[0]?.[1]?.[2]).toBe("file-explorer-tree");
-    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" ! -path \"$root\" -exec stat -c $'base\\t%n\\t%f\\n' {} +");
-    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" ! -path \"$root\" -type l -exec stat -Lc $'link\\t%n\\t%f\\n' {} + 2>/dev/null || true");
+    for (const directoryName of EXPECTED_DEFERRED_DIRECTORY_NAMES) {
+      expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain(`-name '${directoryName}'`);
+    }
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("-exec stat -c $'base\\t%n\\t%f\\n' {} +");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("find \"$root\" ! -path \"$root\"");
+    expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("-o -type l -exec stat -Lc $'link\\t%n\\t%f\\n' {} + 2>/dev/null || true");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).toContain("stat --version >/dev/null 2>&1");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("sha256sum");
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("-mindepth");
@@ -121,6 +139,56 @@ describe("fileExplorerService.listDirectory", () => {
     expect(execSpy.mock.calls[0]?.[1]?.[1]).not.toContain("tree ");
     expect(execSpy.mock.calls[0]?.[1]).toHaveLength(4);
     expect(execSpy.mock.calls[0]?.[2]).toEqual({ logFailures: false });
+  });
+
+  test("marks heavy directories for lazy expansion while pruning their descendants from the initial full tree", async () => {
+    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-pruned-"));
+    tempDirectories.push(rootDirectory);
+    await mkdir(join(rootDirectory, "node_modules", "pkg"), { recursive: true });
+    await mkdir(join(rootDirectory, ".git", "objects"), { recursive: true });
+    await mkdir(join(rootDirectory, "vendor", "github.com", "pkg"), { recursive: true });
+    await mkdir(join(rootDirectory, "target", "debug"), { recursive: true });
+    await mkdir(join(rootDirectory, "obj", "Debug"), { recursive: true });
+    await mkdir(join(rootDirectory, ".venv", "lib"), { recursive: true });
+    await mkdir(join(rootDirectory, "__pycache__"), { recursive: true });
+    await writeFile(join(rootDirectory, "node_modules", "pkg", "index.js"), "module.exports = 1;\n");
+    await writeFile(join(rootDirectory, ".git", "config"), "[core]\n");
+    await writeFile(join(rootDirectory, "vendor", "github.com", "pkg", "mod.go"), "package pkg\n");
+    await writeFile(join(rootDirectory, "target", "debug", "app"), "binary\n");
+    await writeFile(join(rootDirectory, "obj", "Debug", "app.dll"), "binary\n");
+    await writeFile(join(rootDirectory, ".venv", "lib", "site.py"), "# venv\n");
+    await writeFile(join(rootDirectory, "__pycache__", "module.pyc"), "pyc\n");
+    await writeFile(join(rootDirectory, "README.md"), "# hello\n");
+
+    const result = await fileExplorerService.loadTree({
+      id: "workspace-1",
+      rootDirectory,
+      pathScopeLabel: "workspace root",
+      executor: new TestCommandExecutor(),
+    });
+
+    const rootEntries = result.entriesByDirectory[""]?.map((entry) => ({
+      name: entry.name,
+      loadOnExpand: entry.loadOnExpand ?? false,
+    })) ?? [];
+    expect(rootEntries).toEqual(expect.arrayContaining([
+      { name: ".git", loadOnExpand: true },
+      { name: ".venv", loadOnExpand: true },
+      { name: "__pycache__", loadOnExpand: true },
+      { name: "node_modules", loadOnExpand: true },
+      { name: "obj", loadOnExpand: true },
+      { name: "target", loadOnExpand: true },
+      { name: "vendor", loadOnExpand: true },
+      { name: "README.md", loadOnExpand: false },
+    ]));
+    expect(rootEntries).toHaveLength(8);
+    expect(result.entriesByDirectory["node_modules"]).toBeUndefined();
+    expect(result.entriesByDirectory[".git"]).toBeUndefined();
+    expect(result.entriesByDirectory["vendor"]).toBeUndefined();
+    expect(result.entriesByDirectory["target"]).toBeUndefined();
+    expect(result.entriesByDirectory["obj"]).toBeUndefined();
+    expect(result.entriesByDirectory[".venv"]).toBeUndefined();
+    expect(result.entriesByDirectory["__pycache__"]).toBeUndefined();
   });
 
   test("loads executables and symlinks without tree suffix markers in the parsed paths", async () => {
@@ -152,6 +220,9 @@ describe("fileExplorerService.listDirectory", () => {
       async exec(command: string, args: string[], _options?: CommandOptions): Promise<CommandResult> {
         expect(command).toBe("bash");
         expect(args[2]).toBe("file-explorer-tree");
+        for (const directoryName of EXPECTED_DEFERRED_DIRECTORY_NAMES) {
+          expect(args[1]).toContain(`-name '${directoryName}'`);
+        }
         expect(args[1]).toContain("stat -f $'base\\t%N\\t%p\\n'");
         expect(args[1]).toContain("stat -Lf $'link\\t%N\\t%p\\n'");
         return {
