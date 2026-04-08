@@ -286,6 +286,73 @@ describe("useWorkspaceFiles", () => {
     expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
   });
 
+  test("collapses deferred directories removed by a full-tree refresh so they can reload on demand", async () => {
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: "workspace-1",
+      ...createTreeResponse({
+        "": [
+          createDirectoryEntry({
+            name: "node_modules",
+            path: "node_modules",
+            loadOnExpand: true,
+          }),
+        ],
+      }),
+    }));
+    api.get("/api/workspaces/:id/files", (req) => {
+      const url = new URL(req.url, "http://localhost");
+      const path = url.searchParams.get("path") ?? "";
+
+      if (path === "node_modules") {
+        return {
+          workspaceId: "workspace-1",
+          directory: "node_modules",
+          entries: [
+            createDirectoryEntry({
+              name: "pkg",
+              path: "node_modules/pkg",
+              kind: "directory",
+            }),
+          ],
+        };
+      }
+
+      throw new MockApiError(500, {
+        error: "unexpected_path",
+        message: `Unexpected path: ${path}`,
+      });
+    });
+
+    const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
+
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.toggleDirectory("node_modules");
+    });
+
+    expect(result.current.expandedDirectories).toContain("node_modules");
+    expect(result.current.directoryEntries["node_modules"]?.map((entry) => entry.name)).toEqual(["pkg"]);
+    expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(1);
+
+    await act(async () => {
+      await result.current.refreshTree();
+    });
+
+    expect(result.current.expandedDirectories).not.toContain("node_modules");
+    expect(result.current.directoryEntries["node_modules"]).toBeUndefined();
+
+    await act(async () => {
+      await result.current.toggleDirectory("node_modules");
+    });
+
+    expect(result.current.expandedDirectories).toContain("node_modules");
+    expect(result.current.directoryEntries["node_modules"]?.map((entry) => entry.name)).toEqual(["pkg"]);
+    expect(api.calls("/api/workspaces/:id/files", "GET")).toHaveLength(2);
+  });
+
   test("opens a file, tracks dirty state, and saves successfully", async () => {
     api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: "workspace-1",

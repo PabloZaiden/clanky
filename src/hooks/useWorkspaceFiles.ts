@@ -110,6 +110,15 @@ function isWithinLazySubtree(path: string, lazySubtreeRoots: string[]): boolean 
   return lazySubtreeRoots.some((rootPath) => path === rootPath || path.startsWith(`${rootPath}/`));
 }
 
+function getExpandedDirectoriesForTreeResponse(
+  expandedDirectories: string[],
+  entriesByDirectory: Record<string, WorkspaceFileNode[]>,
+): string[] {
+  return expandedDirectories.filter((expandedPath) =>
+    Object.prototype.hasOwnProperty.call(entriesByDirectory, expandedPath)
+  );
+}
+
 export function useFileExplorer(
   target: FileExplorerTarget,
   options?: {
@@ -200,6 +209,9 @@ export function useFileExplorer(
         const response = await loadTree();
         setDirectoryEntries(response.entriesByDirectory);
         setLazySubtreeRoots([]);
+        setExpandedDirectories((currentPaths) =>
+          getExpandedDirectoriesForTreeResponse(currentPaths, response.entriesByDirectory)
+        );
         return;
       }
       const response = await loadDirectory(path);
