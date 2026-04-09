@@ -59,7 +59,7 @@ export interface ConversationViewerProps extends LogViewerProps {
 }
 
 /**
- * Base type for a display entry before showHeader annotation.
+ * Base type for a display entry before render metadata annotation.
  */
 export type EntryBase =
   | { type: "message"; data: MessageData; timestamp: string }
@@ -67,8 +67,11 @@ export type EntryBase =
   | { type: "log"; data: LogEntry; timestamp: string };
 
 /**
- * Display entry with showHeader flag for grouped log rendering.
- * When consecutive visible entries share the same actor+action,
- * only the first entry in the group has showHeader=true.
+ * Display entry with derived metadata for rendering grouped rows.
  */
-export type DisplayEntry = EntryBase & { showHeader: boolean };
+export type DisplayEntry = EntryBase & {
+  /** Whether this entry should render its visible timestamp. */
+  showTimestamp: boolean;
+  /** Whether this entry starts a new grouped row for spacing and labels. */
+  showGroupHeader: boolean;
+};

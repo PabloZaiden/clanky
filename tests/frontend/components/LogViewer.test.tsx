@@ -8,6 +8,7 @@
 import { test, expect, describe } from "bun:test";
 import { ConversationViewer, LogViewer } from "@/components/LogViewer";
 import type { LogEntry } from "@/components/LogViewer";
+import { formatTime } from "@/components/log-viewer/utils";
 import { renderWithUser } from "../helpers/render";
 import {
   createMessageData,
@@ -25,6 +26,10 @@ function createLogEntry(overrides?: Partial<LogEntry>): LogEntry {
     ...overrides,
   };
 }
+
+const SAME_MINUTE_TIME_A = "2026-04-09T16:42:01.000Z";
+const SAME_MINUTE_TIME_B = "2026-04-09T16:42:45.000Z";
+const NEXT_MINUTE_TIME = "2026-04-09T16:43:05.000Z";
 
 describe("LogViewer", () => {
   describe("empty state", () => {
@@ -172,6 +177,58 @@ describe("LogViewer", () => {
       expect(getByText("User msg")).toBeInTheDocument();
       // Assistant messages are always filtered out
       expect(queryByText("Assistant msg")).not.toBeInTheDocument();
+    });
+
+    test("shared conversation viewer hides repeated visible timestamps for same-minute messages", () => {
+      const firstMessage = createMessageData({
+        role: "user",
+        content: "First chat line",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondMessage = createMessageData({
+        role: "assistant",
+        content: "Second chat line",
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+
+      const visibleTime = formatTime(SAME_MINUTE_TIME_A);
+      const { container, getByText, getAllByText } = renderWithUser(
+        <ConversationViewer
+          messages={[firstMessage, secondMessage]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+        />
+      );
+
+      expect(getByText("First chat line")).toBeInTheDocument();
+      expect(getByText("Second chat line")).toBeInTheDocument();
+      expect(getAllByText(visibleTime)).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(1);
+    });
+
+    test("shared conversation viewer shows a new timestamp when the displayed time changes", () => {
+      const firstMessage = createMessageData({
+        role: "user",
+        content: "Earlier chat line",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondMessage = createMessageData({
+        role: "assistant",
+        content: "Later chat line",
+        timestamp: NEXT_MINUTE_TIME,
+      });
+
+      const { container, getAllByText } = renderWithUser(
+        <ConversationViewer
+          messages={[firstMessage, secondMessage]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+        />
+      );
+
+      expect(getAllByText(formatTime(SAME_MINUTE_TIME_A))).toHaveLength(1);
+      expect(getAllByText(formatTime(NEXT_MINUTE_TIME))).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(2);
     });
   });
 
@@ -582,6 +639,54 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
       );
       expect(getByText("Agent thinking")).toBeInTheDocument();
+    });
+
+    test("loop log viewer hides repeated visible timestamps while keeping distinct log labels", () => {
+      const firstLog = createLogEntry({
+        id: "log-same-minute-a",
+        level: "agent",
+        message: "First loop log",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondLog = createLogEntry({
+        id: "log-same-minute-b",
+        level: "agent",
+        message: "Second loop log",
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+
+      const visibleTime = formatTime(SAME_MINUTE_TIME_A);
+      const { container, getByText, getAllByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[firstLog, secondLog]} />
+      );
+
+      expect(getByText("First loop log")).toBeInTheDocument();
+      expect(getByText("Second loop log")).toBeInTheDocument();
+      expect(getAllByText(visibleTime)).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(1);
+    });
+
+    test("loop log viewer shows the timestamp again after the displayed minute changes", () => {
+      const firstLog = createLogEntry({
+        id: "log-next-minute-a",
+        level: "agent",
+        message: "First minute log",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondLog = createLogEntry({
+        id: "log-next-minute-b",
+        level: "agent",
+        message: "Next minute log",
+        timestamp: NEXT_MINUTE_TIME,
+      });
+
+      const { container, getAllByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[firstLog, secondLog]} />
+      );
+
+      expect(getAllByText(formatTime(SAME_MINUTE_TIME_A))).toHaveLength(1);
+      expect(getAllByText(formatTime(NEXT_MINUTE_TIME))).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(2);
     });
 
     test("renders log details in collapsible section", async () => {
@@ -1010,12 +1115,12 @@ describe("LogViewer", () => {
       });
       const tool = createToolCallData({
         name: "Write",
-        timestamp: "2026-01-01T00:00:01.000Z",
+        timestamp: "2026-01-01T00:01:01.000Z",
       });
       const log = createLogEntry({
         level: "agent",
         message: "Log entry",
-        timestamp: "2026-01-01T00:00:03.000Z",
+        timestamp: "2026-01-01T00:02:03.000Z",
       });
 
       const { container } = renderWithUser(

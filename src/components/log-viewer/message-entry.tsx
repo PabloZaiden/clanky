@@ -4,20 +4,20 @@ import { formatTime } from "./utils";
 
 interface MessageEntryProps {
   data: MessageData;
-  showHeader: boolean;
+  showTimestamp: boolean;
   spacingClass: string;
   index: number;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
 }
 
-export function MessageEntry({ data: msg, showHeader, spacingClass, index, markdownEnabled, showRoleLabel }: MessageEntryProps) {
+export function MessageEntry({ data: msg, showTimestamp, spacingClass, index, markdownEnabled, showRoleLabel }: MessageEntryProps) {
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
 
   return (
     <div key={`msg-${msg.id}-${index}`} className={`group ${spacingClass}`}>
-      {showHeader && (
+      {showTimestamp && (
         <time className="text-gray-500 text-xs mb-0.5 block" dateTime={msg.timestamp}>
           {formatTime(msg.timestamp)}
         </time>

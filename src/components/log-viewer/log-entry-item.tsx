@@ -6,7 +6,8 @@ import { formatTime, getLogLevelColor } from "./utils";
 
 interface LogEntryItemProps {
   data: LogEntry;
-  showHeader: boolean;
+  showTimestamp: boolean;
+  showGroupHeader: boolean;
   spacingClass: string;
   index: number;
   markdownEnabled: boolean;
@@ -18,7 +19,14 @@ function getOtherDetails(details: Record<string, unknown>): Record<string, unkno
   );
 }
 
-export const LogEntryItem = memo(function LogEntryItem({ data: log, showHeader, spacingClass, index, markdownEnabled }: LogEntryItemProps) {
+export const LogEntryItem = memo(function LogEntryItem({
+  data: log,
+  showTimestamp,
+  showGroupHeader,
+  spacingClass,
+  index,
+  markdownEnabled,
+}: LogEntryItemProps) {
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
   const isReasoning = logKind === "reasoning" || (!logKind && log.message === "AI reasoning...");
@@ -45,11 +53,11 @@ export const LogEntryItem = memo(function LogEntryItem({ data: log, showHeader, 
   // Streaming text entries (response, reasoning) don't need a message label —
   // their rendered content is already self-explanatory.
   const isStreamingEntry = logKind === "response" || logKind === "reasoning";
-  const showMessageLabel = showHeader && !isStreamingEntry;
+  const showMessageLabel = showGroupHeader && !isStreamingEntry;
 
   return (
     <div key={`log-${log.id}-${index}`} className={`group ${isReasoning ? "opacity-60" : ""} ${spacingClass}`}>
-      {showHeader && (
+      {showTimestamp && (
         <time className="text-gray-500 text-xs mb-0.5 block" dateTime={log.timestamp}>
           {formatTime(log.timestamp)}
         </time>

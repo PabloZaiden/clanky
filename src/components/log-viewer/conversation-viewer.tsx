@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo, memo } from "react";
 import type { ConversationViewerProps, EntryBase } from "./types";
-import { annotateShowHeader } from "./utils";
+import { annotateDisplayEntries } from "./utils";
 import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
 import { LogEntryItem } from "./log-entry-item";
@@ -110,7 +110,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     });
 
     result.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return annotateShowHeader(result);
+    return annotateDisplayEntries(result);
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
   const isEmpty = entries.length === 0;
@@ -138,7 +138,7 @@ export const ConversationViewer = memo(function ConversationViewer({
           {entries.map((entry, index) => {
             const spacingClass = index === 0
               ? ""
-              : entry.showHeader
+              : entry.showTimestamp || entry.showGroupHeader
                 ? "mt-1 sm:mt-2"
                 : "mt-0.5";
             if (entry.type === "message") {
@@ -146,7 +146,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                 <MessageEntry
                   key={`msg-${entry.data.id}-${index}`}
                   data={entry.data}
-                  showHeader={entry.showHeader}
+                  showTimestamp={entry.showTimestamp}
                   spacingClass={spacingClass}
                   index={index}
                   markdownEnabled={markdownEnabled}
@@ -159,7 +159,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                   key={`tool-${entry.data.id}-${index}`}
                   data={entry.data}
                   timestamp={entry.timestamp}
-                  showHeader={entry.showHeader}
+                  showTimestamp={entry.showTimestamp}
                   spacingClass={spacingClass}
                 />
               );
@@ -168,7 +168,8 @@ export const ConversationViewer = memo(function ConversationViewer({
                 <LogEntryItem
                   key={`log-${entry.data.id}-${index}`}
                   data={entry.data}
-                  showHeader={entry.showHeader}
+                  showTimestamp={entry.showTimestamp}
+                  showGroupHeader={entry.showGroupHeader}
                   spacingClass={spacingClass}
                   index={index}
                   markdownEnabled={markdownEnabled}
