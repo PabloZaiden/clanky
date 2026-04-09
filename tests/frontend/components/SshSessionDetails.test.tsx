@@ -8,6 +8,7 @@ import {
   lastMockTerminalOptions as lastTerminalOptions,
   resetGhosttyWebMockState,
 } from "../helpers/mock-ghostty-web";
+import { clearStoredSshServerCredential } from "@/lib/ssh-browser-credentials";
 
 let clipboardWrites: string[] = [];
 const originalDocumentFonts = "fonts" in document ? document.fonts : undefined;
@@ -91,6 +92,7 @@ describe("SshSessionDetails", () => {
     api.install();
     ws.reset();
     ws.install();
+    clearStoredSshServerCredential("server-1");
     resetGhosttyWebMockState();
     clipboardWrites = [];
     restoreDocumentFonts();
@@ -102,6 +104,7 @@ describe("SshSessionDetails", () => {
   afterEach(() => {
     api.uninstall();
     ws.uninstall();
+    clearStoredSshServerCredential("server-1");
     globalThis.localStorage?.clear();
     restoreDocumentFonts();
   });
