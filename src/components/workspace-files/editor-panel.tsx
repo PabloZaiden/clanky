@@ -64,7 +64,7 @@ export function WorkspaceEditorPanel({
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<EditorLanguageSelection>("auto");
   const displayPath = pendingFilePath ?? filePath;
-  const detectedLanguage = useMemo(() => detectLanguage(filePath), [filePath]);
+  const detectedLanguage = useMemo(() => detectLanguage(displayPath), [displayPath]);
   const editorLanguage = selectedLanguage === "auto" ? detectedLanguage : selectedLanguage;
   const statusText = loading
     ? `Loading ${pendingFilePath ?? filePath ?? "file"}...`
@@ -77,7 +77,7 @@ export function WorkspaceEditorPanel({
 
   useEffect(() => {
     setSelectedLanguage("auto");
-  }, [filePath]);
+  }, [displayPath]);
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
