@@ -594,6 +594,22 @@ export class ChatManager {
     let currentReasoningLogContent = "";
     let currentStreamBlockKind: "response" | "reasoning" | null = null;
     const toolInputs = new Map<string, unknown>();
+    const resetActiveStreamBlock = (): void => {
+      currentResponseMessageId = null;
+      currentResponseContent = "";
+      currentResponseLogId = null;
+      currentResponseLogContent = "";
+      currentResponseTimestamp = null;
+      currentReasoningLogId = null;
+      currentReasoningLogContent = "";
+      currentStreamBlockKind = null;
+    };
+    const resetCurrentTurnStreamState = (): void => {
+      currentTurnMessageId = null;
+      totalResponseLength = 0;
+      responseSegmentCount = 0;
+      resetActiveStreamBlock();
+    };
 
     try {
       await promptPromise;
@@ -612,17 +628,8 @@ export class ChatManager {
 
         switch (event.type) {
           case "message.start":
+            resetCurrentTurnStreamState();
             currentTurnMessageId = event.messageId;
-            currentResponseMessageId = null;
-            currentResponseContent = "";
-            currentResponseLogId = null;
-            currentResponseLogContent = "";
-            currentResponseTimestamp = null;
-            totalResponseLength = 0;
-            responseSegmentCount = 0;
-            currentReasoningLogId = null;
-            currentReasoningLogContent = "";
-            currentStreamBlockKind = null;
             if (isInterrupted) {
               break;
             }
@@ -684,6 +691,7 @@ export class ChatManager {
             if (isInterrupted) {
               break;
             }
+            resetActiveStreamBlock();
             const toolId = `chat-tool-${crypto.randomUUID()}`;
             toolInputs.set(event.toolName, event.input);
             chat = await this.appendToolCall(chat, {
@@ -700,6 +708,7 @@ export class ChatManager {
             if (isInterrupted) {
               break;
             }
+            resetActiveStreamBlock();
             const toolName = event.toolName;
             const existing = [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
             chat = await this.upsertToolCall(chat, {
@@ -741,7 +750,7 @@ export class ChatManager {
               logKind: "system",
               responseLength: completedResponseLength,
             });
-            if (currentResponseContent.length === 0 && event.content.length > 0) {
+            if (responseSegmentCount === 0 && event.content.length > 0) {
               responseSegmentCount += 1;
               currentResponseMessageId = this.createResponseSegmentMessageId(currentTurnMessageId, responseSegmentCount);
               currentResponseContent = event.content;

@@ -658,6 +658,316 @@ class InterleavedResponseBackend implements Backend {
   }
 }
 
+class ToolInterleavedResponseBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `tool-interleaved-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "Alpha before toolBeta after tool",
+      parts: [{ type: "text", text: "Alpha before toolBeta after tool" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, _prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "message.start",
+        messageId: "assistant-tool-interleaved",
+      });
+    }, 0);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.delta",
+        content: "Alpha before tool",
+      });
+    }, 25);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.start",
+        toolName: "read",
+        input: { path: "/workspace/repo/README.md" },
+      });
+    }, 50);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.complete",
+        toolName: "read",
+        output: { content: "README contents" },
+      });
+    }, 75);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.delta",
+        content: "Beta after tool",
+      });
+    }, 100);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.complete",
+        content: "Alpha before toolBeta after tool",
+      });
+      subscription.end();
+    }, 140);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://tool-interleaved-response-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
+class ToolAtTurnEndBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `tool-at-turn-end-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "Alpha before tool",
+      parts: [{ type: "text", text: "Alpha before tool" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, _prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "message.start",
+        messageId: "assistant-tool-turn-end",
+      });
+    }, 0);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.delta",
+        content: "Alpha before tool",
+      });
+    }, 25);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.start",
+        toolName: "read",
+        input: { path: "/workspace/repo/README.md" },
+      });
+    }, 50);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.complete",
+        toolName: "read",
+        output: { content: "README contents" },
+      });
+    }, 75);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.complete",
+        content: "Alpha before tool",
+      });
+      subscription.end();
+    }, 100);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://tool-at-turn-end-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 class IdleStatusInterruptBackend implements Backend {
   readonly name = "acp";
 
@@ -990,6 +1300,89 @@ describe("ChatManager", () => {
 
     expect(assistantMessages[0]?.timestamp.localeCompare(reasoningLogs[0]?.timestamp ?? "")).toBeLessThan(0);
     expect(reasoningLogs[0]?.timestamp.localeCompare(assistantMessages[1]?.timestamp ?? "")).toBeLessThan(0);
+  });
+
+  test("creates a new assistant block when response streaming resumes after a tool call", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new ToolInterleavedResponseBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Tool Interleaved Response Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Explain the issue around the read call",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.role === "assistant" && message.content === "Beta after tool"),
+    );
+
+    const assistantMessages = completed.state.messages.filter((message) => message.role === "assistant");
+    expect(assistantMessages.map((message) => message.content)).toEqual([
+      "Alpha before tool",
+      "Beta after tool",
+    ]);
+
+    const responseLogs = completed.state.logs.filter((log) => log.details?.["logKind"] === "response");
+    expect(responseLogs.map((log) => log.details?.["responseContent"])).toEqual([
+      "Alpha before tool",
+      "Beta after tool",
+    ]);
+
+    expect(completed.state.toolCalls).toHaveLength(1);
+    expect(completed.state.toolCalls[0]).toMatchObject({
+      name: "read",
+      status: "completed",
+      input: { path: "/workspace/repo/README.md" },
+      output: { content: "README contents" },
+    });
+
+    const toolTimestamp = completed.state.toolCalls[0]?.timestamp ?? "";
+    expect(assistantMessages[0]?.timestamp.localeCompare(toolTimestamp)).toBeLessThan(0);
+    expect(toolTimestamp.localeCompare(assistantMessages[1]?.timestamp ?? "")).toBeLessThan(0);
+  });
+
+  test("does not duplicate pre-tool assistant output when a tool ends the turn", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new ToolAtTurnEndBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Tool At Turn End Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Read the file and stop",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+
+    const assistantMessages = completed.state.messages.filter((message) => message.role === "assistant");
+    expect(assistantMessages.map((message) => message.content)).toEqual([
+      "Alpha before tool",
+    ]);
+
+    const responseLogs = completed.state.logs.filter((log) => log.details?.["logKind"] === "response");
+    expect(responseLogs.map((log) => log.details?.["responseContent"])).toEqual([
+      "Alpha before tool",
+    ]);
   });
 
   test("emits chat.status events for starting, streaming, and idle transitions", async () => {
