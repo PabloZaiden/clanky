@@ -6,7 +6,7 @@ import { LazyDetails } from "./lazy-details";
 interface ToolEntryProps {
   data: ToolCallData;
   timestamp: string;
-  showHeader: boolean;
+  showTimestamp: boolean;
   spacingClass: string;
 }
 
@@ -107,7 +107,7 @@ function RenderedContent({ output }: { output: unknown }) {
   );
 }
 
-export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHeader, spacingClass }: ToolEntryProps) {
+export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showTimestamp, spacingClass }: ToolEntryProps) {
   const meta = getToolMeta(tool);
   const toolSummaryClassName = "text-[11px] italic leading-relaxed text-gray-400";
 
@@ -169,7 +169,7 @@ export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showHe
 
   return (
     <div className={`group py-1 ${spacingClass}`}>
-      {showHeader && (
+      {showTimestamp && (
         <time className="text-gray-500 text-xs mb-0.5 block" dateTime={timestamp}>
           {formatTime(timestamp)}
         </time>

@@ -15,6 +15,14 @@ export function formatTime(isoString: string): string {
 }
 
 /**
+ * Group timestamps by their absolute minute so repeated local clock values
+ * across different dates or DST fall-back hours do not collapse together.
+ */
+function getTimestampMinuteBucket(isoString: string): number {
+  return Math.floor(new Date(isoString).getTime() / 60_000);
+}
+
+/**
  * Get the color for a log level.
  */
 export function getLogLevelColor(level: LogLevel): string {
@@ -55,18 +63,20 @@ export function getEntryGroupKey(entry: EntryBase): string {
 }
 
 /**
- * Annotate a sorted array of entries with showHeader flags.
- * The first entry always shows its header. Subsequent entries only show
- * their header when their group key differs from the previous entry.
- *
- * Group keys are precomputed in a single pass to avoid redundant
- * string concatenations — each entry's key is computed exactly once.
+ * Annotate a sorted array of entries with derived render metadata.
+ * Timestamps are shown only when the visible formatted time changes.
+ * Group headers remain driven by entry grouping so spacing and labels
+ * still reflect structural changes within the transcript.
  */
-export function annotateShowHeader(sorted: EntryBase[]): DisplayEntry[] {
-  // Precompute all group keys in one pass so each key is calculated exactly once
+export function annotateDisplayEntries(sorted: EntryBase[]): DisplayEntry[] {
   const keys = sorted.map(getEntryGroupKey);
+  const minuteBuckets = sorted.map((entry) =>
+    getTimestampMinuteBucket(entry.timestamp),
+  );
+
   return sorted.map((entry, i) => ({
     ...entry,
-    showHeader: i === 0 || keys[i] !== keys[i - 1],
+    showTimestamp: i === 0 || minuteBuckets[i] !== minuteBuckets[i - 1],
+    showGroupHeader: i === 0 || keys[i] !== keys[i - 1],
   }));
 }
