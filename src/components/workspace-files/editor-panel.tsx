@@ -1,7 +1,23 @@
+import { useEffect, useMemo, useState } from "react";
 import MonacoEditor from "@monaco-editor/react";
-import { Button, RefreshIcon } from "../common";
+import { Button, RefreshIcon, WrapTextIcon } from "../common";
 
-function detectLanguage(path: string | undefined): string {
+const EDITOR_LANGUAGE_OPTIONS = [
+  { id: "plaintext", label: "Plain Text" },
+  { id: "typescript", label: "TypeScript" },
+  { id: "javascript", label: "JavaScript" },
+  { id: "json", label: "JSON" },
+  { id: "markdown", label: "Markdown" },
+  { id: "css", label: "CSS" },
+  { id: "html", label: "HTML" },
+  { id: "shell", label: "Shell" },
+  { id: "yaml", label: "YAML" },
+] as const;
+
+type EditorLanguageId = (typeof EDITOR_LANGUAGE_OPTIONS)[number]["id"];
+type EditorLanguageSelection = "auto" | EditorLanguageId;
+
+function detectLanguage(path: string | undefined): EditorLanguageId {
   if (!path) {
     return "plaintext";
   }
@@ -14,6 +30,10 @@ function detectLanguage(path: string | undefined): string {
   if (path.endsWith(".sh")) return "shell";
   if (path.endsWith(".yml") || path.endsWith(".yaml")) return "yaml";
   return "plaintext";
+}
+
+function getLanguageLabel(languageId: EditorLanguageId): string {
+  return EDITOR_LANGUAGE_OPTIONS.find((language) => language.id === languageId)?.label ?? "Plain Text";
 }
 
 interface WorkspaceEditorPanelProps {
@@ -41,7 +61,11 @@ export function WorkspaceEditorPanel({
   onRefresh,
   onSave,
 }: WorkspaceEditorPanelProps) {
+  const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
+  const [selectedLanguage, setSelectedLanguage] = useState<EditorLanguageSelection>("auto");
   const displayPath = pendingFilePath ?? filePath;
+  const detectedLanguage = useMemo(() => detectLanguage(filePath), [filePath]);
+  const editorLanguage = selectedLanguage === "auto" ? detectedLanguage : selectedLanguage;
   const statusText = loading
     ? `Loading ${pendingFilePath ?? filePath ?? "file"}...`
     : dirty
@@ -49,6 +73,11 @@ export function WorkspaceEditorPanel({
       : autoReloadedAt
         ? `Auto-reloaded at ${new Date(autoReloadedAt).toLocaleTimeString()}`
         : null;
+  const wordWrapLabel = wordWrapEnabled ? "Disable word wrap" : "Enable word wrap";
+
+  useEffect(() => {
+    setSelectedLanguage("auto");
+  }, [filePath]);
 
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
@@ -63,7 +92,37 @@ export function WorkspaceEditorPanel({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {filePath ? (
+            <select
+              value={selectedLanguage}
+              onChange={(event) => setSelectedLanguage(event.target.value as EditorLanguageSelection)}
+              disabled={loading}
+              aria-label="Editor language"
+              title={`Editor language: ${selectedLanguage === "auto" ? `Auto (${getLanguageLabel(detectedLanguage)})` : getLanguageLabel(editorLanguage)}`}
+              className="min-w-0 max-w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
+            >
+              <option value="auto">Auto ({getLanguageLabel(detectedLanguage)})</option>
+              {EDITOR_LANGUAGE_OPTIONS.map((language) => (
+                <option key={language.id} value={language.id}>
+                  {language.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <Button
+            variant={wordWrapEnabled ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setWordWrapEnabled((currentValue) => !currentValue)}
+            disabled={!filePath || loading}
+            icon={<WrapTextIcon size="h-4 w-4" />}
+            aria-label={wordWrapLabel}
+            aria-pressed={wordWrapEnabled}
+            title={wordWrapLabel}
+            className="w-9 px-0"
+          >
+            <span className="sr-only">{wordWrapLabel}</span>
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -94,14 +153,14 @@ export function WorkspaceEditorPanel({
           <MonacoEditor
             height="100%"
             theme="vs-dark"
-            language={detectLanguage(filePath)}
+            language={editorLanguage}
             value={value}
             onChange={(nextValue: string | undefined) => onChange(nextValue ?? "")}
             options={{
               minimap: { enabled: false },
               fontSize: 14,
               automaticLayout: true,
-              wordWrap: "on",
+              wordWrap: wordWrapEnabled ? "on" : "off",
               scrollBeyondLastLine: false,
             }}
           />

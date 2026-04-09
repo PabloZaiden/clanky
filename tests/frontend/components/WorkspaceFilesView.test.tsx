@@ -7,15 +7,23 @@ mock.module("@monaco-editor/react", () => ({
   default: ({
     value,
     onChange,
+    language,
+    options,
   }: {
     value?: string;
     onChange?: (value: string) => void;
+    language?: string;
+    options?: { wordWrap?: string };
   }) => (
-    <textarea
-      aria-label="Monaco editor"
-      value={value ?? ""}
-      onChange={(event) => onChange?.(event.target.value)}
-    />
+    <div>
+      <div data-testid="monaco-language">{language ?? ""}</div>
+      <div data-testid="monaco-word-wrap">{options?.wordWrap ?? ""}</div>
+      <textarea
+        aria-label="Monaco editor"
+        value={value ?? ""}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
+    </div>
   ),
 }));
 
@@ -151,6 +159,78 @@ describe("WorkspaceFilesView", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/workspaces/:id/files/write", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("lets the user toggle word wrap and override the editor language", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-editor-controls",
+      name: "Editor Controls Workspace",
+      directory: "/workspaces/editor-controls",
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry()],
+        src: [createFileEntry({
+          name: "index.ts",
+          path: "src/index.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        })],
+      }),
+    }));
+
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "100:20",
+      }),
+      content: "export const value = 1;\n",
+    }));
+
+    const { getByLabelText, getByRole, getByTestId, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /src/i }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: /index.ts/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /index.ts/i }));
+    await waitFor(() => {
+      expect(getByLabelText("Monaco editor")).toBeInTheDocument();
+      expect(getByTestId("monaco-language")).toHaveTextContent("typescript");
+      expect(getByTestId("monaco-word-wrap")).toHaveTextContent("on");
+    });
+
+    await user.selectOptions(getByLabelText("Editor language"), "json");
+    await waitFor(() => {
+      expect(getByTestId("monaco-language")).toHaveTextContent("json");
+    });
+
+    await user.click(getByRole("button", { name: "Disable word wrap" }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Enable word wrap" })).toHaveAttribute("aria-pressed", "false");
+      expect(getByTestId("monaco-word-wrap")).toHaveTextContent("off");
     });
   });
 
