@@ -1334,6 +1334,120 @@ describe("SshSessionDetails", () => {
     ]);
   });
 
+  test("shows the clipboard fallback in focus mode when remote clipboard copy is blocked", async () => {
+    globalThis.localStorage?.setItem("ralpher-ssh-focus-mode", "true");
+
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Focus Clipboard Fallback" } }),
+    );
+
+    const copyAttempts: string[] = [];
+    const { getByLabelText, getByText, queryByTestId, queryByText, user } = renderWithUser(
+      <SshSessionDetails
+        sshSessionId="ssh-focus-clipboard-fallback-1"
+        onBack={() => {}}
+        copyTextToClipboard={async (text) => {
+          copyAttempts.push(text);
+          if (copyAttempts.length === 1) {
+            throw new Error("NotAllowedError: blocked");
+          }
+          clipboardWrites.push(text);
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
+      expect(queryByText("SSH Focus Clipboard Fallback")).toBeNull();
+    });
+
+    const terminalConnection = ws.getConnections("/api/ssh-terminal")[0]!;
+    await waitFor(() => {
+      expect(terminalConnection.isOpen).toBe(true);
+    });
+
+    await act(async () => {
+      ws.sendEventTo(terminalConnection, {
+        type: "terminal.clipboard",
+        text: "focus copied from remote",
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByLabelText("Pending terminal clipboard text")).toBeTruthy();
+      expect(queryByTestId("ssh-terminal-clipboard-fallback")).toBeTruthy();
+    });
+
+    await user.click(getByText((content, element) =>
+      content === "Copy now" && element?.tagName.toLowerCase() === "button"
+    ));
+
+    await waitFor(() => {
+      expect(clipboardWrites).toEqual(["focus copied from remote"]);
+      expect(queryByTestId("ssh-terminal-clipboard-fallback")).toBeNull();
+    });
+
+    expect(copyAttempts).toEqual(["focus copied from remote", "focus copied from remote"]);
+  });
+
+  test("reuses the clipboard fallback when focus-mode copy is blocked", async () => {
+    globalThis.localStorage?.setItem("ralpher-ssh-focus-mode", "true");
+
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Focus Selected Copy Fallback" } }),
+    );
+
+    const copyAttempts: string[] = [];
+    const { getByLabelText, getByRole, getByText, queryByTestId, queryByText, user } = renderWithUser(
+      <SshSessionDetails
+        sshSessionId="ssh-focus-copy-selection-fallback-1"
+        onBack={() => {}}
+        copyTextToClipboard={async (text) => {
+          copyAttempts.push(text);
+          if (copyAttempts.length === 1) {
+            throw new Error("NotAllowedError: blocked");
+          }
+          clipboardWrites.push(text);
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(lastTerminal).not.toBeNull();
+      expect(queryByText("SSH Focus Selected Copy Fallback")).toBeNull();
+    });
+
+    await act(async () => {
+      lastTerminal?.setSelection("focus mode selected terminal text");
+    });
+
+    const copyButton = getByRole("button", { name: "Copy" });
+    await waitFor(() => {
+      expect(copyButton).not.toBeDisabled();
+    });
+
+    await user.click(copyButton);
+
+    await waitFor(() => {
+      expect(getByLabelText("Pending terminal clipboard text")).toBeTruthy();
+      expect(queryByTestId("ssh-terminal-clipboard-fallback")).toBeTruthy();
+    });
+
+    await user.click(getByText((content, element) =>
+      content === "Copy now" && element?.tagName.toLowerCase() === "button"
+    ));
+
+    await waitFor(() => {
+      expect(clipboardWrites).toEqual(["focus mode selected terminal text"]);
+      expect(queryByTestId("ssh-terminal-clipboard-fallback")).toBeNull();
+    });
+
+    expect(copyAttempts).toEqual([
+      "focus mode selected terminal text",
+      "focus mode selected terminal text",
+    ]);
+  });
+
   test("connects a standalone SSH session terminal with a stored browser credential", async () => {
     globalThis.localStorage?.setItem("ralpher.sshServerCredential.server-1", JSON.stringify({
       encryptedCredential: {

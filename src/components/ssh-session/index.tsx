@@ -256,6 +256,21 @@ export function SshSessionDetails({
     sendTerminalTextShortcut: keyboard.sendTerminalTextShortcut,
   };
 
+  function renderClipboardFallback(compact: boolean) {
+    if (clipboard.pendingTerminalClipboardText === null) {
+      return null;
+    }
+
+    return (
+      <ClipboardFallbackCard
+        pendingText={clipboard.pendingTerminalClipboardText}
+        onDismiss={() => clipboard.setPendingTerminalClipboardText(null)}
+        onRetry={clipboard.retryPendingTerminalClipboardCopy}
+        compact={compact}
+      />
+    );
+  }
+
   // Single persistent layout — the terminal container ref is always on the same
   // DOM node so that useTerminalRenderer never needs to re-open the terminal
   // when toggling focus mode. Focus mode hides the chrome via conditional
@@ -334,13 +349,7 @@ export function SshSessionDetails({
               onEnterFocusMode={toggleFocusMode}
             />
 
-            {clipboard.pendingTerminalClipboardText !== null && (
-              <ClipboardFallbackCard
-                pendingText={clipboard.pendingTerminalClipboardText}
-                onDismiss={() => clipboard.setPendingTerminalClipboardText(null)}
-                onRetry={clipboard.retryPendingTerminalClipboardCopy}
-              />
-            )}
+            {renderClipboardFallback(false)}
           </>
         )}
 
@@ -361,6 +370,8 @@ export function SshSessionDetails({
           />
         </div>
       </div>
+
+      {isFocusMode && renderClipboardFallback(true)}
 
       {/* Focus mode bar — only shown in focus mode */}
       {isFocusMode && !forcedFocusMode && (
