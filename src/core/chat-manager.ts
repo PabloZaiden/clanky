@@ -604,6 +604,12 @@ export class ChatManager {
       currentReasoningLogContent = "";
       currentStreamBlockKind = null;
     };
+    const resetCurrentTurnStreamState = (): void => {
+      currentTurnMessageId = null;
+      totalResponseLength = 0;
+      responseSegmentCount = 0;
+      resetActiveStreamBlock();
+    };
 
     try {
       await promptPromise;
@@ -622,17 +628,8 @@ export class ChatManager {
 
         switch (event.type) {
           case "message.start":
+            resetCurrentTurnStreamState();
             currentTurnMessageId = event.messageId;
-            currentResponseMessageId = null;
-            currentResponseContent = "";
-            currentResponseLogId = null;
-            currentResponseLogContent = "";
-            currentResponseTimestamp = null;
-            totalResponseLength = 0;
-            responseSegmentCount = 0;
-            currentReasoningLogId = null;
-            currentReasoningLogContent = "";
-            currentStreamBlockKind = null;
             if (isInterrupted) {
               break;
             }
@@ -753,7 +750,7 @@ export class ChatManager {
               logKind: "system",
               responseLength: completedResponseLength,
             });
-            if (currentResponseContent.length === 0 && event.content.length > 0) {
+            if (responseSegmentCount === 0 && event.content.length > 0) {
               responseSegmentCount += 1;
               currentResponseMessageId = this.createResponseSegmentMessageId(currentTurnMessageId, responseSegmentCount);
               currentResponseContent = event.content;
