@@ -1335,7 +1335,7 @@ describe("SshSessionDetails", () => {
   });
 
   test("shows the clipboard fallback in focus mode when remote clipboard copy is blocked", async () => {
-    globalThis.localStorage?.removeItem("ralpher-ssh-focus-mode");
+    globalThis.localStorage?.setItem("ralpher-ssh-focus-mode", "true");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Focus Clipboard Fallback" } }),
@@ -1391,7 +1391,7 @@ describe("SshSessionDetails", () => {
   });
 
   test("reuses the clipboard fallback when focus-mode copy is blocked", async () => {
-    globalThis.localStorage?.removeItem("ralpher-ssh-focus-mode");
+    globalThis.localStorage?.setItem("ralpher-ssh-focus-mode", "true");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Focus Selected Copy Fallback" } }),
