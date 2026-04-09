@@ -595,6 +595,77 @@ describe("ChatDetails", () => {
     expect(text.indexOf("Need more context, refined.")).toBeLessThan(text.indexOf("Beta after reasoning"));
   });
 
+  test("keeps a tool entry between separate assistant response blocks during websocket updates", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        session: { id: "session-1" },
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { container, getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.message",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:02.000Z",
+        message: {
+          id: "assistant-part-1",
+          role: "assistant",
+          content: "Alpha before tool",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        },
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.tool_call",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:03.000Z",
+        tool: {
+          id: "tool-1",
+          name: "read",
+          input: { path: "/workspace/repo/README.md" },
+          output: { content: "README contents" },
+          status: "completed",
+          timestamp: "2025-01-01T00:00:03.000Z",
+        },
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.message",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:04.000Z",
+        message: {
+          id: "assistant-part-2",
+          role: "assistant",
+          content: "Beta after tool",
+          timestamp: "2025-01-01T00:00:04.000Z",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Alpha before tool")).toBeTruthy();
+      expect(getByText("Read /workspace/repo/README.md")).toBeTruthy();
+      expect(getByText("Beta after tool")).toBeTruthy();
+    });
+
+    const transcript = container.querySelector("#chat-transcript");
+    const text = transcript?.textContent ?? "";
+    expect(text.indexOf("Alpha before tool")).toBeLessThan(text.indexOf("Read /workspace/repo/README.md"));
+    expect(text.indexOf("Read /workspace/repo/README.md")).toBeLessThan(text.indexOf("Beta after tool"));
+  });
+
   test("preserves newer local state when chat.updated carries a stale snapshot", async () => {
     const currentChat = createChat({
       config: {

@@ -594,6 +594,16 @@ export class ChatManager {
     let currentReasoningLogContent = "";
     let currentStreamBlockKind: "response" | "reasoning" | null = null;
     const toolInputs = new Map<string, unknown>();
+    const resetActiveStreamBlock = (): void => {
+      currentResponseMessageId = null;
+      currentResponseContent = "";
+      currentResponseLogId = null;
+      currentResponseLogContent = "";
+      currentResponseTimestamp = null;
+      currentReasoningLogId = null;
+      currentReasoningLogContent = "";
+      currentStreamBlockKind = null;
+    };
 
     try {
       await promptPromise;
@@ -684,6 +694,7 @@ export class ChatManager {
             if (isInterrupted) {
               break;
             }
+            resetActiveStreamBlock();
             const toolId = `chat-tool-${crypto.randomUUID()}`;
             toolInputs.set(event.toolName, event.input);
             chat = await this.appendToolCall(chat, {
@@ -700,6 +711,7 @@ export class ChatManager {
             if (isInterrupted) {
               break;
             }
+            resetActiveStreamBlock();
             const toolName = event.toolName;
             const existing = [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
             chat = await this.upsertToolCall(chat, {
