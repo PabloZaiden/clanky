@@ -15,6 +15,14 @@ export function formatTime(isoString: string): string {
 }
 
 /**
+ * Group timestamps by their absolute minute so repeated local clock values
+ * across different dates or DST fall-back hours do not collapse together.
+ */
+function getTimestampMinuteBucket(isoString: string): number {
+  return Math.floor(new Date(isoString).getTime() / 60_000);
+}
+
+/**
  * Get the color for a log level.
  */
 export function getLogLevelColor(level: LogLevel): string {
@@ -62,11 +70,13 @@ export function getEntryGroupKey(entry: EntryBase): string {
  */
 export function annotateDisplayEntries(sorted: EntryBase[]): DisplayEntry[] {
   const keys = sorted.map(getEntryGroupKey);
-  const visibleTimes = sorted.map((entry) => formatTime(entry.timestamp));
+  const minuteBuckets = sorted.map((entry) =>
+    getTimestampMinuteBucket(entry.timestamp),
+  );
 
   return sorted.map((entry, i) => ({
     ...entry,
-    showTimestamp: i === 0 || visibleTimes[i] !== visibleTimes[i - 1],
+    showTimestamp: i === 0 || minuteBuckets[i] !== minuteBuckets[i - 1],
     showGroupHeader: i === 0 || keys[i] !== keys[i - 1],
   }));
 }

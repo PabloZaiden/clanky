@@ -30,6 +30,7 @@ function createLogEntry(overrides?: Partial<LogEntry>): LogEntry {
 const SAME_MINUTE_TIME_A = "2026-04-09T16:42:01.000Z";
 const SAME_MINUTE_TIME_B = "2026-04-09T16:42:45.000Z";
 const NEXT_MINUTE_TIME = "2026-04-09T16:43:05.000Z";
+const NEXT_DAY_SAME_VISIBLE_TIME = "2026-04-10T16:42:15.000Z";
 
 describe("LogViewer", () => {
   describe("empty state", () => {
@@ -228,6 +229,31 @@ describe("LogViewer", () => {
 
       expect(getAllByText(formatTime(SAME_MINUTE_TIME_A))).toHaveLength(1);
       expect(getAllByText(formatTime(NEXT_MINUTE_TIME))).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(2);
+    });
+
+    test("shared conversation viewer keeps timestamps on different days even when hh:mm matches", () => {
+      const firstMessage = createMessageData({
+        role: "user",
+        content: "First day chat line",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondMessage = createMessageData({
+        role: "assistant",
+        content: "Second day chat line",
+        timestamp: NEXT_DAY_SAME_VISIBLE_TIME,
+      });
+
+      const visibleTime = formatTime(SAME_MINUTE_TIME_A);
+      const { container, getAllByText } = renderWithUser(
+        <ConversationViewer
+          messages={[firstMessage, secondMessage]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+        />
+      );
+
+      expect(getAllByText(visibleTime)).toHaveLength(2);
       expect(container.querySelectorAll("time")).toHaveLength(2);
     });
   });
@@ -686,6 +712,29 @@ describe("LogViewer", () => {
 
       expect(getAllByText(formatTime(SAME_MINUTE_TIME_A))).toHaveLength(1);
       expect(getAllByText(formatTime(NEXT_MINUTE_TIME))).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(2);
+    });
+
+    test("loop log viewer keeps timestamps on different days even when hh:mm matches", () => {
+      const firstLog = createLogEntry({
+        id: "log-next-day-a",
+        level: "agent",
+        message: "First day loop log",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondLog = createLogEntry({
+        id: "log-next-day-b",
+        level: "agent",
+        message: "Second day loop log",
+        timestamp: NEXT_DAY_SAME_VISIBLE_TIME,
+      });
+
+      const visibleTime = formatTime(SAME_MINUTE_TIME_A);
+      const { container, getAllByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[firstLog, secondLog]} />
+      );
+
+      expect(getAllByText(visibleTime)).toHaveLength(2);
       expect(container.querySelectorAll("time")).toHaveLength(2);
     });
 
