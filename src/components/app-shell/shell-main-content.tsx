@@ -83,6 +83,9 @@ interface ShellMainContentProps {
   ) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
   deleteWorkspace: (id: string) => Promise<{ success: boolean; error?: string }>;
+  pullLatestChanges: (
+    id: string,
+  ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;
   exportConfig: () => Promise<WorkspaceExportData | null>;
   importConfig: (data: WorkspaceExportData) => Promise<WorkspaceImportResult | null>;
 
@@ -136,6 +139,7 @@ function renderMainContent(props: ShellMainContentProps) {
     purgeLoop,
     deleteServer,
     deleteWorkspace,
+    pullLatestChanges,
     dashboardData,
     passkeyAuth,
     createChat,
@@ -358,6 +362,7 @@ function renderMainContent(props: ShellMainContentProps) {
         dashboardData={dashboardData}
         refreshWorkspaces={refreshWorkspaces}
         deleteWorkspace={deleteWorkspace}
+        pullLatestChanges={pullLatestChanges}
         navigateWithinShell={navigateWithinShell}
         shellHeaderOffsetClassName={shellHeaderOffsetClassName}
       />

@@ -102,3 +102,24 @@ export async function pull(
 
   return true;
 }
+
+export async function pullBranch(
+  executor: CommandExecutor,
+  directory: string,
+  branchName: string,
+  remote = "origin",
+): Promise<void> {
+  await getRemoteUrl(executor, directory, remote);
+
+  const fetchArgs = ["fetch", remote, branchName];
+  const fetchResult = await runGitCommand(executor, directory, fetchArgs);
+  if (!fetchResult.success) {
+    throw gitError(`Failed to fetch ${remote}/${branchName}`, fetchResult, fetchArgs);
+  }
+
+  const mergeArgs = ["merge", "--ff-only", `${remote}/${branchName}`];
+  const mergeResult = await runGitCommand(executor, directory, mergeArgs);
+  if (!mergeResult.success) {
+    throw gitError(`Failed to fast-forward merge ${remote}/${branchName}`, mergeResult, mergeArgs);
+  }
+}

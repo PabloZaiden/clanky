@@ -30,7 +30,7 @@ export type {
 
 // Sub-module imports
 import { isGitRepo, getCurrentBranch, getLocalBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
-import { getRemoteUrl as getRemoteUrlRemote, pushBranch, fetchBranch, pull } from "./git-remote";
+import { getRemoteUrl as getRemoteUrlRemote, pushBranch, fetchBranch, pull, pullBranch } from "./git-remote";
 import { createBranch, checkoutBranch, deleteBranch, ensureBranch } from "./git-branch";
 import { stageAll, commit, getLastCommitMessage } from "./git-commit";
 import { stash, stashPop } from "./git-stash";
@@ -281,6 +281,10 @@ export class GitService {
 
   async pull(directory: string, branchName?: string, remote = "origin"): Promise<boolean> {
     return pull(this.executor, directory, branchName, remote);
+  }
+
+  async pullBranch(directory: string, branchName: string, remote = "origin"): Promise<void> {
+    return pullBranch(this.executor, directory, branchName, remote);
   }
 
   // ─── Diff operations ──────────────────────────────────────────────────────

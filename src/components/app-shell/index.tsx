@@ -72,6 +72,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     refresh: refreshWorkspaces,
     createWorkspace,
     deleteWorkspace,
+    pullLatestChanges,
     exportConfig,
     importConfig,
   } = useWorkspaces();
@@ -258,6 +259,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         updateServer={updateServer}
         deleteServer={deleteServer}
         deleteWorkspace={deleteWorkspace}
+        pullLatestChanges={pullLatestChanges}
         exportConfig={exportConfig}
         importConfig={importConfig}
         dashboardData={dashboardData}

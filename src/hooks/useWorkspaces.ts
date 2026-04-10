@@ -25,6 +25,10 @@ export interface UseWorkspacesResult {
   updateWorkspace: (id: string, name: string) => Promise<Workspace | null>;
   /** Delete a workspace (only if it has no loops) */
   deleteWorkspace: (id: string) => Promise<{ success: boolean; error?: string }>;
+  /** Pull latest changes for the workspace default branch */
+  pullLatestChanges: (
+    id: string,
+  ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;
   /** Get workspace by directory */
   getWorkspaceByDirectory: (directory: string) => Promise<Workspace | null>;
   /** Fetch all workspace configs as JSON from the export API */
@@ -161,6 +165,42 @@ export function useWorkspaces(): UseWorkspacesResult {
     }
   }, [fetchWorkspaces]);
 
+  const pullLatestChanges = useCallback(async (
+    id: string,
+  ): Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }> => {
+    try {
+      setSaving(true);
+      setError(null);
+      const response = await appFetch(`/api/workspaces/${id}/pull-latest-changes`, {
+        method: "POST",
+      });
+
+      const body = await response.json() as {
+        defaultBranch?: string;
+        currentBranch?: string;
+        message?: string;
+      };
+
+      if (!response.ok) {
+        const message = body.message || "Failed to pull latest changes";
+        log.warn("Failed to pull latest changes", { workspaceId: id, error: message });
+        return { success: false, error: message };
+      }
+
+      return {
+        success: true,
+        defaultBranch: body.defaultBranch,
+        currentBranch: body.currentBranch,
+      };
+    } catch (err) {
+      log.error("Failed to pull latest changes", { workspaceId: id, error: String(err) });
+      setError(String(err));
+      return { success: false, error: String(err) };
+    } finally {
+      setSaving(false);
+    }
+  }, []);
+
   // Get workspace by directory
   const getWorkspaceByDirectory = useCallback(async (directory: string): Promise<Workspace | null> => {
     try {
@@ -261,6 +301,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     createWorkspace,
     updateWorkspace,
     deleteWorkspace,
+    pullLatestChanges,
     getWorkspaceByDirectory,
     exportConfig,
     importConfig,
