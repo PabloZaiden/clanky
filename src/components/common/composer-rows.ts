@@ -1,8 +1,17 @@
 const SINGLE_LINE_ROWS = 1 as const;
 const MULTILINE_ROWS = 2 as const;
+const SINGLE_LINE_MIN_HEIGHT_CLASS = "min-h-[44px]" as const;
+const MULTILINE_MIN_HEIGHT_CLASS = "min-h-[72px]" as const;
 
 export type ComposerRows = typeof SINGLE_LINE_ROWS | typeof MULTILINE_ROWS;
+export type ComposerMinHeightClass =
+  | typeof SINGLE_LINE_MIN_HEIGHT_CLASS
+  | typeof MULTILINE_MIN_HEIGHT_CLASS;
 
 export function getComposerRows(value: string): ComposerRows {
-  return value.split(/\r\n|\r|\n/).length > 1 ? MULTILINE_ROWS : SINGLE_LINE_ROWS;
+  return value.includes("\n") || value.includes("\r") ? MULTILINE_ROWS : SINGLE_LINE_ROWS;
+}
+
+export function getComposerMinHeightClass(rows: ComposerRows): ComposerMinHeightClass {
+  return rows === MULTILINE_ROWS ? MULTILINE_MIN_HEIGHT_CLASS : SINGLE_LINE_MIN_HEIGHT_CLASS;
 }
