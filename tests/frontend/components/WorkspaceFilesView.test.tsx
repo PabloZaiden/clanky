@@ -800,6 +800,74 @@ describe("WorkspaceFilesView", () => {
     expect(queryByText("Editor ready")).not.toBeInTheDocument();
   });
 
+  test("keeps the tree horizontally scrollable for long names and deep nesting", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-horizontal-scroll",
+      name: "Horizontal Scroll",
+      directory: "/workspaces/horizontal-scroll",
+    });
+    const longDirectoryName = "very-long-directory-name-that-should-not-be-truncated-in-the-explorer";
+    const deepDirectoryPath = `packages/${longDirectoryName}`;
+    const longFileName = "extremely-long-file-name-that-should-remain-reachable-from-the-tree.tsx";
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry({
+          name: "packages",
+          path: "packages",
+          kind: "directory",
+        })],
+        packages: [createFileEntry({
+          name: longDirectoryName,
+          path: deepDirectoryPath,
+          kind: "directory",
+        })],
+        [deepDirectoryPath]: [createFileEntry({
+          name: longFileName,
+          path: `${deepDirectoryPath}/${longFileName}`,
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        })],
+      }),
+    }));
+
+    const { getByRole, getByTestId, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "packages" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "packages" }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: longDirectoryName })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: longDirectoryName }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: longFileName })).toBeInTheDocument();
+    });
+
+    const scrollRegion = getByTestId("workspace-file-tree-scroll");
+    const content = getByTestId("workspace-file-tree-content");
+    const longFileButton = getByRole("button", { name: longFileName });
+
+    expect(scrollRegion).toHaveClass("overflow-auto");
+    expect(content).toHaveClass("min-w-full");
+    expect(content).toHaveClass("w-max");
+    expect(longFileButton).toHaveClass("whitespace-nowrap");
+  });
+
   test("toggles hidden files from the explorer toolbar", async () => {
     installEmbeddedSshSessionMock();
     const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
