@@ -1447,12 +1447,10 @@ describe("planning mode", () => {
 describe("loop action bar", () => {
   test("shows action bar for active loops", async () => {
     setupDefaultApi();
-    const { container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      // The LoopActionBar has a textarea for messaging
-      const input = container.querySelector("textarea");
-      expect(input).toBeTruthy();
+      expect(getByRole("textbox", { name: "Loop message" })).toBeTruthy();
     });
   });
 
@@ -1484,15 +1482,13 @@ describe("loop action bar", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, queryByRole } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Merged Loop")).toBeTruthy();
     });
 
-    // The action bar should not be present for merged loops that are no longer addressable.
-    const input = container.querySelector("textarea");
-    expect(input).toBeNull();
+    expect(queryByRole("textbox", { name: "Loop message" })).toBeNull();
   });
 
   test("shows restart composer for addressable merged loops and submits follow-up", async () => {

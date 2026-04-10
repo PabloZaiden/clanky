@@ -180,7 +180,7 @@ describe("plan mode scenario", () => {
     });
 
     window.location.hash = `/loop/${LOOP_ID}`;
-    const { getAllByText, getByText, user } = renderWithUser(<App />);
+    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
@@ -191,18 +191,11 @@ describe("plan mode scenario", () => {
       expect(getByText(/Initial Plan/)).toBeTruthy();
     });
 
-    // Find the LoopActionBar input (used for feedback in planning mode)
-    const feedbackInput = document.querySelector("textarea") as HTMLTextAreaElement;
-    expect(feedbackInput).toBeTruthy();
+    const feedbackInput = getByRole("textbox", { name: "Plan feedback" }) as HTMLTextAreaElement;
     expect(feedbackInput.placeholder).toContain("feedback");
     await user.type(feedbackInput, "X");
 
-    // Click Send Feedback (button uses aria-label instead of text)
-    const feedbackBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.getAttribute("aria-label")?.includes("Send Feedback"),
-    );
-    expect(feedbackBtn).toBeTruthy();
-    await user.click(feedbackBtn!);
+    await user.click(getByRole("button", { name: "Send Feedback" }));
 
     // API should have been called
     await waitFor(() => {
