@@ -101,6 +101,7 @@ describe("ChatDetails", () => {
     expect((getByLabelText("Message") as HTMLTextAreaElement).tagName).toBe("TEXTAREA");
     expect(queryByText("Assistant")).toBeNull();
     expect(queryByText("You")).toBeNull();
+    expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
 
     await user.type(getByLabelText("Message"), "Please summarize the risk.");
     await user.click(getByRole("button", { name: "Send" }));

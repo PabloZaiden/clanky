@@ -31,10 +31,11 @@ function defaultProps(overrides?: Partial<Parameters<typeof LoopActionBar>[0]>) 
 describe("LoopActionBar", () => {
   describe("basic rendering", () => {
     test("renders the message input", () => {
-      const { getByPlaceholderText } = renderWithUser(
+      const { getByPlaceholderText, queryByText } = renderWithUser(
         <LoopActionBar {...defaultProps()} />
       );
       expect(getByPlaceholderText("Send a message to steer the agent...")).toBeInTheDocument();
+      expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
     });
 
     test("renders the Send button", () => {
