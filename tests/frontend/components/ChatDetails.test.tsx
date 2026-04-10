@@ -877,4 +877,60 @@ describe("ChatDetails", () => {
 
     expect(openedChatId).toBe(CHAT_ID);
   });
+
+  test("renders compact mobile header actions with a menu for secondary controls", async () => {
+    const baseChat = createChat();
+    const longChat = createChat({
+      config: {
+        ...baseChat.config,
+        name: "Repo pairing with a very long mobile title that should stay compact",
+        directory: "/workspaces/retailstoreagent",
+      },
+      state: {
+        ...baseChat.state,
+        worktree: {
+          worktreePath: "/workspaces/retailstoreagent/.ralph-worktrees/96635141-fc99-4798-8cbb-7b94e3dfc905",
+          workingBranch: "chat-ltimos-cambios-en-prompts-96635141",
+          originalBranch: "main",
+        },
+      },
+    });
+
+    api.get("/api/chats/:id", () => longChat);
+
+    const { getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    const heading = await waitFor(() => getByText(longChat.config.name));
+    expect(heading.className).toContain("truncate");
+
+    const transcriptMetadata = getByText(`${longChat.config.directory} · ${longChat.state.worktree?.worktreePath}`);
+    expect(transcriptMetadata.className).toContain("truncate");
+
+    const branchMetadata = getByText(longChat.state.worktree?.workingBranch ?? "");
+    expect(branchMetadata.className).toContain("truncate");
+
+    expect(getByRole("button", { name: "More chat actions" })).toBeTruthy();
+    expect(getByRole("button", { name: "Spawn loop" })).toBeTruthy();
+
+    await user.click(getByRole("button", { name: "More chat actions" }));
+
+    expect(getByRole("menuitem", { name: "Code explorer" })).toBeTruthy();
+    expect(getByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    expect(getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+  });
+
+  test("opens rename from the compact mobile action menu", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByRole, getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "More chat actions" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "More chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Rename" }));
+
+    expect(await waitFor(() => getByLabelText("Chat Name"))).toBeTruthy();
+  });
 });

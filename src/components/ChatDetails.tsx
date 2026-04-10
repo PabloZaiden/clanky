@@ -5,7 +5,16 @@ import {
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
 import { RenameChatModal } from "./RenameChatModal";
-import { Button, ConfirmModal, StatusBadge, getChatStatusBadgeVariant, getComposerMinHeightClass, getComposerRows } from "./common";
+import {
+  ActionMenu,
+  Button,
+  ConfirmModal,
+  StatusBadge,
+  type ActionMenuItem,
+  getChatStatusBadgeVariant,
+  getComposerMinHeightClass,
+  getComposerRows,
+} from "./common";
 import { ChatFocusModeBar } from "./chat-details/chat-focus-mode-bar";
 import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
 import { getFocusModeViewportStyle, useVisualViewport } from "./ssh-session/use-visual-viewport";
@@ -405,6 +414,28 @@ export function ChatDetails({
     return chat.config.directory;
   }, [chat]);
 
+  const mobileActionMenuItems = useMemo<ActionMenuItem[]>(() => {
+    if (!chat) {
+      return [];
+    }
+
+    return [
+      {
+        label: "Code explorer",
+        onClick: () => onOpenCodeExplorer?.(chat.config.id),
+      },
+      {
+        label: "Rename",
+        onClick: () => setIsRenameModalOpen(true),
+      },
+      {
+        label: "Delete",
+        onClick: () => setIsDeleteConfirmOpen(true),
+        destructive: true,
+      },
+    ];
+  }, [chat, onOpenCodeExplorer]);
+
   if (loading) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;
   }
@@ -558,52 +589,67 @@ export function ChatDetails({
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
       <header className={`border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}>
-        <div className="flex flex-wrap items-start gap-3">
-          {showBackButton && onBack && (
-            <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-              Back
-            </Button>
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-lg font-semibold text-gray-950 dark:text-gray-100">
-                {chat.config.name}
-              </h1>
-              <StatusBadge variant={getChatStatusBadgeVariant(chat.state.status)}>
-                {getChatStatusLabel(chat.state.status)}
-              </StatusBadge>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3 sm:flex-1">
+            {showBackButton && onBack && (
+              <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+                Back
+              </Button>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-gray-950 dark:text-gray-100" title={chat.config.name}>
+                  {chat.config.name}
+                </h1>
+                <StatusBadge
+                  variant={getChatStatusBadgeVariant(chat.state.status)}
+                  className="shrink-0"
+                >
+                  {getChatStatusLabel(chat.state.status)}
+                </StatusBadge>
+              </div>
+              <p
+                className="mt-1 truncate text-sm text-gray-500 dark:text-gray-400"
+                title={transcriptDescription}
+              >
+                {transcriptDescription}
+              </p>
+              {chat.state.worktree?.workingBranch && (
+                <p
+                  className="mt-1 truncate text-xs font-mono text-gray-500 dark:text-gray-400"
+                  title={chat.state.worktree.workingBranch}
+                >
+                  {chat.state.worktree.workingBranch}
+                </p>
+              )}
+              {chat.state.error && (
+                <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                  {chat.state.error.message}
+                </p>
+              )}
             </div>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{transcriptDescription}</p>
-            {chat.state.worktree?.workingBranch && (
-              <p className="mt-1 text-xs font-mono text-gray-500 dark:text-gray-400">
-                {chat.state.worktree.workingBranch}
-              </p>
-            )}
-            {chat.state.error && (
-              <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-                {chat.state.error.message}
-              </p>
-            )}
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              onClick={() => onOpenCodeExplorer?.(chat.config.id)}
-              disabled={isDeletePending}
-            >
-              Code explorer
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              onClick={() => setIsRenameModalOpen(true)}
-              disabled={isDeletePending}
-            >
-              Rename
-            </Button>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <div className="hidden items-center gap-2 sm:flex">
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={() => onOpenCodeExplorer?.(chat.config.id)}
+                disabled={isDeletePending}
+              >
+                Code explorer
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                onClick={() => setIsRenameModalOpen(true)}
+                disabled={isDeletePending}
+              >
+                Rename
+              </Button>
+            </div>
             <Button
               type="button"
               variant="ghost"
@@ -627,10 +673,20 @@ export function ChatDetails({
             >
               Spawn Loop
             </Button>
+            <div className="sm:hidden">
+              <ActionMenu
+                items={mobileActionMenuItems}
+                ariaLabel="More chat actions"
+                disabled={isDeletePending}
+                triggerContent="More"
+                triggerClassName="min-h-[32px] min-w-0 bg-transparent px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:bg-transparent dark:text-gray-300 dark:hover:bg-neutral-800"
+              />
+            </div>
             <Button
               type="button"
               variant="danger"
               size="xs"
+              className="hidden sm:inline-flex"
               onClick={() => setIsDeleteConfirmOpen(true)}
               loading={isDeletePending}
               aria-label="Delete chat"
