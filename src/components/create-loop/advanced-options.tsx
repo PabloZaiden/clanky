@@ -114,7 +114,7 @@ export function AdvancedOptions({
               />
               <div className="flex-1">
                 <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Clear ./.planning folder
+                  Clear ./.ralph-planning folder
                 </span>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Delete existing plan and status files before starting

@@ -133,13 +133,12 @@ describe("Plan + Loop User Scenarios", () => {
       await waitForGitAvailable(ctx.workDir);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      // Add extra files to .planning
-      await writeFile(join(ctx.workDir, ".planning/extra-plan.md"), "Extra plan content");
-      await Bun.$`git -C ${ctx.workDir} add .`.quiet();
-      await Bun.$`git -C ${ctx.workDir} commit -m "Add extra plan file"`.quiet();
+      // Add an ignored file to the main checkout's managed planning directory.
+      // Plan-mode clearing happens in the worktree, not in the source checkout.
+      await writeFile(join(ctx.workDir, ".ralph-planning/extra-plan.md"), "Extra plan content");
 
       // Verify extra file exists
-      const extraExists = await Bun.file(join(ctx.workDir, ".planning/extra-plan.md")).exists();
+      const extraExists = await Bun.file(join(ctx.workDir, ".ralph-planning/extra-plan.md")).exists();
       expect(extraExists).toBe(true);
 
       // Create loop with both plan mode and clear planning folder
@@ -156,14 +155,15 @@ describe("Plan + Loop User Scenarios", () => {
       // Wait for planning status
       await waitForLoopStatus(ctx.baseUrl, loop.config.id, "planning");
 
-      // Verify .planning was cleared in the worktree (not the main checkout)
+      // Verify .ralph-planning was cleared in the worktree (not the main checkout)
       const planLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "planning");
       const worktreePath = planLoop.state.git?.worktreePath;
       expect(worktreePath).toBeDefined();
-      const planningDir = join(worktreePath!, ".planning");
+      const planningDir = join(worktreePath!, ".ralph-planning");
       const files = await readdir(planningDir);
       // Should be cleared (may have new files created by the agent)
       expect(files.length).toBeLessThanOrEqual(2);
+      expect(await Bun.file(join(ctx.workDir, ".ralph-planning/extra-plan.md")).exists()).toBe(true);
 
       // Clean up - wait for status to confirm deletion
       await discardPlanViaAPI(ctx.baseUrl, loop.config.id);

@@ -807,6 +807,9 @@ describe("StopPatternDetector", () => {
       const calls: string[] = [];
       const mockGitService = {
         isGitRepo: async () => true,
+        ensureWorktreeExcluded: async () => {
+          calls.push("exclude");
+        },
         getCurrentBranch: async () => "feature/current",
         checkoutBranch: async (_directory: string, branch: string) => {
           calls.push(`checkout:${branch}`);
@@ -832,6 +835,7 @@ describe("StopPatternDetector", () => {
       await (engine as unknown as { setupGitBranch: () => Promise<void> }).setupGitBranch();
 
       expect(calls).toEqual([
+        "exclude",
         "checkout:main",
         "pull:main",
         `createWorktree:${engine.state.git?.workingBranch}:main`,
@@ -852,6 +856,9 @@ describe("StopPatternDetector", () => {
       const baseBranchName = "my-feature-46817f3";
       const mockGitService = {
         isGitRepo: async () => true,
+        ensureWorktreeExcluded: async () => {
+          calls.push("exclude");
+        },
         getCurrentBranch: async () => "main",
         checkoutBranch: async (_directory: string, branch: string) => {
           calls.push(`checkout:${branch}`);
@@ -883,6 +890,7 @@ describe("StopPatternDetector", () => {
 
       expect(engine.state.git?.workingBranch).toBe(`${baseBranchName}-2`);
       expect(calls).toEqual([
+        "exclude",
         "pull:main",
         `createWorktree:${baseBranchName}-2:main`,
       ]);
@@ -1545,18 +1553,18 @@ describe("StopPatternDetector", () => {
     // Helper to get the worktree path from engine state
     function getWorktreePlanningDir(engine: LoopEngine): string {
       const worktreePath = engine.state.git?.worktreePath;
-      return join(worktreePath ?? testDir, ".planning");
+      return join(worktreePath ?? testDir, ".ralph-planning");
     }
 
-    test("clears .planning folder when clearPlanningFolder is true", async () => {
-      // Create .planning folder with files
-      const planningDir = join(testDir, ".planning");
+    test("clears .ralph-planning folder when clearPlanningFolder is true", async () => {
+      // Create .ralph-planning folder with files
+      const planningDir = join(testDir, ".ralph-planning");
       await Bun.$`mkdir -p ${planningDir}`.quiet();
       await writeFile(join(planningDir, "plan.md"), "# Old Plan\nSome old content");
       await writeFile(join(planningDir, "status.md"), "# Old Status\nPrevious status");
       await writeFile(join(planningDir, ".gitkeep"), "");
       
-      // Commit the .planning folder so the files are in the worktree
+      // Commit the .ralph-planning folder so the files are in the worktree
       await Bun.$`git add .`.cwd(testDir).quiet();
       await Bun.$`git commit -m "Add planning files"`.cwd(testDir).quiet();
 
@@ -1577,7 +1585,7 @@ describe("StopPatternDetector", () => {
 
       expect(engine.state.status).toBe("completed");
 
-      // Verify .planning folder was cleared in the worktree (only .gitkeep should remain)
+      // Verify .ralph-planning folder was cleared in the worktree (only .gitkeep should remain)
       const { readdir } = await import("fs/promises");
       const wtPlanningDir = getWorktreePlanningDir(engine);
       const files = await readdir(wtPlanningDir);
@@ -1585,19 +1593,19 @@ describe("StopPatternDetector", () => {
       
       // Check that log event was emitted for clearing
       const clearLogs = emittedEvents.filter(
-        (e) => e.type === "loop.log" && e.message.includes("Clearing .planning folder")
+        (e) => e.type === "loop.log" && e.message.includes("Clearing .ralph-planning folder")
       );
       expect(clearLogs.length).toBe(1);
     }, 10000);
 
-    test("does not clear .planning folder when clearPlanningFolder is false (default)", async () => {
-      // Create .planning folder with files
-      const planningDir = join(testDir, ".planning");
+    test("does not clear .ralph-planning folder when clearPlanningFolder is false (default)", async () => {
+      // Create .ralph-planning folder with files
+      const planningDir = join(testDir, ".ralph-planning");
       await Bun.$`mkdir -p ${planningDir}`.quiet();
       await writeFile(join(planningDir, "plan.md"), "# Existing Plan");
       await writeFile(join(planningDir, "status.md"), "# Existing Status");
       
-      // Commit the .planning folder so the files are in the worktree
+      // Commit the .ralph-planning folder so the files are in the worktree
       await Bun.$`git add .`.cwd(testDir).quiet();
       await Bun.$`git commit -m "Add planning files"`.cwd(testDir).quiet();
 
@@ -1618,7 +1626,7 @@ describe("StopPatternDetector", () => {
 
       expect(engine.state.status).toBe("completed");
 
-      // Verify .planning folder still has all files in the worktree
+      // Verify .ralph-planning folder still has all files in the worktree
       const { readdir, readFile } = await import("fs/promises");
       const wtPlanningDir = getWorktreePlanningDir(engine);
       const files = await readdir(wtPlanningDir);
@@ -1630,14 +1638,14 @@ describe("StopPatternDetector", () => {
       
       // Check that no clear log event was emitted
       const clearLogs = emittedEvents.filter(
-        (e) => e.type === "loop.log" && e.message.includes("Clearing .planning folder")
+        (e) => e.type === "loop.log" && e.message.includes("Clearing .ralph-planning folder")
       );
       expect(clearLogs.length).toBe(0);
     }, 10000);
 
-    test("handles missing .planning folder gracefully", async () => {
-      // Ensure no .planning folder exists
-      const planningDir = join(testDir, ".planning");
+    test("handles missing .ralph-planning folder gracefully", async () => {
+      // Ensure no .ralph-planning folder exists
+      const planningDir = join(testDir, ".ralph-planning");
       await Bun.$`rm -rf ${planningDir}`.quiet();
 
       const loop = createTestLoop({ 
@@ -1657,18 +1665,21 @@ describe("StopPatternDetector", () => {
       await engine.start();
 
       expect(engine.state.status).toBe("completed");
-      
-      // Check that debug log was emitted about missing directory
+
+      // Ralpher now creates the managed planning directory before clearing it.
+      const { readdir } = await import("fs/promises");
+      expect(await readdir(getWorktreePlanningDir(engine))).toEqual([]);
+
       const debugLogs = emittedEvents.filter(
-        (e) => e.type === "loop.log" && e.message === ".planning directory does not exist, skipping clear"
+        (e) => e.type === "loop.log" && e.message === ".ralph-planning directory is already empty"
       );
       expect(debugLogs.length).toBe(1);
     }, 10000);
 
-    test("handles empty .planning folder gracefully", async () => {
-      // Create .planning folder with only .gitkeep, commit, then remove .gitkeep and commit.
-      // Git doesn't track empty directories, so the worktree won't have the .planning dir at all.
-      const planningDir = join(testDir, ".planning");
+    test("handles empty .ralph-planning folder gracefully", async () => {
+      // Create .ralph-planning folder with only .gitkeep, commit, then remove .gitkeep and commit.
+      // Git doesn't track empty directories, so the worktree won't have the .ralph-planning dir at all.
+      const planningDir = join(testDir, ".ralph-planning");
       await Bun.$`mkdir -p ${planningDir}`.quiet();
       await writeFile(join(planningDir, ".gitkeep"), "");
       await Bun.$`git add .`.cwd(testDir).quiet();
@@ -1694,23 +1705,25 @@ describe("StopPatternDetector", () => {
 
       expect(engine.state.status).toBe("completed");
       
-      // Git doesn't track empty directories, so the worktree won't have the .planning dir.
-      // clearPlanningFolder should report it as "does not exist" rather than "already empty".
+      // Git doesn't track empty directories, but Ralpher recreates the managed directory.
+      const { readdir } = await import("fs/promises");
+      expect(await readdir(getWorktreePlanningDir(engine))).toEqual([]);
+
       const debugLogs = emittedEvents.filter(
-        (e) => e.type === "loop.log" && e.message === ".planning directory does not exist, skipping clear"
+        (e) => e.type === "loop.log" && e.message === ".ralph-planning directory is already empty"
       );
       expect(debugLogs.length).toBe(1);
     }, 10000);
 
-    test("preserves .gitkeep when clearing .planning folder", async () => {
-      // Create .planning folder with files including .gitkeep
-      const planningDir = join(testDir, ".planning");
+    test("preserves .gitkeep when clearing .ralph-planning folder", async () => {
+      // Create .ralph-planning folder with files including .gitkeep
+      const planningDir = join(testDir, ".ralph-planning");
       await Bun.$`mkdir -p ${planningDir}`.quiet();
       await writeFile(join(planningDir, "plan.md"), "# Plan to delete");
       await writeFile(join(planningDir, "status.md"), "# Status to delete");
       await writeFile(join(planningDir, ".gitkeep"), "");
       
-      // Commit the .planning folder so the files are in the worktree
+      // Commit the .ralph-planning folder so the files are in the worktree
       await Bun.$`git add .`.cwd(testDir).quiet();
       await Bun.$`git commit -m "Add planning files with gitkeep"`.cwd(testDir).quiet();
 
@@ -1744,16 +1757,16 @@ describe("StopPatternDetector", () => {
       expect(clearLogs.length).toBe(1);
     }, 10000);
 
-    test("clears subdirectories in .planning folder", async () => {
-      // Create .planning folder with nested structure
-      const planningDir = join(testDir, ".planning");
+    test("clears subdirectories in .ralph-planning folder", async () => {
+      // Create .ralph-planning folder with nested structure
+      const planningDir = join(testDir, ".ralph-planning");
       const subDir = join(planningDir, "subdir");
       await Bun.$`mkdir -p ${subDir}`.quiet();
       await writeFile(join(planningDir, "plan.md"), "# Main plan");
       await writeFile(join(subDir, "nested.md"), "# Nested file");
       await writeFile(join(planningDir, ".gitkeep"), "");
       
-      // Commit the .planning folder so the files are in the worktree
+      // Commit the .ralph-planning folder so the files are in the worktree
       await Bun.$`git add .`.cwd(testDir).quiet();
       await Bun.$`git commit -m "Add nested planning files"`.cwd(testDir).quiet();
 
@@ -1782,13 +1795,13 @@ describe("StopPatternDetector", () => {
     }, 10000);
 
     test("clearing happens after git branch setup (so deletions can be committed)", async () => {
-      // Create .planning folder with files
-      const planningDir = join(testDir, ".planning");
+      // Create .ralph-planning folder with files
+      const planningDir = join(testDir, ".ralph-planning");
       await Bun.$`mkdir -p ${planningDir}`.quiet();
       await writeFile(join(planningDir, "plan.md"), "# Old Plan");
       await writeFile(join(planningDir, ".gitkeep"), "");
       
-      // Commit the .planning folder
+      // Commit the .ralph-planning folder
       await Bun.$`git add .`.cwd(testDir).quiet();
       await Bun.$`git commit -m "Add planning files"`.cwd(testDir).quiet();
 
@@ -1810,7 +1823,7 @@ describe("StopPatternDetector", () => {
       // Check the order of events: git setup should happen before clear (since clear commits after)
       const logEvents = emittedEvents.filter((e) => e.type === "loop.log");
       const clearIndex = logEvents.findIndex((e) => 
-        e.type === "loop.log" && e.message.includes("Clearing .planning folder")
+        e.type === "loop.log" && e.message.includes("Clearing .ralph-planning folder")
       );
       const gitIndex = logEvents.findIndex((e) => 
         e.type === "loop.log" && e.message.includes("Setting up git branch")

@@ -54,7 +54,7 @@ export interface CreateLoopFormProps {
   lastModel?: { providerID: string; modelID: string; variant?: string } | null;
   /** Callback when workspace changes (to reload models and branches) */
   onWorkspaceChange?: (workspaceId: string | null, directory: string) => void;
-  /** Warning about .planning directory */
+  /** Warning about the managed planning directory */
   planningWarning?: string | null;
   /** Available branches for the workspace's directory */
   branches?: BranchInfo[];

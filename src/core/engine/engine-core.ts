@@ -41,6 +41,8 @@ import { SimpleEventEmitter, loopEventEmitter } from "../event-emitter";
 import { log } from "../logger";
 import { markCommentsAsAddressed } from "../../persistence/review-comments";
 import { assertValidTransition } from "../loop-state-machine";
+import { ensurePlanningDirectory } from "../planning-directory";
+import { getPlanFilePath } from "../../lib/planning-files";
 
 import {
   type LoopBackend,
@@ -387,12 +389,15 @@ export class LoopEngine {
         this.emitLog("info", "Skipping git branch setup (review cycle)");
       }
 
-      // Clear .planning folder if requested (after branch setup, so deletions are on the new branch)
+      const planningExecutor = await backendManager.getCommandExecutorAsync(this.config.workspaceId, this.workingDirectory);
+      await ensurePlanningDirectory(planningExecutor, this.workingDirectory);
+
+      // Clear .ralph-planning folder if requested (after branch setup, so deletions are on the new branch)
       // NEVER clear if plan mode already cleared it
       if (this.loop.state.planMode?.planningFolderCleared) {
-        this.emitLog("info", "Skipping .planning folder clear - already cleared during plan mode");
+        this.emitLog("info", "Skipping .ralph-planning folder clear - already cleared during plan mode");
       } else if (this.config.clearPlanningFolder) {
-        this.emitLog("info", "Clearing .planning folder...");
+        this.emitLog("info", "Clearing .ralph-planning folder...");
         await this.clearPlanningFolder();
       }
 
@@ -622,7 +627,7 @@ export class LoopEngine {
   // ---------------------------------------------------------------------------
 
   /**
-   * Clear the .planning folder contents (except .gitkeep).
+   * Clear the .ralph-planning folder contents (except .gitkeep).
    * If any tracked files were deleted, commits the changes.
    */
   private async clearPlanningFolder(): Promise<void> {
@@ -1052,7 +1057,7 @@ export class LoopEngine {
 
   /**
    * Handle a "plan_ready" iteration outcome.
-   * Reads plan content from the .planning folder, updates plan mode state,
+   * Reads plan content from the .ralph-planning folder, updates plan mode state,
    * emits the plan ready event, and exits the loop (waits for user feedback).
    * Always returns true (loop should exit).
    */
@@ -1061,11 +1066,11 @@ export class LoopEngine {
       iteration: this.loop.state.currentIteration,
     });
 
-    // Read plan content from .planning/plan.md if possible
+    // Read plan content from .ralph-planning/plan.md if possible
     let planContent: string | undefined;
     try {
       const planExecutor = await backendManager.getCommandExecutorAsync(this.config.workspaceId, this.workingDirectory);
-      const planFilePath = `${this.workingDirectory}/.planning/plan.md`;
+      const planFilePath = getPlanFilePath(this.workingDirectory);
       const planFileExists = await planExecutor.fileExists(planFilePath);
       if (planFileExists) {
         planContent = await planExecutor.readFile(planFilePath) ?? undefined;

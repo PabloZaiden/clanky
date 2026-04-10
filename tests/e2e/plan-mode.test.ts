@@ -49,7 +49,7 @@ describe("Plan Mode E2E Workflow", () => {
   });
 
   test("full plan mode workflow: create -> feedback -> accept -> complete", async () => {
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
 
     // 1. Create loop with plan mode
@@ -136,7 +136,7 @@ describe("Plan Mode E2E Workflow", () => {
     expect(loopData.state.status).toBe("planning");
 
     // 3. Create plan file
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "# Plan to discard");
 
@@ -201,7 +201,7 @@ describe("Plan Mode E2E Workflow", () => {
   test("plan mode with clearPlanningFolder preserves plan after acceptance", async () => {
     // Setup: Create existing files to be cleared and commit them to git
     // (files must be committed so they appear in the worktree checkout)
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "old-file.md"), "Old content");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
@@ -230,7 +230,7 @@ describe("Plan Mode E2E Workflow", () => {
     const loopData2 = await ctx.manager.getLoop(loopId);
     const worktreePath = loopData2!.state.git?.worktreePath;
     expect(worktreePath).toBeDefined();
-    const wtPlanningDir = join(worktreePath!, ".planning");
+    const wtPlanningDir = join(worktreePath!, ".ralph-planning");
 
     // Verify old file was cleared in the worktree
     expect(await exists(join(wtPlanningDir, "old-file.md"))).toBe(false);
