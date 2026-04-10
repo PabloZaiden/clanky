@@ -12,6 +12,7 @@ import { byDirectoryRoutes } from "./by-directory";
 import { serverSettingsRoutes } from "./server-settings";
 import { exportImportRoutes } from "./export-import";
 import { workspaceFilesRoutes } from "./files";
+import { workspaceMaintenanceRoutes } from "./maintenance";
 
 export const workspacesRoutes = {
   ...crudRoutes,
@@ -20,4 +21,5 @@ export const workspacesRoutes = {
   ...serverSettingsRoutes,
   ...exportImportRoutes,
   ...workspaceFilesRoutes,
+  ...workspaceMaintenanceRoutes,
 };

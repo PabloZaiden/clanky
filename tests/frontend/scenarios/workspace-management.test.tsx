@@ -477,6 +477,55 @@ describe("workspace management scenario", () => {
     expect(getAllByText("stdio").length).toBeGreaterThan(0);
   });
 
+  test("workspace settings own restart, rebuild, and pull latest actions", async () => {
+    setupBaseApi();
+
+    const provisionedWorkspace = createWorkspace({
+      ...WORKSPACE,
+      sourceDirectory: "/workspaces/existing",
+      sshServerId: "server-1",
+    });
+
+    api.get("/api/loops", () => []);
+    api.get("/api/chats", () => []);
+    api.get("/api/ssh-sessions", () => []);
+    api.get("/api/workspaces", () => [provisionedWorkspace]);
+    api.get("/api/workspaces/:id", () => provisionedWorkspace);
+    api.post("/api/workspaces/:id/pull-latest-changes", () => ({
+      success: true,
+      defaultBranch: "main",
+      currentBranch: "main",
+    }), 200);
+
+    const { getAllByText, getByRole, queryByRole, user } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
+    });
+
+    await user.click(getAllByText("Existing Project")[0]!);
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
+    });
+
+    expect(queryByRole("button", { name: "Restart" })).toBeNull();
+    expect(queryByRole("button", { name: "Rebuild" })).toBeNull();
+
+    await user.click(getByRole("button", { name: "Open workspace settings" }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Pull Latest Changes" })).toBeTruthy();
+    });
+
+    expect(getByRole("button", { name: "Restart" })).toBeTruthy();
+    expect(getByRole("button", { name: "Rebuild" })).toBeTruthy();
+
+    await user.click(getByRole("button", { name: "Pull Latest Changes" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/workspaces/:id/pull-latest-changes", "POST")).toHaveLength(1);
+    });
+  });
+
   test("workspace activity card keeps SSH copy clear when legacy sessions exist on stdio workspaces", async () => {
     setupBaseApi();
 

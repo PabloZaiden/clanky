@@ -52,7 +52,6 @@ export function WorkspaceView({
   onNavigate: (route: ShellRoute) => void;
 }) {
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
-  const isAutoProvisioned = Boolean(workspace.sourceDirectory);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
   const activityDescription = workspaceSshEnabled
     ? "Loops, chats, and SSH sessions in this workspace."
@@ -89,28 +88,6 @@ export function WorkspaceView({
       headerOffsetClassName={headerOffsetClassName}
       actions={(
         <>
-          {isAutoProvisioned && (
-            <>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => onNavigate({ view: "restart-workspace", workspaceId: workspace.id })}
-                title="Restart devbox"
-                className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
-              >
-                Restart
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => onNavigate({ view: "rebuild-workspace", workspaceId: workspace.id })}
-                title="Rebuild devbox"
-                className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0"
-              >
-                Rebuild
-              </Button>
-            </>
-          )}
           <Button
             variant="ghost"
             size="sm"
