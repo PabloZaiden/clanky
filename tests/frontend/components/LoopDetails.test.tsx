@@ -1450,8 +1450,8 @@ describe("loop action bar", () => {
     const { container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      // The LoopActionBar has a text input for messaging
-      const input = container.querySelector("input[type='text']");
+      // The LoopActionBar has a textarea for messaging
+      const input = container.querySelector("textarea");
       expect(input).toBeTruthy();
     });
   });
@@ -1491,7 +1491,7 @@ describe("loop action bar", () => {
     });
 
     // The action bar should not be present for merged loops that are no longer addressable.
-    const input = container.querySelector("input[type='text']");
+    const input = container.querySelector("textarea");
     expect(input).toBeNull();
   });
 

@@ -192,7 +192,7 @@ describe("plan mode scenario", () => {
     });
 
     // Find the LoopActionBar input (used for feedback in planning mode)
-    const feedbackInput = document.querySelector("input[type='text']") as HTMLInputElement;
+    const feedbackInput = document.querySelector("textarea") as HTMLTextAreaElement;
     expect(feedbackInput).toBeTruthy();
     expect(feedbackInput.placeholder).toContain("feedback");
     await user.type(feedbackInput, "X");
