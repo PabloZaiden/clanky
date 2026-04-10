@@ -327,4 +327,65 @@ describe("Chats API Integration", () => {
     const persisted = await getResponse.json();
     expect(persisted.config.name).toBe("Renamed Chat");
   });
+
+  test("spawns a plan-mode loop from an existing chat without deleting the chat", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Spawn Source Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Turn this debugging conversation into a loop plan.",
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    const settledChat = await waitForChatIdle(chatId) as {
+      state: {
+        status: string;
+        messages: Array<{ role: string; content: string }>;
+      };
+    };
+    expect(settledChat.state.status).toBe("idle");
+
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop`, {
+      method: "POST",
+    });
+    expect(spawnResponse.status).toBe(201);
+    const spawnedLoop = await spawnResponse.json();
+
+    expect(spawnedLoop.config.id).not.toBe(chatId);
+    expect(spawnedLoop.config.workspaceId).toBe(testWorkspaceId);
+    expect(spawnedLoop.config.planMode).toBe(true);
+    expect(spawnedLoop.config.prompt).toContain("Chat title: Spawn Source Chat");
+    expect(spawnedLoop.config.prompt).toContain("Turn this debugging conversation into a loop plan.");
+    expect(spawnedLoop.config.prompt).toContain("Hello from chat API");
+
+    const listLoopsResponse = await fetch(`${baseUrl}/api/loops`);
+    expect(listLoopsResponse.status).toBe(200);
+    const loops = await listLoopsResponse.json();
+    expect(loops.some((loop: { config: { id: string } }) => loop.config.id === spawnedLoop.config.id)).toBe(true);
+
+    const chatResponse = await fetch(`${baseUrl}/api/chats/${chatId}`);
+    expect(chatResponse.status).toBe(200);
+    const chatAfterSpawn = await chatResponse.json();
+    expect(
+      chatAfterSpawn.state.messages.map((message: { content: string }) => message.content),
+    ).toEqual(
+      settledChat.state.messages.map((message) => message.content),
+    );
+  });
 });

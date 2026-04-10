@@ -8,21 +8,23 @@
  */
 
 import type { Backend, PromptInput, AgentEvent } from "../backends/types";
-import type { Chat, ChatConfig, ChatStatus, LoopLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
+import type { Chat, ChatConfig, ChatStatus, Loop, LoopLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
 import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
 import type { EventStream } from "../utils/event-stream";
 import { createInitialChatState, DEFAULT_CHAT_CONFIG } from "../types/chat";
 import { loadChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
-import { getWorkspace } from "../persistence/workspaces";
+import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { nextWithTimeout } from "./engine/engine-helpers";
 import { isSessionNotFoundError } from "./engine/engine-session";
 import { GitService } from "./git";
+import { loopManager } from "./loop-manager";
 import { createLogger } from "./logger";
 import { sanitizeBranchName } from "../utils";
+import { buildSpawnLoopName, buildSpawnLoopPrompt } from "../utils/chat-to-loop-prompt";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -353,6 +355,54 @@ export class ChatManager {
       });
     }
     return deleted;
+  }
+
+  async spawnLoopFromChat(chatId: string): Promise<Loop> {
+    const chat = await loadChat(chatId);
+    if (!chat) {
+      throw new Error(`Chat not found: ${chatId}`);
+    }
+
+    const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const git = GitService.withExecutor(executor);
+    const baseBranch = chat.state.worktree?.originalBranch
+      ?? chat.config.baseBranch
+      ?? await git.getDefaultBranch(chat.config.directory);
+
+    const prompt = buildSpawnLoopPrompt(chat.config.name, chat.state.messages);
+
+    await touchWorkspace(chat.config.workspaceId);
+
+    const loop = await loopManager.createLoop({
+      name: buildSpawnLoopName(chat.config.name),
+      directory: chat.config.directory,
+      prompt,
+      workspaceId: chat.config.workspaceId,
+      modelProviderID: chat.config.model.providerID,
+      modelID: chat.config.model.modelID,
+      modelVariant: chat.config.model.variant,
+      baseBranch,
+      useWorktree: chat.config.useWorktree,
+      planMode: true,
+    });
+
+    try {
+      await loopManager.startPlanMode(loop.config.id);
+      await loopManager.saveLastUsedModel(chat.config.model);
+    } catch (error) {
+      try {
+        await loopManager.deleteLoop(loop.config.id);
+      } catch (cleanupError) {
+        log.warn("Failed to clean up spawned loop after plan-mode start failure", {
+          loopId: loop.config.id,
+          chatId,
+          error: String(cleanupError),
+        });
+      }
+      throw new Error("Failed to start spawned loop in plan mode", { cause: error });
+    }
+
+    return await loopManager.getLoop(loop.config.id) ?? loop;
   }
 
   getChatBackend(chatId: string, workspaceId: string): Backend {

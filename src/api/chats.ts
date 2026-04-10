@@ -240,4 +240,43 @@ export const chatsRoutes = {
       }
     },
   },
+
+  "/api/chats/:id/spawn-loop": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const chat = await chatManager.getChat(req.params.id);
+      if (!chat) {
+        return errorResponse("not_found", "Chat not found", 404);
+      }
+
+      const workspace = await requireWorkspace(chat.config.workspaceId);
+      if (workspace instanceof Response) {
+        return workspace;
+      }
+
+      const modelValidation = await isModelEnabled(
+        workspace.id,
+        workspace.directory,
+        chat.config.model.providerID,
+        chat.config.model.modelID,
+      );
+      if (!modelValidation.enabled) {
+        return errorResponse(
+          modelValidation.errorCode ?? "model_not_enabled",
+          modelValidation.error ?? "The selected model is not available",
+        );
+      }
+
+      try {
+        const loop = await chatManager.spawnLoopFromChat(req.params.id);
+        return Response.json(loop, { status: 201 });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === "Chat transcript is empty. Send at least one message before spawning a loop.") {
+          return errorResponse("empty_transcript", message, 400);
+        }
+        log.error("Failed to spawn loop from chat", { chatId: req.params.id, error: message });
+        return errorResponse("spawn_failed", message, 500);
+      }
+    },
+  },
 };

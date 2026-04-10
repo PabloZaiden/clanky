@@ -17,6 +17,7 @@ import type {
   Chat,
   ChatEvent,
   ComposerImageAttachment,
+  Loop,
   LoopLogEntry,
   MessageData,
   ToolCallData,
@@ -82,11 +83,13 @@ function isStaleTerminalEvent(chat: Chat, timestamp: string): boolean {
 export function ChatDetails({
   chatId,
   onBack,
+  onOpenLoop,
   showBackButton = true,
   headerOffsetClassName,
 }: {
   chatId: string;
   onBack?: () => void;
+  onOpenLoop?: (loopId: string) => void;
   showBackButton?: boolean;
   headerOffsetClassName?: string;
 }) {
@@ -98,6 +101,7 @@ export function ChatDetails({
   const [message, setMessage] = useState("");
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSpawnPending, setIsSpawnPending] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -361,6 +365,29 @@ export function ChatDetails({
     }
   }
 
+  async function handleSpawnLoop() {
+    if (!chat || isActive || isSpawnPending) {
+      return;
+    }
+
+    setIsSpawnPending(true);
+    try {
+      const response = await appFetch(`/api/chats/${chatId}/spawn-loop`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to spawn loop"));
+      }
+      const loop = (await response.json()) as Loop;
+      toast.success("Spawned loop in plan mode");
+      onOpenLoop?.(loop.config.id);
+    } catch (spawnError) {
+      toast.error(String(spawnError));
+    } finally {
+      setIsSpawnPending(false);
+    }
+  }
+
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     attachmentControlRef.current?.handlePaste(event);
   }
@@ -581,6 +608,18 @@ export function ChatDetails({
               title="Focus mode — fullscreen chat with compact controls"
             >
               <span aria-hidden="true" className="text-base leading-none">⤢</span>
+            </Button>
+             <Button
+              type="button"
+              variant="secondary"
+              size="xs"
+              onClick={() => void handleSpawnLoop()}
+              disabled={isActive || isSpawnPending || chat.state.messages.length === 0}
+              loading={isSpawnPending}
+              aria-label="Spawn loop"
+              title={chat.state.messages.length === 0 ? "Send a message before spawning a loop" : "Create a new loop from this chat"}
+            >
+              Spawn Loop
             </Button>
             <Button
               type="button"
