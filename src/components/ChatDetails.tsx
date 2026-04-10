@@ -444,7 +444,6 @@ export function ChatDetails({
           placeholder={isActive ? "Wait for the current turn to finish…" : "Send a message to the agent…"}
           disabled={isActive || isSubmitting}
           rows={2}
-          aria-describedby="chat-message-shortcut-hint"
           className="min-h-[72px] min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600"
         />
         <ImageAttachmentControl
@@ -485,9 +484,6 @@ export function ChatDetails({
           </button>
         )}
       </div>
-      <p id="chat-message-shortcut-hint" className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-        Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.
-      </p>
     </form>
   );
 

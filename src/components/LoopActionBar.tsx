@@ -188,7 +188,6 @@ export function LoopActionBar({
             disabled={disabled || isSubmitting}
             rows={2}
             aria-label={isPlanning ? "Plan feedback" : "Loop message"}
-            aria-describedby="loop-action-bar-shortcut-hint"
             className="flex-1 min-w-0 min-h-[72px] resize-y text-sm px-3 py-2 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
           />
 
@@ -245,9 +244,6 @@ export function LoopActionBar({
             Add a message before sending images.
           </p>
         )}
-        <p id="loop-action-bar-shortcut-hint" className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.
-        </p>
       </form>
     </div>
   );
