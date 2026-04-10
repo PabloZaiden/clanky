@@ -122,6 +122,37 @@ describe("code explorer target helpers", () => {
     expect(getChatCodeExplorerRootDirectory(chat)).toBe("/workspaces/project/.ralph-worktrees/chat-1");
   });
 
+  test("falls back to configured loop and chat directories when worktrees are missing", () => {
+    const loop = createLoopWithStatus("running", {
+      config: {
+        id: "loop-1",
+        directory: "/workspaces/project",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/code-explorer",
+          commits: [],
+        },
+      },
+    });
+    const chat = createChat({
+      config: {
+        directory: "/workspaces/project/chat-dir",
+      },
+      state: {
+        id: "chat-1",
+        status: "idle",
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    });
+
+    expect(getLoopCodeExplorerRootDirectory(loop)).toBe("/workspaces/project");
+    expect(getChatCodeExplorerRootDirectory(chat)).toBe("/workspaces/project/chat-dir");
+  });
+
   test("builds target options across workspaces, loops, servers, and chats", () => {
     const workspace = createWorkspace({
       id: "workspace-1",

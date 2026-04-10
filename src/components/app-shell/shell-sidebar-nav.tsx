@@ -151,8 +151,10 @@ export function ShellSidebarNav({
               <SectionItem
                 key={workspace.id}
                 active={
-                  (route.view === "workspace" || route.view === "workspace-settings") &&
-                  route.workspaceId === workspace.id
+                  (
+                    (route.view === "workspace" || route.view === "workspace-settings")
+                    && route.workspaceId === workspace.id
+                  )
                   || (
                     route.view === "code-explorer"
                     && route.target?.contentType === "workspace"

@@ -851,7 +851,7 @@ describe("ChatDetails", () => {
 
   test("opens the code explorer for the chat context", async () => {
     api.get("/api/chats/:id", () => createChat());
-    let openedChatId: string | null = null;
+    let openedChatId = "";
 
     const { getByRole, user } = renderWithUser(
       <ChatDetails
@@ -868,6 +868,6 @@ describe("ChatDetails", () => {
 
     await user.click(getByRole("button", { name: "Code explorer" }));
 
-    expect(openedChatId === CHAT_ID).toBe(true);
+    expect(openedChatId).toBe(CHAT_ID);
   });
 });

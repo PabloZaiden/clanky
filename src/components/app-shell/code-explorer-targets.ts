@@ -51,11 +51,11 @@ function trimDirectory(directory: string | undefined): string {
 }
 
 export function getLoopCodeExplorerRootDirectory(loop: Loop): string {
-  return trimDirectory(loop.state.git?.worktreePath) || trimDirectory(loop.config.directory);
+  return trimDirectory(loop.state.git?.worktreePath || loop.config.directory);
 }
 
 export function getChatCodeExplorerRootDirectory(chat: Chat): string {
-  return trimDirectory(chat.state.worktree?.worktreePath) || trimDirectory(chat.config.directory);
+  return trimDirectory(chat.state.worktree?.worktreePath || chat.config.directory);
 }
 
 function getRouteTargetId(target: CodeExplorerTarget): string {
