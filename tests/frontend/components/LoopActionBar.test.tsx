@@ -278,6 +278,38 @@ describe("LoopActionBar", () => {
       expect(callArgs.message).toBe("Hello agent");
     });
 
+    test("inserts a newline instead of submitting on plain Enter", async () => {
+      const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
+      const { getByPlaceholderText, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ onSubmit })} />
+      );
+
+      const composer = getByPlaceholderText("Send a message to steer the agent...") as HTMLTextAreaElement;
+      await user.type(composer, "First line{enter}Second line");
+
+      expect(composer.value).toBe("First line\nSecond line");
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    test("submits with Ctrl+Enter", async () => {
+      const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
+      const { getByPlaceholderText, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ onSubmit })} />
+      );
+
+      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Hello agent");
+      await user.keyboard("{Control>}{Enter}{/Control}");
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+      expect(onSubmit.mock.calls[0]![0]).toEqual(
+        expect.objectContaining({
+          message: "Hello agent",
+        }),
+      );
+    });
+
     test("calls onSubmit with model when model is changed", async () => {
       const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
       const models = [
@@ -344,7 +376,7 @@ describe("LoopActionBar", () => {
       await user.click(getByRole("button", { name: "Send" }));
 
       await waitFor(() => {
-        expect((input as HTMLInputElement).value).toBe("");
+        expect((input as HTMLTextAreaElement).value).toBe("");
       });
     });
 
@@ -361,7 +393,7 @@ describe("LoopActionBar", () => {
       await waitFor(() => {
         expect(onSubmit).toHaveBeenCalledTimes(1);
       });
-      expect((input as HTMLInputElement).value).toBe("Test");
+      expect((input as HTMLTextAreaElement).value).toBe("Test");
     });
   });
 

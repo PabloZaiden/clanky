@@ -98,7 +98,7 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
     expect(getByText("Sure, let me take a look.")).toBeTruthy();
-    expect((getByLabelText("Message") as HTMLInputElement).tagName).toBe("INPUT");
+    expect((getByLabelText("Message") as HTMLTextAreaElement).tagName).toBe("TEXTAREA");
     expect(queryByText("Assistant")).toBeNull();
     expect(queryByText("You")).toBeNull();
 
@@ -221,6 +221,21 @@ describe("ChatDetails", () => {
     await waitFor(() => {
       expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(1);
     });
+  });
+
+  test("inserts a newline instead of submitting on plain Enter", async () => {
+    const initialChat = createChat();
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/messages", () => initialChat, 200);
+
+    const { getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
+
+    await user.type(composer, "First line{enter}Second line");
+
+    expect(composer.value).toBe("First line\nSecond line");
+    expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(0);
   });
 
   test("applies chat-scoped websocket message updates", async () => {

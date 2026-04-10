@@ -9,7 +9,7 @@
  * The action bar is only visible when a loop is in an active state (running, waiting, planning).
  */
 
-import { useState, useRef, useCallback, type ClipboardEvent, type FormEvent } from "react";
+import { useState, useRef, useCallback, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import type { ModelInfo, ModelConfig, LoopConfig } from "../types";
 import type { ComposerImageAttachment, MessageImageAttachment } from "../types/message-attachments";
 import { ModelSelector, makeModelKey, parseModelKey, isModelEnabled, getModelDisplayName } from "./ModelSelector";
@@ -65,6 +65,7 @@ export function LoopActionBar({
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const composerFormRef = useRef<HTMLFormElement>(null);
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
 
   // Build current model key for display
@@ -144,15 +145,22 @@ export function LoopActionBar({
     }
   }, [disabled, isSubmitting, onStop]);
 
-  const handlePaste = useCallback((event: ClipboardEvent<HTMLInputElement>) => {
+  const handlePaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
     attachmentControlRef.current?.handlePaste(event);
+  }, []);
+
+  const handleComposerKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      composerFormRef.current?.requestSubmit();
+    }
   }, []);
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-neutral-800 flex-shrink-0 safe-area-bottom">
       {/* Action bar form */}
-      <form onSubmit={handleSubmit} className="p-3 sm:p-4">
-        <div className="flex flex-row gap-2 sm:gap-3">
+      <form ref={composerFormRef} onSubmit={handleSubmit} className="p-3 sm:p-4">
+        <div className="flex flex-row items-end gap-2 sm:gap-3">
           {/* Model selector - hidden during planning since model changes are not supported */}
           {!isPlanning && (
             <ModelSelector
@@ -171,14 +179,17 @@ export function LoopActionBar({
           )}
 
           {/* Message input */}
-          <input
-            type="text"
+          <textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
+            onKeyDown={handleComposerKeyDown}
             onPaste={handlePaste}
             placeholder={isPlanning ? "Send feedback on the plan..." : "Send a message to steer the agent..."}
             disabled={disabled || isSubmitting}
-            className="flex-1 min-w-0 h-9 text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            rows={2}
+            aria-label={isPlanning ? "Plan feedback" : "Loop message"}
+            aria-describedby="loop-action-bar-shortcut-hint"
+            className="flex-1 min-w-0 min-h-[72px] resize-y text-sm px-3 py-2 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
           />
 
           {/* Image attachment button (icon-only) */}
@@ -234,6 +245,9 @@ export function LoopActionBar({
             Add a message before sending images.
           </p>
         )}
+        <p id="loop-action-bar-shortcut-hint" className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.
+        </p>
       </form>
     </div>
   );
