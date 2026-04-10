@@ -60,12 +60,11 @@ function createTestLoop(overrides: {
       stopPattern: "<promise>COMPLETE</promise>$",
       git: { branchPrefix: "", commitScope: "" },
       maxIterations: Infinity,
-      maxConsecutiveErrors: 10,
-      activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
-      useWorktree: DEFAULT_LOOP_CONFIG.useWorktree,
+       maxConsecutiveErrors: 10,
+       activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+       useWorktree: DEFAULT_LOOP_CONFIG.useWorktree,
        clearPlanningFolder: false,
        planMode: false,
-       planModeAutoReply: true,
        autoAcceptPlan: false,
        mode: "loop",
      },
@@ -467,8 +466,9 @@ describe("Persistence", () => {
       expect(loaded!.config.mode).toBe("loop");
     });
 
-    test("persists plan-mode auto-reply and pending questions", async () => {
+    test("ignores legacy pending plan questions and clears them on save", async () => {
       const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      const { getDatabase } = await import("../../src/persistence/database");
 
       await setupPersistence();
 
@@ -477,35 +477,45 @@ describe("Persistence", () => {
         status: "planning",
       });
       testLoop.config.planMode = true;
-      testLoop.config.planModeAutoReply = false;
       testLoop.state.planMode = {
         active: true,
         feedbackRounds: 0,
         planningFolderCleared: false,
         isPlanReady: false,
-        pendingQuestion: {
-          requestId: "question-1",
-          sessionId: "session-1",
-          askedAt: new Date().toISOString(),
-          questions: [
-            {
-              header: "Pick one",
-              question: "How should the plan proceed?",
-              options: [
-                { label: "Option A", description: "Try A" },
-              ],
-              custom: true,
-            },
-          ],
-        },
       };
 
       await saveLoop(testLoop);
+      getDatabase().run(
+        "UPDATE loops SET pending_plan_question = ? WHERE id = ?",
+        [
+          JSON.stringify({
+            requestId: "question-1",
+            sessionId: "session-1",
+            askedAt: new Date().toISOString(),
+            questions: [
+              {
+                header: "Pick one",
+                question: "How should the plan proceed?",
+                options: [
+                  { label: "Option A", description: "Try A" },
+                ],
+                custom: true,
+              },
+            ],
+          }),
+          "pending-question-loop",
+        ],
+      );
       const loaded = await loadLoop("pending-question-loop");
 
-      expect(loaded?.config.planModeAutoReply).toBe(false);
-      expect(loaded?.state.planMode?.pendingQuestion?.requestId).toBe("question-1");
-      expect(loaded?.state.planMode?.pendingQuestion?.questions[0]?.custom).toBe(true);
+      expect(loaded?.state.planMode).toBeDefined();
+      expect("pendingQuestion" in (loaded?.state.planMode ?? {})).toBe(false);
+
+      await saveLoop(loaded!);
+      const row = getDatabase()
+        .query("SELECT pending_plan_question FROM loops WHERE id = ?")
+        .get("pending-question-loop") as Record<string, unknown>;
+      expect(row["pending_plan_question"]).toBeNull();
     });
 
     test("persists auto-accept plan setting", async () => {

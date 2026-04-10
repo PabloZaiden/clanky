@@ -1,12 +1,11 @@
 /**
  * Plan-phase actions for the useLoop hook.
- * Handles planning interactions: feedback, questions, accept, and discard.
+ * Handles planning interactions: feedback, accept, and discard.
  */
 
 import { useCallback } from "react";
 import {
   sendPlanFeedbackApi,
-  answerPlanQuestionApi,
   acceptPlanApi,
   discardPlanApi,
   type AcceptPlanResult,
@@ -19,7 +18,6 @@ const log = createLogger("useLoop");
 
 export interface UseLoopPlanActionsResult {
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  answerPlanQuestion: (answers: string[][]) => Promise<boolean>;
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
 }
@@ -53,38 +51,6 @@ export function useLoopPlanActions(params: UseLoopActionsParams): UseLoopPlanAct
           return staleError;
         }
         log.error("Failed to send plan feedback", { loopId: actionLoopId, error: String(err) });
-        setError(String(err));
-        return false;
-      }
-    },
-    [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError],
-  );
-
-  const answerPlanQuestion = useCallback(
-    async (answers: string[][]): Promise<boolean> => {
-      const actionLoopId = loopId;
-      const staleAction = ignoreStaleLoopAction("answerPlanQuestion", actionLoopId, false);
-      if (staleAction !== null) {
-        return staleAction;
-      }
-      log.info("Answering plan question", {
-        loopId: actionLoopId,
-        answerGroups: answers.length,
-      });
-      try {
-        await answerPlanQuestionApi(actionLoopId, answers);
-        await refresh();
-        if (!isActiveLoop(actionLoopId)) {
-          return false;
-        }
-        log.info("Plan question answered", { loopId: actionLoopId });
-        return true;
-      } catch (err) {
-        const staleError = ignoreStaleLoopError("answerPlanQuestion", actionLoopId, false, err);
-        if (staleError !== null) {
-          return staleError;
-        }
-        log.error("Failed to answer plan question", { loopId: actionLoopId, error: String(err) });
         setError(String(err));
         return false;
       }
@@ -156,5 +122,5 @@ export function useLoopPlanActions(params: UseLoopActionsParams): UseLoopPlanAct
     }
   }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, setError, setLoop]);
 
-  return { sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan };
+  return { sendPlanFeedback, acceptPlan, discardPlan };
 }

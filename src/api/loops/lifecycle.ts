@@ -7,7 +7,7 @@
  * - discard-purge.ts   : discard, purge
  * - ssh-ports.ts       : ssh-session, port-forwards
  * - pending.ts         : pending-prompt, pending, follow-up
- * - plan.ts            : plan/feedback, plan/accept, plan/question/answer, plan/discard
+ * - plan.ts            : plan/feedback, plan/accept, plan/discard
  */
 
 import { loopsDraftRoutes } from "./draft";

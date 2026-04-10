@@ -84,21 +84,13 @@ export function useTabState({
 
   // Default to "plan" tab when in planning mode on initial load
   const isCurrentlyPlanning = loop?.state.status === "planning";
-  const pendingPlanQuestion = loop?.state.planMode?.pendingQuestion;
 
   useEffect(() => {
     if (isCurrentlyPlanning && !initialTabSet.current) {
-      setActiveTab(pendingPlanQuestion ? "log" : "plan");
+      setActiveTab("plan");
       initialTabSet.current = true;
     }
-  }, [isCurrentlyPlanning, pendingPlanQuestion]);
-
-  // Switch back to log tab when a plan question arrives while on the plan tab
-  useEffect(() => {
-    if (pendingPlanQuestion && activeTab === "plan") {
-      setActiveTab("log");
-    }
-  }, [activeTab, pendingPlanQuestion?.requestId]);
+  }, [isCurrentlyPlanning]);
 
   return { activeTab, tabsWithUpdates, setTabsWithUpdates, handleTabChange };
 }

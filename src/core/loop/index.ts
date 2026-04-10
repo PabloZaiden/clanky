@@ -23,7 +23,7 @@ import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
 
 import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
 import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
-import { sendPlanFeedbackImpl, answerPendingPlanQuestionImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
+import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
 import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
 import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
@@ -77,10 +77,6 @@ export class LoopManager {
 
   async sendPlanFeedback(loopId: string, feedback: string, attachments?: MessageImageAttachment[]): Promise<void> {
     return sendPlanFeedbackImpl(this.ctx, loopId, feedback, attachments);
-  }
-
-  async answerPendingPlanQuestion(loopId: string, answers: string[][]): Promise<void> {
-    return answerPendingPlanQuestionImpl(this.ctx, loopId, answers);
   }
 
   async acceptPlan(loopId: string, options: AcceptPlanOptions = {}): Promise<AcceptPlanResult> {
