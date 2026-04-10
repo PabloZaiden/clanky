@@ -11,6 +11,7 @@ import { usePasskeyAuth } from "./hooks";
 import "./index.css";
 
 const LOOP_FILES_HASH_PREFIX = "/loop-files/";
+const CODE_EXPLORER_HASH_PREFIX = "/code-explorer";
 
 function parseHashPath(hash: string): { path: string; searchParams: URLSearchParams } {
   const [path = "", query = ""] = hash.split("?", 2);
@@ -23,6 +24,26 @@ function parseHashPath(hash: string): { path: string; searchParams: URLSearchPar
 function parseHash(): ShellRoute {
   const { path: hash, searchParams } = parseHashPath(window.location.hash.slice(1));
   const startDirectory = searchParams.get("startDirectory")?.trim() || undefined;
+
+  if (hash === CODE_EXPLORER_HASH_PREFIX) {
+    return { view: "code-explorer" };
+  }
+
+  if (hash.startsWith(`${CODE_EXPLORER_HASH_PREFIX}/`)) {
+    const [contentType, entityId] = hash.slice(CODE_EXPLORER_HASH_PREFIX.length + 1).split("/", 2);
+    if (contentType === "workspace" && entityId) {
+      return { view: "code-explorer", target: { contentType, workspaceId: entityId, startDirectory } };
+    }
+    if (contentType === "loop" && entityId) {
+      return { view: "code-explorer", target: { contentType, loopId: entityId, startDirectory } };
+    }
+    if (contentType === "server" && entityId) {
+      return { view: "code-explorer", target: { contentType, serverId: entityId, startDirectory } };
+    }
+    if (contentType === "chat" && entityId) {
+      return { view: "code-explorer", target: { contentType, chatId: entityId, startDirectory } };
+    }
+  }
 
   if (hash.startsWith("/loop/")) {
     const loopId = hash.slice(6);

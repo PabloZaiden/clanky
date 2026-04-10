@@ -40,9 +40,32 @@ export interface ChatSidebarGroup {
   items: Chat[];
 }
 
+export type CodeExplorerTarget =
+  | {
+      contentType: "workspace";
+      workspaceId: string;
+      startDirectory?: string;
+    }
+  | {
+      contentType: "loop";
+      loopId: string;
+      startDirectory?: string;
+    }
+  | {
+      contentType: "server";
+      serverId: string;
+      startDirectory?: string;
+    }
+  | {
+      contentType: "chat";
+      chatId: string;
+      startDirectory?: string;
+    };
+
 export type ShellRoute =
   | { view: "home" }
   | { view: "settings" }
+  | { view: "code-explorer"; target?: CodeExplorerTarget }
   | { view: "loop"; loopId: string }
   | { view: "loop-files"; loopId: string; startDirectory?: string }
   | { view: "chat"; chatId: string }

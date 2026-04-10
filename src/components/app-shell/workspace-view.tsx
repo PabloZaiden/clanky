@@ -68,8 +68,8 @@ export function WorkspaceView({
       onClick: () => onNavigate({ view: "compose", kind: "chat", scopeId: workspace.id }),
     },
     {
-      label: "Open Editor",
-      onClick: () => onNavigate({ view: "workspace-files", workspaceId: workspace.id }),
+      label: "Open code explorer",
+      onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "workspace", workspaceId: workspace.id } }),
     },
     ...(workspaceSshEnabled
       ? [{

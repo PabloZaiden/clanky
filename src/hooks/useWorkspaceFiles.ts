@@ -371,7 +371,7 @@ export function useFileExplorer(
       if (isDirtyRef.current) {
         setConflictState({
           kind: "reload_conflict",
-          message: "This file changed outside the editor while you have unsaved changes.",
+          message: "This file changed outside the code explorer while you have unsaved changes.",
           currentFile: metadata,
         });
         return;

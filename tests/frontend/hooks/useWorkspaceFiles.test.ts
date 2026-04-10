@@ -434,7 +434,7 @@ describe("useWorkspaceFiles", () => {
     api.post("/api/workspaces/:id/files/write", () => {
       throw new MockApiError(409, {
         error: "file_conflict",
-        message: "File changed outside the editor",
+        message: "File changed outside the code explorer",
         currentFile: createDirectoryEntry({
           name: "index.ts",
           path: "src/index.ts",

@@ -90,11 +90,11 @@ test("explores a standalone SSH server and changes the root to a parent director
       expect(createResponse.status).toBe(201);
       const server = await createResponse.json() as { config: { id: string } };
 
-      await page.goto(`${app.baseUrl}/#/server-files/${server.config.id}`);
+      await page.goto(`${app.baseUrl}/#/code-explorer/server/${server.config.id}`);
       await saveStandaloneServerPassword(server.config.id, page);
       await page.reload();
 
-      await waitForVisible(page.getByRole("heading", { name: "Playwright SSH Server editor" }));
+      await waitForVisible(page.getByRole("heading", { name: "Playwright SSH Server code explorer" }));
       await waitForVisible(page.getByRole("button", { name: "src" }));
       expect(await page.getByLabel("Explorer root directory").count()).toBe(0);
 

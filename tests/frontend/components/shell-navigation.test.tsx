@@ -9,6 +9,17 @@ import {
 describe("shell navigation helpers", () => {
   test("builds hash routes for shell destinations", () => {
     expect(getHashForShellRoute({ view: "loop", loopId: "loop-1" })).toBe("/loop/loop-1");
+    expect(getHashForShellRoute({ view: "code-explorer" })).toBe("/code-explorer");
+    expect(
+      getHashForShellRoute({
+        view: "code-explorer",
+        target: {
+          contentType: "chat",
+          chatId: "chat-1",
+          startDirectory: "/workspaces/frontend/.chat-worktree",
+        },
+      }),
+    ).toBe("/code-explorer/chat/chat-1?startDirectory=%2Fworkspaces%2Ffrontend%2F.chat-worktree");
     expect(
       getHashForShellRoute({
         view: "loop-files",

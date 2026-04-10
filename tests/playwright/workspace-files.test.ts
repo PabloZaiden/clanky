@@ -14,8 +14,8 @@ test("opens the workspace file explorer and browses files", async () => {
       directory: repo.directory,
     });
 
-    await page.goto(`${app.baseUrl}/#/workspace-files/${workspace.id}`);
-    await waitForVisible(page.getByRole("heading", { name: "Workspace Files Browser editor" }));
+    await page.goto(`${app.baseUrl}/#/code-explorer/workspace/${workspace.id}`);
+    await waitForVisible(page.getByRole("heading", { name: "Workspace Files Browser code explorer" }));
     await page.getByRole("button", { name: "src" }).click();
     await waitForVisible(page.getByRole("button", { name: "index.ts" }));
     await page.getByRole("button", { name: "index.ts" }).click();
@@ -43,8 +43,8 @@ test("can re-expand the collapsed explorer on mobile", async () => {
       directory: repo.directory,
     });
 
-    await page.goto(`${app.baseUrl}/#/workspace-files/${workspace.id}`);
-    await waitForVisible(page.getByRole("heading", { name: "Workspace Files Mobile Browser editor" }));
+    await page.goto(`${app.baseUrl}/#/code-explorer/workspace/${workspace.id}`);
+    await waitForVisible(page.getByRole("heading", { name: "Workspace Files Mobile Browser code explorer" }));
     await waitForVisible(page.getByRole("button", { name: "Collapse file explorer" }));
 
     await page.getByRole("button", { name: "Collapse file explorer" }).click();
@@ -69,8 +69,8 @@ test("keeps the embedded terminal panel inside the visible explorer body", async
       transport: "ssh",
     });
 
-    await page.goto(`${app.baseUrl}/#/workspace-files/${workspace.id}`);
-    await waitForVisible(page.getByRole("heading", { name: "Workspace Files Terminal Browser editor" }));
+    await page.goto(`${app.baseUrl}/#/code-explorer/workspace/${workspace.id}`);
+    await waitForVisible(page.getByRole("heading", { name: "Workspace Files Terminal Browser code explorer" }));
 
     await page.getByRole("button", { name: "Terminals" }).click();
     await waitForVisible(page.getByRole("heading", { name: "Integrated terminal" }));

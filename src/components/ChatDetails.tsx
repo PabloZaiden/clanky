@@ -5,7 +5,7 @@ import {
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
 import { RenameChatModal } from "./RenameChatModal";
-import { Button, ConfirmModal, StatusBadge, getChatStatusBadgeVariant } from "./common";
+import { Button, ConfirmModal, StatusBadge, getChatStatusBadgeVariant, getComposerMinHeightClass, getComposerRows } from "./common";
 import { ChatFocusModeBar } from "./chat-details/chat-focus-mode-bar";
 import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
 import { getFocusModeViewportStyle, useVisualViewport } from "./ssh-session/use-visual-viewport";
@@ -83,12 +83,14 @@ function isStaleTerminalEvent(chat: Chat, timestamp: string): boolean {
 export function ChatDetails({
   chatId,
   onBack,
+  onOpenCodeExplorer,
   onOpenLoop,
   showBackButton = true,
   headerOffsetClassName,
 }: {
   chatId: string;
   onBack?: () => void;
+  onOpenCodeExplorer?: (chatId: string) => void;
   onOpenLoop?: (loopId: string) => void;
   showBackButton?: boolean;
   headerOffsetClassName?: string;
@@ -434,6 +436,8 @@ export function ChatDetails({
   }
 
   const hasPendingInput = message.trim().length > 0 || attachments.length > 0;
+  const composerRows = getComposerRows(message);
+  const composerMinHeightClass = getComposerMinHeightClass(composerRows);
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
@@ -470,8 +474,8 @@ export function ChatDetails({
           onPaste={handlePaste}
           placeholder={isActive ? "Wait for the current turn to finish…" : "Send a message to the agent…"}
           disabled={isActive || isSubmitting}
-          rows={2}
-          className="min-h-[72px] min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600"
+          rows={composerRows}
+          className={`${composerMinHeightClass} min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
         />
         <ImageAttachmentControl
           ref={attachmentControlRef}
@@ -589,6 +593,15 @@ export function ChatDetails({
             )}
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => onOpenCodeExplorer?.(chat.config.id)}
+              disabled={isDeletePending}
+            >
+              Code explorer
+            </Button>
             <Button
               type="button"
               variant="ghost"

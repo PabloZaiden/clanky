@@ -1,6 +1,7 @@
-import type { CreateSshSessionRequest, SshSession, Workspace } from "../../types";
+import type { CreateSshSessionRequest, SshConnectionMode, SshSession, Workspace } from "../../types";
+import type { SshServerSession } from "../../types/ssh-server";
 import type { ShellRoute } from "./shell-types";
-import { FileExplorerView } from "./file-explorer-view";
+import { CodeExplorerView } from "./code-explorer-view";
 
 interface WorkspaceFilesViewProps {
   workspace: Workspace;
@@ -8,6 +9,10 @@ interface WorkspaceFilesViewProps {
   headerOffsetClassName?: string;
   startDirectory?: string;
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
+  createStandaloneSession?: (
+    serverId: string,
+    options?: { name?: string; connectionMode?: SshConnectionMode },
+  ) => Promise<SshServerSession>;
   onNavigate: (route: ShellRoute) => void;
 }
 
@@ -17,29 +22,24 @@ export function WorkspaceFilesView({
   headerOffsetClassName,
   startDirectory,
   createSession,
+  createStandaloneSession = async () => {
+    throw new Error("Standalone SSH sessions are unavailable in workspace code explorer context.");
+  },
   onNavigate,
 }: WorkspaceFilesViewProps) {
-  const workspaceSessions = sessions.filter((session) => session.config.workspaceId === workspace.id);
-  const hasSshTransport = workspace.serverSettings.agent.transport === "ssh";
-
   return (
-    <FileExplorerView
-      title={`${workspace.name} editor`}
-      description={workspace.directory}
-      defaultRootDirectory={workspace.directory}
+    <CodeExplorerView
+      routeTarget={{ contentType: "workspace", workspaceId: workspace.id, startDirectory }}
+      loops={[]}
+      chats={[]}
+      workspaces={[workspace]}
+      sessions={sessions}
+      servers={[]}
+      sessionsByServerId={{}}
       headerOffsetClassName={headerOffsetClassName}
-      backLabel="Back to workspace"
-      backRoute={{ view: "workspace", workspaceId: workspace.id }}
+      createSession={createSession}
+      createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}
-      target={{ type: "workspace", id: workspace.id, startDirectory }}
-      sessions={workspaceSessions}
-      hasTerminal={hasSshTransport}
-      emptyTerminalMessage={hasSshTransport
-        ? "Choose an existing SSH session or create a new one."
-        : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable."}
-      terminalSelectLabel="Select workspace SSH session"
-      onCreateTerminal={async () => await createSession({ workspaceId: workspace.id })}
-      testIdPrefix="workspace"
     />
   );
 }

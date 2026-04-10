@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
 import { appAbsoluteUrl } from "../../lib/public-path";
-import type { ShellRoute } from "./shell-types";
+import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
 function buildExplorerHash(path: string, startDirectory?: string): string {
   if (!startDirectory) {
@@ -13,10 +13,29 @@ function buildExplorerHash(path: string, startDirectory?: string): string {
   return `${path}?${searchParams.toString()}`;
 }
 
+function buildCodeExplorerHash(target?: CodeExplorerTarget): string {
+  if (!target) {
+    return "/code-explorer";
+  }
+
+  switch (target.contentType) {
+    case "workspace":
+      return buildExplorerHash(`/code-explorer/workspace/${target.workspaceId}`, target.startDirectory);
+    case "loop":
+      return buildExplorerHash(`/code-explorer/loop/${target.loopId}`, target.startDirectory);
+    case "server":
+      return buildExplorerHash(`/code-explorer/server/${target.serverId}`, target.startDirectory);
+    case "chat":
+      return buildExplorerHash(`/code-explorer/chat/${target.chatId}`, target.startDirectory);
+  }
+}
+
 export function getHashForShellRoute(route: ShellRoute): string {
   switch (route.view) {
     case "home":
       return "/";
+    case "code-explorer":
+      return buildCodeExplorerHash(route.target);
     case "loop":
       return `/loop/${route.loopId}`;
     case "loop-files":
