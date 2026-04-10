@@ -591,7 +591,6 @@ describe("App shell", () => {
       expect(api.calls("/api/ssh-servers/:id", "DELETE")).toHaveLength(1);
       expect(window.location.hash).toBe("#/");
       expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-      expect(getByText('Deleted SSH server "Deploy host"')).toBeTruthy();
       expect(localStorage.getItem("ralpher.sshServerCredential.server-1")).toBeNull();
       expect(queryByRole("dialog")).toBeNull();
     });

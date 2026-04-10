@@ -507,7 +507,7 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
     const onClose = mock();
     const onDeleteWorkspace = mock(() => Promise.resolve({ success: true }));
 
-    const { getByRole, getByText, user } = renderWithUser(
+    const { getByRole, getByText, queryByText, user } = renderWithUser(
       <WorkspaceSettingsModal
         {...defaultProps()}
         onClose={onClose}
@@ -532,7 +532,9 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
     await waitFor(() => {
       expect(onDeleteWorkspace).toHaveBeenCalled();
       expect(onClose).toHaveBeenCalled();
-      expect(getByText('Deleted workspace "Test Workspace"')).toBeInTheDocument();
+      expect(
+        queryByText('Are you sure you want to delete workspace "Test Workspace"? This only removes it from Ralpher and does not delete files on disk.')
+      ).toBeNull();
     });
   });
 

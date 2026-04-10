@@ -39,7 +39,6 @@ export function DeleteSshServerSection({
 
       setShowConfirm(false);
       setDeleting(false);
-      toast.success(`Deleted SSH server "${server.config.name}"`);
       onDeleted?.();
     } catch (error) {
       setDeleting(false);
