@@ -28,6 +28,12 @@ export function PasskeyAuthSection({
   const [passkeyName, setPasskeyName] = useState("");
   const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
 
+  function handleCloseRemoveConfirm(): void {
+    if (!removingPasskey) {
+      setRemoveConfirmOpen(false);
+    }
+  }
+
   async function handleConfirmRemovePasskey(): Promise<void> {
     const removed = await onRemovePasskey?.();
     if (removed) {
@@ -123,7 +129,7 @@ export function PasskeyAuthSection({
         )}
         <ConfirmModal
           isOpen={removeConfirmOpen}
-          onClose={() => setRemoveConfirmOpen(false)}
+          onClose={handleCloseRemoveConfirm}
           onConfirm={() => {
             void handleConfirmRemovePasskey();
           }}

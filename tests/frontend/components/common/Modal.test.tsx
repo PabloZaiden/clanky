@@ -112,10 +112,52 @@ describe("Modal", () => {
         </Modal>
       );
       const dialog = getByRole("dialog");
-      expect(dialog.getAttribute("aria-labelledby")).toBe("modal-title");
-      // Verify the title has the matching id
       const title = getByText("Title");
-      expect(title.id).toBe("modal-title");
+      expect(title.id).toBeTruthy();
+      expect(dialog.getAttribute("aria-labelledby")).toBe(title.id);
+    });
+
+    test("uses a unique title id for each open modal", () => {
+      const { getAllByRole, getByText } = renderWithUser(
+        <>
+          <Modal isOpen={true} onClose={() => {}} title="First modal">
+            <p>First content</p>
+          </Modal>
+          <Modal isOpen={true} onClose={() => {}} title="Second modal">
+            <p>Second content</p>
+          </Modal>
+        </>
+      );
+
+      const dialogs = getAllByRole("dialog");
+      const firstTitle = getByText("First modal");
+      const secondTitle = getByText("Second modal");
+
+      expect(firstTitle.id).toBeTruthy();
+      expect(secondTitle.id).toBeTruthy();
+      expect(firstTitle.id).not.toBe(secondTitle.id);
+      expect(dialogs[0]?.getAttribute("aria-labelledby")).toBe(firstTitle.id);
+      expect(dialogs[1]?.getAttribute("aria-labelledby")).toBe(secondTitle.id);
+    });
+
+    test("only closes the topmost modal on Escape", async () => {
+      const firstOnClose = mock(() => {});
+      const secondOnClose = mock(() => {});
+      const { user } = renderWithUser(
+        <>
+          <Modal isOpen={true} onClose={firstOnClose} title="First modal">
+            <p>First content</p>
+          </Modal>
+          <Modal isOpen={true} onClose={secondOnClose} title="Second modal">
+            <p>Second content</p>
+          </Modal>
+        </>
+      );
+
+      await user.keyboard("{Escape}");
+
+      expect(firstOnClose).not.toHaveBeenCalled();
+      expect(secondOnClose).toHaveBeenCalledTimes(1);
     });
   });
 });
