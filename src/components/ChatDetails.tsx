@@ -237,7 +237,7 @@ export function ChatDetails({
 
   const isActive = chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false;
 
-  const handleReconnect = useCallback(async (showSuccessToast = true) => {
+  const handleReconnect = useCallback(async () => {
     try {
       const response = await appFetch(`/api/chats/${chatId}/reconnect`, {
         method: "POST",
@@ -247,9 +247,6 @@ export function ChatDetails({
       }
       const nextChat = (await response.json()) as Chat;
       setChat(nextChat);
-      if (showSuccessToast) {
-        toast.success("Chat reconnected");
-      }
     } catch (reconnectError) {
       toast.error(String(reconnectError));
     }
@@ -268,7 +265,7 @@ export function ChatDetails({
       return;
     }
     reconnectAttemptedRef.current = true;
-    void handleReconnect(false);
+    void handleReconnect();
   }, [chat, chatSocketStatus, handleReconnect]);
 
   const handleRename = useCallback(async (newName: string) => {
@@ -282,8 +279,7 @@ export function ChatDetails({
     }
     const updatedChat = (await response.json()) as Chat;
     setChat(updatedChat);
-    toast.success(`Renamed chat to “${updatedChat.config.name}”`);
-  }, [chatId, toast]);
+  }, [chatId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -358,7 +354,6 @@ export function ChatDetails({
         throw new Error(await parseError(response, "Failed to delete chat"));
       }
       setIsDeleteConfirmOpen(false);
-      toast.success("Chat deleted");
       onBack?.();
     } catch (deleteError) {
       toast.error(String(deleteError));
@@ -381,7 +376,6 @@ export function ChatDetails({
         throw new Error(await parseError(response, "Failed to spawn loop"));
       }
       const loop = (await response.json()) as Loop;
-      toast.success("Spawned loop in plan mode");
       onOpenLoop?.(loop.config.id);
     } catch (spawnError) {
       toast.error(String(spawnError));

@@ -8,64 +8,40 @@
  */
 
 import type { ReactNode } from "react";
-import { ToastContext, useToastState, type Toast as ToastData, type ToastType } from "../../hooks/useToast";
+import { ToastContext, useToastState, type Toast as ToastData } from "../../hooks/useToast";
 
 /**
- * Color classes for each toast type.
+ * Color classes for error toasts.
  */
-const TOAST_STYLES: Record<ToastType, { bg: string; border: string; icon: string }> = {
-  success: {
-    bg: "bg-neutral-900/95",
-    border: "border-green-600/50",
-    icon: "text-green-400",
-  },
-  error: {
-    bg: "bg-neutral-900/95",
-    border: "border-red-600/50",
-    icon: "text-red-400",
-  },
-  warning: {
-    bg: "bg-neutral-900/95",
-    border: "border-yellow-600/50",
-    icon: "text-yellow-400",
-  },
-  info: {
-    bg: "bg-neutral-900/95",
-    border: "border-blue-600/50",
-    icon: "text-blue-400",
-  },
+const TOAST_STYLES = {
+  bg: "bg-neutral-900/95",
+  border: "border-red-600/50",
+  icon: "text-red-400",
 };
 
 /**
- * SVG icon paths for each toast type.
+ * SVG path for the error toast icon.
  */
-const TOAST_ICONS: Record<ToastType, string> = {
-  success: "M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-  error: "M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z",
-  warning: "M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126z",
-  info: "M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z",
-};
+const TOAST_ICON = "M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z";
 
 /**
  * A single toast notification item.
  */
 function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: string) => void }) {
-  const styles = TOAST_STYLES[toast.type];
-
   return (
     <div
       role="alert"
-      className={`flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg backdrop-blur-sm max-w-sm animate-slide-in ${styles.bg} ${styles.border}`}
+      className={`flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg backdrop-blur-sm max-w-sm animate-slide-in ${TOAST_STYLES.bg} ${TOAST_STYLES.border}`}
     >
       {/* Icon */}
       <svg
-        className={`w-5 h-5 flex-shrink-0 mt-0.5 ${styles.icon}`}
+        className={`w-5 h-5 flex-shrink-0 mt-0.5 ${TOAST_STYLES.icon}`}
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
         stroke="currentColor"
       >
-        <path strokeLinecap="round" strokeLinejoin="round" d={TOAST_ICONS[toast.type]} />
+        <path strokeLinecap="round" strokeLinejoin="round" d={TOAST_ICON} />
       </svg>
 
       {/* Message */}
@@ -121,7 +97,6 @@ function ToastContainer({ toasts, onDismiss }: { toasts: ToastData[]; onDismiss:
  * ```tsx
  * const toast = useToast();
  * toast.error("Something went wrong");
- * toast.success("Saved successfully");
  * ```
  */
 export function ToastProvider({ children }: { children: ReactNode }) {

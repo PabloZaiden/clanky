@@ -47,13 +47,12 @@ export function SshSessionDetails({
   forcedFocusMode = false,
 }: SshSessionDetailsProps) {
   const toast = useToast();
-  const { error: showErrorToast, warning: showWarningToast } = toast;
+  const { error: showErrorToast } = toast;
   const { session, sessionKind, loading, error, deleteSession, refresh, updateSession } = useSshSession(sshSessionId);
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const lastShownNoticeRef = useRef<string | null>(null);
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -77,19 +76,6 @@ export function SshSessionDetails({
   }, [session]);
 
   const canRenameSession = sessionKind === "workspace";
-
-  useEffect(() => {
-    const notice = session?.state.notice ?? null;
-    if (!notice) {
-      lastShownNoticeRef.current = null;
-      return;
-    }
-    if (notice === lastShownNoticeRef.current) {
-      return;
-    }
-    lastShownNoticeRef.current = notice;
-    showWarningToast(notice, { duration: 12_000 });
-  }, [session?.state.notice, showWarningToast]);
 
   const standalone = useStandaloneSession({ session, sessionKind, showErrorToast });
 

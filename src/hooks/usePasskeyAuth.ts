@@ -164,7 +164,6 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
       }
 
       await refreshStatus();
-      toast.success("Passkey login successful");
       return true;
     } catch (loginError) {
       const message = String(loginError);
@@ -204,7 +203,6 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
       }
 
       await refreshStatus();
-      toast.success("Passkey registered");
       return true;
     } catch (registrationError) {
       const message = String(registrationError);
@@ -229,7 +227,6 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
       }
 
       await refreshStatus();
-      toast.success("Logged out");
       return true;
     } catch (logoutError) {
       const message = String(logoutError);
@@ -259,7 +256,6 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
       }
 
       await refreshStatus();
-      toast.success("Passkey removed");
       return true;
     } catch (removeError) {
       const message = String(removeError);

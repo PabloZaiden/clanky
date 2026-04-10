@@ -1,9 +1,9 @@
 /**
  * Toast notification context and hook.
  *
- * Provides a simple, app-wide toast notification system.
+ * Provides a simple, app-wide error toast notification system.
  * Wrap your app in <ToastProvider> and use the useToast() hook
- * to show success, error, warning, and info notifications.
+ * to show error notifications.
  *
  * @module hooks/useToast
  */
@@ -13,7 +13,7 @@ import { createContext, useCallback, useContext, useRef, useState } from "react"
 /**
  * Toast notification type determines the visual style.
  */
-export type ToastType = "success" | "error" | "warning" | "info";
+export type ToastType = "error";
 
 /**
  * A single toast notification.
@@ -25,7 +25,7 @@ export interface Toast {
   message: string;
   /** Type determines the visual style */
   type: ToastType;
-  /** Auto-dismiss duration in ms (default: 5000 for success/info, 8000 for error/warning) */
+  /** Auto-dismiss duration in ms (default: 8000) */
   duration: number;
 }
 
@@ -43,25 +43,14 @@ export interface ToastOptions {
 export interface ToastContextValue {
   /** Current list of active toasts */
   toasts: Toast[];
-  /** Show a success toast */
-  success: (message: string, options?: ToastOptions) => void;
   /** Show an error toast */
   error: (message: string, options?: ToastOptions) => void;
-  /** Show a warning toast */
-  warning: (message: string, options?: ToastOptions) => void;
-  /** Show an info toast */
-  info: (message: string, options?: ToastOptions) => void;
   /** Remove a toast by ID */
   dismiss: (id: string) => void;
 }
 
-/** Default durations by toast type */
-const DEFAULT_DURATIONS: Record<ToastType, number> = {
-  success: 5000,
-  error: 8000,
-  warning: 8000,
-  info: 5000,
-};
+/** Default duration for error toasts */
+const DEFAULT_ERROR_DURATION_MS = 8000;
 
 /** Maximum number of toasts shown at once */
 const MAX_TOASTS = 5;
@@ -101,12 +90,12 @@ export function useToastState(): ToastContextValue {
   }, []);
 
   const showToast = useCallback(
-    (type: ToastType, message: string, options?: ToastOptions) => {
+    (message: string, options?: ToastOptions) => {
       counterRef.current += 1;
       const id = `toast-${counterRef.current}-${Date.now()}`;
-      const duration = options?.duration ?? DEFAULT_DURATIONS[type];
+      const duration = options?.duration ?? DEFAULT_ERROR_DURATION_MS;
 
-      const toast: Toast = { id, message, type, duration };
+      const toast: Toast = { id, message, type: "error", duration };
 
       setToasts((prev) => {
         // Keep only the most recent toasts (trim oldest if over limit)
@@ -127,25 +116,10 @@ export function useToastState(): ToastContextValue {
     [dismiss],
   );
 
-  const success = useCallback(
-    (message: string, options?: ToastOptions) => showToast("success", message, options),
-    [showToast],
-  );
-
   const error = useCallback(
-    (message: string, options?: ToastOptions) => showToast("error", message, options),
+    (message: string, options?: ToastOptions) => showToast(message, options),
     [showToast],
   );
 
-  const warning = useCallback(
-    (message: string, options?: ToastOptions) => showToast("warning", message, options),
-    [showToast],
-  );
-
-  const info = useCallback(
-    (message: string, options?: ToastOptions) => showToast("info", message, options),
-    [showToast],
-  );
-
-  return { toasts, success, error, warning, info, dismiss };
+  return { toasts, error, dismiss };
 }
