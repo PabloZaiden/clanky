@@ -257,6 +257,9 @@ function renderMainContent(props: ShellMainContentProps) {
           navigateWithinShell({ view: "home" });
           void refreshChats();
         }}
+        onOpenLoop={(loopId) => {
+          navigateWithinShell({ view: "loop", loopId });
+        }}
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
       />
