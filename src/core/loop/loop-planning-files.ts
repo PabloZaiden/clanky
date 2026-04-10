@@ -17,16 +17,16 @@ export async function clearPlanningFilesImpl(
 
   if (loop.config.clearPlanningFolder && !loop.state.planMode?.planningFolderCleared) {
     try {
-      const exists = await executor.directoryExists(planningDir);
-      if (exists) {
-        const files = await executor.listDirectory(planningDir);
-        const filesToDelete = files.filter((file: string) => file !== ".gitkeep");
+      const files = await executor.listDirectory(planningDir);
+      const filesToDelete = files.filter((file: string) => file !== ".gitkeep");
 
-        if (filesToDelete.length > 0) {
-          const fileArgs = filesToDelete.map((file: string) => `${planningDir}/${file}`);
-          await executor.exec("rm", ["-rf", ...fileArgs], {
-            cwd: worktreePath,
-          });
+      if (filesToDelete.length > 0) {
+        const fileArgs = filesToDelete.map((file: string) => `${planningDir}/${file}`);
+        const result = await executor.exec("rm", ["-rf", ...fileArgs], {
+          cwd: worktreePath,
+        });
+        if (!result.success) {
+          throw new Error(`Failed to clear ${planningDir}: ${result.stderr || result.stdout || "unknown error"}`);
         }
       }
 
