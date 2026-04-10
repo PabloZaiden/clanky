@@ -30,7 +30,6 @@ export function useFormActions({
   selectedModel,
   selectedModelEnabled,
   planMode,
-  planModeAutoReply,
   autoAcceptPlan,
   maxIterations,
   maxConsecutiveErrors,
@@ -57,7 +56,6 @@ export function useFormActions({
   selectedModel: string;
   selectedModelEnabled: boolean;
   planMode: boolean;
-  planModeAutoReply: boolean;
   autoAcceptPlan: boolean;
   maxIterations: string;
   maxConsecutiveErrors: string;
@@ -136,7 +134,6 @@ export function useFormActions({
         workspaceId: selectedWorkspaceId,
         prompt: currentPrompt.trim(),
         planMode,
-        planModeAutoReply: planMode ? planModeAutoReply : DEFAULT_LOOP_CONFIG.planModeAutoReply,
         autoAcceptPlan: planMode ? autoAcceptPlan : DEFAULT_LOOP_CONFIG.autoAcceptPlan,
         model,
         useWorktree,
@@ -197,8 +194,7 @@ export function useFormActions({
       selectedModel,
       selectedModelEnabled,
       planMode,
-      planModeAutoReply,
-      autoAcceptPlan,
+       autoAcceptPlan,
       maxIterations,
       maxConsecutiveErrors,
       activityTimeoutSeconds,

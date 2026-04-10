@@ -113,7 +113,6 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     use_worktree: config.useWorktree ? 1 : 0,
     clear_planning_folder: config.clearPlanningFolder ? 1 : 0,
     plan_mode: config.planMode ? 1 : 0,
-    plan_mode_auto_reply: (config.planModeAutoReply ?? DEFAULT_LOOP_CONFIG.planModeAutoReply) ? 1 : 0,
     auto_accept_plan: (config.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan) ? 1 : 0,
     mode: config.mode ?? "loop",
     // State fields
@@ -147,7 +146,7 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     plan_content: state.planMode?.planContent ?? null,
     planning_folder_cleared: state.planMode?.planningFolderCleared ? 1 : 0,
     plan_is_ready: state.planMode?.isPlanReady ? 1 : 0,
-    pending_plan_question: state.planMode?.pendingQuestion ? JSON.stringify(state.planMode.pendingQuestion) : null,
+    pending_plan_question: null,
     review_mode: state.reviewMode ? JSON.stringify(state.reviewMode) : null,
   };
 }
@@ -221,7 +220,6 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
     useWorktree: row["use_worktree"] === 1,
     clearPlanningFolder: row["clear_planning_folder"] === 1,
     planMode: row["plan_mode"] === 1,
-    planModeAutoReply: row["plan_mode_auto_reply"] !== 0,
     autoAcceptPlan: row["auto_accept_plan"] === 1,
     mode: normalizeLoopMode(row["mode"], row["id"]),
   };
@@ -305,9 +303,6 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
       planContent: row["plan_content"] as string | undefined,
       planningFolderCleared: row["planning_folder_cleared"] === 1,
       isPlanReady: row["plan_is_ready"] === 1,
-      pendingQuestion: row["pending_plan_question"]
-        ? safeJsonParse(row["pending_plan_question"] as string, undefined, "pending_plan_question", rowId)
-        : undefined,
     };
   }
   // Reconstruct reviewMode from JSON

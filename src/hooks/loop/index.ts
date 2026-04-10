@@ -80,8 +80,6 @@ export interface UseLoopResult {
   getPullRequestDestination: () => Promise<PullRequestDestinationResponse>;
   /** Send feedback to refine the plan (only works when loop is in planning status) */
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  /** Answer a pending plan-mode question */
-  answerPlanQuestion: (answers: string[][]) => Promise<boolean>;
   /** Accept the plan via the requested mode (only works when loop is in planning status) */
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   /** Discard the plan and delete the loop (only works when loop is in planning status) */

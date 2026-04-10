@@ -1,5 +1,5 @@
 /**
- * Plan-related loop actions: feedback, accept, discard, answer questions.
+ * Plan-related loop actions: feedback, accept, and discard.
  */
 
 import type { SshSession, PlanAcceptResponse } from "../../types";
@@ -36,18 +36,6 @@ export async function sendPlanFeedbackApi(
     "POST",
     { feedback, attachments },
     "Send plan feedback",
-  );
-}
-
-export async function answerPlanQuestionApi(
-  loopId: string,
-  answers: string[][],
-): Promise<boolean> {
-  return apiActionWithBody(
-    `/api/loops/${loopId}/plan/question/answer`,
-    "POST",
-    { answers },
-    "Answer plan question",
   );
 }
 
