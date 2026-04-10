@@ -65,9 +65,16 @@ export const workspaceMaintenanceRoutes = {
           log.warn("Workspace pull latest action failed", {
             workspaceId: workspaceResult.id,
             directory: workspaceResult.directory,
-            error: String(error),
+            command: error.command,
+            exitCode: error.exitCode,
+            gitStderr: error.gitStderr,
+            error: error.message,
           });
-          return errorResponse("git_pull_failed", error.message, 409);
+          return errorResponse(
+            "git_pull_failed",
+            "Unable to pull the latest changes from the remote repository.",
+            409,
+          );
         }
 
         log.error("Workspace pull latest action failed unexpectedly", {

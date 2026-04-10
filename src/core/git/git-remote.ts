@@ -109,11 +109,7 @@ export async function pullBranch(
   branchName: string,
   remote = "origin",
 ): Promise<void> {
-  const remoteArgs = ["remote", "get-url", remote];
-  const remoteResult = await runGitCommand(executor, directory, remoteArgs);
-  if (!remoteResult.success) {
-    throw gitError(`Failed to get remote URL for ${remote}`, remoteResult, remoteArgs);
-  }
+  await getRemoteUrl(executor, directory, remote);
 
   const fetchArgs = ["fetch", remote, branchName];
   const fetchResult = await runGitCommand(executor, directory, fetchArgs);

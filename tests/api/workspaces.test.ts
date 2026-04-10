@@ -634,6 +634,39 @@ describe("Workspace API Integration", () => {
         await rm(join(repos.cloneDir, ".."), { recursive: true, force: true });
       }
     });
+
+    test("returns a generic message when pull latest fails with a git command error", async () => {
+      const repos = await createPullTestRepos();
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Missing Remote Workspace",
+            directory: repos.cloneDir,
+          }),
+        });
+        expect(createResponse.ok).toBe(true);
+        const workspace = await createResponse.json();
+
+        await Bun.$`git -C ${repos.cloneDir} remote remove origin`.quiet();
+
+        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/pull-latest-changes`, {
+          method: "POST",
+        });
+        expect(response.status).toBe(409);
+
+        const data = await response.json();
+        expect(data.error).toBe("git_pull_failed");
+        expect(data.message).toBe("Unable to pull the latest changes from the remote repository.");
+        expect(data.message).not.toContain(repos.originDir);
+      } finally {
+        await rm(repos.originDir, { recursive: true, force: true });
+        await rm(repos.sourceDir, { recursive: true, force: true });
+        await rm(join(repos.cloneDir, ".."), { recursive: true, force: true });
+      }
+    });
   });
 
   describe("Loop creation with workspaceId", () => {
