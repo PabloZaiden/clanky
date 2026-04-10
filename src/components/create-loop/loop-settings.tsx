@@ -29,12 +29,6 @@ export function LoopSettings({
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Plan Mode
             </span>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 sm:hidden">
-              Review AI plan before execution
-            </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
-              Create and review a plan before starting the loop. The AI will generate a plan based on your prompt, and you can provide feedback before execution begins.
-            </p>
           </div>
         </label>
       </div>
@@ -52,9 +46,6 @@ export function LoopSettings({
               <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Auto-accept plan
               </span>
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Disabled by default. Turn this on to skip manual plan review and start execution as soon as the plan is ready.
-              </p>
             </div>
           </label>
         </div>
@@ -72,9 +63,6 @@ export function LoopSettings({
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Use Worktree
             </span>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Run in a dedicated Ralph worktree. Turn this off to use the main checkout with a dedicated Ralph branch.
-            </p>
           </div>
         </label>
       </div>

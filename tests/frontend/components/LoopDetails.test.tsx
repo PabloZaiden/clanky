@@ -1777,7 +1777,7 @@ describe("prompt tab", () => {
     });
   });
 
-  test("shows info message for non-active loops", async () => {
+  test("does not show the inactive action-bar legend for non-active loops", async () => {
     const loop = createLoopWithStatus("completed", {
       config: { id: LOOP_ID, name: "Done Loop", prompt: "Fix bug" },
     });
@@ -1790,7 +1790,7 @@ describe("prompt tab", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Done Loop")).toBeTruthy();
@@ -1799,8 +1799,10 @@ describe("prompt tab", () => {
     await user.click(getByText("Prompt"));
 
     await waitFor(() => {
-      expect(getByText(/Use the action bar to send the next message or restart/)).toBeTruthy();
+      expect(getByText("Original Task Prompt")).toBeTruthy();
     });
+
+    expect(queryByText(/Use the action bar to send the next message or restart/)).toBeNull();
   });
 });
 
