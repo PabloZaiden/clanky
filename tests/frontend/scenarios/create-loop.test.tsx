@@ -7,7 +7,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { renderWithUser, waitFor } from "../helpers/render";
+import { act, renderWithUser, waitFor } from "../helpers/render";
 import {
   createLoop,
   createLoopWithStatus,
@@ -33,6 +33,14 @@ function connectedModel() {
     providerName: "Anthropic",
     connected: true,
   });
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
 }
 
 function setupApi(loops: ReturnType<typeof createLoop>[] = []) {
@@ -121,6 +129,59 @@ describe("create loop scenario", () => {
 
     await waitFor(() => {
       expect(window.location.hash).toBe("#/loop/new-loop-1");
+    });
+  });
+
+  test("does not auto-open a created loop after leaving compose before the request resolves", async () => {
+    const createdLoop = createLoopWithStatus("running", {
+      config: {
+        id: "new-loop-late",
+        name: "My New Loop",
+        directory: "/workspaces/my-project",
+        prompt: "X",
+        workspaceId: "ws-1",
+      },
+    });
+    const createRequest = createDeferred<typeof createdLoop>();
+
+    setupApi();
+    api.post("/api/loops", async () => await createRequest.promise);
+    api.put("/api/preferences/last-model", () => ({ success: true }));
+    api.put("/api/preferences/last-directory", () => ({ success: true }));
+
+    const { getByLabelText, user } = renderWithUser(<App />, { route: "#/new/loop" });
+
+    await selectWorkspace(user);
+
+    await user.type(getByLabelText(/Prompt/) as HTMLTextAreaElement, "X");
+    await user.type(getByLabelText(/Title/) as HTMLInputElement, "X");
+
+    const submitBtn = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Create"),
+    );
+    expect(submitBtn).toBeTruthy();
+    await user.click(submitBtn!);
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops", "POST").length).toBe(1);
+    });
+
+    const loopGetCountBeforeResolve = api.calls("/api/loops", "GET").length;
+
+    await act(async () => {
+      window.location.hash = "#/";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/");
+    });
+
+    createRequest.resolve(createdLoop);
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops", "GET").length).toBeGreaterThan(loopGetCountBeforeResolve);
+      expect(window.location.hash).toBe("#/");
     });
   });
 
