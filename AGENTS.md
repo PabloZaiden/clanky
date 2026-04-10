@@ -6,8 +6,8 @@ This document provides guidelines for AI coding agents working on the Ralpher pr
 
 When working on tasks, follow this general workflow to ensure clarity and goal alignment:
 
-- Always make sure you have all your goals written down in a document in `./.planning/plan.md` and agreed upon before starting to code.
-- Always use the `Todo` functionality to keep track of the work you're doing, and the last `Todo` should always be "verify that all goals are met according to the document, and update the `Todo` again". Use `./.planning/status.md` to track the plan status.
+- Always make sure you have all your goals written down in a document in `./.ralph-planning/plan.md` and agreed upon before starting to code.
+- Always use the `Todo` functionality to keep track of the work you're doing, and the last `Todo` should always be "verify that all goals are met according to the document, and update the `Todo` again". Use `./.ralph-planning/status.md` to track the plan status.
 - Track the status of the work in that document.
 - After checking the document, update what the next steps to work on are, and what's important to know about it to be able to continue working on it later.
 - Make sure that the goals you are trying to achieve are written down, in a way that you can properly verify them later.
@@ -373,7 +373,7 @@ expect(loop.state.status).toBe("completed");
 - Git operations are allowed. The system manages git branches, commits, and merges for Ralph Loops.
 - Always prefer simplicity, usability and top level type safety over cleverness.
 - Before doing something, check the patterns used in the rest of the codebase.
-- Keep the `.planning/status.md` file updated with progress.
+- Keep the `.ralph-planning/status.md` file updated with progress.
 - **Never use time estimates** in plans, documentation, or task descriptions. Time estimates are inherently inaccurate and create false expectations. Use complexity levels (Low, Medium, High) instead.
 - **Avoid code duplication**: When you find yourself writing similar code in multiple places, refactor to extract the common logic into a shared function or method. Use parameters to handle variations rather than duplicating code. This improves maintainability and reduces the risk of inconsistent behavior.
 
@@ -536,20 +536,20 @@ When working on tasks, follow this workflow to ensure clarity, goal alignment, a
 
 ### Planning
 
-- At the start of any multi-step task, write your goals and plan in `./.planning/plan.md`.
-- Track the status of each task in `./.planning/status.md`.
+- At the start of any multi-step task, write your goals and plan in `./.ralph-planning/plan.md`.
+- Track the status of each task in `./.ralph-planning/status.md`.
 - Make sure that goals are written down in a way that you can properly verify them later.
 - Don't say something is done until you have verified that all goals are met.
 - **Never start implementation before the plan is confirmed.** Present the plan to the user and wait for explicit approval before writing any code. If the plan needs changes, revise and re-confirm before proceeding.
 
 ### Incremental Progress Tracking
 
-- After completing each individual task, **immediately** update `./.planning/status.md` to mark it as completed and note any relevant findings or context.
+- After completing each individual task, **immediately** update `./.ralph-planning/status.md` to mark it as completed and note any relevant findings or context.
 - Do **not** wait until the end of a session to batch-update progress — update after every task so that progress is preserved even if the session is interrupted or context is lost.
 
 ### Pre-Compaction Persistence
 
-- Before ending your response, update `./.planning/status.md` with:
+- Before ending your response, update `./.ralph-planning/status.md` with:
   - The task you are currently working on and its current state
   - Updated status of all tasks in the plan
   - Any new learnings, discoveries, or important context gathered
@@ -558,7 +558,7 @@ When working on tasks, follow this workflow to ensure clarity, goal alignment, a
 
 ### Goal Verification
 
-- Before considering work complete, check `./.planning/plan.md` and `./.planning/status.md` to ensure all tasks are actually marked as completed.
+- Before considering work complete, check `./.ralph-planning/plan.md` and `./.ralph-planning/status.md` to ensure all tasks are actually marked as completed.
 - Follow this general loop:
   1. Write down goals in the plan
   2. Implement the work

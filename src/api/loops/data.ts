@@ -3,10 +3,10 @@
  *
  * Provides read access to loop data and files:
  * - GET /api/loops/:id/diff - Get git diff for loop changes
- * - GET /api/loops/:id/plan - Get .planning/plan.md content
- * - GET /api/loops/:id/status-file - Get .planning/status.md content
+ * - GET /api/loops/:id/plan - Get .ralph-planning/plan.md content
+ * - GET /api/loops/:id/status-file - Get .ralph-planning/status.md content
  * - GET /api/loops/:id/pull-request - Get PR navigation metadata for pushed loops
- * - GET /api/check-planning-dir - Check if .planning directory exists
+ * - GET /api/check-planning-dir - Check if .ralph-planning directory exists
  */
 
 import { getLoopWorkingDirectory, loopManager } from "../../core/loop-manager";
@@ -15,6 +15,7 @@ import { GitService } from "../../core/git-service";
 import { createLogger } from "../../core/logger";
 import type { FileContentResponse, PullRequestDestinationResponse } from "../../types/api";
 import { errorResponse, normalizeDirectoryPath, resolveWorkspaceForDirectory } from "../helpers";
+import { getPlanFilePath, getPlanningDirectoryPath, getStatusFilePath } from "../../lib/planning-files";
 
 const log = createLogger("api:loops");
 
@@ -63,9 +64,9 @@ export const loopsDataRoutes = {
 
   "/api/loops/:id/plan": {
     /**
-     * GET /api/loops/:id/plan - Get .planning/plan.md content.
+     * GET /api/loops/:id/plan - Get .ralph-planning/plan.md content.
      *
-     * Reads the plan.md file from the loop's .planning directory.
+     * Reads the plan.md file from the loop's .ralph-planning directory.
      * Returns the file content and whether the file exists.
      *
      * @returns FileContentResponse with content and exists flag
@@ -82,7 +83,7 @@ export const loopsDataRoutes = {
       }
 
       const executor = await backendManager.getCommandExecutorAsync(loop.config.workspaceId, workDir);
-      const planPath = `${workDir}/.planning/plan.md`;
+      const planPath = getPlanFilePath(workDir);
 
       const response: FileContentResponse = {
         content: "",
@@ -101,9 +102,9 @@ export const loopsDataRoutes = {
 
   "/api/loops/:id/status-file": {
     /**
-     * GET /api/loops/:id/status-file - Get .planning/status.md content.
+     * GET /api/loops/:id/status-file - Get .ralph-planning/status.md content.
      *
-     * Reads the status.md file from the loop's .planning directory.
+     * Reads the status.md file from the loop's .ralph-planning directory.
      * Returns the file content and whether the file exists.
      *
      * @returns FileContentResponse with content and exists flag
@@ -120,7 +121,7 @@ export const loopsDataRoutes = {
       }
 
       const executor = await backendManager.getCommandExecutorAsync(loop.config.workspaceId, workDir);
-      const statusPath = `${workDir}/.planning/status.md`;
+      const statusPath = getStatusFilePath(workDir);
 
       const response: FileContentResponse = {
         content: "",
@@ -157,9 +158,9 @@ export const loopsDataRoutes = {
 
   "/api/check-planning-dir": {
     /**
-     * GET /api/check-planning-dir - Check if .planning directory exists.
+     * GET /api/check-planning-dir - Check if .ralph-planning directory exists.
      *
-     * Checks if a directory has a .planning folder and lists its contents.
+     * Checks if a directory has a .ralph-planning folder and lists its contents.
      * Useful for validating a project before creating a loop. When multiple
      * workspaces share the same directory path across different server targets,
      * callers should pass `workspaceId` to disambiguate the lookup.
@@ -191,7 +192,7 @@ export const loopsDataRoutes = {
         return workspace;
       }
 
-      const planningDir = `${normalizedDirectory}/.planning`;
+      const planningDir = getPlanningDirectoryPath(normalizedDirectory);
 
       try {
         // Get mode-appropriate command executor
@@ -205,26 +206,26 @@ export const loopsDataRoutes = {
             exists: false,
             hasFiles: false,
             files: [],
-            warning: "The .planning directory does not exist. Ralph Loops work best with planning documents.",
           });
         }
 
         // List files in the directory
         const files = await executor.listDirectory(planningDir);
 
-        if (files.length === 0) {
+        const visibleFiles = files.filter((file) => file !== ".gitkeep");
+
+        if (visibleFiles.length === 0) {
           return Response.json({
             exists: true,
             hasFiles: false,
             files: [],
-            warning: "The .planning directory is empty. Consider adding plan.md and status.md files.",
           });
         }
 
         return Response.json({
           exists: true,
           hasFiles: true,
-          files,
+          files: visibleFiles,
         });
       } catch (error) {
         log.error("Failed to inspect planning directory", {
@@ -237,4 +238,3 @@ export const loopsDataRoutes = {
     },
   },
 };
-

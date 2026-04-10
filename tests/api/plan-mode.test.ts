@@ -247,8 +247,8 @@ describe("Plan Mode API Integration", () => {
   afterEach(teardownTest);
 
   describe("GET /api/check-planning-dir", () => {
-    test("treats a .planning directory with only .gitkeep as empty", async () => {
-      const planningDir = join(currentTestWorkDir, ".planning");
+    test("treats a .ralph-planning directory with only .gitkeep as empty", async () => {
+      const planningDir = join(currentTestWorkDir, ".ralph-planning");
       await mkdir(planningDir, { recursive: true });
       await writeFile(join(planningDir, ".gitkeep"), "");
 
@@ -266,7 +266,7 @@ describe("Plan Mode API Integration", () => {
       expect(data.exists).toBe(true);
       expect(data.hasFiles).toBe(false);
       expect(data.files).toEqual([]);
-      expect(data.warning).toBe("The .planning directory is empty. Consider adding plan.md and status.md files.");
+      expect(data.warning).toBeUndefined();
     });
   });
 
@@ -299,9 +299,9 @@ describe("Plan Mode API Integration", () => {
     });
 
     test("clears planning folder before plan creation when clearPlanningFolder is true", async () => {
-      // Setup: Create existing files in .planning folder and commit them
+      // Setup: Create existing files in .ralph-planning folder and commit them
       // (files must be committed so they appear in the worktree)
-      const planningDir = join(currentTestWorkDir, ".planning");
+      const planningDir = join(currentTestWorkDir, ".ralph-planning");
       await mkdir(planningDir, { recursive: true });
       await writeFile(join(planningDir, "old-plan.md"), "Old content");
       await Bun.$`git -C ${currentTestWorkDir} add .`.quiet();
@@ -331,7 +331,7 @@ describe("Plan Mode API Integration", () => {
       expect(worktreePath).toBeDefined();
 
       // The planning folder is cleared in the worktree, not the main checkout
-      const wtPlanningDir = join(worktreePath!, ".planning");
+      const wtPlanningDir = join(worktreePath!, ".ralph-planning");
       await waitForFileDeleted(join(wtPlanningDir, "old-plan.md"));
 
       // Verify file was cleared in worktree
@@ -550,7 +550,7 @@ describe("Plan Mode API Integration", () => {
       await Bun.$`git -C ${currentTestWorkDir} checkout ${baseBranch}`.quiet();
       
       // Create loop with clear folder enabled
-      const planningDir = join(currentTestWorkDir, ".planning-test2");
+      const planningDir = join(currentTestWorkDir, ".ralph-planning-test2");
       await mkdir(planningDir, { recursive: true });
 
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
@@ -560,7 +560,7 @@ describe("Plan Mode API Integration", () => {
           prompt: "Create a plan",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,
-          planningFolderPath: ".planning-test2",
+          planningFolderPath: ".ralph-planning-test2",
           maxIterations: 1,
           clearPlanningFolder: true,
           planMode: true,

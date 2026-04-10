@@ -154,7 +154,7 @@ Create a new loop.
 | `git.branchPrefix` | string | No | Optional prefix prepended before the generated `title-hash` branch name (default: empty string). Non-empty values are normalized to git-safe path segments and stored with a trailing `/`. |
 | `git.commitScope` | string | No | Optional Conventional Commit scope override (default: empty string). When provided, use a meaningful module, section, or topic such as `"auth"` or `"api"`. Leave it empty to generate scope-less commits. Generic placeholder values such as `"ralph"` are treated as empty. The deprecated `git.commitPrefix` is still accepted and converted the same way. |
 | `baseBranch` | string | No | Base branch to create the loop from (default: auto-detected default branch) |
-| `clearPlanningFolder` | boolean | No | Clear .planning folder before starting (default: false) |
+| `clearPlanningFolder` | boolean | No | Clear .ralph-planning folder before starting (default: false) |
 | `draft` | boolean | No | Save as draft without starting (default: false) |
 
 **Example Request**
@@ -737,7 +737,7 @@ Get the git diff for a loop's changes.
 
 #### GET /api/loops/:id/plan
 
-Get the contents of `.planning/plan.md` from the loop's worktree directory.
+Get the contents of `.ralph-planning/plan.md` from the loop's worktree directory.
 
 **Response**
 
@@ -757,7 +757,7 @@ Get the contents of `.planning/plan.md` from the loop's worktree directory.
 
 #### GET /api/loops/:id/status-file
 
-Get the contents of `.planning/status.md` from the loop's worktree directory.
+Get the contents of `.ralph-planning/status.md` from the loop's worktree directory.
 
 **Response**
 
@@ -1373,7 +1373,7 @@ Get application configuration based on environment.
 
 #### GET /api/check-planning-dir
 
-Check if a directory has a `.planning` folder with files.
+Check if a directory has a `.ralph-planning` folder with files.
 
 **Query Parameters**
 
@@ -1398,8 +1398,7 @@ Check if a directory has a `.planning` folder with files.
 {
   "exists": false,
   "hasFiles": false,
-  "files": [],
-  "warning": "The .planning directory does not exist. Ralph Loops work best with planning documents."
+  "files": []
 }
 ```
 

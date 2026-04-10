@@ -12,6 +12,7 @@ import { buildLoopBranchName } from "../branch-name";
 import { backendManager } from "../backend-manager";
 import { formatConventionalCommit, normalizeAiCommitMessage } from "../conventional-commits";
 import { log } from "../logger";
+import { getPlanningDirectoryPath } from "../../lib/planning-files";
 
 export interface GitOperationContext {
   git: GitService;
@@ -29,7 +30,7 @@ export interface GitCommitContext extends GitOperationContext {
 }
 
 export async function clearLoopPlanningFolder(ctx: GitOperationContext): Promise<void> {
-  const planningDir = `${ctx.workingDirectory}/.planning`;
+  const planningDir = getPlanningDirectoryPath(ctx.workingDirectory);
 
   try {
     const executor = await backendManager.getCommandExecutorAsync(ctx.config.workspaceId, ctx.workingDirectory);
@@ -37,21 +38,21 @@ export async function clearLoopPlanningFolder(ctx: GitOperationContext): Promise
     const exists = await executor.directoryExists(planningDir);
 
     if (!exists) {
-      ctx.emitLog("debug", ".planning directory does not exist, skipping clear");
+      ctx.emitLog("debug", ".ralph-planning directory does not exist, skipping clear");
       return;
     }
 
     const files = await executor.listDirectory(planningDir);
 
     if (files.length === 0) {
-      ctx.emitLog("debug", ".planning directory is already empty");
+      ctx.emitLog("debug", ".ralph-planning directory is already empty");
       return;
     }
 
     const filesToDelete = files.filter((file) => file !== ".gitkeep");
 
     if (filesToDelete.length === 0) {
-      ctx.emitLog("debug", ".planning directory only contains .gitkeep");
+      ctx.emitLog("debug", ".ralph-planning directory only contains .gitkeep");
       return;
     }
 
@@ -64,30 +65,30 @@ export async function clearLoopPlanningFolder(ctx: GitOperationContext): Promise
       throw new Error(`rm command failed: ${result.stderr}`);
     }
 
-    ctx.emitLog("info", `Cleared .planning folder: ${filesToDelete.length} file(s) deleted`, {
+    ctx.emitLog("info", `Cleared .ralph-planning folder: ${filesToDelete.length} file(s) deleted`, {
       deletedCount: filesToDelete.length,
       preservedFiles: files.includes(".gitkeep") ? [".gitkeep"] : [],
     });
 
     const hasChanges = await ctx.git.hasUncommittedChanges(ctx.workingDirectory);
     if (hasChanges) {
-      ctx.emitLog("info", "Committing cleared .planning folder...");
+      ctx.emitLog("info", "Committing cleared .ralph-planning folder...");
       try {
         const commitInfo = await ctx.git.commit(
           ctx.workingDirectory,
-          formatConventionalCommit("chore", ctx.config.git.commitScope, "clear .planning folder for fresh start"),
+          formatConventionalCommit("chore", ctx.config.git.commitScope, "clear .ralph-planning folder for fresh start"),
           { expectedBranch: ctx.state.git?.workingBranch }
         );
-        ctx.emitLog("info", `Committed .planning folder cleanup`, {
+        ctx.emitLog("info", `Committed .ralph-planning folder cleanup`, {
           sha: commitInfo.sha.slice(0, 8),
           filesChanged: commitInfo.filesChanged,
         });
       } catch (commitError) {
-        ctx.emitLog("warn", `Failed to commit .planning folder cleanup: ${String(commitError)}`);
+        ctx.emitLog("warn", `Failed to commit .ralph-planning folder cleanup: ${String(commitError)}`);
       }
     }
   } catch (error) {
-    ctx.emitLog("warn", `Failed to clear .planning folder: ${String(error)}`);
+    ctx.emitLog("warn", `Failed to clear .ralph-planning folder: ${String(error)}`);
   }
 }
 
@@ -99,6 +100,8 @@ export async function setupLoopGitBranch(ctx: GitOperationContext, _allowPlannin
   if (!isRepo) {
     throw new Error(`Directory is not a git repository: ${directory}`);
   }
+
+  await ctx.git.ensureWorktreeExcluded(directory);
 
   const originalBranch = await resolveOriginalBranch(ctx, directory);
   const branchName = await resolveBranchName(ctx, directory);

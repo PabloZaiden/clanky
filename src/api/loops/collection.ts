@@ -57,7 +57,7 @@ export const loopsCollectionRoutes = {
      * - stopPattern: Regex for completion detection
      * - git: { branchPrefix, commitScope } for git integration
      * - baseBranch: Base branch to create loop from
-     * - clearPlanningFolder: Clear .planning folder before starting
+     * - clearPlanningFolder: Clear .ralph-planning folder before starting
      * - planMode: Start in plan creation mode
      * - planModeAutoReply: Whether planning-mode ACP questions auto-answer
      * - draft: Save as draft without starting
