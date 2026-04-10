@@ -82,11 +82,13 @@ function isStaleTerminalEvent(chat: Chat, timestamp: string): boolean {
 export function ChatDetails({
   chatId,
   onBack,
+  onOpenCodeExplorer,
   showBackButton = true,
   headerOffsetClassName,
 }: {
   chatId: string;
   onBack?: () => void;
+  onOpenCodeExplorer?: (chatId: string) => void;
   showBackButton?: boolean;
   headerOffsetClassName?: string;
 }) {
@@ -562,6 +564,15 @@ export function ChatDetails({
             )}
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => onOpenCodeExplorer?.(chat.config.id)}
+              disabled={isDeletePending}
+            >
+              Code explorer
+            </Button>
             <Button
               type="button"
               variant="ghost"

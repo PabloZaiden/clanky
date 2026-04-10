@@ -1,14 +1,14 @@
-import type { SshServerSession } from "../../types/ssh-server";
-import type { SshConnectionMode } from "../../types";
-import type { SshServer } from "../../types/ssh-server";
+import type { CreateSshSessionRequest, SshConnectionMode, SshSession } from "../../types";
+import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import type { ShellRoute } from "./shell-types";
-import { FileExplorerView } from "./file-explorer-view";
+import { CodeExplorerView } from "./code-explorer-view";
 
 interface ServerFilesViewProps {
   server: SshServer;
   sessions: SshServerSession[];
   headerOffsetClassName?: string;
   startDirectory?: string;
+  createSession?: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession: (
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode },
@@ -21,26 +21,25 @@ export function ServerFilesView({
   sessions,
   headerOffsetClassName,
   startDirectory,
+  createSession = async () => {
+    throw new Error("Workspace SSH sessions are unavailable in server code explorer context.");
+  },
   createStandaloneSession,
   onNavigate,
 }: ServerFilesViewProps) {
   return (
-    <FileExplorerView
-      title={`${server.config.name} editor`}
-      description={server.config.repositoriesBasePath?.trim() || "/"}
-      defaultRootDirectory={server.config.repositoriesBasePath?.trim() || "/"}
+    <CodeExplorerView
+      routeTarget={{ contentType: "server", serverId: server.config.id, startDirectory }}
+      loops={[]}
+      chats={[]}
+      workspaces={[]}
+      sessions={[]}
+      servers={[server]}
+      sessionsByServerId={{ [server.config.id]: sessions }}
       headerOffsetClassName={headerOffsetClassName}
-      backLabel="Back to server"
-      backRoute={{ view: "ssh-server", serverId: server.config.id }}
+      createSession={createSession}
+      createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}
-      target={{ type: "server", id: server.config.id, startDirectory }}
-      sessions={sessions}
-      hasTerminal={true}
-      emptyTerminalMessage="Choose an existing standalone SSH session or create a new one."
-      terminalSelectLabel="Select standalone SSH session"
-      onCreateTerminal={async () => await createStandaloneSession(server.config.id)}
-      testIdPrefix="server"
-      credentialPromptName={server.config.name}
     />
   );
 }

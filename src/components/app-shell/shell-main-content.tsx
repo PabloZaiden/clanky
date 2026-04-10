@@ -19,9 +19,7 @@ import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
 import { SshServerSettingsView } from "./ssh-server-settings-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
-import { WorkspaceFilesView } from "./workspace-files-view";
-import { ServerFilesView } from "./server-files-view";
-import { LoopFilesView } from "./loop-files-view";
+import { CodeExplorerView } from "./code-explorer-view";
 import type { ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
@@ -201,37 +199,27 @@ function renderMainContent(props: ShellMainContentProps) {
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "ssh", sshSessionId })}
-        onOpenLoopFiles={(loopId) => navigateWithinShell({ view: "loop-files", loopId })}
+        onOpenLoopFiles={(loopId) => navigateWithinShell({
+          view: "code-explorer",
+          target: { contentType: "loop", loopId },
+        })}
       />
     );
   }
 
   if (route.view === "loop-files") {
-    if (!selectedLoop) {
-      return shellLoading ? (
-        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading loop explorer…</div>
-      ) : (
-        <ShellPanel
-          eyebrow="Loop"
-          title="Loop not found"
-          description="The selected loop no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
-      );
-    }
-
-    const loopWorkspace = workspaces.find((workspace) => workspace.id === selectedLoop.config.workspaceId) ?? null;
-
     return (
-      <LoopFilesView
-        loop={selectedLoop}
-        workspace={loopWorkspace}
+      <CodeExplorerView
+        routeTarget={{ contentType: "loop", loopId: route.loopId, startDirectory: route.startDirectory }}
+        loops={loops}
+        chats={chats}
+        workspaces={workspaces}
         sessions={sessions}
+        servers={servers}
+        sessionsByServerId={sessionsByServerId}
         headerOffsetClassName={shellHeaderOffsetClassName}
-        startDirectory={route.startDirectory}
+        createSession={props.createSession}
+        createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -257,6 +245,10 @@ function renderMainContent(props: ShellMainContentProps) {
           navigateWithinShell({ view: "home" });
           void refreshChats();
         }}
+        onOpenCodeExplorer={(chatId) => navigateWithinShell({
+          view: "code-explorer",
+          target: { contentType: "chat", chatId },
+        })}
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
       />
@@ -314,27 +306,18 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "workspace-files") {
-    if (!selectedWorkspace) {
-      return (
-        <ShellPanel
-          eyebrow="Workspace"
-          title="Workspace not found"
-          description="The selected workspace no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
-      );
-    }
-
     return (
-      <WorkspaceFilesView
-        workspace={selectedWorkspace}
+      <CodeExplorerView
+        routeTarget={{ contentType: "workspace", workspaceId: route.workspaceId, startDirectory: route.startDirectory }}
+        loops={loops}
+        chats={chats}
+        workspaces={workspaces}
         sessions={sessions}
+        servers={servers}
+        sessionsByServerId={sessionsByServerId}
         headerOffsetClassName={shellHeaderOffsetClassName}
-        startDirectory={route.startDirectory}
         createSession={props.createSession}
+        createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
       />
     );
@@ -422,26 +405,35 @@ function renderMainContent(props: ShellMainContentProps) {
   }
 
   if (route.view === "server-files") {
-    if (!selectedServer) {
-      return (
-        <ShellPanel
-          eyebrow="SSH server"
-          title="Server not found"
-          description="The selected SSH server no longer exists."
-        >
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the sidebar or home button to continue.
-          </p>
-        </ShellPanel>
-      );
-    }
-
     return (
-      <ServerFilesView
-        server={selectedServer}
-        sessions={sessionsByServerId[selectedServer.config.id] ?? []}
+      <CodeExplorerView
+        routeTarget={{ contentType: "server", serverId: route.serverId, startDirectory: route.startDirectory }}
+        loops={loops}
+        chats={chats}
+        workspaces={workspaces}
+        sessions={sessions}
+        servers={servers}
+        sessionsByServerId={sessionsByServerId}
         headerOffsetClassName={shellHeaderOffsetClassName}
-        startDirectory={route.startDirectory}
+        createSession={props.createSession}
+        createStandaloneSession={props.createStandaloneSession}
+        onNavigate={navigateWithinShell}
+      />
+    );
+  }
+
+  if (route.view === "code-explorer") {
+    return (
+      <CodeExplorerView
+        routeTarget={route.target}
+        loops={loops}
+        chats={chats}
+        workspaces={workspaces}
+        sessions={sessions}
+        servers={servers}
+        sessionsByServerId={sessionsByServerId}
+        headerOffsetClassName={shellHeaderOffsetClassName}
+        createSession={props.createSession}
         createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
       />

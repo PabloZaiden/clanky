@@ -131,9 +131,12 @@ describe("ServerFilesView", () => {
     await user.click(getByRole("button", { name: "Reset root" }));
 
     expect(onNavigate).toHaveBeenCalledWith({
-      view: "server-files",
-      serverId: server.config.id,
-      startDirectory: undefined,
+      view: "code-explorer",
+      target: {
+        contentType: "server",
+        serverId: server.config.id,
+        startDirectory: undefined,
+      },
     });
     expect(queryByLabelText("Explorer root directory")).not.toBeInTheDocument();
   });

@@ -98,8 +98,8 @@ export function WorkspaceEditorPanel({
               value={selectedLanguage}
               onChange={(event) => setSelectedLanguage(event.target.value as EditorLanguageSelection)}
               disabled={loading}
-              aria-label="Editor language"
-              title={`Editor language: ${selectedLanguage === "auto" ? `Auto (${getLanguageLabel(detectedLanguage)})` : getLanguageLabel(editorLanguage)}`}
+              aria-label="Code explorer language"
+              title={`Code explorer language: ${selectedLanguage === "auto" ? `Auto (${getLanguageLabel(detectedLanguage)})` : getLanguageLabel(editorLanguage)}`}
               className="min-w-0 max-w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
             >
               <option value="auto">Auto ({getLanguageLabel(detectedLanguage)})</option>

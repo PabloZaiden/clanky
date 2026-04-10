@@ -82,7 +82,10 @@ export function LoopDetails({
         onOpenLoopFiles(loopId);
         return;
       }
-      window.location.hash = getHashForShellRoute({ view: "loop-files", loopId });
+      window.location.hash = getHashForShellRoute({
+        view: "code-explorer",
+        target: { contentType: "loop", loopId },
+      });
     },
     toast,
     accept, push, updateBranch, remove, purge, markMerged,
