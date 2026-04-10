@@ -898,7 +898,7 @@ describe("ChatDetails", () => {
 
     api.get("/api/chats/:id", () => longChat);
 
-    const { getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByTestId, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     const heading = await waitFor(() => getByText(longChat.config.name));
     expect(heading.className).toContain("truncate");
@@ -908,6 +908,13 @@ describe("ChatDetails", () => {
 
     const branchMetadata = getByText(longChat.state.worktree?.workingBranch ?? "");
     expect(branchMetadata.className).toContain("truncate");
+
+    const mobileActions = getByTestId("chat-header-mobile-actions");
+    expect(mobileActions.className).toContain("sm:hidden");
+
+    const desktopActions = getByTestId("chat-header-desktop-actions");
+    expect(desktopActions.className).toContain("hidden");
+    expect(desktopActions.className).toContain("sm:flex");
 
     expect(getByRole("button", { name: "More chat actions" })).toBeTruthy();
     expect(getByRole("button", { name: "Spawn loop" })).toBeTruthy();
@@ -932,5 +939,19 @@ describe("ChatDetails", () => {
     await user.click(getByRole("menuitem", { name: "Rename" }));
 
     expect(await waitFor(() => getByLabelText("Chat Name"))).toBeTruthy();
+  });
+
+  test("disables code explorer actions when no code explorer handler is provided", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    const desktopCodeExplorerButton = await waitFor(() => getByRole("button", { name: "Code explorer" })) as HTMLButtonElement;
+    expect(desktopCodeExplorerButton.disabled).toBe(true);
+
+    await user.click(getByRole("button", { name: "More chat actions" }));
+
+    const mobileCodeExplorerItem = getByRole("menuitem", { name: "Code explorer" }) as HTMLButtonElement;
+    expect(mobileCodeExplorerItem.disabled).toBe(true);
   });
 });

@@ -414,6 +414,8 @@ export function ChatDetails({
     return chat.config.directory;
   }, [chat]);
 
+  const hasCodeExplorerAction = Boolean(onOpenCodeExplorer);
+
   const mobileActionMenuItems = useMemo<ActionMenuItem[]>(() => {
     if (!chat) {
       return [];
@@ -421,20 +423,24 @@ export function ChatDetails({
 
     return [
       {
+        id: "code-explorer",
         label: "Code explorer",
         onClick: () => onOpenCodeExplorer?.(chat.config.id),
+        disabled: !hasCodeExplorerAction,
       },
       {
+        id: "rename",
         label: "Rename",
         onClick: () => setIsRenameModalOpen(true),
       },
       {
+        id: "delete",
         label: "Delete",
         onClick: () => setIsDeleteConfirmOpen(true),
         destructive: true,
       },
     ];
-  }, [chat, onOpenCodeExplorer]);
+  }, [chat, hasCodeExplorerAction, onOpenCodeExplorer]);
 
   if (loading) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;
@@ -630,13 +636,13 @@ export function ChatDetails({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <div className="hidden items-center gap-2 sm:flex">
+            <div data-testid="chat-header-desktop-actions" className="hidden items-center gap-2 sm:flex">
               <Button
                 type="button"
                 variant="ghost"
                 size="xs"
                 onClick={() => onOpenCodeExplorer?.(chat.config.id)}
-                disabled={isDeletePending}
+                disabled={isDeletePending || !hasCodeExplorerAction}
               >
                 Code explorer
               </Button>
@@ -673,13 +679,14 @@ export function ChatDetails({
             >
               Spawn Loop
             </Button>
-            <div className="sm:hidden">
+            <div data-testid="chat-header-mobile-actions" className="sm:hidden">
               <ActionMenu
                 items={mobileActionMenuItems}
                 ariaLabel="More chat actions"
                 disabled={isDeletePending}
                 triggerContent="More"
-                triggerClassName="min-h-[32px] min-w-0 bg-transparent px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:bg-transparent dark:text-gray-300 dark:hover:bg-neutral-800"
+                triggerVariant="ghost"
+                triggerSize="compact"
               />
             </div>
             <Button
