@@ -1,3 +1,4 @@
+import { EmptyChatTranscriptError } from "../types/chat";
 import type { PersistedMessage } from "../types/loop";
 
 const MAX_SPAWN_LOOP_NAME_LENGTH = 100;
@@ -36,7 +37,7 @@ export function buildSpawnLoopPrompt(chatName: string, messages: readonly Persis
     .filter((message): message is string => message !== null);
 
   if (formattedMessages.length === 0) {
-    throw new Error("Chat transcript is empty. Send at least one message before spawning a loop.");
+    throw new EmptyChatTranscriptError();
   }
 
   const selectedMessages: string[] = [];

@@ -609,7 +609,7 @@ export function ChatDetails({
             >
               <span aria-hidden="true" className="text-base leading-none">⤢</span>
             </Button>
-             <Button
+            <Button
               type="button"
               variant="secondary"
               size="xs"

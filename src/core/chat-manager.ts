@@ -13,7 +13,7 @@ import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
 import type { EventStream } from "../utils/event-stream";
-import { createInitialChatState, DEFAULT_CHAT_CONFIG } from "../types/chat";
+import { ChatBusyError, createInitialChatState, DEFAULT_CHAT_CONFIG, isChatBusyStatus } from "../types/chat";
 import { loadChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
@@ -237,9 +237,7 @@ export class ChatManager {
       throw new Error(`Chat not found: ${chatId}`);
     }
 
-    if (chat.state.status === "streaming" || chat.state.status === "starting" || chat.state.status === "interrupting") {
-      throw new Error("Chat is busy");
-    }
+    this.assertChatIsAvailable(chat);
 
     const backend = await this.ensureBackendConnected(chat);
     const sessionChat = await this.ensureSession(chat, backend, { recreateIfMissing: true });
@@ -363,6 +361,8 @@ export class ChatManager {
       throw new Error(`Chat not found: ${chatId}`);
     }
 
+    this.assertChatIsAvailable(chat);
+
     const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
     const git = GitService.withExecutor(executor);
     const baseBranch = chat.state.worktree?.originalBranch
@@ -411,6 +411,12 @@ export class ChatManager {
 
   async disconnectChat(chatId: string): Promise<void> {
     await backendManager.disconnectChat(chatId);
+  }
+
+  private assertChatIsAvailable(chat: Chat): void {
+    if (isChatBusyStatus(chat.state.status)) {
+      throw new ChatBusyError();
+    }
   }
 
   private async ensureBackendConnected(chat: Chat): Promise<Backend> {
