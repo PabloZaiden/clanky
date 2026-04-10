@@ -192,7 +192,7 @@ describe("plan mode scenario", () => {
     });
 
     const feedbackInput = getByRole("textbox", { name: "Plan feedback" }) as HTMLTextAreaElement;
-    expect(feedbackInput.placeholder).toContain("feedback");
+    expect(feedbackInput.placeholder).toBe("");
     await user.type(feedbackInput, "X");
 
     await user.click(getByRole("button", { name: "Send Feedback" }));
