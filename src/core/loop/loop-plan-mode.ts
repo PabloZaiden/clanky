@@ -40,16 +40,6 @@ export async function sendPlanFeedbackImpl(
   await engine.injectPlanFeedback(feedback, attachments);
 }
 
-export async function answerPendingPlanQuestionImpl(ctx: LoopCtx, loopId: string, answers: string[][]): Promise<void> {
-  const engine = ctx.engines.get(loopId) ?? await ctx.recoverPlanningEngine(loopId);
-
-  if (engine.state.status !== "planning") {
-    throw new Error(`Loop is not in planning status: ${engine.state.status}`);
-  }
-
-  await engine.answerPendingPlanQuestion(answers);
-}
-
 export async function acceptPlanImpl(
   ctx: LoopCtx,
   loopId: string,

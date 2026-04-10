@@ -4,13 +4,12 @@
  */
 
 import type { Loop } from "../../types";
-import type { PersistedMessage, PersistedToolCall, LoopLogEntry, PendingPlanQuestion } from "../../types/loop";
+import type { PersistedMessage, PersistedToolCall, LoopLogEntry } from "../../types/loop";
 import type { EntityLabels } from "../../utils";
 import type { TabId } from "./types";
 import type { LogDisplayState } from "./use-log-display-state";
 import type { UseLoopContentResult } from "./use-loop-content";
 import type { UseLoopActionsResult } from "./use-loop-actions";
-import type { UsePlanQuestionResult } from "./use-plan-question";
 import type { UsePortForwardActionsResult } from "./use-port-forward-actions";
 import type { PortForward } from "../../types";
 import { LogTab } from "./log-tab";
@@ -39,7 +38,6 @@ interface LoopDetailsTabContentProps {
 
   // Bundled state from hooks
   logDisplay: LogDisplayState;
-  planQuestion: UsePlanQuestionResult & { pendingPlanQuestion: PendingPlanQuestion | undefined };
   portForward: UsePortForwardActionsResult;
   portForwardData: { forwards: PortForward[]; forwardsLoading: boolean; forwardsError: string | null };
   content: UseLoopContentResult;
@@ -65,7 +63,6 @@ export function LoopDetailsTabContent({
   toolCalls,
   logs,
   logDisplay,
-  planQuestion,
   portForward,
   portForwardData,
   content,
@@ -93,13 +90,6 @@ export function LoopDetailsTabContent({
           {...logDisplay}
           markdownEnabled={markdownEnabled}
           isLogActive={isLogActive}
-          pendingPlanQuestion={planQuestion.pendingPlanQuestion}
-          planQuestionSelections={planQuestion.planQuestionSelections}
-          onPlanQuestionSelectionsChange={planQuestion.setPlanQuestionSelections}
-          planQuestionCustomAnswers={planQuestion.planQuestionCustomAnswers}
-          onPlanQuestionCustomAnswersChange={planQuestion.setPlanQuestionCustomAnswers}
-          planQuestionSubmitting={planQuestion.planQuestionSubmitting}
-          onAnswerPlanQuestion={planQuestion.handleAnswerPlanQuestion}
           isFocusMode={isLogFocusMode}
           onEnterFocusMode={onEnterLogFocusMode}
           onExitFocusMode={onExitLogFocusMode}
