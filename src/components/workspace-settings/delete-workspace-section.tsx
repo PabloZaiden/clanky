@@ -39,7 +39,6 @@ export function DeleteWorkspaceSection({
         return;
       }
 
-      toast.success(`Deleted workspace "${workspace.name}"`);
       onDeleted?.();
     } catch (error) {
       setShowConfirm(false);

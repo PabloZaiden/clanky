@@ -68,7 +68,6 @@ export function SshServerComposer({
       const hasChanges = Boolean(request) || Boolean(nextValues.password);
 
       if (!hasChanges) {
-        toast.success("SSH server is already up to date.");
         onNavigate({ view: "ssh-server", serverId: initialServer.config.id });
         return;
       }

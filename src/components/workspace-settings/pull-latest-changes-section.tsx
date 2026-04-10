@@ -45,7 +45,6 @@ export function PullLatestChangesSection({
       const branchLabel = result.defaultBranch ?? result.currentBranch ?? "the default branch";
       const message = `Pulled latest changes for "${branchLabel}".`;
       setResultMessage(message);
-      toast.success(message);
     } catch (error) {
       const message = String(error);
       setErrorMessage(message);
