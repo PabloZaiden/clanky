@@ -589,7 +589,7 @@ export class FileExplorerService {
       !options?.overwrite
       && (currentFile?.versionToken ?? null) !== (options?.expectedVersionToken ?? null)
     ) {
-      throw new FileExplorerConflictError("File changed outside the editor", currentFile);
+      throw new FileExplorerConflictError("File changed outside the code explorer", currentFile);
     }
 
     const wroteFile = await target.executor.writeFile(absolutePath, content);

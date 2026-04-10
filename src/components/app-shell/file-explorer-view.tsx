@@ -54,6 +54,7 @@ interface FileExplorerViewProps {
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
   buildRoute?: (startDirectory?: string) => ShellRoute;
+  headerActions?: React.ReactNode;
 }
 
 export function FileExplorerView({
@@ -73,6 +74,7 @@ export function FileExplorerView({
   testIdPrefix,
   credentialPromptName,
   buildRoute,
+  headerActions,
 }: FileExplorerViewProps) {
   const toast = useToast();
   const hasStoredServerCredential = target.type === "server"
@@ -172,7 +174,7 @@ export function FileExplorerView({
   async function handleRefreshEditor(): Promise<boolean> {
     const refreshed = await explorer.refreshCurrentFile();
     if (refreshed) {
-      toast.info("Editor reloaded");
+      toast.info("Code explorer reloaded");
     }
     return refreshed;
   }
@@ -331,9 +333,12 @@ export function FileExplorerView({
       variant="compact"
       headerOffsetClassName={headerOffsetClassName}
       actions={(
-        <Button variant="ghost" size="sm" onClick={() => onNavigate(backRoute)}>
-          {backLabel}
-        </Button>
+        <>
+          {headerActions}
+          <Button variant="ghost" size="sm" onClick={() => onNavigate(backRoute)}>
+            {backLabel}
+          </Button>
+        </>
       )}
       bodyClassName="flex h-full min-h-0 flex-col"
       bodyContainerClassName="flex-1 min-h-0 overflow-hidden px-4 py-5 sm:px-6 sm:py-5 lg:px-8 lg:py-6"
@@ -473,7 +478,7 @@ export function FileExplorerView({
 
       <WorkspaceFileConflictModal
         isOpen={conflictState?.kind === "save_conflict"}
-        title="File changed outside the editor"
+        title="File changed outside the code explorer"
         message={conflictState?.message ?? ""}
         confirmLabel="Overwrite file"
         onCancel={explorer.dismissConflict}

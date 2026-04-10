@@ -62,11 +62,11 @@ describe("App workspace files route", () => {
     }));
 
     const { getByRole, user } = renderWithUser(<App />, {
-      route: "#/workspace-files/workspace-files-1",
+      route: "#/code-explorer/workspace/workspace-files-1",
     });
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Files Route Workspace editor" })).toBeInTheDocument();
+      expect(getByRole("heading", { name: "Files Route Workspace code explorer" })).toBeInTheDocument();
       expect(getByRole("button", { name: "Terminals" })).toBeInTheDocument();
     });
 
@@ -107,11 +107,55 @@ describe("App workspace files route", () => {
     });
 
     const { getByRole } = renderWithUser(<App />, {
-      route: "#/workspace-files/workspace-files-root?startDirectory=%2Fopt%2Fproject",
+      route: "#/code-explorer/workspace/workspace-files-root?startDirectory=%2Fopt%2Fproject",
     });
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Files Route Root editor" })).toBeInTheDocument();
+      expect(getByRole("heading", { name: "Files Route Root code explorer" })).toBeInTheDocument();
+    });
+  });
+
+  test("renders the generic code explorer picker from the hash route", async () => {
+    installEmbeddedSshSessionMock();
+    const { App } = await import("@/App");
+    const workspace = createWorkspace({
+      id: "workspace-files-picker",
+      name: "Picker Workspace",
+      directory: "/workspaces/picker",
+    });
+    const loop = createLoopWithStatus("idle", {
+      config: {
+        id: "picker-loop",
+        name: "Picker Loop",
+        workspaceId: workspace.id,
+        directory: workspace.directory,
+      },
+    });
+
+    api.get("/api/loops", () => [loop]);
+    api.get("/api/chats", () => []);
+    api.get("/api/workspaces", () => [workspace]);
+    api.get("/api/ssh-sessions", () => []);
+    api.get("/api/ssh-servers", () => []);
+    api.get("/api/config", () => ({ remoteOnly: false }));
+    api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
+    api.get("/api/preferences/last-model", () => null);
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/models", () => []);
+    api.get("/api/workspaces/:id/files", () => ({
+      workspaceId: workspace.id,
+      directory: "",
+      entries: [],
+    }));
+
+    const { getByLabelText, getByRole } = renderWithUser(<App />, {
+      route: "#/code-explorer",
+    });
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Code explorer" })).toBeInTheDocument();
+      expect(getByLabelText("Select code explorer content")).toBeInTheDocument();
     });
   });
 
@@ -173,11 +217,11 @@ describe("App workspace files route", () => {
     });
 
     const { getByRole } = renderWithUser(<App />, {
-      route: `#/loop-files/${loopId}`,
+      route: `#/code-explorer/loop/${loopId}`,
     });
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Loop Files Route editor" })).toBeInTheDocument();
+      expect(getByRole("heading", { name: "Loop Files Route code explorer" })).toBeInTheDocument();
     });
   });
 });

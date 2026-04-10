@@ -2,7 +2,7 @@ import type { MouseEvent } from "react";
 import type { Chat, Loop, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import { getLoopStatusLabel } from "../../utils";
-import { GearIcon, RefreshIcon, SidebarIcon, getChatStatusBadgeVariant, getLoopStatusBadgeVariant } from "../common";
+import { CodeIcon, GearIcon, RefreshIcon, SidebarIcon, getChatStatusBadgeVariant, getLoopStatusBadgeVariant } from "../common";
 import type { BadgeVariant } from "../common";
 import { getShellRouteUrl, isModifiedNavigationClick } from "./shell-navigation";
 import { ShellSection, SectionItem, WorkspaceGroupedSectionItems, EmptySection } from "./shell-sidebar";
@@ -105,6 +105,16 @@ export function ShellSidebarNav({
             </button>
             <button
               type="button"
+              onClick={() => navigateWithinShell({ view: "code-explorer" })}
+              aria-label="Open code explorer"
+              aria-current={route.view === "code-explorer" ? "page" : undefined}
+              className={route.view === "code-explorer" ? iconButtonActive : iconButtonDefault}
+              title="Code explorer"
+            >
+              <CodeIcon size="h-5 w-5" />
+            </button>
+            <button
+              type="button"
               onClick={() => navigateWithinShell({ view: "settings" })}
               aria-label="Open settings"
               aria-current={route.view === "settings" ? "page" : undefined}
@@ -141,8 +151,15 @@ export function ShellSidebarNav({
               <SectionItem
                 key={workspace.id}
                 active={
-                  (route.view === "workspace" || route.view === "workspace-settings") &&
-                  route.workspaceId === workspace.id
+                  (
+                    (route.view === "workspace" || route.view === "workspace-settings")
+                    && route.workspaceId === workspace.id
+                  )
+                  || (
+                    route.view === "code-explorer"
+                    && route.target?.contentType === "workspace"
+                    && route.target.workspaceId === workspace.id
+                  )
                 }
                 title={workspace.name}
                 subtitle={workspace.directory}
@@ -171,7 +188,14 @@ export function ShellSidebarNav({
               renderItem={(loop) => (
                 <SectionItem
                   key={loop.config.id}
-                  active={(route.view === "loop" || route.view === "loop-files") && route.loopId === loop.config.id}
+                  active={
+                    ((route.view === "loop" || route.view === "loop-files") && route.loopId === loop.config.id)
+                    || (
+                      route.view === "code-explorer"
+                      && route.target?.contentType === "loop"
+                      && route.target.loopId === loop.config.id
+                    )
+                  }
                   title={loop.config.name}
                   badge={getLoopStatusLabel(loop)}
                   badgeVariant={getLoopStatusBadgeVariant(
@@ -199,7 +223,14 @@ export function ShellSidebarNav({
             chatItems.map(({ chat, workspaceName }) => (
               <SectionItem
                 key={chat.config.id}
-                active={route.view === "chat" && route.chatId === chat.config.id}
+                active={
+                  (route.view === "chat" && route.chatId === chat.config.id)
+                  || (
+                    route.view === "code-explorer"
+                    && route.target?.contentType === "chat"
+                    && route.target.chatId === chat.config.id
+                  )
+                }
                 title={chat.config.name}
                 subtitle={workspaceName}
                 badge={chat.state.status}
@@ -252,13 +283,18 @@ export function ShellSidebarNav({
                 <SectionItem
                   key={server.config.id}
                   active={
-                    (
+                    ((
                       route.view === "ssh-server"
                       || route.view === "ssh-server-settings"
                       || route.view === "server-files"
                       || route.view === "server-arise"
                     )
-                    && route.serverId === server.config.id
+                    && route.serverId === server.config.id)
+                    || (
+                      route.view === "code-explorer"
+                      && route.target?.contentType === "server"
+                      && route.target.serverId === server.config.id
+                    )
                   }
                   title={server.config.name}
                   subtitle={`${server.config.username}@${server.config.address}`}
