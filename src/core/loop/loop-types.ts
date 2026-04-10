@@ -38,7 +38,7 @@ export interface CreateLoopOptions {
   baseBranch?: string;
   /** Whether to create a dedicated worktree for the loop (default: true) */
   useWorktree?: boolean;
-  /** Clear the .planning folder contents before starting (default: false) */
+  /** Clear the .ralph-planning folder contents before starting (default: false) */
   clearPlanningFolder?: boolean;
   /** Start in plan creation mode instead of immediate execution (required) */
   planMode: boolean;

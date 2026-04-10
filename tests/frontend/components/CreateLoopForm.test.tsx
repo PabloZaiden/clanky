@@ -517,7 +517,7 @@ describe("CreateLoopForm", () => {
         <CreateLoopForm {...defaultProps()} />
       );
       await user.click(getByText("Show advanced options"));
-      expect(getByLabelText(/Clear .\/\.planning folder/)).toBeInTheDocument();
+      expect(getByLabelText(/Clear .\/\.ralph-planning folder/)).toBeInTheDocument();
     });
 
     test("max consecutive errors defaults to 10", async () => {
@@ -542,58 +542,58 @@ describe("CreateLoopForm", () => {
       const { getByText } = renderWithUser(
         <CreateLoopForm
           {...defaultProps({
-            planningWarning: "A .planning folder already exists",
+            planningWarning: "A .ralph-planning folder already exists",
             initialLoopData: { directory: "/test", prompt: "", planMode: false },
           })}
         />
       );
-      expect(getByText("A .planning folder already exists")).toBeInTheDocument();
+      expect(getByText("A .ralph-planning folder already exists")).toBeInTheDocument();
     });
 
     test("does not show warning when null", () => {
       const { queryByText } = renderWithUser(
         <CreateLoopForm {...defaultProps({ planningWarning: null })} />
       );
-      expect(queryByText(/\.planning folder/)).not.toBeInTheDocument();
+      expect(queryByText(/\.ralph-planning folder/)).not.toBeInTheDocument();
     });
 
     test("hides planning warning when Plan Mode is checked (default)", () => {
       const { queryByText } = renderWithUser(
         <CreateLoopForm
           {...defaultProps({
-            planningWarning: "The .planning directory does not exist.",
+            planningWarning: "The .ralph-planning directory does not exist.",
           })}
         />
       );
       // Plan Mode defaults to true, so warning should be hidden
-      expect(queryByText("The .planning directory does not exist.")).not.toBeInTheDocument();
+      expect(queryByText("The .ralph-planning directory does not exist.")).not.toBeInTheDocument();
     });
 
     test("toggles warning visibility when Plan Mode checkbox changes", async () => {
       const { queryByText, getByRole, user } = renderWithUser(
         <CreateLoopForm
           {...defaultProps({
-            planningWarning: "The .planning directory is empty.",
+            planningWarning: "The .ralph-planning directory is empty.",
             initialLoopData: { directory: "/test", prompt: "", planMode: false },
           })}
         />
       );
 
       // Warning should be visible when Plan Mode is off
-      expect(queryByText("The .planning directory is empty.")).toBeInTheDocument();
+      expect(queryByText("The .ralph-planning directory is empty.")).toBeInTheDocument();
 
       // Enable Plan Mode
       const planModeCheckbox = getByRole("checkbox", { name: /Plan Mode/ });
       await user.click(planModeCheckbox);
 
       // Warning should disappear
-      expect(queryByText("The .planning directory is empty.")).not.toBeInTheDocument();
+      expect(queryByText("The .ralph-planning directory is empty.")).not.toBeInTheDocument();
 
       // Disable Plan Mode again
       await user.click(planModeCheckbox);
 
       // Warning should reappear
-      expect(queryByText("The .planning directory is empty.")).toBeInTheDocument();
+      expect(queryByText("The .ralph-planning directory is empty.")).toBeInTheDocument();
     });
   });
 
@@ -1087,7 +1087,7 @@ describe("CreateLoopForm", () => {
       expect((getByLabelText("Max Iterations") as HTMLInputElement).value).toBe("5");
       expect((getByLabelText("Max Consecutive Errors") as HTMLInputElement).value).toBe("3");
       expect((getByLabelText("Activity Timeout (seconds)") as HTMLInputElement).value).toBe("300");
-      expect((getByLabelText(/Clear .\/\.planning folder/) as HTMLInputElement).checked).toBe(true);
+      expect((getByLabelText(/Clear .\/\.ralph-planning folder/) as HTMLInputElement).checked).toBe(true);
     });
   });
 

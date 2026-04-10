@@ -78,7 +78,7 @@ function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undef
     const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
     const text = `- Goal: ${ctx.config.prompt}
 ${errorContext}
-- Create a detailed plan to achieve this goal. Write the plan to \`./.planning/plan.md\`.
+- Create a detailed plan to achieve this goal. Write the plan to \`./.ralph-planning/plan.md\`.
 
 - The plan should include:
   - Clear objectives
@@ -86,7 +86,7 @@ ${errorContext}
   - Any dependencies between tasks
   - Estimated complexity per task
 
-- Create a \`./.planning/status.md\` file to track progress.
+- Create a \`./.ralph-planning/status.md\` file to track progress.
 
 - Do NOT start implementing yet. Only create the plan.
 
@@ -114,9 +114,9 @@ ${errorContext}
 ${feedback}
 ---
 ${errorContext}
-**FIRST**: Immediately add this feedback as a pending item in \`./.planning/status.md\` so it is tracked and preserved even if the conversation context is compacted.
+**FIRST**: Immediately add this feedback as a pending item in \`./.ralph-planning/status.md\` so it is tracked and preserved even if the conversation context is compacted.
 
-Then, update the plan in \`./.planning/plan.md\` based on this feedback.
+Then, update the plan in \`./.ralph-planning/plan.md\` based on this feedback.
 
 When the updated plan is ready, end your response with:
 
@@ -152,16 +152,16 @@ function buildExecutionPrompt(ctx: PromptBuildContext, model: ModelConfig | unde
   }
 
   const userMessageSection = userMessage
-    ? `\n- **User Message**: The user has added the following message. This should be your primary focus for this iteration. Address it while keeping the original goal in mind. **Before starting work on this message, immediately add it as a pending task in \`./.planning/status.md\`** so it is tracked and preserved even if the conversation context is compacted:\n\n${userMessage}\n`
+    ? `\n- **User Message**: The user has added the following message. This should be your primary focus for this iteration. Address it while keeping the original goal in mind. **Before starting work on this message, immediately add it as a pending task in \`./.ralph-planning/status.md\`** so it is tracked and preserved even if the conversation context is compacted:\n\n${userMessage}\n`
     : "";
 
   const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
 
   const text = `- Original Goal: ${ctx.config.prompt}
 ${userMessageSection}${errorContext}
-- Read AGENTS.md, read the document in the \`./.planning\` folder, pick up the most important task to continue with, and make sure you make a plan with coding tasks that includes updating the docs with your progress and what the next steps to work on are, at the end. Don't ask for confirmation and start working on it right away.
+- Read AGENTS.md, read the document in the \`./.ralph-planning\` folder, pick up the most important task to continue with, and make sure you make a plan with coding tasks that includes updating the docs with your progress and what the next steps to work on are, at the end. Don't ask for confirmation and start working on it right away.
 
-- If the \`./.planning\` folder does not exist or is empty, create it and add a file called \`plan.md\` where you outline your plan to achieve the goal, and a \`status.md\` file to track progress.
+- If the \`./.ralph-planning\` folder does not exist or is empty, create it and add a file called \`plan.md\` where you outline your plan to achieve the goal, and a \`status.md\` file to track progress.
 
 - If the user added a new message above, prioritize addressing it. It may change or add to the plan. If it contradicts something in the original goal or plan, follow the user's latest message.
 
@@ -171,9 +171,9 @@ ${userMessageSection}${errorContext}
 
 - Never ask for input from the user or any questions. This will always run unattended
 
-- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update \`./.planning/status.md\` to mark the task as completed and note any relevant findings or context. Do NOT wait until the end of the iteration to update status — update it after every task so that progress is preserved even if the iteration is interrupted or the conversation context is compacted mid-work.
+- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update \`./.ralph-planning/status.md\` to mark the task as completed and note any relevant findings or context. Do NOT wait until the end of the iteration to update status — update it after every task so that progress is preserved even if the iteration is interrupted or the conversation context is compacted mid-work.
 
-- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update \`./.planning/status.md\` with:
+- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update \`./.ralph-planning/status.md\` with:
   - The task you are currently working on and its current state
   - Updated status of all tasks in the plan
   - Any new learnings, discoveries, or important context gathered during this iteration

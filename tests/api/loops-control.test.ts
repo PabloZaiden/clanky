@@ -113,10 +113,10 @@ describe("Loops Control API Integration", () => {
     await Bun.$`git -C ${testWorkDir} add .`.quiet();
     await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
 
-    // Create .planning directory and commit it
-    await mkdir(join(testWorkDir, ".planning"), { recursive: true });
-    await writeFile(join(testWorkDir, ".planning/plan.md"), "# Test Plan\n\nThis is a test plan.");
-    await writeFile(join(testWorkDir, ".planning/status.md"), "# Status\n\nIn progress.");
+    // Create .ralph-planning directory and commit it
+    await mkdir(join(testWorkDir, ".ralph-planning"), { recursive: true });
+    await writeFile(join(testWorkDir, ".ralph-planning/plan.md"), "# Test Plan\n\nThis is a test plan.");
+    await writeFile(join(testWorkDir, ".ralph-planning/status.md"), "# Status\n\nIn progress.");
     await Bun.$`git -C ${testWorkDir} add .`.quiet();
     await Bun.$`git -C ${testWorkDir} commit -m "Add planning files"`.quiet();
 
@@ -317,14 +317,14 @@ describe("Loops Control API Integration", () => {
 
   describe("GET /api/loops/:id/plan", () => {
     test("returns plan.md content", async () => {
-      // Create a fresh workdir with .planning to avoid pollution from other tests
+      // Create a fresh workdir with .ralph-planning to avoid pollution from other tests
       const planTestDir = await createTrackedTempDir("ralpher-plan-test-");
       await Bun.$`git init ${planTestDir}`.quiet();
       await Bun.$`git -C ${planTestDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${planTestDir} config user.name "Test User"`.quiet();
       await writeFile(join(planTestDir, "README.md"), "# Test");
-      await mkdir(join(planTestDir, ".planning"), { recursive: true });
-      await writeFile(join(planTestDir, ".planning/plan.md"), "# Test Plan\n\nThis is a test plan.");
+      await mkdir(join(planTestDir, ".ralph-planning"), { recursive: true });
+      await writeFile(join(planTestDir, ".ralph-planning/plan.md"), "# Test Plan\n\nThis is a test plan.");
       await Bun.$`git -C ${planTestDir} add .`.quiet();
       await Bun.$`git -C ${planTestDir} commit -m "Initial commit"`.quiet();
 
@@ -333,7 +333,7 @@ describe("Loops Control API Integration", () => {
 
       // Start the loop (non-draft) so a worktree is created.
       // The mock backend completes immediately, and the worktree inherits
-      // the .planning/plan.md file from the main repo's branch.
+      // the .ralph-planning/plan.md file from the main repo's branch.
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -375,8 +375,8 @@ describe("Loops Control API Integration", () => {
       await Bun.$`git -C ${branchOnlyPlanDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${branchOnlyPlanDir} config user.name "Test User"`.quiet();
       await writeFile(join(branchOnlyPlanDir, "README.md"), "# Branch-only plan");
-      await mkdir(join(branchOnlyPlanDir, ".planning"), { recursive: true });
-      await writeFile(join(branchOnlyPlanDir, ".planning/plan.md"), "# Branch-only Plan\n\nPlan content.");
+      await mkdir(join(branchOnlyPlanDir, ".ralph-planning"), { recursive: true });
+      await writeFile(join(branchOnlyPlanDir, ".ralph-planning/plan.md"), "# Branch-only Plan\n\nPlan content.");
       await Bun.$`git -C ${branchOnlyPlanDir} add .`.quiet();
       await Bun.$`git -C ${branchOnlyPlanDir} commit -m "Initial commit"`.quiet();
 
@@ -410,7 +410,7 @@ describe("Loops Control API Integration", () => {
     });
 
     test("returns 400 for draft loop without worktree", async () => {
-      // Create a new workdir (with git but without .planning)
+      // Create a new workdir (with git but without .ralph-planning)
       const emptyWorkDir = await createTrackedTempDir("ralpher-empty-work-");
       await Bun.$`git init ${emptyWorkDir}`.quiet();
       await Bun.$`git -C ${emptyWorkDir} config user.email "test@test.com"`.quiet();
@@ -491,14 +491,14 @@ describe("Loops Control API Integration", () => {
 
   describe("GET /api/loops/:id/status-file", () => {
     test("returns status.md content", async () => {
-      // Create a fresh workdir with .planning to avoid pollution from other tests
+      // Create a fresh workdir with .ralph-planning to avoid pollution from other tests
       const statusTestDir = await createTrackedTempDir("ralpher-status-test-");
       await Bun.$`git init ${statusTestDir}`.quiet();
       await Bun.$`git -C ${statusTestDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${statusTestDir} config user.name "Test User"`.quiet();
       await writeFile(join(statusTestDir, "README.md"), "# Test");
-      await mkdir(join(statusTestDir, ".planning"), { recursive: true });
-      await writeFile(join(statusTestDir, ".planning/status.md"), "# Status\n\nIn progress.");
+      await mkdir(join(statusTestDir, ".ralph-planning"), { recursive: true });
+      await writeFile(join(statusTestDir, ".ralph-planning/status.md"), "# Status\n\nIn progress.");
       await Bun.$`git -C ${statusTestDir} add .`.quiet();
       await Bun.$`git -C ${statusTestDir} commit -m "Initial commit"`.quiet();
 
@@ -507,7 +507,7 @@ describe("Loops Control API Integration", () => {
 
       // Start the loop (non-draft) so a worktree is created.
       // The mock backend completes immediately, and the worktree inherits
-      // the .planning/status.md file from the main repo's branch.
+      // the .ralph-planning/status.md file from the main repo's branch.
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -549,8 +549,8 @@ describe("Loops Control API Integration", () => {
       await Bun.$`git -C ${branchOnlyStatusDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${branchOnlyStatusDir} config user.name "Test User"`.quiet();
       await writeFile(join(branchOnlyStatusDir, "README.md"), "# Branch-only status");
-      await mkdir(join(branchOnlyStatusDir, ".planning"), { recursive: true });
-      await writeFile(join(branchOnlyStatusDir, ".planning/status.md"), "# Branch-only Status\n\nStatus content.");
+      await mkdir(join(branchOnlyStatusDir, ".ralph-planning"), { recursive: true });
+      await writeFile(join(branchOnlyStatusDir, ".ralph-planning/status.md"), "# Branch-only Status\n\nStatus content.");
       await Bun.$`git -C ${branchOnlyStatusDir} add .`.quiet();
       await Bun.$`git -C ${branchOnlyStatusDir} commit -m "Initial commit"`.quiet();
 

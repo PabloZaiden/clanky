@@ -326,6 +326,7 @@ describe("GitService Worktree Operations", () => {
 
       const content = await readFile(join(testDir, ".git", "info", "exclude"), "utf-8");
       expect(content).toContain(".ralph-worktrees");
+      expect(content).toContain(".ralph-planning");
     });
 
     test("appends to existing .git/info/exclude without duplicating", async () => {
@@ -338,13 +339,14 @@ describe("GitService Worktree Operations", () => {
       let content = await readFile(excludePath, "utf-8");
       expect(content).toContain("*.log");
       expect(content).toContain(".ralph-worktrees");
+      expect(content).toContain(".ralph-planning");
 
       // Call again — should not duplicate
       await git.ensureWorktreeExcluded(testDir);
 
       content = await readFile(excludePath, "utf-8");
-      const count = (content.match(/\.ralph-worktrees/g) || []).length;
-      expect(count).toBe(1);
+      expect((content.match(/\.ralph-worktrees/g) || []).length).toBe(1);
+      expect((content.match(/\.ralph-planning/g) || []).length).toBe(1);
     });
 
     test("is idempotent when entry already exists", async () => {
@@ -353,8 +355,8 @@ describe("GitService Worktree Operations", () => {
       await git.ensureWorktreeExcluded(testDir);
 
       const content = await readFile(join(testDir, ".git", "info", "exclude"), "utf-8");
-      const count = (content.match(/\.ralph-worktrees/g) || []).length;
-      expect(count).toBe(1);
+      expect((content.match(/\.ralph-worktrees/g) || []).length).toBe(1);
+      expect((content.match(/\.ralph-planning/g) || []).length).toBe(1);
     });
 
     test("works when called from a worktree directory (where .git is a file)", async () => {
@@ -377,6 +379,7 @@ describe("GitService Worktree Operations", () => {
       // not to a non-existent .git/info/exclude inside the worktree
       const content = await readFile(mainExcludePath, "utf-8");
       expect(content).toContain(".ralph-worktrees");
+      expect(content).toContain(".ralph-planning");
     });
   });
 

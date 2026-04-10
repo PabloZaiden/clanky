@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-f9f1e1?style=flat-square&logo=bun)](https://bun.sh)
 
-Ralpher is a web dashboard and REST API for running, reviewing, and iterating on Ralph Loops with ACP-compatible agents such as Copilot and OpenCode. It keeps autonomous coding work manageable by starting each iteration with fresh context while persisting state in `.planning/`.
+Ralpher is a web dashboard and REST API for running, reviewing, and iterating on Ralph Loops with ACP-compatible agents such as Copilot and OpenCode. It keeps autonomous coding work manageable by starting each iteration with fresh context while persisting state in `.ralph-planning/`.
 
 **[Download the latest release](https://github.com/pablozaiden/ralpher/releases/latest)**
 
@@ -15,7 +15,7 @@ Ralpher is a web dashboard and REST API for running, reviewing, and iterating on
 
 ## Why Ralpher
 
-- **Fresh context, persistent progress.** Ralph Loops use `.planning/plan.md` and `.planning/status.md` to keep long tasks moving across clean agent context windows.
+- **Fresh context, persistent progress.** Ralph Loops use `.ralph-planning/plan.md` and `.ralph-planning/status.md` to keep long tasks moving across clean agent context windows.
 - **Safer automation.** Each loop works in its own branch/worktree, commits iteration-by-iteration, and can be merged or discarded deliberately.
 - **Operational visibility.** The dashboard gives you logs, diffs, plan review, loop controls, and follow-up flows in one place.
 - **Local or remote execution.** Workspaces can use local `stdio` transport or remote `ssh` transports, with optional SSH sessions and port forwarding.
@@ -88,7 +88,7 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 | Principle | Description |
 | --- | --- |
 | **Fresh context per iteration** | Every iteration starts with a clean agent context window. |
-| **Filesystem state** | Progress lives in `.planning/plan.md` and `.planning/status.md`. |
+| **Filesystem state** | Progress lives in `.ralph-planning/plan.md` and `.ralph-planning/status.md`. |
 | **Stop condition** | The loop ends when the configured completion pattern is produced. |
 | **Git isolation** | Changes stay isolated in a branch/worktree until you accept, push, or discard them. |
 

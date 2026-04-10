@@ -104,7 +104,7 @@ describe("Model Variants API", () => {
     await writeFile(join(workDir, "README.md"), "# Test");
     await Bun.$`git -C ${workDir} add .`.quiet();
     await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
-    await mkdir(join(workDir, ".planning"), { recursive: true });
+    await mkdir(join(workDir, ".ralph-planning"), { recursive: true });
     const workspaceId = await getOrCreateWorkspace(workDir, "Test Workspace");
     return { workDir, workspaceId };
   }
