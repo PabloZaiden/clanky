@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { App } from "@/App";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { renderWithUser, waitFor } from "../helpers/render";
+import { renderWithUser, waitFor, within } from "../helpers/render";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -249,8 +249,97 @@ describe("App passkey auth", () => {
     });
 
     await user.click(getByRole("button", { name: "Remove passkey" }));
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Remove passkey?" })).toBeTruthy();
+    });
+    const confirmDialog = getByRole("dialog", { name: "Remove passkey?" });
+    await user.click(within(confirmDialog).getByRole("button", { name: "Remove passkey" }));
 
     expect(await findByRole("button", { name: "Register passkey" })).toBeTruthy();
+    expect(api.calls("/api/passkey-auth/passkey", "DELETE")).toHaveLength(1);
+  });
+
+  test("canceling passkey removal keeps the configured passkey", async () => {
+    const authState: PasskeyAuthState = {
+      passkeyConfigured: true,
+      passkeyDisabled: false,
+      passkeyRequired: true,
+      authenticated: true,
+    };
+
+    setupDefaultApi(authState);
+    api.delete("/api/passkey-auth/passkey", () => ({
+      success: true,
+    }), 200);
+
+    const { user, getByRole, queryByRole } = renderWithUser(<App />, {
+      route: "#/settings",
+    });
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Remove passkey" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Remove passkey" }));
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Remove passkey?" })).toBeTruthy();
+    });
+
+    const confirmDialog = getByRole("dialog", { name: "Remove passkey?" });
+    await user.click(within(confirmDialog).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(queryByRole("heading", { name: "Remove passkey?" })).toBeNull();
+      expect(getByRole("button", { name: "Remove passkey" })).toBeTruthy();
+    });
+    expect(api.calls("/api/passkey-auth/passkey", "DELETE")).toHaveLength(0);
+  });
+
+  test("keeps the passkey removal dialog open while deletion is in progress", async () => {
+    const authState: PasskeyAuthState = {
+      passkeyConfigured: true,
+      passkeyDisabled: false,
+      passkeyRequired: true,
+      authenticated: true,
+    };
+
+    setupDefaultApi(authState);
+    api.delete("/api/passkey-auth/passkey", () => new Promise(() => {}), 200);
+
+    const { user, getByRole } = renderWithUser(<App />, {
+      route: "#/settings",
+    });
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Remove passkey" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Remove passkey" }));
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Remove passkey?" })).toBeTruthy();
+    });
+
+    await user.click(
+      within(getByRole("dialog", { name: "Remove passkey?" })).getByRole("button", { name: "Remove passkey" }),
+    );
+
+    await waitFor(() => {
+      expect(within(getByRole("dialog", { name: "Remove passkey?" })).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    });
+
+    const confirmDialog = getByRole("dialog", { name: "Remove passkey?" });
+    await user.click(within(confirmDialog).getByLabelText("Close"));
+    await user.keyboard("{Escape}");
+
+    const overlays = document.querySelectorAll("[aria-hidden='true']");
+    const confirmOverlay = overlays[overlays.length - 1];
+    expect(confirmOverlay).toBeTruthy();
+    await user.click(confirmOverlay!);
+
+    await waitFor(() => {
+      expect(getByRole("dialog", { name: "Remove passkey?" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Settings" })).toBeTruthy();
+    });
     expect(api.calls("/api/passkey-auth/passkey", "DELETE")).toHaveLength(1);
   });
 
