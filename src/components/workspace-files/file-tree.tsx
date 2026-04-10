@@ -4,11 +4,11 @@ import { Button, RefreshIcon } from "../common";
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
-    <svg
-      className={`h-4 w-4 transition-transform ${expanded ? "rotate-90" : ""}`}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
+      <svg
+        className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
       strokeWidth={2}
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -18,7 +18,7 @@ function Chevron({ expanded }: { expanded: boolean }) {
 
 function FolderIcon() {
   return (
-    <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className="h-4 w-4 shrink-0 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
     </svg>
   );
@@ -26,7 +26,7 @@ function FolderIcon() {
 
 function FileIcon() {
   return (
-    <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
     </svg>
   );
@@ -110,27 +110,29 @@ function renderDirectory(
 
     return (
       <div key={entry.path}>
-        <button
-          type="button"
-          onClick={() => {
-            if (isDirectory) {
-              void onToggleDirectory(entry.path);
-              return;
-            }
-            void onOpenFile(entry.path);
-          }}
-          className={[
-            "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition",
-            isSelected
-              ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-              : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-neutral-800",
-          ].join(" ")}
-          style={{ paddingLeft: `${depth * 14 + 8}px` }}
-        >
-          {isDirectory ? <Chevron expanded={isExpanded} /> : <span className="w-4" />}
-          {isDirectory ? <FolderIcon /> : <FileIcon />}
-          <span className="truncate">{entry.name}</span>
-        </button>
+        <div className="min-w-full w-max">
+          <button
+            type="button"
+            onClick={() => {
+              if (isDirectory) {
+                void onToggleDirectory(entry.path);
+                return;
+              }
+              void onOpenFile(entry.path);
+            }}
+            className={[
+              "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition whitespace-nowrap",
+              isSelected
+                ? "bg-gray-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-neutral-800",
+            ].join(" ")}
+            style={{ paddingLeft: `${depth * 14 + 8}px` }}
+          >
+            {isDirectory ? <Chevron expanded={isExpanded} /> : <span className="w-4 shrink-0" />}
+            {isDirectory ? <FolderIcon /> : <FileIcon />}
+            <span>{entry.name}</span>
+          </button>
+        </div>
         {isDirectory && isExpanded && renderDirectory(
           entry.path,
           entriesByDirectory,
@@ -179,7 +181,7 @@ function WorkspaceFileTreeComponent({
   ]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
       <div
         data-testid="workspace-file-tree-header"
         className={[
@@ -245,7 +247,10 @@ function WorkspaceFileTreeComponent({
         )}
       </div>
       {!collapsed && (
-        <div className="min-h-0 flex-1 overflow-auto p-2">
+        <div
+          data-testid="workspace-file-tree-scroll"
+          className="min-h-0 flex-1 overflow-auto p-2"
+        >
           {error && (
             <div
               role="alert"
@@ -254,7 +259,9 @@ function WorkspaceFileTreeComponent({
               {error}
             </div>
           )}
-          {renderedTree}
+          <div data-testid="workspace-file-tree-content" className="min-w-full w-max">
+            {renderedTree}
+          </div>
         </div>
       )}
     </section>
