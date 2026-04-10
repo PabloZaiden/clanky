@@ -2,7 +2,7 @@
  * Modal component for overlays and dialogs.
  */
 
-import { useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
 import { Button } from "./Button";
 
 /** Selector for all focusable elements within a container. */
@@ -49,6 +49,7 @@ export function Modal({
 }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<Element | null>(null);
+  const titleId = useId();
 
   // Handle keyboard events (escape + focus trap).
   // Uses a ref to always read the latest onClose, avoiding effect re-runs
@@ -58,14 +59,21 @@ export function Modal({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      const currentModal = modalRef.current;
+      const openModals = Array.from(document.querySelectorAll<HTMLElement>("[role='dialog'][aria-modal='true']"));
+      const topmostModal = openModals[openModals.length - 1];
+      if (!currentModal || currentModal !== topmostModal) {
+        return;
+      }
+
       if (e.key === "Escape") {
         onCloseRef.current();
         return;
       }
 
       // Focus trap: cycle Tab/Shift+Tab within modal
-      if (e.key === "Tab" && modalRef.current) {
-        const focusable = modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
+      if (e.key === "Tab") {
+        const focusable = currentModal.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
         if (focusable.length === 0) return;
 
         const first = focusable[0]!;
@@ -136,13 +144,13 @@ export function Modal({
         className={`relative flex w-full min-w-0 ${sizeClasses[size]} max-h-[calc(100vh-1.5rem)] max-h-[calc(100dvh-1.5rem)] flex-col overflow-hidden rounded-lg bg-white shadow-xl sm:max-h-[calc(100vh-2.5rem)] sm:max-h-[calc(100dvh-2.5rem)] dark:bg-neutral-800`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
       >
         {/* Header */}
         <div className="flex items-start justify-between border-b border-gray-200 px-4 sm:px-6 py-3 sm:py-4 dark:border-gray-700 flex-shrink-0">
           <div className="flex-1 min-w-0 pr-2">
             <h2
-              id="modal-title"
+              id={titleId}
               className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100"
             >
               {title}
