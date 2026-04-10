@@ -19,6 +19,7 @@ import {
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
 import { toMessageImageAttachments } from "../lib/image-attachments";
+import { getComposerMinHeightClass, getComposerRows } from "./common";
 
 const log = createLogger("LoopActionBar");
 
@@ -83,6 +84,8 @@ export function LoopActionBar({
 
   // Check if the selected model is enabled (connected)
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
+  const composerRows = getComposerRows(message);
+  const composerMinHeightClass = getComposerMinHeightClass(composerRows);
 
   // Handle form submission
   const handleSubmit = useCallback(async (e: FormEvent) => {
@@ -186,9 +189,9 @@ export function LoopActionBar({
             onPaste={handlePaste}
             placeholder={isPlanning ? "Send feedback on the plan..." : "Send a message to steer the agent..."}
             disabled={disabled || isSubmitting}
-            rows={2}
+            rows={composerRows}
             aria-label={isPlanning ? "Plan feedback" : "Loop message"}
-            className="flex-1 min-w-0 min-h-[72px] resize-y text-sm px-3 py-2 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            className={`${composerMinHeightClass} flex-1 min-w-0 resize-y text-sm px-3 py-2 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50`}
           />
 
           {/* Image attachment button (icon-only) */}

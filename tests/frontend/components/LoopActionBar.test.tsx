@@ -34,7 +34,9 @@ describe("LoopActionBar", () => {
       const { getByPlaceholderText, queryByText } = renderWithUser(
         <LoopActionBar {...defaultProps()} />
       );
-      expect(getByPlaceholderText("Send a message to steer the agent...")).toBeInTheDocument();
+      const composer = getByPlaceholderText("Send a message to steer the agent...") as HTMLTextAreaElement;
+      expect(composer).toBeInTheDocument();
+      expect(composer.getAttribute("rows")).toBe("1");
       expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
     });
 
@@ -54,9 +56,10 @@ describe("LoopActionBar", () => {
     });
 
     test("renders the submit button with appropriate aria-label for planning mode", () => {
-      const { getByRole } = renderWithUser(
+      const { getByPlaceholderText, getByRole } = renderWithUser(
         <LoopActionBar {...defaultProps({ isPlanning: true })} />
       );
+      expect((getByPlaceholderText("Send feedback on the plan...") as HTMLTextAreaElement).getAttribute("rows")).toBe("1");
       expect(getByRole("button", { name: "Send Feedback" })).toBeInTheDocument();
     });
 
@@ -286,9 +289,11 @@ describe("LoopActionBar", () => {
       );
 
       const composer = getByPlaceholderText("Send a message to steer the agent...") as HTMLTextAreaElement;
+      expect(composer.getAttribute("rows")).toBe("1");
       await user.type(composer, "First line{enter}Second line");
 
       expect(composer.value).toBe("First line\nSecond line");
+      expect(composer.getAttribute("rows")).toBe("2");
       expect(onSubmit).not.toHaveBeenCalled();
     });
 

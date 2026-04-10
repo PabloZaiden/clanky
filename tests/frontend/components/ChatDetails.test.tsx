@@ -99,12 +99,14 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
     expect(getByText("Sure, let me take a look.")).toBeTruthy();
-    expect((getByLabelText("Message") as HTMLTextAreaElement).tagName).toBe("TEXTAREA");
+    const composer = getByLabelText("Message") as HTMLTextAreaElement;
+    expect(composer.tagName).toBe("TEXTAREA");
+    expect(composer.getAttribute("rows")).toBe("1");
     expect(queryByText("Assistant")).toBeNull();
     expect(queryByText("You")).toBeNull();
     expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
 
-    await user.type(getByLabelText("Message"), "Please summarize the risk.");
+    await user.type(composer, "Please summarize the risk.");
     await user.click(getByRole("button", { name: "Send" }));
 
     await waitFor(() => {
@@ -280,10 +282,12 @@ describe("ChatDetails", () => {
     const { getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
+    expect(composer.getAttribute("rows")).toBe("1");
 
     await user.type(composer, "First line{enter}Second line");
 
     expect(composer.value).toBe("First line\nSecond line");
+    expect(composer.getAttribute("rows")).toBe("2");
     expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(0);
   });
 
