@@ -53,6 +53,41 @@ describe("Workspace API Integration", () => {
   let server: Server<unknown>;
   let baseUrl: string;
 
+  async function createPullTestRepos(): Promise<{
+    originDir: string;
+    sourceDir: string;
+    cloneDir: string;
+    defaultBranch: string;
+  }> {
+    const originDir = await mkdtemp(join(tmpdir(), "ralpher-pull-origin-"));
+    const sourceDir = await mkdtemp(join(tmpdir(), "ralpher-pull-source-"));
+    const cloneParentDir = await mkdtemp(join(tmpdir(), "ralpher-pull-clone-parent-"));
+    const cloneDir = join(cloneParentDir, "workspace");
+
+    await Bun.$`git init --bare ${originDir}`.quiet();
+    await Bun.$`git init ${sourceDir}`.quiet();
+    await Bun.$`git -C ${sourceDir} config user.email "test@test.com"`.quiet();
+    await Bun.$`git -C ${sourceDir} config user.name "Test User"`.quiet();
+    await Bun.write(join(sourceDir, "README.md"), "# Test\n");
+    await Bun.$`git -C ${sourceDir} add README.md`.quiet();
+    await Bun.$`git -C ${sourceDir} commit -m "Initial commit"`.quiet();
+
+    const defaultBranch = (await Bun.$`git -C ${sourceDir} branch --show-current`.text()).trim();
+    await Bun.$`git -C ${sourceDir} remote add origin ${originDir}`.quiet();
+    await Bun.$`git -C ${sourceDir} push -u origin ${defaultBranch}`.quiet();
+    await Bun.$`git -C ${originDir} symbolic-ref HEAD refs/heads/${defaultBranch}`.quiet();
+    await Bun.$`git clone ${originDir} ${cloneDir}`.quiet();
+    await Bun.$`git -C ${cloneDir} config user.email "test@test.com"`.quiet();
+    await Bun.$`git -C ${cloneDir} config user.name "Test User"`.quiet();
+
+    return {
+      originDir,
+      sourceDir,
+      cloneDir,
+      defaultBranch,
+    };
+  }
+
   beforeAll(async () => {
     // Create temp directories
     testDataDir = await mkdtemp(join(tmpdir(), "ralpher-api-workspace-test-data-"));
@@ -493,6 +528,144 @@ describe("Workspace API Integration", () => {
       expect(response.ok).toBe(true);
       const body = await response.json();
       expect(body.id).toBe(remoteWorkspace.id);
+    });
+  });
+
+  describe("POST /api/workspaces/:id/pull-latest-changes", () => {
+    test("pulls the latest changes for the default branch", async () => {
+      const repos = await createPullTestRepos();
+
+      try {
+        await Bun.write(join(repos.sourceDir, "README.md"), "# Test\nUpdated remotely\n");
+        await Bun.$`git -C ${repos.sourceDir} add README.md`.quiet();
+        await Bun.$`git -C ${repos.sourceDir} commit -m "Update README"`.quiet();
+        await Bun.$`git -C ${repos.sourceDir} push origin ${repos.defaultBranch}`.quiet();
+
+        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Pull Test Workspace",
+            directory: repos.cloneDir,
+          }),
+        });
+        expect(createResponse.ok).toBe(true);
+        const workspace = await createResponse.json();
+
+        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/pull-latest-changes`, {
+          method: "POST",
+        });
+        expect(response.ok).toBe(true);
+
+        const data = await response.json();
+        expect(data.success).toBe(true);
+        expect(data.defaultBranch).toBe(repos.defaultBranch);
+        expect(data.currentBranch).toBe(repos.defaultBranch);
+
+        const readme = await Bun.file(join(repos.cloneDir, "README.md")).text();
+        expect(readme).toContain("Updated remotely");
+      } finally {
+        await rm(repos.originDir, { recursive: true, force: true });
+        await rm(repos.sourceDir, { recursive: true, force: true });
+        await rm(join(repos.cloneDir, ".."), { recursive: true, force: true });
+      }
+    });
+
+    test("fails when the workspace is not on its default branch", async () => {
+      const repos = await createPullTestRepos();
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Branch Mismatch Workspace",
+            directory: repos.cloneDir,
+          }),
+        });
+        expect(createResponse.ok).toBe(true);
+        const workspace = await createResponse.json();
+
+        await Bun.$`git -C ${repos.cloneDir} checkout -b feature/test-branch`.quiet();
+
+        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/pull-latest-changes`, {
+          method: "POST",
+        });
+        expect(response.status).toBe(409);
+
+        const data = await response.json();
+        expect(data.error).toBe("branch_mismatch");
+        expect(data.message).toContain(repos.defaultBranch);
+      } finally {
+        await rm(repos.originDir, { recursive: true, force: true });
+        await rm(repos.sourceDir, { recursive: true, force: true });
+        await rm(join(repos.cloneDir, ".."), { recursive: true, force: true });
+      }
+    });
+
+    test("fails when the workspace has uncommitted changes", async () => {
+      const repos = await createPullTestRepos();
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Dirty Workspace",
+            directory: repos.cloneDir,
+          }),
+        });
+        expect(createResponse.ok).toBe(true);
+        const workspace = await createResponse.json();
+
+        await Bun.write(join(repos.cloneDir, "README.md"), "# Test\nLocally modified\n");
+
+        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/pull-latest-changes`, {
+          method: "POST",
+        });
+        expect(response.status).toBe(409);
+
+        const data = await response.json();
+        expect(data.error).toBe("uncommitted_changes");
+        expect(data.message).toContain(repos.defaultBranch);
+      } finally {
+        await rm(repos.originDir, { recursive: true, force: true });
+        await rm(repos.sourceDir, { recursive: true, force: true });
+        await rm(join(repos.cloneDir, ".."), { recursive: true, force: true });
+      }
+    });
+
+    test("returns a generic message when pull latest fails with a git command error", async () => {
+      const repos = await createPullTestRepos();
+
+      try {
+        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Missing Remote Workspace",
+            directory: repos.cloneDir,
+          }),
+        });
+        expect(createResponse.ok).toBe(true);
+        const workspace = await createResponse.json();
+
+        await Bun.$`git -C ${repos.cloneDir} remote remove origin`.quiet();
+
+        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/pull-latest-changes`, {
+          method: "POST",
+        });
+        expect(response.status).toBe(409);
+
+        const data = await response.json();
+        expect(data.error).toBe("git_pull_failed");
+        expect(data.message).toBe("Unable to pull the latest changes from the remote repository.");
+        expect(data.message).not.toContain(repos.originDir);
+      } finally {
+        await rm(repos.originDir, { recursive: true, force: true });
+        await rm(repos.sourceDir, { recursive: true, force: true });
+        await rm(join(repos.cloneDir, ".."), { recursive: true, force: true });
+      }
     });
   });
 

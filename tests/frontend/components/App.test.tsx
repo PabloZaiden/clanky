@@ -1019,7 +1019,7 @@ describe("App shell", () => {
     });
   });
 
-  test("shows a restart button for auto-provisioned workspaces and navigates to the restart action", async () => {
+  test("shows restart and rebuild in workspace settings for auto-provisioned workspaces", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
       name: "Frontend",
@@ -1033,6 +1033,12 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Frontend" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Open workspace settings" }));
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Pull Latest Changes" })).toBeTruthy();
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
       expect(getByRole("button", { name: "Rebuild" })).toBeTruthy();
     });

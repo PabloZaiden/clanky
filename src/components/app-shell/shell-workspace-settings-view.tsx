@@ -2,6 +2,7 @@ import type { Workspace } from "../../types";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../WorkspaceSettingsModal";
+import { ProvisioningActionsSection, PullLatestChangesSection } from "../workspace-settings";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
@@ -12,6 +13,9 @@ interface WorkspaceSettingsViewProps {
   dashboardData: UseDashboardDataResult;
   refreshWorkspaces: () => Promise<void>;
   deleteWorkspace: (id: string) => Promise<{ success: boolean; error?: string }>;
+  pullLatestChanges: (
+    id: string,
+  ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;
   navigateWithinShell: (route: ShellRoute) => void;
   shellHeaderOffsetClassName: string;
 }
@@ -22,6 +26,7 @@ export function WorkspaceSettingsView({
   dashboardData,
   refreshWorkspaces,
   deleteWorkspace,
+  pullLatestChanges,
   navigateWithinShell,
   shellHeaderOffsetClassName,
 }: WorkspaceSettingsViewProps) {
@@ -73,39 +78,59 @@ export function WorkspaceSettingsView({
       {workspaceSettingsLoading && !workspaceFromHook ? (
         <div className="text-sm text-gray-500 dark:text-gray-400">Loading workspace settings…</div>
       ) : workspaceFromHook ? (
-        <WorkspaceSettingsForm
-          workspace={workspaceFromHook}
-          status={workspaceStatus}
-          onSave={async (name, settings) => {
-            const success = await updateWorkspaceSettings(name, settings);
-            if (success) {
-              await refreshWorkspaces();
+        <div className="space-y-6">
+          <WorkspaceSettingsForm
+            workspace={workspaceFromHook}
+            status={workspaceStatus}
+            onSave={async (name, settings) => {
+              const success = await updateWorkspaceSettings(name, settings);
+              if (success) {
+                await refreshWorkspaces();
+              }
+              return success;
+            }}
+            onTest={testWorkspaceConnection}
+            onPurgeArchivedLoops={
+              workspaceSettingsWorkspaceId
+                ? async () => await handlePurgeArchivedLoops(workspaceSettingsWorkspaceId)
+                : undefined
             }
-            return success;
-          }}
-          onTest={testWorkspaceConnection}
-          onPurgeArchivedLoops={
-            workspaceSettingsWorkspaceId
-              ? async () => await handlePurgeArchivedLoops(workspaceSettingsWorkspaceId)
-              : undefined
-          }
-          onDeleteWorkspace={
-            workspaceSettingsWorkspaceId
-              ? async () => await deleteWorkspace(workspaceSettingsWorkspaceId)
-              : undefined
-          }
-          purgeableLoopCount={selectedWorkspaceArchivedLoopCount}
-          workspaceLoopCount={selectedWorkspaceLoopCount}
-          saving={workspaceSettingsSaving}
-          testing={workspaceSettingsTesting}
-          purgingPurgeableLoops={workspaceArchivedLoopsPurging}
-          remoteOnly={dashboardData.remoteOnly}
-          showConnectionStatus={false}
-          formId="workspace-settings-shell-form"
-          onSaved={() => navigateWithinShell({ view: "workspace", workspaceId: selectedWorkspace.id })}
-          onDeleted={() => navigateWithinShell({ view: "home" })}
-          onValidityChange={setWorkspaceSettingsFormValid}
-        />
+            onDeleteWorkspace={
+              workspaceSettingsWorkspaceId
+                ? async () => await deleteWorkspace(workspaceSettingsWorkspaceId)
+                : undefined
+            }
+            purgeableLoopCount={selectedWorkspaceArchivedLoopCount}
+            workspaceLoopCount={selectedWorkspaceLoopCount}
+            saving={workspaceSettingsSaving}
+            testing={workspaceSettingsTesting}
+            purgingPurgeableLoops={workspaceArchivedLoopsPurging}
+            remoteOnly={dashboardData.remoteOnly}
+            showConnectionStatus={false}
+            formId="workspace-settings-shell-form"
+            onSaved={() => navigateWithinShell({ view: "workspace", workspaceId: selectedWorkspace.id })}
+            onDeleted={() => navigateWithinShell({ view: "home" })}
+            onValidityChange={setWorkspaceSettingsFormValid}
+          />
+
+          <PullLatestChangesSection
+            workspace={workspaceFromHook}
+            onPullLatestChanges={
+              workspaceSettingsWorkspaceId
+                ? async () => await pullLatestChanges(workspaceSettingsWorkspaceId)
+                : async () => ({ success: false, error: "Workspace settings are unavailable." })
+            }
+            disabled={workspaceSettingsLoading}
+          />
+
+          {workspaceFromHook.sourceDirectory && (
+            <ProvisioningActionsSection
+              workspace={workspaceFromHook}
+              onRestart={() => navigateWithinShell({ view: "restart-workspace", workspaceId: workspaceFromHook.id })}
+              onRebuild={() => navigateWithinShell({ view: "rebuild-workspace", workspaceId: workspaceFromHook.id })}
+            />
+          )}
+        </div>
       ) : (
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Workspace settings are unavailable right now.
