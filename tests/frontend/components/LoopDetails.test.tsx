@@ -1799,8 +1799,10 @@ describe("prompt tab", () => {
     await user.click(getByText("Prompt"));
 
     await waitFor(() => {
-      expect(queryByText(/Use the action bar to send the next message or restart/)).toBeNull();
+      expect(getByText("Original Task Prompt")).toBeTruthy();
     });
+
+    expect(queryByText(/Use the action bar to send the next message or restart/)).toBeNull();
   });
 });
 

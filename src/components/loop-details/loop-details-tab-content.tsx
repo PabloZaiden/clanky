@@ -117,7 +117,7 @@ export function LoopDetailsTabContent({
         />
       )}
       {activeTab === "prompt" && (
-        <PromptTab config={config} state={state} labels={labels} isActive={isActive} />
+        <PromptTab config={config} state={state} isActive={isActive} />
       )}
       {activeTab === "plan" && (
         <PlanTab
