@@ -3,7 +3,6 @@
  *
  * - POST /api/loops/:id/plan/feedback        - Send feedback to refine the plan
  * - POST /api/loops/:id/plan/accept          - Accept the plan and start execution or open SSH
- * - POST /api/loops/:id/plan/question/answer - Answer a pending plan question
  * - POST /api/loops/:id/plan/discard         - Discard the plan and delete the loop
  */
 
@@ -16,7 +15,6 @@ import type { z } from "zod";
 import {
   PlanFeedbackRequestSchema,
   PlanAcceptRequestSchema,
-  AnswerPlanQuestionRequestSchema,
 } from "../../types/schemas";
 
 const log = createLogger("api:loops");
@@ -121,36 +119,6 @@ export const loopsPlanRoutes = {
           error: errorMsg,
         });
         return errorResponse("accept_failed", errorMsg, 500);
-      }
-    },
-  },
-
-  "/api/loops/:id/plan/question/answer": {
-    async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const validation = await parseAndValidate(AnswerPlanQuestionRequestSchema, req);
-      if (!validation.success) {
-        return validation.response;
-      }
-
-      try {
-        await loopManager.answerPendingPlanQuestion(req.params.id, validation.data.answers);
-        return successResponse();
-      } catch (error) {
-        const errorMsg = String(error);
-        if (errorMsg.includes("There is no pending plan question")) {
-          return errorResponse("no_pending_plan_question", errorMsg, 409);
-        }
-        if (errorMsg.includes("not in planning status")) {
-          return errorResponse("not_planning", errorMsg, 400);
-        }
-        if (errorMsg.includes("Expected ")) {
-          return errorResponse("invalid_question_answer", errorMsg, 400);
-        }
-        log.error("Failed to answer pending plan question", {
-          loopId: req.params.id,
-          error: errorMsg,
-        });
-        return errorResponse("answer_plan_question_failed", errorMsg, 500);
       }
     },
   },

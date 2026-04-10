@@ -68,9 +68,6 @@ export interface LoopConfig {
   /** Whether to start in plan mode (for drafts, this indicates the intended mode) */
   planMode: boolean;
 
-  /** Whether plan-mode ACP questions should be auto-answered instead of shown for manual reply */
-  planModeAutoReply?: boolean;
-
   /** Whether a ready plan should be automatically accepted and executed */
   autoAcceptPlan?: boolean;
 
@@ -167,8 +164,6 @@ export interface LoopState {
     planningFolderCleared: boolean;
     /** Whether the plan is ready (PLAN_READY marker detected) */
     isPlanReady: boolean;
-    /** Pending ACP question awaiting a user response during plan mode */
-    pendingQuestion?: PendingPlanQuestion;
   };
 
   /** Review mode state for addressing comments after push/merge */
@@ -196,26 +191,6 @@ export interface LoopState {
     /** Last local commit message to use for the merge commit */
     mergeCommitMessage?: string;
   };
-}
-
-export interface PlanQuestionOption {
-  label: string;
-  description: string;
-}
-
-export interface PlanQuestionInfo {
-  question: string;
-  header: string;
-  options: PlanQuestionOption[];
-  multiple?: boolean;
-  custom?: boolean;
-}
-
-export interface PendingPlanQuestion {
-  requestId: string;
-  sessionId: string;
-  questions: PlanQuestionInfo[];
-  askedAt: string;
 }
 
 /**
@@ -401,7 +376,6 @@ export const DEFAULT_LOOP_CONFIG = {
   useWorktree: true,
   clearPlanningFolder: false,
   planMode: true,
-  planModeAutoReply: true,
   autoAcceptPlan: false,
   mode: "loop" as const,
   git: {
