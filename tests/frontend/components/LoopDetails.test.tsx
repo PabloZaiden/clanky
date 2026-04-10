@@ -1512,13 +1512,13 @@ describe("loop action bar", () => {
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
     api.post("/api/loops/:id/follow-up", () => ({ success: true }));
 
-    const { getByRole, getByPlaceholderText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
     });
 
-    await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Please revise this");
+    await user.type(getByRole("textbox", { name: "Loop message" }), "Please revise this");
     await user.click(getByRole("button", { name: "Restart" }));
 
     await waitFor(() => {
@@ -1540,13 +1540,13 @@ describe("loop action bar", () => {
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
     api.post("/api/loops/:id/follow-up", () => ({ success: true }));
 
-    const { getByRole, getByPlaceholderText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
     });
 
-    await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Continue from the last result");
+    await user.type(getByRole("textbox", { name: "Loop message" }), "Continue from the last result");
     await user.click(getByRole("button", { name: "Restart" }));
 
     await waitFor(() => {
@@ -1577,14 +1577,14 @@ describe("loop action bar", () => {
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
     api.post("/api/loops/:id/plan/feedback", () => ({ success: true }));
 
-    const { getByRole, queryByRole, getByPlaceholderText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Send Feedback" })).toBeTruthy();
     });
     expect(queryByRole("button", { name: "Stop" })).toBeNull();
 
-    await user.type(getByPlaceholderText("Send feedback on the plan..."), "Please expand step 1");
+    await user.type(getByRole("textbox", { name: "Plan feedback" }), "Please expand step 1");
     await user.click(getByRole("button", { name: "Send Feedback" }));
 
     await waitFor(() => {
@@ -1679,7 +1679,7 @@ describe("log tab", () => {
 
   test("enters log focus mode while keeping the message composer available", async () => {
     setupDefaultApi();
-    const { getByRole, getByPlaceholderText, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Enter focus mode" })).toBeInTheDocument();
@@ -1695,7 +1695,7 @@ describe("log tab", () => {
     expect(queryByRole("button", { name: "Prompt" })).toBeNull();
     expect(queryByRole("button", { name: "Hide logs" })).toBeNull();
     expect(queryByRole("button", { name: "Show logs" })).toBeNull();
-    expect(getByPlaceholderText("Send a message to steer the agent...")).toBeInTheDocument();
+    expect(getByRole("textbox", { name: "Loop message" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Autoscroll" })).toBeInTheDocument();
   });
 

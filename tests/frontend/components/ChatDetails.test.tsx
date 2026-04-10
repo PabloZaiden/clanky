@@ -102,6 +102,8 @@ describe("ChatDetails", () => {
     const composer = getByLabelText("Message") as HTMLTextAreaElement;
     expect(composer.tagName).toBe("TEXTAREA");
     expect(composer.getAttribute("rows")).toBe("1");
+    expect(composer.placeholder).toBe("");
+    expect(composer.className).toContain("min-h-[38px]");
     expect(queryByText("Assistant")).toBeNull();
     expect(queryByText("You")).toBeNull();
     expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
@@ -288,6 +290,7 @@ describe("ChatDetails", () => {
 
     expect(composer.value).toBe("First line\nSecond line");
     expect(composer.getAttribute("rows")).toBe("2");
+    expect(composer.className).toContain("min-h-[58px]");
     expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(0);
   });
 

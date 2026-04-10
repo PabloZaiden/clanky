@@ -1,7 +1,7 @@
 const SINGLE_LINE_ROWS = 1 as const;
 const MULTILINE_ROWS = 2 as const;
-const SINGLE_LINE_MIN_HEIGHT_CLASS = "min-h-[44px]" as const;
-const MULTILINE_MIN_HEIGHT_CLASS = "min-h-[72px]" as const;
+const SINGLE_LINE_MIN_HEIGHT_CLASS = "min-h-[38px]" as const;
+const MULTILINE_MIN_HEIGHT_CLASS = "min-h-[58px]" as const;
 
 export type ComposerRows = typeof SINGLE_LINE_ROWS | typeof MULTILINE_ROWS;
 export type ComposerMinHeightClass =

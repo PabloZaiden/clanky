@@ -187,7 +187,6 @@ export function LoopActionBar({
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleComposerKeyDown}
             onPaste={handlePaste}
-            placeholder={isPlanning ? "Send feedback on the plan..." : "Send a message to steer the agent..."}
             disabled={disabled || isSubmitting}
             rows={composerRows}
             aria-label={isPlanning ? "Plan feedback" : "Loop message"}

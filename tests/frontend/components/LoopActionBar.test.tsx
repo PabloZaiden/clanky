@@ -28,15 +28,25 @@ function defaultProps(overrides?: Partial<Parameters<typeof LoopActionBar>[0]>) 
   };
 }
 
+function getLoopMessageInput(getByRole: (role: string, options?: Record<string, unknown>) => HTMLElement) {
+  return getByRole("textbox", { name: "Loop message" }) as HTMLTextAreaElement;
+}
+
+function getPlanFeedbackInput(getByRole: (role: string, options?: Record<string, unknown>) => HTMLElement) {
+  return getByRole("textbox", { name: "Plan feedback" }) as HTMLTextAreaElement;
+}
+
 describe("LoopActionBar", () => {
   describe("basic rendering", () => {
     test("renders the message input", () => {
-      const { getByPlaceholderText, queryByText } = renderWithUser(
+      const { getByRole, queryByText } = renderWithUser(
         <LoopActionBar {...defaultProps()} />
       );
-      const composer = getByPlaceholderText("Send a message to steer the agent...") as HTMLTextAreaElement;
+      const composer = getLoopMessageInput(getByRole);
       expect(composer).toBeInTheDocument();
       expect(composer.getAttribute("rows")).toBe("1");
+      expect(composer.placeholder).toBe("");
+      expect(composer.className).toContain("min-h-[38px]");
       expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
     });
 
@@ -56,10 +66,11 @@ describe("LoopActionBar", () => {
     });
 
     test("renders the submit button with appropriate aria-label for planning mode", () => {
-      const { getByPlaceholderText, getByRole } = renderWithUser(
+      const { getByRole } = renderWithUser(
         <LoopActionBar {...defaultProps({ isPlanning: true })} />
       );
-      expect((getByPlaceholderText("Send feedback on the plan...") as HTMLTextAreaElement).getAttribute("rows")).toBe("1");
+      expect(getPlanFeedbackInput(getByRole).getAttribute("rows")).toBe("1");
+      expect(getPlanFeedbackInput(getByRole).placeholder).toBe("");
       expect(getByRole("button", { name: "Send Feedback" })).toBeInTheDocument();
     });
 
@@ -163,10 +174,10 @@ describe("LoopActionBar", () => {
 
   describe("disabled state", () => {
     test("disables all inputs when disabled=true", () => {
-      const { getByPlaceholderText, getByRole, container } = renderWithUser(
+      const { getByRole, container } = renderWithUser(
         <LoopActionBar {...defaultProps({ disabled: true })} />
       );
-      expect(getByPlaceholderText("Send a message to steer the agent...")).toBeDisabled();
+      expect(getLoopMessageInput(getByRole)).toBeDisabled();
       expect(getByRole("button", { name: "Send" })).toBeDisabled();
       expect(container.querySelector("select")).toBeDisabled();
     });
@@ -188,10 +199,10 @@ describe("LoopActionBar", () => {
     });
 
     test("Send button is enabled when message is entered", async () => {
-      const { getByPlaceholderText, getByRole, user } = renderWithUser(
+      const { getByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps()} />
       );
-      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Test message");
+      await user.type(getLoopMessageInput(getByRole), "Test message");
       expect(getByRole("button", { name: "Send" })).not.toBeDisabled();
     });
 
@@ -211,11 +222,11 @@ describe("LoopActionBar", () => {
     test("keeps the Stop button visible while generating even if text is entered", async () => {
       const onStop = mock(async () => true);
       const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
-      const { getByPlaceholderText, getByRole, queryByRole, user } = renderWithUser(
+      const { getByRole, queryByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ isGenerating: true, onStop, onSubmit })} />
       );
 
-      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Hello agent");
+      await user.type(getLoopMessageInput(getByRole), "Hello agent");
 
       expect(queryByRole("button", { name: "Send" })).toBeNull();
       await user.click(getByRole("button", { name: "Stop" }));
@@ -268,11 +279,11 @@ describe("LoopActionBar", () => {
 
     test("calls onSubmit with message when submitted", async () => {
       const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
-      const { getByPlaceholderText, getByRole, user } = renderWithUser(
+      const { getByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ onSubmit })} />
       );
 
-      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Hello agent");
+      await user.type(getLoopMessageInput(getByRole), "Hello agent");
       await user.click(getByRole("button", { name: "Send" }));
 
       await waitFor(() => {
@@ -284,26 +295,27 @@ describe("LoopActionBar", () => {
 
     test("inserts a newline instead of submitting on plain Enter", async () => {
       const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
-      const { getByPlaceholderText, user } = renderWithUser(
+      const { getByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ onSubmit })} />
       );
 
-      const composer = getByPlaceholderText("Send a message to steer the agent...") as HTMLTextAreaElement;
+      const composer = getLoopMessageInput(getByRole);
       expect(composer.getAttribute("rows")).toBe("1");
       await user.type(composer, "First line{enter}Second line");
 
       expect(composer.value).toBe("First line\nSecond line");
       expect(composer.getAttribute("rows")).toBe("2");
+      expect(composer.className).toContain("min-h-[58px]");
       expect(onSubmit).not.toHaveBeenCalled();
     });
 
     test("submits with Ctrl+Enter", async () => {
       const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
-      const { getByPlaceholderText, user } = renderWithUser(
+      const { getByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ onSubmit })} />
       );
 
-      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Hello agent");
+      await user.type(getLoopMessageInput(getByRole), "Hello agent");
       await user.keyboard("{Control>}{Enter}{/Control}");
 
       await waitFor(() => {
@@ -340,11 +352,11 @@ describe("LoopActionBar", () => {
 
     test("calls onSubmit with pasted image attachments", async () => {
       const onSubmit = mock(async (_data: { message?: string; attachments?: unknown[] }) => true);
-      const { getByPlaceholderText, getByRole, getByText, user } = renderWithUser(
+      const { getByRole, getByText, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ onSubmit })} />
       );
 
-      const input = getByPlaceholderText("Send a message to steer the agent...");
+      const input = getLoopMessageInput(getByRole);
       await user.type(input, "Please inspect this");
       pasteFiles(input, [createTestFile({ name: "queued-image.png" })]);
 
@@ -373,11 +385,11 @@ describe("LoopActionBar", () => {
 
     test("clears message input after successful submission", async () => {
       const onSubmit = mock(async () => true);
-      const { getByPlaceholderText, getByRole, user } = renderWithUser(
+      const { getByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ onSubmit })} />
       );
 
-      const input = getByPlaceholderText("Send a message to steer the agent...");
+      const input = getLoopMessageInput(getByRole);
       await user.type(input, "Test");
       await user.click(getByRole("button", { name: "Send" }));
 
@@ -388,11 +400,11 @@ describe("LoopActionBar", () => {
 
     test("does not clear message on failed submission", async () => {
       const onSubmit = mock(async () => false);
-      const { getByPlaceholderText, getByRole, user } = renderWithUser(
+      const { getByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ onSubmit })} />
       );
 
-      const input = getByPlaceholderText("Send a message to steer the agent...");
+      const input = getLoopMessageInput(getByRole);
       await user.type(input, "Test");
       await user.click(getByRole("button", { name: "Send" }));
 
@@ -433,7 +445,7 @@ describe("LoopActionBar", () => {
         createModelInfo({ providerID: "openai", modelID: "gpt-4", modelName: "GPT-4", providerName: "OpenAI", connected: false }),
       ];
 
-      const { container, getByRole, user, getByPlaceholderText } = renderWithUser(
+      const { container, getByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ models })} />
       );
 
@@ -443,7 +455,7 @@ describe("LoopActionBar", () => {
       select.dispatchEvent(new Event("change", { bubbles: true }));
 
       // Also type a message so hasLocalChanges is true
-      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "hello");
+      await user.type(getLoopMessageInput(getByRole), "hello");
 
       expect(getByRole("button", { name: "Send" })).toBeDisabled();
     });
@@ -462,11 +474,11 @@ describe("LoopActionBar", () => {
     test("does not submit when Enter is pressed while generating", async () => {
       const onStop = mock(async () => true);
       const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);
-      const { getByPlaceholderText, user } = renderWithUser(
+      const { getByRole, user } = renderWithUser(
         <LoopActionBar {...defaultProps({ isGenerating: true, onStop, onSubmit })} />
       );
 
-      await user.type(getByPlaceholderText("Send a message to steer the agent..."), "Hello agent{enter}");
+      await user.type(getLoopMessageInput(getByRole), "Hello agent{enter}");
 
       expect(onSubmit).not.toHaveBeenCalled();
       expect(onStop).not.toHaveBeenCalled();
