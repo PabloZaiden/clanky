@@ -126,6 +126,9 @@ export async function startPlanModeImpl(ctx: LoopCtx, loopId: string, options?: 
     onPersistState: async (state) => {
       await updateLoopState(loopId, state);
     },
+    onPlanReady: async () => {
+      await ctx.acceptPlan(loopId);
+    },
     initialPromptAttachments: options?.attachments,
   });
 

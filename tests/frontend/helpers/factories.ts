@@ -265,6 +265,7 @@ export function createLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
     clearPlanningFolder: false,
     planMode: true,
     planModeAutoReply: true,
+    autoAcceptPlan: false,
     mode: "loop",
     ...overrides,
   };

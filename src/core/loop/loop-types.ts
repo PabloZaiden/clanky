@@ -44,6 +44,8 @@ export interface CreateLoopOptions {
   planMode: boolean;
   /** Whether plan-mode questions should be auto-answered instead of shown inline */
   planModeAutoReply?: boolean;
+  /** Whether a ready plan should be automatically accepted and executed */
+  autoAcceptPlan?: boolean;
   /** Save as draft without starting (no git branch or session created) */
   draft?: boolean;
 }

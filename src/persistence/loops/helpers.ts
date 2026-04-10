@@ -12,7 +12,8 @@ const log = createLogger("persistence:loops");
 
 /**
  * Allowed column names for the loops table.
- * This list must match the schema in database.ts.
+ * This list must match the effective loops schema (the base schema in
+ * database.ts plus any startup compatibility repairs and post-reset migrations).
  * Used to validate column names before SQL interpolation to prevent injection.
  */
 export const ALLOWED_LOOP_COLUMNS = new Set([
@@ -37,6 +38,7 @@ export const ALLOWED_LOOP_COLUMNS = new Set([
   "clear_planning_folder",
   "plan_mode",
   "plan_mode_auto_reply",
+  "auto_accept_plan",
   "status",
   "current_iteration",
   "started_at",
@@ -112,6 +114,7 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     clear_planning_folder: config.clearPlanningFolder ? 1 : 0,
     plan_mode: config.planMode ? 1 : 0,
     plan_mode_auto_reply: (config.planModeAutoReply ?? DEFAULT_LOOP_CONFIG.planModeAutoReply) ? 1 : 0,
+    auto_accept_plan: (config.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan) ? 1 : 0,
     mode: config.mode ?? "loop",
     // State fields
     status: state.status,
@@ -219,6 +222,7 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
     clearPlanningFolder: row["clear_planning_folder"] === 1,
     planMode: row["plan_mode"] === 1,
     planModeAutoReply: row["plan_mode_auto_reply"] !== 0,
+    autoAcceptPlan: row["auto_accept_plan"] === 1,
     mode: normalizeLoopMode(row["mode"], row["id"]),
   };
 

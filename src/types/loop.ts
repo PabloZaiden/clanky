@@ -71,6 +71,9 @@ export interface LoopConfig {
   /** Whether plan-mode ACP questions should be auto-answered instead of shown for manual reply */
   planModeAutoReply?: boolean;
 
+  /** Whether a ready plan should be automatically accepted and executed */
+  autoAcceptPlan?: boolean;
+
   /** Mode of operation for this entity. Loops are the only supported mode. */
   mode: "loop";
 }
@@ -399,6 +402,7 @@ export const DEFAULT_LOOP_CONFIG = {
   clearPlanningFolder: false,
   planMode: true,
   planModeAutoReply: true,
+  autoAcceptPlan: false,
   mode: "loop" as const,
   git: {
     branchPrefix: "",

@@ -81,6 +81,7 @@ export class LoopEngine {
   private aborted = false;
   private sessionId: string | null = null;
   private onPersistState?: (state: LoopState) => Promise<void>;
+  private onPlanReady?: () => Promise<void>;
   /** Guard to prevent concurrent runLoop() executions */
   private isLoopRunning = false;
   /** Skip git branch setup (for review cycles) */
@@ -106,6 +107,7 @@ export class LoopEngine {
     this.emitter = options.eventEmitter ?? loopEventEmitter;
     this.stopDetector = new StopPatternDetector(options.loop.config.stopPattern);
     this.onPersistState = options.onPersistState;
+    this.onPlanReady = options.onPlanReady;
     this.skipGitSetup = options.skipGitSetup ?? false;
     this.initialPromptAttachments = [...(options.initialPromptAttachments ?? [])];
   }
@@ -1108,6 +1110,16 @@ export class LoopEngine {
     });
 
     await this.triggerPersistence();
+
+    if (this.loop.config.autoAcceptPlan === true && this.onPlanReady) {
+      this.emitLog("info", "Auto-accept plan enabled - continuing into execution");
+      queueMicrotask(() => {
+        void this.onPlanReady?.().catch(async (error) => {
+          this.emitLog("error", `Auto-accepting the plan failed: ${String(error)}`);
+          await this.triggerPersistence();
+        });
+      });
+    }
 
     // Exit the loop but stay in "planning" status
     // The loop will be resumed when user sends feedback or accepts the plan

@@ -57,10 +57,11 @@ export const loopsCollectionRoutes = {
      * - stopPattern: Regex for completion detection
      * - git: { branchPrefix, commitScope } for git integration
      * - baseBranch: Base branch to create loop from
-     * - clearPlanningFolder: Clear .ralph-planning folder before starting
-     * - planMode: Start in plan creation mode
-     * - planModeAutoReply: Whether planning-mode ACP questions auto-answer
-     * - draft: Save as draft without starting
+      * - clearPlanningFolder: Clear .ralph-planning folder before starting
+      * - planMode: Start in plan creation mode
+      * - planModeAutoReply: Whether planning-mode ACP questions auto-answer
+      * - autoAcceptPlan: Whether a ready plan should auto-start execution
+      * - draft: Save as draft without starting
      *
       * Errors:
       * - 400: Validation error or invalid JSON body
@@ -164,6 +165,7 @@ export const loopsCollectionRoutes = {
           clearPlanningFolder: body.clearPlanningFolder,
           planMode: body.planMode,
           planModeAutoReply: body.planModeAutoReply,
+          autoAcceptPlan: body.autoAcceptPlan,
           draft: body.draft,
         });
 

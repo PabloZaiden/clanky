@@ -213,6 +213,20 @@ export const migrations: Migration[] = [
       db.run("ALTER TABLE workspaces ADD COLUMN devcontainer_subpath TEXT");
     },
   },
+  {
+    version: 5,
+    name: "add_loop_auto_accept_plan",
+    up: (db) => {
+      if (!tableExists(db, "loops")) {
+        return;
+      }
+      const columns = getTableColumns(db, "loops");
+      if (columns.includes("auto_accept_plan")) {
+        return;
+      }
+      db.run("ALTER TABLE loops ADD COLUMN auto_accept_plan INTEGER NOT NULL DEFAULT 0");
+    },
+  },
 ];
 
 /**

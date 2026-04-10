@@ -124,6 +124,7 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
     clearPlanningFolder: editLoop.config.clearPlanningFolder,
     planMode: editLoop.config.planMode ?? false,
     planModeAutoReply: editLoop.config.planModeAutoReply ?? DEFAULT_LOOP_CONFIG.planModeAutoReply,
+    autoAcceptPlan: editLoop.config.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan,
     workspaceId: editLoop.config.workspaceId,
   } : null;
 

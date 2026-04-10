@@ -75,6 +75,8 @@ export function CreateLoopForm({
     setPlanMode,
     planModeAutoReply,
     setPlanModeAutoReply,
+    autoAcceptPlan,
+    setAutoAcceptPlan,
     useWorktree,
     setUseWorktree,
     clearPlanningFolder,
@@ -202,6 +204,8 @@ export function CreateLoopForm({
         onPlanModeChange={setPlanMode}
         planModeAutoReply={planModeAutoReply}
         onPlanModeAutoReplyChange={setPlanModeAutoReply}
+        autoAcceptPlan={autoAcceptPlan}
+        onAutoAcceptPlanChange={setAutoAcceptPlan}
         useWorktree={useWorktree}
         onUseWorktreeChange={setUseWorktree}
       />

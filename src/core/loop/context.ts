@@ -9,6 +9,7 @@ import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { GitService } from "../git-service";
 import type { CommandExecutor } from "../command-executor";
 import type { SendFollowUpResult } from "./loop-types";
+import type { AcceptPlanResult, AcceptPlanOptions } from "./loop-types";
 
 export interface LoopCtx {
   engines: Map<string, LoopEngine>;
@@ -21,6 +22,7 @@ export interface LoopCtx {
   getLoop(loopId: string): Promise<Loop | null>;
   startLoop(loopId: string, options?: { attachments?: MessageImageAttachment[] }): Promise<void>;
   startPlanMode(loopId: string, options?: { attachments?: MessageImageAttachment[] }): Promise<void>;
+  acceptPlan(loopId: string, options?: AcceptPlanOptions): Promise<AcceptPlanResult>;
   startStatePersistence(loopId: string): void;
   ensureLoopBranchCheckedOut(loop: Loop, git: GitService, workingDirectory: string): Promise<void>;
   validateMainCheckoutStart(loop: Loop, git: GitService): Promise<void>;

@@ -63,11 +63,12 @@ function createTestLoop(overrides: {
       maxConsecutiveErrors: 10,
       activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
       useWorktree: DEFAULT_LOOP_CONFIG.useWorktree,
-      clearPlanningFolder: false,
-      planMode: false,
-      planModeAutoReply: true,
-      mode: "loop",
-    },
+       clearPlanningFolder: false,
+       planMode: false,
+       planModeAutoReply: true,
+       autoAcceptPlan: false,
+       mode: "loop",
+     },
     state: {
       id: overrides.id,
       status: overrides.status ?? "idle",
@@ -245,6 +246,116 @@ describe("Persistence", () => {
       expect(workspaceRow?.devcontainer_subpath).toBe("backend");
     });
 
+    test("initializeDatabase repairs loops when a legacy migration version collides", async () => {
+      const { Database } = await import("bun:sqlite");
+      const databasePath = join(testDataDir, "ralpher.db");
+      const legacyDb = new Database(databasePath);
+
+      legacyDb.run(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        5,
+        "legacy_reset_five",
+        "2025-01-01T00:00:00.000Z",
+      ]);
+      legacyDb.run(`
+        CREATE TABLE loops (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          model_provider_id TEXT,
+          model_model_id TEXT,
+          model_variant TEXT,
+          max_iterations INTEGER,
+          max_consecutive_errors INTEGER,
+          activity_timeout_seconds INTEGER,
+          stop_pattern TEXT NOT NULL,
+          git_branch_prefix TEXT NOT NULL,
+          git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
+          base_branch TEXT,
+          clear_planning_folder INTEGER DEFAULT 0,
+          plan_mode INTEGER DEFAULT 0,
+          mode TEXT DEFAULT 'loop',
+          workspace_id TEXT REFERENCES workspaces(id),
+          status TEXT NOT NULL DEFAULT 'idle',
+          current_iteration INTEGER NOT NULL DEFAULT 0,
+          started_at TEXT,
+          completed_at TEXT,
+          last_activity_at TEXT,
+          session_id TEXT,
+          session_server_url TEXT,
+          error_message TEXT,
+          error_iteration INTEGER,
+          error_timestamp TEXT,
+          git_original_branch TEXT,
+          git_working_branch TEXT,
+          git_worktree_path TEXT,
+          git_commits TEXT,
+          recent_iterations TEXT,
+          logs TEXT,
+          messages TEXT,
+          tool_calls TEXT,
+          consecutive_errors TEXT,
+          pending_prompt TEXT,
+          pending_model_provider_id TEXT,
+          pending_model_model_id TEXT,
+          pending_model_variant TEXT,
+          plan_mode_active INTEGER DEFAULT 0,
+          plan_session_id TEXT,
+          plan_server_url TEXT,
+          plan_feedback_rounds INTEGER DEFAULT 0,
+          plan_content TEXT,
+          planning_folder_cleared INTEGER DEFAULT 0,
+          plan_is_ready INTEGER DEFAULT 0,
+          review_mode TEXT,
+          use_worktree INTEGER NOT NULL DEFAULT 1,
+          plan_mode_auto_reply INTEGER NOT NULL DEFAULT 1,
+          pending_plan_question TEXT
+        )
+      `);
+      legacyDb.close();
+
+      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      const { createWorkspace } = await import("../../src/persistence/workspaces");
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      await initializeDatabase();
+
+      await createWorkspace({
+        id: testWorkspaceId,
+        name: "Test Workspace",
+        directory: "/tmp/test",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: getDefaultServerSettings(),
+      });
+
+      const repairedLoop = createTestLoop({
+        id: "repaired-auto-accept-loop",
+        name: "repaired-auto-accept-loop",
+      });
+      repairedLoop.config.autoAcceptPlan = true;
+
+      await expect(saveLoop(repairedLoop)).resolves.toBeUndefined();
+
+      const columns = getDatabase().query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
+      const loopRow = getDatabase().query(
+        "SELECT auto_accept_plan FROM loops WHERE id = ?",
+      ).get("repaired-auto-accept-loop") as { auto_accept_plan: number } | null;
+      const loadedLoop = await loadLoop("repaired-auto-accept-loop");
+
+      expect(columns.some((column) => column.name === "auto_accept_plan")).toBe(true);
+      expect(loopRow?.auto_accept_plan).toBe(1);
+      expect(loadedLoop?.config.autoAcceptPlan).toBe(true);
+    });
+
     test("resetDatabase drops chats and passkey credentials before recreating the schema", async () => {
       const { ensureDataDirectories, getDatabase, resetDatabase } = await import("../../src/persistence/database");
       const { createWorkspace } = await import("../../src/persistence/workspaces");
@@ -395,6 +506,23 @@ describe("Persistence", () => {
       expect(loaded?.config.planModeAutoReply).toBe(false);
       expect(loaded?.state.planMode?.pendingQuestion?.requestId).toBe("question-1");
       expect(loaded?.state.planMode?.pendingQuestion?.questions[0]?.custom).toBe(true);
+    });
+
+    test("persists auto-accept plan setting", async () => {
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+
+      await setupPersistence();
+
+      const testLoop = createTestLoop({
+        id: "auto-accept-loop",
+      });
+      testLoop.config.planMode = true;
+      testLoop.config.autoAcceptPlan = true;
+
+      await saveLoop(testLoop);
+      const loaded = await loadLoop("auto-accept-loop");
+
+      expect(loaded?.config.autoAcceptPlan).toBe(true);
     });
 
     test("loadLoop returns null for non-existent loop", async () => {

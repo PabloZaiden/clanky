@@ -9,6 +9,7 @@ import { parseModelKey } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
 import type { CreateLoopFormProps, CreateLoopFormSubmitRequest } from "./types";
 import { toMessageImageAttachments } from "../../lib/image-attachments";
+import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 
 const log = createLogger("CreateLoopForm");
 
@@ -30,6 +31,7 @@ export function useFormActions({
   selectedModelEnabled,
   planMode,
   planModeAutoReply,
+  autoAcceptPlan,
   maxIterations,
   maxConsecutiveErrors,
   activityTimeoutSeconds,
@@ -56,6 +58,7 @@ export function useFormActions({
   selectedModelEnabled: boolean;
   planMode: boolean;
   planModeAutoReply: boolean;
+  autoAcceptPlan: boolean;
   maxIterations: string;
   maxConsecutiveErrors: string;
   activityTimeoutSeconds: string;
@@ -133,7 +136,8 @@ export function useFormActions({
         workspaceId: selectedWorkspaceId,
         prompt: currentPrompt.trim(),
         planMode,
-        planModeAutoReply,
+        planModeAutoReply: planMode ? planModeAutoReply : DEFAULT_LOOP_CONFIG.planModeAutoReply,
+        autoAcceptPlan: planMode ? autoAcceptPlan : DEFAULT_LOOP_CONFIG.autoAcceptPlan,
         model,
         useWorktree,
       };
@@ -192,8 +196,9 @@ export function useFormActions({
       selectedWorkspaceId,
       selectedModel,
       selectedModelEnabled,
-        planMode,
+      planMode,
       planModeAutoReply,
+      autoAcceptPlan,
       maxIterations,
       maxConsecutiveErrors,
       activityTimeoutSeconds,

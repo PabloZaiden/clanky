@@ -70,6 +70,8 @@ export interface LoopEngineOptions {
   eventEmitter?: SimpleEventEmitter<LoopEvent>;
   /** Callback to persist state to disk (optional) */
   onPersistState?: (state: LoopState) => Promise<void>;
+  /** Callback fired after a plan becomes ready (optional) */
+  onPlanReady?: () => Promise<void>;
   /** Skip git branch setup (for review cycles where branch is already set up) */
   skipGitSetup?: boolean;
   /** Transient attachments for the first prompt sent by this engine */

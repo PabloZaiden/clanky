@@ -459,6 +459,7 @@ export async function createLoopViaAPI(
     model?: { providerID: string; modelID: string; variant?: string };
     maxIterations?: number;
     clearPlanningFolder?: boolean;
+    autoAcceptPlan?: boolean;
     baseBranch?: string;
   }
 ): Promise<{ status: number; body: Loop | { error: string; message: string } }> {
