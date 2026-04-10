@@ -7,6 +7,7 @@
 
 import { chatManager } from "../core/chat-manager";
 import { createLogger } from "../core/logger";
+import { ChatBusyError, EmptyChatTranscriptError } from "../types/chat";
 import type { ChatConfig } from "../types/chat";
 import {
   CreateChatRequestSchema,
@@ -19,6 +20,13 @@ import { parseAndValidate } from "./validation";
 import { isModelEnabled } from "./models";
 
 const log = createLogger("api:chats");
+
+function createChatActionErrorResponse(error: unknown): Response | null {
+  if (error instanceof ChatBusyError || error instanceof EmptyChatTranscriptError) {
+    return errorResponse(error.code, error.message, error.status);
+  }
+  return null;
+}
 
 function mapChatUpdates(body: Partial<ChatConfig>): Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode">> {
   const updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode">> = {};
@@ -183,10 +191,11 @@ export const chatsRoutes = {
         });
         return Response.json(chat);
       } catch (error) {
-        const message = String(error);
-        if (message === "Chat is busy") {
-          return errorResponse("chat_busy", message, 409);
+        const knownErrorResponse = createChatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
         }
+        const message = String(error);
         log.error("Failed to send chat message", { chatId: req.params.id, error: message });
         return errorResponse("send_failed", message, 500);
       }
@@ -237,6 +246,46 @@ export const chatsRoutes = {
       } catch (error) {
         log.error("Failed to reconnect chat", { chatId: req.params.id, error: String(error) });
         return errorResponse("reconnect_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/chats/:id/spawn-loop": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const chat = await chatManager.getChat(req.params.id);
+      if (!chat) {
+        return errorResponse("not_found", "Chat not found", 404);
+      }
+
+      const workspace = await requireWorkspace(chat.config.workspaceId);
+      if (workspace instanceof Response) {
+        return workspace;
+      }
+
+      const modelValidation = await isModelEnabled(
+        workspace.id,
+        workspace.directory,
+        chat.config.model.providerID,
+        chat.config.model.modelID,
+      );
+      if (!modelValidation.enabled) {
+        return errorResponse(
+          modelValidation.errorCode ?? "model_not_enabled",
+          modelValidation.error ?? "The selected model is not available",
+        );
+      }
+
+      try {
+        const loop = await chatManager.spawnLoopFromChat(req.params.id);
+        return Response.json(loop, { status: 201 });
+      } catch (error) {
+        const knownErrorResponse = createChatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        log.error("Failed to spawn loop from chat", { chatId: req.params.id, error: message });
+        return errorResponse("spawn_failed", message, 500);
       }
     },
   },

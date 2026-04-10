@@ -2,7 +2,7 @@
  * Agent event processing helpers for LoopEngine.
  */
 
-import type { LoopConfig, LoopState, PendingPlanQuestion } from "../../types/loop";
+import type { LoopConfig, LoopState } from "../../types/loop";
 import type { LogLevel, LoopEvent, MessageData, ToolCallData } from "../../types/events";
 import { createTimestamp } from "../../types/events";
 import type { AgentEvent } from "../../backends/types";
@@ -20,9 +20,6 @@ export interface ToolProcessingContext {
   persistMessage: (message: MessageData) => void;
   persistToolCall: (toolCall: ToolCallData) => void;
   triggerPersistence: () => Promise<void>;
-  setPendingPlanQuestion: (question: PendingPlanQuestion | undefined) => void;
-  waitForPendingPlanQuestionAnswer: (requestId: string) => Promise<void>;
-  clearPendingPlanQuestion: () => Promise<void>;
 }
 
 export async function processLoopAgentEvent(event: AgentEvent, ctx: IterationContext, toolCtx: ToolProcessingContext): Promise<void> {
@@ -204,44 +201,6 @@ async function handlePermissionAsked(event: AgentEvent & { type: "permission.ask
 }
 
 export async function handleQuestionAsked(event: AgentEvent & { type: "question.asked" }, toolCtx: ToolProcessingContext): Promise<void> {
-  if (toolCtx.state.status === "planning" && toolCtx.config.planModeAutoReply === false) {
-    const waitForAnswer = toolCtx.waitForPendingPlanQuestionAnswer(event.requestId);
-    const pendingQuestion: PendingPlanQuestion = {
-      requestId: event.requestId,
-      sessionId: event.sessionId,
-      questions: event.questions.map((question) => ({
-        header: question.header,
-        question: question.question,
-        options: question.options.map((option) => ({
-          label: option.label,
-          description: option.description,
-        })),
-        multiple: question.multiple,
-        custom: question.custom,
-      })),
-      askedAt: createTimestamp(),
-    };
-
-    toolCtx.setPendingPlanQuestion(pendingQuestion);
-    toolCtx.emitLog("info", "Waiting for a user answer to a plan-mode question", {
-      requestId: event.requestId,
-      questionCount: event.questions.length,
-    });
-    await toolCtx.triggerPersistence();
-    try {
-      await waitForAnswer;
-      toolCtx.emitLog("info", "Plan question answered successfully", {
-        requestId: event.requestId,
-      });
-    } catch (error) {
-      if (toolCtx.state.planMode?.pendingQuestion?.requestId === event.requestId) {
-        await toolCtx.clearPendingPlanQuestion();
-      }
-      throw error;
-    }
-    return;
-  }
-
   toolCtx.emitLog("info", "Auto-responding to question from AI", {
     requestId: event.requestId,
     questionCount: event.questions.length,

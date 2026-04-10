@@ -59,8 +59,7 @@ export const loopsCollectionRoutes = {
      * - baseBranch: Base branch to create loop from
       * - clearPlanningFolder: Clear .ralph-planning folder before starting
       * - planMode: Start in plan creation mode
-      * - planModeAutoReply: Whether planning-mode ACP questions auto-answer
-      * - autoAcceptPlan: Whether a ready plan should auto-start execution
+       * - autoAcceptPlan: Whether a ready plan should auto-start execution
       * - draft: Save as draft without starting
      *
       * Errors:
@@ -164,7 +163,6 @@ export const loopsCollectionRoutes = {
           useWorktree: body.useWorktree,
           clearPlanningFolder: body.clearPlanningFolder,
           planMode: body.planMode,
-          planModeAutoReply: body.planModeAutoReply,
           autoAcceptPlan: body.autoAcceptPlan,
           draft: body.draft,
         });

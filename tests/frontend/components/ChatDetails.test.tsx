@@ -4,6 +4,7 @@ import { ChatDetails } from "@/components/ChatDetails";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { act, renderWithUser, waitFor } from "../helpers/render";
+import { createLoop } from "../helpers/factories";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -187,6 +188,53 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id", "PATCH")[0]?.body).toMatchObject({
       name: "Renamed pairing",
     });
+  });
+
+  test("spawns a loop from the current chat transcript", async () => {
+    const initialChat = createChat();
+    const spawnedLoop = createLoop({
+      config: {
+        id: "loop-1",
+        name: "Plan from Repo pairing",
+        workspaceId: initialChat.config.workspaceId,
+        prompt: "Use the following chat transcript as background context for this loop.",
+        planMode: true,
+      },
+      state: {
+        status: "planning",
+        planMode: {
+          active: true,
+          feedbackRounds: 0,
+          planningFolderCleared: false,
+          isPlanReady: false,
+        },
+      },
+    });
+    let openedLoopId: string | null = null;
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/spawn-loop", () => spawnedLoop);
+
+    const { getByRole, user } = renderWithUser(
+      <ChatDetails
+        chatId={CHAT_ID}
+        onOpenLoop={(loopId) => {
+          openedLoopId = loopId;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Spawn loop" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Spawn loop" }));
+
+    await waitFor(() => {
+      expect(openedLoopId).toBe("loop-1");
+    });
+
+    expect(api.calls("/api/chats/:id/spawn-loop", "POST")).toHaveLength(1);
   });
 
   test("submits the composer with Ctrl+Enter", async () => {

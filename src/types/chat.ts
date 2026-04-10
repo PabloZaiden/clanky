@@ -87,3 +87,27 @@ export function createInitialChatState(id: string): ChatState {
     toolCalls: [],
   };
 }
+
+export function isChatBusyStatus(status: ChatStatus): boolean {
+  return status === "starting" || status === "streaming" || status === "interrupting";
+}
+
+export class ChatBusyError extends Error {
+  readonly code = "chat_busy";
+  readonly status = 409;
+
+  constructor(message = "Chat is busy") {
+    super(message);
+    this.name = "ChatBusyError";
+  }
+}
+
+export class EmptyChatTranscriptError extends Error {
+  readonly code = "empty_transcript";
+  readonly status = 400;
+
+  constructor(message = "Chat transcript is empty. Send at least one message before spawning a loop.") {
+    super(message);
+    this.name = "EmptyChatTranscriptError";
+  }
+}

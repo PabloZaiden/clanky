@@ -249,6 +249,9 @@ function renderMainContent(props: ShellMainContentProps) {
           view: "code-explorer",
           target: { contentType: "chat", chatId },
         })}
+        onOpenLoop={(loopId) => {
+          navigateWithinShell({ view: "loop", loopId });
+        }}
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
       />

@@ -54,7 +54,6 @@ export {
   clearPendingPromptApi,
   markMergedApi,
   sendPlanFeedbackApi,
-  answerPlanQuestionApi,
   acceptPlanApi,
   discardPlanApi,
   addressReviewCommentsApi,

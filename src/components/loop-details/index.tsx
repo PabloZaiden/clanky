@@ -18,7 +18,6 @@ import { tabs, formatDateTime } from "./types";
 import { useTabState } from "./use-tab-state";
 import { useLoopContent } from "./use-loop-content";
 import { useLoopActions } from "./use-loop-actions";
-import { usePlanQuestion } from "./use-plan-question";
 import { useModels } from "./use-models";
 import { usePortForwardActions } from "./use-port-forward-actions";
 import { useLogDisplayState } from "./use-log-display-state";
@@ -56,7 +55,7 @@ export function LoopDetails({
     accept, push, updateBranch, remove, purge, markMerged,
     stopLoop, setPending, sendFollowUp,
     getDiff, getPlan, getStatusFile, getPullRequestDestination,
-    sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan,
+    sendPlanFeedback, acceptPlan, discardPlan,
     addressReviewComments, update, connectViaSsh,
   } = useLoop(loopId);
 
@@ -92,8 +91,6 @@ export function LoopDetails({
     addressReviewComments, acceptPlan, discardPlan, connectViaSsh, update,
     fetchReviewComments: content.fetchReviewComments,
   });
-  const pendingPlanQuestion = loop?.state.planMode?.pendingQuestion;
-  const planQuestion = { pendingPlanQuestion, ...usePlanQuestion({ pendingPlanQuestion, answerPlanQuestion, toast }) };
   const { models, modelsLoading } = useModels({ directory: loop?.config.directory, workspaceId: loop?.config.workspaceId });
   const portForward = usePortForwardActions({ loopId, toast, createForward, deleteForward });
   const isLogFocusActive = activeTab === "log" && isLogFocusMode && !!loop;
@@ -229,14 +226,13 @@ export function LoopDetails({
               </div>
             )}
 
-            <LoopDetailsTabContent
+        <LoopDetailsTabContent
               activeTab={activeTab} loop={loop} loopId={loopId} labels={labels}
               isActive={isActive} isPlanning={isPlanning} isPlanReady={isPlanReady}
               isLogActive={isLogActive} feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
               messages={messages} toolCalls={toolCalls} logs={logs}
               logDisplay={logDisplay}
-              planQuestion={planQuestion}
-              portForward={portForward}
+          portForward={portForward}
               portForwardData={{ forwards, forwardsLoading, forwardsError }}
               content={content}
               actions={actions}

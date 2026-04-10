@@ -16,7 +16,7 @@
  */
 
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
-import type { GitCommit, LoopConfig, LoopLogEntry, ModelConfig, PendingPlanQuestion } from "./loop";
+import type { GitCommit, LoopConfig, LoopLogEntry, ModelConfig } from "./loop";
 import type { MessageImageAttachment } from "./message-attachments";
 
 /**
@@ -621,8 +621,6 @@ export interface LoopPendingUpdatedEvent {
   pendingPrompt?: string;
   /** Pending model (if set, undefined if cleared) */
   pendingModel?: ModelConfig;
-  /** Pending plan question (if set, undefined if cleared) */
-  pendingPlanQuestion?: PendingPlanQuestion;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
