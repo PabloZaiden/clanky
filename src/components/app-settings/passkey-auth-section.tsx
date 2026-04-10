@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { PasskeyAuthStatusResponse } from "../../types/api";
-import { Button } from "../common";
+import { Button, ConfirmModal } from "../common";
 
 export interface PasskeyAuthSectionProps {
   status: PasskeyAuthStatusResponse;
@@ -26,6 +26,14 @@ export function PasskeyAuthSection({
   onRemovePasskey,
 }: PasskeyAuthSectionProps) {
   const [passkeyName, setPasskeyName] = useState("");
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+
+  async function handleConfirmRemovePasskey(): Promise<void> {
+    const removed = await onRemovePasskey?.();
+    if (removed) {
+      setRemoveConfirmOpen(false);
+    }
+  }
 
   return (
     <div>
@@ -106,13 +114,25 @@ export function PasskeyAuthSection({
               loading={removingPasskey}
               disabled={!onRemovePasskey || loggingOut || refreshing}
               onClick={() => {
-                void onRemovePasskey?.();
+                setRemoveConfirmOpen(true);
               }}
             >
               Remove passkey
             </Button>
           </div>
         )}
+        <ConfirmModal
+          isOpen={removeConfirmOpen}
+          onClose={() => setRemoveConfirmOpen(false)}
+          onConfirm={() => {
+            void handleConfirmRemovePasskey();
+          }}
+          title="Remove passkey?"
+          message="This removes the configured passkey and signs this browser out of the protected session."
+          confirmLabel="Remove passkey"
+          loading={removingPasskey}
+          variant="danger"
+        />
       </div>
     </div>
   );
