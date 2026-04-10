@@ -99,7 +99,6 @@ export function SshServerSettingsForm({
 
     const request = buildSshServerUpdateRequest(server, trimmedValues);
     if (!request && !trimmedValues.password) {
-      toast.success("SSH server is already up to date.");
       onSaved?.();
       return;
     }
@@ -113,7 +112,6 @@ export function SshServerSettingsForm({
         return;
       }
 
-      toast.success(`Saved SSH server "${updatedServer.config.name}"`);
       shouldNotifySaved = true;
     } finally {
       setSubmitting(false);

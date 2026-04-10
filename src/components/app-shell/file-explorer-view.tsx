@@ -155,7 +155,6 @@ export function FileExplorerView({
       const session = await onCreateTerminal();
       setSelectedSessionId(session.config.id);
       setActivePane("terminal");
-      toast.success(`Created SSH session "${session.config.name}"`);
     } catch (error) {
       toast.error(String(error));
     }
@@ -163,20 +162,14 @@ export function FileExplorerView({
 
   async function handleSave(): Promise<boolean> {
     const success = await explorer.saveCurrentFile();
-    if (success) {
-      toast.success("File saved");
-    } else if (!explorer.conflictState) {
+    if (!success && !explorer.conflictState) {
       toast.error(explorer.error ?? "Failed to save file");
     }
     return success;
   }
 
   async function handleRefreshEditor(): Promise<boolean> {
-    const refreshed = await explorer.refreshCurrentFile();
-    if (refreshed) {
-      toast.info("Code explorer reloaded");
-    }
-    return refreshed;
+    return await explorer.refreshCurrentFile();
   }
 
   const conflictState = explorer.conflictState;
@@ -483,11 +476,7 @@ export function FileExplorerView({
         confirmLabel="Overwrite file"
         onCancel={explorer.dismissConflict}
         onConfirm={() => {
-          void explorer.retrySaveWithOverwrite().then((success) => {
-            if (success) {
-              toast.success("File overwritten with local changes");
-            }
-          });
+          void explorer.retrySaveWithOverwrite();
         }}
       />
 
@@ -498,11 +487,7 @@ export function FileExplorerView({
         confirmLabel="Discard local changes and reload"
         onCancel={explorer.dismissConflict}
         onConfirm={() => {
-          void explorer.discardLocalChangesAndReload().then((success) => {
-            if (success) {
-              toast.info("Reloaded file from disk");
-            }
-          });
+          void explorer.discardLocalChangesAndReload();
         }}
       />
 
