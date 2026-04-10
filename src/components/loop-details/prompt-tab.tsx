@@ -9,7 +9,7 @@ interface PromptTabProps {
   isActive: boolean;
 }
 
-export function PromptTab({ config, state, labels, isActive }: PromptTabProps) {
+export function PromptTab({ config, state, labels: _labels, isActive }: PromptTabProps) {
   return (
     <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
       <div className="min-w-0 w-full space-y-6">
@@ -57,12 +57,6 @@ export function PromptTab({ config, state, labels, isActive }: PromptTabProps) {
           </p>
         )}
 
-        {/* Info message when loop is not running */}
-        {!isActive && !state.pendingPrompt && !state.pendingModel && (
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Use the action bar to send the next message or restart the {labels.singular}.
-          </p>
-        )}
       </div>
     </div>
   );
