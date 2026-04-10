@@ -12,7 +12,8 @@ const log = createLogger("persistence:loops");
 
 /**
  * Allowed column names for the loops table.
- * This list must match the schema in database.ts.
+ * This list must match the effective loops schema (the base schema in
+ * database.ts plus any startup compatibility repairs and post-reset migrations).
  * Used to validate column names before SQL interpolation to prevent injection.
  */
 export const ALLOWED_LOOP_COLUMNS = new Set([

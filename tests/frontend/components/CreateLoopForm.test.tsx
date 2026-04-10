@@ -430,7 +430,7 @@ describe("CreateLoopForm", () => {
       expect((getByRole("checkbox", { name: /Auto-reply plan questions/i }) as HTMLInputElement).checked).toBe(true);
     });
 
-    test("auto-accept plan is shown and disabled by default", () => {
+    test("auto-accept plan is shown and unchecked by default", () => {
       const { getByRole } = renderWithUser(
         <CreateLoopForm {...defaultProps()} />
       );

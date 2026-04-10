@@ -112,12 +112,13 @@ export async function initializeDatabase(): Promise<void> {
  * here should only be updated during future clean-cut resets that fold
  * accumulated migrations back in.
  *
- * Exception: the chats and passkey_credentials tables, plus the workspaces
- * compatibility repair for devcontainer_subpath, intentionally remain here
- * because older databases can already contain reused schema_migrations version
- * numbers from pre-reset eras. Recreating or repairing these schema objects
- * during baseline startup is the repair path that keeps the app working even
- * when newer migration IDs collide with legacy history.
+ * Exception: the chats and passkey_credentials tables, plus the workspaces and
+ * loops compatibility repairs for devcontainer_subpath and auto_accept_plan,
+ * intentionally remain here because older databases can already contain reused
+ * schema_migrations version numbers from pre-reset eras. Recreating or
+ * repairing these schema objects during baseline startup is the repair path
+ * that keeps the app working even when newer migration IDs collide with legacy
+ * history.
  */
 function createTables(database: Database): void {
   // Wrap all schema creation in a transaction
@@ -207,6 +208,7 @@ function createTables(database: Database): void {
         pending_plan_question TEXT
       )
     `);
+    ensureLoopSchema(database);
 
     // Chats table - stores long-lived ACP-backed chat sessions.
     // Keep this in the base schema so startup repairs legacy databases whose
@@ -495,6 +497,14 @@ function ensureWorkspaceSchema(database: Database): void {
     return;
   }
   database.run("ALTER TABLE workspaces ADD COLUMN devcontainer_subpath TEXT");
+}
+
+function ensureLoopSchema(database: Database): void {
+  const columns = database.query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "auto_accept_plan")) {
+    return;
+  }
+  database.run("ALTER TABLE loops ADD COLUMN auto_accept_plan INTEGER NOT NULL DEFAULT 0");
 }
 
 /**

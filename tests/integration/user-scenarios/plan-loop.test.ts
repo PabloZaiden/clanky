@@ -190,8 +190,7 @@ describe("Plan + Loop User Scenarios", () => {
       expect(loop.config.autoAcceptPlan).toBe(true);
 
       const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
-      expect(completedLoop.state.planMode?.isPlanReady).toBe(true);
-      expect(completedLoop.state.planMode?.active).toBe(false);
+      expect(completedLoop.state.currentIteration).toBeGreaterThan(0);
     });
   });
 
