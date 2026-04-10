@@ -19,8 +19,8 @@ export function SshServerView({
 }) {
   const actionItems: ActionMenuItem[] = [
     {
-      label: "Open Editor",
-      onClick: () => onNavigate({ view: "server-files", serverId: server.config.id }),
+      label: "Open code explorer",
+      onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "server", serverId: server.config.id } }),
     },
     {
       label: "New Session",

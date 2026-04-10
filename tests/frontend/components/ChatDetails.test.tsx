@@ -852,4 +852,26 @@ describe("ChatDetails", () => {
     });
     expect(queryByText("Repo pairing")).toBeNull();
   });
+
+  test("opens the code explorer for the chat context", async () => {
+    api.get("/api/chats/:id", () => createChat());
+    let openedChatId = "";
+
+    const { getByRole, user } = renderWithUser(
+      <ChatDetails
+        chatId={CHAT_ID}
+        onOpenCodeExplorer={(chatId: string) => {
+          openedChatId = chatId;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Code explorer" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Code explorer" }));
+
+    expect(openedChatId).toBe(CHAT_ID);
+  });
 });

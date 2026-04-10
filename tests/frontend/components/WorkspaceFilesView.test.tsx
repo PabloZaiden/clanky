@@ -222,7 +222,7 @@ describe("WorkspaceFilesView", () => {
       expect(getByTestId("monaco-word-wrap")).toHaveTextContent("on");
     });
 
-    await user.selectOptions(getByLabelText("Editor language"), "json");
+    await user.selectOptions(getByLabelText("Code explorer language"), "json");
     await waitFor(() => {
       expect(getByTestId("monaco-language")).toHaveTextContent("json");
     });
@@ -316,7 +316,7 @@ describe("WorkspaceFilesView", () => {
       expect(getByTestId("monaco-language")).toHaveTextContent("typescript");
     });
 
-    await user.selectOptions(getByLabelText("Editor language"), "json");
+    await user.selectOptions(getByLabelText("Code explorer language"), "json");
     await waitFor(() => {
       expect(getByTestId("monaco-language")).toHaveTextContent("json");
     });
@@ -324,7 +324,7 @@ describe("WorkspaceFilesView", () => {
     await user.click(getByRole("button", { name: /readme\.md/i }));
     await waitFor(() => {
       expect(getByText("Loading README.md...")).toBeInTheDocument();
-      expect(getByLabelText("Editor language")).toHaveValue("auto");
+      expect(getByLabelText("Code explorer language")).toHaveValue("auto");
       expect(getByRole("option", { name: "Auto (Markdown)" })).toBeInTheDocument();
     });
 
@@ -345,7 +345,7 @@ describe("WorkspaceFilesView", () => {
     await waitFor(() => {
       expect(getByLabelText("Monaco editor")).toBeInTheDocument();
       expect(getByTestId("monaco-language")).toHaveTextContent("markdown");
-      expect(getByLabelText("Editor language")).toHaveValue("auto");
+      expect(getByLabelText("Code explorer language")).toHaveValue("auto");
     });
   });
 
@@ -966,9 +966,12 @@ describe("WorkspaceFilesView", () => {
     await user.click(getByRole("button", { name: "Apply changes" }));
 
     expect(onNavigate).toHaveBeenCalledWith({
-      view: "workspace-files",
-      workspaceId: workspace.id,
-      startDirectory: "/var/tmp/project",
+      view: "code-explorer",
+      target: {
+        contentType: "workspace",
+        workspaceId: workspace.id,
+        startDirectory: "/var/tmp/project",
+      },
     });
   });
 

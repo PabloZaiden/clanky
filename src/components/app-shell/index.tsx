@@ -158,21 +158,40 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const shellErrors = [chatsError, loopsError, sshSessionsError, sshServersError, workspaceError].filter(
     Boolean,
   ) as string[];
+  const codeExplorerTarget = route.view === "code-explorer" ? route.target : undefined;
+  const codeExplorerLoopId = codeExplorerTarget?.contentType === "loop" ? codeExplorerTarget.loopId : null;
+  const codeExplorerChatId = codeExplorerTarget?.contentType === "chat" ? codeExplorerTarget.chatId : null;
+  const codeExplorerWorkspaceId = codeExplorerTarget?.contentType === "workspace"
+    ? codeExplorerTarget.workspaceId
+    : null;
+  const codeExplorerServerId = codeExplorerTarget?.contentType === "server" ? codeExplorerTarget.serverId : null;
 
   const selectedLoop =
     route.view === "loop" || route.view === "loop-files"
       ? (loops.find((loop) => loop.config.id === route.loopId) ?? null)
+      : codeExplorerLoopId
+        ? (loops.find((loop) => loop.config.id === codeExplorerLoopId) ?? null)
       : null;
   const selectedChat =
-    route.view === "chat" ? (chats.find((chat) => chat.config.id === route.chatId) ?? null) : null;
+    route.view === "chat"
+      ? (chats.find((chat) => chat.config.id === route.chatId) ?? null)
+      : codeExplorerChatId
+        ? (chats.find((chat) => chat.config.id === codeExplorerChatId) ?? null)
+        : null;
   const selectedWorkspace =
-     route.view === "workspace"
+    route.view === "workspace"
       || route.view === "workspace-files"
       || route.view === "workspace-settings"
       || route.view === "rebuild-workspace"
       || route.view === "restart-workspace"
       ? (workspaces.find((w) => w.id === route.workspaceId) ?? null)
-      : null;
+      : codeExplorerWorkspaceId
+        ? (workspaces.find((w) => w.id === codeExplorerWorkspaceId) ?? null)
+        : codeExplorerLoopId
+          ? (workspaces.find((w) => w.id === selectedLoop?.config.workspaceId) ?? null)
+          : codeExplorerChatId
+            ? (workspaces.find((w) => w.id === selectedChat?.config.workspaceId) ?? null)
+            : null;
   const composeWorkspace =
     route.view === "compose" && route.kind !== "ssh-server" && route.scopeId
       ? (workspaces.find((w) => w.id === route.scopeId) ?? null)
@@ -190,7 +209,9 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
       || route.view === "server-files"
       || route.view === "server-arise"
       ? (servers.find((s) => s.config.id === route.serverId) ?? null)
-      : null;
+      : codeExplorerServerId
+        ? (servers.find((s) => s.config.id === codeExplorerServerId) ?? null)
+        : null;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-gray-100 text-gray-950 dark:bg-neutral-950 dark:text-gray-100">

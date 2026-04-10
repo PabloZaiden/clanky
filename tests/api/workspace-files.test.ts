@@ -288,7 +288,7 @@ describe("workspace files API integration", () => {
       currentFile: { path: string } | null;
     };
     expect(data.error).toBe("file_conflict");
-    expect(data.message).toBe("File changed outside the editor");
+    expect(data.message).toBe("File changed outside the code explorer");
     expect(data.currentFile?.path).toBe("src/index.ts");
   });
 
