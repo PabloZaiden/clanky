@@ -3,7 +3,7 @@
  * Thin compositor that aggregates focused sub-hooks by domain:
  * - useLoopLifecycleActions – update, remove, stop, discard, purge, markMerged
  * - useLoopGitActions       – accept, push, updateBranch
- * - useLoopPlanActions      – sendPlanFeedback, answerPlanQuestion, acceptPlan, discardPlan
+ * - useLoopPlanActions      – sendPlanFeedback, acceptPlan, discardPlan
  * - useLoopPendingActions   – setPendingPrompt, clearPendingPrompt, setPending, clearPending
  * - useLoopFollowUpActions  – sendFollowUp, connectViaSsh, addressReviewComments
  */
@@ -52,7 +52,6 @@ export interface UseLoopActionsResult {
   setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
   clearPendingPrompt: () => Promise<boolean>;
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
-  answerPlanQuestion: (answers: string[][]) => Promise<boolean>;
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;

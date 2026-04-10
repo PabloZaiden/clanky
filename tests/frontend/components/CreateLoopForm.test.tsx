@@ -422,12 +422,12 @@ describe("CreateLoopForm", () => {
       expect((getByRole("checkbox", { name: /Plan Mode/ }) as HTMLInputElement).checked).toBe(true);
     });
 
-    test("plan-mode auto-reply is shown and enabled by default", () => {
-      const { getByRole } = renderWithUser(
+    test("plan-mode auto-reply option is not shown", () => {
+      const { queryByRole } = renderWithUser(
         <CreateLoopForm {...defaultProps()} />
       );
 
-      expect((getByRole("checkbox", { name: /Auto-reply plan questions/i }) as HTMLInputElement).checked).toBe(true);
+      expect(queryByRole("checkbox", { name: /Auto-reply plan questions/i })).not.toBeInTheDocument();
     });
 
     test("auto-accept plan is shown and unchecked by default", () => {
@@ -465,7 +465,7 @@ describe("CreateLoopForm", () => {
       expect(queryByRole("checkbox", { name: /Auto-accept plan/i })).not.toBeInTheDocument();
     });
 
-    test("submits planModeAutoReply=false when the checkbox is unchecked", async () => {
+    test("submit payload no longer includes a plan question auto-reply setting", async () => {
       const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
 
       const { getByLabelText, getByRole, user } = renderWithUser(
@@ -490,7 +490,6 @@ describe("CreateLoopForm", () => {
         expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
       });
 
-      await user.click(getByRole("checkbox", { name: /Auto-reply plan questions/i }));
       await user.click(getByRole("button", { name: "Create" }));
 
       await waitFor(() => {
@@ -499,7 +498,7 @@ describe("CreateLoopForm", () => {
 
       const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
       expect(req.planMode).toBe(true);
-      expect(req.planModeAutoReply).toBe(false);
+      expect("planModeAutoReply" in req).toBe(false);
     });
 
     test("submits autoAcceptPlan=true when the checkbox is checked", async () => {

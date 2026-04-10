@@ -20,8 +20,6 @@ export interface UseFormFieldsReturn {
   setPrompt: (v: string) => void;
   planMode: boolean;
   setPlanMode: (v: boolean) => void;
-  planModeAutoReply: boolean;
-  setPlanModeAutoReply: (v: boolean) => void;
   autoAcceptPlan: boolean;
   setAutoAcceptPlan: (v: boolean) => void;
   useWorktree: boolean;
@@ -62,9 +60,6 @@ export function useFormFields({
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [planMode, setPlanMode] = useState(initialLoopData?.planMode ?? true);
-  const [planModeAutoReply, setPlanModeAutoReply] = useState(
-    initialLoopData?.planModeAutoReply ?? DEFAULT_LOOP_CONFIG.planModeAutoReply
-  );
   const [autoAcceptPlan, setAutoAcceptPlan] = useState(
     initialLoopData?.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan
   );
@@ -97,8 +92,6 @@ export function useFormFields({
     setPrompt,
     planMode,
     setPlanMode,
-    planModeAutoReply,
-    setPlanModeAutoReply,
     autoAcceptPlan,
     setAutoAcceptPlan,
     useWorktree,

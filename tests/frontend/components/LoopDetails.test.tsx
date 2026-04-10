@@ -62,7 +62,6 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   api.delete("/api/loops/:id/pending", () => ({ success: true }));
   api.put("/api/loops/:id", () => loop);
   api.post("/api/loops/:id/plan/feedback", () => ({ success: true }));
-  api.post("/api/loops/:id/plan/question/answer", () => ({ success: true }));
   api.post("/api/loops/:id/plan/accept", () => ({ success: true, mode: "start_loop" }), 200);
   api.post("/api/loops/:id/plan/discard", () => ({ success: true }));
 
@@ -1723,57 +1722,6 @@ describe("log tab", () => {
     });
   });
 
-  test("shows pending plan question below logs and submits the selected answer", async () => {
-    setupDefaultApi({
-      config: {
-        planMode: true,
-        planModeAutoReply: false,
-      },
-      state: {
-        status: "planning",
-        planMode: {
-          active: true,
-          feedbackRounds: 0,
-          planningFolderCleared: false,
-          isPlanReady: false,
-          pendingQuestion: {
-            requestId: "question-1",
-            sessionId: "session-1",
-            askedAt: "2025-01-01T00:00:00.000Z",
-            questions: [
-              {
-                header: "Choose a path",
-                question: "Which option should I follow?",
-                options: [
-                  { label: "Option A", description: "Use option A" },
-                  { label: "Option B", description: "Use option B" },
-                ],
-                custom: true,
-              },
-            ],
-          },
-        },
-      },
-    });
-
-    const { getByText, getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Choose a path")).toBeTruthy();
-      expect(getByText("Which option should I follow?")).toBeTruthy();
-    });
-
-    await user.click(getByRole("radio", { name: /Option B/i }));
-    await user.click(getByRole("button", { name: /Submit answer/i }));
-
-    await waitFor(() => {
-      expect(api.calls(`/api/loops/${LOOP_ID}/plan/question/answer`, "POST")).toHaveLength(1);
-    });
-
-    expect(api.calls(`/api/loops/${LOOP_ID}/plan/question/answer`, "POST")[0]!.body).toEqual({
-      answers: [["Option B"]],
-    });
-  });
 });
 
 // ─── Prompt tab details ──────────────────────────────────────────────────────

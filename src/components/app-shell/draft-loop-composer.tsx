@@ -246,10 +246,9 @@ export function DraftLoopComposer({
           useWorktree: loop.config.useWorktree,
            clearPlanningFolder: loop.config.clearPlanningFolder,
            planMode: loop.config.planMode,
-           planModeAutoReply: loop.config.planModeAutoReply,
            autoAcceptPlan: loop.config.autoAcceptPlan,
-           workspaceId: loop.config.workspaceId,
-         }}
+            workspaceId: loop.config.workspaceId,
+          }}
         isEditingDraft
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}

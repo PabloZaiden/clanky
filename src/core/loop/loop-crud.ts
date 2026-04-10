@@ -58,7 +58,6 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
     useWorktree: options.useWorktree ?? DEFAULT_LOOP_CONFIG.useWorktree,
     clearPlanningFolder: options.clearPlanningFolder ?? DEFAULT_LOOP_CONFIG.clearPlanningFolder,
     planMode: options.planMode,
-    planModeAutoReply: options.planModeAutoReply ?? DEFAULT_LOOP_CONFIG.planModeAutoReply,
     autoAcceptPlan: options.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan,
     mode: DEFAULT_LOOP_CONFIG.mode,
   };
