@@ -147,10 +147,10 @@ function buildAcceptedPlanExecutionPrompt(): string {
   return `The plan has been accepted. Now execute all tasks in the plan.
 
 Follow the standard loop execution flow:
-- Read AGENTS.md and the plan in .planning/plan.md
+- Read AGENTS.md and the plan in .ralph-planning/plan.md
 - Pick up the most important task to continue with
-- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update .planning/status.md to mark it as completed and note any relevant findings. Do not wait until the end — update after every task so progress is preserved if the iteration is interrupted.
-- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update .planning/status.md with the current task and its state, updated status of all tasks, any new learnings or discoveries, and what the next steps should be. This ensures progress is preserved even if the conversation context is compacted or summarized between iterations.
+- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update .ralph-planning/status.md to mark it as completed and note any relevant findings. Do not wait until the end — update after every task so progress is preserved if the iteration is interrupted.
+- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update .ralph-planning/status.md with the current task and its state, updated status of all tasks, any new learnings or discoveries, and what the next steps should be. This ensures progress is preserved even if the conversation context is compacted or summarized between iterations.
 - If you complete all tasks in the plan, end your response with:
 
 <promise>COMPLETE</promise>`;

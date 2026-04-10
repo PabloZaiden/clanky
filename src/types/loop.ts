@@ -62,7 +62,7 @@ export interface LoopConfig {
   /** Whether the loop should run in a dedicated git worktree */
   useWorktree: boolean;
 
-  /** Whether to clear .planning folder on start */
+  /** Whether to clear .ralph-planning folder on start */
   clearPlanningFolder: boolean;
 
   /** Whether to start in plan mode (for drafts, this indicates the intended mode) */
@@ -163,7 +163,7 @@ export interface LoopState {
     feedbackRounds: number;
     /** Plan content cached for display */
     planContent?: string;
-    /** Whether .planning folder was already cleared (prevents re-clearing) */
+    /** Whether .ralph-planning folder was already cleared (prevents re-clearing) */
     planningFolderCleared: boolean;
     /** Whether the plan is ready (PLAN_READY marker detected) */
     isPlanReady: boolean;

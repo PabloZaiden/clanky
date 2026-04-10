@@ -6,6 +6,7 @@ import type { CommandExecutor } from "../command-executor";
 import { log } from "../logger";
 import { runGitCommand, gitError } from "./git-core";
 import { dirname, relative, resolve } from "node:path";
+import { PLANNING_DIRECTORY_NAME } from "../../lib/planning-files";
 
 export async function createWorktree(
   executor: CommandExecutor,
@@ -167,7 +168,7 @@ export async function ensureWorktreeExcluded(
   executor: CommandExecutor,
   repoDirectory: string
 ): Promise<void> {
-  const excludePattern = ".ralph-worktrees";
+  const excludePatterns = [".ralph-worktrees", PLANNING_DIRECTORY_NAME];
 
   let excludePath: string;
   try {
@@ -194,27 +195,28 @@ export async function ensureWorktreeExcluded(
     }
 
     const lines = content.split("\n");
-    const alreadyExcluded = lines.some(
-      (line) => line.trim() === excludePattern || line.trim() === `${excludePattern}/`
-    );
+    const missingPatterns = excludePatterns.filter((pattern) => !lines.some(
+      (line) => line.trim() === pattern || line.trim() === `${pattern}/`
+    ));
 
-    if (alreadyExcluded) {
-      log.debug(`[GitService] .ralph-worktrees already in .git/info/exclude`);
+    if (missingPatterns.length === 0) {
+      log.debug("[GitService] Ralph-managed directories already in .git/info/exclude");
       return;
     }
 
+    const appendedPatterns = `${missingPatterns.join("\n")}\n`;
     const newContent = content.endsWith("\n")
-      ? `${content}${excludePattern}\n`
-      : `${content}\n${excludePattern}\n`;
+      ? `${content}${appendedPatterns}`
+      : `${content}\n${appendedPatterns}`;
 
     await executor.exec("sh", ["-c", `cat > "${excludePath}" << 'EXCLUDE_EOF'\n${newContent}EXCLUDE_EOF`]);
-    log.info(`[GitService] Added .ralph-worktrees to .git/info/exclude`);
+    log.info(`[GitService] Added ${missingPatterns.join(", ")} to .git/info/exclude`);
   } catch {
     log.debug(`[GitService] .git/info/exclude not found, creating it`);
     await executor.exec("mkdir", ["-p", excludeDir]);
-    const content = `# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n${excludePattern}\n`;
+    const content = `# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n${excludePatterns.join("\n")}\n`;
     await executor.exec("sh", ["-c", `cat > "${excludePath}" << 'EXCLUDE_EOF'\n${content}EXCLUDE_EOF`]);
-    log.info(`[GitService] Created .git/info/exclude with .ralph-worktrees entry`);
+    log.info("[GitService] Created .git/info/exclude with Ralph-managed directory entries");
   }
 }
 

@@ -130,10 +130,10 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
     id: "continue-planned-tasks",
     name: "Continue Planned Tasks",
     description:
-      "Reads the .planning/ folder and continues executing the next pending task.",
+      "Reads the .ralph-planning/ folder and continues executing the next pending task.",
     prompt: `Continue working on the planned tasks.
 
-Read \`.planning/plan.md\` for the full plan and \`.planning/status.md\` for current progress. Pick up the next pending task and continue implementation.
+Read \`.ralph-planning/plan.md\` for the full plan and \`.ralph-planning/status.md\` for current progress. Pick up the next pending task and continue implementation.
 
 Follow the standard workflow from AGENTS.md — update status after each completed task.`,
     defaults: {
@@ -149,7 +149,7 @@ Follow the standard workflow from AGENTS.md — update status after each complet
 
 **Phase 1: Discovery**
 Find all documentation artifacts in the codebase:
-- \`README.md\` and any other \`*.md\` files (excluding dependency directories, \`code_review/\`, and \`.planning/\`)
+- \`README.md\` and any other \`*.md\` files (excluding dependency directories, \`code_review/\`, and \`.ralph-planning/\`)
 - Doc comment blocks (e.g., Javadoc, docstrings, GoDoc, Rustdoc, XML doc comments, or similar) on public functions, classes, and types
 - Significant inline comments that describe behavior, constraints, or architecture
 - Configuration file comments (e.g., build configs, project manifests, CI/CD pipelines)

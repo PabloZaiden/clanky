@@ -98,10 +98,10 @@ describe("Plan Mode - Clear Planning Folder", () => {
     await teardownTestContext(ctx);
   });
 
-  test("clears .planning folder before plan creation when clearPlanningFolder is true", async () => {
+  test("clears .ralph-planning folder before plan creation when clearPlanningFolder is true", async () => {
     // Setup: Create existing plan files and commit them to git
     // (files must be committed so they appear in the worktree checkout)
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "old-plan.md"), "Old plan content");
     await writeFile(join(planningDir, "status.md"), "Old status");
@@ -140,7 +140,7 @@ describe("Plan Mode - Clear Planning Folder", () => {
     expect(worktreePath).toBeDefined();
 
     // Verify the folder was cleared in the worktree (old files gone)
-    const wtPlanningDir = join(worktreePath!, ".planning");
+    const wtPlanningDir = join(worktreePath!, ".ralph-planning");
     expect(await exists(join(wtPlanningDir, "old-plan.md"))).toBe(false);
     expect(await exists(join(wtPlanningDir, "status.md"))).toBe(false);
 
@@ -148,9 +148,9 @@ describe("Plan Mode - Clear Planning Folder", () => {
     expect(loopData!.state.planMode?.planningFolderCleared).toBe(true);
   });
 
-  test("does not clear .planning folder if clearPlanningFolder is false", async () => {
+  test("does not clear .ralph-planning folder if clearPlanningFolder is false", async () => {
     // Setup existing files and commit them so they appear in the worktree
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "existing-plan.md"), "Existing content");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
@@ -180,15 +180,15 @@ describe("Plan Mode - Clear Planning Folder", () => {
     const loopData = await ctx.manager.getLoop(loopId);
     const worktreePath = loopData!.state.git?.worktreePath;
     expect(worktreePath).toBeDefined();
-    expect(await exists(join(worktreePath!, ".planning", "existing-plan.md"))).toBe(true);
+    expect(await exists(join(worktreePath!, ".ralph-planning", "existing-plan.md"))).toBe(true);
 
     // Verify state shows clearing did not happen
     expect(loopData!.state.planMode?.planningFolderCleared).toBe(false);
   });
 
-  test("never clears .planning folder after plan is created", async () => {
+  test("never clears .ralph-planning folder after plan is created", async () => {
     // Setup: Create loop with plan mode + clear folder
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "old-file.md"), "Old content");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
@@ -215,7 +215,7 @@ describe("Plan Mode - Clear Planning Folder", () => {
     const worktreePath = loopData!.state.git!.worktreePath!;
 
     // Create a plan file in the worktree (simulating AI creating it)
-    const wtPlanningDir = join(worktreePath, ".planning");
+    const wtPlanningDir = join(worktreePath, ".ralph-planning");
     await mkdir(wtPlanningDir, { recursive: true });
     await writeFile(join(wtPlanningDir, "plan.md"), "# My Plan\n\nTask 1: Do something");
 
@@ -259,7 +259,7 @@ describe("Plan Mode - Clear Planning Folder", () => {
     const worktreePath = loopData!.state.git!.worktreePath!;
 
     // Simulate plan creation in the worktree
-    const wtPlanningDir = join(worktreePath, ".planning");
+    const wtPlanningDir = join(worktreePath, ".ralph-planning");
     await mkdir(wtPlanningDir, { recursive: true });
     await writeFile(join(wtPlanningDir, "plan.md"), "# Plan\n\nTask: Test");
 
@@ -305,7 +305,7 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
 
   test("clears plan.md when starting plan mode even with clearPlanningFolder: false", async () => {
     // Setup: Create existing plan.md and commit to git
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "Old stale plan content");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
@@ -337,13 +337,13 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
     expect(worktreePath).toBeDefined();
 
     // The plan file in the worktree should not have old content
-    const planContent = await Bun.file(join(worktreePath!, ".planning", "plan.md")).text().catch(() => "");
+    const planContent = await Bun.file(join(worktreePath!, ".ralph-planning", "plan.md")).text().catch(() => "");
     expect(planContent).not.toContain("Old stale plan content");
   });
 
   test("clears plan.md when starting plan mode with clearPlanningFolder: true", async () => {
     // Setup: Create existing plan.md and commit to git
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "Old stale plan content from previous session");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
@@ -375,13 +375,13 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
     expect(worktreePath).toBeDefined();
 
     // Verify old content is gone from the worktree
-    const planContent = await Bun.file(join(worktreePath!, ".planning", "plan.md")).text().catch(() => "");
+    const planContent = await Bun.file(join(worktreePath!, ".ralph-planning", "plan.md")).text().catch(() => "");
     expect(planContent).not.toContain("Old stale plan content from previous session");
   });
 
   test("does NOT clear status.md when clearPlanningFolder is false", async () => {
     // Setup: Create both plan.md and status.md and commit to git
-    const planningDir = join(ctx.workDir, ".planning");
+    const planningDir = join(ctx.workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "Old plan");
     await writeFile(join(planningDir, "status.md"), "Important status tracking info");
@@ -415,7 +415,7 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
     expect(worktreePath).toBeDefined();
 
     // Verify status.md still exists with original content in the worktree
-    const wtStatusPath = join(worktreePath!, ".planning", "status.md");
+    const wtStatusPath = join(worktreePath!, ".ralph-planning", "status.md");
     expect(await exists(wtStatusPath)).toBe(true);
     const statusContent = await Bun.file(wtStatusPath).text();
     expect(statusContent).toBe("Important status tracking info");

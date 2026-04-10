@@ -275,7 +275,7 @@ export interface SetupServerOptions {
   withRemote?: boolean;
   /** Initial files to create in the work directory */
   initialFiles?: Record<string, string>;
-  /** Create .planning directory with default files */
+  /** Create .ralph-planning directory with default files */
   withPlanningDir?: boolean;
 }
 
@@ -319,9 +319,9 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   const defaultBranchResult = await Bun.$`git -C ${workDir} branch --show-current`.quiet();
   const defaultBranch = defaultBranchResult.text().trim() || "main";
 
-  // Create .planning directory if requested
+  // Create .ralph-planning directory if requested
   if (withPlanningDir) {
-    const planningDir = join(workDir, ".planning");
+    const planningDir = join(workDir, ".ralph-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "# Plan\n\nThis is the plan.");
     await writeFile(join(planningDir, "status.md"), "# Status\n\nIn progress.");

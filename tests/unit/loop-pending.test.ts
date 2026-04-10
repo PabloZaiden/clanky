@@ -176,8 +176,8 @@ describe("LoopEngine Pending Model", () => {
     await Bun.$`git add .`.cwd(testDir).quiet();
     await Bun.$`git commit -m "Initial commit"`.cwd(testDir).quiet();
 
-    // Create .planning directory
-    await mkdir(join(testDir, ".planning"), { recursive: true });
+    // Create .ralph-planning directory
+    await mkdir(join(testDir, ".ralph-planning"), { recursive: true });
 
     gitService = new GitService(executor);
     emitter = new SimpleEventEmitter<LoopEvent>();

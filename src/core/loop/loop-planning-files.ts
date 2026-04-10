@@ -3,6 +3,8 @@ import type { Loop } from "../../types/loop";
 import type { CommandExecutor } from "../command-executor";
 import { updateLoopState } from "../../persistence/loops";
 import { log } from "../logger";
+import { ensurePlanningDirectory } from "../planning-directory";
+import { getPlanFilePath } from "../../lib/planning-files";
 
 export async function clearPlanningFilesImpl(
   _ctx: LoopCtx,
@@ -11,20 +13,20 @@ export async function clearPlanningFilesImpl(
   executor: CommandExecutor,
   worktreePath: string
 ): Promise<void> {
+  const planningDir = await ensurePlanningDirectory(executor, worktreePath);
+
   if (loop.config.clearPlanningFolder && !loop.state.planMode?.planningFolderCleared) {
-    const planningDir = `${worktreePath}/.planning`;
-
     try {
-      const exists = await executor.directoryExists(planningDir);
-      if (exists) {
-        const files = await executor.listDirectory(planningDir);
-        const filesToDelete = files.filter((file: string) => file !== ".gitkeep");
+      const files = await executor.listDirectory(planningDir);
+      const filesToDelete = files.filter((file: string) => file !== ".gitkeep");
 
-        if (filesToDelete.length > 0) {
-          const fileArgs = filesToDelete.map((file: string) => `${planningDir}/${file}`);
-          await executor.exec("rm", ["-rf", ...fileArgs], {
-            cwd: worktreePath,
-          });
+      if (filesToDelete.length > 0) {
+        const fileArgs = filesToDelete.map((file: string) => `${planningDir}/${file}`);
+        const result = await executor.exec("rm", ["-rf", ...fileArgs], {
+          cwd: worktreePath,
+        });
+        if (!result.success) {
+          throw new Error(`Failed to clear ${planningDir}: ${result.stderr || result.stdout || "unknown error"}`);
         }
       }
 
@@ -33,11 +35,11 @@ export async function clearPlanningFilesImpl(
         await updateLoopState(loopId, loop.state);
       }
     } catch (error) {
-      log.warn(`Failed to clear .planning folder: ${String(error)}`);
+      log.warn(`Failed to clear .ralph-planning folder: ${String(error)}`);
     }
   }
 
-  const planFilePath = `${worktreePath}/.planning/plan.md`;
+  const planFilePath = getPlanFilePath(worktreePath);
   try {
     const planFileExists = await executor.fileExists(planFilePath);
     if (planFileExists) {

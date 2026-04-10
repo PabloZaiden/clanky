@@ -45,9 +45,9 @@ describe("Regular Loop User Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("creates loop based on main branch without clearing .planning folder", async () => {
-      // Verify .planning files exist before creating loop
-      const planContent = await Bun.file(join(ctx.workDir, ".planning/plan.md")).text();
+    test("creates loop based on main branch without clearing .ralph-planning folder", async () => {
+      // Verify .ralph-planning files exist before creating loop
+      const planContent = await Bun.file(join(ctx.workDir, ".ralph-planning/plan.md")).text();
       expect(planContent).toContain("# Plan");
 
       // Create loop via API (simulating UI "Create Loop" button)
@@ -74,15 +74,15 @@ describe("Regular Loop User Scenarios", () => {
         hasError: false,
       });
 
-      // Verify .planning files still exist
-      const planContentAfter = await Bun.file(join(ctx.workDir, ".planning/plan.md")).text();
+      // Verify .ralph-planning files still exist
+      const planContentAfter = await Bun.file(join(ctx.workDir, ".ralph-planning/plan.md")).text();
       expect(planContentAfter).toContain("# Plan");
 
       // Clean up - discard the loop
       await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
     });
 
-    test("creates loop based on main branch with clearing .planning folder", async () => {
+    test("creates loop based on main branch with clearing .ralph-planning folder", async () => {
       // Reset mock backend for this test
       ctx.mockBackend.reset([
         "Working on iteration 1...",
@@ -90,14 +90,12 @@ describe("Regular Loop User Scenarios", () => {
         "Done! <promise>COMPLETE</promise>",
       ]);
 
-      // Add some extra files to .planning that should be cleared
-      await writeFile(join(ctx.workDir, ".planning/extra.md"), "Extra content");
-      // Commit the change so the repo is clean
-      await Bun.$`git -C ${ctx.workDir} add .`.quiet();
-      await Bun.$`git -C ${ctx.workDir} commit -m "Add extra planning file"`.quiet();
+      // Add an ignored file to the main checkout's managed planning directory.
+      // Clearing happens in the loop worktree, not in the source checkout.
+      await writeFile(join(ctx.workDir, ".ralph-planning/extra.md"), "Extra content");
 
       // Verify extra file exists
-      const extraExists = await Bun.file(join(ctx.workDir, ".planning/extra.md")).exists();
+      const extraExists = await Bun.file(join(ctx.workDir, ".ralph-planning/extra.md")).exists();
       expect(extraExists).toBe(true);
 
       // Create loop via API with clearPlanningFolder=true
@@ -124,15 +122,16 @@ describe("Regular Loop User Scenarios", () => {
 
       // Verify clearPlanningFolder was set
       expect(completedLoop.config.clearPlanningFolder).toBe(true);
-      // With worktrees, the clearing happens in the worktree's .planning dir, not main checkout.
-      // Verify the worktree's .planning was cleared by checking the loop completed successfully
+      // With worktrees, the clearing happens in the worktree's .ralph-planning dir, not main checkout.
+      // Verify the worktree's .ralph-planning was cleared by checking the loop completed successfully
       // (clearing happens before iterations start in the worktree).
       const worktreePath = completedLoop.state.git?.worktreePath;
       expect(worktreePath).toBeDefined();
-      // The worktree's .planning should have been cleared (only .gitkeep or files created by the loop)
-      const worktreePlanningDir = join(worktreePath!, ".planning");
+      // The worktree's .ralph-planning should have been cleared (only .gitkeep or files created by the loop)
+      const worktreePlanningDir = join(worktreePath!, ".ralph-planning");
       const filesAfterClear = await readdir(worktreePlanningDir);
       expect(filesAfterClear.length).toBeLessThanOrEqual(2); // May have .gitkeep or be empty
+      expect(await Bun.file(join(ctx.workDir, ".ralph-planning/extra.md")).exists()).toBe(true);
 
       // Clean up
       await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
