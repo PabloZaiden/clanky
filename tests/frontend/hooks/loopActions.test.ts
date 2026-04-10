@@ -20,7 +20,6 @@ import {
   setPendingPromptApi,
   clearPendingPromptApi,
   sendPlanFeedbackApi,
-  answerPlanQuestionApi,
   acceptPlanApi,
   discardPlanApi,
   setPendingApi,
@@ -431,19 +430,6 @@ describe("sendPlanFeedbackApi", () => {
     });
 
     await expect(sendPlanFeedbackApi(LOOP_ID, "feedback")).rejects.toThrow("Failed to send plan feedback");
-  });
-});
-
-describe("answerPlanQuestionApi", () => {
-  test("calls POST /api/loops/:id/plan/question/answer with answers body", async () => {
-    api.post(`/api/loops/${LOOP_ID}/plan/question/answer`, () => ({ success: true }));
-
-    const result = await answerPlanQuestionApi(LOOP_ID, [["Use option B"]]);
-
-    expect(result).toBe(true);
-    const calls = api.calls(`/api/loops/${LOOP_ID}/plan/question/answer`, "POST");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.body).toEqual({ answers: [["Use option B"]] });
   });
 });
 

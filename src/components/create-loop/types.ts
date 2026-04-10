@@ -79,7 +79,6 @@ export interface CreateLoopFormProps {
     useWorktree?: boolean;
     clearPlanningFolder?: boolean;
     planMode?: boolean;
-    planModeAutoReply?: boolean;
     autoAcceptPlan?: boolean;
     workspaceId?: string;
   } | null;

@@ -73,8 +73,6 @@ export function CreateLoopForm({
     setSelectedTemplate,
     planMode,
     setPlanMode,
-    planModeAutoReply,
-    setPlanModeAutoReply,
     autoAcceptPlan,
     setAutoAcceptPlan,
     useWorktree,
@@ -199,14 +197,12 @@ export function CreateLoopForm({
         onTemplateClear={() => setSelectedTemplate("")}
       />
 
-      <LoopSettings
-        planMode={planMode}
-        onPlanModeChange={setPlanMode}
-        planModeAutoReply={planModeAutoReply}
-        onPlanModeAutoReplyChange={setPlanModeAutoReply}
-        autoAcceptPlan={autoAcceptPlan}
-        onAutoAcceptPlanChange={setAutoAcceptPlan}
-        useWorktree={useWorktree}
+        <LoopSettings
+          planMode={planMode}
+          onPlanModeChange={setPlanMode}
+          autoAcceptPlan={autoAcceptPlan}
+          onAutoAcceptPlanChange={setAutoAcceptPlan}
+          useWorktree={useWorktree}
         onUseWorktreeChange={setUseWorktree}
       />
 

@@ -264,7 +264,6 @@ export function createLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
     useWorktree: true,
     clearPlanningFolder: false,
     planMode: true,
-    planModeAutoReply: true,
     autoAcceptPlan: false,
     mode: "loop",
     ...overrides,
