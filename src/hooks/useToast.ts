@@ -11,11 +11,6 @@
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 
 /**
- * Toast notification type determines the visual style.
- */
-export type ToastType = "error";
-
-/**
  * A single toast notification.
  */
 export interface Toast {
@@ -23,8 +18,6 @@ export interface Toast {
   id: string;
   /** The message to display */
   message: string;
-  /** Type determines the visual style */
-  type: ToastType;
   /** Auto-dismiss duration in ms (default: 8000) */
   duration: number;
 }
@@ -95,7 +88,7 @@ export function useToastState(): ToastContextValue {
       const id = `toast-${counterRef.current}-${Date.now()}`;
       const duration = options?.duration ?? DEFAULT_ERROR_DURATION_MS;
 
-      const toast: Toast = { id, message, type: "error", duration };
+      const toast: Toast = { id, message, duration };
 
       setToasts((prev) => {
         // Keep only the most recent toasts (trim oldest if over limit)
