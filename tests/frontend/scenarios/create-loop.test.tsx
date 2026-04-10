@@ -7,7 +7,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { renderWithUser, waitFor } from "../helpers/render";
+import { act, renderWithUser, waitFor } from "../helpers/render";
 import {
   createLoop,
   createLoopWithStatus,
@@ -168,8 +168,10 @@ describe("create loop scenario", () => {
 
     const loopGetCountBeforeResolve = api.calls("/api/loops", "GET").length;
 
-    window.location.hash = "#/";
-    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    await act(async () => {
+      window.location.hash = "#/";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
 
     await waitFor(() => {
       expect(window.location.hash).toBe("#/");

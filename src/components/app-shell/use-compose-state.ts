@@ -7,15 +7,11 @@ import type { ShellRoute } from "./shell-types";
 import { getHashForShellRoute } from "./shell-navigation";
 import type { CreateLoopFormActionState, CreateLoopFormSubmitRequest } from "../CreateLoopForm";
 
-interface LoopComposeRoute {
-  view: "compose";
-  kind: "loop";
-  scopeId?: string;
-}
+type LoopComposeRoute = Extract<ShellRoute, { view: "compose"; kind: "loop" }>;
 
 function isLoopComposeRoute(
   route: ShellRoute,
-) : route is LoopComposeRoute {
+): route is LoopComposeRoute {
   return route.view === "compose" && route.kind === "loop";
 }
 
