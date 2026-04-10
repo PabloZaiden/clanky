@@ -49,6 +49,7 @@ async function applyLoopUpdates(
     if (body.clearPlanningFolder !== undefined) updates.clearPlanningFolder = body.clearPlanningFolder;
     if (body.planMode !== undefined) updates.planMode = body.planMode;
     if (body.planModeAutoReply !== undefined) updates.planModeAutoReply = body.planModeAutoReply;
+    if (body.autoAcceptPlan !== undefined) updates.autoAcceptPlan = body.autoAcceptPlan;
 
     if (body.model !== undefined) {
       updates.model = {

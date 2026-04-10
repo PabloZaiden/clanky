@@ -34,6 +34,9 @@ export async function recoverPlanningEngineImpl(ctx: LoopCtx, loopId: string): P
     onPersistState: async (state) => {
       await updateLoopState(loopId, state);
     },
+    onPlanReady: async () => {
+      await ctx.acceptPlan(loopId);
+    },
   });
 
   ctx.engines.set(loopId, engine);

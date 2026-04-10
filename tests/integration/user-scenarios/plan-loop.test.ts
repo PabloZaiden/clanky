@@ -169,6 +169,30 @@ describe("Plan + Loop User Scenarios", () => {
       await discardPlanViaAPI(ctx.baseUrl, loop.config.id);
       await waitForLoopStatus(ctx.baseUrl, loop.config.id, "deleted");
     });
+
+    test("auto-accepts a ready plan when autoAcceptPlan is enabled", async () => {
+      ctx.mockBackend.reset(
+        createPlanModeMockResponses({
+          planIterations: 1,
+          executionResponses: ["Done! <promise>COMPLETE</promise>"],
+        })
+      );
+
+      const { status, body } = await createLoopViaAPI(ctx.baseUrl, {
+        directory: ctx.workDir,
+        prompt: "Create a plan and execute it immediately",
+        planMode: true,
+        autoAcceptPlan: true,
+      });
+
+      expect(status).toBe(201);
+      const loop = body as Loop;
+      expect(loop.config.autoAcceptPlan).toBe(true);
+
+      const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
+      expect(completedLoop.state.planMode?.isPlanReady).toBe(true);
+      expect(completedLoop.state.planMode?.active).toBe(false);
+    });
   });
 
   describe("Plan Close Variant A: Discard Plan", () => {

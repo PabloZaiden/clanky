@@ -63,11 +63,12 @@ function createTestLoop(overrides: {
       maxConsecutiveErrors: 10,
       activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
       useWorktree: DEFAULT_LOOP_CONFIG.useWorktree,
-      clearPlanningFolder: false,
-      planMode: false,
-      planModeAutoReply: true,
-      mode: "loop",
-    },
+       clearPlanningFolder: false,
+       planMode: false,
+       planModeAutoReply: true,
+       autoAcceptPlan: false,
+       mode: "loop",
+     },
     state: {
       id: overrides.id,
       status: overrides.status ?? "idle",
@@ -395,6 +396,23 @@ describe("Persistence", () => {
       expect(loaded?.config.planModeAutoReply).toBe(false);
       expect(loaded?.state.planMode?.pendingQuestion?.requestId).toBe("question-1");
       expect(loaded?.state.planMode?.pendingQuestion?.questions[0]?.custom).toBe(true);
+    });
+
+    test("persists auto-accept plan setting", async () => {
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+
+      await setupPersistence();
+
+      const testLoop = createTestLoop({
+        id: "auto-accept-loop",
+      });
+      testLoop.config.planMode = true;
+      testLoop.config.autoAcceptPlan = true;
+
+      await saveLoop(testLoop);
+      const loaded = await loadLoop("auto-accept-loop");
+
+      expect(loaded?.config.autoAcceptPlan).toBe(true);
     });
 
     test("loadLoop returns null for non-existent loop", async () => {

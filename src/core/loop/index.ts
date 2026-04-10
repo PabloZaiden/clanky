@@ -48,6 +48,7 @@ export class LoopManager {
       getLoop: (id) => this.getLoop(id),
       startLoop: (id, options) => this.startLoop(id, options),
       startPlanMode: (id, options) => this.startPlanMode(id, options),
+      acceptPlan: (id, options) => this.acceptPlan(id, options),
       startStatePersistence: (id) => startStatePersistenceImpl(this.ctx, id),
       ensureLoopBranchCheckedOut: (loop, git, dir) => ensureLoopBranchCheckedOutImpl(this.ctx, loop, git, dir),
       validateMainCheckoutStart: (loop, git) => validateMainCheckoutStartImpl(this.ctx, loop, git),

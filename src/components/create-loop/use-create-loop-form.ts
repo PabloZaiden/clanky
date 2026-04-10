@@ -48,6 +48,8 @@ export interface UseCreateLoopFormReturn {
   setPlanMode: (v: boolean) => void;
   planModeAutoReply: boolean;
   setPlanModeAutoReply: (v: boolean) => void;
+  autoAcceptPlan: boolean;
+  setAutoAcceptPlan: (v: boolean) => void;
   useWorktree: boolean;
   setUseWorktree: (v: boolean) => void;
   clearPlanningFolder: boolean;
@@ -131,9 +133,10 @@ export function useCreateLoopForm({
   const actions = useFormActions({
     selectedWorkspaceId: workspace.selectedWorkspaceId,
     selectedModel,
-      selectedModelEnabled,
-      planMode: fields.planMode,
+    selectedModelEnabled,
+    planMode: fields.planMode,
     planModeAutoReply: fields.planModeAutoReply,
+    autoAcceptPlan: fields.autoAcceptPlan,
     maxIterations: fields.maxIterations,
     maxConsecutiveErrors: fields.maxConsecutiveErrors,
     activityTimeoutSeconds: fields.activityTimeoutSeconds,
@@ -183,6 +186,8 @@ export function useCreateLoopForm({
     setPlanMode: fields.setPlanMode,
     planModeAutoReply: fields.planModeAutoReply,
     setPlanModeAutoReply: fields.setPlanModeAutoReply,
+    autoAcceptPlan: fields.autoAcceptPlan,
+    setAutoAcceptPlan: fields.setAutoAcceptPlan,
     useWorktree: fields.useWorktree,
     setUseWorktree: fields.setUseWorktree,
     clearPlanningFolder: fields.clearPlanningFolder,

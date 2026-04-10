@@ -283,6 +283,37 @@ describe("migration infrastructure", () => {
     });
   });
 
+  describe("loop auto-accept plan migration", () => {
+    test("adds auto_accept_plan to loops when missing", () => {
+      db.run(`
+        CREATE TABLE loops (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL
+        )
+      `);
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "loops")).toContain("auto_accept_plan");
+    });
+
+    test("is idempotent when auto_accept_plan already exists", () => {
+      db.run(`
+        CREATE TABLE loops (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          auto_accept_plan INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "loops")).toContain("auto_accept_plan");
+    });
+  });
+
   describe("workspace devcontainer subpath migration", () => {
     test("adds devcontainer_subpath to existing workspaces tables", () => {
       db.run(`

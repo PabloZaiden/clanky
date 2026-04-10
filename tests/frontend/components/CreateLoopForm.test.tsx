@@ -430,6 +430,14 @@ describe("CreateLoopForm", () => {
       expect((getByRole("checkbox", { name: /Auto-reply plan questions/i }) as HTMLInputElement).checked).toBe(true);
     });
 
+    test("auto-accept plan is shown and disabled by default", () => {
+      const { getByRole } = renderWithUser(
+        <CreateLoopForm {...defaultProps()} />
+      );
+
+      expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).checked).toBe(false);
+    });
+
     test("toggling plan mode keeps the generic Create label in create mode", async () => {
       const { getByRole, user } = renderWithUser(
         <CreateLoopForm
@@ -445,6 +453,16 @@ describe("CreateLoopForm", () => {
       // Toggle off
       await user.click(getByRole("checkbox", { name: /Plan Mode/ }));
       expect(getByRole("button", { name: "Create" })).toBeInTheDocument();
+    });
+
+    test("hides auto-accept plan when plan mode is off", async () => {
+      const { getByRole, queryByRole, user } = renderWithUser(
+        <CreateLoopForm {...defaultProps()} />
+      );
+
+      expect(getByRole("checkbox", { name: /Auto-accept plan/i })).toBeInTheDocument();
+      await user.click(getByRole("checkbox", { name: /Plan Mode/ }));
+      expect(queryByRole("checkbox", { name: /Auto-accept plan/i })).not.toBeInTheDocument();
     });
 
     test("submits planModeAutoReply=false when the checkbox is unchecked", async () => {
@@ -482,6 +500,43 @@ describe("CreateLoopForm", () => {
       const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
       expect(req.planMode).toBe(true);
       expect(req.planModeAutoReply).toBe(false);
+    });
+
+    test("submits autoAcceptPlan=true when the checkbox is checked", async () => {
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            onCancel: mock(() => {}),
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+            branches: [createBranchInfo({ name: "main" })],
+            defaultBranch: "main",
+            currentBranch: "main",
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Do it");
+      await setInputValue(user, getByLabelText(/Title/) as HTMLInputElement, "Loop title");
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+      });
+
+      await user.click(getByRole("checkbox", { name: /Auto-accept plan/i }));
+      await user.click(getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
+      expect(req.planMode).toBe(true);
+      expect(req.autoAcceptPlan).toBe(true);
     });
 
   });

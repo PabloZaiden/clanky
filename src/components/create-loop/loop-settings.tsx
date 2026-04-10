@@ -3,6 +3,8 @@ interface LoopSettingsProps {
   onPlanModeChange: (value: boolean) => void;
   planModeAutoReply: boolean;
   onPlanModeAutoReplyChange: (value: boolean) => void;
+  autoAcceptPlan: boolean;
+  onAutoAcceptPlanChange: (value: boolean) => void;
   useWorktree: boolean;
   onUseWorktreeChange: (value: boolean) => void;
 }
@@ -12,6 +14,8 @@ export function LoopSettings({
   onPlanModeChange,
   planModeAutoReply,
   onPlanModeAutoReplyChange,
+  autoAcceptPlan,
+  onAutoAcceptPlanChange,
   useWorktree,
   onUseWorktreeChange,
 }: LoopSettingsProps) {
@@ -54,6 +58,27 @@ export function LoopSettings({
               </span>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Enabled by default. Turn this off to answer plan-mode questions yourself below the execution log.
+              </p>
+            </div>
+          </label>
+        </div>
+      )}
+
+      {planMode && (
+        <div className="ml-7">
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={autoAcceptPlan}
+              onChange={(e) => onAutoAcceptPlanChange(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+            />
+            <div className="flex-1">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Auto-accept plan
+              </span>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Disabled by default. Turn this on to skip manual plan review and start execution as soon as the plan is ready.
               </p>
             </div>
           </label>
