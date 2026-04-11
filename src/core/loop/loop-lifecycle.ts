@@ -213,9 +213,11 @@ export async function markMergedImpl(ctx: LoopCtx, loopId: string): Promise<{ su
 
   try {
     const nextStatus = "merged" as const;
-    if (loop.state.status !== nextStatus) {
-      assertValidTransition(loop.state.status, nextStatus, "markMerged");
+    if (loop.state.status === nextStatus) {
+      log.info("Loop already marked as merged", { loopId });
+      return { success: true };
     }
+    assertValidTransition(loop.state.status, nextStatus, "markMerged");
 
     const updatedState = {
       ...loop.state,

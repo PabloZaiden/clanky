@@ -112,6 +112,15 @@ describe("migration infrastructure", () => {
         { id: "legacy-null", mode: "loop" },
       ]);
     });
+
+    test("adds pull request monitoring to loops", () => {
+      db.run("CREATE TABLE loops (id TEXT PRIMARY KEY)");
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "loops")).toContain("pull_request_monitoring");
+    });
   });
 
   describe("getTableColumns", () => {

@@ -4,7 +4,7 @@
 
 import type { CommandExecutor } from "./command-executor";
 import { createLogger } from "./logger";
-import type { Loop } from "../types/loop";
+import type { Loop, PullRequestMonitoringState } from "../types/loop";
 import type { PullRequestDestinationResponse } from "../types/api";
 
 export interface PullRequestNavigationGitService {
@@ -15,6 +15,13 @@ export interface PullRequestNavigationGitService {
 const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the loop environment.";
 const NO_GITHUB_REMOTE_REASON = "Could not determine a GitHub origin remote for this loop.";
 const log = createLogger("core:pull-request-navigation");
+
+interface PullRequestView {
+  number?: unknown;
+  url?: unknown;
+  state?: unknown;
+  mergedAt?: unknown;
+}
 
 function disabled(disabledReason: string): PullRequestDestinationResponse {
   return {
@@ -103,19 +110,174 @@ function getBaseBranch(loop: Loop): string | null {
   return null;
 }
 
+function getWorkingBranch(loop: Loop): string | null {
+  const workingBranch = loop.state.git?.workingBranch?.trim();
+  return workingBranch ? workingBranch : null;
+}
+
+function createMonitoringState(
+  lastCheckedAt: string,
+  monitoring: Omit<PullRequestMonitoringState, "lastCheckedAt">,
+): PullRequestMonitoringState {
+  return {
+    ...monitoring,
+    lastCheckedAt,
+  };
+}
+
+function parsePullRequestView(stdout: string): PullRequestView | null {
+  const trimmed = stdout.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed) as PullRequestView;
+  } catch (error) {
+    log.warn("Failed to parse gh pr view output", {
+      error: String(error),
+      stdout: trimmed,
+    });
+    return null;
+  }
+}
+
+function mapPullRequestViewToMonitoringState(
+  pullRequestView: PullRequestView,
+  lastCheckedAt: string,
+): PullRequestMonitoringState {
+  const pullRequestNumber = typeof pullRequestView.number === "number"
+    ? pullRequestView.number
+    : undefined;
+  const pullRequestUrl = typeof pullRequestView.url === "string"
+    ? validateExistingPullRequestUrl(pullRequestView.url)
+    : null;
+  const state = typeof pullRequestView.state === "string"
+    ? pullRequestView.state.toUpperCase()
+    : "";
+  const mergedAt = typeof pullRequestView.mergedAt === "string" && pullRequestView.mergedAt.trim()
+    ? pullRequestView.mergedAt
+    : undefined;
+
+  const withCommonFields = (status: PullRequestMonitoringState["status"]): PullRequestMonitoringState => {
+    const monitoringState = createMonitoringState(lastCheckedAt, { status });
+    if (pullRequestNumber !== undefined) {
+      monitoringState.pullRequestNumber = pullRequestNumber;
+    }
+    if (pullRequestUrl) {
+      monitoringState.pullRequestUrl = pullRequestUrl;
+    }
+    if (mergedAt) {
+      monitoringState.mergedAt = mergedAt;
+    }
+    return monitoringState;
+  };
+
+  if (state === "MERGED" || mergedAt) {
+    const monitoringState = withCommonFields("merged");
+    if (!monitoringState.mergedAt) {
+      monitoringState.mergedAt = lastCheckedAt;
+    }
+    return monitoringState;
+  }
+  if (state === "OPEN") {
+    return withCommonFields("open");
+  }
+  if (state === "CLOSED") {
+    return withCommonFields("closed");
+  }
+
+  return createMonitoringState(lastCheckedAt, {
+    status: "error",
+    lastError: `Unexpected pull request state: ${state || "missing"}`,
+  });
+}
+
+function isNoPullRequestError(stderr: string): boolean {
+  return /no pull requests found/i.test(stderr);
+}
+
+async function isGhAvailable(executor: CommandExecutor, directory: string): Promise<boolean> {
+  const ghVersionResult = await executor.exec("gh", ["--version"], { cwd: directory, timeout: 5000 });
+  return ghVersionResult.success;
+}
+
+export async function probePullRequestMonitoring(
+  loop: Loop,
+  directory: string,
+  executor: CommandExecutor,
+  git: PullRequestNavigationGitService,
+): Promise<PullRequestMonitoringState> {
+  const lastCheckedAt = new Date().toISOString();
+  const workingBranch = getWorkingBranch(loop);
+  if (!workingBranch) {
+    return createMonitoringState(lastCheckedAt, {
+      status: "error",
+      lastError: "This loop does not have a working branch to monitor.",
+    });
+  }
+
+  if (!(await isGhAvailable(executor, directory))) {
+    return createMonitoringState(lastCheckedAt, {
+      status: "unavailable",
+      lastError: GH_UNAVAILABLE_REASON,
+    });
+  }
+
+  try {
+    const remoteUrl = await git.getRemoteUrl(directory, "origin");
+    if (!normalizeGitHubRepositoryUrl(remoteUrl)) {
+      return createMonitoringState(lastCheckedAt, {
+        status: "unavailable",
+        lastError: NO_GITHUB_REMOTE_REASON,
+      });
+    }
+  } catch (error) {
+    return createMonitoringState(lastCheckedAt, {
+      status: "error",
+      lastError: String(error),
+    });
+  }
+
+  const prViewResult = await executor.exec(
+    "gh",
+    ["pr", "view", workingBranch, "--json", "number,url,state,mergedAt"],
+    { cwd: directory, timeout: 10000 },
+  );
+  if (!prViewResult.success) {
+    const stderr = prViewResult.stderr.trim();
+    if (isNoPullRequestError(stderr)) {
+      return createMonitoringState(lastCheckedAt, { status: "no_pr" });
+    }
+    return createMonitoringState(lastCheckedAt, {
+      status: "error",
+      lastError: stderr || `gh pr view exited with code ${prViewResult.exitCode}`,
+    });
+  }
+
+  const pullRequestView = parsePullRequestView(prViewResult.stdout);
+  if (!pullRequestView) {
+    return createMonitoringState(lastCheckedAt, {
+      status: "error",
+      lastError: "GitHub CLI returned invalid pull request JSON.",
+    });
+  }
+
+  return mapPullRequestViewToMonitoringState(pullRequestView, lastCheckedAt);
+}
+
 export async function resolvePullRequestDestination(
   loop: Loop,
   directory: string,
   executor: CommandExecutor,
   git: PullRequestNavigationGitService,
 ): Promise<PullRequestDestinationResponse> {
-  const workingBranch = loop.state.git?.workingBranch?.trim();
+  const workingBranch = getWorkingBranch(loop);
   if (!workingBranch) {
     return disabled("This loop does not have a working branch to compare.");
   }
 
-  const ghVersionResult = await executor.exec("gh", ["--version"], { cwd: directory, timeout: 5000 });
-  if (!ghVersionResult.success) {
+  if (!(await isGhAvailable(executor, directory))) {
     return disabled(GH_UNAVAILABLE_REASON);
   }
 

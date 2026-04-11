@@ -535,6 +535,39 @@ describe("Persistence", () => {
       expect(loaded?.config.autoAcceptPlan).toBe(true);
     });
 
+    test("persists pull request monitoring state", async () => {
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+
+      await setupPersistence();
+
+      const testLoop = createTestLoop({
+        id: "pr-monitor-loop",
+        status: "pushed",
+      });
+      testLoop.state.git = {
+        originalBranch: "main",
+        workingBranch: "feature/pr-monitor-loop",
+        commits: [],
+      };
+      testLoop.state.reviewMode = {
+        addressable: true,
+        completionAction: "push",
+        reviewCycles: 0,
+        reviewBranches: ["feature/pr-monitor-loop"],
+      };
+      testLoop.state.pullRequestMonitoring = {
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:00:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      };
+
+      await saveLoop(testLoop);
+      const loaded = await loadLoop("pr-monitor-loop");
+
+      expect(loaded?.state.pullRequestMonitoring).toEqual(testLoop.state.pullRequestMonitoring);
+    });
+
     test("loadLoop returns null for non-existent loop", async () => {
       const { loadLoop } = await import("../../src/persistence/loops");
 
