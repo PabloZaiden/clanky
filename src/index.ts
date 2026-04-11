@@ -30,6 +30,7 @@ import {
 } from "./core/server-config";
 import { log, setLogLevel, isLogLevelFromEnv } from "./core/logger";
 import { getLogLevelPreference } from "./persistence/preferences";
+import { pushedLoopMonitor } from "./core/pushed-loop-monitor";
 
 type StoppableServer = {
   stop(closeActiveConnections?: boolean): void;
@@ -189,7 +190,9 @@ try {
     development,
   });
 
-  registerServerShutdown(staticAssetServer ? [server, staticAssetServer] : [server]);
+  pushedLoopMonitor.start();
+
+  registerServerShutdown(staticAssetServer ? [server, staticAssetServer, pushedLoopMonitor] : [server, pushedLoopMonitor]);
 
   for (const message of getServerStartupMessages(runtimeConfig)) {
     log.info(message);
