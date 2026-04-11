@@ -241,6 +241,20 @@ export const migrations: Migration[] = [
       db.run("ALTER TABLE loops ADD COLUMN pull_request_monitoring TEXT");
     },
   },
+  {
+    version: 7,
+    name: "add_loop_automatic_pr_flow",
+    up: (db) => {
+      if (!tableExists(db, "loops")) {
+        return;
+      }
+      const columns = getTableColumns(db, "loops");
+      if (columns.includes("automatic_pr_flow")) {
+        return;
+      }
+      db.run("ALTER TABLE loops ADD COLUMN automatic_pr_flow TEXT");
+    },
+  },
 ];
 
 /**

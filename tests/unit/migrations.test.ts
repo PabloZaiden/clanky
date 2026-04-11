@@ -121,6 +121,15 @@ describe("migration infrastructure", () => {
       expect(applied).toBe(migrations.length);
       expect(getTableColumns(db, "loops")).toContain("pull_request_monitoring");
     });
+
+    test("adds automatic PR flow state to loops", () => {
+      db.run("CREATE TABLE loops (id TEXT PRIMARY KEY)");
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "loops")).toContain("automatic_pr_flow");
+    });
   });
 
   describe("getTableColumns", () => {

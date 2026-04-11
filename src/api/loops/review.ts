@@ -9,7 +9,7 @@
 import { loopManager } from "../../core/loop-manager";
 import { createLogger } from "../../core/logger";
 import { parseAndValidate } from "../validation";
-import { errorResponse } from "../helpers";
+import { errorResponse, successResponse } from "../helpers";
 import type { AddressCommentsResponse, ReviewHistoryResponse } from "../../types/api";
 import { AddressCommentsRequestSchema } from "../../types/schemas";
 
@@ -111,6 +111,48 @@ export const loopsReviewRoutes = {
           error: String(error),
         });
         return errorResponse("get_review_history_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/loops/:id/automatic-pr-flow/start": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      try {
+        const result = await loopManager.startAutomaticPrFlow(req.params.id);
+        if (!result.success) {
+          if (result.error === "Loop not found") {
+            return errorResponse("not_found", result.error, 404);
+          }
+          return errorResponse("automatic_pr_flow_start_failed", result.error ?? "Unknown error", 400);
+        }
+        return successResponse({ automaticPrFlow: result.automaticPrFlow });
+      } catch (error) {
+        log.error("Failed to start automatic PR flow", {
+          loopId: req.params.id,
+          error: String(error),
+        });
+        return errorResponse("automatic_pr_flow_start_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/loops/:id/automatic-pr-flow/stop": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      try {
+        const result = await loopManager.stopAutomaticPrFlow(req.params.id);
+        if (!result.success) {
+          if (result.error === "Loop not found") {
+            return errorResponse("not_found", result.error, 404);
+          }
+          return errorResponse("automatic_pr_flow_stop_failed", result.error ?? "Unknown error", 400);
+        }
+        return successResponse({ automaticPrFlow: result.automaticPrFlow });
+      } catch (error) {
+        log.error("Failed to stop automatic PR flow", {
+          loopId: req.params.id,
+          error: String(error),
+        });
+        return errorResponse("automatic_pr_flow_stop_failed", String(error), 500);
       }
     },
   },

@@ -6,7 +6,12 @@ import { useState } from "react";
 import type { SshSession, PullRequestDestinationResponse } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { ToastContextValue } from "../../hooks/useToast";
-import type { AcceptPlanResult, PushLoopResult, AddressCommentsResult } from "../../hooks/loopActions";
+import type {
+  AcceptPlanResult,
+  PushLoopResult,
+  AddressCommentsResult,
+  AutomaticPrFlowResult,
+} from "../../hooks/loopActions";
 import { log } from "../../lib/logger";
 
 interface UseLoopActionsOptions {
@@ -21,6 +26,8 @@ interface UseLoopActionsOptions {
   purge: () => Promise<boolean>;
   markMerged: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
+  stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
@@ -38,7 +45,10 @@ export interface UseLoopActionsResult {
   renameModal: boolean;
   updateBranchModal: boolean;
   discardPlanModal: boolean;
+  startAutomaticPrFlowModal: boolean;
+  stopAutomaticPrFlowModal: boolean;
   planActionSubmitting: boolean;
+  automaticPrFlowSubmitting: boolean;
   sshConnecting: boolean;
 
   // Modal open/close setters
@@ -50,6 +60,8 @@ export interface UseLoopActionsResult {
   setRenameModal: (open: boolean) => void;
   setUpdateBranchModal: (open: boolean) => void;
   setDiscardPlanModal: (open: boolean) => void;
+  setStartAutomaticPrFlowModal: (open: boolean) => void;
+  setStopAutomaticPrFlowModal: (open: boolean) => void;
 
   // Action handlers
   handleDelete: () => Promise<void>;
@@ -60,6 +72,8 @@ export interface UseLoopActionsResult {
   handleMarkMerged: () => Promise<void>;
   handleAddressComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<void>;
   handleOpenPullRequest: (destination: PullRequestDestinationResponse | null) => void;
+  handleStartAutomaticPrFlow: () => Promise<void>;
+  handleStopAutomaticPrFlow: () => Promise<void>;
   handleAcceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<void>;
   handleDiscardPlan: () => Promise<void>;
   handleConnectViaSsh: () => Promise<void>;
@@ -79,6 +93,8 @@ export function useLoopActions({
   purge,
   markMerged,
   addressReviewComments,
+  startAutomaticPrFlow,
+  stopAutomaticPrFlow,
   acceptPlan,
   discardPlan,
   connectViaSsh,
@@ -94,6 +110,9 @@ export function useLoopActions({
   const [updateBranchModal, setUpdateBranchModal] = useState(false);
   const [discardPlanModal, setDiscardPlanModal] = useState(false);
   const [planActionSubmitting, setPlanActionSubmitting] = useState(false);
+  const [startAutomaticPrFlowModal, setStartAutomaticPrFlowModal] = useState(false);
+  const [stopAutomaticPrFlowModal, setStopAutomaticPrFlowModal] = useState(false);
+  const [automaticPrFlowSubmitting, setAutomaticPrFlowSubmitting] = useState(false);
   const [sshConnecting, setSshConnecting] = useState(false);
 
   function navigateToSshSession(sshSessionId: string) {
@@ -163,6 +182,34 @@ export function useLoopActions({
     window.open(destination.url, "_blank", "noopener,noreferrer");
   }
 
+  async function handleStartAutomaticPrFlow() {
+    setAutomaticPrFlowSubmitting(true);
+    try {
+      const result = await startAutomaticPrFlow();
+      if (!result.success) {
+        toast.error("Failed to start automatic PR flow");
+        return;
+      }
+      setStartAutomaticPrFlowModal(false);
+    } finally {
+      setAutomaticPrFlowSubmitting(false);
+    }
+  }
+
+  async function handleStopAutomaticPrFlow() {
+    setAutomaticPrFlowSubmitting(true);
+    try {
+      const result = await stopAutomaticPrFlow();
+      if (!result.success) {
+        toast.error("Failed to stop automatic PR flow");
+        return;
+      }
+      setStopAutomaticPrFlowModal(false);
+    } finally {
+      setAutomaticPrFlowSubmitting(false);
+    }
+  }
+
   async function handleAcceptPlan(mode: "start_loop" | "open_ssh" = "start_loop") {
     setPlanActionSubmitting(true);
     try {
@@ -224,7 +271,10 @@ export function useLoopActions({
     renameModal,
     updateBranchModal,
     discardPlanModal,
+    startAutomaticPrFlowModal,
+    stopAutomaticPrFlowModal,
     planActionSubmitting,
+    automaticPrFlowSubmitting,
     sshConnecting,
     setDeleteModal,
     setAcceptModal,
@@ -234,6 +284,8 @@ export function useLoopActions({
     setRenameModal,
     setUpdateBranchModal,
     setDiscardPlanModal,
+    setStartAutomaticPrFlowModal,
+    setStopAutomaticPrFlowModal,
     handleDelete,
     handleAccept,
     handlePush,
@@ -242,6 +294,8 @@ export function useLoopActions({
     handleMarkMerged,
     handleAddressComments,
     handleOpenPullRequest,
+    handleStartAutomaticPrFlow,
+    handleStopAutomaticPrFlow,
     handleAcceptPlan,
     handleDiscardPlan,
     handleConnectViaSsh,

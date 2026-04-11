@@ -5,12 +5,22 @@
 import type { Loop } from "../types/loop";
 import type { CommandExecutor } from "./command-executor";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
+import type {
+  AutomaticPrFlowFeedbackItem,
+  AutomaticPrFlowPullRequest,
+  AutomaticPrFlowSnapshot,
+} from "./automatic-pr-flow-github";
 import { listLoops, loadLoop, updateLoopState } from "../persistence/loops";
 import { backendManager } from "./backend-manager";
 import { GitService } from "./git-service";
 import { createLogger } from "./logger";
 import { getLoopWorkingDirectory, loopManager } from "./loop-manager";
 import { probePullRequestMonitoring } from "./pull-request-navigation";
+import {
+  ensureAutomaticPrFlowPullRequest,
+  fetchAutomaticPrFlowSnapshot,
+  resolveAutomaticPrFlowReviewThread,
+} from "./automatic-pr-flow-github";
 
 const log = createLogger("core:pushed-loop-monitor");
 
@@ -47,6 +57,37 @@ export interface PushedLoopMonitorDependencies {
   getCommandExecutor: (workspaceId: string, directory: string) => Promise<CommandExecutor>;
   createGitService: (executor: CommandExecutor) => PullRequestNavigationGitService;
   markMerged: (loopId: string) => Promise<{ success: boolean; error?: string }>;
+  probePullRequestMonitoring: (
+    loop: Loop,
+    directory: string,
+    executor: CommandExecutor,
+    git: PullRequestNavigationGitService,
+  ) => Promise<NonNullable<Loop["state"]["pullRequestMonitoring"]>>;
+  ensureAutomaticPrFlowPullRequest: (
+    loop: Loop,
+    directory: string,
+    executor: CommandExecutor,
+    git: PullRequestNavigationGitService,
+  ) => Promise<AutomaticPrFlowPullRequest>;
+  fetchAutomaticPrFlowSnapshot: (
+    pullRequest: AutomaticPrFlowPullRequest,
+    directory: string,
+    executor: CommandExecutor,
+    git: PullRequestNavigationGitService,
+  ) => Promise<AutomaticPrFlowSnapshot>;
+  startAutomaticPrReviewCycle: (
+    loopId: string,
+    options: {
+      batchId: string;
+      itemIds: string[];
+      feedbackItems: AutomaticPrFlowFeedbackItem[];
+    },
+  ) => Promise<{ success: boolean; error?: string; reviewCycle?: number; branch?: string; commentIds?: string[] }>;
+  resolveAutomaticPrFlowReviewThread: (
+    threadId: string,
+    directory: string,
+    executor: CommandExecutor,
+  ) => Promise<void>;
   intervalMs: number;
 }
 
@@ -64,6 +105,11 @@ export class PushedLoopMonitor {
         backendManager.getCommandExecutorAsync(workspaceId, directory),
       createGitService: (executor: CommandExecutor) => GitService.withExecutor(executor),
       markMerged: (loopId: string) => loopManager.markMerged(loopId),
+      probePullRequestMonitoring,
+      ensureAutomaticPrFlowPullRequest,
+      fetchAutomaticPrFlowSnapshot,
+      startAutomaticPrReviewCycle: (loopId: string, options) => loopManager.startAutomaticPrReviewCycle(loopId, options),
+      resolveAutomaticPrFlowReviewThread,
       intervalMs: getMonitorIntervalMs(),
       ...dependencies,
     };
@@ -116,21 +162,45 @@ export class PushedLoopMonitor {
   }
 
   private async monitorLoop(loop: Loop): Promise<void> {
+    const automaticPrFlowEnabled = loop.state.automaticPrFlow?.enabled === true;
     const workingDirectory = getLoopWorkingDirectory(loop);
     if (!workingDirectory) {
-      await this.persistMonitoringState(loop.config.id, {
-        status: "error",
-        lastCheckedAt: new Date().toISOString(),
-        lastError: "Loop is configured to use a worktree, but no worktree path is available.",
-      });
+      const now = new Date().toISOString();
+      await this.persistLoopMonitoringState(
+        loop.config.id,
+        {
+          status: "error",
+          lastCheckedAt: now,
+          lastError: "Loop is configured to use a worktree, but no worktree path is available.",
+        },
+        automaticPrFlowEnabled
+          ? this.buildAutomaticPrFlowErrorState(loop.state.automaticPrFlow, now, "Loop is configured to use a worktree, but no worktree path is available.")
+          : undefined,
+      );
       return;
     }
 
     try {
       const executor = await this.deps.getCommandExecutor(loop.config.workspaceId, workingDirectory);
       const git = this.deps.createGitService(executor);
-      const monitoringState = await probePullRequestMonitoring(loop, workingDirectory, executor, git);
-      await this.persistMonitoringState(loop.config.id, monitoringState);
+      let monitoringState = await this.deps.probePullRequestMonitoring(loop, workingDirectory, executor, git);
+      let automaticPrFlowState: Loop["state"]["automaticPrFlow"];
+
+      if (automaticPrFlowEnabled) {
+        try {
+          const automaticPrFlowResult = await this.monitorAutomaticPrFlow(loop, workingDirectory, executor, git);
+          automaticPrFlowState = automaticPrFlowResult.automaticPrFlowState;
+          monitoringState = automaticPrFlowResult.monitoringState ?? monitoringState;
+        } catch (error) {
+          automaticPrFlowState = this.buildAutomaticPrFlowErrorState(
+            loop.state.automaticPrFlow,
+            new Date().toISOString(),
+            String(error),
+          );
+        }
+      }
+
+      await this.persistLoopMonitoringState(loop.config.id, monitoringState, automaticPrFlowState);
 
       if (monitoringState.status === "merged") {
         const latestLoop = await this.deps.loadLoop(loop.config.id);
@@ -151,19 +221,199 @@ export class PushedLoopMonitor {
         loopId: loop.config.id,
         error: String(error),
       });
-      await this.persistMonitoringState(loop.config.id, {
-        status: "error",
-        lastCheckedAt: new Date().toISOString(),
-        lastError: String(error),
-      });
+      const now = new Date().toISOString();
+      await this.persistLoopMonitoringState(
+        loop.config.id,
+        {
+          status: "error",
+          lastCheckedAt: now,
+          lastError: String(error),
+        },
+        automaticPrFlowEnabled
+          ? this.buildAutomaticPrFlowErrorState(loop.state.automaticPrFlow, now, String(error))
+          : undefined,
+      );
     }
   }
 
-  private async persistMonitoringState(
+  private async monitorAutomaticPrFlow(
+    loop: Loop,
+    workingDirectory: string,
+    executor: CommandExecutor,
+    git: PullRequestNavigationGitService,
+  ): Promise<{
+    automaticPrFlowState: NonNullable<Loop["state"]["automaticPrFlow"]>;
+    monitoringState?: NonNullable<Loop["state"]["pullRequestMonitoring"]>;
+  }> {
+    const previousState = loop.state.automaticPrFlow;
+    if (!previousState?.enabled) {
+      throw new Error("Automatic PR flow is not enabled for this loop.");
+    }
+
+    const now = new Date().toISOString();
+    const pullRequest = await this.deps.ensureAutomaticPrFlowPullRequest(loop, workingDirectory, executor, git);
+    const baseState: NonNullable<Loop["state"]["automaticPrFlow"]> = {
+      enabled: true,
+      status: previousState.activeBatch ? "processing_feedback" : "monitoring",
+      startedAt: previousState.startedAt,
+      updatedAt: now,
+      lastCheckedAt: now,
+      pullRequestNumber: pullRequest.number,
+      pullRequestUrl: pullRequest.url,
+      activeBatch: previousState.activeBatch,
+      handledItems: previousState.handledItems,
+      stoppedAt: undefined,
+    };
+
+    if (previousState.activeBatch) {
+      const resolvedState = await this.resolveAutomaticPrFlowBatch(previousState, workingDirectory, executor);
+      return {
+        automaticPrFlowState: {
+          ...baseState,
+          status: "monitoring",
+          activeBatch: undefined,
+          handledItems: resolvedState.handledItems,
+          updatedAt: resolvedState.updatedAt,
+          lastCheckedAt: resolvedState.lastCheckedAt,
+        },
+        monitoringState: this.mergeMonitoringStateFromPullRequest(loop.state.pullRequestMonitoring, pullRequest, now),
+      };
+    }
+
+    const snapshot = await this.deps.fetchAutomaticPrFlowSnapshot(pullRequest, workingDirectory, executor, git);
+    const pendingFeedbackItems = snapshot.actionableItems.filter(
+      (item) => !previousState.handledItems.some((handledItem) => handledItem.id === item.id),
+    );
+    if (pendingFeedbackItems.length > 0) {
+      const batchId = crypto.randomUUID();
+      const result = await this.deps.startAutomaticPrReviewCycle(loop.config.id, {
+        batchId,
+        itemIds: pendingFeedbackItems.map((item) => item.id),
+        feedbackItems: pendingFeedbackItems,
+      });
+      if (!result.success) {
+        throw new Error(result.error ?? "Automatic PR review cycle failed to start.");
+      }
+
+      return {
+        automaticPrFlowState: {
+          ...baseState,
+          status: "processing_feedback",
+          activeBatch: {
+            batchId,
+            itemIds: pendingFeedbackItems.map((item) => item.id),
+            items: pendingFeedbackItems.map((item) => ({
+              id: item.id,
+              source: item.source,
+              threadId: item.threadId,
+            })),
+            startedAt: now,
+            reviewCycle: result.reviewCycle,
+          },
+        },
+        monitoringState: this.mergeMonitoringStateFromSnapshot(loop.state.pullRequestMonitoring, snapshot, now),
+      };
+    }
+
+    return {
+      automaticPrFlowState: {
+        ...baseState,
+        status: "monitoring",
+      },
+      monitoringState: this.mergeMonitoringStateFromSnapshot(loop.state.pullRequestMonitoring, snapshot, now),
+    };
+  }
+
+  private async resolveAutomaticPrFlowBatch(
+    automaticPrFlowState: NonNullable<Loop["state"]["automaticPrFlow"]>,
+    workingDirectory: string,
+    executor: CommandExecutor,
+  ): Promise<NonNullable<Loop["state"]["automaticPrFlow"]>> {
+    const activeBatch = automaticPrFlowState.activeBatch;
+    if (!activeBatch) {
+      return automaticPrFlowState;
+    }
+
+    const now = new Date().toISOString();
+    for (const item of activeBatch.items) {
+      if (item.source === "review_thread") {
+        await this.deps.resolveAutomaticPrFlowReviewThread(item.threadId ?? item.id, workingDirectory, executor);
+      }
+    }
+
+    const newlyHandledItems: NonNullable<Loop["state"]["automaticPrFlow"]>["handledItems"] = activeBatch.items.map((item) => ({
+      id: item.id,
+      source: item.source,
+      outcome: item.source === "review_thread" ? "resolved" : "manual",
+      handledAt: now,
+    }));
+
+    return {
+      ...automaticPrFlowState,
+      status: "monitoring",
+      updatedAt: now,
+      lastCheckedAt: now,
+      lastError: undefined,
+      activeBatch: undefined,
+      handledItems: [...automaticPrFlowState.handledItems, ...newlyHandledItems],
+    };
+  }
+
+  private mergeMonitoringStateFromSnapshot(
+    currentState: Loop["state"]["pullRequestMonitoring"],
+    snapshot: AutomaticPrFlowSnapshot,
+    now: string,
+  ): NonNullable<Loop["state"]["pullRequestMonitoring"]> {
+    return this.mergeMonitoringStateFromPullRequest(currentState, snapshot.pullRequest, now);
+  }
+
+  private mergeMonitoringStateFromPullRequest(
+    currentState: Loop["state"]["pullRequestMonitoring"],
+    pullRequest: AutomaticPrFlowPullRequest,
+    now: string,
+  ): NonNullable<Loop["state"]["pullRequestMonitoring"]> {
+    const nextStatus = pullRequest.state === "MERGED"
+      ? "merged"
+      : pullRequest.state === "CLOSED"
+        ? "closed"
+        : "open";
+
+    return {
+      status: nextStatus,
+      lastCheckedAt: now,
+      pullRequestNumber: pullRequest.number,
+      pullRequestUrl: pullRequest.url,
+      mergedAt: pullRequest.state === "MERGED" ? (pullRequest.mergedAt ?? currentState?.mergedAt ?? now) : undefined,
+      lastError: undefined,
+    };
+  }
+
+  private buildAutomaticPrFlowErrorState(
+    currentState: Loop["state"]["automaticPrFlow"],
+    now: string,
+    error: string,
+  ): NonNullable<Loop["state"]["automaticPrFlow"]> {
+    return {
+      enabled: true,
+      status: "error",
+      startedAt: currentState?.startedAt ?? now,
+      updatedAt: now,
+      lastCheckedAt: now,
+      pullRequestNumber: currentState?.pullRequestNumber,
+      pullRequestUrl: currentState?.pullRequestUrl,
+      activeBatch: currentState?.activeBatch,
+      handledItems: currentState?.handledItems ?? [],
+      lastError: error,
+      stoppedAt: currentState?.stoppedAt,
+    };
+  }
+
+  private async persistLoopMonitoringState(
     loopId: string,
-    monitoringState: Loop["state"]["pullRequestMonitoring"],
+    monitoringState: NonNullable<Loop["state"]["pullRequestMonitoring"]> | undefined,
+    automaticPrFlowState?: Loop["state"]["automaticPrFlow"],
   ): Promise<void> {
-    if (!monitoringState) {
+    if (!monitoringState && !automaticPrFlowState) {
       return;
     }
 
@@ -174,7 +424,8 @@ export class PushedLoopMonitor {
 
     const updatedState = {
       ...latestLoop.state,
-      pullRequestMonitoring: monitoringState,
+      pullRequestMonitoring: monitoringState ?? latestLoop.state.pullRequestMonitoring,
+      automaticPrFlow: automaticPrFlowState ?? latestLoop.state.automaticPrFlow,
     };
     await this.deps.updateLoopState(loopId, updatedState);
   }

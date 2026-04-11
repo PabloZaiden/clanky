@@ -25,6 +25,8 @@ import {
   setPendingApi,
   clearPendingApi,
   addressReviewCommentsApi,
+  startAutomaticPrFlowApi,
+  stopAutomaticPrFlowApi,
   sendFollowUpApi,
 } from "@/hooks/loopActions";
 import { createSshSession } from "../helpers/factories";
@@ -643,5 +645,117 @@ describe("addressReviewCommentsApi", () => {
     });
 
     await expect(addressReviewCommentsApi(LOOP_ID, "comments")).rejects.toThrow("Failed to address comments");
+  });
+});
+
+describe("automatic PR flow APIs", () => {
+  test("startAutomaticPrFlowApi calls POST /api/loops/:id/automatic-pr-flow/start", async () => {
+    api.post(`/api/loops/${LOOP_ID}/automatic-pr-flow/start`, () => ({
+      success: true,
+      automaticPrFlow: {
+        enabled: true,
+        status: "monitoring",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:00:00.000Z",
+        lastCheckedAt: "2026-04-11T04:00:00.000Z",
+        pullRequestNumber: 42,
+      },
+    }));
+
+    const result = await startAutomaticPrFlowApi(LOOP_ID);
+
+    expect(result).toEqual({
+      success: true,
+      automaticPrFlow: {
+        enabled: true,
+        status: "monitoring",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:00:00.000Z",
+        lastCheckedAt: "2026-04-11T04:00:00.000Z",
+        pullRequestNumber: 42,
+      },
+    });
+    expect(api.calls(`/api/loops/${LOOP_ID}/automatic-pr-flow/start`, "POST")).toHaveLength(1);
+  });
+
+  test("stopAutomaticPrFlowApi calls POST /api/loops/:id/automatic-pr-flow/stop", async () => {
+    api.post(`/api/loops/${LOOP_ID}/automatic-pr-flow/stop`, () => ({
+      success: true,
+      automaticPrFlow: {
+        enabled: false,
+        status: "stopped",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:10:00.000Z",
+      },
+    }));
+
+    const result = await stopAutomaticPrFlowApi(LOOP_ID);
+
+    expect(result).toEqual({
+      success: true,
+      automaticPrFlow: {
+        enabled: false,
+        status: "stopped",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:10:00.000Z",
+      },
+    });
+    expect(api.calls(`/api/loops/${LOOP_ID}/automatic-pr-flow/stop`, "POST")).toHaveLength(1);
+  });
+});
+
+describe("automatic PR flow APIs", () => {
+  test("startAutomaticPrFlowApi calls POST /api/loops/:id/automatic-pr-flow/start", async () => {
+    api.post(`/api/loops/${LOOP_ID}/automatic-pr-flow/start`, () => ({
+      success: true,
+      automaticPrFlow: {
+        enabled: true,
+        status: "monitoring",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:00:00.000Z",
+        lastCheckedAt: "2026-04-11T04:00:00.000Z",
+        pullRequestNumber: 42,
+      },
+    }));
+
+    const result = await startAutomaticPrFlowApi(LOOP_ID);
+
+    expect(result).toEqual({
+      success: true,
+      automaticPrFlow: {
+        enabled: true,
+        status: "monitoring",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:00:00.000Z",
+        lastCheckedAt: "2026-04-11T04:00:00.000Z",
+        pullRequestNumber: 42,
+      },
+    });
+    expect(api.calls(`/api/loops/${LOOP_ID}/automatic-pr-flow/start`, "POST")).toHaveLength(1);
+  });
+
+  test("stopAutomaticPrFlowApi calls POST /api/loops/:id/automatic-pr-flow/stop", async () => {
+    api.post(`/api/loops/${LOOP_ID}/automatic-pr-flow/stop`, () => ({
+      success: true,
+      automaticPrFlow: {
+        enabled: false,
+        status: "stopped",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:10:00.000Z",
+      },
+    }));
+
+    const result = await stopAutomaticPrFlowApi(LOOP_ID);
+
+    expect(result).toEqual({
+      success: true,
+      automaticPrFlow: {
+        enabled: false,
+        status: "stopped",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:10:00.000Z",
+      },
+    });
+    expect(api.calls(`/api/loops/${LOOP_ID}/automatic-pr-flow/stop`, "POST")).toHaveLength(1);
   });
 });

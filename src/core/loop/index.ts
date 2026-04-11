@@ -27,7 +27,15 @@ import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./loop-pl
 import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
 import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
-import { addressReviewCommentsImpl, getReviewHistoryImpl, getReviewCommentsImpl, startFeedbackCycleImpl } from "./loop-review";
+import {
+  addressReviewCommentsImpl,
+  getReviewHistoryImpl,
+  getReviewCommentsImpl,
+  startAutomaticPrReviewCycleImpl,
+  startAutomaticPrFlowImpl,
+  startFeedbackCycleImpl,
+  stopAutomaticPrFlowImpl,
+} from "./loop-review";
 
 export class LoopManager {
   private readonly ctx: LoopCtx;
@@ -193,6 +201,39 @@ export class LoopManager {
     attachments?: MessageImageAttachment[],
   ): Promise<{ success: boolean; error?: string; reviewCycle?: number; branch?: string; commentIds?: string[] }> {
     return addressReviewCommentsImpl(this.ctx, loopId, comments, attachments);
+  }
+
+  async startAutomaticPrReviewCycle(
+    loopId: string,
+    options: {
+      batchId: string;
+      itemIds: string[];
+      feedbackItems: Array<{
+        id: string;
+        source: "review_thread" | "review_comment" | "review";
+        body: string;
+        authorLogin?: string;
+        createdAt?: string;
+        url?: string;
+        threadId?: string;
+        path?: string;
+        line?: number;
+      }>;
+    },
+  ): Promise<SendFollowUpResult> {
+    return startAutomaticPrReviewCycleImpl(this.ctx, loopId, options);
+  }
+
+  async startAutomaticPrFlow(
+    loopId: string,
+  ): Promise<{ success: boolean; error?: string; automaticPrFlow?: Loop["state"]["automaticPrFlow"] }> {
+    return startAutomaticPrFlowImpl(this.ctx, loopId);
+  }
+
+  async stopAutomaticPrFlow(
+    loopId: string,
+  ): Promise<{ success: boolean; error?: string; automaticPrFlow?: Loop["state"]["automaticPrFlow"] }> {
+    return stopAutomaticPrFlowImpl(this.ctx, loopId);
   }
 
   async getReviewHistory(loopId: string): Promise<{ success: boolean; error?: string; history?: {

@@ -15,6 +15,8 @@ interface ActionsTabProps {
   loadingPullRequestDestination: boolean;
   pullRequestDestination: PullRequestDestinationResponse | null;
   onOpenPullRequest: () => void;
+  onStartAutomaticPrFlowModal: () => void;
+  onStopAutomaticPrFlowModal: () => void;
   onAddressCommentsModal: () => void;
   onUpdateBranchModal: () => void;
   onMarkMergedModal: () => void;
@@ -38,6 +40,8 @@ export function ActionsTab({
   loadingPullRequestDestination,
   pullRequestDestination,
   onOpenPullRequest,
+  onStartAutomaticPrFlowModal,
+  onStopAutomaticPrFlowModal,
   onAddressCommentsModal,
   onUpdateBranchModal,
   onMarkMergedModal,
@@ -49,6 +53,12 @@ export function ActionsTab({
   loadingComments,
   reviewComments,
 }: ActionsTabProps) {
+  const automaticPrFlow = state.automaticPrFlow;
+  const automaticPrFlowEnabled = automaticPrFlow?.enabled === true;
+  const automaticPrFlowStatus = automaticPrFlow?.status
+    ? automaticPrFlow.status.replace(/_/g, " ")
+    : null;
+
   return (
     <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
       <div className="min-w-0 w-full space-y-4">
@@ -114,28 +124,91 @@ export function ActionsTab({
         ) : isFinalState(state.status) ? (
           <>
             {state.status === "pushed" && state.reviewMode?.addressable && (
-              <button
-                onClick={onOpenPullRequest}
-                disabled={loadingPullRequestDestination || !pullRequestDestination?.enabled}
-                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
-                  <span className="text-gray-700 dark:text-gray-300 text-sm">↗</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Go to PR</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {loadingPullRequestDestination
-                      ? "Checking for an existing pull request..."
-                      : pullRequestDestination?.enabled
-                      ? pullRequestDestination.destinationType === "existing_pr"
-                        ? "Open the existing pull request for this branch"
-                        : "Open GitHub to create a pull request from this branch"
-                      : pullRequestDestination?.disabledReason ?? "Pull request navigation is unavailable."}
+              <>
+                <button
+                  onClick={onOpenPullRequest}
+                  disabled={loadingPullRequestDestination || !pullRequestDestination?.enabled}
+                  className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                    <span className="text-gray-700 dark:text-gray-300 text-sm">↗</span>
                   </div>
-                </div>
-                <span className="text-gray-400 dark:text-gray-500">→</span>
-              </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Go to PR</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      {loadingPullRequestDestination
+                        ? "Checking for an existing pull request..."
+                        : pullRequestDestination?.enabled
+                        ? pullRequestDestination.destinationType === "existing_pr"
+                          ? "Open the existing pull request for this branch"
+                          : "Open GitHub to create a pull request from this branch"
+                        : pullRequestDestination?.disabledReason ?? "Pull request navigation is unavailable."}
+                    </div>
+                  </div>
+                  <span className="text-gray-400 dark:text-gray-500">→</span>
+                </button>
+
+                {automaticPrFlowEnabled ? (
+                  <button
+                    onClick={onStopAutomaticPrFlowModal}
+                    className="w-full flex items-center gap-4 p-3 rounded-lg border border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors text-left"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                      <span className="text-amber-700 dark:text-amber-300 text-sm">⏸</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Stop Automatic PR flow</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {automaticPrFlowStatus
+                          ? `Automatic review handling is ${automaticPrFlowStatus}. Stop it to resume manual handling.`
+                          : "Stop automatic PR monitoring and handle the next review updates yourself."}
+                      </div>
+                      {(automaticPrFlow?.pullRequestUrl || automaticPrFlow?.lastCheckedAt || automaticPrFlow?.lastError) && (
+                        <div className="mt-1 space-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                          {automaticPrFlow.pullRequestUrl && (
+                            <div>PR: #{automaticPrFlow.pullRequestNumber ?? "?"}</div>
+                          )}
+                          {automaticPrFlow.lastCheckedAt && (
+                            <div>Last check: {new Date(automaticPrFlow.lastCheckedAt).toLocaleString()}</div>
+                          )}
+                          {automaticPrFlow.lastError && (
+                            <div className="text-red-600 dark:text-red-400">Last error: {automaticPrFlow.lastError}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-gray-400 dark:text-gray-500">→</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={onStartAutomaticPrFlowModal}
+                    className="w-full flex items-center gap-4 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-colors text-left"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                      <span className="text-indigo-700 dark:text-indigo-300 text-sm">⚙</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Automatic PR flow</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {automaticPrFlow?.status === "stopped"
+                          ? "Restart automatic monitoring so Ralph can respond to new PR feedback again."
+                          : "Create or reuse the pull request, monitor reviewer feedback, and push automatic follow-up fixes until merge is ready."}
+                      </div>
+                      {(automaticPrFlow?.stoppedAt || automaticPrFlow?.lastError) && (
+                        <div className="mt-1 space-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                          {automaticPrFlow.stoppedAt && (
+                            <div>Stopped: {new Date(automaticPrFlow.stoppedAt).toLocaleString()}</div>
+                          )}
+                          {automaticPrFlow.lastError && (
+                            <div className="text-red-600 dark:text-red-400">Last error: {automaticPrFlow.lastError}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-gray-400 dark:text-gray-500">→</span>
+                  </button>
+                )}
+              </>
             )}
             {state.reviewMode?.addressable && state.status !== "deleted" && (
               <button

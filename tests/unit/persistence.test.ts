@@ -482,6 +482,139 @@ describe("Persistence", () => {
       expect(loadedLoop?.state.pullRequestMonitoring).toEqual(repairedLoop.state.pullRequestMonitoring);
     });
 
+    test("initializeDatabase repairs automatic PR flow when a legacy migration version collides", async () => {
+      const { Database } = await import("bun:sqlite");
+      const databasePath = join(testDataDir, "ralpher.db");
+      const legacyDb = new Database(databasePath);
+
+      legacyDb.run(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        7,
+        "legacy_reset_seven",
+        "2025-01-01T00:00:00.000Z",
+      ]);
+      legacyDb.run(`
+        CREATE TABLE loops (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          model_provider_id TEXT,
+          model_model_id TEXT,
+          model_variant TEXT,
+          max_iterations INTEGER,
+          max_consecutive_errors INTEGER,
+          activity_timeout_seconds INTEGER,
+          stop_pattern TEXT NOT NULL,
+          git_branch_prefix TEXT NOT NULL,
+          git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
+          base_branch TEXT,
+          clear_planning_folder INTEGER DEFAULT 0,
+          plan_mode INTEGER DEFAULT 0,
+          mode TEXT DEFAULT 'loop',
+          workspace_id TEXT REFERENCES workspaces(id),
+          status TEXT NOT NULL DEFAULT 'idle',
+          current_iteration INTEGER NOT NULL DEFAULT 0,
+          started_at TEXT,
+          completed_at TEXT,
+          last_activity_at TEXT,
+          session_id TEXT,
+          session_server_url TEXT,
+          error_message TEXT,
+          error_iteration INTEGER,
+          error_timestamp TEXT,
+          git_original_branch TEXT,
+          git_working_branch TEXT,
+          git_worktree_path TEXT,
+          git_commits TEXT,
+          recent_iterations TEXT,
+          logs TEXT,
+          messages TEXT,
+          tool_calls TEXT,
+          consecutive_errors TEXT,
+          pending_prompt TEXT,
+          pending_model_provider_id TEXT,
+          pending_model_model_id TEXT,
+          pending_model_variant TEXT,
+          plan_mode_active INTEGER DEFAULT 0,
+          plan_session_id TEXT,
+          plan_server_url TEXT,
+          plan_feedback_rounds INTEGER DEFAULT 0,
+          plan_content TEXT,
+          planning_folder_cleared INTEGER DEFAULT 0,
+          plan_is_ready INTEGER DEFAULT 0,
+          review_mode TEXT,
+          use_worktree INTEGER NOT NULL DEFAULT 1,
+          plan_mode_auto_reply INTEGER NOT NULL DEFAULT 1,
+          pending_plan_question TEXT,
+          auto_accept_plan INTEGER NOT NULL DEFAULT 0,
+          pull_request_monitoring TEXT
+        )
+      `);
+      legacyDb.close();
+
+      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      const { createWorkspace } = await import("../../src/persistence/workspaces");
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      await initializeDatabase();
+
+      await createWorkspace({
+        id: testWorkspaceId,
+        name: "Test Workspace",
+        directory: "/tmp/test",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: getDefaultServerSettings(),
+      });
+
+      const repairedLoop = createTestLoop({
+        id: "repaired-auto-pr-flow-loop",
+        name: "repaired-auto-pr-flow-loop",
+        status: "pushed",
+      });
+      repairedLoop.state.git = {
+        originalBranch: "main",
+        workingBranch: "feature/repaired-auto-pr-flow-loop",
+        commits: [],
+      };
+      repairedLoop.state.reviewMode = {
+        addressable: true,
+        completionAction: "push",
+        reviewCycles: 0,
+        reviewBranches: ["feature/repaired-auto-pr-flow-loop"],
+      };
+      repairedLoop.state.automaticPrFlow = {
+        enabled: true,
+        status: "monitoring",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:05:00.000Z",
+        lastCheckedAt: "2026-04-11T04:05:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+        handledItems: [],
+      };
+
+      await expect(saveLoop(repairedLoop)).resolves.toBeUndefined();
+
+      const columns = getDatabase().query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
+      const loopRow = getDatabase().query(
+        "SELECT automatic_pr_flow FROM loops WHERE id = ?",
+      ).get("repaired-auto-pr-flow-loop") as { automatic_pr_flow: string | null } | null;
+      const loadedLoop = await loadLoop("repaired-auto-pr-flow-loop");
+
+      expect(columns.some((column) => column.name === "automatic_pr_flow")).toBe(true);
+      expect(loopRow?.automatic_pr_flow).toBe(JSON.stringify(repairedLoop.state.automaticPrFlow));
+      expect(loadedLoop?.state.automaticPrFlow).toEqual(repairedLoop.state.automaticPrFlow);
+    });
+
     test("resetDatabase drops chats and passkey credentials before recreating the schema", async () => {
       const { ensureDataDirectories, getDatabase, resetDatabase } = await import("../../src/persistence/database");
       const { createWorkspace } = await import("../../src/persistence/workspaces");
@@ -693,6 +826,83 @@ describe("Persistence", () => {
       const loaded = await loadLoop("pr-monitor-loop");
 
       expect(loaded?.state.pullRequestMonitoring).toEqual(testLoop.state.pullRequestMonitoring);
+    });
+
+    test("persists automatic PR flow state", async () => {
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+
+      await setupPersistence();
+
+      const testLoop = createTestLoop({
+        id: "automatic-pr-flow-loop",
+        status: "pushed",
+      });
+      testLoop.state.git = {
+        originalBranch: "main",
+        workingBranch: "feature/automatic-pr-flow-loop",
+        commits: [],
+      };
+      testLoop.state.reviewMode = {
+        addressable: true,
+        completionAction: "push",
+        reviewCycles: 0,
+        reviewBranches: ["feature/automatic-pr-flow-loop"],
+      };
+      testLoop.state.automaticPrFlow = {
+        enabled: true,
+        status: "processing_feedback",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:10:00.000Z",
+        lastCheckedAt: "2026-04-11T04:05:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+        activeBatch: {
+          batchId: "batch-1",
+          itemIds: ["thread-1", "review-2"],
+          items: [
+            { id: "thread-1", source: "review_thread", threadId: "thread-1" },
+            { id: "review-2", source: "review" },
+          ],
+          startedAt: "2026-04-11T04:06:00.000Z",
+          reviewCycle: 1,
+        },
+        handledItems: [
+          {
+            id: "comment-1",
+            source: "review_comment",
+            outcome: "ignored",
+            handledAt: "2026-04-11T04:04:00.000Z",
+          },
+        ],
+      };
+
+      await saveLoop(testLoop);
+      const loaded = await loadLoop("automatic-pr-flow-loop");
+
+      expect(loaded?.state.automaticPrFlow).toEqual(testLoop.state.automaticPrFlow);
+    });
+
+    test("ignores undefined automatic PR flow values from legacy or partial rows", async () => {
+      const { loopToRow, rowToLoop } = await import("../../src/persistence/loops/helpers");
+
+      const testLoop = createTestLoop({
+        id: "legacy-auto-pr-flow-row",
+        status: "pushed",
+      });
+      testLoop.state.automaticPrFlow = {
+        enabled: true,
+        status: "monitoring",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:00:00.000Z",
+        handledItems: [],
+      };
+
+      const row = loopToRow(testLoop);
+      row["automatic_pr_flow"] = undefined;
+
+      const loaded = rowToLoop(row);
+
+      expect(loaded.state.automaticPrFlow).toBeUndefined();
     });
 
     test("ignores undefined pull request monitoring values from legacy or partial rows", async () => {

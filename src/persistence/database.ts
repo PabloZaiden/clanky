@@ -113,8 +113,8 @@ export async function initializeDatabase(): Promise<void> {
  * accumulated migrations back in.
  *
  * Exception: the chats and passkey_credentials tables, plus the workspaces and
- * loops compatibility repairs for devcontainer_subpath, auto_accept_plan, and
- * pull_request_monitoring,
+ * loops compatibility repairs for devcontainer_subpath, auto_accept_plan,
+ * pull_request_monitoring, and automatic_pr_flow,
  * intentionally remain here because older databases can already contain reused
  * schema_migrations version numbers from pre-reset eras. Recreating or
  * repairing these schema objects during baseline startup is the repair path
@@ -507,6 +507,9 @@ function ensureLoopSchema(database: Database): void {
   }
   if (!columns.some((column) => column.name === "pull_request_monitoring")) {
     database.run("ALTER TABLE loops ADD COLUMN pull_request_monitoring TEXT");
+  }
+  if (!columns.some((column) => column.name === "automatic_pr_flow")) {
+    database.run("ALTER TABLE loops ADD COLUMN automatic_pr_flow TEXT");
   }
 }
 

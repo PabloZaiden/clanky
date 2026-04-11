@@ -16,7 +16,14 @@ import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { LogEntry } from "../../components/LogViewer";
 import { useLoopEvents } from "../useWebSocket";
 import { createLogger } from "../../lib/logger";
-import type { AcceptLoopResult, AcceptPlanResult, PushLoopResult, AddressCommentsResult, SetPendingResult } from "../loopActions";
+import type {
+  AcceptLoopResult,
+  AcceptPlanResult,
+  PushLoopResult,
+  AddressCommentsResult,
+  AutomaticPrFlowResult,
+  SetPendingResult,
+} from "../loopActions";
 import { useLoopStaleGuard } from "./useLoopStaleGuard";
 import { useLoopData } from "./useLoopData";
 import { createLoopEventHandler } from "./useLoopEventHandler";
@@ -86,6 +93,10 @@ export interface UseLoopResult {
   discardPlan: () => Promise<boolean>;
   /** Address reviewer comments (only works for pushed/merged loops with reviewMode.addressable = true) */
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  /** Enable automatic pull request monitoring and automated follow-up handling */
+  startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
+  /** Disable automatic pull request monitoring and return control to manual handling */
+  stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   /** Set pending message and/or model for next iteration (only works when loop is active) */
   setPending: (options: { message?: string; model?: { providerID: string; modelID: string }; attachments?: MessageImageAttachment[] }) => Promise<SetPendingResult>;
   /** Clear all pending values (message and model) */

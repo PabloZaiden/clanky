@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
 import { PushedLoopMonitor } from "../../src/core/pushed-loop-monitor";
 import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
+import type { AutomaticPrFlowPullRequest, AutomaticPrFlowSnapshot } from "../../src/core/automatic-pr-flow-github";
 import { createLoopWithStatus } from "../frontend/helpers/factories";
 
 class StubExecutor implements CommandExecutor {
@@ -82,6 +83,18 @@ describe("PushedLoopMonitor", () => {
         getCommandExecutor: async () => executor,
         createGitService: () => new StubGitService(),
         markMerged: async () => ({ success: true }),
+        probePullRequestMonitoring: async () => ({
+          status: "no_pr",
+          lastCheckedAt: new Date().toISOString(),
+        }),
+        ensureAutomaticPrFlowPullRequest: async () => {
+          throw new Error("not used");
+        },
+        fetchAutomaticPrFlowSnapshot: async () => {
+          throw new Error("not used");
+        },
+        startAutomaticPrReviewCycle: async () => ({ success: true }),
+        resolveAutomaticPrFlowReviewThread: async () => {},
         intervalMs: 60_000,
       });
 
@@ -143,13 +156,13 @@ describe("PushedLoopMonitor", () => {
     const monitor = new PushedLoopMonitor({
       listLoops: async () => [storedLoop],
       loadLoop: async () => storedLoop,
-      updateLoopState: async (_loopId, state) => {
-        storedLoop.state = state;
-        return true;
-      },
-      getCommandExecutor: async () => executor,
-      createGitService: () => git,
-      markMerged: async () => {
+        updateLoopState: async (_loopId, state) => {
+          storedLoop.state = state;
+          return true;
+        },
+        getCommandExecutor: async () => executor,
+        createGitService: () => git,
+        markMerged: async () => {
         markMergedCalls += 1;
         storedLoop.state = {
           ...storedLoop.state,
@@ -157,11 +170,23 @@ describe("PushedLoopMonitor", () => {
           reviewMode: storedLoop.state.reviewMode
             ? { ...storedLoop.state.reviewMode, addressable: false }
             : undefined,
-        };
-        return { success: true };
-      },
-      intervalMs: 60_000,
-    });
+          };
+          return { success: true };
+        },
+        probePullRequestMonitoring: async (loop, directory, depExecutor, depGit) =>
+          await import("../../src/core/pull-request-navigation").then((module) =>
+            module.probePullRequestMonitoring(loop, directory, depExecutor, depGit)
+          ),
+        ensureAutomaticPrFlowPullRequest: async () => {
+          throw new Error("not used");
+        },
+        fetchAutomaticPrFlowSnapshot: async () => {
+          throw new Error("not used");
+        },
+        startAutomaticPrReviewCycle: async () => ({ success: true }),
+        resolveAutomaticPrFlowReviewThread: async () => {},
+        intervalMs: 60_000,
+      });
 
     await monitor.runNow();
     await monitor.runNow();
@@ -187,17 +212,380 @@ describe("PushedLoopMonitor", () => {
         }
         return [];
       },
-      loadLoop: async () => null,
-      updateLoopState: async () => true,
-      getCommandExecutor: async () => new StubExecutor(),
-      createGitService: () => new StubGitService(),
-      markMerged: async () => ({ success: true }),
-      intervalMs: 60_000,
-    });
+        loadLoop: async () => null,
+        updateLoopState: async () => true,
+        getCommandExecutor: async () => new StubExecutor(),
+        createGitService: () => new StubGitService(),
+        markMerged: async () => ({ success: true }),
+        probePullRequestMonitoring: async () => ({
+          status: "no_pr",
+          lastCheckedAt: new Date().toISOString(),
+        }),
+        ensureAutomaticPrFlowPullRequest: async () => {
+          throw new Error("not used");
+        },
+        fetchAutomaticPrFlowSnapshot: async () => {
+          throw new Error("not used");
+        },
+        startAutomaticPrReviewCycle: async () => ({ success: true }),
+        resolveAutomaticPrFlowReviewThread: async () => {},
+        intervalMs: 60_000,
+      });
 
     await expect(monitor.runNow()).resolves.toBeUndefined();
     await expect(monitor.runNow()).resolves.toBeUndefined();
 
     expect(listCalls).toBe(2);
+  });
+
+  test("tracks automatic PR flow state for enabled loops", async () => {
+    const executor = new StubExecutor();
+    const storedLoop = createLoopWithStatus("pushed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "starting",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          handledItems: [],
+        },
+      },
+    });
+
+    const pullRequest: AutomaticPrFlowPullRequest = {
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+      reviewDecision: "REVIEW_REQUIRED",
+    };
+    const snapshot: AutomaticPrFlowSnapshot = {
+      pullRequest,
+      reviewThreads: [],
+      reviewComments: [],
+      reviews: [],
+      actionableItems: [],
+    };
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      probePullRequestMonitoring: async () => ({
+        status: "no_pr",
+        lastCheckedAt: "2026-04-11T04:05:00.000Z",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => pullRequest,
+      fetchAutomaticPrFlowSnapshot: async () => snapshot,
+      startAutomaticPrReviewCycle: async () => ({ success: true }),
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(storedLoop.state.automaticPrFlow).toEqual({
+      enabled: true,
+      status: "monitoring",
+      startedAt: "2026-04-11T04:00:00.000Z",
+      updatedAt: expect.any(String),
+      lastCheckedAt: expect.any(String),
+      pullRequestNumber: 42,
+      pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      handledItems: [],
+      activeBatch: undefined,
+      stoppedAt: undefined,
+    });
+    expect(storedLoop.state.pullRequestMonitoring).toEqual({
+      status: "open",
+      lastCheckedAt: expect.any(String),
+      pullRequestNumber: 42,
+      pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      mergedAt: undefined,
+      lastError: undefined,
+    });
+  });
+
+  test("persists automatic PR flow errors without breaking the scheduler", async () => {
+    const executor = new StubExecutor();
+    const storedLoop = createLoopWithStatus("pushed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "starting",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          handledItems: [],
+        },
+      },
+    });
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:05:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => {
+        throw new Error("gh api failed");
+      },
+      fetchAutomaticPrFlowSnapshot: async () => {
+        throw new Error("not reached");
+      },
+      startAutomaticPrReviewCycle: async () => ({ success: true }),
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await expect(monitor.runNow()).resolves.toBeUndefined();
+
+    expect(storedLoop.state.automaticPrFlow).toEqual({
+      enabled: true,
+      status: "error",
+      startedAt: "2026-04-11T04:00:00.000Z",
+      updatedAt: expect.any(String),
+      lastCheckedAt: expect.any(String),
+      pullRequestNumber: undefined,
+      pullRequestUrl: undefined,
+      activeBatch: undefined,
+      handledItems: [],
+      lastError: "Error: gh api failed",
+      stoppedAt: undefined,
+    });
+    expect(storedLoop.state.pullRequestMonitoring?.status).toBe("open");
+  });
+
+  test("starts one automatic review cycle when new actionable feedback appears", async () => {
+    const executor = new StubExecutor();
+    const storedLoop = createLoopWithStatus("pushed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          handledItems: [],
+        },
+      },
+    });
+
+    const pullRequest: AutomaticPrFlowPullRequest = {
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+    };
+    const snapshot: AutomaticPrFlowSnapshot = {
+      pullRequest,
+      reviewThreads: [],
+      reviewComments: [],
+      reviews: [],
+      actionableItems: [
+        {
+          id: "thread-1",
+          source: "review_thread",
+          body: "Please add a missing edge-case test.",
+        },
+      ],
+    };
+    const startedBatches: Array<{ batchId: string; itemIds: string[] }> = [];
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:05:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => pullRequest,
+      fetchAutomaticPrFlowSnapshot: async () => snapshot,
+      startAutomaticPrReviewCycle: async (_loopId, options) => {
+        startedBatches.push({ batchId: options.batchId, itemIds: options.itemIds });
+        return { success: true, reviewCycle: 1, branch: "feature/automatic-pr-flow" };
+      },
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(startedBatches).toHaveLength(1);
+    expect(startedBatches[0]?.itemIds).toEqual(["thread-1"]);
+    expect(storedLoop.state.automaticPrFlow?.status).toBe("processing_feedback");
+    expect(storedLoop.state.automaticPrFlow?.activeBatch?.itemIds).toEqual(["thread-1"]);
+    expect(storedLoop.state.automaticPrFlow?.activeBatch?.items).toEqual([
+      { id: "thread-1", source: "review_thread", threadId: undefined },
+    ]);
+    expect(storedLoop.state.automaticPrFlow?.activeBatch?.reviewCycle).toBe(1);
+  });
+
+  test("resolves completed automatic review batches and records handled feedback", async () => {
+    const executor = new StubExecutor();
+    const storedLoop = createLoopWithStatus("pushed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 1,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "processing_feedback",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:10:00.000Z",
+          handledItems: [],
+          activeBatch: {
+            batchId: "batch-1",
+            itemIds: ["thread-1", "review-1"],
+            items: [
+              { id: "thread-1", source: "review_thread", threadId: "thread-1" },
+              { id: "review-1", source: "review" },
+            ],
+            startedAt: "2026-04-11T04:06:00.000Z",
+            reviewCycle: 1,
+          },
+        },
+      },
+    });
+
+    const pullRequest: AutomaticPrFlowPullRequest = {
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+    };
+    const resolvedThreadIds: string[] = [];
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:11:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => pullRequest,
+      fetchAutomaticPrFlowSnapshot: async () => ({
+        pullRequest,
+        reviewThreads: [],
+        reviewComments: [],
+        reviews: [],
+        actionableItems: [],
+      }),
+      startAutomaticPrReviewCycle: async () => ({ success: true }),
+      resolveAutomaticPrFlowReviewThread: async (threadId) => {
+        resolvedThreadIds.push(threadId);
+      },
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(resolvedThreadIds).toEqual(["thread-1"]);
+    expect(storedLoop.state.automaticPrFlow?.status).toBe("monitoring");
+    expect(storedLoop.state.automaticPrFlow?.activeBatch).toBeUndefined();
+    expect(storedLoop.state.automaticPrFlow?.handledItems).toEqual([
+      {
+        id: "thread-1",
+        source: "review_thread",
+        outcome: "resolved",
+        handledAt: expect.any(String),
+      },
+      {
+        id: "review-1",
+        source: "review",
+        outcome: "manual",
+        handledAt: expect.any(String),
+      },
+    ]);
   });
 });

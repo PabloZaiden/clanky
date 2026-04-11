@@ -14,6 +14,21 @@ export interface AddressCommentsResult {
   branch?: string;
 }
 
+export interface AutomaticPrFlowResult {
+  success: boolean;
+  automaticPrFlow?: {
+    enabled: boolean;
+    status: string;
+    startedAt: string;
+    updatedAt: string;
+    lastCheckedAt?: string;
+    pullRequestNumber?: number;
+    pullRequestUrl?: string;
+    lastError?: string;
+    stoppedAt?: string;
+  };
+}
+
 /**
  * Address reviewer comments on a pushed/merged loop via the API.
  */
@@ -27,7 +42,7 @@ export async function addressReviewCommentsApi(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments, attachments }),
+      body: JSON.stringify({ comments, attachments }),
     },
     "Address comments",
     // Handle both error shapes:
@@ -57,4 +72,28 @@ export async function sendFollowUpApi(
     { message, model, attachments },
     "Send follow-up",
   );
+}
+
+export async function startAutomaticPrFlowApi(loopId: string): Promise<AutomaticPrFlowResult> {
+  const data = await apiCall<{ automaticPrFlow: AutomaticPrFlowResult["automaticPrFlow"] }>(
+    `/api/loops/${loopId}/automatic-pr-flow/start`,
+    { method: "POST" },
+    "Start automatic PR flow",
+  );
+  return {
+    success: true,
+    automaticPrFlow: data.automaticPrFlow,
+  };
+}
+
+export async function stopAutomaticPrFlowApi(loopId: string): Promise<AutomaticPrFlowResult> {
+  const data = await apiCall<{ automaticPrFlow: AutomaticPrFlowResult["automaticPrFlow"] }>(
+    `/api/loops/${loopId}/automatic-pr-flow/stop`,
+    { method: "POST" },
+    "Stop automatic PR flow",
+  );
+  return {
+    success: true,
+    automaticPrFlow: data.automaticPrFlow,
+  };
 }
