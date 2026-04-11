@@ -296,6 +296,22 @@ describe("CreateLoopForm", () => {
       });
     });
 
+    test("disables title generation until a valid model is selected", async () => {
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            workspaces: testWorkspaces(),
+            models: [],
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *"), "ws-1");
+      await user.type(getByLabelText(/Prompt/) as HTMLTextAreaElement, "X");
+
+      expect(getByRole("button", { name: "Generate title with AI" })).toBeDisabled();
+    });
+
     test("renders model variants as separate options", () => {
       const models = [
         createModelInfo({
@@ -315,6 +331,46 @@ describe("CreateLoopForm", () => {
       const optionTexts = Array.from(select.options).map(o => o.text);
       expect(optionTexts).toContain("Claude Sonnet (fast)");
       expect(optionTexts).toContain("Claude Sonnet (standard)");
+    });
+
+    test("defaults the cheap helper model to same-as-loop", async () => {
+      const { getByLabelText, getByText, user } = renderWithUser(
+        <CreateLoopForm {...defaultProps({ models: connectedModels() })} />
+      );
+
+      await user.click(getByText("Show advanced options"));
+
+      const select = getByLabelText("Cheap helper model") as HTMLSelectElement;
+      await waitFor(() => {
+        expect(select.value).toBe("__same_as_loop_model__");
+      });
+
+      const optionTexts = Array.from(select.options).map((option) => option.text);
+      expect(optionTexts).toContain("Same as loop model");
+    });
+
+    test("falls back to same-as-loop when the remembered cheap model is unavailable", async () => {
+      const { getByLabelText, getByText, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            models: connectedModels(),
+            lastCheapModel: {
+              mode: "custom",
+              model: {
+                providerID: "missing-provider",
+                modelID: "missing-model",
+              },
+            },
+          })}
+        />
+      );
+
+      await user.click(getByText("Show advanced options"));
+
+      const select = getByLabelText("Cheap helper model") as HTMLSelectElement;
+      await waitFor(() => {
+        expect(select.value).toBe("__same_as_loop_model__");
+      });
     });
   });
 

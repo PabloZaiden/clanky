@@ -7,6 +7,7 @@ import type { Loop, LoopConfig, LoopState, ConsecutiveErrorTracker } from "../..
 import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 import { normalizeCommitScope } from "../../utils/commit-scope";
 import { createLogger } from "../../core/logger";
+import { CheapModelSelectionSchema } from "../../types/schemas";
 
 const log = createLogger("persistence:loops");
 
@@ -27,6 +28,7 @@ export const ALLOWED_LOOP_COLUMNS = new Set([
   "model_provider_id",
   "model_model_id",
   "model_variant",
+  "cheap_model",
   "max_iterations",
   "max_consecutive_errors",
   "activity_timeout_seconds",
@@ -107,6 +109,7 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     model_provider_id: config.model?.providerID ?? null,
     model_model_id: config.model?.modelID ?? null,
     model_variant: config.model?.variant ?? null,
+    cheap_model: JSON.stringify(config.cheapModel ?? DEFAULT_LOOP_CONFIG.cheapModel),
     max_iterations: config.maxIterations ?? null,
     max_consecutive_errors: config.maxConsecutiveErrors ?? null,
     activity_timeout_seconds: config.activityTimeoutSeconds ?? null,
@@ -231,11 +234,28 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
     autoAcceptPlan: row["auto_accept_plan"] === 1,
     fullyAutonomous: row["fully_autonomous"] === 1,
     mode: normalizeLoopMode(row["mode"], row["id"]),
+    cheapModel: DEFAULT_LOOP_CONFIG.cheapModel,
   };
 
   // Optional config fields
   if (row["base_branch"] !== null) {
     config.baseBranch = row["base_branch"] as string;
+  }
+  if (typeof row["cheap_model"] === "string") {
+    const parsedCheapModel = safeJsonParse(
+      row["cheap_model"] as string,
+      DEFAULT_LOOP_CONFIG.cheapModel,
+      "cheap_model",
+      row["id"],
+    );
+    const validation = CheapModelSelectionSchema.safeParse(parsedCheapModel);
+    if (validation.success) {
+      config.cheapModel = validation.data;
+    } else {
+      log.warn(`Failed to validate cheap model selection for loop ${String(row["id"])}`, {
+        issues: validation.error.issues.map((issue) => issue.message),
+      });
+    }
   }
 
   const rowId = row["id"];

@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { ModelConfigSchema } from "./model";
+import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
 
 /**
  * Schema for setting last used model - PUT /api/preferences/last-model
@@ -15,6 +15,12 @@ import { ModelConfigSchema } from "./model";
  * Uses the same ModelConfigSchema since it's the same structure.
  */
 export const SetLastModelRequestSchema = ModelConfigSchema;
+
+/**
+ * Schema for setting last used cheap helper-model selection
+ * - PUT /api/preferences/last-cheap-model
+ */
+export const SetLastCheapModelRequestSchema = CheapModelSelectionSchema;
 
 /**
  * Schema for setting last used directory - PUT /api/preferences/last-directory

@@ -1,4 +1,4 @@
-import type { Loop } from "../../types/loop";
+import type { CheapModelSelection, Loop, ModelConfig } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { SshSession } from "../../types/ssh-session";
 
@@ -22,6 +22,8 @@ export interface CreateLoopOptions {
   modelID: string;
   /** Model variant (e.g., "thinking"). Empty string for default variant. */
   modelVariant?: string;
+  /** Helper-model selection for cheap/lightweight non-task operations. */
+  cheapModel?: CheapModelSelection;
   /** Maximum iterations (default: Infinity for unlimited) */
   maxIterations?: number;
   /** Maximum consecutive identical errors before failsafe exit (default: 10) */
@@ -58,6 +60,14 @@ export interface CreateLoopOptions {
 export interface StartLoopOptions {
   /** Transient image attachments for the first prompt sent after start */
   attachments?: MessageImageAttachment[];
+}
+
+export interface GenerateLoopTitleOptions {
+  prompt: string;
+  directory: string;
+  workspaceId: string;
+  model: ModelConfig;
+  cheapModel?: CheapModelSelection;
 }
 
 export interface AcceptPlanOptions {

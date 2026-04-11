@@ -58,6 +58,9 @@ async function applyLoopUpdates(
         variant: body.model.variant,
       };
     }
+    if (body.cheapModel !== undefined) {
+      updates.cheapModel = body.cheapModel;
+    }
 
     if (body.git !== undefined) {
       updates.git = {
@@ -67,6 +70,14 @@ async function applyLoopUpdates(
     }
 
     const updatedLoop = await loopManager.updateLoop(loopId, updates);
+    if (body.model !== undefined) {
+      await loopManager.saveLastUsedModel(updatedLoop?.config.model ?? body.model);
+    }
+    if (body.cheapModel !== undefined) {
+      await loopManager.saveLastUsedCheapModel(
+        updatedLoop?.config.cheapModel ?? body.cheapModel,
+      );
+    }
     return Response.json(updatedLoop);
   } catch (error) {
     const errorMessage = String(error);

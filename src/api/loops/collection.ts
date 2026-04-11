@@ -129,6 +129,20 @@ export const loopsCollectionRoutes = {
           );
         }
       }
+      if (body.cheapModel?.mode === "custom") {
+        const cheapModelValidation = await isModelEnabled(
+          workspaceId,
+          directory,
+          body.cheapModel.model.providerID,
+          body.cheapModel.model.modelID,
+        );
+        if (!cheapModelValidation.enabled) {
+          return errorResponse(
+            cheapModelValidation.errorCode ?? "cheap_model_not_enabled",
+            cheapModelValidation.error ?? "The selected cheap model is not available",
+          );
+        }
+      }
 
       // Auto-detect default branch if baseBranch not provided
       let effectiveBaseBranch = body.baseBranch;
@@ -153,6 +167,7 @@ export const loopsCollectionRoutes = {
           modelProviderID: body.model?.providerID,
           modelID: body.model?.modelID,
           modelVariant: body.model?.variant,
+          cheapModel: body.cheapModel,
           maxIterations: body.maxIterations,
           maxConsecutiveErrors: body.maxConsecutiveErrors,
           activityTimeoutSeconds: body.activityTimeoutSeconds,
@@ -175,6 +190,9 @@ export const loopsCollectionRoutes = {
             modelID: body.model.modelID,
             variant: body.model.variant,
           });
+        }
+        if (body.cheapModel) {
+          await loopManager.saveLastUsedCheapModel(body.cheapModel);
         }
 
         // If draft mode is enabled, return the loop without starting
@@ -255,6 +273,8 @@ export const loopsCollectionRoutes = {
           workspaceId: workspace.id,
           directory: workspace.directory,
           prompt: validation.data.prompt,
+          model: validation.data.model,
+          cheapModel: validation.data.cheapModel,
         });
         return Response.json({ title });
       } catch (error) {

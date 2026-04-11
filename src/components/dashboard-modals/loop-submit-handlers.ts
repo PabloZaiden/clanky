@@ -3,7 +3,7 @@
  * that delegates to the appropriate API calls and updates state accordingly.
  */
 
-import type { Loop, CreateLoopRequest, Workspace, UncommittedChangesError } from "../../types";
+import type { CheapModelSelection, Loop, CreateLoopRequest, Workspace, UncommittedChangesError } from "../../types";
 import type { CreateLoopFormSubmitRequest } from "../CreateLoopForm";
 import type { CreateLoopResult } from "../../hooks/useLoops";
 import { createLogger } from "../../lib/logger";
@@ -19,9 +19,50 @@ export function isCreateLoopRequest(request: CreateLoopFormSubmitRequest): reque
 interface SubmitHandlerProps {
   workspaces: Workspace[];
   setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  setLastCheapModel: (selection: CheapModelSelection | null) => void;
   setUncommittedModal: (state: { open: boolean; loopId: string | null; error: UncommittedChangesError | null }) => void;
   onRefresh: () => Promise<void>;
   onCreateLoop: (request: CreateLoopRequest) => Promise<CreateLoopResult>;
+}
+
+async function persistLoopPreferences(
+  workspaces: Workspace[],
+  request: CreateLoopRequest,
+): Promise<void> {
+  const operations: Promise<Response>[] = [];
+
+  operations.push(
+    appFetch("/api/preferences/last-model", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request.model),
+    }),
+  );
+
+  if (request.cheapModel) {
+    operations.push(
+      appFetch("/api/preferences/last-cheap-model", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request.cheapModel),
+      }),
+    );
+  }
+
+  if (request.workspaceId) {
+    const workspace = workspaces.find((item) => item.id === request.workspaceId);
+    if (workspace) {
+      operations.push(
+        appFetch("/api/preferences/last-directory", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ directory: workspace.directory }),
+        }),
+      );
+    }
+  }
+
+  await Promise.all(operations);
 }
 
 export async function handleCreateLoopSubmit(
@@ -48,6 +89,13 @@ export async function handleCreateLoopSubmit(
           return false;
         }
 
+        props.setLastModel(request.model);
+        props.setLastCheapModel(request.cheapModel ?? null);
+        try {
+          await persistLoopPreferences(props.workspaces, request);
+        } catch (error) {
+          log.error("Failed to persist loop preferences after draft update:", error);
+        }
         await props.onRefresh();
         return true;
       } catch (error) {
@@ -119,20 +167,12 @@ export async function handleCreateLoopSubmit(
     if (request.model) {
       props.setLastModel(request.model);
     }
+    props.setLastCheapModel(request.cheapModel ?? null);
 
-    if (request.workspaceId) {
-      const workspace = props.workspaces.find(w => w.id === request.workspaceId);
-      if (workspace) {
-        try {
-          await appFetch("/api/preferences/last-directory", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ directory: workspace.directory }),
-          });
-        } catch {
-          // Ignore errors saving preference
-        }
-      }
+    try {
+      await persistLoopPreferences(props.workspaces, request);
+    } catch {
+      // Ignore errors saving preferences
     }
     return true;
   }

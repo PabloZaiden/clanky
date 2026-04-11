@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import type {
+  CheapModelSelection,
   Loop,
   UncommittedChangesError,
   ModelInfo,
@@ -36,7 +37,9 @@ export interface CreateEditLoopModalProps {
   models: ModelInfo[];
   modelsLoading: boolean;
   lastModel: { providerID: string; modelID: string } | null;
+  lastCheapModel: CheapModelSelection | null;
   setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  setLastCheapModel: (selection: CheapModelSelection | null) => void;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   planningWarning: string | null;
   branches: BranchInfo[];
@@ -113,9 +116,10 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
   const initialLoopData = editLoop ? {
     name: editLoop.config.name,
     directory: editLoop.config.directory,
-    prompt: editLoop.config.prompt,
-    model: editLoop.config.model,
-    maxIterations: editLoop.config.maxIterations,
+     prompt: editLoop.config.prompt,
+     model: editLoop.config.model,
+     cheapModel: editLoop.config.cheapModel,
+     maxIterations: editLoop.config.maxIterations,
     maxConsecutiveErrors: editLoop.config.maxConsecutiveErrors,
     activityTimeoutSeconds: editLoop.config.activityTimeoutSeconds,
     baseBranch: editLoop.config.baseBranch,
@@ -130,6 +134,7 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
   const submitHandlerProps = {
     workspaces: props.workspaces,
     setLastModel: props.setLastModel,
+    setLastCheapModel: props.setLastCheapModel,
     setUncommittedModal: props.setUncommittedModal,
     onRefresh: props.onRefresh,
     onCreateLoop: props.onCreateLoop,
@@ -168,10 +173,11 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
           renderActions={props.setFormActionState}
           onSubmit={async (request) => await handleCreateLoopSubmit(submitHandlerProps, editLoop, request, toast)}
           onCancel={props.onCloseCreateModal}
-          models={props.models}
-          modelsLoading={props.modelsLoading}
-          lastModel={props.lastModel}
-          onWorkspaceChange={props.onWorkspaceChange}
+           models={props.models}
+           modelsLoading={props.modelsLoading}
+           lastModel={props.lastModel}
+           lastCheapModel={props.lastCheapModel}
+           onWorkspaceChange={props.onWorkspaceChange}
           planningWarning={props.planningWarning}
           branches={props.branches}
           branchesLoading={props.branchesLoading}

@@ -13,7 +13,9 @@
 
 import {
   getLastModel,
+  getLastCheapModel,
   setLastModel,
+  setLastCheapModel,
   getLastDirectory,
   setLastDirectory,
   getMarkdownRenderingEnabled,
@@ -37,6 +39,7 @@ import { parseAndValidate } from "../validation";
 import { errorResponse } from "../helpers";
 import {
   SetLastModelRequestSchema,
+  SetLastCheapModelRequestSchema,
   SetLastDirectoryRequestSchema,
   SetMarkdownRenderingRequestSchema,
   SetFileExplorerFullTreeRequestSchema,
@@ -94,6 +97,34 @@ export const preferencesRoutes = {
         return Response.json({ success: true });
       } catch (error) {
         logPreferenceSaveFailure("last-model", error);
+        return errorResponse("save_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/preferences/last-cheap-model": {
+    /**
+     * GET /api/preferences/last-cheap-model - Get the last used cheap helper-model selection.
+     */
+    async GET(): Promise<Response> {
+      const lastCheapModel = await getLastCheapModel();
+      return Response.json(lastCheapModel ?? null);
+    },
+
+    /**
+     * PUT /api/preferences/last-cheap-model - Set the last used cheap helper-model selection.
+     */
+    async PUT(req: Request): Promise<Response> {
+      const result = await parseAndValidate(SetLastCheapModelRequestSchema, req);
+      if (!result.success) {
+        return result.response;
+      }
+
+      try {
+        await setLastCheapModel(result.data);
+        return Response.json({ success: true });
+      } catch (error) {
+        logPreferenceSaveFailure("last-cheap-model", error);
         return errorResponse("save_failed", String(error), 500);
       }
     },

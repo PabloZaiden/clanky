@@ -108,6 +108,8 @@ export function useComposeState({
     }
 
     await refreshLoops();
+    dashboardData.setLastModel(request.model);
+    dashboardData.setLastCheapModel(request.cheapModel ?? null);
 
     const submitHash = activeSubmissionHashRef.current;
     const shouldAutoOpen =

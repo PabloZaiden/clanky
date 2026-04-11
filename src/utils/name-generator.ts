@@ -4,6 +4,7 @@
  */
 
 import type { PromptInput, AgentResponse } from "../backends/types";
+import type { ModelConfig } from "../types";
 
 export const DEFAULT_LOOP_TITLE_TIMEOUT_MS = 30_000;
 
@@ -25,6 +26,8 @@ export interface GenerateLoopNameOptions {
   backend: BackendInterface;
   /** Session ID to use for the generation */
   sessionId: string;
+  /** Optional model override for helper generation */
+  model?: ModelConfig;
   /** Timeout in milliseconds (default: 30_000ms / 30s, see DEFAULT_LOOP_TITLE_TIMEOUT_MS) */
   timeoutMs?: number;
 }
@@ -59,7 +62,7 @@ export function sanitizeLoopName(name: string): string {
  * @throws Error if prompt is empty, the backend call fails, or the response is unusable
  */
 export async function generateLoopName(options: GenerateLoopNameOptions): Promise<string> {
-  const { prompt, backend, sessionId, timeoutMs = DEFAULT_LOOP_TITLE_TIMEOUT_MS } = options;
+  const { prompt, backend, sessionId, model, timeoutMs = DEFAULT_LOOP_TITLE_TIMEOUT_MS } = options;
 
   // Validate inputs
   if (!prompt || !prompt.trim()) {
@@ -80,6 +83,7 @@ export async function generateLoopName(options: GenerateLoopNameOptions): Promis
 
 Output ONLY the title, nothing else. No quotes, no formatting, no explanation.`
     }],
+    model,
   };
 
   try {

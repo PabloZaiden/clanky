@@ -48,7 +48,9 @@ export interface DashboardModalsProps {
   models: ModelInfo[];
   modelsLoading: boolean;
   lastModel: { providerID: string; modelID: string } | null;
+  lastCheapModel: import("../../types").CheapModelSelection | null;
   setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  setLastCheapModel: (selection: import("../../types").CheapModelSelection | null) => void;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   planningWarning: string | null;
   branches: BranchInfo[];
@@ -122,7 +124,9 @@ export function DashboardModals(props: DashboardModalsProps) {
         models={props.models}
         modelsLoading={props.modelsLoading}
         lastModel={props.lastModel}
+        lastCheapModel={props.lastCheapModel}
         setLastModel={props.setLastModel}
+        setLastCheapModel={props.setLastCheapModel}
         onWorkspaceChange={props.onWorkspaceChange}
         planningWarning={props.planningWarning}
         branches={props.branches}

@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createLogger } from "../../lib/logger";
-import type { ModelInfo } from "../../types";
+import type { CheapModelSelection, ModelInfo } from "../../types";
 import { appFetch } from "../../lib/public-path";
 
 export interface UseWorkspaceModelsResult {
@@ -12,6 +12,8 @@ export interface UseWorkspaceModelsResult {
   modelsLoading: boolean;
   lastModel: { providerID: string; modelID: string } | null;
   setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  lastCheapModel: CheapModelSelection | null;
+  setLastCheapModel: (selection: CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
   setModelsWorkspaceId: (id: string | null) => void;
   fetchModels: (directory: string, workspaceId: string | null) => Promise<void>;
@@ -23,6 +25,7 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [lastModel, setLastModel] = useState<{ providerID: string; modelID: string } | null>(null);
+  const [lastCheapModel, setLastCheapModel] = useState<CheapModelSelection | null>(null);
   const [modelsWorkspaceId, setModelsWorkspaceId] = useState<string | null>(null);
 
   const modelsRequestIdRef = useRef(0);
@@ -46,7 +49,19 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
         log.warn("Failed to fetch last model preference", { error: String(error) });
       }
     }
-    fetchLastModel();
+    async function fetchLastCheapModel() {
+      try {
+        const response = await appFetch("/api/preferences/last-cheap-model");
+        if (response.ok) {
+          const data = await response.json();
+          setLastCheapModel(data);
+        }
+      } catch (error) {
+        log.warn("Failed to fetch last cheap model preference", { error: String(error) });
+      }
+    }
+    void fetchLastModel();
+    void fetchLastCheapModel();
   }, []);
 
   const fetchModels = useCallback(async (directory: string, workspaceId: string | null) => {
@@ -109,6 +124,8 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
     modelsLoading,
     lastModel,
     setLastModel,
+    lastCheapModel,
+    setLastCheapModel,
     modelsWorkspaceId,
     setModelsWorkspaceId,
     fetchModels,

@@ -737,6 +737,125 @@ describe("Persistence", () => {
       expect(loadedLoop?.state.fullyAutonomousPending).toBe(true);
     });
 
+    test("initializeDatabase repairs cheap model when a legacy migration version collides", async () => {
+      const legacyDb = new Database(getDatabasePath());
+      legacyDb.run(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        9,
+        "legacy_collision",
+        new Date().toISOString(),
+      ]);
+      legacyDb.run(`
+        CREATE TABLE loops (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          workspace_id TEXT REFERENCES workspaces(id),
+          model_provider_id TEXT,
+          model_model_id TEXT,
+          model_variant TEXT,
+          max_iterations INTEGER,
+          max_consecutive_errors INTEGER,
+          activity_timeout_seconds INTEGER,
+          stop_pattern TEXT NOT NULL,
+          git_branch_prefix TEXT NOT NULL DEFAULT '',
+          git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
+          base_branch TEXT,
+          clear_planning_folder INTEGER DEFAULT 0,
+          plan_mode INTEGER DEFAULT 0,
+          mode TEXT DEFAULT 'loop',
+          status TEXT NOT NULL DEFAULT 'idle',
+          current_iteration INTEGER NOT NULL DEFAULT 0,
+          started_at TEXT,
+          completed_at TEXT,
+          last_activity_at TEXT,
+          session_id TEXT,
+          session_server_url TEXT,
+          error_message TEXT,
+          error_iteration INTEGER,
+          error_timestamp TEXT,
+          git_original_branch TEXT,
+          git_working_branch TEXT,
+          git_worktree_path TEXT,
+          git_commits TEXT,
+          recent_iterations TEXT,
+          logs TEXT,
+          messages TEXT,
+          tool_calls TEXT,
+          consecutive_errors TEXT,
+          pending_prompt TEXT,
+          pending_model_provider_id TEXT,
+          pending_model_model_id TEXT,
+          pending_model_variant TEXT,
+          plan_mode_active INTEGER DEFAULT 0,
+          plan_session_id TEXT,
+          plan_server_url TEXT,
+          plan_feedback_rounds INTEGER DEFAULT 0,
+          plan_content TEXT,
+          planning_folder_cleared INTEGER DEFAULT 0,
+          plan_is_ready INTEGER DEFAULT 0,
+          review_mode TEXT,
+          use_worktree INTEGER NOT NULL DEFAULT 1,
+          plan_mode_auto_reply INTEGER NOT NULL DEFAULT 1,
+          pending_plan_question TEXT,
+          auto_accept_plan INTEGER NOT NULL DEFAULT 0,
+          pull_request_monitoring TEXT,
+          automatic_pr_flow TEXT,
+          fully_autonomous INTEGER NOT NULL DEFAULT 0,
+          fully_autonomous_pending INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+      legacyDb.close();
+
+      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      const { createWorkspace } = await import("../../src/persistence/workspaces");
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      await initializeDatabase();
+
+      await createWorkspace({
+        id: testWorkspaceId,
+        name: "Test Workspace",
+        directory: "/tmp/test",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: getDefaultServerSettings(),
+      });
+
+      const repairedLoop = createTestLoop({
+        id: "repaired-cheap-model-loop",
+        name: "repaired-cheap-model-loop",
+      });
+      repairedLoop.config.cheapModel = {
+        mode: "custom",
+        model: {
+          providerID: "openai",
+          modelID: "gpt-4o-mini",
+          variant: "fast",
+        },
+      };
+
+      await expect(saveLoop(repairedLoop)).resolves.toBeUndefined();
+
+      const columns = getDatabase().query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
+      const loopRow = getDatabase().query(
+        "SELECT cheap_model FROM loops WHERE id = ?",
+      ).get("repaired-cheap-model-loop") as { cheap_model: string | null } | null;
+      const loadedLoop = await loadLoop("repaired-cheap-model-loop");
+
+      expect(columns.some((column) => column.name === "cheap_model")).toBe(true);
+      expect(loopRow?.cheap_model).toBe(JSON.stringify(repairedLoop.config.cheapModel));
+      expect(loadedLoop?.config.cheapModel).toEqual(repairedLoop.config.cheapModel);
+    });
+
     test("resetDatabase drops chats and passkey credentials before recreating the schema", async () => {
       const { ensureDataDirectories, getDatabase, resetDatabase } = await import("../../src/persistence/database");
       const { createWorkspace } = await import("../../src/persistence/workspaces");
@@ -915,6 +1034,29 @@ describe("Persistence", () => {
       const loaded = await loadLoop("auto-accept-loop");
 
       expect(loaded?.config.autoAcceptPlan).toBe(true);
+    });
+
+    test("persists cheap helper model selection", async () => {
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+
+      await setupPersistence();
+
+      const testLoop = createTestLoop({
+        id: "cheap-model-loop",
+      });
+      testLoop.config.cheapModel = {
+        mode: "custom",
+        model: {
+          providerID: "openai",
+          modelID: "gpt-4o-mini",
+          variant: "fast",
+        },
+      };
+
+      await saveLoop(testLoop);
+      const loaded = await loadLoop("cheap-model-loop");
+
+      expect(loaded?.config.cheapModel).toEqual(testLoop.config.cheapModel);
     });
 
     test("persists pull request monitoring state", async () => {

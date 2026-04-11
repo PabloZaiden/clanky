@@ -3,6 +3,7 @@
  */
 
 import type { PromptInput, AgentResponse } from "../backends/types";
+import type { ModelConfig } from "../types";
 import { parseConventionalCommit } from "./conventional-commits";
 
 export const DEFAULT_PULL_REQUEST_METADATA_TIMEOUT_MS = 30_000;
@@ -352,13 +353,14 @@ export interface GeneratePullRequestMetadataOptions {
   metadata: PullRequestMetadataInput;
   backend: PullRequestMetadataBackendInterface;
   sessionId: string;
+  model?: ModelConfig;
   timeoutMs?: number;
 }
 
 export async function generatePullRequestMetadata(
   options: GeneratePullRequestMetadataOptions,
 ): Promise<PullRequestMetadata> {
-  const { metadata, backend, sessionId, timeoutMs = DEFAULT_PULL_REQUEST_METADATA_TIMEOUT_MS } = options;
+  const { metadata, backend, sessionId, model, timeoutMs = DEFAULT_PULL_REQUEST_METADATA_TIMEOUT_MS } = options;
 
   if (!backend || !sessionId) {
     throw new Error("Backend and sessionId are required for pull request metadata generation.");
@@ -376,7 +378,10 @@ export async function generatePullRequestMetadata(
     let response: AgentResponse;
     try {
       response = await Promise.race([
-        backend.sendPrompt(sessionId, buildMetadataPrompt(metadata)),
+        backend.sendPrompt(sessionId, {
+          ...buildMetadataPrompt(metadata),
+          model,
+        }),
         timeoutPromise,
       ]);
     } finally {

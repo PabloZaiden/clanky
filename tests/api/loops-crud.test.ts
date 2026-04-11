@@ -346,6 +346,7 @@ describe("Loops CRUD API Integration", () => {
         body: JSON.stringify({
           workspaceId: testWorkspaceId,
           prompt: "Build something",
+          model: testModel,
         }),
       });
 
@@ -375,6 +376,7 @@ describe("Loops CRUD API Integration", () => {
         body: JSON.stringify({
           workspaceId: testWorkspaceId,
           prompt: "Build something",
+          model: testModel,
         }),
       });
 
@@ -401,6 +403,7 @@ describe("Loops CRUD API Integration", () => {
         body: JSON.stringify({
           workspaceId: testWorkspaceId,
           prompt: "Build something",
+          model: testModel,
         }),
       });
 

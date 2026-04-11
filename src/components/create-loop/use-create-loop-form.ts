@@ -39,6 +39,8 @@ export interface UseCreateLoopFormReturn {
   setPrompt: (v: string) => void;
   selectedModel: string;
   setSelectedModel: (v: string) => void;
+  selectedCheapModel: string;
+  setSelectedCheapModel: (v: string) => void;
   selectedBranch: string;
   setSelectedBranch: (v: string) => void;
   setUserChangedBranch: (v: boolean) => void;
@@ -79,6 +81,7 @@ export function useCreateLoopForm({
   loading = false,
   models = [],
   lastModel,
+  lastCheapModel,
   onWorkspaceChange,
   currentBranch = "",
   defaultBranch = "",
@@ -95,6 +98,7 @@ export function useCreateLoopForm({
   | "loading"
   | "models"
   | "lastModel"
+  | "lastCheapModel"
   | "onWorkspaceChange"
   | "currentBranch"
   | "defaultBranch"
@@ -115,9 +119,15 @@ export function useCreateLoopForm({
     defaultBranch,
   });
 
-  const { selectedModel, setSelectedModel } = useModelSelection({
+  const {
+    selectedModel,
+    setSelectedModel,
+    selectedCheapModel,
+    setSelectedCheapModel,
+  } = useModelSelection({
     models,
     lastModel,
+    lastCheapModel,
     initialLoopData,
   });
 
@@ -125,6 +135,8 @@ export function useCreateLoopForm({
 
   const { generatingTitle, handleGenerateTitle } = useTitleGeneration({
     selectedWorkspaceId: workspace.selectedWorkspaceId,
+    selectedModel,
+    selectedCheapModel,
     nameRef: fields.nameRef,
     promptRef: fields.promptRef,
     setName: fields.setName,
@@ -133,6 +145,7 @@ export function useCreateLoopForm({
   const actions = useFormActions({
     selectedWorkspaceId: workspace.selectedWorkspaceId,
     selectedModel,
+    selectedCheapModel,
     selectedModelEnabled,
       planMode: fields.planMode,
       autoAcceptPlan: fields.autoAcceptPlan,
@@ -177,6 +190,8 @@ export function useCreateLoopForm({
     setPrompt: fields.setPrompt,
     selectedModel,
     setSelectedModel,
+    selectedCheapModel,
+    setSelectedCheapModel,
     selectedBranch: workspace.selectedBranch,
     setSelectedBranch: workspace.setSelectedBranch,
     setUserChangedBranch: workspace.setUserChangedBranch,

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CreateLoopRequestSchema,
+  GenerateLoopTitleRequestSchema,
   SetPendingRequestSchema,
 } from "../../src/types/schemas/loop";
 
@@ -58,5 +59,39 @@ describe("loop attachment schemas", () => {
         { id: "4", filename: "d.png", mimeType: "image/png", data: "x", size: 1 },
       ],
     }).success).toBe(false);
+  });
+
+  test("accepts cheap model selections on create and title-generation requests", () => {
+    expect(CreateLoopRequestSchema.safeParse({
+      name: "Cheap helper model loop",
+      workspaceId: "ws-1",
+      prompt: "Do a task",
+      model: {
+        providerID: "provider",
+        modelID: "main-model",
+      },
+      cheapModel: {
+        mode: "custom",
+        model: {
+          providerID: "provider",
+          modelID: "cheap-model",
+          variant: "fast",
+        },
+      },
+      useWorktree: true,
+      planMode: false,
+    }).success).toBe(true);
+
+    expect(GenerateLoopTitleRequestSchema.safeParse({
+      workspaceId: "ws-1",
+      prompt: "Create a useful title",
+      model: {
+        providerID: "provider",
+        modelID: "main-model",
+      },
+      cheapModel: {
+        mode: "same-as-loop",
+      },
+    }).success).toBe(true);
   });
 });

@@ -172,6 +172,9 @@ function renderMainContent(props: ShellMainContentProps) {
           models={dashboardData.models}
           modelsLoading={dashboardData.modelsLoading}
           lastModel={dashboardData.lastModel}
+          lastCheapModel={dashboardData.lastCheapModel}
+          setLastModel={dashboardData.setLastModel}
+          setLastCheapModel={dashboardData.setLastCheapModel}
           onWorkspaceChange={dashboardData.handleWorkspaceChange}
           planningWarning={dashboardData.planningWarning}
           branches={dashboardData.branches}

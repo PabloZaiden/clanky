@@ -1,4 +1,7 @@
+import type { ModelInfo } from "../../types";
 import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
+import { ModelSelector } from "../ModelSelector";
+import { SAME_AS_LOOP_CHEAP_MODEL_VALUE } from "./use-model-selection";
 
 interface AdvancedOptionsProps {
   showAdvanced: boolean;
@@ -11,6 +14,10 @@ interface AdvancedOptionsProps {
   onActivityTimeoutChange: (value: string) => void;
   clearPlanningFolder: boolean;
   onClearPlanningFolderChange: (value: boolean) => void;
+  selectedCheapModel: string;
+  onCheapModelChange: (value: string) => void;
+  models: ModelInfo[];
+  modelsLoading: boolean;
 }
 
 export function AdvancedOptions({
@@ -24,6 +31,10 @@ export function AdvancedOptions({
   onActivityTimeoutChange,
   clearPlanningFolder,
   onClearPlanningFolderChange,
+  selectedCheapModel,
+  onCheapModelChange,
+  models,
+  modelsLoading,
 }: AdvancedOptionsProps) {
   return (
     <>
@@ -37,6 +48,32 @@ export function AdvancedOptions({
 
       {showAdvanced && (
         <div className="space-y-4 p-4 bg-gray-50 dark:bg-neutral-800 rounded-md">
+          <div>
+            <label
+              htmlFor="cheapModel"
+              className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Cheap helper model
+            </label>
+            <ModelSelector
+              id="cheapModel"
+              value={selectedCheapModel}
+              onChange={onCheapModelChange}
+              models={models}
+              loading={modelsLoading}
+              additionalOptions={[{
+                value: SAME_AS_LOOP_CHEAP_MODEL_VALUE,
+                label: "Same as loop model",
+              }]}
+              placeholder="Select a cheap helper model..."
+              className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-50"
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Used for light helper work like title generation and PR metadata. Choose
+              &quot;Same as loop model&quot; to use the main loop model for everything.
+            </p>
+          </div>
+
           {/* Max iterations */}
           <div>
             <label

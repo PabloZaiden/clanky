@@ -33,6 +33,7 @@ export function CreateLoopForm({
   models = [],
   modelsLoading = false,
   lastModel,
+  lastCheapModel,
   onWorkspaceChange,
   planningWarning,
   branches = [],
@@ -66,6 +67,8 @@ export function CreateLoopForm({
     setPrompt,
     selectedModel,
     setSelectedModel,
+    selectedCheapModel,
+    setSelectedCheapModel,
     selectedBranch,
     setSelectedBranch,
     setUserChangedBranch,
@@ -96,10 +99,11 @@ export function CreateLoopForm({
     onSubmit,
     onCancel,
     closeOnSuccess,
-    loading,
-    models,
-    lastModel,
-    onWorkspaceChange,
+     loading,
+     models,
+     lastModel,
+     lastCheapModel,
+     onWorkspaceChange,
     currentBranch,
     defaultBranch,
     editLoopId,
@@ -226,6 +230,10 @@ export function CreateLoopForm({
         onActivityTimeoutChange={setActivityTimeoutSeconds}
         clearPlanningFolder={clearPlanningFolder}
         onClearPlanningFolderChange={setClearPlanningFolder}
+        selectedCheapModel={selectedCheapModel}
+        onCheapModelChange={setSelectedCheapModel}
+        models={models}
+        modelsLoading={modelsLoading}
       />
 
       {/* Actions - only render inline if renderActions prop is not provided */}

@@ -5,7 +5,7 @@ import type { PullRequestDestinationResponse } from "../../types/api";
 import { createTimestamp } from "../../types/events";
 import { createInitialState, DEFAULT_LOOP_CONFIG } from "../../types/loop";
 import { saveLoop, loadLoop, listLoops } from "../../persistence/loops";
-import { setLastModel } from "../../persistence/preferences";
+import { setLastCheapModel, setLastModel } from "../../persistence/preferences";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
 import { log } from "../logger";
@@ -14,7 +14,8 @@ import { normalizeCommitScope } from "../../utils/commit-scope";
 import { assertValidTransition } from "../loop-state-machine";
 import { normalizeBranchPrefix } from "../branch-name";
 import { resolvePullRequestDestination } from "../pull-request-navigation";
-import { getLoopWorkingDirectory } from "./loop-types";
+import { resolveEffectiveCheapModel } from "../cheap-model";
+import { getLoopWorkingDirectory, type GenerateLoopTitleOptions } from "./loop-types";
 
 export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): Promise<Loop> {
   const id = crypto.randomUUID();
@@ -50,6 +51,7 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
       modelID: options.modelID,
       variant: options.modelVariant,
     },
+    cheapModel: options.cheapModel ?? DEFAULT_LOOP_CONFIG.cheapModel,
     maxIterations: options.maxIterations ?? DEFAULT_LOOP_CONFIG.maxIterations,
     maxConsecutiveErrors: options.maxConsecutiveErrors ?? DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
     activityTimeoutSeconds: options.activityTimeoutSeconds ?? DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
@@ -99,7 +101,7 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
 
 export async function generateLoopTitleImpl(
   _ctx: LoopCtx,
-  options: Pick<CreateLoopOptions, "prompt" | "directory" | "workspaceId">
+  options: GenerateLoopTitleOptions,
 ): Promise<string> {
   let backend = backendManager.getInitializedBackend(options.workspaceId);
   if (
@@ -116,10 +118,18 @@ export async function generateLoopTitleImpl(
   });
 
   try {
+    const helperModel = await resolveEffectiveCheapModel({
+      workspaceId: options.workspaceId,
+      directory: options.directory,
+      model: options.model,
+      cheapModel: options.cheapModel,
+      operation: "loop_title_generation",
+    });
     const title = await generateLoopName({
       prompt: options.prompt,
       backend,
       sessionId: tempSession.id,
+      model: helperModel,
     });
     log.info(`Generated loop title: ${title}`);
     return title;
@@ -210,6 +220,7 @@ export async function updateLoopImpl(
   const updatedConfig: LoopConfig = {
     ...loop.config,
     ...updates,
+    cheapModel: updates.cheapModel ?? loop.config.cheapModel ?? DEFAULT_LOOP_CONFIG.cheapModel,
     git: updates.git
       ? {
           ...loop.config.git,
@@ -288,6 +299,17 @@ export async function saveLastUsedModelImpl(
     await setLastModel(model);
   } catch (error) {
     log.warn(`Failed to save last model: ${String(error)}`);
+  }
+}
+
+export async function saveLastUsedCheapModelImpl(
+  _ctx: LoopCtx,
+  selection: NonNullable<LoopConfig["cheapModel"]>,
+): Promise<void> {
+  try {
+    await setLastCheapModel(selection);
+  } catch (error) {
+    log.warn(`Failed to save last cheap model: ${String(error)}`);
   }
 }
 

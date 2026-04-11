@@ -118,7 +118,7 @@ export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
  * Request body for POST /api/loops/title endpoint.
  *
  * Requests explicit AI-assisted title generation for the current prompt
- * using the selected workspace context.
+ * using the selected workspace and model context.
  */
 export type GenerateLoopTitleRequest = z.infer<typeof GenerateLoopTitleRequestSchema>;
 

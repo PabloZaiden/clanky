@@ -8,6 +8,7 @@ import type { PullRequestNavigationGitService } from "./pull-request-navigation"
 import { backendManager } from "./backend-manager";
 import { getDiff, getDiffSummary } from "./git/git-diff";
 import { createLogger } from "./logger";
+import { resolveEffectiveCheapModel } from "./cheap-model";
 import {
   buildFallbackPullRequestMetadata,
   generatePullRequestMetadata,
@@ -287,10 +288,18 @@ async function generateAutomaticPrMetadata(
     });
 
     try {
+      const helperModel = await resolveEffectiveCheapModel({
+        workspaceId: loop.config.workspaceId,
+        directory,
+        model: loop.config.model,
+        cheapModel: loop.config.cheapModel,
+        operation: "pull_request_metadata_generation",
+      });
       return await generatePullRequestMetadata({
         metadata: metadataInput,
         backend,
         sessionId: tempSession.id,
+        model: helperModel,
       });
     } finally {
       try {
