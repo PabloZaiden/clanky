@@ -35,10 +35,6 @@ function getPathField(input: unknown): string | undefined {
   return getStringField(input, "path") ?? getStringField(input, "filePath");
 }
 
-function hasField(input: unknown, key: string): boolean {
-  return input !== null && typeof input === "object" && key in (input as Record<string, unknown>);
-}
-
 /** Maps a tool call to display metadata. Falls back to generic rendering for unknown tools. */
 function getToolMeta(tool: ToolCallData): ToolMeta {
   const name = tool.name.toLowerCase();
@@ -78,10 +74,14 @@ function getToolMeta(tool: ToolCallData): ToolMeta {
     return { summary: `Find files matching '${pattern}'`, outputLabel: "Result", outputType: "text" };
   }
 
-  // SQL tool — also catches "other" tool calls that carry a "query" field
-  if (name === "sql" || name === "other" || hasField(tool.input, "query")) {
+  if (name === "sql") {
     const desc = getStringField(tool.input, "description") ?? "SQL query";
     return { summary: desc, outputLabel: "Done", outputType: "json" };
+  }
+
+  if (name === "other") {
+    const desc = getStringField(tool.input, "description") ?? "Other tool";
+    return { summary: desc, outputLabel: "Output", outputType: "json" };
   }
 
   // Unknown / generic tool

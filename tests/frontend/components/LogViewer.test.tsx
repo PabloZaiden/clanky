@@ -514,6 +514,44 @@ describe("LogViewer", () => {
       expect(getByText("Search for 'needle'")).toBeInTheDocument();
     });
 
+    test("keeps SQL summary reserved for the sql tool", () => {
+      const tool = createToolCallData({
+        name: "sql",
+        input: { query: "SELECT * FROM loops" },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("SQL query")).toBeInTheDocument();
+    });
+
+    test("does not label non-SQL query-shaped tools as SQL", () => {
+      const tool = createToolCallData({
+        name: "web_fetch",
+        input: { query: "site:learn.microsoft.com Work IQ MCP" },
+      });
+      const { getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("web_fetch")).toBeInTheDocument();
+      expect(queryByText("SQL query")).not.toBeInTheDocument();
+    });
+
+    test("renders generic other tools with a neutral summary", () => {
+      const tool = createToolCallData({
+        name: "other",
+        input: { query: "site:learn.microsoft.com Work IQ MCP" },
+      });
+      const { getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
+      );
+
+      expect(getByText("Other tool")).toBeInTheDocument();
+      expect(queryByText("SQL query")).not.toBeInTheDocument();
+    });
+
     test("renders unknown tool output in collapsible details", async () => {
       // For unknown tools, both input and output are collapsed under the tool summary.
       const tool = createToolCallData({
