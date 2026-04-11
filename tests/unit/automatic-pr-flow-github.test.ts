@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
 import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
 import {
@@ -6,17 +6,26 @@ import {
   fetchAutomaticPrFlowSnapshot,
   resolveAutomaticPrFlowReviewThread,
 } from "../../src/core/automatic-pr-flow-github";
+import { backendManager } from "../../src/core/backend-manager";
 import { createLoopWithStatus } from "../frontend/helpers/factories";
+import { createMockBackend } from "../mocks/mock-backend";
 
 class StubExecutor implements CommandExecutor {
-  private responses = new Map<string, CommandResult>();
+  private responses = new Map<string, CommandResult[]>();
+  readonly calls: Array<{ command: string; args: string[] }> = [];
 
   addResponse(command: string, args: string[], result: CommandResult): void {
-    this.responses.set(this.key(command, args), result);
+    const key = this.key(command, args);
+    const existing = this.responses.get(key) ?? [];
+    existing.push(result);
+    this.responses.set(key, existing);
   }
 
   async exec(command: string, args: string[], _options?: CommandOptions): Promise<CommandResult> {
-    return this.responses.get(this.key(command, args)) ?? {
+    this.calls.push({ command, args });
+    const queued = this.responses.get(this.key(command, args));
+    const next = queued?.shift();
+    return next ?? {
       success: false,
       stdout: "",
       stderr: `Unexpected command: ${command} ${args.join(" ")}`,
@@ -80,6 +89,14 @@ function createPushedLoop() {
 }
 
 describe("automatic PR flow GitHub helpers", () => {
+  beforeEach(() => {
+    backendManager.resetForTesting();
+  });
+
+  afterEach(() => {
+    backendManager.resetForTesting();
+  });
+
   test("reuses an existing pull request when one already exists", async () => {
     const loop = createPushedLoop();
     const executor = new StubExecutor();
@@ -116,8 +133,23 @@ describe("automatic PR flow GitHub helpers", () => {
 
   test("creates a pull request when one does not exist yet", async () => {
     const loop = createPushedLoop();
+    loop.state.git!.commits = [
+      {
+        iteration: 1,
+        sha: "abc123",
+        message: "feat(pr): generate PR metadata from actual changes",
+        timestamp: "2026-04-11T04:00:00.000Z",
+        filesChanged: 2,
+      },
+    ];
     const executor = new StubExecutor();
     const git = new StubGitService();
+    backendManager.setBackendForTesting(createMockBackend([
+      JSON.stringify({
+        title: "Generate PR metadata from actual changes",
+        body: "## Summary\n- Generate the PR title and description from commits and diff data.\n\n## Changes\n- Added metadata generation for automatic pull requests.",
+      }),
+    ]));
 
     executor.addResponse("gh", ["--version"], {
       success: true,
@@ -131,6 +163,24 @@ describe("automatic PR flow GitHub helpers", () => {
       stderr: "no pull requests found for branch \"feature/automatic-pr-flow\"",
       exitCode: 1,
     });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--numstat", "main"], {
+      success: true,
+      stdout: "12\t4\tsrc/core/automatic-pr-flow-github.ts\n3\t0\tsrc/core/pull-request-metadata.ts\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--name-status", "main"], {
+      success: true,
+      stdout: "M\tsrc/core/automatic-pr-flow-github.ts\nA\tsrc/core/pull-request-metadata.ts\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--shortstat", "main"], {
+      success: true,
+      stdout: " 2 files changed, 15 insertions(+), 4 deletions(-)\n",
+      stderr: "",
+      exitCode: 0,
+    });
     executor.addResponse(
       "gh",
       [
@@ -141,9 +191,9 @@ describe("automatic PR flow GitHub helpers", () => {
         "--head",
         "feature/automatic-pr-flow",
         "--title",
-        "Automatic PR Flow",
+        "Generate PR metadata from actual changes",
         "--body",
-        "Automated pull request opened by Ralpher.\n\nLoop: Automatic PR Flow\n\nImplement the automatic PR flow end to end.",
+        "## Summary\n- Generate the PR title and description from commits and diff data.\n\n## Changes\n- Added metadata generation for automatic pull requests.",
       ],
       {
         success: true,
@@ -169,6 +219,111 @@ describe("automatic PR flow GitHub helpers", () => {
 
     expect(pullRequest.number).toBe(42);
     expect(pullRequest.url).toBe("https://github.com/owner/repo/pull/42");
+    const createCall = executor.calls.find((call) => call.command === "gh" && call.args[0] === "pr" && call.args[1] === "create");
+    expect(createCall).toBeDefined();
+    expect(createCall?.args).toContain("Generate PR metadata from actual changes");
+    expect(createCall?.args.join("\n")).not.toContain("Ralpher");
+  });
+
+  test("falls back to deterministic non-branded metadata when AI output is unusable", async () => {
+    const loop = createPushedLoop();
+    loop.state.git!.commits = [
+      {
+        iteration: 1,
+        sha: "abc123",
+        message: "feat(pr): generate PR metadata from actual changes",
+        timestamp: "2026-04-11T04:00:00.000Z",
+        filesChanged: 2,
+      },
+      {
+        iteration: 2,
+        sha: "def456",
+        message: "test(pr): cover PR metadata fallback behavior",
+        timestamp: "2026-04-11T05:00:00.000Z",
+        filesChanged: 1,
+      },
+    ];
+    const executor = new StubExecutor();
+    const git = new StubGitService();
+    backendManager.setBackendForTesting(createMockBackend([
+      JSON.stringify({
+        title: "AutoPR by Ralpher",
+        body: "Opened automatically by Ralpher.",
+      }),
+    ]));
+
+    executor.addResponse("gh", ["--version"], {
+      success: true,
+      stdout: "gh version 2.0.0",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+      success: false,
+      stdout: "",
+      stderr: "no pull requests found for branch \"feature/automatic-pr-flow\"",
+      exitCode: 1,
+    });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--numstat", "main"], {
+      success: true,
+      stdout: "12\t4\tsrc/core/automatic-pr-flow-github.ts\n3\t0\ttests/unit/automatic-pr-flow-github.test.ts\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--name-status", "main"], {
+      success: true,
+      stdout: "M\tsrc/core/automatic-pr-flow-github.ts\nM\ttests/unit/automatic-pr-flow-github.test.ts\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--shortstat", "main"], {
+      success: true,
+      stdout: " 2 files changed, 15 insertions(+), 4 deletions(-)\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse(
+      "gh",
+      [
+        "pr",
+        "create",
+        "--base",
+        "main",
+        "--head",
+        "feature/automatic-pr-flow",
+        "--title",
+        "Generate PR metadata from actual changes and cover pr metadata fallback behavior",
+        "--body",
+        "## Summary\n- Generate PR metadata from actual changes\n- Cover PR metadata fallback behavior\n\n## Changes\n- 2 files changed\n- 15 insertions\n- 4 deletions\n\n## Files\n- src/core/automatic-pr-flow-github.ts (modified) (+12 / -4)\n- tests/unit/automatic-pr-flow-github.test.ts (modified) (+3)\n\n## Branches\n- Base: `main`\n- Head: `feature/automatic-pr-flow`",
+      ],
+      {
+        success: true,
+        stdout: "https://github.com/owner/repo/pull/42\n",
+        stderr: "",
+        exitCode: 0,
+      },
+    );
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+      success: true,
+      stdout: JSON.stringify({
+        number: 42,
+        url: "https://github.com/owner/repo/pull/42",
+        state: "OPEN",
+        reviewDecision: "REVIEW_REQUIRED",
+      }),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const pullRequest = await ensureAutomaticPrFlowPullRequest(loop, "/tmp/repo", executor, git);
+
+    expect(pullRequest.number).toBe(42);
+    const createCall = executor.calls.find((call) => call.command === "gh" && call.args[0] === "pr" && call.args[1] === "create");
+    expect(createCall).toBeDefined();
+    const createArgs = createCall?.args.join("\n") ?? "";
+    expect(createArgs).toContain("Generate PR metadata from actual changes and cover pr metadata fallback behavior");
+    expect(createArgs).not.toContain("Ralpher");
+    expect(createArgs).not.toContain("AutoPR");
   });
 
   test("normalizes review threads, PR comments, and reviews into actionable feedback", async () => {
