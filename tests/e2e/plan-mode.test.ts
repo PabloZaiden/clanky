@@ -60,6 +60,7 @@ describe("Plan Mode E2E Workflow", () => {
       directory: ctx.workDir,
       maxIterations: 2,
       planMode: true,
+      autoAcceptPlan: false,
       workspaceId: testWorkspaceId,
     });
     const loopId = loop.config.id;
@@ -127,6 +128,7 @@ describe("Plan Mode E2E Workflow", () => {
       directory: ctx.workDir,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
       workspaceId: testWorkspaceId,
     });
     const loopId = loop.config.id;
@@ -162,6 +164,7 @@ describe("Plan Mode E2E Workflow", () => {
       directory: ctx.workDir,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
       workspaceId: testWorkspaceId,
     });
     const loopId = loop.config.id;
@@ -216,6 +219,7 @@ describe("Plan Mode E2E Workflow", () => {
       maxIterations: 1,
       clearPlanningFolder: true,
       planMode: true,
+      autoAcceptPlan: false,
       workspaceId: testWorkspaceId,
     });
     const loopId = loop.config.id;
@@ -267,6 +271,7 @@ describe("Plan Mode E2E Workflow", () => {
       directory: ctx.workDir,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
       workspaceId: testWorkspaceId,
     });
     const loopId = loop.config.id;
@@ -313,6 +318,7 @@ describe("Plan Mode E2E Workflow", () => {
       directory: ctx.workDir,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
       workspaceId: testWorkspaceId,
     });
     const loopId = loop.config.id;
