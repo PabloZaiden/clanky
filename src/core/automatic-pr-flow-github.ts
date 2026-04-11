@@ -5,7 +5,15 @@
 import type { CommandExecutor } from "./command-executor";
 import type { Loop } from "../types/loop";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
+import { backendManager } from "./backend-manager";
+import { getDiff, getDiffSummary } from "./git/git-diff";
 import { createLogger } from "./logger";
+import {
+  buildFallbackPullRequestMetadata,
+  generatePullRequestMetadata,
+  type PullRequestMetadata,
+  type PullRequestMetadataInput,
+} from "./pull-request-metadata";
 import {
   normalizeGitHubRepositoryUrl,
   validateExistingPullRequestUrl,
@@ -211,14 +219,96 @@ function isNoPullRequestError(stderr: string): boolean {
   return /no pull requests found/i.test(stderr);
 }
 
-function buildCreatePrBody(loop: Loop): string {
-  return [
-    "Automated pull request opened by Ralpher.",
-    "",
-    `Loop: ${loop.config.name}`,
-    "",
-    loop.config.prompt.trim(),
-  ].join("\n");
+async function buildPullRequestMetadataInput(
+  loop: Loop,
+  directory: string,
+  executor: CommandExecutor,
+  baseBranch: string,
+): Promise<PullRequestMetadataInput> {
+  let changedFiles: PullRequestMetadataInput["changedFiles"] = [];
+  let diffSummary: PullRequestMetadataInput["diffSummary"] = {
+    files: 0,
+    insertions: 0,
+    deletions: 0,
+  };
+
+  try {
+    changedFiles = await getDiff(executor, directory, baseBranch);
+  } catch (error) {
+    log.warn("Failed to load diff details for automatic PR metadata", {
+      loopId: loop.config.id,
+      baseBranch,
+      error: String(error),
+    });
+  }
+
+  try {
+    diffSummary = await getDiffSummary(executor, directory, baseBranch);
+  } catch (error) {
+    log.warn("Failed to load diff summary for automatic PR metadata", {
+      loopId: loop.config.id,
+      baseBranch,
+      error: String(error),
+    });
+  }
+
+  return {
+    loopName: loop.config.name,
+    originalPrompt: loop.config.prompt,
+    baseBranch,
+    workingBranch: loop.state.git?.workingBranch ?? "",
+    commitMessages: loop.state.git?.commits.map((commit) => commit.message) ?? [],
+    changedFiles,
+    diffSummary,
+  };
+}
+
+async function generateAutomaticPrMetadata(
+  loop: Loop,
+  directory: string,
+  executor: CommandExecutor,
+  baseBranch: string,
+): Promise<PullRequestMetadata> {
+  const metadataInput = await buildPullRequestMetadataInput(loop, directory, executor, baseBranch);
+  try {
+    let backend = backendManager.getInitializedBackend(loop.config.workspaceId);
+    if (
+      !backend
+      || !backendManager.isWorkspaceConnected(loop.config.workspaceId)
+      || backend.getDirectory() !== directory
+    ) {
+      await backendManager.connect(loop.config.workspaceId, directory);
+      backend = backendManager.getBackend(loop.config.workspaceId);
+    }
+
+    const tempSession = await backend.createSession({
+      title: "Pull Request Metadata Generation",
+      directory,
+    });
+
+    try {
+      return await generatePullRequestMetadata({
+        metadata: metadataInput,
+        backend,
+        sessionId: tempSession.id,
+      });
+    } finally {
+      try {
+        await backend.abortSession(tempSession.id);
+      } catch (cleanupError) {
+        log.warn("Failed to clean up temporary PR metadata session", {
+          loopId: loop.config.id,
+          error: String(cleanupError),
+        });
+      }
+    }
+  } catch (error) {
+    log.warn("Failed to generate automatic PR metadata via backend, using fallback", {
+      loopId: loop.config.id,
+      error: String(error),
+    });
+    return buildFallbackPullRequestMetadata(metadataInput);
+  }
 }
 
 function parseExistingPullRequest(pullRequestView: PullRequestView): AutomaticPrFlowPullRequest | null {
@@ -296,6 +386,7 @@ export async function ensureAutomaticPrFlowPullRequest(
   }
 
   const baseBranch = getBaseBranch(loop) ?? await git.getDefaultBranch(directory);
+  const metadata = await generateAutomaticPrMetadata(loop, directory, executor, baseBranch);
   const createResult = await executor.exec(
     "gh",
     [
@@ -306,9 +397,9 @@ export async function ensureAutomaticPrFlowPullRequest(
       "--head",
       workingBranch,
       "--title",
-      loop.config.name.trim() || workingBranch,
+      metadata.title,
       "--body",
-      buildCreatePrBody(loop),
+      metadata.body,
     ],
     { cwd: directory, timeout: 15000 },
   );
