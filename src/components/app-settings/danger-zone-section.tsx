@@ -77,10 +77,10 @@ export function DangerZoneSection({
         </button>
 
         {dangerZoneExpanded && (
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
             {/* Kill Server */}
             {onKillServer && (
-              <div className={onResetAll ? "mb-4" : ""}>
+              <div>
                 <p className="text-sm text-red-600 dark:text-red-400 mb-3">
                   Terminate the server process. In containerized environments (k8s), this will restart the container.
                 </p>
@@ -158,8 +158,8 @@ export function DangerZoneSection({
 
             {/* Reset All Settings */}
             {onResetAll && (
-              <div className={onKillServer ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}>
-                <p className="text-sm text-red-600 dark:text-red-400 mb-3">
+              <div className={`space-y-3 ${onKillServer ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}`}>
+                <p className="text-sm text-red-600 dark:text-red-400">
                   This will delete all loops, sessions, workspaces, and preferences. This action cannot be undone.
                 </p>
                 {!showResetConfirm ? (
