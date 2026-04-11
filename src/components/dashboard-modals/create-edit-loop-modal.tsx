@@ -17,7 +17,6 @@ import type { CreateLoopFormActionState } from "../CreateLoopForm";
 import type { CreateLoopResult } from "../../hooks/useLoops";
 import { Modal } from "../common";
 import { useToast } from "../../hooks";
-import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 import { DeleteDraftConfirmation } from "./delete-draft-confirmation";
 import { DeleteConfirmFooter, LoopFormFooter } from "./loop-modal-footer";
 import { handleCreateLoopSubmit } from "./loop-submit-handlers";
@@ -123,7 +122,7 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
     useWorktree: editLoop.config.useWorktree,
     clearPlanningFolder: editLoop.config.clearPlanningFolder,
     planMode: editLoop.config.planMode ?? false,
-    autoAcceptPlan: editLoop.config.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan,
+    autoAcceptPlan: editLoop.config.autoAcceptPlan,
     workspaceId: editLoop.config.workspaceId,
   } : null;
 

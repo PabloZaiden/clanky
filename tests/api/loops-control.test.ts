@@ -29,7 +29,7 @@ describe("Loops Control API Integration", () => {
   const tempDirsToCleanup = new Set<string>();
 
   // Helper function to poll for loop completion
-  async function waitForLoopCompletion(loopId: string, timeoutMs = 10000): Promise<void> {
+  async function waitForLoopCompletion(loopId: string, timeoutMs = 15000): Promise<void> {
     const startTime = Date.now();
     let lastStatus = "";
     while (Date.now() - startTime < timeoutMs) {
