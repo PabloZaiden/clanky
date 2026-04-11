@@ -519,6 +519,16 @@ When you need to add a new column, table, or modify the schema:
 - **Test migrations thoroughly**
 - **Verify real upgrade paths, not just happy-path migrations** — if older databases can carry reused migration version numbers after resets, make startup repair the schema directly and add tests for that legacy mismatch case
 
+### Migration Collision Trap: `pull_request_monitoring`
+
+- The `feat(loop): monitor pushed PRs and auto-mark merged loops` change added `loops.pull_request_monitoring` in migration `v6`, but existing installs can already have an unrelated `schema_migrations.version = 6` from a pre-reset era.
+- In that situation, `runMigrations()` correctly skips `v6` because the version number is present, but the live `loops` table is still missing `pull_request_monitoring`. The next `saveLoop()` then fails with `SQLiteError: table loops has no column named pull_request_monitoring`.
+- **Required fix pattern:** when adding a compatibility-sensitive column to a long-lived table like `loops` or `workspaces`, do both:
+  1. add the normal migration in `src/persistence/migrations/index.ts`
+  2. add/extend the startup repair in `src/persistence/database.ts` (`ensureLoopSchema()` / `ensureWorkspaceSchema()`) so initialization repairs legacy databases before application code writes the new column
+- **Required test pattern:** add the usual migration test in `tests/unit/migrations.test.ts` **and** an initialization-level regression test in `tests/unit/persistence.test.ts` that creates a database with the colliding migration version already recorded and proves startup repaired the schema.
+- Do **not** assume `schema_migrations` is a trustworthy description of the live schema on reused pre-reset databases. For these compatibility paths, the live table shape wins.
+
 ### Resetting the Database
 
 If the database gets corrupted or you need a fresh start:
