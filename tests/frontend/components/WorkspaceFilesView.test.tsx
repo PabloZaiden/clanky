@@ -162,7 +162,7 @@ describe("WorkspaceFilesView", () => {
     });
   });
 
-  test("hides the back button in the mobile code explorer header", async () => {
+  test("wraps the code explorer back button in a mobile-hidden container", async () => {
     installEmbeddedSshSessionMock();
     const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
     const workspace = createWorkspace({
@@ -194,7 +194,8 @@ describe("WorkspaceFilesView", () => {
     expect(getByLabelText("Select code explorer content")).toBeInTheDocument();
 
     const backButton = getByRole("button", { name: "Back to workspace" });
-    expect(backButton).toHaveClass("hidden", "sm:inline-flex");
+    expect(backButton).not.toHaveClass("hidden");
+    expect(backButton.parentElement).toHaveClass("hidden", "sm:block");
   });
 
   test("lets the user toggle word wrap and override the editor language", async () => {
