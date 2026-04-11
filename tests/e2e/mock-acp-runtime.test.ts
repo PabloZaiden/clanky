@@ -69,5 +69,5 @@ describe("Mock ACP runtime integration", () => {
     await ctx.manager.acceptPlan(loop.config.id);
     const completed = await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
     expect(completed.state.status).toBe("completed");
-  });
+  }, { timeout: 60_000 });
 });

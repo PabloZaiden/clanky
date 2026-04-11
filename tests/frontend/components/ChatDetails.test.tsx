@@ -103,7 +103,8 @@ describe("ChatDetails", () => {
     expect(composer.tagName).toBe("TEXTAREA");
     expect(composer.getAttribute("rows")).toBe("1");
     expect(composer.placeholder).toBe("");
-    expect(composer.className).toContain("min-h-[38px]");
+    expect(composer.className).toContain("min-h-9");
+    expect(composer.className).toContain("py-1.5");
     expect(queryByText("Assistant")).toBeNull();
     expect(queryByText("You")).toBeNull();
     expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
