@@ -1225,6 +1225,7 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         maxIterations: 2,
         planMode: true,
         autoAcceptPlan: false,
+        fullyAutonomous: true,
       });
       const loopId = loop.config.id;
 
@@ -1419,6 +1420,7 @@ describe("Plan Mode - Accept plan base branch sync", () => {
       const syncClean = ctx.events.find((event) => event.type === "loop.sync.clean" && event.loopId === loopId);
 
       expect(failedLoop.state.status).toBe("failed");
+      expect(failedLoop.state.fullyAutonomousPending).toBe(false);
       expect(failedLoop.state.syncState).toBeUndefined();
       expect(syncFailed).toBeDefined();
       expect(syncClean).toBeUndefined();

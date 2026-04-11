@@ -10,6 +10,7 @@ import {
   setupTestServer,
   teardownTestServer,
   createLoopViaAPI,
+  waitForLoopCondition,
   waitForLoopStatus,
   waitForPlanReady,
   acceptLoopViaAPI,
@@ -316,9 +317,20 @@ describe("Plan + Loop User Scenarios", () => {
         expect(loop.config.autoAcceptPlan).toBe(true);
 
         const pushedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "pushed");
-        expect(pushedLoop.state.fullyAutonomousPending).not.toBe(true);
-        expect(pushedLoop.state.automaticPrFlow?.enabled).toBe(true);
-        expect(pushedLoop.state.automaticPrFlow?.pullRequestNumber).toBe(123);
+        const fullyAutonomousLoop = await waitForLoopCondition(
+          ctx.baseUrl,
+          loop.config.id,
+          (latestLoop) => (
+            latestLoop.state.status === "pushed"
+            && latestLoop.state.fullyAutonomousPending !== true
+            && latestLoop.state.automaticPrFlow?.enabled === true
+          ),
+          "fully autonomous post-push state",
+        );
+
+        expect(fullyAutonomousLoop.state.fullyAutonomousPending).not.toBe(true);
+        expect(fullyAutonomousLoop.state.automaticPrFlow?.enabled).toBe(true);
+        expect(fullyAutonomousLoop.state.automaticPrFlow?.pullRequestNumber).toBe(123);
 
         const pushRef = await Bun.$`git -C ${ctx.remoteDir!} show-ref --verify refs/heads/${pushedLoop.state.git!.workingBranch}`.nothrow();
         expect(pushRef.exitCode).toBe(0);

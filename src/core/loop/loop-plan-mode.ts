@@ -193,6 +193,7 @@ async function failAcceptedPlanExecutionStart(
 ): Promise<void> {
   assertValidTransition(engine.state.status, "failed", "acceptPlan");
   engine.state.status = "failed";
+  engine.state.fullyAutonomousPending = false;
   engine.state.syncState = undefined;
   engine.state.completedAt = createTimestamp();
   engine.state.error = {
