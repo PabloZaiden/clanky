@@ -9,6 +9,7 @@ import { GitService } from "../git-service";
 import { getLoopWorkingDirectory } from "./loop-types";
 import { constructReviewPrompt, setupMergedReviewWorktree, transitionToFeedbackCycleAndStart } from "./review-engine";
 import { ensureAutomaticPrFlowPullRequest } from "../automatic-pr-flow-github";
+import { emitAutomaticPrFlowUpdatedEvent } from "./loop-automatic-pr-flow-events";
 export { getReviewHistoryImpl } from "./review-history";
 export { getReviewCommentsImpl } from "./review-history";
 
@@ -113,6 +114,7 @@ export async function startAutomaticPrReviewCycleImpl(
     },
   };
   await saveLoop(loop);
+  emitAutomaticPrFlowUpdatedEvent(ctx.emitter, loopId, loop.state.automaticPrFlow);
 
   const result = await startFeedbackCycleImpl(ctx, loopId, {
     prompt: constructAutomaticPrReviewPrompt(options.feedbackItems),
@@ -130,6 +132,7 @@ export async function startAutomaticPrReviewCycleImpl(
           updatedAt: new Date().toISOString(),
         };
         await saveLoop(latestLoop);
+        emitAutomaticPrFlowUpdatedEvent(ctx.emitter, loopId, latestLoop.state.automaticPrFlow);
       }
     }
     return result;
@@ -146,13 +149,14 @@ export async function startAutomaticPrReviewCycleImpl(
       activeBatch: undefined,
     };
     await saveLoop(rollbackLoop);
+    emitAutomaticPrFlowUpdatedEvent(ctx.emitter, loopId, rollbackLoop.state.automaticPrFlow);
   }
 
   return result;
 }
 
 export async function startAutomaticPrFlowImpl(
-  _ctx: LoopCtx,
+  ctx: LoopCtx,
   loopId: string,
 ): Promise<{ success: boolean; error?: string; automaticPrFlow?: Loop["state"]["automaticPrFlow"] }> {
   const loop = await loadLoop(loopId);
@@ -200,6 +204,7 @@ export async function startAutomaticPrFlowImpl(
       stoppedAt: undefined,
     };
     await saveLoop(loop);
+    emitAutomaticPrFlowUpdatedEvent(ctx.emitter, loopId, loop.state.automaticPrFlow);
 
     return { success: true, automaticPrFlow: loop.state.automaticPrFlow };
   } catch (error) {
@@ -208,7 +213,7 @@ export async function startAutomaticPrFlowImpl(
 }
 
 export async function stopAutomaticPrFlowImpl(
-  _ctx: LoopCtx,
+  ctx: LoopCtx,
   loopId: string,
 ): Promise<{ success: boolean; error?: string; automaticPrFlow?: Loop["state"]["automaticPrFlow"] }> {
   const loop = await loadLoop(loopId);
@@ -240,6 +245,7 @@ export async function stopAutomaticPrFlowImpl(
         stoppedAt: now,
       };
   await saveLoop(loop);
+  emitAutomaticPrFlowUpdatedEvent(ctx.emitter, loopId, loop.state.automaticPrFlow);
 
   return { success: true, automaticPrFlow: loop.state.automaticPrFlow };
 }

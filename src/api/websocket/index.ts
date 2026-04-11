@@ -19,7 +19,7 @@
  * - loop.message, loop.tool_call, loop.progress, loop.log
  * - loop.git.commit, loop.deleted, loop.merged, loop.accepted, loop.pushed, loop.discarded
  * - loop.plan.ready, loop.plan.feedback, loop.plan.accepted, loop.plan.discarded
- * - loop.pending.updated
+ * - loop.pending.updated, loop.automatic_pr_flow.updated
  * - ssh_session.created, ssh_session.updated, ssh_session.deleted, ssh_session.status
  * - ssh_session.port_forward.created, ssh_session.port_forward.updated,
  *   ssh_session.port_forward.deleted, ssh_session.port_forward.status

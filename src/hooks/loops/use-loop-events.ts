@@ -38,6 +38,7 @@ export function useLoopEvents({ refresh, refreshLoop, setLoops }: UseLoopEventsO
       case "loop.plan.ready":
       case "loop.plan.feedback":
       case "loop.plan.discarded":
+      case "loop.automatic_pr_flow.updated":
         // Refresh the specific loop to get updated state
         refreshLoop(event.loopId);
         break;

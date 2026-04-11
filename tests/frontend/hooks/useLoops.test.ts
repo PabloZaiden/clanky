@@ -212,6 +212,68 @@ describe("WebSocket events", () => {
       expect(result.current.loops[0]!.state.status).toBe("completed");
     });
   });
+
+  test("loop.automatic_pr_flow.updated triggers a single-loop refresh", async () => {
+    const initialLoop = createLoopWithStatus("pushed", {
+      config: { id: "loop-1" },
+      state: {
+        id: "loop-1",
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+      },
+    });
+    const updatedLoop = createLoopWithStatus("pushed", {
+      config: { id: "loop-1" },
+      state: {
+        id: "loop-1",
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          lastCheckedAt: "2026-04-11T04:00:00.000Z",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/example/repo/pull/42",
+          handledItems: [],
+        },
+      },
+    });
+    setupLoopsList([initialLoop]);
+    api.get("/api/loops/:id", () => updatedLoop);
+
+    const { result } = renderHook(() => useLoops());
+
+    await waitFor(() => {
+      expect(result.current.loops).toHaveLength(1);
+    });
+
+    await waitFor(() => {
+      expect(ws.connections().length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.automatic_pr_flow.updated",
+        loopId: "loop-1",
+        automaticPrFlow: updatedLoop.state.automaticPrFlow,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.loops[0]!.state.automaticPrFlow?.enabled).toBe(true);
+    });
+  });
 });
 
 // ─── createLoop ──────────────────────────────────────────────────────────────
