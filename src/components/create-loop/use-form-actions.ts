@@ -98,7 +98,12 @@ export function useFormActions({
     !!name.trim() &&
     selectedModelEnabled;
   const canGenerateTitle =
-    !!selectedWorkspaceId && !!prompt.trim() && !isSubmitting && !generatingTitle;
+    !!selectedWorkspaceId &&
+    !!prompt.trim() &&
+    !!selectedModel &&
+    selectedModelEnabled &&
+    !isSubmitting &&
+    !generatingTitle;
 
   const handleSubmit = useCallback(
     async (e: FormEvent, asDraft = false) => {

@@ -91,7 +91,11 @@ export async function handleCreateLoopSubmit(
 
         props.setLastModel(request.model);
         props.setLastCheapModel(request.cheapModel ?? null);
-        await persistLoopPreferences(props.workspaces, request);
+        try {
+          await persistLoopPreferences(props.workspaces, request);
+        } catch (error) {
+          log.error("Failed to persist loop preferences after draft update:", error);
+        }
         await props.onRefresh();
         return true;
       } catch (error) {

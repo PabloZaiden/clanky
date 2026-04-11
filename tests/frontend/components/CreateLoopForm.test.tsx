@@ -296,6 +296,22 @@ describe("CreateLoopForm", () => {
       });
     });
 
+    test("disables title generation until a valid model is selected", async () => {
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            workspaces: testWorkspaces(),
+            models: [],
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *"), "ws-1");
+      await user.type(getByLabelText(/Prompt/) as HTMLTextAreaElement, "X");
+
+      expect(getByRole("button", { name: "Generate title with AI" })).toBeDisabled();
+    });
+
     test("renders model variants as separate options", () => {
       const models = [
         createModelInfo({

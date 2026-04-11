@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Loop, Workspace } from "../../types";
 import { appFetch } from "../../lib/public-path";
 import { useDashboardData, useToast } from "../../hooks";
+import { createLogger } from "../../lib/logger";
 import {
   CreateLoopForm,
   getComposeDraftActionLabel,
@@ -14,6 +15,8 @@ import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import type { CreateLoopRequest } from "../../types";
 import { stripTransientAttachments } from "../../lib/image-attachments";
+
+const log = createLogger("DraftLoopComposer");
 
 export function DraftLoopComposer({
   loop,
@@ -124,7 +127,11 @@ export function DraftLoopComposer({
 
       setLastModel(request.model);
       setLastCheapModel(request.cheapModel ?? null);
-      await persistLoopPreferences(request);
+      try {
+        await persistLoopPreferences(request);
+      } catch (error) {
+        log.error("Failed to persist loop preferences after draft update:", error);
+      }
       await onRefresh();
       return true;
     } catch (error) {

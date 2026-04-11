@@ -41,6 +41,8 @@ export function useTitleGeneration({
 
     const parsedModel = parseModelKey(selectedModel);
     if (!parsedModel) {
+      log.error("Failed to generate loop title: invalid selected model", { selectedModel });
+      toast.error("Select a valid model before generating a title.");
       return;
     }
 
