@@ -21,6 +21,7 @@ import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { nextWithTimeout } from "./engine/engine-helpers";
 import { isSessionNotFoundError } from "./engine/engine-session";
 import { GitService } from "./git";
+import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { loopManager } from "./loop-manager";
 import { createLogger } from "./logger";
 import { sanitizeBranchName } from "../utils";
@@ -547,6 +548,18 @@ export class ChatManager {
 
     const worktreeExists = await git.worktreeExists(chat.config.directory, worktreePath);
     if (!worktreeExists) {
+      await syncMainCheckoutBeforeWorktree({
+        git,
+        directory: chat.config.directory,
+        baseBranch: originalBranch,
+        onInfo: (message: string) => {
+          log.info(`[ChatManager] ${message}`);
+        },
+        onDebug: (message: string) => {
+          log.debug(`[ChatManager] ${message}`);
+        },
+      });
+
       const branchExists = await git.branchExists(chat.config.directory, workingBranch);
       if (branchExists) {
         await git.addWorktreeForExistingBranch(chat.config.directory, worktreePath, workingBranch);

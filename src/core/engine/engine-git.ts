@@ -11,6 +11,7 @@ import type { LoopBackend } from "./engine-types";
 import { buildLoopBranchName } from "../branch-name";
 import { backendManager } from "../backend-manager";
 import { formatConventionalCommit, normalizeAiCommitMessage } from "../conventional-commits";
+import { syncMainCheckoutBeforeWorktree } from "../git/worktree-sync";
 import { log } from "../logger";
 import { getPlanningDirectoryPath } from "../../lib/planning-files";
 
@@ -113,31 +114,17 @@ export async function setupLoopGitBranch(ctx: GitOperationContext, _allowPlannin
     });
   }
 
-  const currentBranch = await ctx.git.getCurrentBranch(directory);
-  if (currentBranch !== originalBranch) {
-    ctx.emitLog("info", `Checking out base branch in main checkout: ${originalBranch}`);
-    await ctx.git.checkoutBranch(directory, originalBranch);
-  }
-
-  if (!ctx.config.useWorktree) {
-    ctx.emitLog("info", `Pulling latest changes from remote for branch: ${originalBranch}`);
-    const pullSucceeded = await ctx.git.pull(directory, originalBranch);
-    if (pullSucceeded) {
-      ctx.emitLog("info", `Successfully pulled latest changes for ${originalBranch}`);
-    } else {
-      ctx.emitLog("debug", `Skipped pull for ${originalBranch} (no remote or upstream configured)`);
-    }
-  } else {
-    // Pull latest changes from the base branch to minimize merge conflicts.
-    // Pull happens on the main checkout (config.directory), not the worktree.
-    ctx.emitLog("info", `Pulling latest changes from remote for branch: ${originalBranch}`);
-    const pullSucceeded = await ctx.git.pull(directory, originalBranch);
-    if (pullSucceeded) {
-      ctx.emitLog("info", `Successfully pulled latest changes for ${originalBranch}`);
-    } else {
-      ctx.emitLog("debug", `Skipped pull for ${originalBranch} (no remote or upstream configured)`);
-    }
-  }
+  await syncMainCheckoutBeforeWorktree({
+    git: ctx.git,
+    directory,
+    baseBranch: originalBranch,
+    onInfo: (message: string) => {
+      ctx.emitLog("info", message);
+    },
+    onDebug: (message: string) => {
+      ctx.emitLog("debug", message);
+    },
+  });
 
   const worktreePath = ctx.config.useWorktree
     ? await setupWorktree(ctx, directory, branchName, originalBranch)
