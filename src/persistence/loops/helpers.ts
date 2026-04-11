@@ -70,6 +70,7 @@ export const ALLOWED_LOOP_COLUMNS = new Set([
   "plan_is_ready",
   "pending_plan_question",
   "review_mode",
+  "pull_request_monitoring",
   "git_worktree_path",
   "mode",
 ]);
@@ -148,6 +149,7 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     plan_is_ready: state.planMode?.isPlanReady ? 1 : 0,
     pending_plan_question: null,
     review_mode: state.reviewMode ? JSON.stringify(state.reviewMode) : null,
+    pull_request_monitoring: state.pullRequestMonitoring ? JSON.stringify(state.pullRequestMonitoring) : null,
   };
 }
 
@@ -308,6 +310,14 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
   // Reconstruct reviewMode from JSON
   if (row["review_mode"] !== null) {
     state.reviewMode = safeJsonParse(row["review_mode"] as string, undefined, "review_mode", rowId);
+  }
+  if (typeof row["pull_request_monitoring"] === "string") {
+    state.pullRequestMonitoring = safeJsonParse(
+      row["pull_request_monitoring"] as string,
+      undefined,
+      "pull_request_monitoring",
+      rowId,
+    );
   }
 
   return { config, state };
