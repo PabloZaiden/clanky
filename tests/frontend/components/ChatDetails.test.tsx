@@ -177,7 +177,8 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Rename" }));
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Rename" }));
 
     const input = await waitFor(() => getByLabelText("Chat Name")) as HTMLInputElement;
     await user.clear(input);
@@ -229,10 +230,11 @@ describe("ChatDetails", () => {
     );
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Spawn loop" })).toBeTruthy();
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Spawn loop" }));
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Spawn Loop" }));
 
     await waitFor(() => {
       expect(openedLoopId).toBe("loop-1");
@@ -830,7 +832,8 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Delete chat" }));
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Delete" }));
     await user.click(getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
@@ -870,15 +873,16 @@ describe("ChatDetails", () => {
     );
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Code explorer" })).toBeTruthy();
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Code explorer" }));
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Code explorer" }));
 
     expect(openedChatId).toBe(CHAT_ID);
   });
 
-  test("renders compact mobile header actions with a menu for secondary controls", async () => {
+  test("renders chat header actions in a single plus menu while keeping focus mode separate", async () => {
     const baseChat = createChat();
     const longChat = createChat({
       config: {
@@ -898,7 +902,7 @@ describe("ChatDetails", () => {
 
     api.get("/api/chats/:id", () => longChat);
 
-    const { getByRole, getByTestId, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByText, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     const heading = await waitFor(() => getByText(longChat.config.name));
     expect(heading.className).toContain("truncate");
@@ -909,33 +913,31 @@ describe("ChatDetails", () => {
     const branchMetadata = getByText(longChat.state.worktree?.workingBranch ?? "");
     expect(branchMetadata.className).toContain("truncate");
 
-    const mobileActions = getByTestId("chat-header-mobile-actions");
-    expect(mobileActions.className).toContain("sm:hidden");
+    expect(getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
+    expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Spawn loop" })).toBeNull();
+    expect(queryByRole("button", { name: "Delete chat" })).toBeNull();
+    expect(queryByRole("button", { name: "Code explorer" })).toBeNull();
+    expect(queryByRole("button", { name: "Rename" })).toBeNull();
 
-    const desktopActions = getByTestId("chat-header-desktop-actions");
-    expect(desktopActions.className).toContain("hidden");
-    expect(desktopActions.className).toContain("sm:flex");
+    await user.click(getByRole("button", { name: "Chat actions" }));
 
-    expect(getByRole("button", { name: "More chat actions" })).toBeTruthy();
-    expect(getByRole("button", { name: "Spawn loop" })).toBeTruthy();
-
-    await user.click(getByRole("button", { name: "More chat actions" }));
-
+    expect(getByRole("menuitem", { name: "Spawn Loop" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Code explorer" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Rename" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Delete" })).toBeTruthy();
   });
 
-  test("opens rename from the compact mobile action menu", async () => {
+  test("opens rename from the header action menu", async () => {
     api.get("/api/chats/:id", () => createChat());
 
     const { getByRole, getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "More chat actions" })).toBeTruthy();
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "More chat actions" }));
+    await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Rename" }));
 
     expect(await waitFor(() => getByLabelText("Chat Name"))).toBeTruthy();
@@ -946,12 +948,13 @@ describe("ChatDetails", () => {
 
     const { getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
-    const desktopCodeExplorerButton = await waitFor(() => getByRole("button", { name: "Code explorer" })) as HTMLButtonElement;
-    expect(desktopCodeExplorerButton.disabled).toBe(true);
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    });
 
-    await user.click(getByRole("button", { name: "More chat actions" }));
+    await user.click(getByRole("button", { name: "Chat actions" }));
 
-    const mobileCodeExplorerItem = getByRole("menuitem", { name: "Code explorer" }) as HTMLButtonElement;
-    expect(mobileCodeExplorerItem.disabled).toBe(true);
+    const codeExplorerItem = getByRole("menuitem", { name: "Code explorer" }) as HTMLButtonElement;
+    expect(codeExplorerItem.disabled).toBe(true);
   });
 });
