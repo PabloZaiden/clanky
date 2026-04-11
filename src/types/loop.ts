@@ -9,10 +9,10 @@
  * @module types/loop
  */
 
-// Import and re-export ModelConfig from schema (single source of truth)
-import type { ModelConfig } from "./schemas/model";
+// Import and re-export model types from schema (single source of truth)
+import type { CheapModelSelection, ModelConfig } from "./schemas/model";
 import type { MessageImageAttachment } from "./message-attachments";
-export type { ModelConfig };
+export type { CheapModelSelection, ModelConfig };
 
 /**
  * Configuration for a Ralph Loop.
@@ -40,6 +40,15 @@ export interface LoopConfig {
 
   /** Model configuration for AI provider and model selection (required) */
   model: ModelConfig;
+
+  /**
+   * Optional helper-model configuration for lightweight operations such as
+   * title and PR metadata generation.
+   *
+   * New loops persist this explicitly; legacy loops may omit it and should be
+   * treated as "same as loop model".
+   */
+  cheapModel?: CheapModelSelection;
 
   /** Maximum iterations before stopping (Infinity for unlimited) */
   maxIterations: number;
@@ -470,6 +479,9 @@ export const DEFAULT_LOOP_CONFIG = {
   planMode: true,
   autoAcceptPlan: true,
   fullyAutonomous: false,
+  cheapModel: {
+    mode: "same-as-loop",
+  } as const,
   mode: "loop" as const,
   git: {
     branchPrefix: "",

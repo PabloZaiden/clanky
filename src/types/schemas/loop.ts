@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 import { normalizeCommitScope } from "../../utils/commit-scope";
-import { ModelConfigSchema } from "./model";
+import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
 import {
   MESSAGE_IMAGE_ATTACHMENT_LIMIT,
   MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
@@ -109,6 +109,7 @@ export const CreateLoopRequestSchema = z.object({
   prompt: z.string().min(1, "prompt is required and must be a non-empty string"),
   attachments: MessageImageAttachmentsSchema.optional(),
   model: ModelConfigSchema,
+  cheapModel: CheapModelSelectionSchema.optional(),
   maxIterations: z.number().optional(),
   maxConsecutiveErrors: z.number().optional(),
   activityTimeoutSeconds: z
@@ -137,6 +138,7 @@ export const UpdateLoopRequestSchema = z.object({
   directory: z.string().optional(),
   prompt: z.string().optional(),
   model: ModelConfigSchema.optional(),
+  cheapModel: CheapModelSelectionSchema.optional(),
   maxIterations: z.number().optional(),
   maxConsecutiveErrors: z.number().optional(),
   activityTimeoutSeconds: z
@@ -159,6 +161,8 @@ export const UpdateLoopRequestSchema = z.object({
 export const GenerateLoopTitleRequestSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
   prompt: z.string().trim().min(1, "prompt is required and must be a non-empty string"),
+  model: ModelConfigSchema,
+  cheapModel: CheapModelSelectionSchema.optional(),
 });
 
 /**

@@ -179,6 +179,12 @@ export interface ModelSelectorProps {
   currentModelKey?: string;
   /** Placeholder shown when no model is selected. */
   placeholder?: string;
+  /** Extra options rendered before provider groups. */
+  additionalOptions?: Array<{
+    value: string;
+    label: string;
+    disabled?: boolean;
+  }>;
   /** Text shown while loading. */
   loadingText?: string;
   /** Text shown when no models are available. */
@@ -198,6 +204,7 @@ export function ModelSelector({
   showDisconnected = false,
   currentModelKey,
   placeholder = "Select a model...",
+  additionalOptions = [],
   loadingText = "Loading models...",
   emptyText = "Select a workspace to load models",
   className = "",
@@ -205,20 +212,26 @@ export function ModelSelector({
 }: ModelSelectorProps) {
   const { modelsByProvider, connectedProviders, disconnectedProviders } =
     groupModelsByProvider(models);
+  const hasOptions = additionalOptions.length > 0 || models.length > 0;
 
   return (
     <select
       id={id}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      disabled={disabled || loading || models.length === 0}
+      disabled={disabled || loading || !hasOptions}
       className={className}
     >
       {loading && <option value="">{loadingText}</option>}
-      {!loading && models.length === 0 && <option value="">{emptyText}</option>}
+      {!loading && !hasOptions && <option value="">{emptyText}</option>}
       {!loading && models.length > 0 && (
         <>
           <option value="">{placeholder}</option>
+          {additionalOptions.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
           {connectedProviders.map((provider) => {
             const providerModels = modelsByProvider[provider] ?? [];
             return (
@@ -248,6 +261,16 @@ export function ModelSelector({
               No connected providers available
             </option>
           )}
+        </>
+      )}
+      {!loading && models.length === 0 && additionalOptions.length > 0 && (
+        <>
+          <option value="">{placeholder}</option>
+          {additionalOptions.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </option>
+          ))}
         </>
       )}
     </select>

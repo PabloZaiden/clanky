@@ -24,8 +24,24 @@ export const ModelConfigSchema = z.object({
 });
 
 /**
+ * Schema for choosing how helper-only operations should pick a model.
+  *
+ * - `same-as-loop`: use the loop's main execution model
+ * - `custom`: use a distinct model configuration for lightweight helper work
+ */
+export const CheapModelSelectionSchema = z.discriminatedUnion("mode", [
+  z.object({
+    mode: z.literal("same-as-loop"),
+  }),
+  z.object({
+    mode: z.literal("custom"),
+    model: ModelConfigSchema,
+  }),
+]);
+
+/**
  * Inferred type from ModelConfigSchema.
  * This is the single source of truth for the ModelConfig type.
  */
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
-
+export type CheapModelSelection = z.infer<typeof CheapModelSelectionSchema>;

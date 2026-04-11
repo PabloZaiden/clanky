@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
 import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
 import {
@@ -7,8 +10,10 @@ import {
   resolveAutomaticPrFlowReviewThread,
 } from "../../src/core/automatic-pr-flow-github";
 import { backendManager } from "../../src/core/backend-manager";
-import { createLoopWithStatus } from "../frontend/helpers/factories";
-import { createMockBackend } from "../mocks/mock-backend";
+import { createLoopWithStatus, createModelInfo } from "../frontend/helpers/factories";
+import { createMockBackend, MockAcpBackend } from "../mocks/mock-backend";
+
+let testDataDir: string;
 
 class StubExecutor implements CommandExecutor {
   private responses = new Map<string, CommandResult[]>();
@@ -89,12 +94,31 @@ function createPushedLoop() {
 }
 
 describe("automatic PR flow GitHub helpers", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-automatic-pr-test-"));
+    process.env["RALPHER_DATA_DIR"] = testDataDir;
     backendManager.resetForTesting();
+    const { ensureDataDirectories, closeDatabase } = await import("../../src/persistence/database");
+    closeDatabase();
+    await ensureDataDirectories();
+    const { createWorkspace } = await import("../../src/persistence/workspaces");
+    const { getDefaultServerSettings } = await import("../../src/types/settings");
+    await createWorkspace({
+      id: "workspace-1",
+      name: "Test Workspace",
+      directory: "/workspaces/test-project",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      serverSettings: getDefaultServerSettings(),
+    });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     backendManager.resetForTesting();
+    const { closeDatabase } = await import("../../src/persistence/database");
+    closeDatabase();
+    delete process.env["RALPHER_DATA_DIR"];
+    await rm(testDataDir, { recursive: true, force: true });
   });
 
   test("reuses an existing pull request when one already exists", async () => {
@@ -223,6 +247,137 @@ describe("automatic PR flow GitHub helpers", () => {
     expect(createCall).toBeDefined();
     expect(createCall?.args).toContain("Generate PR metadata from actual changes");
     expect(createCall?.args.join("\n")).not.toContain("Ralpher");
+  });
+
+  test("uses the configured cheap model for PR metadata when it is available", async () => {
+    const loop = createPushedLoop();
+    loop.config.model = {
+      providerID: "anthropic",
+      modelID: "claude-sonnet",
+    };
+    loop.config.cheapModel = {
+      mode: "custom",
+      model: {
+        providerID: "openai",
+        modelID: "gpt-4o-mini",
+        variant: "fast",
+      },
+    };
+    loop.state.git!.commits = [
+      {
+        iteration: 1,
+        sha: "abc123",
+        message: "feat(pr): generate helper metadata with cheap model",
+        timestamp: "2026-04-11T04:00:00.000Z",
+        filesChanged: 1,
+      },
+    ];
+
+    const executor = new StubExecutor();
+    const git = new StubGitService();
+    const backend = new MockAcpBackend({
+      responses: [
+        JSON.stringify({
+          title: "Use the helper model for metadata generation",
+          body: "## Summary\n- Route PR metadata generation through the helper model.",
+        }),
+      ],
+      models: [
+        createModelInfo({
+          providerID: "anthropic",
+          modelID: "claude-sonnet",
+          modelName: "Claude Sonnet",
+          providerName: "Anthropic",
+          connected: true,
+        }),
+        createModelInfo({
+          providerID: "openai",
+          modelID: "gpt-4o-mini",
+          modelName: "GPT-4o Mini",
+          providerName: "OpenAI",
+          connected: true,
+          variants: ["fast"],
+        }),
+      ],
+    });
+    let promptModel: { providerID: string; modelID: string; variant?: string } | undefined;
+    const originalSendPrompt = backend.sendPrompt.bind(backend);
+    backend.sendPrompt = async (sessionId, prompt) => {
+      promptModel = prompt.model;
+      return await originalSendPrompt(sessionId, prompt);
+    };
+    backendManager.setBackendForTesting(backend);
+
+    executor.addResponse("gh", ["--version"], {
+      success: true,
+      stdout: "gh version 2.0.0",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+      success: false,
+      stdout: "",
+      stderr: "no pull requests found for branch \"feature/automatic-pr-flow\"",
+      exitCode: 1,
+    });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--numstat", "main"], {
+      success: true,
+      stdout: "1\t0\tsrc/core/automatic-pr-flow-github.ts\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--name-status", "main"], {
+      success: true,
+      stdout: "M\tsrc/core/automatic-pr-flow-github.ts\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("git", ["-C", "/tmp/repo", "diff", "--shortstat", "main"], {
+      success: true,
+      stdout: " 1 file changed, 1 insertion(+)\n",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse(
+      "gh",
+      [
+        "pr",
+        "create",
+        "--base",
+        "main",
+        "--head",
+        "feature/automatic-pr-flow",
+        "--title",
+        "Use the helper model for metadata generation",
+        "--body",
+        "## Summary\n- Route PR metadata generation through the helper model.",
+      ],
+      {
+        success: true,
+        stdout: "https://github.com/owner/repo/pull/42\n",
+        stderr: "",
+        exitCode: 0,
+      },
+    );
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+      success: true,
+      stdout: JSON.stringify({
+        number: 42,
+        url: "https://github.com/owner/repo/pull/42",
+        state: "OPEN",
+        reviewDecision: "REVIEW_REQUIRED",
+      }),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    await ensureAutomaticPrFlowPullRequest(loop, "/tmp/repo", executor, git);
+
+    expect(promptModel).toEqual({
+      providerID: "openai",
+      modelID: "gpt-4o-mini",
+      variant: "fast",
+    });
   });
 
   test("falls back to deterministic non-branded metadata when AI output is unusable", async () => {

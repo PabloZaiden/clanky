@@ -130,6 +130,15 @@ describe("migration infrastructure", () => {
       expect(applied).toBe(migrations.length);
       expect(getTableColumns(db, "loops")).toContain("automatic_pr_flow");
     });
+
+    test("adds cheap model to loops", () => {
+      db.run("CREATE TABLE loops (id TEXT PRIMARY KEY)");
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "loops")).toContain("cheap_model");
+    });
   });
 
   describe("getTableColumns", () => {

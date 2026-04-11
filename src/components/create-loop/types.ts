@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { CreateLoopRequest, ModelInfo, BranchInfo } from "../../types";
 import type { ComposerImageAttachment } from "../../types/message-attachments";
 import type { Workspace } from "../../types/workspace";
+import type { CheapModelSelection } from "../../types";
 
 /** State for action buttons, exposed via renderActions prop */
 export interface CreateLoopFormActionState {
@@ -52,6 +53,8 @@ export interface CreateLoopFormProps {
   modelsLoading?: boolean;
   /** Last used model (includes variant) */
   lastModel?: { providerID: string; modelID: string; variant?: string } | null;
+  /** Last used cheap helper-model selection */
+  lastCheapModel?: CheapModelSelection | null;
   /** Callback when workspace changes (to reload models and branches) */
   onWorkspaceChange?: (workspaceId: string | null, directory: string) => void;
   /** Warning about the managed planning directory */
@@ -70,9 +73,10 @@ export interface CreateLoopFormProps {
   initialLoopData?: {
     name?: string;
     directory: string;
-    prompt: string;
-    model?: { providerID: string; modelID: string; variant?: string };
-    maxIterations?: number;
+     prompt: string;
+     model?: { providerID: string; modelID: string; variant?: string };
+     cheapModel?: CheapModelSelection;
+     maxIterations?: number;
     maxConsecutiveErrors?: number;
     activityTimeoutSeconds?: number;
     baseBranch?: string;

@@ -271,6 +271,20 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 9,
+    name: "add_loop_cheap_model",
+    up: (db) => {
+      if (!tableExists(db, "loops")) {
+        return;
+      }
+      const columns = getTableColumns(db, "loops");
+      if (columns.includes("cheap_model")) {
+        return;
+      }
+      db.run("ALTER TABLE loops ADD COLUMN cheap_model TEXT");
+    },
+  },
 ];
 
 /**

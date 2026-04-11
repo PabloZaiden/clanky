@@ -28,6 +28,8 @@ export interface UseDashboardDataResult {
   modelsLoading: boolean;
   lastModel: { providerID: string; modelID: string } | null;
   setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  lastCheapModel: import("../../types").CheapModelSelection | null;
+  setLastCheapModel: (selection: import("../../types").CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
 
   // Planning
@@ -90,6 +92,8 @@ export function useDashboardData(): UseDashboardDataResult {
     modelsLoading: workspaceModels.modelsLoading,
     lastModel: workspaceModels.lastModel,
     setLastModel: workspaceModels.setLastModel,
+    lastCheapModel: workspaceModels.lastCheapModel,
+    setLastCheapModel: workspaceModels.setLastCheapModel,
     modelsWorkspaceId: workspaceModels.modelsWorkspaceId,
     planningWarning: planningDir.planningWarning,
     branches: workspaceBranches.branches,

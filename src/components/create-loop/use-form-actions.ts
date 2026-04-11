@@ -9,6 +9,7 @@ import { parseModelKey } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
 import type { CreateLoopFormProps, CreateLoopFormSubmitRequest } from "./types";
 import { toMessageImageAttachments } from "../../lib/image-attachments";
+import { cheapModelValueToSelection } from "./use-model-selection";
 
 const log = createLogger("CreateLoopForm");
 
@@ -27,6 +28,7 @@ export interface UseFormActionsReturn {
 export function useFormActions({
   selectedWorkspaceId,
   selectedModel,
+  selectedCheapModel,
   selectedModelEnabled,
   planMode,
   autoAcceptPlan,
@@ -54,6 +56,7 @@ export function useFormActions({
 }: {
   selectedWorkspaceId: string | undefined;
   selectedModel: string;
+  selectedCheapModel: string;
   selectedModelEnabled: boolean;
   planMode: boolean;
   autoAcceptPlan: boolean;
@@ -138,6 +141,7 @@ export function useFormActions({
         autoAcceptPlan: planMode ? (fullyAutonomous ? true : autoAcceptPlan) : false,
         fullyAutonomous: planMode ? fullyAutonomous : false,
         model,
+        cheapModel: cheapModelValueToSelection(selectedCheapModel),
         useWorktree,
       };
 
@@ -194,6 +198,7 @@ export function useFormActions({
     [
       selectedWorkspaceId,
       selectedModel,
+      selectedCheapModel,
       selectedModelEnabled,
       planMode,
        autoAcceptPlan,

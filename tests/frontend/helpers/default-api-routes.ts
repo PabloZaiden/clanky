@@ -69,6 +69,7 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
     },
   })),
   defaultRoute("/api/preferences/last-model", () => null),
+  defaultRoute("/api/preferences/last-cheap-model", () => null),
   defaultRoute("/api/preferences/last-directory", () => null),
   defaultRoute("/api/preferences/log-level", () => ({
     level: "info",

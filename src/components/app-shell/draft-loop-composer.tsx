@@ -21,6 +21,9 @@ export function DraftLoopComposer({
   models,
   modelsLoading,
   lastModel,
+  lastCheapModel,
+  setLastModel,
+  setLastCheapModel,
   onWorkspaceChange,
   planningWarning,
   branches,
@@ -39,6 +42,9 @@ export function DraftLoopComposer({
   models: ReturnType<typeof useDashboardData>["models"];
   modelsLoading: boolean;
   lastModel: ReturnType<typeof useDashboardData>["lastModel"];
+  lastCheapModel: ReturnType<typeof useDashboardData>["lastCheapModel"];
+  setLastModel: ReturnType<typeof useDashboardData>["setLastModel"];
+  setLastCheapModel: ReturnType<typeof useDashboardData>["setLastCheapModel"];
   onWorkspaceChange: ReturnType<typeof useDashboardData>["handleWorkspaceChange"];
   planningWarning: string | null;
   branches: ReturnType<typeof useDashboardData>["branches"];
@@ -69,6 +75,39 @@ export function DraftLoopComposer({
     onNavigate(exitRoute);
   }
 
+  async function persistLoopPreferences(request: CreateLoopRequest): Promise<void> {
+    const operations: Promise<Response>[] = [
+      appFetch("/api/preferences/last-model", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request.model),
+      }),
+    ];
+
+    if (request.cheapModel) {
+      operations.push(
+        appFetch("/api/preferences/last-cheap-model", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(request.cheapModel),
+        }),
+      );
+    }
+
+    const workspace = workspaces.find((item) => item.id === request.workspaceId);
+    if (workspace) {
+      operations.push(
+        appFetch("/api/preferences/last-directory", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ directory: workspace.directory }),
+        }),
+      );
+    }
+
+    await Promise.all(operations);
+  }
+
   async function persistDraftChanges(request: CreateLoopRequest): Promise<boolean> {
     try {
       const response = await appFetch(`/api/loops/${loop.config.id}`, {
@@ -83,6 +122,9 @@ export function DraftLoopComposer({
         return false;
       }
 
+      setLastModel(request.model);
+      setLastCheapModel(request.cheapModel ?? null);
+      await persistLoopPreferences(request);
       await onRefresh();
       return true;
     } catch (error) {
@@ -227,6 +269,7 @@ export function DraftLoopComposer({
         models={models}
         modelsLoading={modelsLoading}
         lastModel={lastModel}
+        lastCheapModel={lastCheapModel}
         onWorkspaceChange={onWorkspaceChange}
         planningWarning={planningWarning}
         branches={branches}
@@ -235,11 +278,12 @@ export function DraftLoopComposer({
         defaultBranch={defaultBranch}
         editLoopId={loop.config.id}
         initialLoopData={{
-          name: loop.config.name,
-          directory: loop.config.directory,
-          prompt: loop.config.prompt,
-          model: loop.config.model,
-          maxIterations: Number.isFinite(loop.config.maxIterations) ? loop.config.maxIterations : undefined,
+           name: loop.config.name,
+           directory: loop.config.directory,
+           prompt: loop.config.prompt,
+           model: loop.config.model,
+           cheapModel: loop.config.cheapModel,
+           maxIterations: Number.isFinite(loop.config.maxIterations) ? loop.config.maxIterations : undefined,
           maxConsecutiveErrors: loop.config.maxConsecutiveErrors,
           activityTimeoutSeconds: loop.config.activityTimeoutSeconds,
           baseBranch: loop.config.baseBranch,

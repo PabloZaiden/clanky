@@ -7,21 +7,21 @@
  */
 
 // Re-export all public types
-export type { CreateLoopOptions, StartLoopOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
+export type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
 export { getLoopWorkingDirectory } from "./loop-types";
 
 import type { LoopCtx } from "./context";
 import type { Loop, LoopConfig, LoopState } from "../../types/loop";
 import type { LoopEvent } from "../../types/events";
 import type { ModelConfig } from "../../types/loop";
-import type { CreateLoopOptions, StartLoopOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
+import type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 
 import { LoopEngine } from "../loop-engine";
 import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
 
-import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
+import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
 import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
 import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
 import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
@@ -73,7 +73,7 @@ export class LoopManager {
     return createLoopImpl(this.ctx, options);
   }
 
-  async generateLoopTitle(options: Pick<CreateLoopOptions, "prompt" | "directory" | "workspaceId">): Promise<string> {
+  async generateLoopTitle(options: GenerateLoopTitleOptions): Promise<string> {
     return generateLoopTitleImpl(this.ctx, options);
   }
 
@@ -265,6 +265,10 @@ export class LoopManager {
     variant?: string;
   }): Promise<void> {
     return saveLastUsedModelImpl(this.ctx, model);
+  }
+
+  async saveLastUsedCheapModel(selection: NonNullable<LoopConfig["cheapModel"]>): Promise<void> {
+    return saveLastUsedCheapModelImpl(this.ctx, selection);
   }
 
   isRunning(loopId: string): boolean {

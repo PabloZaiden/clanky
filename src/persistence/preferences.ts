@@ -14,6 +14,8 @@
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
 import type { DashboardViewMode } from "../types/preferences";
+import { CheapModelSelectionSchema } from "../types/schemas/model";
+import type { CheapModelSelection } from "../types";
 
 const log = createLogger("persistence:preferences");
 
@@ -58,6 +60,8 @@ export interface UserPreferences {
     /** Model variant (e.g., "thinking"). Empty string or undefined for default. */
     variant?: string;
   };
+  /** Last used helper-model selection for cheap operations */
+  lastCheapModel?: CheapModelSelection;
   /** Last used working directory for loop creation */
   lastDirectory?: string;
   /** Whether markdown rendering is enabled (defaults to true) */
@@ -129,6 +133,43 @@ export async function setLastModel(model: {
 }): Promise<void> {
   log.debug("Setting last model preference", { providerID: model.providerID, modelID: model.modelID, variant: model.variant });
   setPreference("lastModel", JSON.stringify(model));
+}
+
+/**
+ * Get the last used cheap helper-model selection.
+ */
+export async function getLastCheapModel(): Promise<UserPreferences["lastCheapModel"]> {
+  log.debug("Getting last cheap model preference");
+  const lastCheapModelJson = getPreference("lastCheapModel");
+  if (!lastCheapModelJson) {
+    log.trace("No last cheap model preference found");
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(lastCheapModelJson);
+    const validation = CheapModelSelectionSchema.safeParse(parsed);
+    if (!validation.success) {
+      log.warn("Failed to validate last cheap model preference", {
+        issues: validation.error.issues.map((issue) => issue.message),
+      });
+      return undefined;
+    }
+    return validation.data;
+  } catch (error) {
+    log.warn("Failed to parse last cheap model preference", {
+      error: String(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * Set the last used cheap helper-model selection.
+ */
+export async function setLastCheapModel(selection: CheapModelSelection): Promise<void> {
+  log.debug("Setting last cheap model preference", { mode: selection.mode });
+  setPreference("lastCheapModel", JSON.stringify(selection));
 }
 
 /**

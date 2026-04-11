@@ -12,7 +12,7 @@ import type { LoopEvent } from "../../src/types/events";
 import { updateLoopState } from "../../src/persistence/loops";
 import { getDefaultServerSettings } from "../../src/types/settings";
 import { backendManager } from "../../src/core/backend-manager";
-import { createMockBackend } from "../mocks/mock-backend";
+import { createMockBackend, MockAcpBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 describe("LoopManager", () => {
@@ -215,11 +215,62 @@ describe("LoopManager", () => {
         directory: testWorkDir,
         prompt: "Create a loop title for this prompt",
         workspaceId: testWorkspaceId,
+        model: {
+          providerID: testModelFields.modelProviderID,
+          modelID: testModelFields.modelID,
+          variant: testModelFields.modelVariant,
+        },
       });
 
       expect(title).toBe("<promise>COMPLETE</promise>");
       expect(strictBackend.connect).toHaveBeenCalledTimes(1);
       expect(strictBackend.createSession).toHaveBeenCalledTimes(1);
+    });
+
+    test("falls back to the loop model when the configured cheap model is unavailable", async () => {
+      const backend = new MockAcpBackend({
+        responses: ["Loop title"],
+        models: [
+          {
+            providerID: testModelFields.modelProviderID,
+            providerName: "Test Provider",
+            modelID: testModelFields.modelID,
+            modelName: "Test Model",
+            connected: true,
+          },
+        ],
+      });
+      let promptModel: { providerID: string; modelID: string; variant?: string } | undefined;
+      const originalSendPrompt = backend.sendPrompt.bind(backend);
+      backend.sendPrompt = async (sessionId, prompt) => {
+        promptModel = prompt.model;
+        return await originalSendPrompt(sessionId, prompt);
+      };
+      backendManager.setBackendForTesting(backend);
+
+      await manager.generateLoopTitle({
+        directory: testWorkDir,
+        prompt: "Create a loop title for this prompt",
+        workspaceId: testWorkspaceId,
+        model: {
+          providerID: testModelFields.modelProviderID,
+          modelID: testModelFields.modelID,
+          variant: testModelFields.modelVariant,
+        },
+        cheapModel: {
+          mode: "custom",
+          model: {
+            providerID: "missing-provider",
+            modelID: "missing-model",
+          },
+        },
+      });
+
+      expect(promptModel).toEqual({
+        providerID: testModelFields.modelProviderID,
+        modelID: testModelFields.modelID,
+        variant: testModelFields.modelVariant,
+      });
     });
   });
 

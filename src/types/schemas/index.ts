@@ -9,7 +9,9 @@
 // Model schemas
 export {
   ModelConfigSchema,
+  CheapModelSelectionSchema,
   type ModelConfig,
+  type CheapModelSelection,
 } from "./model";
 
 // Loop schemas
@@ -62,6 +64,7 @@ export {
 // Preferences schemas
 export {
   SetLastModelRequestSchema,
+  SetLastCheapModelRequestSchema,
   SetLastDirectoryRequestSchema,
   SetMarkdownRenderingRequestSchema,
   SetFileExplorerFullTreeRequestSchema,
