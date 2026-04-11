@@ -1225,7 +1225,6 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         maxIterations: 2,
         planMode: true,
         autoAcceptPlan: false,
-        fullyAutonomous: true,
       });
       const loopId = loop.config.id;
 
