@@ -162,6 +162,41 @@ describe("WorkspaceFilesView", () => {
     });
   });
 
+  test("hides the back button in the mobile code explorer header", async () => {
+    installEmbeddedSshSessionMock();
+    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const workspace = createWorkspace({
+      id: "workspace-mobile-header",
+      name: "Mobile Header",
+      directory: "/workspaces/mobile-header",
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [],
+      }),
+    }));
+
+    const { getByLabelText, getByRole } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Mobile Header code explorer" })).toBeInTheDocument();
+    });
+
+    expect(getByLabelText("Select code explorer content")).toBeInTheDocument();
+
+    const backButton = getByRole("button", { name: "Back to workspace" });
+    expect(backButton).toHaveClass("hidden", "sm:inline-flex");
+  });
+
   test("lets the user toggle word wrap and override the editor language", async () => {
     installEmbeddedSshSessionMock();
     const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
