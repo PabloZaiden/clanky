@@ -402,7 +402,7 @@ export interface AutomaticPrFlowState {
   /** Whether the automatic PR flow is enabled */
   enabled: boolean;
   /** Current automation phase */
-  status: "starting" | "monitoring" | "processing_feedback" | "stopped" | "error";
+  status: "starting" | "monitoring" | "processing_feedback" | "finalizing_feedback" | "stopped" | "error";
   /** ISO 8601 timestamp when automation was enabled */
   startedAt: string;
   /** ISO 8601 timestamp when automation state was last updated */
