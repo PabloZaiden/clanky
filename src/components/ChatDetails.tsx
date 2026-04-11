@@ -13,6 +13,7 @@ import {
   type ActionMenuItem,
   getChatStatusBadgeVariant,
   getComposerMinHeightClass,
+  getComposerPaddingClass,
   getComposerRows,
 } from "./common";
 import { ChatFocusModeBar } from "./chat-details/chat-focus-mode-bar";
@@ -475,6 +476,7 @@ export function ChatDetails({
   const hasPendingInput = message.trim().length > 0 || attachments.length > 0;
   const composerRows = getComposerRows(message);
   const composerMinHeightClass = getComposerMinHeightClass(composerRows);
+  const composerPaddingClass = getComposerPaddingClass(composerRows);
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
@@ -511,7 +513,7 @@ export function ChatDetails({
           onPaste={handlePaste}
           disabled={isActive || isSubmitting}
           rows={composerRows}
-          className={`${composerMinHeightClass} min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
+          className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
         />
         <ImageAttachmentControl
           ref={attachmentControlRef}

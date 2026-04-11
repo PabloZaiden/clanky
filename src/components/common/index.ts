@@ -25,4 +25,11 @@ export { CollapsibleSection, type CollapsibleSectionProps } from "./CollapsibleS
 export { ToastProvider } from "./Toast";
 export { ActionMenu, type ActionMenuProps, type ActionMenuItem } from "./ActionMenu";
 export { PASSWORD_INPUT_PROPS } from "./passwordInputProps";
-export { getComposerMinHeightClass, getComposerRows, type ComposerMinHeightClass, type ComposerRows } from "./composer-rows";
+export {
+  getComposerMinHeightClass,
+  getComposerPaddingClass,
+  getComposerRows,
+  type ComposerMinHeightClass,
+  type ComposerPaddingClass,
+  type ComposerRows,
+} from "./composer-rows";

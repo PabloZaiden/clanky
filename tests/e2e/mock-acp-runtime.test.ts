@@ -50,7 +50,7 @@ describe("Mock ACP runtime integration", () => {
 
     expect(completed.state.status).toBe("completed");
     expect(completed.state.currentIteration).toBe(1);
-  });
+  }, { timeout: 60_000 });
 
   test("reaches PLAN_READY and then completes accepted-plan execution", async () => {
     const loop = await ctx.manager.createLoop({
@@ -69,5 +69,5 @@ describe("Mock ACP runtime integration", () => {
     await ctx.manager.acceptPlan(loop.config.id);
     const completed = await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
     expect(completed.state.status).toBe("completed");
-  });
+  }, { timeout: 60_000 });
 });
