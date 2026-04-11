@@ -7,6 +7,14 @@
 
 Ralpher is a web dashboard and REST API for running, reviewing, and iterating on Ralph Loops with ACP-compatible agents such as Copilot and OpenCode. It keeps autonomous coding work manageable by starting each iteration with fresh context while persisting state in `.ralph-planning/`.
 
+## Best way to use Ralpher
+
+The recommended workflow is to treat Ralpher as a controller for SSH-backed development environments, even when that SSH host is just your own machine.
+
+1. Register an `ssh` server in Ralpher. Using `localhost` is a great default if you want the SSH workflow without needing a separate remote machine.
+2. Create an automatic workspace for each project you want to work on, and let that workspace use your devbox-managed environment so tools and dependencies are ready inside the project context.
+3. Once the workspace is ready, either open chats to work interactively with the coding agent in that workspace or create a new loop, write the task prompt, and let the agent work autonomously.
+
 **[Download the latest release](https://github.com/pablozaiden/ralpher/releases/latest)**
 
 ![Ralpher Dashboard](assets/screenshots/desktop/home.jpg)
