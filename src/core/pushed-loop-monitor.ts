@@ -10,6 +10,7 @@ import type {
   AutomaticPrFlowPullRequest,
   AutomaticPrFlowSnapshot,
 } from "./automatic-pr-flow-github";
+import type { PushLoopResult } from "./loop-manager";
 import { listLoops, loadLoop, updateLoopState } from "../persistence/loops";
 import { backendManager } from "./backend-manager";
 import { GitService } from "./git-service";
@@ -47,7 +48,15 @@ function getMonitorIntervalMs(): number {
 }
 
 function isEligibleForMonitoring(loop: Loop): boolean {
-  return loop.state.status === "pushed" && loop.state.reviewMode?.addressable === true;
+  if (loop.state.reviewMode?.addressable !== true) {
+    return false;
+  }
+
+  if (loop.state.status === "pushed") {
+    return true;
+  }
+
+  return loop.state.automaticPrFlow?.enabled === true && loop.state.automaticPrFlow.activeBatch !== undefined;
 }
 
 export interface PushedLoopMonitorDependencies {
@@ -57,6 +66,8 @@ export interface PushedLoopMonitorDependencies {
   getCommandExecutor: (workspaceId: string, directory: string) => Promise<CommandExecutor>;
   createGitService: (executor: CommandExecutor) => PullRequestNavigationGitService;
   markMerged: (loopId: string) => Promise<{ success: boolean; error?: string }>;
+  pushLoop: (loopId: string) => Promise<PushLoopResult>;
+  isLoopRunning: (loopId: string) => boolean;
   probePullRequestMonitoring: (
     loop: Loop,
     directory: string,
@@ -105,6 +116,8 @@ export class PushedLoopMonitor {
         backendManager.getCommandExecutorAsync(workspaceId, directory),
       createGitService: (executor: CommandExecutor) => GitService.withExecutor(executor),
       markMerged: (loopId: string) => loopManager.markMerged(loopId),
+      pushLoop: (loopId: string) => loopManager.pushLoop(loopId),
+      isLoopRunning: (loopId: string) => loopManager.isRunning(loopId),
       probePullRequestMonitoring,
       ensureAutomaticPrFlowPullRequest,
       fetchAutomaticPrFlowSnapshot,
@@ -253,9 +266,10 @@ export class PushedLoopMonitor {
     const now = new Date().toISOString();
     const handledItems = Array.isArray(previousState.handledItems) ? previousState.handledItems : [];
     const pullRequest = await this.deps.ensureAutomaticPrFlowPullRequest(loop, workingDirectory, executor, git);
+    const activeBatchStatus = previousState.activeBatch ? this.getAutomaticPrFlowBatchStatus(loop) : undefined;
     const baseState: NonNullable<Loop["state"]["automaticPrFlow"]> = {
       enabled: true,
-      status: previousState.activeBatch ? "processing_feedback" : "monitoring",
+      status: activeBatchStatus === "finalizing_feedback" ? "finalizing_feedback" : previousState.activeBatch ? "processing_feedback" : "monitoring",
       startedAt: previousState.startedAt,
       updatedAt: now,
       lastCheckedAt: now,
@@ -267,6 +281,35 @@ export class PushedLoopMonitor {
     };
 
     if (previousState.activeBatch) {
+      if (activeBatchStatus === "processing_feedback" || activeBatchStatus === "finalizing_feedback") {
+        return {
+          automaticPrFlowState: {
+            ...baseState,
+            status: activeBatchStatus,
+          },
+          monitoringState: this.mergeMonitoringStateFromPullRequest(loop.state.pullRequestMonitoring, pullRequest, now),
+        };
+      }
+
+      if (loop.state.status === "completed") {
+        const finalizeResult = await this.deps.pushLoop(loop.config.id);
+        if (!finalizeResult.success) {
+          throw new Error(finalizeResult.error ?? "Automatic PR review cycle failed to push updated changes.");
+        }
+
+        if (finalizeResult.syncStatus === "conflicts_being_resolved") {
+          return {
+            automaticPrFlowState: {
+              ...baseState,
+              status: "finalizing_feedback",
+            },
+            monitoringState: this.mergeMonitoringStateFromPullRequest(loop.state.pullRequestMonitoring, pullRequest, now),
+          };
+        }
+      } else if (loop.state.status !== "pushed") {
+        throw new Error(this.describeAutomaticPrBatchFailure(loop.state.status));
+      }
+
       const resolvedState = await this.resolveAutomaticPrFlowBatch(previousState, workingDirectory, executor);
       return {
         automaticPrFlowState: {
@@ -422,7 +465,13 @@ export class PushedLoopMonitor {
     }
 
     const latestLoop = await this.deps.loadLoop(loopId);
-    if (!latestLoop || latestLoop.state.status !== "pushed") {
+    if (!latestLoop) {
+      return;
+    }
+
+    const hasActiveAutomaticBatch = automaticPrFlowState?.activeBatch !== undefined
+      || latestLoop.state.automaticPrFlow?.activeBatch !== undefined;
+    if (latestLoop.state.status !== "pushed" && !hasActiveAutomaticBatch) {
       return;
     }
 
@@ -432,6 +481,54 @@ export class PushedLoopMonitor {
       automaticPrFlow: automaticPrFlowState ?? latestLoop.state.automaticPrFlow,
     };
     await this.deps.updateLoopState(loopId, updatedState);
+  }
+
+  private getAutomaticPrFlowBatchStatus(
+    loop: Loop,
+  ): "processing_feedback" | "finalizing_feedback" | "ready_to_finalize" | "ready_to_resolve" {
+    if (this.deps.isLoopRunning(loop.config.id)) {
+      return "processing_feedback";
+    }
+
+    if (loop.state.status === "pushed") {
+      return "ready_to_resolve";
+    }
+
+    if (
+      loop.state.status === "idle"
+      || loop.state.status === "starting"
+      || loop.state.status === "running"
+      || loop.state.status === "waiting"
+    ) {
+      return "processing_feedback";
+    }
+
+    if (loop.state.status === "completed") {
+      return "ready_to_finalize";
+    }
+
+    if (loop.state.status === "resolving_conflicts") {
+      return "finalizing_feedback";
+    }
+
+    return "ready_to_finalize";
+  }
+
+  private describeAutomaticPrBatchFailure(status: Loop["state"]["status"]): string {
+    switch (status) {
+      case "max_iterations":
+        return "Automatic PR review cycle reached max_iterations before the updated branch could be pushed.";
+      case "failed":
+        return "Automatic PR review cycle failed before the updated branch could be pushed.";
+      case "stopped":
+        return "Automatic PR review cycle was stopped before the updated branch could be pushed.";
+      case "deleted":
+        return "Automatic PR review cycle loop was deleted before the updated branch could be pushed.";
+      case "merged":
+        return "Automatic PR review cycle ended in an unexpected merged state before the updated branch could be pushed.";
+      default:
+        return `Automatic PR review cycle ended in unexpected status: ${status}`;
+    }
   }
 }
 
