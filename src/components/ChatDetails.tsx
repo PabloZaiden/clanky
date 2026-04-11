@@ -371,7 +371,7 @@ export function ChatDetails({
     }
   }
 
-  async function handleSpawnLoop() {
+  const handleSpawnLoop = useCallback(async () => {
     if (!chat || isActive || isSpawnPending) {
       return;
     }
@@ -391,7 +391,7 @@ export function ChatDetails({
     } finally {
       setIsSpawnPending(false);
     }
-  }
+  }, [chat, chatId, isActive, isSpawnPending, onOpenLoop, toast]);
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     attachmentControlRef.current?.handlePaste(event);
@@ -416,12 +416,18 @@ export function ChatDetails({
 
   const hasCodeExplorerAction = Boolean(onOpenCodeExplorer);
 
-  const mobileActionMenuItems = useMemo<ActionMenuItem[]>(() => {
+  const headerActionMenuItems = useMemo<ActionMenuItem[]>(() => {
     if (!chat) {
       return [];
     }
 
     return [
+      {
+        id: "spawn-loop",
+        label: isSpawnPending ? "Spawning loop..." : "Spawn Loop",
+        onClick: () => void handleSpawnLoop(),
+        disabled: isActive || isSpawnPending || chat.state.messages.length === 0,
+      },
       {
         id: "code-explorer",
         label: "Code explorer",
@@ -440,7 +446,7 @@ export function ChatDetails({
         destructive: true,
       },
     ];
-  }, [chat, hasCodeExplorerAction, onOpenCodeExplorer]);
+  }, [chat, handleSpawnLoop, hasCodeExplorerAction, isActive, isSpawnPending, onOpenCodeExplorer]);
 
   if (loading) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;
@@ -636,26 +642,6 @@ export function ChatDetails({
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <div data-testid="chat-header-desktop-actions" className="hidden items-center gap-2 sm:flex">
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={() => onOpenCodeExplorer?.(chat.config.id)}
-                disabled={isDeletePending || !hasCodeExplorerAction}
-              >
-                Code explorer
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={() => setIsRenameModalOpen(true)}
-                disabled={isDeletePending}
-              >
-                Rename
-              </Button>
-            </div>
             <Button
               type="button"
               variant="ghost"
@@ -667,40 +653,13 @@ export function ChatDetails({
             >
               <span aria-hidden="true" className="text-base leading-none">⤢</span>
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="xs"
-              onClick={() => void handleSpawnLoop()}
-              disabled={isActive || isSpawnPending || chat.state.messages.length === 0}
-              loading={isSpawnPending}
-              aria-label="Spawn loop"
-              title={chat.state.messages.length === 0 ? "Send a message before spawning a loop" : "Create a new loop from this chat"}
-            >
-              Spawn Loop
-            </Button>
-            <div data-testid="chat-header-mobile-actions" className="sm:hidden">
+            <div data-testid="chat-header-actions">
               <ActionMenu
-                items={mobileActionMenuItems}
-                ariaLabel="More chat actions"
+                items={headerActionMenuItems}
+                ariaLabel="Chat actions"
                 disabled={isDeletePending}
-                triggerContent="More"
-                triggerVariant="ghost"
-                triggerSize="compact"
               />
             </div>
-            <Button
-              type="button"
-              variant="danger"
-              size="xs"
-              className="hidden sm:inline-flex"
-              onClick={() => setIsDeleteConfirmOpen(true)}
-              loading={isDeletePending}
-              aria-label="Delete chat"
-              title="Delete chat"
-            >
-              Delete
-            </Button>
           </div>
         </div>
       </header>
