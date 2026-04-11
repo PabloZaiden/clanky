@@ -194,8 +194,7 @@ describe("WorkspaceFilesView", () => {
     expect(getByLabelText("Select code explorer content")).toBeInTheDocument();
 
     const backButton = getByRole("button", { name: "Back to workspace" });
-    expect(backButton.className).toContain("hidden");
-    expect(backButton.className).toContain("sm:inline-flex");
+    expect(backButton).toHaveClass("hidden", "sm:inline-flex");
   });
 
   test("lets the user toggle word wrap and override the editor language", async () => {
