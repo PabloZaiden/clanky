@@ -387,6 +387,7 @@ export async function pushAndFinalize(
     ...loop.state,
     status: "pushed" as const,
     reviewMode,
+    pullRequestMonitoring: undefined,
     syncState: undefined,
   };
   await updateLoopState(loopId, updatedState);

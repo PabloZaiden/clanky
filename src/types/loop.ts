@@ -178,6 +178,9 @@ export interface LoopState {
     reviewBranches: string[];
   };
 
+  /** Persisted backend PR monitoring state for pushed loops */
+  pullRequestMonitoring?: PullRequestMonitoringState;
+
   /** Sync state for tracking branch sync during push */
   syncState?: {
     /** Current sync status */
@@ -335,6 +338,24 @@ export interface GitCommit {
   timestamp: string;
   /** Number of files changed in this commit */
   filesChanged: number;
+}
+
+/**
+ * Persisted GitHub pull request monitoring state for pushed loops.
+ */
+export interface PullRequestMonitoringState {
+  /** Last observed monitoring state from the GitHub CLI */
+  status: "unavailable" | "no_pr" | "open" | "closed" | "merged" | "error";
+  /** ISO 8601 timestamp when the last probe completed */
+  lastCheckedAt: string;
+  /** Pull request number when one exists */
+  pullRequestNumber?: number;
+  /** Pull request URL when one exists */
+  pullRequestUrl?: string;
+  /** ISO 8601 timestamp when the PR was detected as merged */
+  mergedAt?: string;
+  /** Last probe failure detail for diagnostics */
+  lastError?: string;
 }
 
 /**

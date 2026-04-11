@@ -227,6 +227,20 @@ export const migrations: Migration[] = [
       db.run("ALTER TABLE loops ADD COLUMN auto_accept_plan INTEGER NOT NULL DEFAULT 0");
     },
   },
+  {
+    version: 6,
+    name: "add_loop_pull_request_monitoring",
+    up: (db) => {
+      if (!tableExists(db, "loops")) {
+        return;
+      }
+      const columns = getTableColumns(db, "loops");
+      if (columns.includes("pull_request_monitoring")) {
+        return;
+      }
+      db.run("ALTER TABLE loops ADD COLUMN pull_request_monitoring TEXT");
+    },
+  },
 ];
 
 /**

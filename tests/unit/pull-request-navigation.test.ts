@@ -3,6 +3,7 @@ import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/c
 import {
   buildGitHubCompareUrl,
   normalizeGitHubRepositoryUrl,
+  probePullRequestMonitoring,
   resolvePullRequestDestination,
   validateExistingPullRequestUrl,
   type PullRequestNavigationGitService,
@@ -246,5 +247,146 @@ describe("pull request navigation", () => {
       url: "https://github.com/owner/repo/compare/develop...feature%2Ffrom-default?expand=1",
     });
     expect(git.defaultBranchCalls).toBe(1);
+  });
+
+  test("probePullRequestMonitoring returns merged when gh reports a merged PR", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/test-pr",
+          commits: [],
+        },
+      },
+    });
+    const executor = new StubExecutor();
+    const git = new StubGitService();
+
+    executor.addResponse("gh", ["--version"], {
+      success: true,
+      stdout: "gh version 2.0.0",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("gh", ["pr", "view", "feature/test-pr", "--json", "number,url,state,mergedAt"], {
+      success: true,
+      stdout: JSON.stringify({
+        number: 42,
+        url: "https://github.com/owner/repo/pull/42",
+        state: "MERGED",
+        mergedAt: "2026-04-11T04:00:00.000Z",
+      }),
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const monitoring = await probePullRequestMonitoring(loop, "/tmp/repo", executor, git);
+
+    expect(monitoring).toEqual({
+      status: "merged",
+      lastCheckedAt: expect.any(String),
+      pullRequestNumber: 42,
+      pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      mergedAt: "2026-04-11T04:00:00.000Z",
+    });
+  });
+
+  test("probePullRequestMonitoring returns no_pr when gh reports no pull request", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/no-pr",
+          commits: [],
+        },
+      },
+    });
+    const executor = new StubExecutor();
+    const git = new StubGitService();
+
+    executor.addResponse("gh", ["--version"], {
+      success: true,
+      stdout: "gh version 2.0.0",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("gh", ["pr", "view", "feature/no-pr", "--json", "number,url,state,mergedAt"], {
+      success: false,
+      stdout: "",
+      stderr: "no pull requests found for branch \"feature/no-pr\"",
+      exitCode: 1,
+    });
+
+    const monitoring = await probePullRequestMonitoring(loop, "/tmp/repo", executor, git);
+
+    expect(monitoring).toEqual({
+      status: "no_pr",
+      lastCheckedAt: expect.any(String),
+    });
+  });
+
+  test("probePullRequestMonitoring returns unavailable for non-GitHub remotes", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/non-github",
+          commits: [],
+        },
+      },
+    });
+    const executor = new StubExecutor();
+    const git = new StubGitService();
+    git.remoteUrl = "git@gitlab.com:owner/repo.git";
+
+    executor.addResponse("gh", ["--version"], {
+      success: true,
+      stdout: "gh version 2.0.0",
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const monitoring = await probePullRequestMonitoring(loop, "/tmp/repo", executor, git);
+
+    expect(monitoring).toEqual({
+      status: "unavailable",
+      lastCheckedAt: expect.any(String),
+      lastError: "Could not determine a GitHub origin remote for this loop.",
+    });
+  });
+
+  test("probePullRequestMonitoring returns an error when gh output is invalid", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/bad-json",
+          commits: [],
+        },
+      },
+    });
+    const executor = new StubExecutor();
+    const git = new StubGitService();
+
+    executor.addResponse("gh", ["--version"], {
+      success: true,
+      stdout: "gh version 2.0.0",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("gh", ["pr", "view", "feature/bad-json", "--json", "number,url,state,mergedAt"], {
+      success: true,
+      stdout: "{not valid json",
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const monitoring = await probePullRequestMonitoring(loop, "/tmp/repo", executor, git);
+
+    expect(monitoring).toEqual({
+      status: "error",
+      lastCheckedAt: expect.any(String),
+      lastError: "GitHub CLI returned invalid pull request JSON.",
+    });
   });
 });
