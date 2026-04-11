@@ -122,7 +122,7 @@ export function CreateEditLoopModal(props: CreateEditLoopModalProps) {
     useWorktree: editLoop.config.useWorktree,
     clearPlanningFolder: editLoop.config.clearPlanningFolder,
     planMode: editLoop.config.planMode ?? false,
-    autoAcceptPlan: editLoop.config.autoAcceptPlan ?? false,
+    autoAcceptPlan: editLoop.config.autoAcceptPlan,
     workspaceId: editLoop.config.workspaceId,
   } : null;
 
