@@ -161,11 +161,12 @@ export const loopsCollectionRoutes = {
           gitCommitScope: body.git?.commitScope,
           baseBranch: effectiveBaseBranch,
           useWorktree: body.useWorktree,
-          clearPlanningFolder: body.clearPlanningFolder,
-          planMode: body.planMode,
-          autoAcceptPlan: body.autoAcceptPlan,
-          draft: body.draft,
-        });
+           clearPlanningFolder: body.clearPlanningFolder,
+           planMode: body.planMode,
+           autoAcceptPlan: body.autoAcceptPlan,
+           fullyAutonomous: body.fullyAutonomous,
+           draft: body.draft,
+         });
 
         // Save the model as last used if provided
         if (body.model?.providerID && body.model?.modelID) {

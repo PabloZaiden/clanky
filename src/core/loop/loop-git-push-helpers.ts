@@ -9,6 +9,7 @@ import { GitService } from "../git-service";
 import { log } from "../logger";
 import { assertValidTransition } from "../loop-state-machine";
 import { startStatePersistenceImpl } from "./loop-execution";
+import { finalizeFullyAutonomousPushImpl } from "./loop-fully-autonomous";
 
 interface ConflictResolutionOptions {
   onCompleted?: () => Promise<void>;
@@ -522,6 +523,7 @@ async function handleConflictResolutionComplete(ctx: LoopCtx, loopId: string): P
         log.debug(`[LoopManager] handleConflictResolutionComplete: Base branch also has conflicts for loop ${loopId}, new resolution started`);
       } else {
         log.info(`[LoopManager] handleConflictResolutionComplete: Successfully synced and pushed loop ${loopId} to ${result.remoteBranch}`);
+        await finalizeFullyAutonomousPushImpl(ctx, loopId);
       }
       return;
     }
@@ -531,6 +533,7 @@ async function handleConflictResolutionComplete(ctx: LoopCtx, loopId: string): P
     const remoteBranch = await pushAndFinalize(ctx, loopId, loop, git, "handleConflictResolutionComplete");
 
     log.info(`[LoopManager] handleConflictResolutionComplete: Successfully auto-pushed loop ${loopId} to ${remoteBranch}`);
+    await finalizeFullyAutonomousPushImpl(ctx, loopId);
   } catch (error) {
     log.error(`[LoopManager] handleConflictResolutionComplete: Failed to auto-push loop ${loopId}:`, String(error));
     if (loop.state.syncState) {

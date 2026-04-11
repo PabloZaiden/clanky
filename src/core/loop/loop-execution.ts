@@ -11,6 +11,7 @@ import { assertValidTransition } from "../loop-state-machine";
 import { startStatePersistenceImpl } from "./loop-state-persistence";
 import { validateMainCheckoutStartImpl } from "./loop-git-validation";
 import { clearPlanningFilesImpl } from "./loop-planning-files";
+import { handleFullyAutonomousCompletionImpl } from "./loop-fully-autonomous";
 
 export { startStatePersistenceImpl } from "./loop-state-persistence";
 export { validateMainCheckoutStartImpl, ensureLoopBranchCheckedOutImpl } from "./loop-git-validation";
@@ -47,6 +48,9 @@ export async function startLoopImpl(ctx: LoopCtx, loopId: string, _options?: Sta
     eventEmitter: ctx.emitter,
     onPersistState: async (state) => {
       await updateLoopState(loopId, state);
+    },
+    onCompleted: async () => {
+      await handleFullyAutonomousCompletionImpl(ctx, loopId);
     },
     initialPromptAttachments: _options?.attachments,
   });
@@ -128,6 +132,9 @@ export async function startPlanModeImpl(ctx: LoopCtx, loopId: string, options?: 
     },
     onPlanReady: async () => {
       await ctx.acceptPlan(loopId);
+    },
+    onCompleted: async () => {
+      await handleFullyAutonomousCompletionImpl(ctx, loopId);
     },
     initialPromptAttachments: options?.attachments,
   });

@@ -39,6 +39,7 @@ export const ALLOWED_LOOP_COLUMNS = new Set([
   "plan_mode",
   "plan_mode_auto_reply",
   "auto_accept_plan",
+  "fully_autonomous",
   "status",
   "current_iteration",
   "started_at",
@@ -72,6 +73,7 @@ export const ALLOWED_LOOP_COLUMNS = new Set([
   "review_mode",
   "pull_request_monitoring",
   "automatic_pr_flow",
+  "fully_autonomous_pending",
   "git_worktree_path",
   "mode",
 ]);
@@ -116,6 +118,7 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     clear_planning_folder: config.clearPlanningFolder ? 1 : 0,
     plan_mode: config.planMode ? 1 : 0,
     auto_accept_plan: (config.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan) ? 1 : 0,
+    fully_autonomous: config.fullyAutonomous ? 1 : 0,
     mode: config.mode ?? "loop",
     // State fields
     status: state.status,
@@ -152,6 +155,7 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     review_mode: state.reviewMode ? JSON.stringify(state.reviewMode) : null,
     pull_request_monitoring: state.pullRequestMonitoring ? JSON.stringify(state.pullRequestMonitoring) : null,
     automatic_pr_flow: state.automaticPrFlow ? JSON.stringify(state.automaticPrFlow) : null,
+    fully_autonomous_pending: state.fullyAutonomousPending ? 1 : 0,
   };
 }
 
@@ -225,6 +229,7 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
     clearPlanningFolder: row["clear_planning_folder"] === 1,
     planMode: row["plan_mode"] === 1,
     autoAcceptPlan: row["auto_accept_plan"] === 1,
+    fullyAutonomous: row["fully_autonomous"] === 1,
     mode: normalizeLoopMode(row["mode"], row["id"]),
   };
 
@@ -328,6 +333,10 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
       "automatic_pr_flow",
       rowId,
     );
+  }
+
+  if (row["fully_autonomous_pending"] === 1) {
+    state.fullyAutonomousPending = true;
   }
 
   return { config, state };

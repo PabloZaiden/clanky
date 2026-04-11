@@ -80,6 +80,7 @@ export interface CreateLoopFormProps {
     clearPlanningFolder?: boolean;
     planMode?: boolean;
     autoAcceptPlan?: boolean;
+    fullyAutonomous?: boolean;
     workspaceId?: string;
   } | null;
   /** Whether editing a draft loop (to show the Update button) */

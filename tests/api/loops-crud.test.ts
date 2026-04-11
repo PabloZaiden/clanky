@@ -225,6 +225,30 @@ describe("Loops CRUD API Integration", () => {
       expect(body.config.git.branchPrefix).toBe("custom/");
     });
 
+    test("creates a fully autonomous plan loop and forces auto-accept", async () => {
+      const response = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          prompt: "Plan it and take it all the way through PR automation",
+          name: "Fully Autonomous Loop",
+          planMode: true,
+          autoAcceptPlan: false,
+          fullyAutonomous: true,
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      expect(body.config.planMode).toBe(true);
+      expect(body.config.fullyAutonomous).toBe(true);
+      expect(body.config.autoAcceptPlan).toBe(true);
+    });
+
     test("returns 400 for invalid JSON", async () => {
       const response = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
@@ -472,6 +496,40 @@ describe("Loops CRUD API Integration", () => {
       const body = await response.json();
       expect(body.config.prompt).toBe("Updated prompt");
       expect(body.config.git.branchPrefix).toBe("team-platform/");
+    });
+
+    test("clears fully autonomous settings when plan mode is disabled", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          prompt: "Original prompt",
+          name: "Autonomous Draft",
+          draft: true,
+          planMode: true,
+          autoAcceptPlan: true,
+          fullyAutonomous: true,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      const createBody = await createResponse.json();
+      const loopId = createBody.config.id;
+
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planMode: false,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.config.planMode).toBe(false);
+      expect(body.config.autoAcceptPlan).toBe(false);
+      expect(body.config.fullyAutonomous).toBe(false);
     });
 
     test("returns 404 for non-existent loop", async () => {

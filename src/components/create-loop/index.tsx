@@ -75,6 +75,8 @@ export function CreateLoopForm({
     setPlanMode,
     autoAcceptPlan,
     setAutoAcceptPlan,
+    fullyAutonomous,
+    setFullyAutonomous,
     useWorktree,
     setUseWorktree,
     clearPlanningFolder,
@@ -202,6 +204,13 @@ export function CreateLoopForm({
           onPlanModeChange={setPlanMode}
           autoAcceptPlan={autoAcceptPlan}
           onAutoAcceptPlanChange={setAutoAcceptPlan}
+          fullyAutonomous={fullyAutonomous}
+          onFullyAutonomousChange={(value) => {
+            setFullyAutonomous(value);
+            if (value) {
+              setAutoAcceptPlan(true);
+            }
+          }}
           useWorktree={useWorktree}
         onUseWorktreeChange={setUseWorktree}
       />

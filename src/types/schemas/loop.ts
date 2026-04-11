@@ -122,6 +122,7 @@ export const CreateLoopRequestSchema = z.object({
   clearPlanningFolder: z.boolean().optional(),
   planMode: z.boolean({ error: "planMode is required and must be a boolean (true or false)" }),
   autoAcceptPlan: z.boolean().optional(),
+  fullyAutonomous: z.boolean().optional(),
   draft: z.boolean().optional(),
 });
 
@@ -149,6 +150,7 @@ export const UpdateLoopRequestSchema = z.object({
   clearPlanningFolder: z.boolean().optional(),
   planMode: z.boolean().optional(),
   autoAcceptPlan: z.boolean().optional(),
+  fullyAutonomous: z.boolean().optional(),
 });
 
 /**

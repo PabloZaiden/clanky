@@ -6,6 +6,7 @@ import { GitService } from "../git-service";
 import { getLoopWorkingDirectory } from "./loop-types";
 import { ensureLoopBranchCheckedOutImpl } from "./loop-git-validation";
 import { startStatePersistenceImpl } from "./loop-state-persistence";
+import { handleFullyAutonomousCompletionImpl } from "./loop-fully-autonomous";
 
 export async function recoverPlanningEngineImpl(ctx: LoopCtx, loopId: string): Promise<LoopEngine> {
   const loop = await loadLoop(loopId);
@@ -36,6 +37,9 @@ export async function recoverPlanningEngineImpl(ctx: LoopCtx, loopId: string): P
     },
     onPlanReady: async () => {
       await ctx.acceptPlan(loopId);
+    },
+    onCompleted: async () => {
+      await handleFullyAutonomousCompletionImpl(ctx, loopId);
     },
   });
 

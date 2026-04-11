@@ -44,6 +44,8 @@ export interface CreateLoopOptions {
   planMode: boolean;
   /** Whether a ready plan should be automatically accepted and executed */
   autoAcceptPlan?: boolean;
+  /** Whether the accepted plan should continue into push and automatic PR flow */
+  fullyAutonomous?: boolean;
   /** Save as draft without starting (no git branch or session created) */
   draft?: boolean;
 }

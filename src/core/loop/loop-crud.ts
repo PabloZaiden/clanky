@@ -20,6 +20,10 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
   const id = crypto.randomUUID();
   const now = createTimestamp();
   const name = options.name.trim();
+  const fullyAutonomous = options.planMode ? (options.fullyAutonomous ?? DEFAULT_LOOP_CONFIG.fullyAutonomous) : false;
+  const autoAcceptPlan = options.planMode
+    ? (fullyAutonomous ? true : (options.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan))
+    : false;
 
   if (!name) {
     throw new Error("Loop name is required");
@@ -58,9 +62,8 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
     useWorktree: options.useWorktree ?? DEFAULT_LOOP_CONFIG.useWorktree,
     clearPlanningFolder: options.clearPlanningFolder ?? DEFAULT_LOOP_CONFIG.clearPlanningFolder,
     planMode: options.planMode,
-    autoAcceptPlan: options.planMode
-      ? (options.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan)
-      : false,
+    autoAcceptPlan,
+    fullyAutonomous,
     mode: DEFAULT_LOOP_CONFIG.mode,
   };
 
@@ -216,6 +219,13 @@ export async function updateLoopImpl(
       : loop.config.git,
     updatedAt: createTimestamp(),
   };
+
+  if (!updatedConfig.planMode) {
+    updatedConfig.autoAcceptPlan = false;
+    updatedConfig.fullyAutonomous = false;
+  } else if (updatedConfig.fullyAutonomous) {
+    updatedConfig.autoAcceptPlan = true;
+  }
 
   const updatedLoop: Loop = { config: updatedConfig, state: loop.state };
   await saveLoop(updatedLoop);

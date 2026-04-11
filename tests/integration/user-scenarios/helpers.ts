@@ -460,6 +460,7 @@ export async function createLoopViaAPI(
     maxIterations?: number;
     clearPlanningFolder?: boolean;
     autoAcceptPlan?: boolean;
+    fullyAutonomous?: boolean;
     baseBranch?: string;
   }
 ): Promise<{ status: number; body: Loop | { error: string; message: string } }> {

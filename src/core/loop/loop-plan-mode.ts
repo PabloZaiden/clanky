@@ -69,6 +69,7 @@ export async function acceptPlanImpl(
     startedAt: engine.state.startedAt ?? now,
     completedAt: mode === "open_ssh" ? now : engine.state.completedAt,
     pendingPrompt: mode === "open_ssh" ? undefined : engine.state.pendingPrompt,
+    fullyAutonomousPending: engine.config.fullyAutonomous === true && mode === "start_loop",
     planMode: {
       ...engine.state.planMode,
       active: false,
