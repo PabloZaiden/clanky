@@ -328,14 +328,15 @@ export function FileExplorerView({
       actions={(
         <>
           {headerActions}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onNavigate(backRoute)}
-            className="hidden sm:inline-flex"
-          >
-            {backLabel}
-          </Button>
+          <div className="hidden sm:block">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate(backRoute)}
+            >
+              {backLabel}
+            </Button>
+          </div>
         </>
       )}
       bodyClassName="flex h-full min-h-0 flex-col"
