@@ -274,6 +274,7 @@ describe("LoopManager", () => {
     });
   });
 
+
   describe("getLoop", () => {
     test("returns a loop by ID", async () => {
       const created = await manager.createLoop({

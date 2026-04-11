@@ -2,6 +2,7 @@ import type { Loop } from "../../types/loop";
 import { loadLoop, updateLoopState } from "../../persistence/loops";
 import { createLogger } from "../logger";
 import type { LoopCtx } from "./context";
+import { emitAutomaticPrFlowUpdatedEvent } from "./loop-automatic-pr-flow-events";
 
 const log = createLogger("core:loop-fully-autonomous");
 
@@ -23,10 +24,11 @@ function buildAutomationErrorState(loop: Loop, error: string): NonNullable<Loop[
   };
 }
 
-async function persistAutomationFailure(loop: Loop, error: string): Promise<void> {
+async function persistAutomationFailure(ctx: LoopCtx, loop: Loop, error: string): Promise<void> {
   loop.state.fullyAutonomousPending = false;
   loop.state.automaticPrFlow = buildAutomationErrorState(loop, error);
   await updateLoopState(loop.config.id, loop.state);
+  emitAutomaticPrFlowUpdatedEvent(ctx.emitter, loop.config.id, loop.state.automaticPrFlow);
 }
 
 export async function finalizeFullyAutonomousPushImpl(ctx: LoopCtx, loopId: string): Promise<void> {
@@ -48,6 +50,7 @@ export async function finalizeFullyAutonomousPushImpl(ctx: LoopCtx, loopId: stri
     const latestLoop = await loadLoop(loopId);
     if (latestLoop) {
       await persistAutomationFailure(
+        ctx,
         latestLoop,
         result.error ?? "Fully autonomous loop failed to start the automatic PR flow after push.",
       );
@@ -83,6 +86,7 @@ export async function handleFullyAutonomousCompletionImpl(ctx: LoopCtx, loopId: 
     const latestLoop = await loadLoop(loopId);
     if (latestLoop) {
       await persistAutomationFailure(
+        ctx,
         latestLoop,
         result.error ?? "Fully autonomous loop failed to push the completed branch.",
       );

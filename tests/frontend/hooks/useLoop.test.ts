@@ -1095,6 +1095,69 @@ describe("addressReviewComments", () => {
   });
 });
 
+describe("WebSocket event: loop.automatic_pr_flow.updated", () => {
+  test("refreshes loop state when automatic PR flow is enabled after push", async () => {
+    const initialLoop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID },
+      state: {
+        id: LOOP_ID,
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+      },
+    });
+    const updatedLoop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID },
+      state: {
+        id: LOOP_ID,
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          lastCheckedAt: "2026-04-11T04:00:00.000Z",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/example/repo/pull/42",
+          handledItems: [],
+        },
+      },
+    });
+
+    let requestCount = 0;
+    api.get("/api/loops/:id", () => {
+      requestCount += 1;
+      return requestCount === 1 ? initialLoop : updatedLoop;
+    });
+
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.automatic_pr_flow.updated",
+        loopId: LOOP_ID,
+        automaticPrFlow: updatedLoop.state.automaticPrFlow,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.loop?.state.automaticPrFlow?.enabled).toBe(true);
+    });
+    expect(result.current.loop?.state.automaticPrFlow?.pullRequestNumber).toBe(42);
+  });
+});
+
 describe("automatic PR flow actions", () => {
   test("startAutomaticPrFlow calls API and returns state", async () => {
     setupLoop();

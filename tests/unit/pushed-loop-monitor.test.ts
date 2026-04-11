@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
+import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import { PushedLoopMonitor } from "../../src/core/pushed-loop-monitor";
 import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
 import type { AutomaticPrFlowPullRequest, AutomaticPrFlowSnapshot } from "../../src/core/automatic-pr-flow-github";
+import type { LoopEvent } from "../../src/types/events";
 import { createLoopWithStatus } from "../frontend/helpers/factories";
 
 class StubExecutor implements CommandExecutor {
@@ -624,6 +626,9 @@ describe("PushedLoopMonitor", () => {
       state: "OPEN",
     };
     const resolvedThreadIds: string[] = [];
+    const events: LoopEvent[] = [];
+    const emitter = new SimpleEventEmitter<LoopEvent>();
+    emitter.subscribe((event) => events.push(event));
 
     const monitor = new PushedLoopMonitor({
       listLoops: async () => [storedLoop],
@@ -632,6 +637,7 @@ describe("PushedLoopMonitor", () => {
         storedLoop.state = state;
         return true;
       },
+      emitter,
       getCommandExecutor: async () => executor,
       createGitService: () => new StubGitService(),
       markMerged: async () => ({ success: true }),
@@ -676,6 +682,14 @@ describe("PushedLoopMonitor", () => {
         handledAt: expect.any(String),
       },
     ]);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "loop.automatic_pr_flow.updated",
+      loopId: storedLoop.config.id,
+      automaticPrFlow: expect.objectContaining({
+        status: "monitoring",
+        activeBatch: undefined,
+      }),
+    }));
   });
 
   test("auto-pushes completed automatic review batches before resolving feedback", async () => {

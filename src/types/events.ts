@@ -16,7 +16,7 @@
  */
 
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
-import type { GitCommit, LoopConfig, LoopLogEntry, ModelConfig } from "./loop";
+import type { AutomaticPrFlowState, GitCommit, LoopConfig, LoopLogEntry, ModelConfig } from "./loop";
 import type { MessageImageAttachment } from "./message-attachments";
 
 /**
@@ -96,7 +96,7 @@ export interface ToolCallData {
  * - **Completion events**: accepted (merged locally), merged (detected externally), discarded, pushed
  * - **Sync events**: sync.started, sync.clean, sync.conflicts, sync.failed
  * - **Plan mode events**: plan.ready, plan.feedback, plan.accepted, plan.discarded
- * - **State events**: pending.updated
+ * - **State events**: pending.updated, automatic_pr_flow.updated
  */
 export type LoopEvent =
   | LoopCreatedEvent
@@ -126,7 +126,8 @@ export type LoopEvent =
   | LoopPlanFeedbackSentEvent
   | LoopPlanAcceptedEvent
   | LoopPlanDiscardedEvent
-  | LoopPendingUpdatedEvent;
+  | LoopPendingUpdatedEvent
+  | LoopAutomaticPrFlowUpdatedEvent;
 
 /**
  * Union type of all chat-scoped events streamed to clients.
@@ -621,6 +622,21 @@ export interface LoopPendingUpdatedEvent {
   pendingPrompt?: string;
   /** Pending model (if set, undefined if cleared) */
   pendingModel?: ModelConfig;
+  /** ISO 8601 timestamp */
+  timestamp: string;
+}
+
+/**
+ * Emitted when the persisted automatic PR flow state changes.
+ * Used by the UI to refresh pushed-loop state after automation is enabled,
+ * disabled, or transitions between feedback-handling phases.
+ */
+export interface LoopAutomaticPrFlowUpdatedEvent {
+  type: "loop.automatic_pr_flow.updated";
+  /** ID of the loop */
+  loopId: string;
+  /** Latest automatic PR flow state after persistence */
+  automaticPrFlow?: AutomaticPrFlowState;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

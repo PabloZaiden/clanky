@@ -5,6 +5,7 @@
 import type { Loop } from "../types/loop";
 import type { CommandExecutor } from "./command-executor";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
+import type { LoopEvent } from "../types/events";
 import type {
   AutomaticPrFlowFeedbackItem,
   AutomaticPrFlowPullRequest,
@@ -13,9 +14,11 @@ import type {
 import type { PushLoopResult } from "./loop-manager";
 import { listLoops, loadLoop, updateLoopState } from "../persistence/loops";
 import { backendManager } from "./backend-manager";
+import { loopEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { GitService } from "./git-service";
 import { createLogger } from "./logger";
 import { getLoopWorkingDirectory, loopManager } from "./loop-manager";
+import { emitAutomaticPrFlowUpdatedEvent } from "./loop/loop-automatic-pr-flow-events";
 import { probePullRequestMonitoring } from "./pull-request-navigation";
 import {
   ensureAutomaticPrFlowPullRequest,
@@ -63,6 +66,7 @@ export interface PushedLoopMonitorDependencies {
   listLoops: () => Promise<Loop[]>;
   loadLoop: (loopId: string) => Promise<Loop | null>;
   updateLoopState: (loopId: string, state: Loop["state"]) => Promise<boolean>;
+  emitter: SimpleEventEmitter<LoopEvent>;
   getCommandExecutor: (workspaceId: string, directory: string) => Promise<CommandExecutor>;
   createGitService: (executor: CommandExecutor) => PullRequestNavigationGitService;
   markMerged: (loopId: string) => Promise<{ success: boolean; error?: string }>;
@@ -112,6 +116,7 @@ export class PushedLoopMonitor {
       listLoops,
       loadLoop,
       updateLoopState,
+      emitter: loopEventEmitter,
       getCommandExecutor: (workspaceId: string, directory: string) =>
         backendManager.getCommandExecutorAsync(workspaceId, directory),
       createGitService: (executor: CommandExecutor) => GitService.withExecutor(executor),
@@ -481,6 +486,9 @@ export class PushedLoopMonitor {
       automaticPrFlow: automaticPrFlowState ?? latestLoop.state.automaticPrFlow,
     };
     await this.deps.updateLoopState(loopId, updatedState);
+    if (automaticPrFlowState !== undefined) {
+      emitAutomaticPrFlowUpdatedEvent(this.deps.emitter, loopId, updatedState.automaticPrFlow);
+    }
   }
 
   private getAutomaticPrFlowBatchStatus(

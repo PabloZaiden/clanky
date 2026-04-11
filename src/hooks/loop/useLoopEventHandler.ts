@@ -132,6 +132,7 @@ export function createLoopEventHandler(params: LoopEventHandlerParams) {
       case "loop.plan.feedback":
       case "loop.plan.accepted":
       case "loop.plan.discarded":
+      case "loop.automatic_pr_flow.updated":
         refresh();
         break;
 
