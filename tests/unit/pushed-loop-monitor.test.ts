@@ -786,6 +786,117 @@ describe("PushedLoopMonitor", () => {
     ]);
   });
 
+  test("keeps automatic review batches in finalizing feedback while push-triggered conflicts are being resolved", async () => {
+    const executor = new StubExecutor();
+    const storedLoop = createLoopWithStatus("completed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 1,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "processing_feedback",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:10:00.000Z",
+          handledItems: [],
+          activeBatch: {
+            batchId: "batch-1",
+            itemIds: ["thread-1"],
+            items: [
+              { id: "thread-1", source: "review_thread", threadId: "thread-1" },
+            ],
+            startedAt: "2026-04-11T04:06:00.000Z",
+            reviewCycle: 1,
+          },
+        },
+      },
+    });
+
+    const pullRequest: AutomaticPrFlowPullRequest = {
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+    };
+    let pushCalls = 0;
+    let loopRunning = false;
+    const resolvedThreadIds: string[] = [];
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      pushLoop: async () => {
+        pushCalls += 1;
+        loopRunning = true;
+        storedLoop.state = {
+          ...storedLoop.state,
+          status: "resolving_conflicts",
+        };
+        return {
+          success: true,
+          remoteBranch: "feature/automatic-pr-flow",
+          syncStatus: "conflicts_being_resolved",
+        };
+      },
+      isLoopRunning: () => loopRunning,
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:11:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => pullRequest,
+      fetchAutomaticPrFlowSnapshot: async () => ({
+        pullRequest,
+        reviewThreads: [],
+        reviewComments: [],
+        reviews: [],
+        actionableItems: [],
+      }),
+      startAutomaticPrReviewCycle: async () => ({ success: true }),
+      resolveAutomaticPrFlowReviewThread: async (threadId) => {
+        resolvedThreadIds.push(threadId);
+      },
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(pushCalls).toBe(1);
+    expect(resolvedThreadIds).toEqual([]);
+    expect(storedLoop.state.status).toBe("resolving_conflicts");
+    expect(storedLoop.state.automaticPrFlow?.status).toBe("finalizing_feedback");
+    expect(storedLoop.state.automaticPrFlow?.activeBatch?.batchId).toBe("batch-1");
+    expect(storedLoop.state.automaticPrFlow?.handledItems).toEqual([]);
+
+    await monitor.runNow();
+
+    expect(pushCalls).toBe(1);
+    expect(resolvedThreadIds).toEqual([]);
+    expect(storedLoop.state.automaticPrFlow?.status).toBe("finalizing_feedback");
+    expect(storedLoop.state.automaticPrFlow?.activeBatch?.batchId).toBe("batch-1");
+    expect(storedLoop.state.automaticPrFlow?.handledItems).toEqual([]);
+  });
+
   test("keeps automatic review batches active while the feedback loop is still running", async () => {
     const executor = new StubExecutor();
     const storedLoop = createLoopWithStatus("running", {

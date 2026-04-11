@@ -486,6 +486,10 @@ export class PushedLoopMonitor {
   private getAutomaticPrFlowBatchStatus(
     loop: Loop,
   ): "processing_feedback" | "finalizing_feedback" | "ready_to_finalize" | "ready_to_resolve" {
+    if (loop.state.status === "resolving_conflicts") {
+      return "finalizing_feedback";
+    }
+
     if (this.deps.isLoopRunning(loop.config.id)) {
       return "processing_feedback";
     }
@@ -505,10 +509,6 @@ export class PushedLoopMonitor {
 
     if (loop.state.status === "completed") {
       return "ready_to_finalize";
-    }
-
-    if (loop.state.status === "resolving_conflicts") {
-      return "finalizing_feedback";
     }
 
     return "ready_to_finalize";
