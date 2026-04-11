@@ -243,6 +243,50 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id/spawn-loop", "POST")).toHaveLength(1);
   });
 
+  test("uses the latest onOpenLoop handler for the header action menu spawn action", async () => {
+    const initialChat = createChat();
+    const spawnedLoop = createLoop({
+      config: {
+        id: "loop-1",
+        workspaceId: "workspace-1",
+        name: "Created from chat",
+      },
+    });
+    const openedLoopIds: string[] = [];
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/spawn-loop", () => spawnedLoop);
+
+    const { getByRole, rerender, user } = renderWithUser(
+      <ChatDetails
+        chatId={CHAT_ID}
+        onOpenLoop={(loopId) => {
+          openedLoopIds.push(`initial:${loopId}`);
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    });
+
+    rerender(
+      <ChatDetails
+        chatId={CHAT_ID}
+        onOpenLoop={(loopId) => {
+          openedLoopIds.push(`updated:${loopId}`);
+        }}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Spawn Loop" }));
+
+    await waitFor(() => {
+      expect(openedLoopIds).toEqual(["updated:loop-1"]);
+    });
+  });
+
   test("submits the composer with Ctrl+Enter", async () => {
     const initialChat = createChat();
     const updatedChat = createChat({

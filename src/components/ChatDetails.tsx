@@ -371,7 +371,7 @@ export function ChatDetails({
     }
   }
 
-  async function handleSpawnLoop() {
+  const handleSpawnLoop = useCallback(async () => {
     if (!chat || isActive || isSpawnPending) {
       return;
     }
@@ -391,7 +391,7 @@ export function ChatDetails({
     } finally {
       setIsSpawnPending(false);
     }
-  }
+  }, [chat, chatId, isActive, isSpawnPending, onOpenLoop, toast]);
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     attachmentControlRef.current?.handlePaste(event);
@@ -446,7 +446,7 @@ export function ChatDetails({
         destructive: true,
       },
     ];
-  }, [chat, hasCodeExplorerAction, isActive, isSpawnPending, onOpenCodeExplorer]);
+  }, [chat, handleSpawnLoop, hasCodeExplorerAction, isActive, isSpawnPending, onOpenCodeExplorer]);
 
   if (loading) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;
