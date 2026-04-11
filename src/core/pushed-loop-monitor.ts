@@ -251,6 +251,7 @@ export class PushedLoopMonitor {
     }
 
     const now = new Date().toISOString();
+    const handledItems = Array.isArray(previousState.handledItems) ? previousState.handledItems : [];
     const pullRequest = await this.deps.ensureAutomaticPrFlowPullRequest(loop, workingDirectory, executor, git);
     const baseState: NonNullable<Loop["state"]["automaticPrFlow"]> = {
       enabled: true,
@@ -261,7 +262,7 @@ export class PushedLoopMonitor {
       pullRequestNumber: pullRequest.number,
       pullRequestUrl: pullRequest.url,
       activeBatch: previousState.activeBatch,
-      handledItems: previousState.handledItems,
+      handledItems,
       stoppedAt: undefined,
     };
 
@@ -282,7 +283,7 @@ export class PushedLoopMonitor {
 
     const snapshot = await this.deps.fetchAutomaticPrFlowSnapshot(pullRequest, workingDirectory, executor, git);
     const pendingFeedbackItems = snapshot.actionableItems.filter(
-      (item) => !previousState.handledItems.some((handledItem) => handledItem.id === item.id),
+      (item) => !handledItems.some((handledItem) => handledItem.id === item.id),
     );
     if (pendingFeedbackItems.length > 0) {
       const batchId = crypto.randomUUID();
@@ -335,6 +336,9 @@ export class PushedLoopMonitor {
     }
 
     const now = new Date().toISOString();
+    const handledItems = Array.isArray(automaticPrFlowState.handledItems)
+      ? automaticPrFlowState.handledItems
+      : [];
     for (const item of activeBatch.items) {
       if (item.source === "review_thread") {
         await this.deps.resolveAutomaticPrFlowReviewThread(item.threadId ?? item.id, workingDirectory, executor);
@@ -355,7 +359,7 @@ export class PushedLoopMonitor {
       lastCheckedAt: now,
       lastError: undefined,
       activeBatch: undefined,
-      handledItems: [...automaticPrFlowState.handledItems, ...newlyHandledItems],
+      handledItems: [...handledItems, ...newlyHandledItems],
     };
   }
 
