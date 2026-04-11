@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { ChatManager } from "../../src/core/chat-manager";
 import { backendManager } from "../../src/core/backend-manager";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
+import { GitService } from "../../src/core/git-service";
 import * as chatPersistence from "../../src/persistence/chats";
 import { loadChat } from "../../src/persistence/chats";
 import type { ChatEvent } from "../../src/types";
@@ -1190,6 +1191,59 @@ describe("ChatManager", () => {
       "Say hello",
       "Hello from the chat backend",
     ]);
+  });
+
+  test("pulls the main checkout before creating a new chat worktree", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the chat backend"],
+    });
+
+    const calls: string[] = [];
+    let worktreeExists = false;
+    const withExecutorSpy = spyOn(GitService, "withExecutor");
+    withExecutorSpy.mockImplementation(() => ({
+      worktreeExists: async () => worktreeExists,
+      getCurrentBranch: async () => "feature/current",
+      checkoutBranch: async (_directory: string, branch: string) => {
+        calls.push(`checkout:${branch}`);
+      },
+      pull: async (_directory: string, branch?: string) => {
+        calls.push(`pull:${branch}`);
+        return true;
+      },
+      branchExists: async () => false,
+      createWorktree: async (_directory: string, _worktreePath: string, branchName: string, originalBranch: string) => {
+        calls.push(`createWorktree:${branchName}:${originalBranch}`);
+        worktreeExists = true;
+      },
+    }) as unknown as GitService);
+
+    try {
+      const manager = new ChatManager();
+      const chat = await manager.createChat({
+        name: "Runtime Chat",
+        workspaceId: testWorkspaceId,
+        directory: context.workDir,
+        useWorktree: true,
+        baseBranch: "main",
+        ...testModelFields,
+      });
+
+      const started = await manager.sendMessage(chat.config.id, {
+        message: "Say hello",
+      });
+
+      expect(started.state.status).toBe("streaming");
+      expect(calls).toEqual([
+        "checkout:main",
+        "pull:main",
+        `createWorktree:chat-runtime-chat-${chat.config.id.slice(0, 8)}:main`,
+      ]);
+      expect(context.mockBackend?.getDirectory()).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+    } finally {
+      withExecutorSpy.mockRestore();
+    }
   });
 
   test("persists the active assistant message incrementally while streaming", async () => {
