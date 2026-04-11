@@ -6,6 +6,7 @@ import { renderWithUser, waitFor, within } from "../helpers/render";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
+const dangerZoneName = /Danger Zone/;
 
 const originalPublicKeyCredential = globalThis.PublicKeyCredential;
 const originalNavigatorCredentials = navigator.credentials;
@@ -205,7 +206,7 @@ describe("App passkey auth", () => {
       return { success: true };
     }, 200);
 
-    const { user, getByLabelText, getByRole, findByRole } = renderWithUser(<App />, {
+    const { user, getByLabelText, getByRole, queryByRole, findByRole } = renderWithUser(<App />, {
       route: "#/settings",
     });
 
@@ -215,6 +216,13 @@ describe("App passkey auth", () => {
 
     await user.type(getByLabelText("Passkey name"), "Laptop key");
     await user.click(getByRole("button", { name: "Register passkey" }));
+
+    const passkeySection = getByRole("heading", { name: "Passkey Authentication" }).parentElement;
+    expect(passkeySection).toBeTruthy();
+    expect(within(passkeySection!).queryByRole("button", { name: "Remove passkey" })).toBeNull();
+    expect(queryByRole("button", { name: "Remove passkey" })).toBeNull();
+
+    await user.click(getByRole("button", { name: dangerZoneName }));
 
     expect(await findByRole("button", { name: "Remove passkey" })).toBeTruthy();
     expect(api.calls("/api/passkey-auth/registration/options", "GET")).toHaveLength(1);
@@ -245,9 +253,14 @@ describe("App passkey auth", () => {
     });
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Remove passkey" })).toBeTruthy();
+      expect(getByRole("button", { name: dangerZoneName })).toBeTruthy();
     });
 
+    await user.click(getByRole("button", { name: dangerZoneName }));
+    const dangerZone = getByRole("button", { name: dangerZoneName }).parentElement;
+    expect(dangerZone).toBeTruthy();
+    const dangerZoneButtons = within(dangerZone!).getAllByRole("button").map((button) => button.textContent?.trim());
+    expect(dangerZoneButtons[dangerZoneButtons.length - 1]).toBe("Remove passkey");
     await user.click(getByRole("button", { name: "Remove passkey" }));
     await waitFor(() => {
       expect(getByRole("heading", { name: "Remove passkey?" })).toBeTruthy();
@@ -277,9 +290,10 @@ describe("App passkey auth", () => {
     });
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Remove passkey" })).toBeTruthy();
+      expect(getByRole("button", { name: dangerZoneName })).toBeTruthy();
     });
 
+    await user.click(getByRole("button", { name: dangerZoneName }));
     await user.click(getByRole("button", { name: "Remove passkey" }));
     await waitFor(() => {
       expect(getByRole("heading", { name: "Remove passkey?" })).toBeTruthy();
@@ -311,9 +325,10 @@ describe("App passkey auth", () => {
     });
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Remove passkey" })).toBeTruthy();
+      expect(getByRole("button", { name: dangerZoneName })).toBeTruthy();
     });
 
+    await user.click(getByRole("button", { name: dangerZoneName }));
     await user.click(getByRole("button", { name: "Remove passkey" }));
     await waitFor(() => {
       expect(getByRole("heading", { name: "Remove passkey?" })).toBeTruthy();
