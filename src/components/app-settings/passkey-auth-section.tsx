@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { PasskeyAuthStatusResponse } from "../../types/api";
-import { Button, ConfirmModal } from "../common";
+import { Button } from "../common";
 
 export interface PasskeyAuthSectionProps {
   status: PasskeyAuthStatusResponse;
@@ -11,7 +11,6 @@ export interface PasskeyAuthSectionProps {
   refreshing?: boolean;
   onRegisterPasskey?: (name?: string) => Promise<boolean>;
   onLogout?: () => Promise<boolean>;
-  onRemovePasskey?: () => Promise<boolean>;
 }
 
 export function PasskeyAuthSection({
@@ -23,23 +22,8 @@ export function PasskeyAuthSection({
   refreshing = false,
   onRegisterPasskey,
   onLogout,
-  onRemovePasskey,
 }: PasskeyAuthSectionProps) {
   const [passkeyName, setPasskeyName] = useState("");
-  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
-
-  function handleCloseRemoveConfirm(): void {
-    if (!removingPasskey) {
-      setRemoveConfirmOpen(false);
-    }
-  }
-
-  async function handleConfirmRemovePasskey(): Promise<void> {
-    const removed = await onRemovePasskey?.();
-    if (removed) {
-      setRemoveConfirmOpen(false);
-    }
-  }
 
   return (
     <div>
@@ -113,32 +97,8 @@ export function PasskeyAuthSection({
             >
               Logout
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="danger"
-              loading={removingPasskey}
-              disabled={!onRemovePasskey || loggingOut || refreshing}
-              onClick={() => {
-                setRemoveConfirmOpen(true);
-              }}
-            >
-              Remove passkey
-            </Button>
           </div>
         )}
-        <ConfirmModal
-          isOpen={removeConfirmOpen}
-          onClose={handleCloseRemoveConfirm}
-          onConfirm={() => {
-            void handleConfirmRemovePasskey();
-          }}
-          title="Remove passkey?"
-          message="This removes the configured passkey and signs this browser out of the protected session."
-          confirmLabel="Remove passkey"
-          loading={removingPasskey}
-          variant="danger"
-        />
       </div>
     </div>
   );

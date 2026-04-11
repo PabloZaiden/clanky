@@ -86,7 +86,6 @@ export function AppSettingsPanel({
           refreshing={refreshingPasskeyAuth}
           onRegisterPasskey={onRegisterPasskey}
           onLogout={onLogoutPasskey}
-          onRemovePasskey={onRemovePasskey}
         />
       ) : null}
       <ImportExportSection
@@ -99,6 +98,9 @@ export function AppSettingsPanel({
         resetting={resetting}
         onKillServer={onKillServer}
         killingServer={killingServer}
+        passkeyConfigured={passkeyAuthStatus?.passkeyConfigured}
+        removingPasskey={removingPasskey}
+        onRemovePasskey={onRemovePasskey}
       />
     </div>
   );
