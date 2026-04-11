@@ -11,6 +11,10 @@ const MAX_PULL_REQUEST_BODY_LENGTH = 8_000;
 const BANNED_METADATA_PATTERNS = [
   /\bralpher\b/i,
   /\bautopr\b/i,
+  /\bgenerated automatically\b/i,
+  /\bautomatically generated\b/i,
+  /\b(?:opened|created)\s+automatically\b/i,
+  /\bautomated\s+(?:pr|pull request)\b/i,
 ] as const;
 
 export interface PullRequestMetadataBackendInterface {
@@ -129,6 +133,24 @@ function capitalizeSentence(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function lowercaseFirstCharacter(value: string): string {
+  if (!value) {
+    return value;
+  }
+  return `${value[0]!.toLowerCase()}${value.slice(1)}`;
+}
+
+function stripBannedMetadata(value: string): string {
+  let sanitized = value;
+  for (const pattern of BANNED_METADATA_PATTERNS) {
+    const globalPattern = pattern.flags.includes("g")
+      ? pattern
+      : new RegExp(pattern.source, `${pattern.flags}g`);
+    sanitized = sanitized.replace(globalPattern, " ");
+  }
+  return sanitized;
+}
+
 function inferFallbackFocus(input: PullRequestMetadataInput): string | null {
   const firstFile = input.changedFiles[0]?.path;
   if (firstFile) {
@@ -180,6 +202,22 @@ function sanitizeBody(body: string): string {
   return sanitized;
 }
 
+function sanitizeFallbackTitle(title: string): string {
+  try {
+    return sanitizeTitle(stripBannedMetadata(title));
+  } catch {
+    return "Update completed changes";
+  }
+}
+
+function sanitizeFallbackBody(body: string): string {
+  try {
+    return sanitizeBody(stripBannedMetadata(body));
+  } catch {
+    return "## Summary\n- Completed the requested updates and prepared them for review.";
+  }
+}
+
 function parseJsonObject(content: string): Record<string, unknown> {
   const stripped = stripMarkdownFences(content);
 
@@ -202,7 +240,7 @@ function buildChangedFileLines(changedFiles: PullRequestMetadataChangedFile[]): 
   }
 
   return `${limitedFiles.map((file) => {
-    const totals = [];
+    const totals: string[] = [];
     if (file.additions > 0) {
       totals.push(`+${file.additions}`);
     }
@@ -262,7 +300,7 @@ export function buildFallbackPullRequestMetadata(input: PullRequestMetadataInput
 
   let title = "Update completed changes";
   if (commitSummaries.length >= 2) {
-    title = `${capitalizeSentence(commitSummaries[0]!)} and ${commitSummaries[1]!.toLowerCase()}`;
+    title = `${capitalizeSentence(commitSummaries[0]!)} and ${lowercaseFirstCharacter(commitSummaries[1]!)}`;
   } else if (commitSummaries.length === 1) {
     title = capitalizeSentence(commitSummaries[0]!);
   } else if (focus) {
@@ -280,7 +318,7 @@ export function buildFallbackPullRequestMetadata(input: PullRequestMetadataInput
   ];
 
   const fileLines = input.changedFiles.slice(0, 8).map((file) => {
-    const changeTotals = [];
+    const changeTotals: string[] = [];
     if (file.additions > 0) {
       changeTotals.push(`+${file.additions}`);
     }
@@ -305,8 +343,8 @@ export function buildFallbackPullRequestMetadata(input: PullRequestMetadataInput
   ];
 
   return {
-    title: sanitizeTitle(title),
-    body: sanitizeBody(bodySections.join("\n")),
+    title: sanitizeFallbackTitle(title),
+    body: sanitizeFallbackBody(bodySections.join("\n")),
   };
 }
 

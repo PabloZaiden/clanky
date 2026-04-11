@@ -292,7 +292,7 @@ describe("automatic PR flow GitHub helpers", () => {
         "--head",
         "feature/automatic-pr-flow",
         "--title",
-        "Generate PR metadata from actual changes and cover pr metadata fallback behavior",
+        "Generate PR metadata from actual changes and cover PR metadata fallback behavior",
         "--body",
         "## Summary\n- Generate PR metadata from actual changes\n- Cover PR metadata fallback behavior\n\n## Changes\n- 2 files changed\n- 15 insertions\n- 4 deletions\n\n## Files\n- src/core/automatic-pr-flow-github.ts (modified) (+12 / -4)\n- tests/unit/automatic-pr-flow-github.test.ts (modified) (+3)\n\n## Branches\n- Base: `main`\n- Head: `feature/automatic-pr-flow`",
       ],
@@ -321,7 +321,7 @@ describe("automatic PR flow GitHub helpers", () => {
     const createCall = executor.calls.find((call) => call.command === "gh" && call.args[0] === "pr" && call.args[1] === "create");
     expect(createCall).toBeDefined();
     const createArgs = createCall?.args.join("\n") ?? "";
-    expect(createArgs).toContain("Generate PR metadata from actual changes and cover pr metadata fallback behavior");
+    expect(createArgs).toContain("Generate PR metadata from actual changes and cover PR metadata fallback behavior");
     expect(createArgs).not.toContain("Ralpher");
     expect(createArgs).not.toContain("AutoPR");
   });
