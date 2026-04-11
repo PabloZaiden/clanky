@@ -462,7 +462,7 @@ export const DEFAULT_LOOP_CONFIG = {
   useWorktree: true,
   clearPlanningFolder: false,
   planMode: true,
-  autoAcceptPlan: false,
+  autoAcceptPlan: true,
   mode: "loop" as const,
   git: {
     branchPrefix: "",

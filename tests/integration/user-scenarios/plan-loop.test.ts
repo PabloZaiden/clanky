@@ -85,6 +85,7 @@ describe("Plan + Loop User Scenarios", () => {
         directory: ctx.workDir,
         prompt: "Create a comprehensive plan first",
         planMode: true,
+        autoAcceptPlan: false,
       });
 
       expect(status).toBe(201);
@@ -147,6 +148,7 @@ describe("Plan + Loop User Scenarios", () => {
         prompt: "Create a plan from scratch",
         planMode: true,
         clearPlanningFolder: true,
+        autoAcceptPlan: false,
       });
 
       expect(status).toBe(201);
@@ -170,7 +172,7 @@ describe("Plan + Loop User Scenarios", () => {
       await waitForLoopStatus(ctx.baseUrl, loop.config.id, "deleted");
     });
 
-    test("auto-accepts a ready plan when autoAcceptPlan is enabled", async () => {
+    test("auto-accepts a ready plan by default in plan mode", async () => {
       ctx.mockBackend.reset(
         createPlanModeMockResponses({
           planIterations: 1,
@@ -182,7 +184,6 @@ describe("Plan + Loop User Scenarios", () => {
         directory: ctx.workDir,
         prompt: "Create a plan and execute it immediately",
         planMode: true,
-        autoAcceptPlan: true,
       });
 
       expect(status).toBe(201);
@@ -217,6 +218,7 @@ describe("Plan + Loop User Scenarios", () => {
         directory: ctx.workDir,
         prompt: "Create a plan to discard",
         planMode: true,
+        autoAcceptPlan: false,
       });
       const loop = body as Loop;
 
@@ -277,6 +279,7 @@ describe("Plan + Loop User Scenarios", () => {
           directory: ctx.workDir,
           prompt: "Create a plan and execute it",
           planMode: true,
+          autoAcceptPlan: false,
         });
         const loop = body as Loop;
 
@@ -359,6 +362,7 @@ describe("Plan + Loop User Scenarios", () => {
           directory: ctx.workDir,
           prompt: "Create a plan and push it",
           planMode: true,
+          autoAcceptPlan: false,
         });
         const loop = body as Loop;
 
@@ -421,6 +425,7 @@ describe("Plan + Loop User Scenarios", () => {
           directory: ctx.workDir,
           prompt: "Create a plan and discard it",
           planMode: true,
+          autoAcceptPlan: false,
         });
         const loop = body as Loop;
 
@@ -483,6 +488,7 @@ describe("Plan + Loop User Scenarios", () => {
           directory: ctx.workDir,
           prompt: "Create a plan with feedback",
           planMode: true,
+          autoAcceptPlan: false,
         });
         const loop = body as Loop;
 
@@ -587,6 +593,7 @@ describe("Plan + Loop User Scenarios", () => {
           directory: ctx.workDir,
           prompt: "Create a plan with feedback to push",
           planMode: true,
+          autoAcceptPlan: false,
         });
         const loop = body as Loop;
 
@@ -658,6 +665,7 @@ describe("Plan + Loop User Scenarios", () => {
           directory: ctx.workDir,
           prompt: "Create a plan with feedback to discard",
           planMode: true,
+          autoAcceptPlan: false,
         });
         const loop = body as Loop;
 
@@ -784,6 +792,7 @@ describe("Plan + Loop User Scenarios", () => {
         directory: ctx.workDir,
         prompt: "Create a plan that survives reset",
         planMode: true,
+        autoAcceptPlan: false,
       });
       const loop = body as Loop;
 
@@ -854,6 +863,7 @@ describe("Plan + Loop User Scenarios", () => {
         directory: ctx.workDir,
         prompt: "Test plan",
         planMode: true,
+        autoAcceptPlan: false,
       });
       const loop = body as Loop;
 

@@ -9,7 +9,6 @@ import { parseModelKey } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
 import type { CreateLoopFormProps, CreateLoopFormSubmitRequest } from "./types";
 import { toMessageImageAttachments } from "../../lib/image-attachments";
-import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 
 const log = createLogger("CreateLoopForm");
 
@@ -134,7 +133,7 @@ export function useFormActions({
         workspaceId: selectedWorkspaceId,
         prompt: currentPrompt.trim(),
         planMode,
-        autoAcceptPlan: planMode ? autoAcceptPlan : DEFAULT_LOOP_CONFIG.autoAcceptPlan,
+        autoAcceptPlan: planMode ? autoAcceptPlan : false,
         model,
         useWorktree,
       };

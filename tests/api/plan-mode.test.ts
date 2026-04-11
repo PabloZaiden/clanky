@@ -510,6 +510,7 @@ describe("Plan Mode API Integration", () => {
             workspaceId: sshWorkspaceId,
             maxIterations: 1,
             planMode: true,
+            autoAcceptPlan: false,
             model: testModel,
             useWorktree: true,
           }),

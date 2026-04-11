@@ -430,12 +430,12 @@ describe("CreateLoopForm", () => {
       expect(queryByRole("checkbox", { name: /Auto-reply plan questions/i })).not.toBeInTheDocument();
     });
 
-    test("auto-accept plan is shown and unchecked by default", () => {
+    test("auto-accept plan is shown and checked by default", () => {
       const { getByRole } = renderWithUser(
         <CreateLoopForm {...defaultProps()} />
       );
 
-      expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).checked).toBe(false);
+      expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).checked).toBe(true);
     });
 
     test("toggling plan mode keeps the generic Create label in create mode", async () => {
@@ -501,7 +501,7 @@ describe("CreateLoopForm", () => {
       expect("planModeAutoReply" in req).toBe(false);
     });
 
-    test("submits autoAcceptPlan=true when the checkbox is checked", async () => {
+    test("submits autoAcceptPlan=true by default in plan mode", async () => {
       const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
 
       const { getByLabelText, getByRole, user } = renderWithUser(
@@ -526,7 +526,6 @@ describe("CreateLoopForm", () => {
         expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
       });
 
-      await user.click(getByRole("checkbox", { name: /Auto-accept plan/i }));
       await user.click(getByRole("button", { name: "Create" }));
 
       await waitFor(() => {
@@ -536,6 +535,43 @@ describe("CreateLoopForm", () => {
       const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
       expect(req.planMode).toBe(true);
       expect(req.autoAcceptPlan).toBe(true);
+    });
+
+    test("submits autoAcceptPlan=false when plan mode is disabled", async () => {
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            onCancel: mock(() => {}),
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+            branches: [createBranchInfo({ name: "main" })],
+            defaultBranch: "main",
+            currentBranch: "main",
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Do it");
+      await setInputValue(user, getByLabelText(/Title/) as HTMLInputElement, "Loop title");
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+      });
+
+      await user.click(getByRole("checkbox", { name: /Plan Mode/ }));
+      await user.click(getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
+      expect(req.planMode).toBe(false);
+      expect(req.autoAcceptPlan).toBe(false);
     });
 
   });
@@ -1052,6 +1088,28 @@ describe("CreateLoopForm", () => {
       expect(planMode.checked).toBe(false);
       const useWorktree = getByRole("checkbox", { name: /Use Worktree/ }) as HTMLInputElement;
       expect(useWorktree.checked).toBe(false);
+    });
+
+    test("preserves a saved auto-accept=false value in edit mode", () => {
+      const { getByRole } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            editLoopId: "loop-1",
+            initialLoopData: {
+              name: "Existing title",
+              directory: "/workspaces/project-a",
+              prompt: "Existing prompt text",
+              planMode: true,
+              autoAcceptPlan: false,
+              workspaceId: "ws-1",
+            },
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+
+      expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).checked).toBe(false);
     });
 
     test("shows the generic Start button in edit mode without plan mode", () => {

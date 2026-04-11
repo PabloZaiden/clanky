@@ -122,6 +122,7 @@ describe("Plan Mode - Clear Planning Folder", () => {
       maxIterations: 1,
       clearPlanningFolder: true,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -169,6 +170,7 @@ describe("Plan Mode - Clear Planning Folder", () => {
       maxIterations: 1,
       clearPlanningFolder: false,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -203,6 +205,7 @@ describe("Plan Mode - Clear Planning Folder", () => {
       maxIterations: 1,
       clearPlanningFolder: true,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -247,6 +250,7 @@ describe("Plan Mode - Clear Planning Folder", () => {
       maxIterations: 1,
       clearPlanningFolder: true,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -324,6 +328,7 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
       maxIterations: 1,
       clearPlanningFolder: false,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -362,6 +367,7 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
       maxIterations: 1,
       clearPlanningFolder: true,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -402,6 +408,7 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
       maxIterations: 1,
       clearPlanningFolder: false,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -453,6 +460,7 @@ describe("Plan Mode - State Transitions", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -471,6 +479,7 @@ describe("Plan Mode - State Transitions", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -502,6 +511,7 @@ describe("Plan Mode - State Transitions", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 5, // Need enough iterations for multiple feedbacks
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -539,6 +549,7 @@ describe("Plan Mode - State Transitions", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -566,6 +577,7 @@ describe("Plan Mode - State Transitions", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -620,6 +632,7 @@ describe("Plan Mode - isPlanReady Flag", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -637,6 +650,7 @@ describe("Plan Mode - isPlanReady Flag", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -657,6 +671,7 @@ describe("Plan Mode - isPlanReady Flag", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 5, // Increase max iterations to allow feedback iteration
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -687,6 +702,7 @@ describe("Plan Mode - isPlanReady Flag", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -737,6 +753,7 @@ describe("Plan Mode - Rejection Paths", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 5,  // Allow multiple iterations
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -792,6 +809,7 @@ describe("Plan Mode - Worktree Isolation", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -847,6 +865,7 @@ describe("Plan Mode - Worktree Isolation", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loop2 = await ctx.manager.createLoop({
       ...testModelFields,
@@ -856,6 +875,7 @@ describe("Plan Mode - Worktree Isolation", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
 
     await ctx.manager.startPlanMode(loop1.config.id);
@@ -901,6 +921,7 @@ describe("Plan Mode - Worktree Isolation", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -958,6 +979,7 @@ describe("Plan Mode - Engine Recovery After Server Restart", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 5,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -995,6 +1017,7 @@ describe("Plan Mode - Engine Recovery After Server Restart", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 5,
       planMode: true,
+      autoAcceptPlan: false,
       useWorktree: false,
     });
     const loopId = loop.config.id;
@@ -1027,6 +1050,7 @@ describe("Plan Mode - Engine Recovery After Server Restart", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 5,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -1118,6 +1142,7 @@ describe("Plan Mode - Open SSH acceptance", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -1153,6 +1178,7 @@ describe("Plan Mode - Open SSH acceptance", () => {
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
+      autoAcceptPlan: false,
     });
     const loopId = loop.config.id;
 
@@ -1198,6 +1224,7 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         workspaceId: testWorkspaceId,
         maxIterations: 2,
         planMode: true,
+        autoAcceptPlan: false,
       });
       const loopId = loop.config.id;
 
@@ -1256,6 +1283,7 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         workspaceId: testWorkspaceId,
         maxIterations: 2,
         planMode: true,
+        autoAcceptPlan: false,
       });
       const loopId = loop.config.id;
 
@@ -1320,6 +1348,7 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         maxIterations: 2,
         maxConsecutiveErrors: 1,
         planMode: true,
+        autoAcceptPlan: false,
       });
       const loopId = loop.config.id;
 
@@ -1372,6 +1401,7 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         workspaceId: testWorkspaceId,
         maxIterations: 2,
         planMode: true,
+        autoAcceptPlan: false,
       });
       const loopId = loop.config.id;
 
