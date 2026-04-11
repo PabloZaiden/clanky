@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../common";
 import { useCountdownReload } from "../../hooks";
+import { RemovePasskeySection } from "./remove-passkey-section";
 
 /** The exact phrase the user must type to confirm a full reset. */
 const RESET_CONFIRMATION_PHRASE = "EXECUTE ORDER 66";
@@ -12,9 +13,20 @@ export interface DangerZoneSectionProps {
   resetting?: boolean;
   onKillServer?: () => Promise<boolean>;
   killingServer?: boolean;
+  passkeyConfigured?: boolean;
+  removingPasskey?: boolean;
+  onRemovePasskey?: () => Promise<boolean>;
 }
 
-export function DangerZoneSection({ onResetAll, resetting = false, onKillServer, killingServer = false }: DangerZoneSectionProps) {
+export function DangerZoneSection({
+  onResetAll,
+  resetting = false,
+  onKillServer,
+  killingServer = false,
+  passkeyConfigured = false,
+  removingPasskey = false,
+  onRemovePasskey,
+}: DangerZoneSectionProps) {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showResetTextConfirm, setShowResetTextConfirm] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
@@ -37,7 +49,7 @@ export function DangerZoneSection({ onResetAll, resetting = false, onKillServer,
     }
   }, [showResetTextConfirm]);
 
-  if (!onResetAll && !onKillServer) return null;
+  if (!onResetAll && !onKillServer && !passkeyConfigured) return null;
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
@@ -247,6 +259,14 @@ export function DangerZoneSection({ onResetAll, resetting = false, onKillServer,
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+            {passkeyConfigured && (
+              <div className={onKillServer || onResetAll ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}>
+                <RemovePasskeySection
+                  removingPasskey={removingPasskey}
+                  onRemovePasskey={onRemovePasskey}
+                />
               </div>
             )}
           </div>
