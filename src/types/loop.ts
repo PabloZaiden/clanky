@@ -181,6 +181,9 @@ export interface LoopState {
   /** Persisted backend PR monitoring state for pushed loops */
   pullRequestMonitoring?: PullRequestMonitoringState;
 
+  /** Persisted automatic PR flow state for pushed loops */
+  automaticPrFlow?: AutomaticPrFlowState;
+
   /** Sync state for tracking branch sync during push */
   syncState?: {
     /** Current sync status */
@@ -356,6 +359,68 @@ export interface PullRequestMonitoringState {
   mergedAt?: string;
   /** Last probe failure detail for diagnostics */
   lastError?: string;
+}
+
+/**
+ * Persisted reference to a single PR feedback item handled by automation.
+ */
+export interface AutomaticPrFlowHandledItem {
+  /** Stable GitHub identifier for the feedback item */
+  id: string;
+  /** Source of the feedback item */
+  source: "review_thread" | "review_comment" | "review";
+  /** How automation concluded the item */
+  outcome: "resolved" | "ignored" | "manual";
+  /** ISO 8601 timestamp when the item was recorded as handled */
+  handledAt: string;
+}
+
+/**
+ * Persisted state for an in-progress automated feedback batch.
+ */
+export interface AutomaticPrFlowActiveBatch {
+  /** Unique identifier for the batch */
+  batchId: string;
+  /** Feedback item IDs included in this batch */
+  itemIds: string[];
+  /** Feedback items included in this batch */
+  items: Array<{
+    id: string;
+    source: "review_thread" | "review_comment" | "review";
+    threadId?: string;
+  }>;
+  /** ISO 8601 timestamp when the batch started */
+  startedAt: string;
+  /** Review cycle created to address this batch, when one exists */
+  reviewCycle?: number;
+}
+
+/**
+ * Persisted automatic PR flow state for pushed loops.
+ */
+export interface AutomaticPrFlowState {
+  /** Whether the automatic PR flow is enabled */
+  enabled: boolean;
+  /** Current automation phase */
+  status: "starting" | "monitoring" | "processing_feedback" | "stopped" | "error";
+  /** ISO 8601 timestamp when automation was enabled */
+  startedAt: string;
+  /** ISO 8601 timestamp when automation state was last updated */
+  updatedAt: string;
+  /** ISO 8601 timestamp of the last successful or attempted poll */
+  lastCheckedAt?: string;
+  /** Pull request number when known */
+  pullRequestNumber?: number;
+  /** Pull request URL when known */
+  pullRequestUrl?: string;
+  /** In-flight automation batch when one is being processed */
+  activeBatch?: AutomaticPrFlowActiveBatch;
+  /** Feedback items already handled by automation */
+  handledItems: AutomaticPrFlowHandledItem[];
+  /** Last automation error for diagnostics */
+  lastError?: string;
+  /** ISO 8601 timestamp when the user last stopped automation */
+  stoppedAt?: string;
 }
 
 /**

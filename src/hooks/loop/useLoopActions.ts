@@ -16,6 +16,7 @@ import type {
   AcceptPlanResult,
   PushLoopResult,
   AddressCommentsResult,
+  AutomaticPrFlowResult,
   SetPendingResult,
 } from "../loopActions";
 import { useLoopLifecycleActions } from "./useLoopLifecycleActions";
@@ -55,6 +56,8 @@ export interface UseLoopActionsResult {
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
+  stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   setPending: (options: {
     message?: string;
     model?: { providerID: string; modelID: string };

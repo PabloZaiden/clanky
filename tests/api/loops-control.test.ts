@@ -965,6 +965,65 @@ describe("Loops Control API Integration", () => {
       expect(response.status).toBe(404);
     });
 
+    test("POST /api/loops/:id/automatic-pr-flow/start enables automatic PR flow", async () => {
+      const startSpy = spyOn(loopManager, "startAutomaticPrFlow").mockResolvedValue({
+        success: true,
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          lastCheckedAt: "2026-04-11T04:00:00.000Z",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/owner/repo/pull/42",
+          handledItems: [],
+        },
+      });
+
+      try {
+        const response = await fetch(`${baseUrl}/api/loops/test-loop-id/automatic-pr-flow/start`, {
+          method: "POST",
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.success).toBe(true);
+        expect(body.automaticPrFlow.enabled).toBe(true);
+        expect(body.automaticPrFlow.pullRequestNumber).toBe(42);
+      } finally {
+        startSpy.mockRestore();
+      }
+    });
+
+    test("POST /api/loops/:id/automatic-pr-flow/stop disables automatic PR flow", async () => {
+      const stopSpy = spyOn(loopManager, "stopAutomaticPrFlow").mockResolvedValue({
+        success: true,
+        automaticPrFlow: {
+          enabled: false,
+          status: "stopped",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:10:00.000Z",
+          lastCheckedAt: "2026-04-11T04:10:00.000Z",
+          handledItems: [],
+          stoppedAt: "2026-04-11T04:10:00.000Z",
+        },
+      });
+
+      try {
+        const response = await fetch(`${baseUrl}/api/loops/test-loop-id/automatic-pr-flow/stop`, {
+          method: "POST",
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.success).toBe(true);
+        expect(body.automaticPrFlow.enabled).toBe(false);
+        expect(body.automaticPrFlow.status).toBe("stopped");
+      } finally {
+        stopSpy.mockRestore();
+      }
+    });
+
     test("GET /api/loops/:id/comments returns comments in correct order", async () => {
       // Use unique directory with bare repo to avoid conflicts
       const uniqueWorkDir = await createTrackedTempDir("ralpher-comments-order-test-");

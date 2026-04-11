@@ -57,6 +57,28 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   api.post("/api/loops/:id/purge", () => ({ success: true }));
   api.post("/api/loops/:id/mark-merged", () => ({ success: true }));
   api.post("/api/loops/:id/address-comments", () => ({ success: true }));
+  api.post("/api/loops/:id/automatic-pr-flow/start", () => ({
+    success: true,
+    automaticPrFlow: {
+      enabled: true,
+      status: "monitoring",
+      startedAt: "2026-04-11T04:00:00.000Z",
+      updatedAt: "2026-04-11T04:00:00.000Z",
+      lastCheckedAt: "2026-04-11T04:00:00.000Z",
+      pullRequestNumber: 1,
+      pullRequestUrl: "https://github.com/example/repo/pull/1",
+    },
+  }));
+  api.post("/api/loops/:id/automatic-pr-flow/stop", () => ({
+    success: true,
+    automaticPrFlow: {
+      enabled: false,
+      status: "stopped",
+      startedAt: "2026-04-11T04:00:00.000Z",
+      updatedAt: "2026-04-11T04:10:00.000Z",
+      stoppedAt: "2026-04-11T04:10:00.000Z",
+    },
+  }));
   api.post("/api/loops/:id/pending", () => ({ success: true }));
   api.post("/api/loops/:id/follow-up", () => ({ success: true }));
   api.delete("/api/loops/:id/pending", () => ({ success: true }));
@@ -786,6 +808,7 @@ describe("actions tab content", () => {
 
     await waitFor(() => {
       expect(getByText("Go to PR")).toBeTruthy();
+      expect(getByText("Automatic PR flow")).toBeTruthy();
       expect(getByText("Address Comments")).toBeTruthy();
       expect(getByText("Mark as Merged")).toBeTruthy();
       expect(getByText("Purge Loop")).toBeTruthy();
@@ -968,6 +991,101 @@ describe("actions tab content", () => {
       expect(openCalls).toHaveLength(1);
     });
     expect(openCalls[0]?.url).toBe("https://github.com/example/repo/pull/42");
+  });
+
+  test("pushed loop opens automatic PR flow confirmation modal", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID, name: "Pushed Loop" },
+      state: {
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+      },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/pull-request", () => ({
+      enabled: true,
+      destinationType: "existing_pr",
+      url: "https://github.com/example/repo/pull/42",
+    }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Pushed Loop")).toBeTruthy();
+    });
+
+    await user.click(getByText("Actions"));
+    await waitFor(() => {
+      expect(getByText("Automatic PR flow")).toBeTruthy();
+    });
+
+    await user.click(getByText("Automatic PR flow"));
+
+    await waitFor(() => {
+      expect(getByText("Start Automatic PR flow?")).toBeTruthy();
+    });
+  });
+
+  test("pushed loop shows stop automatic PR flow state when enabled", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID, name: "Pushed Loop" },
+      state: {
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          lastCheckedAt: "2026-04-11T04:00:00.000Z",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/example/repo/pull/42",
+          handledItems: [],
+        },
+      },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/pull-request", () => ({
+      enabled: true,
+      destinationType: "existing_pr",
+      url: "https://github.com/example/repo/pull/42",
+    }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const { getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Pushed Loop")).toBeTruthy();
+    });
+
+    await user.click(getByText("Actions"));
+
+    await waitFor(() => {
+      expect(getByText("Stop Automatic PR flow")).toBeTruthy();
+    });
+    expect(queryByText("Automatic PR flow")).toBeNull();
+    expect(getByText("PR: #42")).toBeTruthy();
   });
 });
 

@@ -150,6 +150,8 @@ export function LoopDetailsTabContent({
           loadingPullRequestDestination={content.loadingPullRequestDestination}
           pullRequestDestination={content.pullRequestDestination}
           onOpenPullRequest={() => actions.handleOpenPullRequest(content.pullRequestDestination)}
+          onStartAutomaticPrFlowModal={() => actions.setStartAutomaticPrFlowModal(true)}
+          onStopAutomaticPrFlowModal={() => actions.setStopAutomaticPrFlowModal(true)}
           onAddressCommentsModal={() => actions.setAddressCommentsModal(true)}
           onUpdateBranchModal={() => actions.setUpdateBranchModal(true)}
           onMarkMergedModal={() => actions.setMarkMergedModal(true)}

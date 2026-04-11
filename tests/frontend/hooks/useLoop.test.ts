@@ -1095,6 +1095,56 @@ describe("addressReviewComments", () => {
   });
 });
 
+describe("automatic PR flow actions", () => {
+  test("startAutomaticPrFlow calls API and returns state", async () => {
+    setupLoop();
+    api.post("/api/loops/:id/automatic-pr-flow/start", () => ({
+      success: true,
+      automaticPrFlow: {
+        enabled: true,
+        status: "monitoring",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:00:00.000Z",
+      },
+    }));
+
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+    await waitForLoad(result);
+
+    let startResult = { success: false };
+    await act(async () => {
+      startResult = await result.current.startAutomaticPrFlow();
+    });
+
+    expect(startResult.success).toBe(true);
+    expect(api.calls("/api/loops/:id/automatic-pr-flow/start", "POST")).toHaveLength(1);
+  });
+
+  test("stopAutomaticPrFlow calls API and returns state", async () => {
+    setupLoop();
+    api.post("/api/loops/:id/automatic-pr-flow/stop", () => ({
+      success: true,
+      automaticPrFlow: {
+        enabled: false,
+        status: "stopped",
+        startedAt: "2026-04-11T04:00:00.000Z",
+        updatedAt: "2026-04-11T04:10:00.000Z",
+      },
+    }));
+
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+    await waitForLoad(result);
+
+    let stopResult = { success: false };
+    await act(async () => {
+      stopResult = await result.current.stopAutomaticPrFlow();
+    });
+
+    expect(stopResult.success).toBe(true);
+    expect(api.calls("/api/loops/:id/automatic-pr-flow/stop", "POST")).toHaveLength(1);
+  });
+});
+
 // ─── Actions: setPending / clearPending ──────────────────────────────────────
 
 describe("setPending / clearPending", () => {

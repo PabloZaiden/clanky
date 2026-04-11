@@ -9,6 +9,9 @@ import {
   sendFollowUpApi,
   getOrCreateLoopSshSessionApi,
   type AddressCommentsResult,
+  startAutomaticPrFlowApi,
+  stopAutomaticPrFlowApi,
+  type AutomaticPrFlowResult,
 } from "../loopActions";
 import { createLogger } from "../../lib/logger";
 import type { SshSession } from "../../types";
@@ -19,6 +22,8 @@ const log = createLogger("useLoop");
 
 export interface UseLoopFollowUpActionsResult {
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
+  stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   sendFollowUp: (
     message: string,
     model?: { providerID: string; modelID: string },
@@ -114,6 +119,60 @@ export function useLoopFollowUpActions(params: UseLoopActionsParams): UseLoopFol
     [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError],
   );
 
+  const startAutomaticPrFlow = useCallback(async (): Promise<AutomaticPrFlowResult> => {
+    const actionLoopId = loopId;
+    const staleAction = ignoreStaleLoopAction("startAutomaticPrFlow", actionLoopId, { success: false });
+    if (staleAction !== null) {
+      return staleAction;
+    }
+    try {
+      const result = await startAutomaticPrFlowApi(actionLoopId);
+      await refresh();
+      if (!isActiveLoop(actionLoopId)) {
+        return { success: false };
+      }
+      return result;
+    } catch (err) {
+      const staleError = ignoreStaleLoopError("startAutomaticPrFlow", actionLoopId, { success: false }, err);
+      if (staleError !== null) {
+        return staleError;
+      }
+      log.error("Failed to start automatic PR flow", {
+        loopId: actionLoopId,
+        error: String(err),
+      });
+      setError(String(err));
+      return { success: false };
+    }
+  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
+
+  const stopAutomaticPrFlow = useCallback(async (): Promise<AutomaticPrFlowResult> => {
+    const actionLoopId = loopId;
+    const staleAction = ignoreStaleLoopAction("stopAutomaticPrFlow", actionLoopId, { success: false });
+    if (staleAction !== null) {
+      return staleAction;
+    }
+    try {
+      const result = await stopAutomaticPrFlowApi(actionLoopId);
+      await refresh();
+      if (!isActiveLoop(actionLoopId)) {
+        return { success: false };
+      }
+      return result;
+    } catch (err) {
+      const staleError = ignoreStaleLoopError("stopAutomaticPrFlow", actionLoopId, { success: false }, err);
+      if (staleError !== null) {
+        return staleError;
+      }
+      log.error("Failed to stop automatic PR flow", {
+        loopId: actionLoopId,
+        error: String(err),
+      });
+      setError(String(err));
+      return { success: false };
+    }
+  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
+
   const connectViaSsh = useCallback(async (): Promise<SshSession | null> => {
     const actionLoopId = loopId;
     if (!isActiveLoop(actionLoopId)) {
@@ -147,5 +206,5 @@ export function useLoopFollowUpActions(params: UseLoopActionsParams): UseLoopFol
     }
   }, [isActiveLoop, loopId, setError]);
 
-  return { addressReviewComments, sendFollowUp, connectViaSsh };
+  return { addressReviewComments, startAutomaticPrFlow, stopAutomaticPrFlow, sendFollowUp, connectViaSsh };
 }
