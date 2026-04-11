@@ -332,6 +332,40 @@ describe("migration infrastructure", () => {
     });
   });
 
+  describe("loop fully autonomous migration", () => {
+    test("adds fully_autonomous and fully_autonomous_pending to loops when missing", () => {
+      db.run(`
+        CREATE TABLE loops (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL
+        )
+      `);
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "loops")).toContain("fully_autonomous");
+      expect(getTableColumns(db, "loops")).toContain("fully_autonomous_pending");
+    });
+
+    test("is idempotent when fully autonomous columns already exist", () => {
+      db.run(`
+        CREATE TABLE loops (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          fully_autonomous INTEGER NOT NULL DEFAULT 0,
+          fully_autonomous_pending INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "loops")).toContain("fully_autonomous");
+      expect(getTableColumns(db, "loops")).toContain("fully_autonomous_pending");
+    });
+  });
+
   describe("workspace devcontainer subpath migration", () => {
     test("adds devcontainer_subpath to existing workspaces tables", () => {
       db.run(`

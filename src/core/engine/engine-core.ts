@@ -81,6 +81,7 @@ export class LoopEngine {
   private sessionId: string | null = null;
   private onPersistState?: (state: LoopState) => Promise<void>;
   private onPlanReady?: () => Promise<void>;
+  private onCompleted?: () => Promise<void>;
   /** Guard to prevent concurrent runLoop() executions */
   private isLoopRunning = false;
   /** Skip git branch setup (for review cycles) */
@@ -104,6 +105,7 @@ export class LoopEngine {
     this.stopDetector = new StopPatternDetector(options.loop.config.stopPattern);
     this.onPersistState = options.onPersistState;
     this.onPlanReady = options.onPlanReady;
+    this.onCompleted = options.onCompleted;
     this.skipGitSetup = options.skipGitSetup ?? false;
     this.initialPromptAttachments = [...(options.initialPromptAttachments ?? [])];
   }
@@ -1027,6 +1029,14 @@ export class LoopEngine {
     // Persist immediately so callbacks (e.g., auto-push after conflict resolution)
     // can act on the completed status without waiting for the periodic persistence interval.
     await this.triggerPersistence();
+    if (this.onCompleted) {
+      queueMicrotask(() => {
+        void this.onCompleted?.().catch(async (error) => {
+          this.emitLog("error", `Automatic completion follow-up failed: ${String(error)}`);
+          await this.triggerPersistence();
+        });
+      });
+    }
     return true;
   }
 

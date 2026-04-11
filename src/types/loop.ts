@@ -71,6 +71,9 @@ export interface LoopConfig {
   /** Whether a ready plan should be automatically accepted and executed */
   autoAcceptPlan?: boolean;
 
+  /** Whether the accepted plan should continue through push and automatic PR flow */
+  fullyAutonomous?: boolean;
+
   /** Mode of operation for this entity. Loops are the only supported mode. */
   mode: "loop";
 }
@@ -183,6 +186,9 @@ export interface LoopState {
 
   /** Persisted automatic PR flow state for pushed loops */
   automaticPrFlow?: AutomaticPrFlowState;
+
+  /** Whether the initial fully autonomous push/PR handoff is still pending */
+  fullyAutonomousPending?: boolean;
 
   /** Sync state for tracking branch sync during push */
   syncState?: {
@@ -463,6 +469,7 @@ export const DEFAULT_LOOP_CONFIG = {
   clearPlanningFolder: false,
   planMode: true,
   autoAcceptPlan: true,
+  fullyAutonomous: false,
   mode: "loop" as const,
   git: {
     branchPrefix: "",

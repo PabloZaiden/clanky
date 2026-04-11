@@ -460,6 +460,7 @@ export async function createLoopViaAPI(
     maxIterations?: number;
     clearPlanningFolder?: boolean;
     autoAcceptPlan?: boolean;
+    fullyAutonomous?: boolean;
     baseBranch?: string;
   }
 ): Promise<{ status: number; body: Loop | { error: string; message: string } }> {
@@ -531,6 +532,37 @@ export async function waitForLoopStatus(
 
   throw new Error(
     `Loop ${loopId} did not reach status [${statuses.join(", ")}] within ${timeoutMs}ms. Last status: ${lastStatus}${lastLoop?.state?.error ? `, error: ${lastLoop.state.error.message}` : ""}`
+  );
+}
+
+export async function waitForLoopCondition(
+  baseUrl: string,
+  loopId: string,
+  predicate: (loop: Loop) => boolean,
+  description: string,
+  timeoutMs = 15000,
+): Promise<Loop> {
+  const startTime = Date.now();
+  let lastStatus = "";
+  let lastLoop: Loop | null = null;
+
+  while (Date.now() - startTime < timeoutMs) {
+    const { status, body } = await getLoopViaAPI(baseUrl, loopId);
+    if (status === 200) {
+      const loop = body as Loop;
+      lastLoop = loop;
+      lastStatus = loop.state?.status ?? "no state";
+      if (predicate(loop)) {
+        return loop;
+      }
+    } else {
+      lastStatus = `HTTP ${status}`;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(
+    `Loop ${loopId} did not satisfy condition "${description}" within ${timeoutMs}ms. Last status: ${lastStatus}${lastLoop?.state?.error ? `, error: ${lastLoop.state.error.message}` : ""}`,
   );
 }
 

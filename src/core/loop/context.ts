@@ -10,6 +10,8 @@ import type { GitService } from "../git-service";
 import type { CommandExecutor } from "../command-executor";
 import type { SendFollowUpResult } from "./loop-types";
 import type { AcceptPlanResult, AcceptPlanOptions } from "./loop-types";
+import type { AutomaticPrFlowState } from "../../types/loop";
+import type { PushLoopResult } from "./loop-types";
 
 export interface LoopCtx {
   engines: Map<string, LoopEngine>;
@@ -23,6 +25,10 @@ export interface LoopCtx {
   startLoop(loopId: string, options?: { attachments?: MessageImageAttachment[] }): Promise<void>;
   startPlanMode(loopId: string, options?: { attachments?: MessageImageAttachment[] }): Promise<void>;
   acceptPlan(loopId: string, options?: AcceptPlanOptions): Promise<AcceptPlanResult>;
+  pushLoop(loopId: string): Promise<PushLoopResult>;
+  startAutomaticPrFlow(
+    loopId: string,
+  ): Promise<{ success: boolean; error?: string; automaticPrFlow?: AutomaticPrFlowState }>;
   startStatePersistence(loopId: string): void;
   ensureLoopBranchCheckedOut(loop: Loop, git: GitService, workingDirectory: string): Promise<void>;
   validateMainCheckoutStart(loop: Loop, git: GitService): Promise<void>;

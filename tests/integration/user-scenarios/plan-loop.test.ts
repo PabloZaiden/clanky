@@ -10,6 +10,7 @@ import {
   setupTestServer,
   teardownTestServer,
   createLoopViaAPI,
+  waitForLoopCondition,
   waitForLoopStatus,
   waitForPlanReady,
   acceptLoopViaAPI,
@@ -26,6 +27,103 @@ import {
   type TestServerContext,
 } from "./helpers";
 import type { Loop } from "../../../src/types/loop";
+import { backendManager } from "../../../src/core/backend-manager";
+import { TestCommandExecutor } from "../../mocks/mock-executor";
+
+class GitHubMockExecutor extends TestCommandExecutor {
+  private pullRequestCreated = false;
+
+  override async exec(command: string, args: string[], options?: Parameters<TestCommandExecutor["exec"]>[2]) {
+    if (
+      command === "git"
+      && args.includes("remote")
+      && args.includes("get-url")
+      && args.includes("origin")
+    ) {
+      return {
+        success: true,
+        stdout: "https://github.com/test-owner/test-repo.git\n",
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+
+    if (command !== "gh") {
+      return await super.exec(command, args, options);
+    }
+
+    if (args[0] === "--version") {
+      return {
+        success: true,
+        stdout: "gh version 2.65.0\n",
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+
+    if (args[0] === "pr" && args[1] === "view") {
+      if (!this.pullRequestCreated) {
+        return {
+          success: false,
+          stdout: "",
+          stderr: "no pull requests found for branch\n",
+          exitCode: 1,
+        };
+      }
+      return {
+        success: true,
+        stdout: JSON.stringify({
+          number: 123,
+          url: "https://github.com/test-owner/test-repo/pull/123",
+          state: "OPEN",
+          reviewDecision: "REVIEW_REQUIRED",
+        }),
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+
+    if (args[0] === "pr" && args[1] === "create") {
+      this.pullRequestCreated = true;
+      return {
+        success: true,
+        stdout: "created\n",
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+
+    if (args[0] === "api" && args[1] === "graphql") {
+      return {
+        success: true,
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                number: 123,
+                url: "https://github.com/test-owner/test-repo/pull/123",
+                state: "OPEN",
+                reviewDecision: "REVIEW_REQUIRED",
+                reviewThreads: { nodes: [] },
+                comments: { nodes: [] },
+                reviews: { nodes: [] },
+              },
+            },
+          },
+        }),
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+
+    return {
+      success: false,
+      stdout: "",
+      stderr: `Unsupported gh command: ${args.join(" ")}`,
+      exitCode: 1,
+    };
+  }
+}
 
 /**
  * Helper to create a plan mode mock backend.
@@ -192,6 +290,55 @@ describe("Plan + Loop User Scenarios", () => {
 
       const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
       expect(completedLoop.state.currentIteration).toBeGreaterThan(0);
+    });
+
+    test("fully autonomous loops auto-push and start automatic PR flow after plan acceptance", async () => {
+      const ghExecutor = new GitHubMockExecutor();
+      backendManager.setExecutorFactoryForTesting(() => ghExecutor);
+
+      try {
+        ctx.mockBackend.reset(
+          createPlanModeMockResponses({
+            planIterations: 1,
+            executionResponses: ["Done! <promise>COMPLETE</promise>"],
+          })
+        );
+
+        const { status, body } = await createLoopViaAPI(ctx.baseUrl, {
+          directory: ctx.workDir,
+          prompt: "Create a plan and carry it through push and PR automation",
+          planMode: true,
+          fullyAutonomous: true,
+        });
+
+        expect(status).toBe(201);
+        const loop = body as Loop;
+        expect(loop.config.fullyAutonomous).toBe(true);
+        expect(loop.config.autoAcceptPlan).toBe(true);
+
+        const pushedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "pushed");
+        const fullyAutonomousLoop = await waitForLoopCondition(
+          ctx.baseUrl,
+          loop.config.id,
+          (latestLoop) => (
+            latestLoop.state.status === "pushed"
+            && latestLoop.state.fullyAutonomousPending !== true
+            && latestLoop.state.automaticPrFlow?.enabled === true
+          ),
+          "fully autonomous post-push state",
+        );
+
+        expect(fullyAutonomousLoop.state.fullyAutonomousPending).not.toBe(true);
+        expect(fullyAutonomousLoop.state.automaticPrFlow?.enabled).toBe(true);
+        expect(fullyAutonomousLoop.state.automaticPrFlow?.pullRequestNumber).toBe(123);
+
+        const pushRef = await Bun.$`git -C ${ctx.remoteDir!} show-ref --verify refs/heads/${pushedLoop.state.git!.workingBranch}`.nothrow();
+        expect(pushRef.exitCode).toBe(0);
+
+        await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
+      } finally {
+        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      }
     });
   });
 

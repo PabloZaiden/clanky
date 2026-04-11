@@ -22,6 +22,8 @@ export interface UseFormFieldsReturn {
   setPlanMode: (v: boolean) => void;
   autoAcceptPlan: boolean;
   setAutoAcceptPlan: (v: boolean) => void;
+  fullyAutonomous: boolean;
+  setFullyAutonomous: (v: boolean) => void;
   useWorktree: boolean;
   setUseWorktree: (v: boolean) => void;
   clearPlanningFolder: boolean;
@@ -63,6 +65,9 @@ export function useFormFields({
   const [autoAcceptPlan, setAutoAcceptPlan] = useState(
     initialLoopData?.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan
   );
+  const [fullyAutonomous, setFullyAutonomous] = useState(
+    initialLoopData?.fullyAutonomous ?? DEFAULT_LOOP_CONFIG.fullyAutonomous
+  );
   const [useWorktree, setUseWorktree] = useState(
     initialLoopData?.useWorktree ?? DEFAULT_LOOP_CONFIG.useWorktree
   );
@@ -94,6 +99,8 @@ export function useFormFields({
     setPlanMode,
     autoAcceptPlan,
     setAutoAcceptPlan,
+    fullyAutonomous,
+    setFullyAutonomous,
     useWorktree,
     setUseWorktree,
     clearPlanningFolder,

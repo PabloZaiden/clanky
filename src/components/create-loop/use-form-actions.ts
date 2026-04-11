@@ -30,6 +30,7 @@ export function useFormActions({
   selectedModelEnabled,
   planMode,
   autoAcceptPlan,
+  fullyAutonomous,
   maxIterations,
   maxConsecutiveErrors,
   activityTimeoutSeconds,
@@ -56,6 +57,7 @@ export function useFormActions({
   selectedModelEnabled: boolean;
   planMode: boolean;
   autoAcceptPlan: boolean;
+  fullyAutonomous: boolean;
   maxIterations: string;
   maxConsecutiveErrors: string;
   activityTimeoutSeconds: string;
@@ -133,7 +135,8 @@ export function useFormActions({
         workspaceId: selectedWorkspaceId,
         prompt: currentPrompt.trim(),
         planMode,
-        autoAcceptPlan: planMode ? autoAcceptPlan : false,
+        autoAcceptPlan: planMode ? (fullyAutonomous ? true : autoAcceptPlan) : false,
+        fullyAutonomous: planMode ? fullyAutonomous : false,
         model,
         useWorktree,
       };
@@ -194,7 +197,8 @@ export function useFormActions({
       selectedModelEnabled,
       planMode,
        autoAcceptPlan,
-      maxIterations,
+       fullyAutonomous,
+       maxIterations,
       maxConsecutiveErrors,
       activityTimeoutSeconds,
       selectedBranch,
@@ -202,6 +206,7 @@ export function useFormActions({
       clearPlanningFolder,
       useWorktree,
       attachments,
+      fullyAutonomous,
     ]
   );
 

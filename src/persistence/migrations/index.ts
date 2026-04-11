@@ -255,6 +255,22 @@ export const migrations: Migration[] = [
       db.run("ALTER TABLE loops ADD COLUMN automatic_pr_flow TEXT");
     },
   },
+  {
+    version: 8,
+    name: "add_loop_fully_autonomous_fields",
+    up: (db) => {
+      if (!tableExists(db, "loops")) {
+        return;
+      }
+      const columns = getTableColumns(db, "loops");
+      if (!columns.includes("fully_autonomous")) {
+        db.run("ALTER TABLE loops ADD COLUMN fully_autonomous INTEGER NOT NULL DEFAULT 0");
+      }
+      if (!columns.includes("fully_autonomous_pending")) {
+        db.run("ALTER TABLE loops ADD COLUMN fully_autonomous_pending INTEGER NOT NULL DEFAULT 0");
+      }
+    },
+  },
 ];
 
 /**
