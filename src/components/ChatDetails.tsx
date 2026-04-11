@@ -510,11 +510,11 @@ export function ChatDetails({
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={handleComposerKeyDown}
-           onPaste={handlePaste}
-           disabled={isActive || isSubmitting}
-           rows={composerRows}
-           className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
-         />
+          onPaste={handlePaste}
+          disabled={isActive || isSubmitting}
+          rows={composerRows}
+          className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
+        />
         <ImageAttachmentControl
           ref={attachmentControlRef}
           attachments={attachments}

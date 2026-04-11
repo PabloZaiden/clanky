@@ -188,11 +188,11 @@ export function LoopActionBar({
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleComposerKeyDown}
             onPaste={handlePaste}
-             disabled={disabled || isSubmitting}
-             rows={composerRows}
-             aria-label={isPlanning ? "Plan feedback" : "Loop message"}
-             className={`${composerMinHeightClass} ${composerPaddingClass} flex-1 min-w-0 resize-y text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50`}
-           />
+            disabled={disabled || isSubmitting}
+            rows={composerRows}
+            aria-label={isPlanning ? "Plan feedback" : "Loop message"}
+            className={`${composerMinHeightClass} ${composerPaddingClass} flex-1 min-w-0 resize-y text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50`}
+          />
 
           {/* Image attachment button (icon-only) */}
           <ImageAttachmentControl
