@@ -568,6 +568,26 @@ describe("Persistence", () => {
       expect(loaded?.state.pullRequestMonitoring).toEqual(testLoop.state.pullRequestMonitoring);
     });
 
+    test("ignores undefined pull request monitoring values from legacy or partial rows", async () => {
+      const { loopToRow, rowToLoop } = await import("../../src/persistence/loops/helpers");
+
+      const testLoop = createTestLoop({
+        id: "legacy-pr-monitor-row",
+        status: "pushed",
+      });
+      testLoop.state.pullRequestMonitoring = {
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:00:00.000Z",
+      };
+
+      const row = loopToRow(testLoop);
+      row["pull_request_monitoring"] = undefined;
+
+      const loaded = rowToLoop(row);
+
+      expect(loaded.state.pullRequestMonitoring).toBeUndefined();
+    });
+
     test("loadLoop returns null for non-existent loop", async () => {
       const { loadLoop } = await import("../../src/persistence/loops");
 

@@ -106,6 +106,10 @@ export class PushedLoopMonitor {
         }
         await this.monitorLoop(loop);
       }
+    } catch (error) {
+      log.error("Pushed loop monitor run failed", {
+        error: String(error),
+      });
     } finally {
       this.isRunning = false;
     }

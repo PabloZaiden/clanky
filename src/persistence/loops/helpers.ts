@@ -311,7 +311,7 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
   if (row["review_mode"] !== null) {
     state.reviewMode = safeJsonParse(row["review_mode"] as string, undefined, "review_mode", rowId);
   }
-  if (row["pull_request_monitoring"] !== null) {
+  if (typeof row["pull_request_monitoring"] === "string") {
     state.pullRequestMonitoring = safeJsonParse(
       row["pull_request_monitoring"] as string,
       undefined,

@@ -176,4 +176,28 @@ describe("PushedLoopMonitor", () => {
       mergedAt: "2026-04-11T04:00:00.000Z",
     });
   });
+
+  test("runNow swallows scheduler-level failures and resets overlap protection", async () => {
+    let listCalls = 0;
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => {
+        listCalls += 1;
+        if (listCalls === 1) {
+          throw new Error("database unavailable");
+        }
+        return [];
+      },
+      loadLoop: async () => null,
+      updateLoopState: async () => true,
+      getCommandExecutor: async () => new StubExecutor(),
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      intervalMs: 60_000,
+    });
+
+    await expect(monitor.runNow()).resolves.toBeUndefined();
+    await expect(monitor.runNow()).resolves.toBeUndefined();
+
+    expect(listCalls).toBe(2);
+  });
 });
