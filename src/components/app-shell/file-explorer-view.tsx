@@ -328,7 +328,12 @@ export function FileExplorerView({
       actions={(
         <>
           {headerActions}
-          <Button variant="ghost" size="sm" onClick={() => onNavigate(backRoute)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onNavigate(backRoute)}
+            className="hidden sm:inline-flex"
+          >
             {backLabel}
           </Button>
         </>
