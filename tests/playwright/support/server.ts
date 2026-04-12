@@ -10,6 +10,7 @@ import {
 } from "../../../src/api/basic-auth";
 import { portForwardProxyRoutes } from "../../../src/api/port-forwards";
 import { wrapRouteHandlerWithLogging, wrapRoutesWithLogging } from "../../../src/api/request-logging";
+import { wrapRouteHandlerWithSameOriginProtection, wrapRoutesWithSameOriginProtection } from "../../../src/api/same-origin-guard";
 import { websocketHandlers, type WebSocketData } from "../../../src/api/websocket";
 import { backendManager } from "../../../src/core/backend-manager";
 import {
@@ -63,66 +64,73 @@ const staticRoute = staticAssetServer
   ? createAuthenticatedStaticRoute(staticAssetServer, runtimeConfig.basicAuth)
   : index;
 const protectedApiRoutes = wrapRoutesWithBasicAuth(apiRoutes, runtimeConfig.basicAuth);
-const loggedApiRoutes = wrapRoutesWithLogging(protectedApiRoutes);
+const loggedApiRoutes = wrapRoutesWithLogging(wrapRoutesWithSameOriginProtection(protectedApiRoutes));
 const protectedPortForwardRoutes = wrapRoutesWithBasicAuth(
   portForwardProxyRoutes,
   runtimeConfig.basicAuth,
 );
+const sameOriginProtectedPortForwardRoutes = wrapRoutesWithSameOriginProtection(protectedPortForwardRoutes);
 
 const websocketRoute = wrapRouteHandlerWithLogging(
-  wrapRouteHandler(
-    (req: Request, server: Server<WebSocketData>) => {
-      const url = new URL(req.url);
-      const loopId = url.searchParams.get("loopId") ?? undefined;
-      const chatId = url.searchParams.get("chatId") ?? undefined;
-      const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
-      const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
-      const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
+  wrapRouteHandlerWithSameOriginProtection(
+    wrapRouteHandler(
+      (req: Request, server: Server<WebSocketData>) => {
+        const url = new URL(req.url);
+        const loopId = url.searchParams.get("loopId") ?? undefined;
+        const chatId = url.searchParams.get("chatId") ?? undefined;
+        const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
+        const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
+        const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
 
-      const upgraded = server.upgrade(req, {
-        data: {
-          loopId,
-          chatId,
-          sshSessionId,
-          sshServerSessionId,
-          provisioningJobId,
-          terminalMode: false,
-        } as WebSocketData,
-      });
+        const upgraded = server.upgrade(req, {
+          data: {
+            loopId,
+            chatId,
+            sshSessionId,
+            sshServerSessionId,
+            provisioningJobId,
+            terminalMode: false,
+          } as WebSocketData,
+        });
 
-      if (upgraded) {
-        return undefined;
-      }
+        if (upgraded) {
+          return undefined;
+        }
 
-      return new Response("WebSocket upgrade failed", { status: 400 });
-    },
-    runtimeConfig.basicAuth,
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      },
+      runtimeConfig.basicAuth,
+    ),
+    { alwaysProtect: true },
   ),
   "/api/ws",
 );
 
 const sshTerminalRoute = wrapRouteHandlerWithLogging(
-  wrapRouteHandler(
-    (req: Request, server: Server<WebSocketData>) => {
-      const url = new URL(req.url);
-      const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
-      const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
+  wrapRouteHandlerWithSameOriginProtection(
+    wrapRouteHandler(
+      (req: Request, server: Server<WebSocketData>) => {
+        const url = new URL(req.url);
+        const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
+        const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
 
-      if (!sshSessionId && !sshServerSessionId) {
-        return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
-      }
+        if (!sshSessionId && !sshServerSessionId) {
+          return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
+        }
 
-      const upgraded = server.upgrade(req, {
-        data: { sshSessionId, sshServerSessionId, terminalMode: true } as WebSocketData,
-      });
+        const upgraded = server.upgrade(req, {
+          data: { sshSessionId, sshServerSessionId, terminalMode: true } as WebSocketData,
+        });
 
-      if (upgraded) {
-        return undefined;
-      }
+        if (upgraded) {
+          return undefined;
+        }
 
-      return new Response("WebSocket upgrade failed", { status: 400 });
-    },
-    runtimeConfig.basicAuth,
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      },
+      runtimeConfig.basicAuth,
+    ),
+    { alwaysProtect: true },
   ),
   "/api/ssh-terminal",
 );
@@ -133,7 +141,7 @@ const server = serve<WebSocketData>({
   idleTimeout: DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS,
   routes: {
     ...loggedApiRoutes,
-    ...protectedPortForwardRoutes,
+    ...sameOriginProtectedPortForwardRoutes,
     "/api/ws": websocketRoute,
     "/api/ssh-terminal": sshTerminalRoute,
     "/*": staticRoute,

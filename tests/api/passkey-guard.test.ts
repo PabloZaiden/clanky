@@ -77,6 +77,62 @@ describe("passkey guard", () => {
     });
   });
 
+  test("allows registration routes before the first passkey exists even when they are not public", async () => {
+    const wrappedRoutes = wrapRoutesWithPasskeyAuth({
+      "/api/passkey-auth/registration/options": {
+        GET: async () => Response.json({ ok: true }),
+      },
+    }, new Set(["/api/passkey-auth/status"]));
+    const registrationRoute = wrappedRoutes["/api/passkey-auth/registration/options"] as {
+      GET: (req: Request) => Promise<Response>;
+    };
+
+    const response = await registrationRoute.GET(
+      new Request("http://example.test/api/passkey-auth/registration/options"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
+  test("blocks unauthenticated registration routes after a passkey exists", async () => {
+    await savePasskey({
+      id: "pk-1",
+      name: "Primary passkey",
+      credentialId: "credential-1",
+      publicKey: new Uint8Array([1, 2, 3]),
+      counter: 0,
+      deviceType: "singleDevice",
+      backedUp: false,
+    });
+
+    const wrappedRoutes = wrapRoutesWithPasskeyAuth({
+      "/api/passkey-auth/authentication/options": {
+        GET: async () => Response.json({ ok: true }),
+      },
+      "/api/passkey-auth/registration/options": {
+        GET: async () => Response.json({ ok: true }),
+      },
+    }, new Set(["/api/passkey-auth/authentication/options"]));
+    const authenticationRoute = wrappedRoutes["/api/passkey-auth/authentication/options"] as {
+      GET: (req: Request) => Promise<Response>;
+    };
+    const registrationRoute = wrappedRoutes["/api/passkey-auth/registration/options"] as {
+      GET: (req: Request) => Promise<Response>;
+    };
+
+    const authenticationResponse = await authenticationRoute.GET(
+      new Request("http://example.test/api/passkey-auth/authentication/options"),
+    );
+    const registrationResponse = await registrationRoute.GET(
+      new Request("http://example.test/api/passkey-auth/registration/options"),
+    );
+
+    expect(authenticationResponse.status).toBe(200);
+    expect(registrationResponse.status).toBe(401);
+    expect(registrationResponse.headers.get(PASSKEY_AUTH_REQUIRED_HEADER)).toBe("true");
+  });
+
   test("bypasses passkey guard when RALPHER_DISABLE_PASSKEY is enabled", async () => {
     await savePasskey({
       id: "pk-1",

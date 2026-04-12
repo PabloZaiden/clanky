@@ -17,6 +17,7 @@ import {
   wrapRoutesWithPasskeyAuth,
 } from "./api/passkey-guard";
 import { wrapRoutesWithLogging, wrapRouteHandlerWithLogging } from "./api/request-logging";
+import { wrapRouteHandlerWithSameOriginProtection, wrapRoutesWithSameOriginProtection } from "./api/same-origin-guard";
 import { portForwardProxyRoutes } from "./api/port-forwards";
 import { ensureDataDirectories } from "./persistence/database";
 import { resetStaleLoops } from "./persistence/loops";
@@ -82,8 +83,6 @@ try {
   const publicPasskeyRoutes = new Set([
     "/api/config",
     "/api/passkey-auth/status",
-    "/api/passkey-auth/registration/options",
-    "/api/passkey-auth/registration/verify",
     "/api/passkey-auth/authentication/options",
     "/api/passkey-auth/authentication/verify",
     "/api/passkey-auth/logout",
@@ -98,68 +97,75 @@ try {
     wrapRoutesWithPasskeyAuth(apiRoutes, publicPasskeyRoutes),
     runtimeConfig.basicAuth,
   );
-  const loggedApiRoutes = wrapRoutesWithLogging(protectedApiRoutes);
+  const loggedApiRoutes = wrapRoutesWithLogging(wrapRoutesWithSameOriginProtection(protectedApiRoutes));
   const protectedPortForwardRoutes = wrapRoutesWithBasicAuth(
     wrapRoutesWithPasskeyAuth(portForwardProxyRoutes),
     runtimeConfig.basicAuth,
   );
+  const sameOriginProtectedPortForwardRoutes = wrapRoutesWithSameOriginProtection(protectedPortForwardRoutes);
   const websocketRoute = wrapRouteHandlerWithLogging(
-    wrapRouteHandler(
-      wrapRouteHandlerWithPasskeyAuth((req: Request, server: Server<WebSocketData>) => {
-        const url = new URL(req.url);
-        const loopId = url.searchParams.get("loopId") ?? undefined;
-        const chatId = url.searchParams.get("chatId") ?? undefined;
-        const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
-        const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
-        const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
+    wrapRouteHandlerWithSameOriginProtection(
+      wrapRouteHandler(
+        wrapRouteHandlerWithPasskeyAuth((req: Request, server: Server<WebSocketData>) => {
+          const url = new URL(req.url);
+          const loopId = url.searchParams.get("loopId") ?? undefined;
+          const chatId = url.searchParams.get("chatId") ?? undefined;
+          const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
+          const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
+          const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
 
-        const upgraded = server.upgrade(req, {
-          data: {
-            loopId,
-            chatId,
-            sshSessionId,
-            sshServerSessionId,
-            provisioningJobId,
-            terminalMode: false,
-          } as WebSocketData,
-        });
+          const upgraded = server.upgrade(req, {
+            data: {
+              loopId,
+              chatId,
+              sshSessionId,
+              sshServerSessionId,
+              provisioningJobId,
+              terminalMode: false,
+            } as WebSocketData,
+          });
 
-        if (upgraded) {
-          // Return undefined to indicate successful upgrade (Bun handles the response)
-          return undefined;
-        }
+          if (upgraded) {
+            // Return undefined to indicate successful upgrade (Bun handles the response)
+            return undefined;
+          }
 
-        // Upgrade failed
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }),
-      runtimeConfig.basicAuth,
+          // Upgrade failed
+          return new Response("WebSocket upgrade failed", { status: 400 });
+        }),
+        runtimeConfig.basicAuth,
+      ),
+      { alwaysProtect: true },
     ),
     "/api/ws",
   );
   const sshTerminalRoute = wrapRouteHandlerWithLogging(
-    wrapRouteHandler(
-      wrapRouteHandlerWithPasskeyAuth((req: Request, server: Server<WebSocketData>) => {
-        const url = new URL(req.url);
-        const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
-        const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
+    wrapRouteHandlerWithSameOriginProtection(
+      wrapRouteHandler(
+        wrapRouteHandlerWithPasskeyAuth((req: Request, server: Server<WebSocketData>) => {
+          const url = new URL(req.url);
+          const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
+          const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
 
-        if (!sshSessionId && !sshServerSessionId) {
-          return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
-        }
+          if (!sshSessionId && !sshServerSessionId) {
+            return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
+          }
 
-        const upgraded = server.upgrade(req, {
-          data: { sshSessionId, sshServerSessionId, terminalMode: true } as WebSocketData,
-        });
+          const upgraded = server.upgrade(req, {
+            data: { sshSessionId, sshServerSessionId, terminalMode: true } as WebSocketData,
+          });
 
-        if (upgraded) {
-          // Return undefined to indicate successful upgrade (Bun handles the response)
-          return undefined;
-        }
+          if (upgraded) {
+            // Return undefined to indicate successful upgrade (Bun handles the response)
+            return undefined;
+          }
 
-        // Upgrade failed
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }),
-      runtimeConfig.basicAuth,
+          // Upgrade failed
+          return new Response("WebSocket upgrade failed", { status: 400 });
+        }),
+        runtimeConfig.basicAuth,
+      ),
+      { alwaysProtect: true },
     ),
     "/api/ssh-terminal",
   );
@@ -173,7 +179,7 @@ try {
     routes: {
       // API routes
       ...loggedApiRoutes,
-      ...protectedPortForwardRoutes,
+      ...sameOriginProtectedPortForwardRoutes,
 
       // WebSocket endpoint for real-time events
       "/api/ws": websocketRoute,
