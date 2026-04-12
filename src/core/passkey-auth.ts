@@ -158,7 +158,7 @@ function clearCookie(name: string, req: Request): string {
     httpOnly: true,
     maxAge: 0,
     path: getCookiePath(req),
-    sameSite: "Lax",
+    sameSite: "Strict",
     secure,
   });
 }
@@ -229,7 +229,7 @@ function appendSignedCookie(
       httpOnly: true,
       maxAge,
       path: getCookiePath(req),
-      sameSite: "Lax",
+      sameSite: "Strict",
       secure,
     }),
   );

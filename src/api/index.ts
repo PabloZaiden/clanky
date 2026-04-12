@@ -84,3 +84,4 @@ export * from "./websocket";
 export * from "./provisioning";
 export * from "./chats";
 export * from "./passkey-auth";
+export * from "./same-origin-guard";
