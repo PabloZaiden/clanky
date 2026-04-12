@@ -20,4 +20,22 @@ describe("composer-rows", () => {
     expect(getComposerMinHeightClass(2)).toBe("min-h-[58px]");
     expect(getComposerPaddingClass(2)).toBe("py-2");
   });
+
+  test("switches to multiline sizing when measured content wraps to a second line", () => {
+    expect(getComposerRows("Hello world", {
+      contentHeight: 48,
+      singleLineContentHeight: 28,
+    })).toBe(2);
+    expect(getComposerRows("Short", {
+      contentHeight: 28,
+      singleLineContentHeight: 28,
+    })).toBe(1);
+  });
+
+  test("keeps explicit newline handling even when the measurement still looks single-line", () => {
+    expect(getComposerRows("Hello\nWorld", {
+      contentHeight: 28,
+      singleLineContentHeight: 28,
+    })).toBe(2);
+  });
 });

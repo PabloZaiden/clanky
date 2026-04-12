@@ -14,6 +14,7 @@ import {
   installImageAttachmentMocks,
   pasteFiles,
 } from "../helpers/image-paste";
+import { mockComposerSoftWrap } from "../helpers/composer-measurement";
 
 installImageAttachmentMocks();
 
@@ -308,6 +309,25 @@ describe("LoopActionBar", () => {
       expect(composer.getAttribute("rows")).toBe("2");
       expect(composer.className).toContain("min-h-[58px]");
       expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    test("switches to multiline sizing when content soft-wraps without an explicit newline", async () => {
+      const { getByRole, user } = renderWithUser(
+        <LoopActionBar {...defaultProps()} />
+      );
+
+      const composer = getLoopMessageInput(getByRole);
+      mockComposerSoftWrap(composer, (value) => value.length >= 24);
+      expect(composer.getAttribute("rows")).toBe("1");
+
+      await user.type(composer, "This message softly wraps");
+
+      await waitFor(() => {
+        expect(composer.getAttribute("rows")).toBe("2");
+      });
+      expect(composer.value.includes("\n")).toBe(false);
+      expect(composer.className).toContain("min-h-[58px]");
+      expect(composer.className).toContain("py-2");
     });
 
     test("submits with Ctrl+Enter", async () => {
