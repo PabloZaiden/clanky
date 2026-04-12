@@ -1,9 +1,24 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { createHmac } from "node:crypto";
 import * as passkeyAuthCore from "../../src/core/passkey-auth";
 import { createLogger } from "../../src/core/logger";
+import { getOrCreatePasskeyAuthSecret, getPasskeyAuthVersion, savePasskey } from "../../src/persistence/passkey-auth";
 import { PASSKEY_AUTH_REQUIRED_HEADER } from "../../src/lib/passkey-auth-http";
 import { passkeyAuthRoutes } from "../../src/api/passkey-auth";
 import { setupTestContext, teardownTestContext } from "../setup";
+
+function createSignedPasskeySessionCookie(
+  payload: {
+    nonce: string;
+    version: number;
+    expiresAt: number;
+  },
+  secret: string,
+): string {
+  const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const signature = createHmac("sha256", secret).update(encodedPayload, "utf8").digest("base64url");
+  return `ralpher_passkey_session=${encodedPayload}.${signature}`;
+}
 
 describe("passkey auth routes", () => {
   afterEach(() => {
@@ -41,6 +56,62 @@ describe("passkey auth routes", () => {
       error: "authentication_required",
       message: "Passkey authentication is required",
     });
+  });
+
+  test("reissues existing authenticated sessions on status responses without forcing re-login", async () => {
+    const context = await setupTestContext();
+
+    try {
+      await savePasskey({
+        id: "pk-1",
+        name: "Primary passkey",
+        credentialId: "credential-1",
+        publicKey: new Uint8Array([1, 2, 3]),
+        counter: 0,
+        deviceType: "singleDevice",
+        backedUp: false,
+      });
+
+      const secret = await getOrCreatePasskeyAuthSecret();
+      const version = await getPasskeyAuthVersion();
+      const remainingSeconds = 15 * 60;
+      const cookie = createSignedPasskeySessionCookie({
+        nonce: "existing-session",
+        version,
+        expiresAt: Date.now() + remainingSeconds * 1000,
+      }, secret);
+
+      const response = await passkeyAuthRoutes["/api/passkey-auth/status"].GET(
+        new Request("http://internal-host:3000/api/passkey-auth/status", {
+          headers: {
+            cookie,
+            "x-forwarded-host": "ralpher.example.test",
+            "x-forwarded-proto": "https",
+          },
+        }),
+      );
+
+      const setCookie = response.headers.get("set-cookie");
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        passkeyConfigured: true,
+        passkeyDisabled: false,
+        passkeyRequired: true,
+        authenticated: true,
+      });
+      expect(setCookie).toContain("ralpher_passkey_session=");
+      expect(setCookie).toContain("SameSite=Strict");
+      expect(setCookie).toContain("Secure");
+
+      const maxAgeMatch = setCookie?.match(/Max-Age=(\d+)/);
+      expect(maxAgeMatch).not.toBeNull();
+      const refreshedMaxAge = Number(maxAgeMatch?.[1]);
+      expect(refreshedMaxAge).toBeLessThanOrEqual(remainingSeconds);
+      expect(refreshedMaxAge).toBeGreaterThanOrEqual(remainingSeconds - 2);
+    } finally {
+      await teardownTestContext(context);
+    }
   });
 });
 

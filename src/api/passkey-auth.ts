@@ -11,6 +11,7 @@ import {
   completePasskeyAuthentication,
   completePasskeyRegistration,
   createPasskeyLogoutHeaders,
+  createPasskeySessionContinuationHeaders,
   getPasskeyAuthStatus,
   isPasskeyAuthRequired,
   isPasskeySessionAuthenticated,
@@ -62,7 +63,10 @@ export const passkeyAuthRoutes = {
   "/api/passkey-auth/status": {
     async GET(req: Request): Promise<Response> {
       const status: PasskeyAuthStatusResponse = await getPasskeyAuthStatus(req);
-      return Response.json(status);
+      const headers = status.authenticated
+        ? await createPasskeySessionContinuationHeaders(req)
+        : undefined;
+      return Response.json(status, headers ? { headers } : undefined);
     },
   },
 

@@ -56,6 +56,11 @@ interface PasskeySessionCookie {
   expiresAt: number;
 }
 
+interface AuthenticatedPasskeySession {
+  secret: string;
+  sessionCookie: PasskeySessionCookie;
+}
+
 export interface PasskeyAuthStatus {
   passkeyConfigured: boolean;
   passkeyDisabled: boolean;
@@ -239,6 +244,10 @@ function appendClearedCookie(headers: Headers, req: Request, name: string): void
   headers.append("Set-Cookie", clearCookie(name, req));
 }
 
+function getRemainingSessionMaxAgeSeconds(sessionCookie: PasskeySessionCookie): number {
+  return Math.ceil((sessionCookie.expiresAt - Date.now()) / 1000);
+}
+
 function getChallengeCookie(
   req: Request,
   secret: string,
@@ -284,6 +293,34 @@ async function createSessionHeaders(req: Request): Promise<Headers> {
   return headers;
 }
 
+async function getAuthenticatedPasskeySession(
+  req: Request,
+): Promise<AuthenticatedPasskeySession | undefined> {
+  const secret = await getPasskeyAuthSecret();
+  if (!secret) {
+    return undefined;
+  }
+
+  const sessionCookie = readSignedCookie<PasskeySessionCookie>(req, PASSKEY_SESSION_COOKIE, secret);
+  if (!sessionCookie) {
+    return undefined;
+  }
+
+  if (sessionCookie.expiresAt <= Date.now()) {
+    return undefined;
+  }
+
+  const currentVersion = await getPasskeyAuthVersion();
+  if (sessionCookie.version !== currentVersion) {
+    return undefined;
+  }
+
+  return {
+    secret,
+    sessionCookie,
+  };
+}
+
 export function createPasskeyLogoutHeaders(req: Request): Headers {
   const headers = new Headers();
   appendClearedCookie(headers, req, PASSKEY_SESSION_COOKIE);
@@ -292,22 +329,7 @@ export function createPasskeyLogoutHeaders(req: Request): Headers {
 }
 
 export async function isPasskeySessionAuthenticated(req: Request): Promise<boolean> {
-  const secret = await getPasskeyAuthSecret();
-  if (!secret) {
-    return false;
-  }
-
-  const sessionCookie = readSignedCookie<PasskeySessionCookie>(req, PASSKEY_SESSION_COOKIE, secret);
-  if (!sessionCookie) {
-    return false;
-  }
-
-  if (sessionCookie.expiresAt <= Date.now()) {
-    return false;
-  }
-
-  const currentVersion = await getPasskeyAuthVersion();
-  return sessionCookie.version === currentVersion;
+  return (await getAuthenticatedPasskeySession(req)) !== undefined;
 }
 
 export async function isPasskeyAuthRequired(): Promise<boolean> {
@@ -332,6 +354,29 @@ export async function getPasskeyAuthStatus(req?: Request): Promise<PasskeyAuthSt
     passkeyRequired,
     authenticated,
   };
+}
+
+export async function createPasskeySessionContinuationHeaders(req: Request): Promise<Headers | undefined> {
+  const authenticatedSession = await getAuthenticatedPasskeySession(req);
+  if (!authenticatedSession) {
+    return undefined;
+  }
+
+  const maxAge = getRemainingSessionMaxAgeSeconds(authenticatedSession.sessionCookie);
+  if (maxAge <= 0) {
+    return undefined;
+  }
+
+  const headers = new Headers();
+  appendSignedCookie(
+    headers,
+    req,
+    PASSKEY_SESSION_COOKIE,
+    authenticatedSession.sessionCookie,
+    authenticatedSession.secret,
+    maxAge,
+  );
+  return headers;
 }
 
 export async function beginPasskeyRegistration(
