@@ -19,7 +19,7 @@ import {
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
 import { toMessageImageAttachments } from "../lib/image-attachments";
-import { useComposerSizing } from "./common";
+import { FocusPreservingButton, useComposerSizing } from "./common";
 
 const log = createLogger("LoopActionBar");
 
@@ -224,20 +224,20 @@ export function LoopActionBar({
                )}
              </button>
            ) : (
-             <button
-                type="submit"
-                disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
-                className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
-                aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
-                title={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
+              <FocusPreservingButton
+                 type="submit"
+                 disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
+                 className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
+                 aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
+                 title={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
               >
                 {isSubmitting ? (
                   <span className="animate-spin text-sm">⏳</span>
                ) : (
                  <span className="text-lg leading-none">↑</span>
                )}
-             </button>
-           )}
+              </FocusPreservingButton>
+            )}
         </div>
 
         {/* Error message for disconnected model */}

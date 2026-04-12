@@ -829,6 +829,33 @@ describe("SshSessionDetails", () => {
     expect(separators).toHaveLength(4);
   });
 
+  test("prevents touch controls from taking focus on press", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Preserve Keyboard" } }),
+    );
+
+    const { getByText, getByRole, user } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-mobile-preserve-keyboard" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(getByText("SSH Preserve Keyboard")).toBeTruthy();
+    });
+
+    await user.click(getByText("Touch controls"));
+
+    const ctrlButton = getByRole("button", { name: "Ctrl" });
+    const arrowDownButton = getByRole("button", { name: "↓" });
+
+    const ctrlMouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    const arrowMouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+
+    expect(ctrlButton.dispatchEvent(ctrlMouseDown)).toBe(false);
+    expect(ctrlMouseDown.defaultPrevented).toBe(true);
+    expect(arrowDownButton.dispatchEvent(arrowMouseDown)).toBe(false);
+    expect(arrowMouseDown.defaultPrevented).toBe(true);
+  });
+
   test("waits for terminal readiness before sending the initial resize", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Ready Gate" } }),
@@ -2062,6 +2089,33 @@ describe("SshSessionDetails", () => {
       expect(queryByText("Session Info")).toBeNull();
       expect(queryByText("Touch controls")).toBeNull();
     });
+  });
+
+  test("prevents focus-mode controls from taking focus on press", async () => {
+    globalThis.localStorage?.removeItem("ralpher-ssh-focus-mode");
+
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "Focus Keyboard Stability" } }),
+    );
+
+    const { getByLabelText } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-focus-preserve-keyboard" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(lastTerminal).not.toBeNull();
+    });
+
+    const arrowLeftButton = getByLabelText("Arrow left");
+    const enterButton = getByLabelText("Enter");
+
+    const arrowLeftMouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    const enterMouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+
+    expect(arrowLeftButton.dispatchEvent(arrowLeftMouseDown)).toBe(false);
+    expect(arrowLeftMouseDown.defaultPrevented).toBe(true);
+    expect(enterButton.dispatchEvent(enterMouseDown)).toBe(false);
+    expect(enterMouseDown.defaultPrevented).toBe(true);
   });
 
   test("exits focus mode and restores normal view", async () => {

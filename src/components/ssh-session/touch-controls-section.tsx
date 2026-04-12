@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Badge, Button } from "../common";
+import { Badge } from "../common";
 import {
   hasActiveTerminalModifiers,
   type TerminalModifierState,
   type TerminalSpecialKey,
 } from "../../utils/terminal-keys";
 import { CompactBar } from "./compact-bar";
+import { TouchControlButton } from "./touch-control-button";
 
 const touchButtonClassName = "min-h-[28px] shrink-0 whitespace-nowrap px-1.5 py-0.5 text-[11px]";
 
@@ -54,7 +55,7 @@ export function TouchControlsSection({
         </Badge>
       )}
       {onEnterFocusMode && (
-        <Button
+        <TouchControlButton
           variant="ghost"
           size="xs"
           className="min-h-[24px] shrink-0 px-1.5 py-0 text-[11px]"
@@ -66,7 +67,7 @@ export function TouchControlsSection({
           title="Focus mode — fullscreen terminal with compact controls"
         >
           ⛶
-        </Button>
+        </TouchControlButton>
       )}
       <span className="hidden min-w-0 break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere] sm:block">
         Touch keys
@@ -84,7 +85,7 @@ export function TouchControlsSection({
       <div className="flex flex-col gap-2">
         <div className="px-1 pb-1" data-testid="ssh-touch-controls-layout">
           <div className="flex flex-wrap items-center gap-1" data-testid="ssh-touch-controls-buttons">
-            <Button
+            <TouchControlButton
               variant={terminalModifiers.ctrl ? "primary" : "secondary"}
               size="xs"
               className={touchButtonClassName}
@@ -92,8 +93,8 @@ export function TouchControlsSection({
               onClick={() => toggleTerminalModifier("ctrl")}
             >
               Ctrl
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant={terminalModifiers.alt ? "primary" : "secondary"}
               size="xs"
               className={touchButtonClassName}
@@ -101,8 +102,8 @@ export function TouchControlsSection({
               onClick={() => toggleTerminalModifier("alt")}
             >
               Alt
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant={terminalModifiers.shift ? "primary" : "secondary"}
               size="xs"
               className={touchButtonClassName}
@@ -110,43 +111,43 @@ export function TouchControlsSection({
               onClick={() => toggleTerminalModifier("shift")}
             >
               Shift
-            </Button>
+            </TouchControlButton>
             {hasActiveTerminalModifiers(terminalModifiers) && (
-              <Button
+              <TouchControlButton
                 variant="ghost"
                 size="xs"
                 className={touchButtonClassName}
                 onClick={resetTerminalModifiers}
               >
                 Clear
-              </Button>
+              </TouchControlButton>
             )}
             <span className="mx-0.5 h-4 w-px shrink-0 bg-gray-200 dark:bg-neutral-700" aria-hidden="true" />
-            <Button
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendEncodedTerminalKey("Escape")}
             >
               Esc
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendEncodedTerminalKey("Tab")}
             >
               Tab
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendEncodedTerminalKey("Enter")}
             >
               Enter
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
@@ -154,57 +155,57 @@ export function TouchControlsSection({
               onClick={() => sendEncodedTerminalKey("Backspace")}
             >
               Bksp
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendEncodedTerminalKey("Space")}
             >
               Space
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={sendCtrlC}
             >
               Ctrl+C
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendEncodedTerminalKey("ArrowUp")}
             >
               ↑
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendEncodedTerminalKey("ArrowLeft")}
             >
               ←
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendEncodedTerminalKey("ArrowDown")}
             >
               ↓
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendEncodedTerminalKey("ArrowRight")}
             >
               →
-            </Button>
+            </TouchControlButton>
             <span className="mx-0.5 h-4 w-px shrink-0 bg-gray-200 dark:bg-neutral-700" aria-hidden="true" />
-            <Button
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
@@ -212,57 +213,57 @@ export function TouchControlsSection({
               onClick={copySelectedTerminalText}
             >
               Copy selection
-            </Button>
+            </TouchControlButton>
             <span className="mx-0.5 h-4 w-px shrink-0 bg-gray-200 dark:bg-neutral-700" aria-hidden="true" />
-            <Button
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendTerminalTextShortcut("sudo apt update && sudo apt install neovim")}
             >
               Install Neovim
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendTerminalTextShortcut("nvim\n")}
             >
               Neovim
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendTerminalTextShortcut(":Ntree\n")}
             >
               Ntree
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendTerminalTextShortcut(":q\n")}
             >
               :q
-            </Button>
+            </TouchControlButton>
             <span className="mx-0.5 h-4 w-px shrink-0 bg-gray-200 dark:bg-neutral-700" aria-hidden="true" />
-            <Button
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendTerminalTextShortcut("curl https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh | sh")}
             >
               Install fresh
-            </Button>
-            <Button
+            </TouchControlButton>
+            <TouchControlButton
               variant="secondary"
               size="xs"
               className={touchButtonClassName}
               onClick={() => sendTerminalTextShortcut("fresh\n")}
             >
               Fresh
-            </Button>
+            </TouchControlButton>
           </div>
         </div>
       </div>
