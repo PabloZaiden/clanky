@@ -19,7 +19,7 @@ import {
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
 import { toMessageImageAttachments } from "../lib/image-attachments";
-import { FocusPreservingButton, getComposerMinHeightClass, getComposerPaddingClass, getComposerRows } from "./common";
+import { FocusPreservingButton, useComposerSizing } from "./common";
 
 const log = createLogger("LoopActionBar");
 
@@ -84,9 +84,12 @@ export function LoopActionBar({
 
   // Check if the selected model is enabled (connected)
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
-  const composerRows = getComposerRows(message);
-  const composerMinHeightClass = getComposerMinHeightClass(composerRows);
-  const composerPaddingClass = getComposerPaddingClass(composerRows);
+  const {
+    composerRef,
+    composerRows,
+    composerMinHeightClass,
+    composerPaddingClass,
+  } = useComposerSizing(message);
 
   // Handle form submission
   const handleSubmit = useCallback(async (e: FormEvent) => {
@@ -184,6 +187,7 @@ export function LoopActionBar({
 
           {/* Message input */}
           <textarea
+            ref={composerRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleComposerKeyDown}

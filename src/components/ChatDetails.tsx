@@ -13,9 +13,7 @@ import {
   StatusBadge,
   type ActionMenuItem,
   getChatStatusBadgeVariant,
-  getComposerMinHeightClass,
-  getComposerPaddingClass,
-  getComposerRows,
+  useComposerSizing,
 } from "./common";
 import { ChatFocusModeBar } from "./chat-details/chat-focus-mode-bar";
 import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
@@ -450,6 +448,13 @@ export function ChatDetails({
     ];
   }, [chat, handleSpawnLoop, hasCodeExplorerAction, isActive, isSpawnPending, onOpenCodeExplorer]);
 
+  const {
+    composerRef,
+    composerRows,
+    composerMinHeightClass,
+    composerPaddingClass,
+  } = useComposerSizing(message);
+
   if (loading) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;
   }
@@ -475,9 +480,6 @@ export function ChatDetails({
   }
 
   const hasPendingInput = message.trim().length > 0 || attachments.length > 0;
-  const composerRows = getComposerRows(message);
-  const composerMinHeightClass = getComposerMinHeightClass(composerRows);
-  const composerPaddingClass = getComposerPaddingClass(composerRows);
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
@@ -507,6 +509,7 @@ export function ChatDetails({
       <label htmlFor="chat-message" className="sr-only">Message</label>
       <div className="flex flex-row items-end gap-2 sm:gap-3">
         <textarea
+          ref={composerRef}
           id="chat-message"
           value={message}
           onChange={(event) => setMessage(event.target.value)}

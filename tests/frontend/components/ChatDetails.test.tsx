@@ -5,6 +5,7 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createLoop } from "../helpers/factories";
+import { mockComposerSoftWrap } from "../helpers/composer-measurement";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -357,6 +358,27 @@ describe("ChatDetails", () => {
     expect(composer.getAttribute("rows")).toBe("2");
     expect(composer.className).toContain("min-h-[58px]");
     expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(0);
+  });
+
+  test("switches to multiline sizing when content soft-wraps without an explicit newline", async () => {
+    const initialChat = createChat();
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/messages", () => initialChat, 200);
+
+    const { getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
+    mockComposerSoftWrap(composer, (value) => value.length >= 24);
+    expect(composer.getAttribute("rows")).toBe("1");
+
+    await user.type(composer, "This message softly wraps");
+
+    await waitFor(() => {
+      expect(composer.getAttribute("rows")).toBe("2");
+    });
+    expect(composer.value.includes("\n")).toBe(false);
+    expect(composer.className).toContain("min-h-[58px]");
+    expect(composer.className).toContain("py-2");
   });
 
   test("applies chat-scoped websocket message updates", async () => {

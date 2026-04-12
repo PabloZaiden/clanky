@@ -35,6 +35,8 @@ export {
   getComposerMinHeightClass,
   getComposerPaddingClass,
   getComposerRows,
+  useComposerSizing,
+  type ComposerRowsMeasurement,
   type ComposerMinHeightClass,
   type ComposerPaddingClass,
   type ComposerRows,
