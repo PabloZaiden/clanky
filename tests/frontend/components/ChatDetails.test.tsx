@@ -159,6 +159,24 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id/interrupt", "POST")).toHaveLength(1);
   });
 
+  test("prevents the send button from taking focus on press", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Send" })).toBeTruthy();
+    });
+
+    await user.type(getByLabelText("Message"), "Keep keyboard open");
+
+    const sendButton = getByRole("button", { name: "Send" });
+    const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+
+    expect(sendButton.dispatchEvent(mouseDown)).toBe(false);
+    expect(mouseDown.defaultPrevented).toBe(true);
+  });
+
   test("renames the chat from the header actions", async () => {
     const initialChat = createChat();
     const renamedChat = createChat({

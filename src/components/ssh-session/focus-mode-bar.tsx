@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { Button } from "../common";
 import {
   hasActiveTerminalModifiers,
   type TerminalModifierState,
   type TerminalSpecialKey,
 } from "../../utils/terminal-keys";
+import { TouchControlButton } from "./touch-control-button";
 
 const btnClass = "min-h-[28px] shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px]";
 
@@ -47,7 +47,7 @@ export function FocusModeBar({
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         {/* Exit focus mode */}
-        <Button
+        <TouchControlButton
           variant="ghost"
           size="xs"
           className={`${btnClass} text-gray-300`}
@@ -56,12 +56,12 @@ export function FocusModeBar({
           title="Exit focus mode"
         >
           ✕
-        </Button>
+        </TouchControlButton>
 
         <span className={separatorClass} aria-hidden="true" />
 
         {/* Modifier toggles */}
-        <Button
+        <TouchControlButton
           variant={terminalModifiers.ctrl ? "primary" : "secondary"}
           size="xs"
           className={btnClass}
@@ -69,8 +69,8 @@ export function FocusModeBar({
           onClick={() => toggleTerminalModifier("ctrl")}
         >
           ctrl
-        </Button>
-        <Button
+        </TouchControlButton>
+        <TouchControlButton
           variant={terminalModifiers.alt ? "primary" : "secondary"}
           size="xs"
           className={btnClass}
@@ -78,8 +78,8 @@ export function FocusModeBar({
           onClick={() => toggleTerminalModifier("alt")}
         >
           alt
-        </Button>
-        <Button
+        </TouchControlButton>
+        <TouchControlButton
           variant={terminalModifiers.shift ? "primary" : "secondary"}
           size="xs"
           className={btnClass}
@@ -87,9 +87,9 @@ export function FocusModeBar({
           onClick={() => toggleTerminalModifier("shift")}
         >
           shift
-        </Button>
+        </TouchControlButton>
         {hasModifiers && (
-          <Button
+          <TouchControlButton
             variant="ghost"
             size="xs"
             className={`${btnClass} text-gray-400`}
@@ -98,51 +98,51 @@ export function FocusModeBar({
             title="Clear modifiers"
           >
             ✕
-          </Button>
+          </TouchControlButton>
         )}
 
         <span className={separatorClass} aria-hidden="true" />
 
         {/* Special keys */}
-        <Button variant="secondary" size="xs" className={btnClass} onClick={() => sendEncodedTerminalKey("Escape")}>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendEncodedTerminalKey("Escape")}>
           esc
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} onClick={() => sendEncodedTerminalKey("Tab")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendEncodedTerminalKey("Tab")}>
           tab
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} aria-label="Enter" onClick={() => sendEncodedTerminalKey("Enter")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} aria-label="Enter" onClick={() => sendEncodedTerminalKey("Enter")}>
           ⏎
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} aria-label="Backspace" onClick={() => sendEncodedTerminalKey("Backspace")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} aria-label="Backspace" onClick={() => sendEncodedTerminalKey("Backspace")}>
           ⌫
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} aria-label="Space" onClick={() => sendEncodedTerminalKey("Space")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} aria-label="Space" onClick={() => sendEncodedTerminalKey("Space")}>
           ␣
-        </Button>
+        </TouchControlButton>
 
         <span className={separatorClass} aria-hidden="true" />
 
         {/* Arrow keys */}
-        <Button variant="secondary" size="xs" className={btnClass} aria-label="Arrow left" onClick={() => sendEncodedTerminalKey("ArrowLeft")}>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} aria-label="Arrow left" onClick={() => sendEncodedTerminalKey("ArrowLeft")}>
           ◀
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} aria-label="Arrow up" onClick={() => sendEncodedTerminalKey("ArrowUp")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} aria-label="Arrow up" onClick={() => sendEncodedTerminalKey("ArrowUp")}>
           ▲
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} aria-label="Arrow down" onClick={() => sendEncodedTerminalKey("ArrowDown")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} aria-label="Arrow down" onClick={() => sendEncodedTerminalKey("ArrowDown")}>
           ▼
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} aria-label="Arrow right" onClick={() => sendEncodedTerminalKey("ArrowRight")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} aria-label="Arrow right" onClick={() => sendEncodedTerminalKey("ArrowRight")}>
           ▶
-        </Button>
+        </TouchControlButton>
 
         <span className={separatorClass} aria-hidden="true" />
 
         {/* Actions */}
-        <Button variant="secondary" size="xs" className={btnClass} onClick={sendCtrlC}>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={sendCtrlC}>
           ^C
-        </Button>
-        <Button
+        </TouchControlButton>
+        <TouchControlButton
           variant="secondary"
           size="xs"
           className={btnClass}
@@ -150,23 +150,23 @@ export function FocusModeBar({
           onClick={copySelectedTerminalText}
         >
           Copy
-        </Button>
+        </TouchControlButton>
 
         <span className={separatorClass} aria-hidden="true" />
 
         {/* Shortcuts */}
-        <Button variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut("nvim\n")}>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut("nvim\n")}>
           nvim
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut(":Ntree\n")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut(":Ntree\n")}>
           Ntree
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut(":q\n")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut(":q\n")}>
           :q
-        </Button>
-        <Button variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut("fresh\n")}>
+        </TouchControlButton>
+        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut("fresh\n")}>
           fresh
-        </Button>
+        </TouchControlButton>
       </div>
     </div>
   );

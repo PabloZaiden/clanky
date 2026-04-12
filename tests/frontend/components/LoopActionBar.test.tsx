@@ -220,6 +220,34 @@ describe("LoopActionBar", () => {
       });
     });
 
+    test("prevents the send button from taking focus on press", async () => {
+      const { getByRole, user } = renderWithUser(
+        <LoopActionBar {...defaultProps()} />
+      );
+
+      await user.type(getLoopMessageInput(getByRole), "Steer the loop");
+
+      const sendButton = getByRole("button", { name: "Send" });
+      const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+
+      expect(sendButton.dispatchEvent(mouseDown)).toBe(false);
+      expect(mouseDown.defaultPrevented).toBe(true);
+    });
+
+    test("prevents the plan feedback send button from taking focus on press", async () => {
+      const { getByRole, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ isPlanning: true })} />
+      );
+
+      await user.type(getPlanFeedbackInput(getByRole), "Refine the implementation plan");
+
+      const sendButton = getByRole("button", { name: "Send Feedback" });
+      const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+
+      expect(sendButton.dispatchEvent(mouseDown)).toBe(false);
+      expect(mouseDown.defaultPrevented).toBe(true);
+    });
+
     test("keeps the Stop button visible while generating even if text is entered", async () => {
       const onStop = mock(async () => true);
       const onSubmit = mock(async (_data: { message?: string; model?: ModelConfig }) => true);

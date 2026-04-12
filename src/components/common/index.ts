@@ -3,6 +3,12 @@
  */
 
 export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from "./Button";
+export {
+  FocusPreservingButton,
+  preventButtonFocusOnMouseDown,
+  preventButtonFocusOnPointerDown,
+  type FocusPreservingButtonProps,
+} from "./FocusPreservingButton";
 export { Card, type CardProps } from "./Card";
 export {
   Badge,

@@ -9,6 +9,7 @@ import {
   ActionMenu,
   Button,
   ConfirmModal,
+  FocusPreservingButton,
   StatusBadge,
   type ActionMenuItem,
   getChatStatusBadgeVariant,
@@ -538,7 +539,7 @@ export function ChatDetails({
             )}
           </button>
         ) : (
-          <button
+          <FocusPreservingButton
             type="submit"
             disabled={isSubmitting || !hasPendingInput}
             className={sendButtonClassName}
@@ -550,7 +551,7 @@ export function ChatDetails({
             ) : (
               <span className="text-lg leading-none">↑</span>
             )}
-          </button>
+          </FocusPreservingButton>
         )}
       </div>
     </form>
