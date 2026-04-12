@@ -105,18 +105,22 @@ export function getComposerPaddingClass(rows: ComposerRows): ComposerPaddingClas
 
 export function useComposerSizing(value: string): ComposerSizingResult {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const valueRef = useRef(value);
   const [composerRows, setComposerRows] = useState<ComposerRows>(() => getComposerRows(value));
+
+  valueRef.current = value;
 
   const updateComposerRows = useCallback(() => {
     const textarea = textareaRef.current;
-    if (!textarea) {
-      setComposerRows(getComposerRows(value));
-      return;
-    }
+    const currentValue = valueRef.current;
+    const nextRows = hasComposerLineBreak(currentValue)
+      ? getComposerRows(currentValue)
+      : textarea
+        ? getComposerRows(currentValue, getComposerRowsMeasurement(textarea))
+        : getComposerRows(currentValue);
 
-    const nextRows = getComposerRows(value, getComposerRowsMeasurement(textarea));
     setComposerRows((currentRows) => currentRows === nextRows ? currentRows : nextRows);
-  }, [value]);
+  }, []);
 
   const composerRef = useCallback((node: HTMLTextAreaElement | null) => {
     textareaRef.current = node;
@@ -124,7 +128,7 @@ export function useComposerSizing(value: string): ComposerSizingResult {
 
   useLayoutEffect(() => {
     updateComposerRows();
-  }, [updateComposerRows]);
+  }, [value, updateComposerRows]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
