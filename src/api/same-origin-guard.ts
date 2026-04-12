@@ -33,7 +33,9 @@ function createSameOriginForbiddenResponse(): Response {
 }
 
 function shouldProtectRequest(req: Request, alwaysProtect: boolean): boolean {
-  return alwaysProtect || MUTATING_METHODS.has(req.method.toUpperCase());
+  return alwaysProtect
+    || MUTATING_METHODS.has(req.method.toUpperCase())
+    || req.headers.get("upgrade")?.toLowerCase() === "websocket";
 }
 
 function requireSameOrigin(req: Request, alwaysProtect = false): Response | undefined {

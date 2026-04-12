@@ -69,6 +69,7 @@ const protectedPortForwardRoutes = wrapRoutesWithBasicAuth(
   portForwardProxyRoutes,
   runtimeConfig.basicAuth,
 );
+const sameOriginProtectedPortForwardRoutes = wrapRoutesWithSameOriginProtection(protectedPortForwardRoutes);
 
 const websocketRoute = wrapRouteHandlerWithLogging(
   wrapRouteHandlerWithSameOriginProtection(
@@ -140,7 +141,7 @@ const server = serve<WebSocketData>({
   idleTimeout: DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS,
   routes: {
     ...loggedApiRoutes,
-    ...protectedPortForwardRoutes,
+    ...sameOriginProtectedPortForwardRoutes,
     "/api/ws": websocketRoute,
     "/api/ssh-terminal": sshTerminalRoute,
     "/*": staticRoute,

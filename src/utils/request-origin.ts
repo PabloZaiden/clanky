@@ -40,14 +40,25 @@ export function getEffectiveRequestOriginInfo(req: Request): RequestOriginInfo {
   const forwardedHost = getFirstHeaderValue(req.headers, "x-forwarded-host");
   const forwardedProto = getFirstHeaderValue(req.headers, "x-forwarded-proto")?.toLowerCase();
   const host = forwardedHost || req.headers.get("host") || requestUrl.host;
-  const protocol = forwardedProto || requestUrl.protocol.replace(":", "").toLowerCase();
-  const fallbackUrl = new URL(`${protocol}://${host}`);
+  const requestProtocol = requestUrl.protocol.replace(":", "").toLowerCase();
+  const protocol =
+    forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : requestProtocol;
 
-  return {
-    origin: fallbackUrl.origin,
-    hostname: fallbackUrl.hostname,
-    secure: fallbackUrl.protocol === "https:",
-  };
+  try {
+    const fallbackUrl = new URL(`${protocol}://${host}`);
+
+    return {
+      origin: fallbackUrl.origin,
+      hostname: fallbackUrl.hostname,
+      secure: fallbackUrl.protocol === "https:",
+    };
+  } catch {
+    return {
+      origin: requestUrl.origin,
+      hostname: requestUrl.hostname,
+      secure: requestUrl.protocol === "https:",
+    };
+  }
 }
 
 export function getRequestOriginInfo(req: Request): RequestOriginInfo {

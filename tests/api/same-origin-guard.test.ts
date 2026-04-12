@@ -110,4 +110,25 @@ describe("same-origin guard", () => {
     expect(response?.status).toBe(403);
     expect(upgradeCalled).toBe(false);
   });
+
+  test("protects websocket upgrade requests for wrapped function routes", async () => {
+    let handlerCalled = false;
+    const wrappedRoutes = wrapRoutesWithSameOriginProtection({
+      "/loop/:loopId/port/:forwardId": async () => {
+        handlerCalled = true;
+        return Response.json({ ok: true });
+      },
+    });
+    const route = wrappedRoutes["/loop/:loopId/port/:forwardId"] as (req: Request) => Promise<Response | undefined>;
+
+    const response = await route(new Request("https://ralpher.example.test/loop/test/port/test", {
+      headers: {
+        origin: "https://attacker.example.test",
+        upgrade: "websocket",
+      },
+    }));
+
+    expect(response?.status).toBe(403);
+    expect(handlerCalled).toBe(false);
+  });
 });

@@ -76,6 +76,23 @@ describe("getEffectiveRequestOriginInfo", () => {
       secure: true,
     });
   });
+
+  test("falls back to the request URL when forwarded headers are malformed", () => {
+    const info = getEffectiveRequestOriginInfo(
+      new Request("https://ralpher.example.test/api/passkey-auth/authentication/verify", {
+        headers: {
+          "x-forwarded-host": "bad host value",
+          "x-forwarded-proto": "ftp",
+        },
+      }),
+    );
+
+    expect(info).toEqual({
+      origin: "https://ralpher.example.test",
+      hostname: "ralpher.example.test",
+      secure: true,
+    });
+  });
 });
 
 describe("checkRequestSameOrigin", () => {

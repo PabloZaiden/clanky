@@ -102,6 +102,7 @@ try {
     wrapRoutesWithPasskeyAuth(portForwardProxyRoutes),
     runtimeConfig.basicAuth,
   );
+  const sameOriginProtectedPortForwardRoutes = wrapRoutesWithSameOriginProtection(protectedPortForwardRoutes);
   const websocketRoute = wrapRouteHandlerWithLogging(
     wrapRouteHandlerWithSameOriginProtection(
       wrapRouteHandler(
@@ -178,7 +179,7 @@ try {
     routes: {
       // API routes
       ...loggedApiRoutes,
-      ...protectedPortForwardRoutes,
+      ...sameOriginProtectedPortForwardRoutes,
 
       // WebSocket endpoint for real-time events
       "/api/ws": websocketRoute,
