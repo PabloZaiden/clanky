@@ -593,7 +593,7 @@ describe("CreateLoopForm", () => {
       expect(req.autoAcceptPlan).toBe(true);
     });
 
-    test("submits fullyAutonomous=true and forces autoAcceptPlan=true when enabled", async () => {
+    test("defaults fullyAutonomous to checked for new loops and submits it", async () => {
       const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
 
       const { getByLabelText, getByRole, getAllByRole, user } = renderWithUser(
@@ -621,7 +621,7 @@ describe("CreateLoopForm", () => {
       const fullyAutonomousCheckbox = getAllByRole("checkbox", { name: /Fully autonomous loop/i })
         .find((element) => !(element as HTMLInputElement).disabled);
       expect(fullyAutonomousCheckbox).toBeDefined();
-      await user.click(fullyAutonomousCheckbox!);
+      expect((fullyAutonomousCheckbox as HTMLInputElement).checked).toBe(true);
       expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).checked).toBe(true);
       expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).disabled).toBe(true);
 
@@ -634,6 +634,53 @@ describe("CreateLoopForm", () => {
       const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
       expect(req.planMode).toBe(true);
       expect(req.autoAcceptPlan).toBe(true);
+      expect(req.fullyAutonomous).toBe(true);
+    });
+
+    test("defaults fullyAutonomous to checked for new loops with partial initialLoopData", async () => {
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, getAllByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            onCancel: mock(() => {}),
+            initialLoopData: {
+              directory: "/workspaces/project-a",
+              prompt: "",
+              workspaceId: "ws-1",
+            },
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+            branches: [createBranchInfo({ name: "main" })],
+            defaultBranch: "main",
+            currentBranch: "main",
+          })}
+        />
+      );
+
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Do it");
+      await setInputValue(user, getByLabelText(/Title/) as HTMLInputElement, "Loop title");
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+      });
+
+      const fullyAutonomousCheckbox = getAllByRole("checkbox", { name: /Fully autonomous loop/i })
+        .find((element) => !(element as HTMLInputElement).disabled);
+      expect(fullyAutonomousCheckbox).toBeDefined();
+      expect((fullyAutonomousCheckbox as HTMLInputElement).checked).toBe(true);
+      expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).checked).toBe(true);
+      expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).disabled).toBe(true);
+
+      await user.click(getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
+      expect(req.workspaceId).toBe("ws-1");
       expect(req.fullyAutonomous).toBe(true);
     });
 
