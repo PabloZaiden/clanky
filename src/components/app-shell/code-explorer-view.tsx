@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, type ComponentType } from "react";
 import type { Chat, CreateSshSessionRequest, Loop, SshConnectionMode, SshSession, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
+import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import { ShellPanel } from "./shell-panel";
 import { FileExplorerView } from "./file-explorer-view";
 import { getCodeExplorerOptions, resolveCodeExplorerTarget } from "./code-explorer-targets";
@@ -21,6 +22,7 @@ interface CodeExplorerViewProps {
     options?: { name?: string; connectionMode?: SshConnectionMode },
   ) => Promise<SshServerSession>;
   onNavigate: (route: ShellRoute) => void;
+  sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function CodeExplorerView({
@@ -35,6 +37,7 @@ export function CodeExplorerView({
   createSession,
   createStandaloneSession,
   onNavigate,
+  sshSessionDetailsComponent,
 }: CodeExplorerViewProps) {
   const options = useMemo(() => getCodeExplorerOptions({
     loops,
@@ -149,6 +152,7 @@ export function CodeExplorerView({
       testIdPrefix={resolvedTarget.testIdPrefix}
       credentialPromptName={resolvedTarget.credentialPromptName}
       headerActions={contentSwitcher}
+      sshSessionDetailsComponent={sshSessionDetailsComponent}
     />
   );
 }

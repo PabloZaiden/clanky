@@ -8,6 +8,7 @@ import {
   lastMockTerminalOptions as lastTerminalOptions,
   resetGhosttyWebMockState,
 } from "../helpers/mock-ghostty-web";
+import { SshSessionDetails } from "@/components/SshSessionDetails";
 import { clearStoredSshServerCredential } from "@/lib/ssh-browser-credentials";
 
 let clipboardWrites: string[] = [];
@@ -62,12 +63,6 @@ function mockDocumentFonts(availableFontFamilies: readonly string[]) {
     },
   });
 }
-
-// Import from the internal module path to avoid mock.module pollution from other
-// test files (e.g. AppWorkspaceFiles, WorkspaceFilesView) that mock
-// "@/components/SshSessionDetails" with a stub. Bun's mock.module is permanent
-// within a process and can leak across test files in certain environments.
-const { SshSessionDetails } = await import("@/components/ssh-session/index");
 
 const api = createMockApi();
 const ws = createMockWebSocket();

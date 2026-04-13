@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ComponentProps } from "react";
 import { createMockApi } from "../helpers/mock-api";
 import { renderWithUser, waitFor } from "../helpers/render";
 import { createLoopWithStatus, createSshSession, createWorkspace } from "../helpers/factories";
@@ -21,21 +22,29 @@ mock.module("@monaco-editor/react", () => ({
 
 const api = createMockApi();
 
-function installEmbeddedSshSessionMock() {
-  mock.module("@/components/SshSessionDetails", () => ({
-    SshSessionDetails: ({
-      sshSessionId,
-      forcedFocusMode,
-    }: {
-      sshSessionId: string;
-      forcedFocusMode?: boolean;
-    }) => (
-      <div>
-        Embedded SSH session: {sshSessionId}
-        {forcedFocusMode ? " (focused)" : ""}
-      </div>
-    ),
-  }));
+function EmbeddedSshSessionStub({
+  sshSessionId,
+  forcedFocusMode,
+}: {
+  sshSessionId: string;
+  forcedFocusMode?: boolean;
+}) {
+  return (
+    <div>
+      Embedded SSH session: {sshSessionId}
+      {forcedFocusMode ? " (focused)" : ""}
+    </div>
+  );
+}
+
+async function loadLoopFilesView() {
+  const { LoopFilesView } = await import("@/components/app-shell/loop-files-view");
+
+  return function LoopFilesViewWithStub(
+    props: Omit<ComponentProps<typeof LoopFilesView>, "sshSessionDetailsComponent">,
+  ) {
+    return <LoopFilesView {...props} sshSessionDetailsComponent={EmbeddedSshSessionStub} />;
+  };
 }
 
 describe("LoopFilesView", () => {
@@ -50,8 +59,7 @@ describe("LoopFilesView", () => {
   });
 
   test("creates or reuses the loop SSH session when opening a terminal", async () => {
-    installEmbeddedSshSessionMock();
-    const { LoopFilesView } = await import("@/components/app-shell/loop-files-view");
+    const LoopFilesView = await loadLoopFilesView();
     const workspace = createWorkspace({
       id: "workspace-loop-files",
       name: "Loop Workspace",
@@ -121,8 +129,7 @@ describe("LoopFilesView", () => {
   });
 
   test("keeps long loop terminal names shrink-safe in the explorer header", async () => {
-    installEmbeddedSshSessionMock();
-    const { LoopFilesView } = await import("@/components/app-shell/loop-files-view");
+    const LoopFilesView = await loadLoopFilesView();
     const workspace = createWorkspace({
       id: "workspace-loop-files-long-name",
       name: "Loop Workspace",
