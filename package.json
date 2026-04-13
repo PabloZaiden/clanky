@@ -7,9 +7,10 @@
     "dev": "bun --hot src/index.ts",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun run tsc && bun src/build.ts",
-    "test": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 30000 --max-concurrency 1 tests/unit tests/api tests/e2e tests/integration && bun test --dots --timeout 15000 --max-concurrency 1 --preload ./tests/frontend/setup.ts tests/frontend",
+    "test": "bun run test:backend && bun run test:frontend",
     "test:backend": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 30000 --max-concurrency 1 tests/unit tests/api tests/e2e tests/integration",
-    "test:frontend": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 --max-concurrency 1 --preload ./tests/frontend/setup.ts tests/frontend",
+    "test:frontend": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 --max-concurrency 1 --preload ./tests/frontend/setup.ts $(find tests/frontend -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) ! -path 'tests/frontend/components/SshSessionDetails.test.tsx' | sort) && bun run test:frontend:ssh-session-details",
+    "test:frontend:ssh-session-details": "export RALPHER_LOG_LEVEL=fatal && bun test --dots --timeout 15000 --max-concurrency 1 --preload ./tests/frontend/setup.ts tests/frontend/components/SshSessionDetails.test.tsx",
     "test:playwright": "bun test --timeout 90000 tests/playwright/loop-flows.test.ts && bun test --timeout 90000 tests/playwright/chat-ssh.test.ts && bun test --timeout 90000 tests/playwright/workspace-files.test.ts",
     "test:playwright:headed": "PLAYWRIGHT_HEADLESS=false bun test --timeout 90000 tests/playwright/loop-flows.test.ts && PLAYWRIGHT_HEADLESS=false bun test --timeout 90000 tests/playwright/chat-ssh.test.ts && PLAYWRIGHT_HEADLESS=false bun test --timeout 90000 tests/playwright/workspace-files.test.ts",
     "tsc": "bunx tsc --noEmit"
