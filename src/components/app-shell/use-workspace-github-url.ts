@@ -41,6 +41,9 @@ export function useWorkspaceGitHubUrl(workspace: Workspace): string | null {
           `/api/git/github-repository-url?directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`,
           { signal: controller.signal },
         );
+        if (controller.signal.aborted) {
+          return;
+        }
         if (!response.ok) {
           setFetchedGitHubUrl({
             workspaceId: workspace.id,
