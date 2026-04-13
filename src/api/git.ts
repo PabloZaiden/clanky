@@ -14,7 +14,7 @@
 import { backendManager } from "../core/backend-manager";
 import { GitCommandError, GitService } from "../core/git";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
-import type { BranchInfo, GitHubRepositoryUrlResponse } from "../types";
+import type { BranchInfo, GitHubRepositoryUrlResponse, Workspace } from "../types";
 import { createLogger } from "../core/logger";
 import { errorResponse, normalizeDirectoryPath, resolveWorkspaceForDirectory } from "./helpers";
 
@@ -48,17 +48,12 @@ async function resolveGitHubRepositoryUrl(
     return workspace;
   }
 
-  const persistedGitHubUrl = workspace.repoUrl
-    ? normalizeGitHubRepositoryUrl(workspace.repoUrl)
-    : null;
-  if (persistedGitHubUrl) {
-    return persistedGitHubUrl;
+  const persistedRepoUrl = workspace.repoUrl?.trim() ?? "";
+  if (persistedRepoUrl) {
+    return normalizeGitHubRepositoryUrl(persistedRepoUrl);
   }
 
-  const git = await getGitService(normalizedDirectory, workspace.id);
-  if (git instanceof Response) {
-    return git;
-  }
+  const git = await createGitServiceForWorkspace(workspace, normalizedDirectory);
 
   if (!(await git.isGitRepo(normalizedDirectory))) {
     return null;
@@ -82,6 +77,12 @@ async function resolveGitHubRepositoryUrl(
   }
 }
 
+async function createGitServiceForWorkspace(workspace: Workspace, directory: string): Promise<GitService> {
+  const normalizedDirectory = normalizeDirectoryPath(directory);
+  const executor = await backendManager.getCommandExecutorAsync(workspace.id, normalizedDirectory);
+  return GitService.withExecutor(executor);
+}
+
 /**
  * Get a GitService configured for the current execution provider.
  * Uses deterministic command execution (local/SSH), independent of agent transport.
@@ -99,9 +100,8 @@ async function getGitService(directory: string, workspaceId?: string | null): Pr
   if (workspace instanceof Response) {
     return workspace;
   }
-  const executor = await backendManager.getCommandExecutorAsync(workspace.id, normalizedDirectory);
   log.debug("GitService created", { workspaceId: workspace.id });
-  return GitService.withExecutor(executor);
+  return createGitServiceForWorkspace(workspace, normalizedDirectory);
 }
 
 /**

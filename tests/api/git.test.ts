@@ -225,6 +225,35 @@ describe("Git API Integration", () => {
       });
     });
 
+    test("returns null when an explicit persisted repoUrl is non-GitHub", async () => {
+      await createWorkspace({
+        id: "git-test-workspace-non-github-persisted",
+        name: "Git Test Non-GitHub Persisted",
+        directory: testWorkDir,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: {
+          agent: {
+            provider: "opencode",
+            transport: "ssh",
+            hostname: "git-host.test",
+            port: 22,
+          },
+        },
+        repoUrl: "https://gitlab.com/persisted/repo.git",
+      });
+
+      const res = await fetch(
+        `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace-non-github-persisted")}`
+      );
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual({
+        githubUrl: null,
+      });
+    });
+
     test("returns null for non-GitHub remotes", async () => {
       await Bun.$`git -C ${testWorkDir} remote set-url origin git@gitlab.com:owner/repo.git`.quiet();
 

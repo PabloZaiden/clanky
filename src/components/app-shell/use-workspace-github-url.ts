@@ -6,43 +6,55 @@ import type { GitHubRepositoryUrlResponse, Workspace } from "../../types";
 
 const log = createLogger("useWorkspaceGitHubUrl");
 
+interface FetchedGitHubUrlState {
+  workspaceId: string;
+  githubUrl: string | null;
+}
+
 export function useWorkspaceGitHubUrl(workspace: Workspace): string | null {
-  const [githubUrl, setGitHubUrl] = useState<string | null>(() =>
-    workspace.repoUrl ? normalizeGitHubRepositoryUrl(workspace.repoUrl) : null
-  );
+  const persistedRepoUrl = workspace.repoUrl?.trim() ?? "";
+  const persistedGitHubUrl = persistedRepoUrl
+    ? normalizeGitHubRepositoryUrl(persistedRepoUrl)
+    : null;
+  const [fetchedGitHubUrl, setFetchedGitHubUrl] = useState<FetchedGitHubUrlState | null>(null);
 
   useEffect(() => {
     if (!workspace.id || !workspace.directory) {
-      setGitHubUrl(null);
+      setFetchedGitHubUrl(null);
       return;
     }
 
-    const persistedGitHubUrl = workspace.repoUrl
-      ? normalizeGitHubRepositoryUrl(workspace.repoUrl)
-      : null;
-    if (persistedGitHubUrl) {
-      setGitHubUrl(persistedGitHubUrl);
+    if (persistedRepoUrl) {
+      setFetchedGitHubUrl({
+        workspaceId: workspace.id,
+        githubUrl: persistedGitHubUrl,
+      });
       return;
     }
 
     const controller = new AbortController();
+    setFetchedGitHubUrl(null);
 
     async function fetchGitHubUrl() {
-      setGitHubUrl(null);
-
       try {
         const response = await appFetch(
           `/api/git/github-repository-url?directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`,
           { signal: controller.signal },
         );
         if (!response.ok) {
-          setGitHubUrl(null);
+          setFetchedGitHubUrl({
+            workspaceId: workspace.id,
+            githubUrl: null,
+          });
           return;
         }
 
         const data = await response.json() as GitHubRepositoryUrlResponse;
         if (!controller.signal.aborted) {
-          setGitHubUrl(data.githubUrl ?? null);
+          setFetchedGitHubUrl({
+            workspaceId: workspace.id,
+            githubUrl: data.githubUrl ?? null,
+          });
         }
       } catch (error) {
         if (controller.signal.aborted) {
@@ -53,7 +65,10 @@ export function useWorkspaceGitHubUrl(workspace: Workspace): string | null {
           directory: workspace.directory,
           error: String(error),
         });
-        setGitHubUrl(null);
+        setFetchedGitHubUrl({
+          workspaceId: workspace.id,
+          githubUrl: null,
+        });
       }
     }
 
@@ -62,7 +77,13 @@ export function useWorkspaceGitHubUrl(workspace: Workspace): string | null {
     return () => {
       controller.abort();
     };
-  }, [workspace.directory, workspace.id, workspace.repoUrl]);
+  }, [persistedGitHubUrl, persistedRepoUrl, workspace.directory, workspace.id]);
 
-  return githubUrl;
+  if (persistedRepoUrl) {
+    return persistedGitHubUrl;
+  }
+
+  return fetchedGitHubUrl?.workspaceId === workspace.id
+    ? fetchedGitHubUrl.githubUrl
+    : null;
 }
