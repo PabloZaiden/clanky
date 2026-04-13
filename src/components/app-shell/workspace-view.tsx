@@ -15,6 +15,7 @@ import {
 } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
+import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
 
 function getWorkspaceHeaderServerLabel(
   workspace: Workspace,
@@ -52,6 +53,7 @@ export function WorkspaceView({
   onNavigate: (route: ShellRoute) => void;
 }) {
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
+  const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
   const activityDescription = workspaceSshEnabled
     ? "Loops, chats, and SSH sessions in this workspace."
@@ -71,6 +73,12 @@ export function WorkspaceView({
       label: "Open code explorer",
       onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "workspace", workspaceId: workspace.id } }),
     },
+    ...(githubUrl
+      ? [{
+          label: "Open in GitHub",
+          onClick: () => window.open(githubUrl, "_blank", "noopener,noreferrer"),
+        }]
+      : []),
     ...(workspaceSshEnabled
       ? [{
           label: "New SSH Session",

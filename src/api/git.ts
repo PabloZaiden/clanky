@@ -12,8 +12,9 @@
  */
 
 import { backendManager } from "../core/backend-manager";
-import { GitService } from "../core/git-service";
-import type { BranchInfo } from "../types";
+import { GitCommandError, GitService } from "../core/git";
+import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
+import type { BranchInfo, GitHubRepositoryUrlResponse } from "../types";
 import { createLogger } from "../core/logger";
 import { errorResponse, normalizeDirectoryPath, resolveWorkspaceForDirectory } from "./helpers";
 
@@ -35,6 +36,50 @@ export interface BranchesResponse {
 export interface DefaultBranchResponse {
   /** The repository's default branch (e.g., "main", "master") */
   defaultBranch: string;
+}
+
+async function resolveGitHubRepositoryUrl(
+  directory: string,
+  workspaceId?: string | null,
+): Promise<string | null | Response> {
+  const normalizedDirectory = normalizeDirectoryPath(directory);
+  const workspace = await resolveWorkspaceForDirectory(normalizedDirectory, workspaceId);
+  if (workspace instanceof Response) {
+    return workspace;
+  }
+
+  const persistedGitHubUrl = workspace.repoUrl
+    ? normalizeGitHubRepositoryUrl(workspace.repoUrl)
+    : null;
+  if (persistedGitHubUrl) {
+    return persistedGitHubUrl;
+  }
+
+  const git = await getGitService(normalizedDirectory, workspace.id);
+  if (git instanceof Response) {
+    return git;
+  }
+
+  if (!(await git.isGitRepo(normalizedDirectory))) {
+    return null;
+  }
+
+  try {
+    const remoteUrl = await git.getRemoteUrl(normalizedDirectory, "origin");
+    return normalizeGitHubRepositoryUrl(remoteUrl);
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      log.info("GitHub repository URL unavailable from origin remote", {
+        workspaceId: workspace.id,
+        directory: normalizedDirectory,
+        command: error.command,
+        exitCode: error.exitCode,
+        gitStderr: error.gitStderr,
+      });
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -180,6 +225,36 @@ export const gitRoutes = {
         return Response.json(response);
       } catch (error) {
         log.error("Git default-branch error", { error: String(error) });
+        return errorResponse("git_error", String(error), 500);
+      }
+    },
+  },
+
+  "/api/git/github-repository-url": {
+    async GET(req: Request): Promise<Response> {
+      log.debug("GET /api/git/github-repository-url");
+
+      try {
+        const url = new URL(req.url);
+        const directory = url.searchParams.get("directory");
+        const workspaceId = url.searchParams.get("workspaceId");
+
+        if (!directory) {
+          log.debug("Missing directory parameter");
+          return errorResponse("missing_parameter", "directory query parameter is required");
+        }
+
+        const githubUrl = await resolveGitHubRepositoryUrl(directory, workspaceId);
+        if (githubUrl instanceof Response) {
+          return githubUrl;
+        }
+
+        const response: GitHubRepositoryUrlResponse = {
+          githubUrl,
+        };
+        return Response.json(response);
+      } catch (error) {
+        log.error("GitHub repository URL error", { error: String(error) });
         return errorResponse("git_error", String(error), 500);
       }
     },
