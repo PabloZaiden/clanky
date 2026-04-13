@@ -12,6 +12,7 @@ import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { loopManager } from "../../src/core/loop-manager";
+import { saveLoop } from "../../src/persistence/loops";
 import { closeDatabase } from "../../src/persistence/database";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -902,6 +903,94 @@ describe("Loops Control API Integration", () => {
         expect(commentsBody.comments.length).toBeGreaterThan(0);
         expect(commentsBody.comments[0].commentText).toBe(commentsText);
         expect(commentsBody.comments[0].reviewCycle).toBe(1);
+      } finally {
+        await rm(uniqueWorkDir, { recursive: true, force: true });
+        await rm(uniqueBareRepo, { recursive: true, force: true });
+      }
+    });
+
+    test("GET /api/loops/:id/comments includes automatic PR review cycle entries", async () => {
+      const uniqueWorkDir = await createTrackedTempDir("ralpher-auto-pr-comments-test-");
+      const uniqueBareRepo = await createTrackedTempDir("ralpher-auto-pr-comments-bare-");
+      await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
+      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
+      await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} add .`.quiet();
+      await Bun.$`git -C ${uniqueWorkDir} commit -m "Initial commit"`.quiet();
+
+      try {
+        const currentBranch = (await Bun.$`git -C ${uniqueWorkDir} branch --show-current`.text()).trim();
+        await Bun.$`git -C ${uniqueWorkDir} push origin ${currentBranch}`.quiet();
+
+        const workspaceId = await getOrCreateWorkspace(uniqueWorkDir);
+        const createResponse = await fetch(`${baseUrl}/api/loops`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            workspaceId,
+            prompt: "Test prompt",
+            name: "Automatic PR comments loop",
+            planMode: false,
+            model: testModel,
+            useWorktree: true,
+          }),
+        });
+        const createBody = await createResponse.json();
+        const loopId = createBody.config.id;
+
+        await waitForLoopCompletion(loopId);
+
+        const pushResponse = await fetch(`${baseUrl}/api/loops/${loopId}/push`, { method: "POST" });
+        expect(pushResponse.status).toBe(200);
+
+        const loop = await loopManager.getLoop(loopId);
+        expect(loop).not.toBeNull();
+        loop!.state.automaticPrFlow = {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-13T22:45:39.694Z",
+          updatedAt: "2026-04-13T22:45:39.694Z",
+          lastCheckedAt: "2026-04-13T22:45:39.694Z",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/owner/repo/pull/42",
+          handledItems: [],
+          activeBatch: undefined,
+          stoppedAt: undefined,
+        };
+        await saveLoop(loop!);
+
+        const reviewCycleResult = await loopManager.startAutomaticPrReviewCycle(loopId, {
+          batchId: "batch-1",
+          itemIds: ["thread-1"],
+          feedbackItems: [
+            {
+              id: "thread-1",
+              source: "review_thread",
+              body: "Please add a missing edge-case test.",
+              authorLogin: "reviewer",
+              path: "src/index.ts",
+              line: 12,
+              url: "https://github.com/owner/repo/pull/42#discussion_r1",
+            },
+          ],
+        });
+
+        expect(reviewCycleResult.success).toBe(true);
+        expect(reviewCycleResult.reviewCycle).toBe(1);
+
+        const commentsResponse = await fetch(`${baseUrl}/api/loops/${loopId}/comments`);
+        expect(commentsResponse.status).toBe(200);
+        const commentsBody = await commentsResponse.json();
+        expect(commentsBody.success).toBe(true);
+        expect(commentsBody.comments).toBeInstanceOf(Array);
+        expect(commentsBody.comments.length).toBeGreaterThan(0);
+        expect(commentsBody.comments[0].reviewCycle).toBe(1);
+        expect(commentsBody.comments[0].status).toBe("pending");
+        expect(commentsBody.comments[0].commentText).toContain("Automatic PR feedback batch:");
+        expect(commentsBody.comments[0].commentText).toContain("Please add a missing edge-case test.");
       } finally {
         await rm(uniqueWorkDir, { recursive: true, force: true });
         await rm(uniqueBareRepo, { recursive: true, force: true });

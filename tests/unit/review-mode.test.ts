@@ -6,6 +6,8 @@
 import { test, expect, describe } from "bun:test";
 import { setupTestContext, teardownTestContext, waitForEvent, waitForLoopStatus, testModelFields } from "../setup";
 import { join } from "path";
+import { saveLoop } from "../../src/persistence/loops";
+import { constructAutomaticPrReviewCommentText } from "../../src/core/loop/loop-review";
 
 const testWorkspaceId = "test-workspace-id";
 
@@ -383,6 +385,103 @@ describe("Review Mode", () => {
         expect(restartedLoop!.state.status).not.toBe("deleted");
 
         await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+  });
+
+  describe("automatic PR review cycles", () => {
+    test("stores automatic PR feedback in comment history and marks it addressed on completion", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+      });
+
+      try {
+        const remoteDir = join(ctx.dataDir, `remote-${Date.now()}.git`);
+        await Bun.$`git init --bare ${remoteDir}`.quiet();
+        await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
+        const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
+        await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
+
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Test Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+
+        await ctx.manager.startLoop(loop.config.id);
+        await waitForEvent(ctx.events, "loop.completed");
+        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        expect(pushResult.success).toBe(true);
+
+        const pushedLoop = await ctx.manager.getLoop(loop.config.id);
+        expect(pushedLoop).not.toBeNull();
+        pushedLoop!.state.automaticPrFlow = {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-13T22:45:39.694Z",
+          updatedAt: "2026-04-13T22:45:39.694Z",
+          lastCheckedAt: "2026-04-13T22:45:39.694Z",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/owner/repo/pull/42",
+          handledItems: [],
+          activeBatch: undefined,
+          stoppedAt: undefined,
+        };
+        await saveLoop(pushedLoop!);
+
+        const feedbackItems = [
+          {
+            id: "thread-1",
+            source: "review_thread" as const,
+            body: "Please add a missing edge-case test.",
+            authorLogin: "reviewer",
+            path: "src/index.ts",
+            line: 12,
+            url: "https://github.com/owner/repo/pull/42#discussion_r1",
+          },
+          {
+            id: "comment-2",
+            source: "review_comment" as const,
+            body: "Also tighten the error message.",
+            authorLogin: "reviewer",
+          },
+        ];
+
+        const expectedCommentText = constructAutomaticPrReviewCommentText(feedbackItems);
+        const reviewCycleResult = await ctx.manager.startAutomaticPrReviewCycle(loop.config.id, {
+          batchId: "batch-1",
+          itemIds: feedbackItems.map((item) => item.id),
+          feedbackItems,
+        });
+
+        expect(reviewCycleResult.success).toBe(true);
+        expect(reviewCycleResult.reviewCycle).toBe(1);
+        expect(reviewCycleResult.commentIds).toHaveLength(1);
+
+        const pendingComment = ctx.manager.getReviewComments(loop.config.id).find(
+          (comment) => comment.id === reviewCycleResult.commentIds?.[0]
+        );
+        expect(pendingComment).toBeDefined();
+        expect(pendingComment?.reviewCycle).toBe(1);
+        expect(pendingComment?.status).toBe("pending");
+        expect(pendingComment?.commentText).toBe(expectedCommentText);
+
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+
+        const addressedComment = ctx.manager.getReviewComments(loop.config.id).find(
+          (comment) => comment.id === reviewCycleResult.commentIds?.[0]
+        );
+        expect(addressedComment).toBeDefined();
+        expect(addressedComment?.status).toBe("addressed");
+        expect(addressedComment?.addressedAt).toBeDefined();
       } finally {
         await teardownTestContext(ctx);
       }
