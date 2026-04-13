@@ -593,7 +593,7 @@ describe("CreateLoopForm", () => {
       expect(req.autoAcceptPlan).toBe(true);
     });
 
-    test("submits fullyAutonomous=true and forces autoAcceptPlan=true when enabled", async () => {
+    test("defaults fullyAutonomous to checked for new loops and submits it", async () => {
       const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
 
       const { getByLabelText, getByRole, getAllByRole, user } = renderWithUser(
@@ -621,7 +621,7 @@ describe("CreateLoopForm", () => {
       const fullyAutonomousCheckbox = getAllByRole("checkbox", { name: /Fully autonomous loop/i })
         .find((element) => !(element as HTMLInputElement).disabled);
       expect(fullyAutonomousCheckbox).toBeDefined();
-      await user.click(fullyAutonomousCheckbox!);
+      expect((fullyAutonomousCheckbox as HTMLInputElement).checked).toBe(true);
       expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).checked).toBe(true);
       expect((getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement).disabled).toBe(true);
 
