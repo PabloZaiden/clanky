@@ -66,7 +66,7 @@ export function useFormFields({
     initialLoopData?.autoAcceptPlan ?? DEFAULT_LOOP_CONFIG.autoAcceptPlan
   );
   const [fullyAutonomous, setFullyAutonomous] = useState(
-    initialLoopData?.fullyAutonomous ?? DEFAULT_LOOP_CONFIG.fullyAutonomous
+    initialLoopData?.fullyAutonomous ?? true
   );
   const [useWorktree, setUseWorktree] = useState(
     initialLoopData?.useWorktree ?? DEFAULT_LOOP_CONFIG.useWorktree
