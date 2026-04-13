@@ -30,22 +30,31 @@ export async function addressReviewCommentsImpl(
   });
 }
 
-export function constructAutomaticPrReviewPrompt(feedbackItems: AutomaticPrFlowFeedbackItem[]): string {
-  const normalizedItems = feedbackItems
-    .map((item, index) => {
-      const metadata = [
-        `source=${item.source}`,
-        item.authorLogin ? `author=${item.authorLogin}` : undefined,
-        item.path ? `path=${item.path}${item.line !== undefined ? `:${item.line}` : ""}` : undefined,
-        item.url ? `url=${item.url}` : undefined,
-      ].filter(Boolean).join(", ");
+function formatAutomaticPrFeedbackItem(
+  item: AutomaticPrFlowFeedbackItem,
+  index: number,
+): string {
+  const metadata = [
+    `source=${item.source}`,
+    item.authorLogin ? `author=${item.authorLogin}` : undefined,
+    item.path ? `path=${item.path}${item.line !== undefined ? `:${item.line}` : ""}` : undefined,
+    item.url ? `url=${item.url}` : undefined,
+  ].filter(Boolean).join(", ");
 
-      return [
-        `Feedback ${index + 1}${metadata ? ` (${metadata})` : ""}:`,
-        item.body.trim(),
-      ].join("\n");
-    })
+  return [
+    `Feedback ${index + 1}${metadata ? ` (${metadata})` : ""}:`,
+    item.body.trim(),
+  ].join("\n");
+}
+
+function formatAutomaticPrFeedbackItems(feedbackItems: AutomaticPrFlowFeedbackItem[]): string {
+  return feedbackItems
+    .map((item, index) => formatAutomaticPrFeedbackItem(item, index))
     .join("\n\n---\n\n");
+}
+
+export function constructAutomaticPrReviewPrompt(feedbackItems: AutomaticPrFlowFeedbackItem[]): string {
+  const normalizedItems = formatAutomaticPrFeedbackItems(feedbackItems);
 
   return `A pull request has received new reviewer feedback. Evaluate each item carefully and decide whether a code or test change is needed.
 
@@ -62,6 +71,14 @@ Instructions:
 - When all actionable items are handled, end your response with:
 
 <promise>COMPLETE</promise>`;
+}
+
+export function constructAutomaticPrReviewCommentText(
+  feedbackItems: AutomaticPrFlowFeedbackItem[],
+): string {
+  return `Automatic PR feedback batch:
+
+${formatAutomaticPrFeedbackItems(feedbackItems)}`;
 }
 
 export async function startAutomaticPrReviewCycleImpl(
@@ -118,6 +135,7 @@ export async function startAutomaticPrReviewCycleImpl(
 
   const result = await startFeedbackCycleImpl(ctx, loopId, {
     prompt: constructAutomaticPrReviewPrompt(options.feedbackItems),
+    reviewCommentText: constructAutomaticPrReviewCommentText(options.feedbackItems),
   });
   if (result.success) {
     if (result.reviewCycle !== undefined) {
