@@ -1,23 +1,11 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { renderWithUser, waitFor } from "../helpers/render";
 import { createWorkspace } from "../helpers/factories";
-
-let mockedGitHubUrl: string | null = null;
-
-mock.module("@/components/app-shell/use-workspace-github-url", () => ({
-  useWorkspaceGitHubUrl: () => mockedGitHubUrl,
-}));
 
 import { WorkspaceView } from "@/components/app-shell/workspace-view";
 
 describe("WorkspaceView", () => {
-  beforeEach(() => {
-    mockedGitHubUrl = null;
-  });
-
   test("shows an Open in GitHub action when the workspace has a GitHub URL", async () => {
-    mockedGitHubUrl = "https://github.com/owner/repo";
-
     const openCalls: Array<{ url: string | URL | undefined; target: string | undefined; features: string | undefined }> = [];
     const originalWindowOpen = window.open;
     window.open = ((url?: string | URL, target?: string, features?: string) => {
@@ -26,7 +14,12 @@ describe("WorkspaceView", () => {
     }) as typeof window.open;
 
     try {
-      const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
+      const workspace = createWorkspace({
+        id: "workspace-1",
+        name: "Frontend",
+        directory: "/workspaces/frontend",
+        repoUrl: "https://github.com/owner/repo.git",
+      });
       const { getByRole, user } = renderWithUser(
         <WorkspaceView
           workspace={workspace}
@@ -60,7 +53,12 @@ describe("WorkspaceView", () => {
   });
 
   test("hides the Open in GitHub action when the workspace has no GitHub URL", async () => {
-    const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+      repoUrl: "https://gitlab.com/owner/repo.git",
+    });
     const { getByRole, queryByRole, user } = renderWithUser(
       <WorkspaceView
         workspace={workspace}
