@@ -11,14 +11,6 @@ mock.module("@monaco-editor/react", () => ({
 const api = createMockApi();
 const ws = createMockWebSocket();
 
-function installEmbeddedSshSessionMock() {
-  mock.module("@/components/SshSessionDetails", () => ({
-    SshSessionDetails: ({ sshSessionId }: { sshSessionId: string }) => (
-      <div>Embedded SSH session: {sshSessionId}</div>
-    ),
-  }));
-}
-
 describe("App workspace files route", () => {
   beforeEach(() => {
     api.reset();
@@ -36,7 +28,6 @@ describe("App workspace files route", () => {
   });
 
   test("renders the workspace files screen from the hash route", async () => {
-    installEmbeddedSshSessionMock();
     const { App } = await import("@/App");
     const workspace = createWorkspace({
       id: "workspace-files-1",
@@ -77,7 +68,6 @@ describe("App workspace files route", () => {
   });
 
   test("passes the hash start directory through the initial explorer request", async () => {
-    installEmbeddedSshSessionMock();
     const { App } = await import("@/App");
     const workspace = createWorkspace({
       id: "workspace-files-root",
@@ -116,7 +106,6 @@ describe("App workspace files route", () => {
   });
 
   test("renders the generic code explorer picker from the hash route", async () => {
-    installEmbeddedSshSessionMock();
     const { App } = await import("@/App");
     const workspace = createWorkspace({
       id: "workspace-files-picker",
@@ -160,7 +149,6 @@ describe("App workspace files route", () => {
   });
 
   test("renders the loop files screen from the hash route, preserving the full loop id", async () => {
-    installEmbeddedSshSessionMock();
     const { App } = await import("@/App");
     const workspace = createWorkspace({
       id: "workspace-loop-files",

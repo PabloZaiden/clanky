@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
 import type { SshSession } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
-import { SshSessionDetails } from "../SshSessionDetails";
+import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
 import { Button, GearIcon, Modal } from "../common";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
 import { ShellPanel } from "./shell-panel";
@@ -55,6 +55,7 @@ interface FileExplorerViewProps {
   credentialPromptName?: string;
   buildRoute?: (startDirectory?: string) => ShellRoute;
   headerActions?: React.ReactNode;
+  sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function FileExplorerView({
@@ -75,6 +76,7 @@ export function FileExplorerView({
   credentialPromptName,
   buildRoute,
   headerActions,
+  sshSessionDetailsComponent: SshSessionDetailsComponent = SshSessionDetails,
 }: FileExplorerViewProps) {
   const toast = useToast();
   const hasStoredServerCredential = target.type === "server"
@@ -457,7 +459,7 @@ export function FileExplorerView({
               </div>
               <div className="min-h-0 flex-1 overflow-hidden">
                 {selectedSessionId ? (
-                  <SshSessionDetails
+                  <SshSessionDetailsComponent
                     sshSessionId={selectedSessionId}
                     showBackButton={false}
                     headerOffsetClassName={headerOffsetClassName}

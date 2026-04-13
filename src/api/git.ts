@@ -12,8 +12,9 @@
  */
 
 import { backendManager } from "../core/backend-manager";
-import { GitService } from "../core/git-service";
-import type { BranchInfo } from "../types";
+import { GitCommandError, GitService } from "../core/git";
+import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
+import type { BranchInfo, GitHubRepositoryUrlResponse, Workspace } from "../types";
 import { createLogger } from "../core/logger";
 import { errorResponse, normalizeDirectoryPath, resolveWorkspaceForDirectory } from "./helpers";
 
@@ -37,6 +38,51 @@ export interface DefaultBranchResponse {
   defaultBranch: string;
 }
 
+async function resolveGitHubRepositoryUrl(
+  directory: string,
+  workspaceId?: string | null,
+): Promise<string | null | Response> {
+  const normalizedDirectory = normalizeDirectoryPath(directory);
+  const workspace = await resolveWorkspaceForDirectory(normalizedDirectory, workspaceId);
+  if (workspace instanceof Response) {
+    return workspace;
+  }
+
+  const persistedRepoUrl = workspace.repoUrl?.trim() ?? "";
+  if (persistedRepoUrl) {
+    return normalizeGitHubRepositoryUrl(persistedRepoUrl);
+  }
+
+  const git = await createGitServiceForWorkspace(workspace, normalizedDirectory);
+
+  if (!(await git.isGitRepo(normalizedDirectory))) {
+    return null;
+  }
+
+  try {
+    const remoteUrl = await git.getRemoteUrl(normalizedDirectory, "origin");
+    return normalizeGitHubRepositoryUrl(remoteUrl);
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      log.info("GitHub repository URL unavailable from origin remote", {
+        workspaceId: workspace.id,
+        directory: normalizedDirectory,
+        command: error.command,
+        exitCode: error.exitCode,
+        gitStderr: error.gitStderr,
+      });
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function createGitServiceForWorkspace(workspace: Workspace, directory: string): Promise<GitService> {
+  const normalizedDirectory = normalizeDirectoryPath(directory);
+  const executor = await backendManager.getCommandExecutorAsync(workspace.id, normalizedDirectory);
+  return GitService.withExecutor(executor);
+}
+
 /**
  * Get a GitService configured for the current execution provider.
  * Uses deterministic command execution (local/SSH), independent of agent transport.
@@ -54,9 +100,8 @@ async function getGitService(directory: string, workspaceId?: string | null): Pr
   if (workspace instanceof Response) {
     return workspace;
   }
-  const executor = await backendManager.getCommandExecutorAsync(workspace.id, normalizedDirectory);
   log.debug("GitService created", { workspaceId: workspace.id });
-  return GitService.withExecutor(executor);
+  return createGitServiceForWorkspace(workspace, normalizedDirectory);
 }
 
 /**
@@ -180,6 +225,36 @@ export const gitRoutes = {
         return Response.json(response);
       } catch (error) {
         log.error("Git default-branch error", { error: String(error) });
+        return errorResponse("git_error", String(error), 500);
+      }
+    },
+  },
+
+  "/api/git/github-repository-url": {
+    async GET(req: Request): Promise<Response> {
+      log.debug("GET /api/git/github-repository-url");
+
+      try {
+        const url = new URL(req.url);
+        const directory = url.searchParams.get("directory");
+        const workspaceId = url.searchParams.get("workspaceId");
+
+        if (!directory) {
+          log.debug("Missing directory parameter");
+          return errorResponse("missing_parameter", "directory query parameter is required");
+        }
+
+        const githubUrl = await resolveGitHubRepositoryUrl(directory, workspaceId);
+        if (githubUrl instanceof Response) {
+          return githubUrl;
+        }
+
+        const response: GitHubRepositoryUrlResponse = {
+          githubUrl,
+        };
+        return Response.json(response);
+      } catch (error) {
+        log.error("GitHub repository URL error", { error: String(error) });
         return errorResponse("git_error", String(error), 500);
       }
     },

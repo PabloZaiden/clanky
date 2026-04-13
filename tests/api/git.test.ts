@@ -40,6 +40,7 @@ describe("Git API Integration", () => {
     await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
     // Create a second branch
     await Bun.$`git -C ${testWorkDir} branch feature-branch`.quiet();
+    await Bun.$`git -C ${testWorkDir} remote add origin git@github.com:owner/repo.git`.quiet();
 
     // Create workspace for test directory
     await createWorkspace({
@@ -179,6 +180,104 @@ describe("Git API Integration", () => {
     test("returns 500 for non-existent directory", async () => {
       const res = await fetch(`${baseUrl}/api/git/default-branch?directory=${encodeURIComponent("/tmp/nonexistent-dir-xyz")}`);
       expect(res.status).toBeGreaterThanOrEqual(400);
+    });
+  });
+
+  describe("GET /api/git/github-repository-url", () => {
+    test("returns a normalized GitHub URL from origin when workspace repoUrl is not set", async () => {
+      const res = await fetch(
+        `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+      );
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual({
+        githubUrl: "https://github.com/owner/repo",
+      });
+    });
+
+    test("prefers a persisted workspace repoUrl when available", async () => {
+      await createWorkspace({
+        id: "git-test-workspace-persisted",
+        name: "Git Test Persisted",
+        directory: testWorkDir,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: {
+          agent: {
+            provider: "opencode",
+            transport: "ssh",
+            hostname: "git-host.test",
+            port: 22,
+          },
+        },
+        repoUrl: "https://github.com/persisted/repo.git",
+      });
+
+      const res = await fetch(
+        `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace-persisted")}`
+      );
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual({
+        githubUrl: "https://github.com/persisted/repo",
+      });
+    });
+
+    test("returns null when an explicit persisted repoUrl is non-GitHub", async () => {
+      await createWorkspace({
+        id: "git-test-workspace-non-github-persisted",
+        name: "Git Test Non-GitHub Persisted",
+        directory: testWorkDir,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        serverSettings: {
+          agent: {
+            provider: "opencode",
+            transport: "ssh",
+            hostname: "git-host.test",
+            port: 22,
+          },
+        },
+        repoUrl: "https://gitlab.com/persisted/repo.git",
+      });
+
+      const res = await fetch(
+        `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace-non-github-persisted")}`
+      );
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual({
+        githubUrl: null,
+      });
+    });
+
+    test("returns null for non-GitHub remotes", async () => {
+      await Bun.$`git -C ${testWorkDir} remote set-url origin git@gitlab.com:owner/repo.git`.quiet();
+
+      try {
+        const res = await fetch(
+          `${baseUrl}/api/git/github-repository-url?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+        );
+        expect(res.status).toBe(200);
+
+        const body = await res.json();
+        expect(body).toEqual({
+          githubUrl: null,
+        });
+      } finally {
+        await Bun.$`git -C ${testWorkDir} remote set-url origin git@github.com:owner/repo.git`.quiet();
+      }
+    });
+
+    test("returns 400 when directory parameter is missing", async () => {
+      const res = await fetch(`${baseUrl}/api/git/github-repository-url`);
+      expect(res.status).toBe(400);
+
+      const body = await res.json();
+      expect(body.error).toBe("missing_parameter");
     });
   });
 });

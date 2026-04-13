@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ComponentProps } from "react";
 import { createMockApi } from "../helpers/mock-api";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createSshSession, createWorkspace } from "../helpers/factories";
@@ -29,21 +30,29 @@ mock.module("@monaco-editor/react", () => ({
 
 const api = createMockApi();
 
-function installEmbeddedSshSessionMock() {
-  mock.module("@/components/SshSessionDetails", () => ({
-    SshSessionDetails: ({
-      sshSessionId,
-      forcedFocusMode,
-    }: {
-      sshSessionId: string;
-      forcedFocusMode?: boolean;
-    }) => (
-      <div>
-        Embedded SSH session: {sshSessionId}
-        {forcedFocusMode ? " (focused)" : ""}
-      </div>
-    ),
-  }));
+function EmbeddedSshSessionStub({
+  sshSessionId,
+  forcedFocusMode,
+}: {
+  sshSessionId: string;
+  forcedFocusMode?: boolean;
+}) {
+  return (
+    <div>
+      Embedded SSH session: {sshSessionId}
+      {forcedFocusMode ? " (focused)" : ""}
+    </div>
+  );
+}
+
+async function loadWorkspaceFilesView() {
+  const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+
+  return function WorkspaceFilesViewWithStub(
+    props: Omit<ComponentProps<typeof WorkspaceFilesView>, "sshSessionDetailsComponent">,
+  ) {
+    return <WorkspaceFilesView {...props} sshSessionDetailsComponent={EmbeddedSshSessionStub} />;
+  };
 }
 
 function createFileEntry(overrides?: Partial<{
@@ -83,8 +92,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("opens files from the tree and enables saving edited content", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-1",
       name: "Editor Workspace",
@@ -163,8 +171,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("wraps the code explorer back button in a mobile-hidden container", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-mobile-header",
       name: "Mobile Header",
@@ -202,8 +209,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("lets the user toggle word wrap and override the editor language", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-editor-controls",
       name: "Editor Controls Workspace",
@@ -274,8 +280,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("resets the language override as soon as a different file starts loading", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-editor-language-reset",
       name: "Editor Language Reset Workspace",
@@ -389,8 +394,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("shows the pending file name and ignores stale file responses during rapid switching", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-race",
       name: "Race Workspace",
@@ -508,8 +512,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("shows existing SSH sessions and can create a new terminal session", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-ssh",
       name: "SSH Workspace",
@@ -569,8 +572,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("constrains long terminal names in the shared selector layout", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-ssh-long-name",
       name: "Long SSH Workspace",
@@ -627,8 +629,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("uses a non-scrolling shell body for the embedded terminal explorer layout", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-terminal-shell-body",
       name: "Terminal Shell Body",
@@ -677,8 +678,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("can collapse and expand the file explorer pane", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-collapse",
       name: "Explorer Collapse",
@@ -716,8 +716,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("keeps the mobile collapsed explorer controls available for re-expanding", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-mobile-collapse",
       name: "Mobile Explorer Collapse",
@@ -776,8 +775,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("removes non-essential legends and keeps refresh actions icon-only", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-chrome",
       name: "Minimal Chrome",
@@ -840,8 +838,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("keeps the tree horizontally scrollable for long names and deep nesting", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-horizontal-scroll",
       name: "Horizontal Scroll",
@@ -908,8 +905,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("toggles hidden files from the explorer toolbar", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-hidden-files",
       name: "Hidden Files",
@@ -980,8 +976,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("opens the shared root picker on demand, shows the mode checkbox, and saves mode changes", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-root-picker",
       name: "Root Picker",
@@ -1032,8 +1027,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("navigates to a custom explorer root from the shared root picker", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-root-picker-nav",
       name: "Root Picker",
@@ -1083,8 +1077,7 @@ describe("WorkspaceFilesView", () => {
   });
 
   test("resets explorer tree state when the start directory changes", async () => {
-    installEmbeddedSshSessionMock();
-    const { WorkspaceFilesView } = await import("@/components/app-shell/workspace-files-view");
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-root-sync",
       name: "Root Sync",

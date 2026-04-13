@@ -1,5 +1,7 @@
+import type { ComponentType } from "react";
 import type { CreateSshSessionRequest, SshConnectionMode, SshSession, Workspace } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
+import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import type { ShellRoute } from "./shell-types";
 import { CodeExplorerView } from "./code-explorer-view";
 
@@ -14,6 +16,7 @@ interface WorkspaceFilesViewProps {
     options?: { name?: string; connectionMode?: SshConnectionMode },
   ) => Promise<SshServerSession>;
   onNavigate: (route: ShellRoute) => void;
+  sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
 }
 
 export function WorkspaceFilesView({
@@ -26,6 +29,7 @@ export function WorkspaceFilesView({
     throw new Error("Standalone SSH sessions are unavailable in workspace code explorer context.");
   },
   onNavigate,
+  sshSessionDetailsComponent,
 }: WorkspaceFilesViewProps) {
   return (
     <CodeExplorerView
@@ -40,6 +44,7 @@ export function WorkspaceFilesView({
       createSession={createSession}
       createStandaloneSession={createStandaloneSession}
       onNavigate={onNavigate}
+      sshSessionDetailsComponent={sshSessionDetailsComponent}
     />
   );
 }

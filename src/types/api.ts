@@ -72,6 +72,14 @@ export interface BranchInfo {
 }
 
 /**
+ * Response from GET /api/git/github-repository-url.
+ */
+export interface GitHubRepositoryUrlResponse {
+  /** Normalized GitHub repository URL, or null when the repository is not hosted on GitHub */
+  githubUrl: string | null;
+}
+
+/**
  * Model information returned by the GET /api/models endpoint.
  * Includes provider and model details with connection status.
  */
