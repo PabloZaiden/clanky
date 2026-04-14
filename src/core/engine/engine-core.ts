@@ -1396,10 +1396,16 @@ export class LoopEngine {
 
         log.debug("[LoopEngine] runIteration: About to start event iteration loop");
 
-        // Calculate activity timeout
-        const activityTimeoutMs = (this.config.activityTimeoutSeconds ?? DEFAULT_LOOP_CONFIG.activityTimeoutSeconds) * 1000;
+        const activityTimeoutSeconds =
+          this.config.activityTimeoutSeconds ?? DEFAULT_LOOP_CONFIG.activityTimeoutSeconds;
+        const nextEvent = async (): Promise<AgentEvent | null> => {
+          if (activityTimeoutSeconds === null) {
+            return eventStream.next();
+          }
+          return nextWithTimeout(eventStream, activityTimeoutSeconds * 1000);
+        };
 
-        let event: AgentEvent | null = await nextWithTimeout(eventStream, activityTimeoutMs);
+        let event: AgentEvent | null = await nextEvent();
         while (event !== null) {
           log.trace("[LoopEngine] runIteration: Received event", { type: event.type });
           // Check if aborted
@@ -1429,7 +1435,7 @@ export class LoopEngine {
           }
 
           // Get next event with timeout
-          event = await nextWithTimeout(eventStream, activityTimeoutMs);
+          event = await nextEvent();
         }
 
         completed = true;

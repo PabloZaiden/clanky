@@ -53,7 +53,7 @@ export const loopsCollectionRoutes = {
      * - useWorktree (required): Whether to use a dedicated git worktree
      * - maxIterations: Maximum iterations (unlimited if not set)
      * - maxConsecutiveErrors: Max identical errors before failsafe (default: 10)
-     * - activityTimeoutSeconds: Seconds without events before error (default: 900, min: 60)
+     * - activityTimeoutSeconds: Seconds without events before error (omit or null for unlimited, min: 60 when set)
      * - stopPattern: Regex for completion detection
      * - git: { branchPrefix, commitScope } for git integration
      * - baseBranch: Base branch to create loop from

@@ -148,7 +148,7 @@ Create a new loop.
 | `planModeAutoReply` | boolean | No | Whether planning-mode ACP questions should be auto-answered instead of waiting for a manual reply (default: `true`) |
 | `maxIterations` | number | No | Maximum iterations (unlimited if not set) |
 | `maxConsecutiveErrors` | number | No | Max errors before failsafe (default: 10) |
-| `activityTimeoutSeconds` | number | No | Seconds without events before treating as error (default: 900, min: 60) |
+| `activityTimeoutSeconds` | number \| null | No | Seconds without events before treating as error. Use `null` or omit the field for unlimited timeout; finite values must be at least 60 seconds. |
 | `stopPattern` | string | No | Completion regex (default: `<promise>COMPLETE</promise>$`) |
 | `git` | object | No | Git configuration |
 | `git.branchPrefix` | string | No | Optional prefix prepended before the generated `title-hash` branch name (default: empty string). Non-empty values are normalized to git-safe path segments and stored with a trailing `/`. |
@@ -171,7 +171,7 @@ Create a new loop.
   "useWorktree": true,
   "planMode": false,
   "maxIterations": 10,
-  "activityTimeoutSeconds": 300
+  "activityTimeoutSeconds": null
 }
 ```
 
@@ -256,7 +256,7 @@ Update a loop's configuration. Cannot be used on running or starting loops — s
 | `model` | object | Update model |
 | `maxIterations` | number | Update max iterations |
 | `maxConsecutiveErrors` | number | Update max consecutive errors |
-| `activityTimeoutSeconds` | number | Update activity timeout |
+| `activityTimeoutSeconds` | number \| null | Update activity timeout (`null` clears it to unlimited) |
 | `stopPattern` | string | Update stop pattern |
 | `baseBranch` | string | Update base branch |
 | `useWorktree` | boolean | Update worktree usage before the loop has started |

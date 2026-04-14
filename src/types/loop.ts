@@ -56,8 +56,8 @@ export interface LoopConfig {
   /** Maximum consecutive identical errors before failsafe exit */
   maxConsecutiveErrors: number;
 
-  /** Seconds without events before treating as error and retrying */
-  activityTimeoutSeconds: number;
+  /** Seconds without events before treating as error and retrying; null for unlimited */
+  activityTimeoutSeconds: number | null;
 
   /** Regex pattern for completion detection */
   stopPattern: string;
@@ -473,7 +473,7 @@ export const DEFAULT_LOOP_CONFIG = {
   stopPattern: "<promise>COMPLETE</promise>$",
   maxIterations: Infinity,
   maxConsecutiveErrors: 10,
-  activityTimeoutSeconds: 900, // 15 minutes
+  activityTimeoutSeconds: null,
   useWorktree: true,
   clearPlanningFolder: false,
   planMode: true,

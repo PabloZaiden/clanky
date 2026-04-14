@@ -245,6 +245,27 @@ describe("Loops CRUD API Integration", () => {
       expect(body.config.git.branchPrefix).toBe("custom/");
     });
 
+    test("defaults activity timeout to unlimited when omitted", async () => {
+      const { activityTimeoutSeconds: _activityTimeoutSeconds, ...payloadWithoutTimeout } = baseCreateLoopPayload;
+      const response = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payloadWithoutTimeout,
+          workspaceId: testWorkspaceId,
+          prompt: "Use the default timeout",
+          name: "Unlimited Timeout Loop",
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const body = await response.json();
+      expect(body.config.activityTimeoutSeconds).toBeNull();
+    });
+
     test("creates a fully autonomous plan loop and forces auto-accept", async () => {
       const response = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
@@ -564,6 +585,37 @@ describe("Loops CRUD API Integration", () => {
       expect(body.config.planMode).toBe(false);
       expect(body.config.autoAcceptPlan).toBe(false);
       expect(body.config.fullyAutonomous).toBe(false);
+    });
+
+    test("updates a loop to use an unlimited activity timeout", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Original prompt",
+          name: "Unlimited Timeout Draft",
+          draft: true,
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      const createBody = await createResponse.json();
+      const loopId = createBody.config.id;
+
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activityTimeoutSeconds: null,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.config.activityTimeoutSeconds).toBeNull();
     });
 
     test("returns 404 for non-existent loop", async () => {

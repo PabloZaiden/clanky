@@ -78,7 +78,7 @@ export interface CreateLoopFormProps {
      cheapModel?: CheapModelSelection;
      maxIterations?: number;
     maxConsecutiveErrors?: number;
-    activityTimeoutSeconds?: number;
+    activityTimeoutSeconds?: number | null;
     baseBranch?: string;
     useWorktree?: boolean;
     clearPlanningFolder?: boolean;

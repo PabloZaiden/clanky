@@ -1,5 +1,4 @@
 import type { ModelInfo } from "../../types";
-import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 import { ModelSelector } from "../ModelSelector";
 import { SAME_AS_LOOP_CHEAP_MODEL_VALUE } from "./use-model-selection";
 
@@ -132,11 +131,11 @@ export function AdvancedOptions({
               value={activityTimeoutSeconds}
               onChange={(e) => onActivityTimeoutChange(e.target.value)}
               min="60"
-              placeholder={String(DEFAULT_LOOP_CONFIG.activityTimeoutSeconds)}
+              placeholder="Unlimited"
               className="mt-1 block w-32 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Time without AI activity before treating as error and retrying. Minimum: 60 seconds. (default: {DEFAULT_LOOP_CONFIG.activityTimeoutSeconds})
+              Leave empty for unlimited. When set, the minimum is 60 seconds.
             </p>
           </div>
 

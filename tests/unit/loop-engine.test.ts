@@ -1011,6 +1011,53 @@ describe("StopPatternDetector", () => {
     expect(errorEvents.length).toBeGreaterThan(0);
   }, 10000);
 
+  test("unlimited activity timeout waits for delayed events", async () => {
+    const loop = createTestLoop({
+      maxIterations: 2,
+      activityTimeoutSeconds: null,
+    });
+
+    let promptSent = false;
+    const baseMock = createMockBackend([]);
+    mockBackend = {
+      ...baseMock,
+      async sendPromptAsync(): Promise<void> {
+        promptSent = true;
+      },
+      async subscribeToEvents(): Promise<EventStream<AgentEvent>> {
+        const { stream, push, end } = createEventStream<AgentEvent>();
+
+        (async () => {
+          let attempts = 0;
+          while (!promptSent && attempts < 100) {
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            attempts++;
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          push({ type: "message.start", messageId: `msg-${Date.now()}` });
+          push({ type: "message.delta", content: "<promise>COMPLETE</promise>" });
+          push({ type: "message.complete", content: "<promise>COMPLETE</promise>" });
+          end();
+        })();
+
+        return stream;
+      },
+    };
+
+    const engine = new LoopEngine({
+      loop,
+      backend: mockBackend,
+      gitService,
+      eventEmitter: emitter,
+    });
+
+    await engine.start();
+
+    expect(engine.state.status).toBe("completed");
+    expect(engine.state.error).toBeUndefined();
+  });
+
   test("permission.asked events trigger auto-approval", async () => {
     const loop = createTestLoop({ maxIterations: 2 });
 
