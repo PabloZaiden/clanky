@@ -16,7 +16,24 @@ import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
 // Default test model for loop creation (model is now required)
-const testModel = { providerID: "test-provider", modelID: "test-model" };
+const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
+const createLoopRequestBase = {
+  attachments: [],
+  cheapModel: { mode: "same-as-loop" as const },
+  maxIterations: null,
+  maxConsecutiveErrors: 10,
+  activityTimeoutSeconds: 300,
+  stopPattern: "<promise>COMPLETE</promise>$",
+  git: {
+    branchPrefix: "",
+    commitScope: "",
+  },
+  baseBranch: "main",
+  clearPlanningFolder: false,
+  autoAcceptPlan: false,
+  fullyAutonomous: false,
+  draft: false,
+};
 
 function makeServerSettings(overrides?: {
   mode?: "spawn" | "connect";
@@ -67,14 +84,14 @@ describe("Multi-Workspace E2E", () => {
     await ensureDataDirectories();
 
     // Initialize git repos in test work directories
-    await Bun.$`git init ${testWorkDir1}`.quiet();
+    await Bun.$`git init -b main ${testWorkDir1}`.quiet();
     await Bun.$`git -C ${testWorkDir1} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${testWorkDir1} config user.name "Test User"`.quiet();
     await Bun.$`touch ${testWorkDir1}/README.md`.quiet();
     await Bun.$`git -C ${testWorkDir1} add .`.quiet();
     await Bun.$`git -C ${testWorkDir1} commit -m "Initial commit"`.quiet();
 
-    await Bun.$`git init ${testWorkDir2}`.quiet();
+    await Bun.$`git init -b main ${testWorkDir2}`.quiet();
     await Bun.$`git -C ${testWorkDir2} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${testWorkDir2} config user.name "Test User"`.quiet();
     await Bun.$`touch ${testWorkDir2}/README.md`.quiet();
@@ -229,6 +246,7 @@ describe("Multi-Workspace E2E", () => {
         body: JSON.stringify({
           name: "Workspace 1",
           directory: testWorkDir1,
+          serverSettings: makeServerSettings({ mode: "spawn" }),
         }),
       });
       const ws1 = await ws1Response.json();
@@ -239,6 +257,7 @@ describe("Multi-Workspace E2E", () => {
         body: JSON.stringify({
           name: "Workspace 2",
           directory: testWorkDir2,
+          serverSettings: makeServerSettings({ mode: "spawn" }),
         }),
       });
       const ws2 = await ws2Response.json();
@@ -248,6 +267,7 @@ describe("Multi-Workspace E2E", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...createLoopRequestBase,
           workspaceId: ws1.id,
           prompt: "Test loop for workspace 1",
           name: "Test Draft Loop",
@@ -265,6 +285,7 @@ describe("Multi-Workspace E2E", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...createLoopRequestBase,
           workspaceId: ws2.id,
           prompt: "Test loop for workspace 2",
           name: "Test Draft Loop",
@@ -295,6 +316,7 @@ describe("Multi-Workspace E2E", () => {
         body: JSON.stringify({
           name: "Workspace 1",
           directory: testWorkDir1,
+          serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
         }),
       });
       const ws1 = await ws1Response.json();
@@ -305,6 +327,7 @@ describe("Multi-Workspace E2E", () => {
         body: JSON.stringify({
           name: "Workspace 2",
           directory: testWorkDir2,
+          serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
         }),
       });
       const ws2 = await ws2Response.json();

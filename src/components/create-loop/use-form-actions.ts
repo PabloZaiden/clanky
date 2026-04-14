@@ -10,6 +10,7 @@ import { createLogger } from "../../lib/logger";
 import type { CreateLoopFormProps, CreateLoopFormSubmitRequest } from "./types";
 import { toMessageImageAttachments } from "../../lib/image-attachments";
 import { cheapModelValueToSelection } from "./use-model-selection";
+import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 
 const log = createLogger("CreateLoopForm");
 
@@ -135,56 +136,38 @@ export function useFormActions({
       const model = {
         providerID: parsedModel.providerID,
         modelID: parsedModel.modelID,
-        variant: parsedModel.variant,
+        variant: parsedModel.variant ?? "",
       };
 
       const request: CreateLoopFormSubmitRequest = {
         name: currentName.trim(),
         workspaceId: selectedWorkspaceId,
         prompt: currentPrompt.trim(),
+        attachments: attachments.length > 0 && !asDraft ? toMessageImageAttachments(attachments) : [],
         planMode,
         autoAcceptPlan: planMode ? (fullyAutonomous ? true : autoAcceptPlan) : false,
         fullyAutonomous: planMode ? fullyAutonomous : false,
         model,
         cheapModel: cheapModelValueToSelection(selectedCheapModel),
+        maxIterations: maxIterations.trim()
+          ? Math.max(parseInt(maxIterations, 10), 1)
+          : null,
+        maxConsecutiveErrors: maxConsecutiveErrors.trim()
+          ? Math.max(parseInt(maxConsecutiveErrors, 10), 0)
+          : DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
+        activityTimeoutSeconds: activityTimeoutSeconds.trim()
+          ? Math.max(parseInt(activityTimeoutSeconds, 10), 60)
+          : DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+        stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
+        git: {
+          branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,
+          commitScope: DEFAULT_LOOP_CONFIG.git.commitScope,
+        },
+        baseBranch: selectedBranch.trim() || currentBranch.trim(),
         useWorktree,
+        clearPlanningFolder,
+        draft: asDraft,
       };
-
-      if (attachments.length > 0 && !asDraft) {
-        request.attachments = toMessageImageAttachments(attachments);
-      }
-
-      if (maxIterations.trim()) {
-        const num = parseInt(maxIterations, 10);
-        if (!isNaN(num) && num > 0) {
-          request.maxIterations = num;
-        }
-      }
-
-      if (maxConsecutiveErrors.trim()) {
-        const num = parseInt(maxConsecutiveErrors, 10);
-        if (!isNaN(num) && num >= 0) {
-          request.maxConsecutiveErrors = num === 0 ? 0 : num;
-        }
-      }
-
-      if (activityTimeoutSeconds.trim()) {
-        const num = parseInt(activityTimeoutSeconds, 10);
-        if (!isNaN(num) && num >= 60) {
-          request.activityTimeoutSeconds = num;
-        }
-      }
-
-      if (selectedBranch && selectedBranch !== currentBranch) {
-        request.baseBranch = selectedBranch;
-      }
-
-      request.clearPlanningFolder = clearPlanningFolder;
-      request.planMode = planMode;
-
-      if (asDraft) {
-        request.draft = true;
-      }
 
       try {
         const success = await onSubmit(request);

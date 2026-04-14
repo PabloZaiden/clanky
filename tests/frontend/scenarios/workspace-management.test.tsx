@@ -28,7 +28,7 @@ const WORKSPACE = createWorkspace({
 });
 
 function setupBaseApi() {
-  api.get("/api/config", () => ({ remoteOnly: false }));
+  api.get("/api/config", () => ({ remoteOnly: false, basicAuthEnabled: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
   api.get("/api/preferences/last-model", () => null);
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
@@ -396,6 +396,7 @@ describe("workspace management scenario", () => {
         name: "Build host",
         address: "server.example.com",
         username: "ubuntu",
+        repositoriesBasePath: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },

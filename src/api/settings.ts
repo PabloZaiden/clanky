@@ -53,24 +53,18 @@ export const settingsRoutes = {
       const publicBasePath = getPublicBasePathFromForwardedPrefix(
         req.headers.get("x-forwarded-prefix"),
       );
-      const responseConfig = publicBasePath
-        ? {
-            ...config,
-            basicAuthEnabled: runtimeConfig.basicAuth.enabled,
-            passkeyAuth,
-            publicBasePath,
-          }
-        : {
-            ...config,
-            basicAuthEnabled: runtimeConfig.basicAuth.enabled,
-            passkeyAuth,
-          };
+      const responseConfig = {
+        ...config,
+        basicAuthEnabled: runtimeConfig.basicAuth.enabled,
+        passkeyAuth,
+        publicBasePath: publicBasePath || null,
+      };
       log.debug("Returning app config", {
         remoteOnly: config.remoteOnly,
         basicAuthEnabled: runtimeConfig.basicAuth.enabled,
         passkeyRequired: passkeyAuth.passkeyRequired,
         passkeyAuthenticated: passkeyAuth.authenticated,
-        publicBasePath: publicBasePath || undefined,
+        publicBasePath: publicBasePath || null,
       });
       return Response.json(responseConfig);
     },

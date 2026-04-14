@@ -113,10 +113,10 @@ export function ComposeChatView({
         model: {
           providerID: parsedModel.providerID,
           modelID: parsedModel.modelID,
-          variant: parsedModel.variant,
+          variant: parsedModel.variant ?? "",
         },
         useWorktree,
-        baseBranch: baseBranch.trim() || undefined,
+        baseBranch: baseBranch.trim() || currentBranch.trim(),
       });
       if (!chat) {
         toast.error("Failed to create chat");

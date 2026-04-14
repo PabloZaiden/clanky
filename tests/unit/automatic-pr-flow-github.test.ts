@@ -254,6 +254,7 @@ describe("automatic PR flow GitHub helpers", () => {
     loop.config.model = {
       providerID: "anthropic",
       modelID: "claude-sonnet",
+      variant: "",
     };
     loop.config.cheapModel = {
       mode: "custom",

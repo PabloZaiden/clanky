@@ -26,6 +26,7 @@ function createChat(overrides?: {
       model: {
         providerID: "anthropic",
         modelID: "claude-sonnet-4-20250514",
+        variant: "",
       },
       useWorktree: true,
       createdAt: "2026-01-01T00:00:00.000Z",

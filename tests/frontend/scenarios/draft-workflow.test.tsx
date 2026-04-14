@@ -43,7 +43,7 @@ function draftLoop(id = "draft-1", name = "My Draft", planMode = false) {
       directory: "/workspaces/my-project",
       workspaceId: "ws-1",
       prompt: "Build a feature",
-      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
       useWorktree: true,
       planMode,
     },
@@ -51,7 +51,7 @@ function draftLoop(id = "draft-1", name = "My Draft", planMode = false) {
 }
 
 function setupBaseApi() {
-  api.get("/api/config", () => ({ remoteOnly: false }));
+  api.get("/api/config", () => ({ remoteOnly: false, basicAuthEnabled: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
   api.get("/api/preferences/last-model", () => null);
   api.get("/api/preferences/log-level", () => ({ level: "info" }));

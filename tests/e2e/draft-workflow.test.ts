@@ -15,7 +15,24 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 
 // Default test model for loop creation (model is now required)
-const testModel = { providerID: "test-provider", modelID: "test-model" };
+const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
+const baseCreateLoopPayload = {
+  attachments: [],
+  cheapModel: { mode: "same-as-loop" as const },
+  maxIterations: null,
+  maxConsecutiveErrors: 10,
+  activityTimeoutSeconds: 300,
+  stopPattern: "<promise>COMPLETE</promise>$",
+  git: {
+    branchPrefix: "",
+    commitScope: "",
+  },
+  baseBranch: "main",
+  clearPlanningFolder: false,
+  autoAcceptPlan: false,
+  fullyAutonomous: false,
+  draft: false,
+};
 
 describe("Draft Loop E2E Workflow", () => {
   let testDataDir: string;
@@ -52,6 +69,7 @@ describe("Draft Loop E2E Workflow", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
       }),
     });
     const data = await createResponse.json();
@@ -79,7 +97,7 @@ describe("Draft Loop E2E Workflow", () => {
     await ensureDataDirectories();
 
     // Initialize git repo in test work directory
-    await Bun.$`git init ${testWorkDir}`.quiet();
+    await Bun.$`git init -b main ${testWorkDir}`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
     await Bun.$`touch ${testWorkDir}/README.md`.quiet();
@@ -153,6 +171,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "Initial task",
         name: "Test Draft Loop",
@@ -208,7 +227,7 @@ describe("Draft Loop E2E Workflow", () => {
     const startResponse = await fetch(`${baseUrl}/api/loops/${loopId}/draft/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planMode: false }),
+      body: JSON.stringify({ planMode: false, attachments: [] }),
     });
 
     expect(startResponse.status).toBe(200);
@@ -246,6 +265,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "Create a plan for feature X",
         name: "Test Draft Loop",
@@ -298,7 +318,7 @@ describe("Draft Loop E2E Workflow", () => {
     const startResponse = await fetch(`${baseUrl}/api/loops/${loopId}/draft/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planMode: true }),
+      body: JSON.stringify({ planMode: true, attachments: [] }),
     });
 
     expect(startResponse.status).toBe(200);
@@ -329,7 +349,7 @@ describe("Draft Loop E2E Workflow", () => {
   test("create draft -> do not edit -> start immediately", async () => {
     // Use a unique directory for this test to avoid conflicts with other tests
     const uniqueWorkDir = await mkdtemp(join(tmpdir(), "ralpher-draft-e2e-quick-"));
-    await Bun.$`git init ${uniqueWorkDir}`.quiet();
+    await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
     await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
     await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -342,11 +362,12 @@ describe("Draft Loop E2E Workflow", () => {
 
       // Step 1: Create draft
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId: uniqueWorkspaceId,
-          prompt: "Quick task",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...baseCreateLoopPayload,
+        workspaceId: uniqueWorkspaceId,
+        prompt: "Quick task",
           name: "Test Draft Loop",
           draft: true,
           planMode: false,
@@ -366,7 +387,7 @@ describe("Draft Loop E2E Workflow", () => {
       const startResponse = await fetch(`${baseUrl}/api/loops/${loopId}/draft/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planMode: false }),
+        body: JSON.stringify({ planMode: false, attachments: [] }),
       });
 
       expect(startResponse.status).toBe(200);
@@ -389,6 +410,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "Task",
         name: "Test Draft Loop",
@@ -408,7 +430,7 @@ describe("Draft Loop E2E Workflow", () => {
     const startResponse = await fetch(`${baseUrl}/api/loops/${loopId}/draft/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ planMode: false }),
+      body: JSON.stringify({ planMode: false, attachments: [] }),
     });
 
     expect(startResponse.status).toBe(400);
@@ -426,6 +448,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "Test task for workspace selection",
         name: "Test Draft Loop",
@@ -476,6 +499,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "Test task",
         name: "Test Draft Loop",
@@ -523,6 +547,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "Test task",
         name: "Test Draft Loop",
@@ -589,6 +614,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "Test task",
         name: "Test Draft Loop",
@@ -662,6 +688,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "First draft prompt - this should be unique",
         name: "Test Draft Loop",
@@ -682,6 +709,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: "Second draft prompt - completely different",
         name: "Test Draft Loop",
@@ -736,6 +764,7 @@ describe("Draft Loop E2E Workflow", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...baseCreateLoopPayload,
         workspaceId: testWorkspaceId,
         prompt: longPrompt,
         name: "Explicit Draft Title",

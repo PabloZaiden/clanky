@@ -118,8 +118,8 @@ export async function deleteSshServerApi(id: string): Promise<boolean> {
 
 export async function createStandaloneSshSessionApi(options: {
   serverId: string;
-  name?: string;
-  connectionMode?: SshConnectionMode;
+  name: string;
+  connectionMode: SshConnectionMode;
 }): Promise<SshServerSession> {
   return await apiCall<SshServerSession>(
     `/api/ssh-servers/${options.serverId}/sessions`,
@@ -127,8 +127,9 @@ export async function createStandaloneSshSessionApi(options: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        ...(options.name?.trim() ? { name: options.name.trim() } : {}),
-        ...(options.connectionMode ? { connectionMode: options.connectionMode } : {}),
+        name: options.name.trim(),
+        credentialToken: null,
+        connectionMode: options.connectionMode,
       }),
     },
     "Create standalone SSH session",
@@ -142,20 +143,15 @@ export async function deleteStandaloneSshSessionApi(options: {
   requireCredential?: boolean;
 }): Promise<boolean> {
   const credentialToken = options.requireCredential === false
-    ? undefined
+    ? null
     : await resolveCredentialToken(options.serverId, options.password);
-  const requestOptions: RequestInit = credentialToken
-    ? {
+  await apiCall(
+    `/api/ssh-server-sessions/${options.sessionId}`,
+    {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ credentialToken }),
-    }
-    : {
-      method: "DELETE",
-    };
-  await apiCall(
-    `/api/ssh-server-sessions/${options.sessionId}`,
-    requestOptions,
+    },
     "Delete standalone SSH session",
   );
   return true;
@@ -172,21 +168,16 @@ export async function checkSshServerPrerequisitesApi(options: {
   password?: string;
 }): Promise<SshServerPrerequisiteReport> {
   const credentialToken = await resolveOptionalCredentialToken(options.serverId, options.password);
-  const request: CheckSshServerPrerequisitesRequest = credentialToken
-    ? { credentialToken }
-    : {};
-  const hasBody = Object.keys(request).length > 0;
+  const request: CheckSshServerPrerequisitesRequest = {
+    credentialToken: credentialToken ?? null,
+  };
   return await apiCall<SshServerPrerequisiteReport>(
     `/api/ssh-servers/${options.serverId}/prerequisites/check`,
-    hasBody
-      ? {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request),
-      }
-      : {
-        method: "POST",
-      },
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
     "Check SSH server prerequisites",
   );
 }

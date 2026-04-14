@@ -33,7 +33,7 @@ function setupApi(loop: ReturnType<typeof createLoop>) {
   api.get("/api/loops", () => [loop]);
   api.get("/api/loops/:id", () => loop);
   api.get("/api/workspaces", () => [WORKSPACE]);
-  api.get("/api/config", () => ({ remoteOnly: false }));
+  api.get("/api/config", () => ({ remoteOnly: false, basicAuthEnabled: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
   api.get("/api/ssh-sessions", () => []);
   api.get("/api/ssh-servers", () => []);
@@ -189,7 +189,7 @@ describe("loop lifecycle scenario", () => {
     api.get("/api/loops", () => loops);
     api.get("/api/loops/:id", () => loop);
     api.get("/api/workspaces", () => [WORKSPACE]);
-    api.get("/api/config", () => ({ remoteOnly: false }));
+    api.get("/api/config", () => ({ remoteOnly: false, basicAuthEnabled: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
     api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
     api.get("/api/ssh-sessions", () => []);
     api.get("/api/ssh-servers", () => []);

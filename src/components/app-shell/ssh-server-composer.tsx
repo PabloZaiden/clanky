@@ -87,7 +87,7 @@ export function SshServerComposer({
             name: nextValues.name,
             address: nextValues.address,
             username: nextValues.username,
-            repositoriesBasePath: nextValues.repositoriesBasePath,
+            repositoriesBasePath: nextValues.repositoriesBasePath ?? null,
           },
           nextValues.password,
         );

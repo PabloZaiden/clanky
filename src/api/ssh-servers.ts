@@ -191,9 +191,7 @@ export const sshServersRoutes = {
 
   "/api/ssh-servers/:id/prerequisites/check": {
     async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const validation = await parseAndValidate(CheckSshServerPrerequisitesRequestSchema, req, {
-        allowEmptyBody: true,
-      });
+      const validation = await parseAndValidate(CheckSshServerPrerequisitesRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
@@ -245,9 +243,7 @@ export const sshServersRoutes = {
     },
 
     async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
-      const validation = await parseAndValidate(DeleteSshServerSessionRequestSchema, req, {
-        allowEmptyBody: true,
-      });
+      const validation = await parseAndValidate(DeleteSshServerSessionRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }

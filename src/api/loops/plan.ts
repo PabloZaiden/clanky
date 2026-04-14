@@ -8,10 +8,9 @@
 
 import { loopManager } from "../../core/loop-manager";
 import { createLogger } from "../../core/logger";
-import { parseAndValidate, validateRequest } from "../validation";
+import { parseAndValidate } from "../validation";
 import { errorResponse, successResponse } from "../helpers";
 import type { PlanAcceptResponse } from "../../types/api";
-import type { z } from "zod";
 import {
   PlanFeedbackRequestSchema,
   PlanAcceptRequestSchema,
@@ -78,26 +77,13 @@ export const loopsPlanRoutes = {
      */
     async POST(req: Request & { params: { id: string } }): Promise<Response> {
       try {
-        const bodyText = await req.text();
-        let body: z.infer<typeof PlanAcceptRequestSchema> = {};
-
-        if (bodyText.trim()) {
-          let bodyJson: unknown;
-          try {
-            bodyJson = JSON.parse(bodyText);
-          } catch {
-            return errorResponse("invalid_json", "Request body must be valid JSON", 400);
-          }
-
-          const validationResult = validateRequest(PlanAcceptRequestSchema, bodyJson);
-          if (!validationResult.success) {
-            return validationResult.response;
-          }
-          body = validationResult.data;
+        const validation = await parseAndValidate(PlanAcceptRequestSchema, req);
+        if (!validation.success) {
+          return validation.response;
         }
 
         const result = await loopManager.acceptPlan(req.params.id, {
-          mode: body.mode,
+          mode: validation.data.mode,
         });
         const response: PlanAcceptResponse = result.mode === "open_ssh"
           ? { success: true, mode: result.mode, sshSession: result.sshSession }

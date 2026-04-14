@@ -172,6 +172,8 @@ describe("Standalone SSH server files API integration", () => {
         path: "src/index.ts",
         content: "export const serverValue = 2;\n",
         expectedVersionToken: metadata.file.versionToken,
+        overwrite: false,
+        startDirectory: null,
       }),
     });
     expect(writeResponse.ok).toBe(true);
@@ -257,6 +259,7 @@ describe("Standalone SSH server files API integration", () => {
         path: "logs/output.log",
         content: "server alt root updated\n",
         expectedVersionToken: metadata.file.versionToken,
+        overwrite: false,
         startDirectory: alternateRootDir,
       }),
     });

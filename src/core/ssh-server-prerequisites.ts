@@ -253,7 +253,7 @@ export async function checkSshServerPrerequisites(
     ["Persistent SSH sessions"],
     dtachResult.success ? undefined : buildPersistentSessionBackendInstallHint(),
   );
-  const provisioningChecks = await runAutomaticProvisioningChecks(executor, server.repositoriesBasePath);
+  const provisioningChecks = await runAutomaticProvisioningChecks(executor, server.repositoriesBasePath ?? undefined);
 
   const checks: SshServerPrerequisiteCheck[] = [
     createCheck(

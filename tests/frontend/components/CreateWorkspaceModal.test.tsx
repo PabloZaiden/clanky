@@ -16,6 +16,7 @@ const registeredSshServers = [
       name: "Build Box",
       address: "10.0.0.5",
       username: "vscode",
+      repositoriesBasePath: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -146,6 +147,10 @@ describe("CreateWorkspaceModal", () => {
       basePath: "/srv/workspaces",
       devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
       provider: "copilot",
+      credentialToken: null,
+      mode: "provision",
+      targetDirectory: null,
+      workspaceId: null,
     });
     expect(ws.getConnections("/api/ws")[0]?.queryParams["provisioningJobId"]).toBe("job-1");
   });
@@ -314,6 +319,10 @@ describe("CreateWorkspaceModal", () => {
       basePath: "/srv/workspaces",
       devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
       provider: "copilot",
+      credentialToken: null,
+      mode: "provision",
+      targetDirectory: null,
+      workspaceId: null,
     });
   });
 

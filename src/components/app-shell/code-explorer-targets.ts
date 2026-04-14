@@ -104,7 +104,7 @@ export function getCodeExplorerOptions({
       id: `server:${server.config.id}`,
       kind: "server" as const,
       label: server.config.name,
-      description: trimDirectory(server.config.repositoriesBasePath),
+      description: trimDirectory(server.config.repositoriesBasePath ?? undefined),
       target: { contentType: "server" as const, serverId: server.config.id },
     })),
     ...chats.map((chat) => ({
@@ -169,7 +169,11 @@ export function resolveCodeExplorerTarget({
           ? "Choose an existing SSH session or create a new one."
           : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable.",
         terminalSelectLabel: "Select workspace SSH session",
-        onCreateTerminal: async () => await createSession({ workspaceId: workspace.id }),
+        onCreateTerminal: async () => await createSession({
+          workspaceId: workspace.id,
+          name: `${workspace.name} terminal`,
+          connectionMode: "dtach",
+        }),
         testIdPrefix: "workspace",
       };
     }
@@ -223,7 +227,7 @@ export function resolveCodeExplorerTarget({
         return null;
       }
 
-      const defaultRootDirectory = trimDirectory(server.config.repositoriesBasePath);
+      const defaultRootDirectory = trimDirectory(server.config.repositoriesBasePath ?? undefined);
       return {
         routeTarget: target,
         title: `${server.config.name} code explorer`,
@@ -246,7 +250,10 @@ export function resolveCodeExplorerTarget({
         hasTerminal: true,
         emptyTerminalMessage: "Choose an existing standalone SSH session or create a new one.",
         terminalSelectLabel: "Select standalone SSH session",
-        onCreateTerminal: async () => await createStandaloneSession(server.config.id),
+        onCreateTerminal: async () => await createStandaloneSession(server.config.id, {
+          name: `${server.config.name} terminal`,
+          connectionMode: "dtach",
+        }),
         testIdPrefix: "server",
         credentialPromptName: server.config.name,
       };
@@ -291,7 +298,11 @@ export function resolveCodeExplorerTarget({
           ? "Choose an existing SSH session or create a new one."
           : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable.",
         terminalSelectLabel: "Select workspace SSH session",
-        onCreateTerminal: async () => await createSession({ workspaceId: workspace.id }),
+        onCreateTerminal: async () => await createSession({
+          workspaceId: workspace.id,
+          name: `${workspace.name} terminal`,
+          connectionMode: "dtach",
+        }),
         testIdPrefix: "workspace",
       };
     }

@@ -16,7 +16,7 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { loopManager } from "../../src/core/loop-manager";
 
 // Default test model for loop creation (model is now required)
-const testModel = { providerID: "test-provider", modelID: "test-model" };
+const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 
 function makeServerSettings(overrides?: {
   mode?: "spawn" | "connect";
@@ -161,6 +161,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Test Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       expect(createResponse.ok).toBe(true);
@@ -184,6 +185,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "New Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
 
@@ -203,6 +205,7 @@ describe("Workspace API Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
 
@@ -232,6 +235,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Non-Git Workspace",
           directory: nonGitDir,
+        serverSettings: makeServerSettings(),
         }),
       });
 
@@ -252,6 +256,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "First Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       expect(firstResponse.ok).toBe(true);
@@ -264,6 +269,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Second Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
 
@@ -321,6 +327,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Get By ID Test",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       const workspace = await createResponse.json();
@@ -349,6 +356,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Original Name",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       const workspace = await createResponse.json();
@@ -389,6 +397,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Delete Me",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       const workspace = await createResponse.json();
@@ -421,6 +430,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Find By Directory Test",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       const workspace = await createResponse.json();
@@ -443,6 +453,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Whitespace Lookup Test",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       const workspace = await createResponse.json();
@@ -476,6 +487,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Local Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       await fetch(`${baseUrl}/api/workspaces`, {
@@ -505,6 +517,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Local Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       const remoteResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -547,6 +560,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Pull Test Workspace",
             directory: repos.cloneDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         expect(createResponse.ok).toBe(true);
@@ -581,6 +595,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Branch Mismatch Workspace",
             directory: repos.cloneDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         expect(createResponse.ok).toBe(true);
@@ -613,6 +628,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Dirty Workspace",
             directory: repos.cloneDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         expect(createResponse.ok).toBe(true);
@@ -645,6 +661,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Missing Remote Workspace",
             directory: repos.cloneDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         expect(createResponse.ok).toBe(true);
@@ -678,6 +695,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Loop Test Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       expect(workspaceResponse.ok).toBe(true);
@@ -695,10 +713,21 @@ describe("Workspace API Integration", () => {
           workspaceId: workspace.id,
           prompt: "Test prompt for loop creation",
           name: "Test Loop",
-          draft: true,
-          planMode: false,
+          attachments: [],
           model: testModel,
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
           useWorktree: true,
+          clearPlanningFolder: false,
+          planMode: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: true,
         }),
       });
       expect(loopResponse.ok).toBe(true);
@@ -727,10 +756,21 @@ describe("Workspace API Integration", () => {
           workspaceId: "non-existent-workspace-id",
           prompt: "Test prompt",
           name: "Test Loop",
-          draft: true,
-          planMode: false,
+          attachments: [],
           model: testModel,
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
           useWorktree: true,
+          clearPlanningFolder: false,
+          planMode: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: true,
         }),
       });
 
@@ -769,6 +809,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Server Settings Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -797,6 +838,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Update Settings Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -835,6 +877,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Invalid Mode Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -917,6 +960,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Status Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -949,6 +993,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Test Connection Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -971,6 +1016,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Test Proposed Settings",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -996,6 +1042,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Invalid JSON Settings Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -1018,6 +1065,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Invalid Settings Shape Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -1054,6 +1102,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Default Settings Workspace",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
 
@@ -1100,6 +1149,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Original Name",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -1176,6 +1226,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Workspace Settings Update Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -1230,6 +1281,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "No Reset Test",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
         const workspace = await createResponse.json();
@@ -1425,6 +1477,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Bulk Purge Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       expect(createWorkspaceResponse.ok).toBe(true);
@@ -1484,6 +1537,7 @@ describe("Workspace API Integration", () => {
         body: JSON.stringify({
           name: "Concurrent Purge Workspace",
           directory: testWorkDir,
+        serverSettings: makeServerSettings(),
         }),
       });
       expect(createWorkspaceResponse.ok).toBe(true);
@@ -1593,6 +1647,7 @@ describe("Workspace API Integration", () => {
             body: JSON.stringify({
               name: "Export WS B",
               directory: testWorkDir2,
+            serverSettings: makeServerSettings(),
             }),
           });
 
@@ -1760,6 +1815,7 @@ describe("Workspace API Integration", () => {
           body: JSON.stringify({
             name: "Existing WS",
             directory: testWorkDir,
+          serverSettings: makeServerSettings(),
           }),
         });
 

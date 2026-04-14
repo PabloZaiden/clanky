@@ -108,13 +108,13 @@ export const loopsPendingRoutes = {
       const body = validation.data;
 
       // At least one of message or model must be provided
-      if (body.message === undefined && body.model === undefined) {
+      if (body.message === null && body.model === null) {
         return errorResponse("validation_error", "At least one of 'message' or 'model' must be provided");
       }
 
       // Trim message if provided and validate non-empty
       let trimmedMessage: string | undefined;
-      if (body.message !== undefined) {
+      if (body.message !== null) {
         trimmedMessage = body.message.trim();
         if (trimmedMessage === "") {
           return errorResponse("validation_error", "'message' must be a non-empty string");
@@ -122,15 +122,14 @@ export const loopsPendingRoutes = {
       }
 
       // Validate model is enabled before allowing the change
-      if (body.model !== undefined) {
+      if (body.model !== null) {
         const modelError = await validateEnabledModelForLoop(req.params.id, body.model);
         if (modelError) {
           return modelError;
         }
       }
 
-      // Default to immediate: true (Zod already validated the type)
-      const immediate = body.immediate ?? true;
+      const immediate = body.immediate;
 
        if (!immediate) {
          return errorResponse(
@@ -140,11 +139,11 @@ export const loopsPendingRoutes = {
          );
        }
 
-       const result = await loopManager.injectPending(req.params.id, {
-         message: trimmedMessage,
-         model: body.model,
-         attachments: body.attachments,
-       });
+        const result = await loopManager.injectPending(req.params.id, {
+          message: trimmedMessage,
+          model: body.model ?? undefined,
+          attachments: body.attachments,
+        });
 
       if (!result.success) {
         if (result.error?.includes("not found")) {
@@ -194,7 +193,7 @@ export const loopsPendingRoutes = {
       }
       const body = validation.data;
 
-      if (body.model !== undefined) {
+      if (body.model !== null) {
         const modelError = await validateEnabledModelForLoop(req.params.id, body.model);
         if (modelError) {
           return modelError;
@@ -203,7 +202,7 @@ export const loopsPendingRoutes = {
 
       const result = await loopManager.sendFollowUp(req.params.id, {
         message: body.message.trim(),
-        model: body.model,
+        model: body.model ?? undefined,
         attachments: body.attachments,
       });
       if (!result.success) {

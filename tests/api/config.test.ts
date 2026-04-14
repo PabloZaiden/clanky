@@ -61,6 +61,7 @@ describe("GET /api/config", () => {
     expect(body).toEqual({
       remoteOnly: false,
       basicAuthEnabled: false,
+      publicBasePath: null,
       passkeyAuth: {
         passkeyConfigured: false,
         passkeyDisabled: false,

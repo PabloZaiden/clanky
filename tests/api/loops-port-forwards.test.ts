@@ -81,7 +81,7 @@ describe("Loop port forwards API integration", () => {
 
   async function createGitRepo(): Promise<string> {
     const directory = await mkdtemp(join(tmpdir(), "ralpher-loop-port-forward-work-"));
-    await Bun.$`git init ${directory}`.quiet();
+    await Bun.$`git init -b main ${directory}`.quiet();
     await Bun.$`git -C ${directory} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${directory} config user.name "Test User"`.quiet();
     await Bun.$`touch ${directory}/README.md`.quiet();
@@ -119,12 +119,28 @@ describe("Loop port forwards API integration", () => {
         workspaceId,
         prompt: "Create a forwarded port",
         name: "Test Loop",
-        planMode: true,
-        useWorktree: true,
+        attachments: [],
         model: {
           providerID: "test-provider",
           modelID: "test-model",
+          variant: "",
         },
+        cheapModel: { mode: "same-as-loop" },
+        maxIterations: null,
+        maxConsecutiveErrors: 10,
+        activityTimeoutSeconds: 300,
+        stopPattern: "<promise>COMPLETE</promise>$",
+        git: {
+          branchPrefix: "",
+          commitScope: "",
+        },
+        baseBranch: "main",
+        useWorktree: true,
+        clearPlanningFolder: false,
+        planMode: true,
+        autoAcceptPlan: false,
+        fullyAutonomous: false,
+        draft: false,
       }),
     });
     expect(response.status).toBe(201);

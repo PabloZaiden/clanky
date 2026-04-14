@@ -186,7 +186,7 @@ export const chatsRoutes = {
 
       try {
         const chat = await chatManager.sendMessage(req.params.id, {
-          message: validation.data.message,
+          message: validation.data.message ?? undefined,
           attachments: validation.data.attachments,
         });
         return Response.json(chat);
@@ -209,10 +209,7 @@ export const chatsRoutes = {
         return errorResponse("not_found", "Chat not found", 404);
       }
 
-      const validation = await parseAndValidate(InterruptChatRequestSchema, req, {
-        allowEmptyBody: true,
-        emptyBodyValue: {},
-      });
+      const validation = await parseAndValidate(InterruptChatRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }

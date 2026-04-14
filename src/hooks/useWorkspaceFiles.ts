@@ -308,7 +308,8 @@ export function useFileExplorer(
         path: currentFile.path,
         content: editorContent,
         expectedVersionToken: currentFile.versionToken,
-        overwrite: options?.overwrite,
+        overwrite: options?.overwrite ?? false,
+        startDirectory: startDirectory ?? null,
       }, { startDirectory });
       setCurrentFile(response.file);
       setSavedContent(editorContent);

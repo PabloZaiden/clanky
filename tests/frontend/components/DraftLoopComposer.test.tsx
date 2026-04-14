@@ -68,6 +68,7 @@ describe("DraftLoopComposer", () => {
         model: {
           providerID: "anthropic",
           modelID: "claude-sonnet-4-20250514",
+          variant: "",
         },
       },
     });

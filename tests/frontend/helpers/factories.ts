@@ -31,6 +31,7 @@ export function createModelConfig(overrides?: Partial<ModelConfig>): ModelConfig
   return {
     providerID: "anthropic",
     modelID: "claude-sonnet-4-20250514",
+    variant: "",
     ...overrides,
   };
 }

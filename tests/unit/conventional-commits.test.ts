@@ -229,54 +229,37 @@ describe("GitConfigSchema commitScope sanitization", () => {
   const { GitConfigSchema } = require("../../src/types/schemas/loop");
 
   test("passes through meaningful commitScope", () => {
-    const result = GitConfigSchema.parse({ commitScope: "auth" });
+    const result = GitConfigSchema.parse({ branchPrefix: "", commitScope: "auth" });
     expect(result.commitScope).toBe("auth");
   });
 
   test("trims whitespace from commitScope", () => {
-    const result = GitConfigSchema.parse({ commitScope: "  auth  " });
+    const result = GitConfigSchema.parse({ branchPrefix: "", commitScope: "  auth  " });
     expect(result.commitScope).toBe("auth");
   });
 
   test("maps generic commitScope to empty string", () => {
-    const result = GitConfigSchema.parse({ commitScope: "ralph" });
+    const result = GitConfigSchema.parse({ branchPrefix: "", commitScope: "ralph" });
     expect(result.commitScope).toBe("");
   });
 
   test("maps whitespace-only commitScope to empty string", () => {
-    const result = GitConfigSchema.parse({ commitScope: "   " });
+    const result = GitConfigSchema.parse({ branchPrefix: "", commitScope: "   " });
     expect(result.commitScope).toBe("");
   });
 
   test("maps empty string commitScope to empty string", () => {
-    const result = GitConfigSchema.parse({ commitScope: "" });
+    const result = GitConfigSchema.parse({ branchPrefix: "", commitScope: "" });
     expect(result.commitScope).toBe("");
   });
 
-  test("passes through undefined commitScope as undefined", () => {
-    const result = GitConfigSchema.parse({});
-    expect(result.commitScope).toBeUndefined();
+  test("requires an explicit commitScope string", () => {
+    expect(GitConfigSchema.safeParse({ branchPrefix: "" }).success).toBe(false);
   });
 
-  test("cleans deprecated commitPrefix and converts to commitScope", () => {
-    const result = GitConfigSchema.parse({ commitPrefix: "[Auth]" });
-    expect(result.commitScope).toBe("auth");
-    // commitPrefix should not be in the output
-    expect(result).not.toHaveProperty("commitPrefix");
-  });
-
-  test("maps generic deprecated commitPrefix to empty string", () => {
-    const result = GitConfigSchema.parse({ commitPrefix: "[Ralph]" });
-    expect(result.commitScope).toBe("");
-  });
-
-  test("maps whitespace-only deprecated commitPrefix to empty string", () => {
-    const result = GitConfigSchema.parse({ commitPrefix: "  " });
-    expect(result.commitScope).toBe("");
-  });
-
-  test("commitScope takes precedence over commitPrefix", () => {
-    const result = GitConfigSchema.parse({ commitScope: "custom", commitPrefix: "[Auth]" });
+  test("keeps branchPrefix and commitScope explicit", () => {
+    const result = GitConfigSchema.parse({ branchPrefix: "feature/", commitScope: "custom" });
+    expect(result.branchPrefix).toBe("feature/");
     expect(result.commitScope).toBe("custom");
   });
 });

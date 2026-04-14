@@ -103,7 +103,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     model: {
       providerID: (row["model_provider_id"] as string) ?? "unknown",
       modelID: (row["model_model_id"] as string) ?? "not-configured",
-      variant: (row["model_variant"] as string | null) ?? undefined,
+      variant: (row["model_variant"] as string | null) ?? "",
     },
     useWorktree: row["use_worktree"] === 1,
     baseBranch: (row["base_branch"] as string | null) ?? undefined,

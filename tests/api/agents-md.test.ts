@@ -80,6 +80,12 @@ describe("AGENTS.md API Integration", () => {
       body: JSON.stringify({
         name: "Test Workspace",
         directory: testWorkDir,
+        serverSettings: {
+          agent: {
+            provider: "opencode",
+            transport: "stdio",
+          },
+        },
       }),
     });
     expect(response.ok).toBe(true);

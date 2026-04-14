@@ -23,7 +23,7 @@ export async function setPendingPromptApi(
   return apiActionWithBody(
     `/api/loops/${loopId}/pending-prompt`,
     "PUT",
-    { prompt, attachments },
+    { prompt, attachments: attachments ?? [] },
     "Set pending prompt",
   );
 }
@@ -48,7 +48,12 @@ export async function setPendingApi(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(options),
+        body: JSON.stringify({
+          message: options.message ?? null,
+          model: options.model ? { ...options.model, variant: "" } : null,
+          immediate: true,
+          attachments: options.attachments ?? [],
+        }),
     },
     "Set pending values",
   );

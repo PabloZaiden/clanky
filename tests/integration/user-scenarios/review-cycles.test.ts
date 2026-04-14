@@ -70,7 +70,7 @@ describe("Review Cycle User Scenarios", () => {
       const addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Please add error handling and improve documentation" }),
+        body: JSON.stringify({ comments: "Please add error handling and improve documentation", attachments: [] }),
       });
       expect(addressResponse.status).toBe(200);
       const addressResult = await addressResponse.json();
@@ -142,7 +142,7 @@ describe("Review Cycle User Scenarios", () => {
       let addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Round 1: Add tests" }),
+        body: JSON.stringify({ comments: "Round 1: Add tests", attachments: [] }),
       });
       let addressResult = await addressResponse.json();
       expect(addressResult.reviewCycle).toBe(1);
@@ -154,7 +154,7 @@ describe("Review Cycle User Scenarios", () => {
       addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Round 2: Improve error messages" }),
+        body: JSON.stringify({ comments: "Round 2: Improve error messages", attachments: [] }),
       });
       addressResult = await addressResponse.json();
       expect(addressResult.reviewCycle).toBe(2);
@@ -166,7 +166,7 @@ describe("Review Cycle User Scenarios", () => {
       addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Round 3: Update documentation" }),
+        body: JSON.stringify({ comments: "Round 3: Update documentation", attachments: [] }),
       });
       addressResult = await addressResponse.json();
       expect(addressResult.reviewCycle).toBe(3);
@@ -236,7 +236,7 @@ describe("Review Cycle User Scenarios", () => {
       const addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Please add tests and improve error handling" }),
+        body: JSON.stringify({ comments: "Please add tests and improve error handling", attachments: [] }),
       });
       expect(addressResponse.status).toBe(200);
       const addressResult = await addressResponse.json();
@@ -311,7 +311,7 @@ describe("Review Cycle User Scenarios", () => {
       let addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Round 1 feedback" }),
+        body: JSON.stringify({ comments: "Round 1 feedback", attachments: [] }),
       });
       let addressResult = await addressResponse.json();
       expect(addressResult.reviewCycle).toBe(1);
@@ -330,7 +330,7 @@ describe("Review Cycle User Scenarios", () => {
       addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Round 2 feedback" }),
+        body: JSON.stringify({ comments: "Round 2 feedback", attachments: [] }),
       });
       addressResult = await addressResponse.json();
       expect(addressResult.reviewCycle).toBe(2);
@@ -397,7 +397,7 @@ describe("Review Cycle User Scenarios", () => {
       const address1Response = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: comment1Text }),
+        body: JSON.stringify({ comments: comment1Text, attachments: [] }),
       });
       expect(address1Response.status).toBe(200);
       const address1Result = await address1Response.json();
@@ -424,7 +424,7 @@ describe("Review Cycle User Scenarios", () => {
       const address2Response = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: comment2Text }),
+        body: JSON.stringify({ comments: comment2Text, attachments: [] }),
       });
       expect(address2Response.status).toBe(200);
       const address2Result = await address2Response.json();
@@ -526,7 +526,7 @@ describe("Review Cycle User Scenarios", () => {
       const addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "This should fail" }),
+        body: JSON.stringify({ comments: "This should fail", attachments: [] }),
       });
       expect(addressResponse.status).toBe(400);
       const result = await addressResponse.json();
@@ -550,7 +550,7 @@ describe("Review Cycle User Scenarios", () => {
       const addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "" }),
+        body: JSON.stringify({ comments: "", attachments: [] }),
       });
       expect(addressResponse.status).toBe(400);
       const result = await addressResponse.json();
@@ -619,7 +619,7 @@ describe("Review Cycle User Scenarios", () => {
       const addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Please add error handling" }),
+        body: JSON.stringify({ comments: "Please add error handling", attachments: [] }),
       });
       expect(addressResponse.status).toBe(200);
       const addressResult = await addressResponse.json();

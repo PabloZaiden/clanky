@@ -36,5 +36,13 @@ export function isMockAcpEnabled(): boolean {
 export function getAppConfig(): AppConfig {
   return {
     remoteOnly: isRemoteOnlyMode(),
+    basicAuthEnabled: false,
+    passkeyAuth: {
+      passkeyConfigured: false,
+      passkeyDisabled: false,
+      passkeyRequired: false,
+      authenticated: false,
+    },
+    publicBasePath: null,
   };
 }

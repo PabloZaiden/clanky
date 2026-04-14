@@ -94,6 +94,7 @@ function setupDefaultApi(authState: PasskeyAuthState) {
       passkeyRequired: authState.passkeyRequired,
       authenticated: authState.authenticated,
     },
+    publicBasePath: null,
   }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
   api.get("/api/loops", () => []);

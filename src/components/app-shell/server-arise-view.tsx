@@ -36,9 +36,12 @@ export function ServerAriseView({
       sshServerId: server.config.id,
       repoUrl: "",
       basePath: server.config.repositoriesBasePath ?? "",
+      devcontainerSubpath: null,
       provider: "copilot",
       password,
       mode: "arise",
+      targetDirectory: null,
+      workspaceId: null,
     });
 
     if (snapshot) {

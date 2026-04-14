@@ -227,6 +227,8 @@ describe("workspace files API integration", () => {
         path: "src/index.ts",
         content: "export const value = 2;\n",
         expectedVersionToken: metadata.file.versionToken,
+        overwrite: false,
+        startDirectory: null,
       }),
     });
 
@@ -257,6 +259,8 @@ describe("workspace files API integration", () => {
         path: "src/index.ts",
         content: "export const value = 3;\n",
         expectedVersionToken: metadata.file.versionToken,
+        overwrite: false,
+        startDirectory: null,
       }),
     });
 
@@ -278,6 +282,9 @@ describe("workspace files API integration", () => {
       body: JSON.stringify({
         path: "src/index.ts",
         content: "export const value = 9;\n",
+        expectedVersionToken: null,
+        overwrite: false,
+        startDirectory: null,
       }),
     });
 
@@ -339,6 +346,7 @@ describe("workspace files API integration", () => {
         path: "notes/todo.txt",
         content: "updated alternate root note\n",
         expectedVersionToken: metadata.file.versionToken,
+        overwrite: false,
         startDirectory: alternateRootDir,
       }),
     });

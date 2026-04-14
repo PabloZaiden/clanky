@@ -97,6 +97,7 @@ describe("ProvisioningManager", () => {
       name: "Builder",
       address: "10.0.0.5",
       username: "remote-user",
+      repositoriesBasePath: null,
     });
     const executor = new ProvisioningTestExecutor({
       devboxStatusOutput: createDevboxStatusOutput({
@@ -149,6 +150,7 @@ describe("ProvisioningManager", () => {
       name: "Metadata Test",
       address: "10.0.0.6",
       username: "remote-user",
+      repositoriesBasePath: null,
     });
     const executor = new ProvisioningTestExecutor();
     sshServerManager.setExecutorFactoryForTesting(() => executor);
@@ -188,6 +190,7 @@ describe("ProvisioningManager", () => {
       name: "Rebuild Host",
       address: "10.0.0.7",
       username: "remote-user",
+      repositoriesBasePath: null,
     });
 
     // First, provision a workspace
@@ -251,6 +254,7 @@ describe("ProvisioningManager", () => {
       name: "Restart Host",
       address: "10.0.0.9",
       username: "remote-user",
+      repositoriesBasePath: null,
     });
 
     const provisionExecutor = new ProvisioningTestExecutor();
@@ -306,6 +310,7 @@ describe("ProvisioningManager", () => {
       name: "Rebuild Fail Host",
       address: "10.0.0.8",
       username: "remote-user",
+      repositoriesBasePath: null,
     });
 
     // Create a workspace manually
@@ -343,6 +348,7 @@ describe("ProvisioningManager", () => {
       name: "Restart Fail Host",
       address: "10.0.0.10",
       username: "remote-user",
+      repositoriesBasePath: null,
     });
 
     const db = getDatabase();

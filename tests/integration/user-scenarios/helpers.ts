@@ -310,7 +310,7 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   }
 
   // Initialize git repo
-  await Bun.$`git init ${workDir}`.quiet();
+  await Bun.$`git init -b main ${workDir}`.quiet();
   await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
   await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
   await writeFile(join(workDir, "README.md"), "# Test Project\n");
@@ -419,6 +419,7 @@ export async function getOrCreateWorkspace(
     body: JSON.stringify({
       name: name || directory.split("/").pop() || "Test",
       directory,
+      serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
     }),
   });
   const data = await createResponse.json();
@@ -481,6 +482,21 @@ export async function createLoopViaAPI(
       name: restOptions.name ?? `Test Loop ${++testLoopNameCounter}`,
       workspaceId,
       model,
+      attachments: [],
+      cheapModel: { mode: "same-as-loop" },
+      maxIterations: restOptions.maxIterations ?? null,
+      maxConsecutiveErrors: 10,
+      activityTimeoutSeconds: 300,
+      stopPattern: "<promise>COMPLETE</promise>$",
+      git: {
+        branchPrefix: "",
+        commitScope: "",
+      },
+      baseBranch: restOptions.baseBranch ?? "main",
+      clearPlanningFolder: restOptions.clearPlanningFolder ?? false,
+      autoAcceptPlan: restOptions.autoAcceptPlan ?? (restOptions.planMode ? true : false),
+      fullyAutonomous: restOptions.fullyAutonomous ?? false,
+      draft: false,
       useWorktree: restOptions.useWorktree ?? true,
     }),
   });
@@ -663,7 +679,7 @@ export async function sendPlanFeedbackViaAPI(
   const response = await fetch(`${baseUrl}/api/loops/${loopId}/plan/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ feedback }),
+    body: JSON.stringify({ feedback, attachments: [] }),
   });
   const body = await response.json();
   return { status: response.status, body };
@@ -678,6 +694,8 @@ export async function acceptPlanViaAPI(
 ): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
   const response = await fetch(`${baseUrl}/api/loops/${loopId}/plan/accept`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode: "start_loop" }),
   });
   const body = await response.json();
   return { status: response.status, body };

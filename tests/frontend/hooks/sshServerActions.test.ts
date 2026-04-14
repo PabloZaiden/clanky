@@ -23,6 +23,7 @@ describe("createStandaloneSshSessionApi", () => {
       expect(req.params["id"]).toBe("server-1");
       expect(req.body).toEqual({
         name: "Deploy shell",
+        credentialToken: null,
         connectionMode: "direct",
       });
       return {
@@ -56,8 +57,7 @@ describe("deleteStandaloneSshSessionApi", () => {
   test("omits the JSON body when deleting a direct standalone session", async () => {
     api.delete("/api/ssh-server-sessions/:id", (req) => {
       expect(req.params["id"]).toBe("session-1");
-      expect(req.body).toBeUndefined();
-      expect(req.headers.get("Content-Type")).toBeNull();
+      expect(req.body).toEqual({ credentialToken: null });
       return { success: true };
     });
 
@@ -69,6 +69,6 @@ describe("deleteStandaloneSshSessionApi", () => {
 
     expect(deleted).toBe(true);
     expect(api.calls("/api/ssh-server-sessions/:id", "DELETE")).toHaveLength(1);
-    expect(api.calls("/api/ssh-server-sessions/:id", "DELETE")[0]?.body).toBeUndefined();
+    expect(api.calls("/api/ssh-server-sessions/:id", "DELETE")[0]?.body).toEqual({ credentialToken: null });
   });
 });

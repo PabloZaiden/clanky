@@ -113,7 +113,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory);
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.listDirectory(
           target,
           validation.data.path,
@@ -143,7 +143,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory);
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.readFile(target, validation.data.path);
         return Response.json({
           serverId: req.params.id,
@@ -169,7 +169,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory);
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.loadTree(target);
         return Response.json({
           serverId: req.params.id,
@@ -193,7 +193,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory);
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
         const file = await fileExplorerService.getMetadata(target, validation.data.path);
         if (!file) {
           return errorResponse("file_not_found", "Requested file does not exist", 404);
@@ -221,7 +221,7 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory);
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
         const response = await fileExplorerService.writeFile(
           target,
           validation.data.path,

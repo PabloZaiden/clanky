@@ -14,7 +14,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 
-const testModel = { providerID: "test-provider", modelID: "test-model" };
+const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 
 describe("Chats API Integration", () => {
   let testDataDir: string;
@@ -31,6 +31,7 @@ describe("Chats API Integration", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
       }),
     });
     const data = await createResponse.json();
@@ -71,7 +72,7 @@ describe("Chats API Integration", () => {
 
     await ensureDataDirectories();
 
-    await Bun.$`git init ${testWorkDir}`.quiet();
+    await Bun.$`git init -b main ${testWorkDir}`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
     await Bun.$`touch ${testWorkDir}/README.md`.quiet();
@@ -109,6 +110,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
+        baseBranch: "main",
       }),
     });
 
@@ -128,6 +130,7 @@ describe("Chats API Integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "Say hello",
+        attachments: [],
       }),
     });
     expect(sendResponse.status).toBe(200);
@@ -163,6 +166,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
+        baseBranch: "main",
       }),
     });
 
@@ -177,6 +181,7 @@ describe("Chats API Integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: firstMessage,
+        attachments: [],
       }),
     });
     expect(firstSendResponse.status).toBe(200);
@@ -187,6 +192,7 @@ describe("Chats API Integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "This is the second message.",
+        attachments: [],
       }),
     });
     expect(secondSendResponse.status).toBe(200);
@@ -202,6 +208,7 @@ describe("Chats API Integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "This is the third message after reconnect.",
+        attachments: [],
       }),
     });
     expect(resumedSendResponse.status).toBe(200);
@@ -238,6 +245,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
+        baseBranch: "main",
       }),
     });
 
@@ -245,7 +253,7 @@ describe("Chats API Integration", () => {
     await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "Create a session" }),
+      body: JSON.stringify({ message: "Create a session", attachments: [] }),
     });
 
     const settled = await waitForChatIdle(created.config.id) as {
@@ -271,7 +279,7 @@ describe("Chats API Integration", () => {
     const resumedSendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: "Recover automatically" }),
+      body: JSON.stringify({ message: "Recover automatically", attachments: [] }),
     });
     expect(resumedSendResponse.status).toBe(200);
 
@@ -300,6 +308,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
+        baseBranch: "main",
       }),
     });
 
@@ -338,6 +347,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
+        baseBranch: "main",
       }),
     });
 
@@ -350,6 +360,7 @@ describe("Chats API Integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "Turn this debugging conversation into a loop plan.",
+        attachments: [],
       }),
     });
     expect(sendResponse.status).toBe(200);
@@ -399,6 +410,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
+        baseBranch: "main",
       }),
     });
 
@@ -425,6 +437,7 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: false,
+        baseBranch: "main",
       }),
     });
 

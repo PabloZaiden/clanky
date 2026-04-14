@@ -5,6 +5,25 @@ import {
   GenerateLoopTitleRequestSchema,
   SetPendingRequestSchema,
 } from "../../src/types/schemas/loop";
+import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
+
+const baseCreateLoopRequest = {
+  
+  cheapModel: { mode: "same-as-loop" as const },
+  maxIterations: null,
+  maxConsecutiveErrors: DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
+  activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+  stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
+  git: {
+    branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,
+    commitScope: DEFAULT_LOOP_CONFIG.git.commitScope,
+  },
+  baseBranch: "main",
+  clearPlanningFolder: false,
+  autoAcceptPlan: false,
+  fullyAutonomous: false,
+  draft: false,
+};
 
 describe("loop attachment schemas", () => {
   test("accepts transient image attachments on create-loop requests", () => {
@@ -22,7 +41,9 @@ describe("loop attachment schemas", () => {
       model: {
         providerID: "provider",
         modelID: "model",
+        variant: "",
       },
+      ...baseCreateLoopRequest,
       useWorktree: true,
       planMode: false,
     });
@@ -45,20 +66,24 @@ describe("loop attachment schemas", () => {
       model: {
         providerID: "provider",
         modelID: "model",
+        variant: "",
       },
+      ...baseCreateLoopRequest,
       useWorktree: true,
       planMode: false,
     }).success).toBe(false);
 
     expect(SetPendingRequestSchema.safeParse({
       message: "Too many images",
-      attachments: [
-        { id: "1", filename: "a.png", mimeType: "image/png", data: "x", size: 1 },
-        { id: "2", filename: "b.png", mimeType: "image/png", data: "x", size: 1 },
-        { id: "3", filename: "c.png", mimeType: "image/png", data: "x", size: 1 },
-        { id: "4", filename: "d.png", mimeType: "image/png", data: "x", size: 1 },
-      ],
-    }).success).toBe(false);
+        attachments: [
+          { id: "1", filename: "a.png", mimeType: "image/png", data: "x", size: 1 },
+          { id: "2", filename: "b.png", mimeType: "image/png", data: "x", size: 1 },
+          { id: "3", filename: "c.png", mimeType: "image/png", data: "x", size: 1 },
+          { id: "4", filename: "d.png", mimeType: "image/png", data: "x", size: 1 },
+        ],
+        model: null,
+        immediate: true,
+      }).success).toBe(false);
   });
 
   test("accepts cheap model selections on create and title-generation requests", () => {
@@ -66,10 +91,13 @@ describe("loop attachment schemas", () => {
       name: "Cheap helper model loop",
       workspaceId: "ws-1",
       prompt: "Do a task",
+      attachments: [],
       model: {
         providerID: "provider",
         modelID: "main-model",
+        variant: "",
       },
+      ...baseCreateLoopRequest,
       cheapModel: {
         mode: "custom",
         model: {
@@ -85,10 +113,11 @@ describe("loop attachment schemas", () => {
     expect(GenerateLoopTitleRequestSchema.safeParse({
       workspaceId: "ws-1",
       prompt: "Create a useful title",
-      model: {
-        providerID: "provider",
-        modelID: "main-model",
-      },
+        model: {
+          providerID: "provider",
+          modelID: "main-model",
+          variant: "",
+        },
       cheapModel: {
         mode: "same-as-loop",
       },

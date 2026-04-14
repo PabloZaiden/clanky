@@ -17,7 +17,7 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { NeverCompletingMockBackend } from "../mocks/mock-backend";
 
 // Default test model for loop creation (model is now required)
-const testModel = { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" };
+const testModel = { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" };
 
 describe("POST /api/loops/:id/pending", () => {
   let testDataDir: string;
@@ -32,6 +32,7 @@ describe("POST /api/loops/:id/pending", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
       }),
     });
     const data = await createResponse.json();
@@ -50,7 +51,7 @@ describe("POST /api/loops/:id/pending", () => {
   // Helper to create a unique work directory with git AND workspace
   async function createTestWorkDirWithWorkspace(): Promise<{ workDir: string; workspaceId: string }> {
     const workDir = await mkdtemp(join(tmpdir(), "ralpher-pending-test-work-"));
-    await Bun.$`git init ${workDir}`.quiet();
+    await Bun.$`git init -b main ${workDir}`.quiet();
     await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
     await writeFile(join(workDir, "README.md"), "# Test");
@@ -191,6 +192,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -209,6 +222,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Please focus on the login feature",
+          model: null,
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);
@@ -237,6 +253,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -253,7 +281,10 @@ describe("POST /api/loops/:id/pending", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: { providerID: "openai", modelID: "gpt-4o" },
+          message: null,
+          model: { providerID: "openai", modelID: "gpt-4o", variant: "" },
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);
@@ -264,6 +295,7 @@ describe("POST /api/loops/:id/pending", () => {
       expect(loopData.state.pendingModel).toEqual({
         providerID: "openai",
         modelID: "gpt-4o",
+        variant: "",
       });
 
       await fetch(`${baseUrl}/api/loops/${loopId}/stop`, { method: "POST" });
@@ -282,6 +314,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -299,7 +343,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Use the new API",
-          model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+          model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);
@@ -311,6 +357,7 @@ describe("POST /api/loops/:id/pending", () => {
       expect(loopData.state.pendingModel).toEqual({
         providerID: "anthropic",
         modelID: "claude-sonnet-4-20250514",
+        variant: "",
       });
 
       await fetch(`${baseUrl}/api/loops/${loopId}/stop`, { method: "POST" });
@@ -329,6 +376,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -346,7 +405,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "To be cleared",
-          model: { providerID: "openai", modelID: "gpt-4o" },
+          model: { providerID: "openai", modelID: "gpt-4o", variant: "" },
+          immediate: true,
+          attachments: [],
         }),
       });
 
@@ -379,10 +440,21 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
-          draft: true,  // Create as draft - stays in idle status
-          planMode: false,
+          attachments: [],
           model: testModel,
-          useWorktree: true,
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          useWorktree: false,
+          clearPlanningFolder: false,
+          planMode: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: true,
         }),
       });
       expect(createRes.status).toBe(201);
@@ -395,6 +467,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "This should fail",
+          model: null,
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(409);
@@ -416,10 +491,21 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
-          draft: true,
-          planMode: false,
+          attachments: [],
           model: testModel,
-          useWorktree: true,
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          useWorktree: false,
+          clearPlanningFolder: false,
+          planMode: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: true,
         }),
       });
       expect(createRes.status).toBe(201);
@@ -442,6 +528,9 @@ describe("POST /api/loops/:id/pending", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "Test",
+        model: null,
+        immediate: true,
+        attachments: [],
       }),
     });
     expect(pendingRes.status).toBe(404);
@@ -464,6 +553,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -503,6 +604,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -519,7 +632,10 @@ describe("POST /api/loops/:id/pending", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          message: null,
           model: { providerID: "openai" },  // Missing modelID
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(400);
@@ -543,6 +659,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -560,6 +688,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: 12345,  // Should be string
+          model: null,
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(400);
@@ -584,6 +715,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -601,6 +744,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Immediate injection",
+          model: null,
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);
@@ -626,6 +772,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -643,7 +801,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Queued for later",
+          model: null,
           immediate: false,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(409);
@@ -667,6 +827,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -684,8 +856,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Immediate with model",
-          model: { providerID: "openai", modelID: "gpt-4o" },
+          model: { providerID: "openai", modelID: "gpt-4o", variant: "" },
           immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);
@@ -697,6 +870,7 @@ describe("POST /api/loops/:id/pending", () => {
       expect(loopData.state.pendingModel).toEqual({
         providerID: "openai",
         modelID: "gpt-4o",
+        variant: "",
       });
 
       await fetch(`${baseUrl}/api/loops/${loopId}/stop`, { method: "POST" });
@@ -715,6 +889,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -758,6 +944,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Jumpstart Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -782,6 +980,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Please continue working on the feature",
+          model: null,
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);
@@ -810,6 +1011,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Stale Running Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -842,6 +1055,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Please continue after restart",
+          model: null,
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);
@@ -866,6 +1082,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Jumpstart Model Test Loop",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -887,7 +1115,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Continue with new model",
-          model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+          model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);
@@ -901,6 +1131,7 @@ describe("POST /api/loops/:id/pending", () => {
       expect(loopData.config.model).toEqual({
         providerID: "anthropic",
         modelID: "claude-sonnet-4-20250514",
+        variant: "",
       });
 
       await loopManager.stopLoop(loopId);
@@ -920,6 +1151,18 @@ describe("POST /api/loops/:id/pending", () => {
           name: "Branch Continuation Test",
           workspaceId,
           prompt: "Test prompt",
+          attachments: [],
+          cheapModel: { mode: "same-as-loop" },
+          maxIterations: null,
+          maxConsecutiveErrors: 10,
+          activityTimeoutSeconds: 300,
+          stopPattern: "<promise>COMPLETE</promise>$",
+          git: { branchPrefix: "", commitScope: "" },
+          baseBranch: "main",
+          clearPlanningFolder: false,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          draft: false,
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -950,6 +1193,9 @@ describe("POST /api/loops/:id/pending", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: "Continue on the same branch",
+          model: null,
+          immediate: true,
+          attachments: [],
         }),
       });
       expect(pendingRes.status).toBe(200);

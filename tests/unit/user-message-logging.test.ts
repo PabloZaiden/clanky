@@ -129,7 +129,7 @@ describe("User Message Logging", () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       workspaceId: "test-workspace-id",
-      model: { providerID: "test-provider", modelID: "test-model" },
+      model: { providerID: "test-provider", modelID: "test-model", variant: "" },
       stopPattern: "<promise>COMPLETE</promise>$",
       git: { branchPrefix: "", commitScope: "" },
       maxIterations: 1,

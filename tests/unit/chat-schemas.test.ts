@@ -14,6 +14,7 @@ describe("CreateChatRequestSchema", () => {
       model: {
         providerID: "copilot",
         modelID: "gpt-5.4",
+        variant: "",
       },
       useWorktree: true,
       baseBranch: "main",
@@ -27,9 +28,11 @@ describe("SendChatMessageRequestSchema", () => {
   test("accepts text-only and attachment-only messages", () => {
     expect(SendChatMessageRequestSchema.safeParse({
       message: "Please inspect this image",
+      attachments: [],
     }).success).toBe(true);
 
     expect(SendChatMessageRequestSchema.safeParse({
+      message: null,
       attachments: [{
         id: "img-1",
         filename: "screen.png",
@@ -43,14 +46,15 @@ describe("SendChatMessageRequestSchema", () => {
   test("rejects empty messages without attachments", () => {
     expect(SendChatMessageRequestSchema.safeParse({
       message: "   ",
+      attachments: [],
     }).success).toBe(false);
   });
 });
 
 describe("InterruptChatRequestSchema", () => {
-  test("accepts an empty body or a trimmed reason", () => {
-    expect(InterruptChatRequestSchema.safeParse({}).success).toBe(true);
-
+  test("requires an explicit reason field and trims it", () => {
+    expect(InterruptChatRequestSchema.safeParse({}).success).toBe(false);
+    expect(InterruptChatRequestSchema.safeParse({ reason: "   " }).success).toBe(false);
     const result = InterruptChatRequestSchema.safeParse({
       reason: " user requested stop ",
     });

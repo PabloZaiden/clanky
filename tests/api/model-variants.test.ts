@@ -32,6 +32,23 @@ import {
 } from "../mocks/mock-backend";
 
 describe("Model Variants API", () => {
+  const baseCreateLoopPayload = {
+    attachments: [],
+    cheapModel: { mode: "same-as-loop" as const },
+    maxIterations: null,
+    maxConsecutiveErrors: 10,
+    activityTimeoutSeconds: 300,
+    stopPattern: "<promise>COMPLETE</promise>$",
+    git: {
+      branchPrefix: "",
+      commitScope: "",
+    },
+    baseBranch: "main",
+    clearPlanningFolder: false,
+    autoAcceptPlan: false,
+    fullyAutonomous: false,
+  draft: false,
+  };
   let testDataDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
@@ -75,6 +92,7 @@ describe("Model Variants API", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
       }),
     });
     const data = await createResponse.json();
@@ -98,7 +116,7 @@ describe("Model Variants API", () => {
     const workDir = await mkdtemp(
       join(tmpdir(), "ralpher-model-variants-test-work-")
     );
-    await Bun.$`git init ${workDir}`.quiet();
+    await Bun.$`git init -b main ${workDir}`.quiet();
     await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
     await writeFile(join(workDir, "README.md"), "# Test");
@@ -241,8 +259,7 @@ describe("Model Variants API", () => {
       expect(lastModel.variant).toBe("");
     });
 
-    test("saves and retrieves last model without variant", async () => {
-      // Set last model without variant field
+    test("rejects last model updates without variant", async () => {
       const putResponse = await fetch(`${baseUrl}/api/preferences/last-model`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -251,16 +268,7 @@ describe("Model Variants API", () => {
           modelID: "gpt-4o",
         }),
       });
-      expect(putResponse.status).toBe(200);
-
-      // Get it back
-      const getResponse = await fetch(`${baseUrl}/api/preferences/last-model`);
-      expect(getResponse.status).toBe(200);
-
-      const lastModel = await getResponse.json();
-      expect(lastModel.providerID).toBe("openai");
-      expect(lastModel.modelID).toBe("gpt-4o");
-      expect(lastModel.variant).toBeUndefined();
+      expect(putResponse.status).toBe(400);
     });
   });
 
@@ -272,6 +280,7 @@ describe("Model Variants API", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
             name: "Test Loop",
@@ -303,6 +312,7 @@ describe("Model Variants API", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
             name: "Test Loop",
@@ -327,13 +337,14 @@ describe("Model Variants API", () => {
       }
     });
 
-    test("creates draft loop without variant specified", async () => {
+    test("rejects draft loop creation without variant specified", async () => {
       const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
       try {
         const response = await fetch(`${baseUrl}/api/loops`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
             name: "Test Loop",
@@ -347,11 +358,7 @@ describe("Model Variants API", () => {
           }),
         });
 
-        expect(response.status).toBe(201);
-        const data = await response.json();
-        expect(data.config.model.providerID).toBe("openai");
-        expect(data.config.model.modelID).toBe("gpt-4o");
-        expect(data.config.model.variant).toBeUndefined();
+        expect(response.status).toBe(400);
       } finally {
         await rm(workDir, { recursive: true, force: true });
       }
@@ -367,6 +374,7 @@ describe("Model Variants API", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
             name: "Test Loop",
@@ -406,6 +414,7 @@ describe("Model Variants API", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
             name: "Test Loop",
@@ -437,14 +446,14 @@ describe("Model Variants API", () => {
       }
     });
 
-    test("saves model without variant field as last model when creating a loop", async () => {
+    test("rejects creating a loop without variant when saving last model", async () => {
       const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
       try {
-        // Create a loop without a variant (for models that don't support variants)
         const response = await fetch(`${baseUrl}/api/loops`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
             name: "Test Loop",
@@ -458,18 +467,7 @@ describe("Model Variants API", () => {
           }),
         });
 
-        expect(response.status).toBe(201);
-        // Consume response body to avoid leaving the stream open
-        await response.arrayBuffer();
-
-        // Verify that the last model preference was saved without variant
-        const getResponse = await fetch(`${baseUrl}/api/preferences/last-model`);
-        expect(getResponse.status).toBe(200);
-
-        const lastModel = await getResponse.json();
-        expect(lastModel.providerID).toBe("openai");
-        expect(lastModel.modelID).toBe("gpt-4o");
-        expect(lastModel.variant).toBeUndefined();
+        expect(response.status).toBe(400);
       } finally {
         await rm(workDir, { recursive: true, force: true });
       }

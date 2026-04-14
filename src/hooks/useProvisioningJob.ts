@@ -17,12 +17,12 @@ export interface StartProvisioningJobRequest {
   sshServerId: string;
   repoUrl: string;
   basePath: string;
-  devcontainerSubpath?: string;
+  devcontainerSubpath: string | null;
   provider: AgentProvider;
   password?: string;
-  mode?: "provision" | "rebuild" | "restart" | "arise";
-  targetDirectory?: string;
-  workspaceId?: string;
+  mode: "provision" | "rebuild" | "restart" | "arise";
+  targetDirectory: string | null;
+  workspaceId: string | null;
 }
 
 export interface UseProvisioningJobResult {
@@ -199,14 +199,12 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           sshServerId: request.sshServerId,
           repoUrl: request.repoUrl.trim(),
           basePath: request.basePath.trim(),
-          ...(request.devcontainerSubpath?.trim()
-            ? { devcontainerSubpath: request.devcontainerSubpath.trim() }
-            : {}),
+          devcontainerSubpath: request.devcontainerSubpath?.trim() ? request.devcontainerSubpath.trim() : null,
           provider: request.provider,
-          ...(credentialToken ? { credentialToken } : {}),
-          ...(request.mode ? { mode: request.mode } : {}),
-          ...(request.targetDirectory ? { targetDirectory: request.targetDirectory } : {}),
-          ...(request.workspaceId ? { workspaceId: request.workspaceId } : {}),
+          credentialToken: credentialToken ?? null,
+          mode: request.mode,
+          targetDirectory: request.targetDirectory?.trim() ? request.targetDirectory.trim() : null,
+          workspaceId: request.workspaceId?.trim() ? request.workspaceId.trim() : null,
         }),
       });
       if (!response.ok) {

@@ -148,6 +148,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "My SSH Session",
+      connectionMode: "dtach",
       }),
     });
 
@@ -185,6 +186,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Original SSH Session",
+      connectionMode: "dtach",
       }),
     });
 
@@ -219,6 +221,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Original SSH Session",
+      connectionMode: "dtach",
       }),
     });
 
@@ -238,7 +241,7 @@ describe("SSH sessions API integration", () => {
     expect(data.message).toContain("name is required");
   });
 
-  test("generates default SSH session names from the workspace name and workspace session count", async () => {
+  test("creates SSH sessions with explicitly provided names", async () => {
     const workspace = await createWorkspace({ transport: "ssh" });
     const otherWorkspaceDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-sessions-work-"));
     try {
@@ -259,6 +262,8 @@ describe("SSH sessions API integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId: workspace.id,
+          name: "SSH Workspace 1",
+          connectionMode: "dtach",
         }),
       });
       expect(firstCreateResponse.status).toBe(201);
@@ -270,6 +275,8 @@ describe("SSH sessions API integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId: workspace.id,
+          name: "SSH Workspace 2",
+          connectionMode: "dtach",
         }),
       });
       expect(secondCreateResponse.status).toBe(201);
@@ -281,6 +288,8 @@ describe("SSH sessions API integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId: secondWorkspace.id,
+          name: "Other Workspace 1",
+          connectionMode: "dtach",
         }),
       });
       expect(otherWorkspaceCreateResponse.status).toBe(201);
@@ -300,6 +309,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Invalid Session",
+      connectionMode: "dtach",
       }),
     });
 
@@ -318,6 +328,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Needs Persistent SSH",
+      connectionMode: "dtach",
       }),
     });
 
@@ -343,6 +354,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Cleanup Failure",
+      connectionMode: "dtach",
       }),
     });
 

@@ -13,7 +13,7 @@ export const CreateSshServerRequestSchema = z.object({
   name: RequiredTrimmedStringSchema,
   address: RequiredTrimmedStringSchema,
   username: RequiredTrimmedStringSchema,
-  repositoriesBasePath: z.string().trim().optional(),
+  repositoriesBasePath: z.string().trim().nullable(),
 });
 
 export const UpdateSshServerRequestSchema = z.object({
@@ -41,17 +41,17 @@ export const SshCredentialExchangeRequestSchema = z.object({
 export const SshCredentialTokenSchema = RequiredTrimmedStringSchema;
 
 export const CreateSshServerSessionRequestSchema = z.object({
-  name: z.string().trim().optional(),
-  credentialToken: SshCredentialTokenSchema.optional(),
-  connectionMode: SshConnectionModeSchema.optional(),
+  name: z.string().trim().min(1, "name is required"),
+  credentialToken: SshCredentialTokenSchema.nullable(),
+  connectionMode: SshConnectionModeSchema,
 });
 
 export const DeleteSshServerSessionRequestSchema = z.object({
-  credentialToken: SshCredentialTokenSchema.optional(),
+  credentialToken: SshCredentialTokenSchema.nullable(),
 });
 
 export const CheckSshServerPrerequisitesRequestSchema = z.object({
-  credentialToken: SshCredentialTokenSchema.optional(),
+  credentialToken: SshCredentialTokenSchema.nullable(),
 });
 
 export type SshKeyAlgorithm = z.infer<typeof SshKeyAlgorithmSchema>;

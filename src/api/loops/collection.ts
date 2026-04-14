@@ -164,16 +164,16 @@ export const loopsCollectionRoutes = {
           prompt: body.prompt,
           attachments: body.attachments,
           workspaceId,
-          modelProviderID: body.model?.providerID,
-          modelID: body.model?.modelID,
-          modelVariant: body.model?.variant,
+          modelProviderID: body.model.providerID,
+          modelID: body.model.modelID,
+          modelVariant: body.model.variant,
           cheapModel: body.cheapModel,
-          maxIterations: body.maxIterations,
+          maxIterations: body.maxIterations ?? undefined,
           maxConsecutiveErrors: body.maxConsecutiveErrors,
           activityTimeoutSeconds: body.activityTimeoutSeconds,
           stopPattern: body.stopPattern,
-          gitBranchPrefix: body.git?.branchPrefix,
-          gitCommitScope: body.git?.commitScope,
+          gitBranchPrefix: body.git.branchPrefix,
+          gitCommitScope: body.git.commitScope,
           baseBranch: effectiveBaseBranch,
           useWorktree: body.useWorktree,
            clearPlanningFolder: body.clearPlanningFolder,
@@ -184,16 +184,12 @@ export const loopsCollectionRoutes = {
          });
 
         // Save the model as last used if provided
-        if (body.model?.providerID && body.model?.modelID) {
-          await loopManager.saveLastUsedModel({
-            providerID: body.model.providerID,
-            modelID: body.model.modelID,
-            variant: body.model.variant,
-          });
-        }
-        if (body.cheapModel) {
-          await loopManager.saveLastUsedCheapModel(body.cheapModel);
-        }
+        await loopManager.saveLastUsedModel({
+          providerID: body.model.providerID,
+          modelID: body.model.modelID,
+          variant: body.model.variant,
+        });
+        await loopManager.saveLastUsedCheapModel(body.cheapModel);
 
         // If draft mode is enabled, return the loop without starting
         if (body.draft) {

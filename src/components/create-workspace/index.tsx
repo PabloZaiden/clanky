@@ -152,9 +152,12 @@ export function CreateWorkspaceModal({
         sshServerId: automaticServerId,
         repoUrl: automaticRepoUrl.trim(),
         basePath: automaticBasePath.trim(),
-        devcontainerSubpath: automaticDevcontainerSubpath.trim(),
+        devcontainerSubpath: automaticDevcontainerSubpath.trim() || null,
         provider: automaticProvider,
         password: automaticPassword,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
       });
       if (snapshot) {
         // Associate the saved values with this specific job id so that

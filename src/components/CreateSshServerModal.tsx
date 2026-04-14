@@ -6,7 +6,10 @@ import { useToast } from "../hooks";
 export interface CreateSshServerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (request: { name: string; address: string; username: string }, password?: string) => Promise<SshServer | null>;
+  onSubmit: (
+    request: { name: string; address: string; username: string; repositoriesBasePath?: string | null },
+    password?: string,
+  ) => Promise<SshServer | null>;
   initialServer?: SshServer | null;
 }
 
