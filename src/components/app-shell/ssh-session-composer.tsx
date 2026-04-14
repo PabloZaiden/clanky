@@ -60,6 +60,7 @@ export function SshSessionComposer({
         }
         const session = await onCreateWorkspaceSession({
           workspaceId: selectedWorkspaceId,
+          name: "SSH session",
           connectionMode,
         });
         onNavigate({ view: "ssh", sshSessionId: session.config.id });
@@ -72,6 +73,7 @@ export function SshSessionComposer({
       }
 
       const session = await onCreateStandaloneSession(selectedServerId, {
+        name: "SSH session",
         connectionMode,
       });
       onNavigate({ view: "ssh", sshSessionId: session.config.id });

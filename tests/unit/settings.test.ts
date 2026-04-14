@@ -9,6 +9,7 @@ function createRegisteredSshServer(overrides?: Partial<SshServer["config"]>): Ss
       name: "Production Box",
       address: "10.0.0.42",
       username: "deploy",
+      repositoriesBasePath: null,
       createdAt: "2024-01-01T00:00:00.000Z",
       updatedAt: "2024-01-01T00:00:00.000Z",
       ...overrides,

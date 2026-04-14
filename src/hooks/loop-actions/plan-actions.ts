@@ -34,7 +34,7 @@ export async function sendPlanFeedbackApi(
   return apiActionWithBody(
     `/api/loops/${loopId}/plan/feedback`,
     "POST",
-    { feedback, attachments },
+    { feedback, attachments: attachments ?? [] },
     "Send plan feedback",
   );
 }

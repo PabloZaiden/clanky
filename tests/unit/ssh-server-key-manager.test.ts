@@ -10,14 +10,15 @@ let testDataDir: string;
 
 function createTestSshServerConfig(overrides?: Partial<SshServerConfig>): SshServerConfig {
   const now = new Date().toISOString();
-  return {
-    id: overrides?.id ?? "ssh-server-1",
-    name: overrides?.name ?? "Shared host",
-    address: overrides?.address ?? "ssh.example.com",
-    username: overrides?.username ?? "deploy",
-    createdAt: overrides?.createdAt ?? now,
-    updatedAt: overrides?.updatedAt ?? now,
-  };
+    return {
+      id: overrides?.id ?? "ssh-server-1",
+      name: overrides?.name ?? "Shared host",
+      address: overrides?.address ?? "ssh.example.com",
+      username: overrides?.username ?? "deploy",
+      repositoriesBasePath: overrides?.repositoriesBasePath ?? null,
+      createdAt: overrides?.createdAt ?? now,
+      updatedAt: overrides?.updatedAt ?? now,
+    };
 }
 
 describe("SshServerKeyManager", () => {

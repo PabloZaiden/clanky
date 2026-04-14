@@ -102,6 +102,7 @@ describe("Provisioning API integration", () => {
       name: "Shared host",
       address: "ssh.example.com",
       username: "deploy",
+      repositoriesBasePath: null,
     });
   }
 
@@ -123,6 +124,10 @@ describe("Provisioning API integration", () => {
         basePath: "/workspaces",
         devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
         provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
       }),
     });
 
@@ -150,7 +155,12 @@ describe("Provisioning API integration", () => {
         sshServerId: "missing-server",
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
+        devcontainerSubpath: null,
         provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
       }),
     });
 
@@ -170,8 +180,12 @@ describe("Provisioning API integration", () => {
         sshServerId: sshServer.config.id,
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
+        devcontainerSubpath: null,
         provider: "copilot",
         credentialToken: "invalid-token",
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
       }),
     });
 
@@ -194,7 +208,12 @@ describe("Provisioning API integration", () => {
         sshServerId: sshServer.config.id,
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
+        devcontainerSubpath: null,
         provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
       }),
     });
 
@@ -225,7 +244,12 @@ describe("Provisioning API integration", () => {
         sshServerId: sshServer.config.id,
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
+        devcontainerSubpath: null,
         provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
       }),
     });
 
@@ -252,7 +276,14 @@ describe("Provisioning API integration", () => {
       body: JSON.stringify({
         name: sshServer.config.name,
         sshServerId: sshServer.config.id,
+        repoUrl: "",
+        basePath: "",
+        devcontainerSubpath: null,
+        provider: "copilot",
+        credentialToken: null,
         mode: "arise",
+        targetDirectory: null,
+        workspaceId: null,
       }),
     });
 

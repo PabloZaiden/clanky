@@ -16,7 +16,24 @@ import packageJson from "../../package.json";
 import { createMockBackend } from "../mocks/mock-backend";
 
 // Default test model for loop creation (model is now required)
-const testModel = { providerID: "test-provider", modelID: "test-model" };
+const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
+const baseCreateLoopPayload = {
+  attachments: [],
+  cheapModel: { mode: "same-as-loop" as const },
+  maxIterations: null,
+  maxConsecutiveErrors: 10,
+  activityTimeoutSeconds: 300,
+  stopPattern: "<promise>COMPLETE</promise>$",
+  git: {
+    branchPrefix: "",
+    commitScope: "",
+  },
+  baseBranch: "main",
+  clearPlanningFolder: false,
+  autoAcceptPlan: false,
+  fullyAutonomous: false,
+  draft: false,
+};
 
 describe("Loops CRUD API Integration", () => {
   let testDataDir: string;
@@ -52,6 +69,7 @@ describe("Loops CRUD API Integration", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
       }),
     });
     const data = await createResponse.json();
@@ -79,7 +97,7 @@ describe("Loops CRUD API Integration", () => {
     await ensureDataDirectories();
 
     // Initialize git repo in test work directory
-    await Bun.$`git init ${testWorkDir}`.quiet();
+    await Bun.$`git init -b main ${testWorkDir}`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
     await Bun.$`touch ${testWorkDir}/README.md`.quiet();
@@ -182,6 +200,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Build something",
           name: "Test Loop",
@@ -206,12 +225,13 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Custom task",
           name: "Test Loop",
           maxIterations: 10,
           stopPattern: "<done>FINISHED</done>$",
-          git: { branchPrefix: "custom" },
+          git: { branchPrefix: "custom", commitScope: "" },
           planMode: false,
           model: testModel,
           useWorktree: true,
@@ -230,6 +250,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Plan it and take it all the way through PR automation",
           name: "Fully Autonomous Loop",
@@ -282,6 +303,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "",
           name: "Test Loop",
@@ -302,6 +324,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           name: "   ",
           prompt: "Build something",
@@ -322,6 +345,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           name: "a".repeat(101),
           prompt: "Build something",
@@ -344,6 +368,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Build something",
           model: testModel,
@@ -374,6 +399,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Build something",
           model: testModel,
@@ -401,6 +427,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Build something",
           model: testModel,
@@ -435,6 +462,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test prompt",
           name: "Test Loop",
@@ -471,6 +499,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Original prompt",
           name: "Test Loop",
@@ -491,6 +520,7 @@ describe("Loops CRUD API Integration", () => {
           prompt: "Updated prompt",
           git: {
             branchPrefix: "team platform",
+            commitScope: "",
           },
         }),
       });
@@ -506,6 +536,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Original prompt",
           name: "Autonomous Draft",
@@ -550,6 +581,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test",
           name: "Test Loop",
@@ -579,6 +611,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Immutable worktree mode",
           name: "Test Loop",
@@ -627,6 +660,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test prompt",
           name: "Test Loop",
@@ -661,6 +695,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Purge me",
           name: "Test Loop",
@@ -704,6 +739,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Task with clearing",
           name: "Test Loop",
@@ -725,6 +761,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Task without clearing",
           name: "Test Loop",
@@ -746,6 +783,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Task with default",
           name: "Test Loop",
@@ -768,6 +806,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test",
           name: "Test Loop",
@@ -796,6 +835,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Draft task",
           name: "Test Loop",
@@ -816,7 +856,7 @@ describe("Loops CRUD API Integration", () => {
     test("non-draft loops still auto-start", async () => {
       // Create a unique directory for this test to avoid conflicts with other tests
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "ralpher-non-draft-test-"));
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -831,6 +871,7 @@ describe("Loops CRUD API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Normal task",
             name: "Test Loop",
@@ -859,6 +900,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Original prompt",
           name: "Test Loop",
@@ -889,7 +931,7 @@ describe("Loops CRUD API Integration", () => {
     test("cannot update non-draft loop via PUT", async () => {
       // Create a unique directory for this test to avoid conflicts
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "ralpher-put-test-"));
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -905,6 +947,7 @@ describe("Loops CRUD API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Task",
             name: "Test Loop",
@@ -942,6 +985,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Task",
           name: "Test Loop",
@@ -960,8 +1004,7 @@ describe("Loops CRUD API Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           planMode: false,
-          model: testModel,
-          useWorktree: true,
+          attachments: [],
         }),
       });
 
@@ -982,7 +1025,7 @@ describe("Loops CRUD API Integration", () => {
     test("can start draft as plan mode", async () => {
       // Use a unique directory to avoid branch collision with previous test
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "ralpher-draft-plan-test-"));
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -998,6 +1041,7 @@ describe("Loops CRUD API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId: uniqueWorkspaceId,
             prompt: "Plan mode draft task",
             name: "Test Loop",
@@ -1014,11 +1058,10 @@ describe("Loops CRUD API Integration", () => {
         const startResponse = await fetch(`${baseUrl}/api/loops/${loopId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            planMode: true,
-            model: testModel,
-            useWorktree: true,
-          }),
+        body: JSON.stringify({
+          planMode: true,
+          attachments: [],
+        }),
         });
 
         expect(startResponse.status).toBe(200);
@@ -1032,7 +1075,7 @@ describe("Loops CRUD API Integration", () => {
     test("cannot start non-draft loop via draft/start", async () => {
       // Create a unique directory for this test to avoid conflicts
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "ralpher-start-test-"));
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -1048,6 +1091,7 @@ describe("Loops CRUD API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Task",
             name: "Test Loop",
@@ -1064,7 +1108,7 @@ describe("Loops CRUD API Integration", () => {
         const startDraftResponse = await fetch(`${baseUrl}/api/loops/${draftLoopId}/draft/start`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ planMode: false }),
+          body: JSON.stringify({ planMode: false, attachments: [] }),
         });
         
         expect(startDraftResponse.status).toBe(200);
@@ -1077,8 +1121,7 @@ describe("Loops CRUD API Integration", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             planMode: false,
-          model: testModel,
-          useWorktree: true,
+            attachments: [],
           }),
         });
 
@@ -1096,6 +1139,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Task",
           name: "Test Loop",
@@ -1130,6 +1174,7 @@ describe("Loops CRUD API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: testPrompt,
           name: "Test Loop",
@@ -1168,6 +1213,7 @@ multiple lines.
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: multiLinePrompt,
           name: "Test Loop",
@@ -1214,6 +1260,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Initial prompt v1",
           name: "Test Loop",
@@ -1280,6 +1327,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test mark merged",
           name: "Test Loop",
@@ -1309,6 +1357,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test no git",
           name: "Test Loop",
@@ -1351,6 +1400,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test mark merged",
           name: "Test Loop",
@@ -1389,6 +1439,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test rename task",
           name: "Test Loop",
@@ -1424,7 +1475,7 @@ Updated line 3`;
     test("renames a completed loop", async () => {
       // Create a unique directory for this test
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "ralpher-rename-test-"));
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -1439,6 +1490,7 @@ Updated line 3`;
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Complete me",
             name: "Before Completion",
@@ -1474,6 +1526,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test trim",
           name: "Test Loop",
@@ -1512,6 +1565,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test empty name",
           name: "Test Loop",
@@ -1542,6 +1596,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test whitespace name",
           name: "Test Loop",
@@ -1571,6 +1626,7 @@ Updated line 3`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test long rename",
           name: "Test Loop",

@@ -139,6 +139,7 @@ describe("LoopEngine Pending Model", () => {
       model: {
         providerID: "anthropic",
         modelID: "claude-sonnet-4-20250514",
+        variant: "",
       },
       maxIterations: Infinity,
       maxConsecutiveErrors: 10,
@@ -211,12 +212,13 @@ describe("LoopEngine Pending Model", () => {
     });
 
     // Set pending model
-    engine.setPendingModel({ providerID: "openai", modelID: "gpt-4o" });
+    engine.setPendingModel({ providerID: "openai", modelID: "gpt-4o", variant: "" });
 
     // Verify state was updated
     expect(loop.state.pendingModel).toEqual({
       providerID: "openai",
       modelID: "gpt-4o",
+      variant: "",
     });
   });
 
@@ -230,7 +232,7 @@ describe("LoopEngine Pending Model", () => {
     });
 
     // Set pending model
-    engine.setPendingModel({ providerID: "openai", modelID: "gpt-4o" });
+    engine.setPendingModel({ providerID: "openai", modelID: "gpt-4o", variant: "" });
 
     // Verify event was emitted
     const pendingEvents = emittedEvents.filter((e) => e.type === "loop.pending.updated");
@@ -238,13 +240,13 @@ describe("LoopEngine Pending Model", () => {
     expect(pendingEvents[0]).toMatchObject({
       type: "loop.pending.updated",
       loopId: "test-loop-1",
-      pendingModel: { providerID: "openai", modelID: "gpt-4o" },
+      pendingModel: { providerID: "openai", modelID: "gpt-4o", variant: "" },
     });
   });
 
   test("clearPendingModel removes the pending model", async () => {
     const loop = createTestLoop();
-    loop.state.pendingModel = { providerID: "openai", modelID: "gpt-4o" };
+    loop.state.pendingModel = { providerID: "openai", modelID: "gpt-4o", variant: "" };
     
     const engine = new LoopEngine({
       loop,
@@ -262,7 +264,7 @@ describe("LoopEngine Pending Model", () => {
 
   test("clearPending removes both pending model and prompt", async () => {
     const loop = createTestLoop();
-    loop.state.pendingModel = { providerID: "openai", modelID: "gpt-4o" };
+    loop.state.pendingModel = { providerID: "openai", modelID: "gpt-4o", variant: "" };
     loop.state.pendingPrompt = "User message";
     
     const engine = new LoopEngine({
@@ -283,7 +285,7 @@ describe("LoopEngine Pending Model", () => {
   test("pendingModel is used in buildPrompt and then cleared", async () => {
     const loop = createTestLoop();
     // Set pending model before starting
-    loop.state.pendingModel = { providerID: "openai", modelID: "gpt-4o" };
+    loop.state.pendingModel = { providerID: "openai", modelID: "gpt-4o", variant: "" };
     
     const engine = new LoopEngine({
       loop,
@@ -303,6 +305,7 @@ describe("LoopEngine Pending Model", () => {
     expect(capturedPrompts[0]!.model).toEqual({
       providerID: "openai",
       modelID: "gpt-4o",
+      variant: "",
     });
 
     // Verify pending model was cleared after use
@@ -311,10 +314,10 @@ describe("LoopEngine Pending Model", () => {
 
   test("pendingModel updates config.model after being consumed", async () => {
     const loop = createTestLoop({
-      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
     });
     // Set pending model before starting
-    loop.state.pendingModel = { providerID: "openai", modelID: "gpt-4o" };
+    loop.state.pendingModel = { providerID: "openai", modelID: "gpt-4o", variant: "" };
     
     const engine = new LoopEngine({
       loop,
@@ -333,6 +336,7 @@ describe("LoopEngine Pending Model", () => {
     expect(loop.config.model).toEqual({
       providerID: "openai",
       modelID: "gpt-4o",
+      variant: "",
     });
   });
 
@@ -413,7 +417,7 @@ describe("LoopEngine Pending Model", () => {
     // Call injectPendingNow (without a running loop, it should just set values)
     await engine.injectPendingNow({
       message: "Injected message",
-      model: { providerID: "openai", modelID: "gpt-4o" },
+      model: { providerID: "openai", modelID: "gpt-4o", variant: "" },
     });
 
     // Verify state was updated
@@ -421,6 +425,7 @@ describe("LoopEngine Pending Model", () => {
     expect(loop.state.pendingModel).toEqual({
       providerID: "openai",
       modelID: "gpt-4o",
+      variant: "",
     });
 
     // Verify event was emitted
@@ -430,7 +435,7 @@ describe("LoopEngine Pending Model", () => {
       type: "loop.pending.updated",
       loopId: "test-loop-1",
       pendingPrompt: "Injected message",
-      pendingModel: { providerID: "openai", modelID: "gpt-4o" },
+      pendingModel: { providerID: "openai", modelID: "gpt-4o", variant: "" },
     });
   });
 
@@ -458,12 +463,13 @@ describe("LoopEngine Pending Model", () => {
       eventEmitter: emitter,
     });
 
-    await engine.injectPendingNow({ model: { providerID: "openai", modelID: "gpt-4o" } });
+    await engine.injectPendingNow({ model: { providerID: "openai", modelID: "gpt-4o", variant: "" } });
 
     expect(loop.state.pendingPrompt).toBeUndefined();
     expect(loop.state.pendingModel).toEqual({
       providerID: "openai",
       modelID: "gpt-4o",
+      variant: "",
     });
   });
 

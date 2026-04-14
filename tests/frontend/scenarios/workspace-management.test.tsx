@@ -396,6 +396,7 @@ describe("workspace management scenario", () => {
         name: "Build host",
         address: "server.example.com",
         username: "ubuntu",
+        repositoriesBasePath: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },

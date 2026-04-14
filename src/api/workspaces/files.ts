@@ -201,7 +201,7 @@ export const workspaceFilesRoutes = {
           {
             expectedVersionToken: validation.data.expectedVersionToken ?? null,
             overwrite: validation.data.overwrite,
-            startDirectory: validation.data.startDirectory,
+            startDirectory: validation.data.startDirectory ?? undefined,
           },
         ));
       } catch (error) {

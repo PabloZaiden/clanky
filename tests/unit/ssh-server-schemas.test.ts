@@ -12,6 +12,7 @@ describe("CreateSshServerRequestSchema", () => {
       name: "  Shared staging host  ",
       address: "  ssh.example.com  ",
       username: "  deploy  ",
+      repositoriesBasePath: null,
     });
 
     expect(result.success).toBe(true);
@@ -23,6 +24,7 @@ describe("CreateSshServerRequestSchema", () => {
       name: "Shared staging host",
       address: "ssh.example.com",
       username: "deploy",
+      repositoriesBasePath: null,
     });
   });
 

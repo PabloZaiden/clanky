@@ -512,9 +512,12 @@ describe("SshTerminalBridge", () => {
       name: "Shared host",
       address: "ssh.example.com",
       username: "deploy",
+      repositoriesBasePath: null,
     });
     const standaloneSession = await sshServerManager.createSession(server.config.id, {
       name: "Deploy shell",
+      credentialToken: null,
+      connectionMode: "dtach",
     });
     const terminalToken = await issueStandaloneCredentialToken(server.config.id);
 

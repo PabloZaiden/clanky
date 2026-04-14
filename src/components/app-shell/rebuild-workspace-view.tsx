@@ -52,11 +52,11 @@ export function RebuildWorkspaceView({
       sshServerId,
       repoUrl: workspace.repoUrl ?? "",
       basePath: workspace.basePath ?? "",
-      devcontainerSubpath: workspace.devcontainerSubpath,
+      devcontainerSubpath: workspace.devcontainerSubpath ?? null,
       provider: workspace.provider ?? "copilot",
       password,
       mode,
-      targetDirectory: workspace.sourceDirectory,
+      targetDirectory: workspace.sourceDirectory ?? null,
       workspaceId: workspace.id,
     });
 

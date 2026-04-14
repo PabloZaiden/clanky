@@ -57,7 +57,7 @@ function createTestLoop(): Loop {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     workspaceId: "workspace-1",
-    model: { providerID: "test-provider", modelID: "test-model" },
+    model: { providerID: "test-provider", modelID: "test-model", variant: "" },
     maxIterations: 1,
     maxConsecutiveErrors: 1,
     activityTimeoutSeconds: 60,

@@ -11,11 +11,28 @@ import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { createLoop, createLoopWithStatus } from "../helpers/factories";
 import { useLoops } from "@/hooks/useLoops";
-import type { Loop } from "@/types/loop";
+import { DEFAULT_LOOP_CONFIG, type Loop } from "@/types/loop";
 import type { PurgeArchivedLoopsResult } from "@/hooks";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
+const createLoopRequestBase = {
+  attachments: [],
+  cheapModel: { mode: "same-as-loop" as const },
+  maxIterations: null,
+  maxConsecutiveErrors: DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
+  activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+  stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
+  git: {
+    branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,
+    commitScope: DEFAULT_LOOP_CONFIG.git.commitScope,
+  },
+  baseBranch: "",
+  clearPlanningFolder: false,
+  autoAcceptPlan: false,
+  fullyAutonomous: false,
+  draft: false,
+};
 
 beforeEach(() => {
   api.reset();
@@ -293,10 +310,11 @@ describe("createLoop", () => {
     let createResult: { loop: Loop | null } = { loop: null };
     await act(async () => {
       createResult = await result.current.createLoop({
+        ...createLoopRequestBase,
         name: "Do something",
         prompt: "Do something",
         workspaceId: "ws-1",
-        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
         useWorktree: true,
         planMode: false,
       });
@@ -307,10 +325,11 @@ describe("createLoop", () => {
     const postCalls = api.calls("/api/loops", "POST");
     expect(postCalls).toHaveLength(1);
       expect(postCalls[0]!.body).toEqual({
+        ...createLoopRequestBase,
         name: "Do something",
         prompt: "Do something",
         workspaceId: "ws-1",
-        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
         useWorktree: true,
         planMode: false,
       });
@@ -335,10 +354,11 @@ describe("createLoop", () => {
     let createResult: { loop: Loop | null; startError?: unknown } = { loop: null };
     await act(async () => {
       createResult = await result.current.createLoop({
+        ...createLoopRequestBase,
         name: "Do something",
         prompt: "Do something",
         workspaceId: "ws-1",
-        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
         useWorktree: true,
         planMode: false,
       });
@@ -364,10 +384,11 @@ describe("createLoop", () => {
     let createResult: { loop: Loop | null } = { loop: null };
     await act(async () => {
       createResult = await result.current.createLoop({
+        ...createLoopRequestBase,
         name: "Do something",
         prompt: "Do something",
         workspaceId: "ws-1",
-        model: { providerID: "bad", modelID: "bad" },
+        model: { providerID: "bad", modelID: "bad", variant: "" },
         useWorktree: true,
         planMode: false,
       });

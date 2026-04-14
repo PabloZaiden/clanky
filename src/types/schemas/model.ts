@@ -20,7 +20,7 @@ import { z } from "zod";
 export const ModelConfigSchema = z.object({
   providerID: z.string().min(1, "providerID is required and must be a non-empty string"),
   modelID: z.string().min(1, "modelID is required and must be a non-empty string"),
-  variant: z.string().optional(),
+  variant: z.string(),
 });
 
 /**

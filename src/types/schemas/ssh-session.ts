@@ -8,8 +8,8 @@ export const SshConnectionModeSchema = z.enum(["dtach", "direct"]);
 
 export const CreateSshSessionRequestSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
-  name: z.string().trim().optional(),
-  connectionMode: SshConnectionModeSchema.optional(),
+  name: z.string().trim().min(1, "name is required"),
+  connectionMode: SshConnectionModeSchema,
 });
 
 export const UpdateSshSessionRequestSchema = z.object({

@@ -359,6 +359,7 @@ describe("CreateLoopForm", () => {
               model: {
                 providerID: "missing-provider",
                 modelID: "missing-model",
+                variant: "",
               },
             },
           })}

@@ -125,7 +125,11 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
     try {
       setCreatingWorkspaceSshSession(true);
       setCreateWorkspaceSshSessionError(null);
-      const session = await createSession({ workspaceId: workspace.id });
+      const session = await createSession({
+        workspaceId: workspace.id,
+        name: `${workspace.name} terminal`,
+        connectionMode: "dtach",
+      });
       setShowCreateSshSessionModal(false);
       onSelectSshSession?.(session.config.id);
     } catch (error) {
@@ -168,7 +172,10 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
 
   async function handleCreateStandaloneSshSession(server: SshServer) {
     try {
-      const session = await createStandaloneSession(server.config.id);
+      const session = await createStandaloneSession(server.config.id, {
+        name: `${server.config.name} terminal`,
+        connectionMode: "dtach",
+      });
       onSelectSshSession?.(session.config.id);
     } catch (error) {
       toast.error(String(error));
@@ -346,7 +353,7 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
           if (editingSshServer) {
             return updateServer(editingSshServer.config.id, request, password);
           }
-          return createServer(request, password);
+          return createServer({ ...request, repositoriesBasePath: null }, password);
         }}
       />
 

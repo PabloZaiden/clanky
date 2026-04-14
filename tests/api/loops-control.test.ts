@@ -18,7 +18,24 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 
 // Default test model for loop creation (model is now required)
-const testModel = { providerID: "test-provider", modelID: "test-model" };
+const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
+const baseCreateLoopPayload = {
+  attachments: [],
+  cheapModel: { mode: "same-as-loop" as const },
+  maxIterations: null,
+  maxConsecutiveErrors: 10,
+  activityTimeoutSeconds: 300,
+  stopPattern: "<promise>COMPLETE</promise>$",
+  git: {
+    branchPrefix: "",
+    commitScope: "",
+  },
+  baseBranch: "main",
+  clearPlanningFolder: false,
+  autoAcceptPlan: false,
+  fullyAutonomous: false,
+  draft: false,
+};
 
 describe("Loops Control API Integration", () => {
   let testDataDir: string;
@@ -27,6 +44,7 @@ describe("Loops Control API Integration", () => {
   let server: Server<unknown>;
   let baseUrl: string;
   let testWorkspaceId: string;
+  let mockBackend: ReturnType<typeof createMockBackend>;
   const tempDirsToCleanup = new Set<string>();
 
   // Helper function to poll for loop completion
@@ -58,6 +76,7 @@ describe("Loops Control API Integration", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
       }),
     });
     const data = await createResponse.json();
@@ -101,7 +120,7 @@ describe("Loops Control API Integration", () => {
     await ensureDataDirectories();
 
     // Initialize git repo
-    await Bun.$`git init ${testWorkDir}`.quiet();
+    await Bun.$`git init -b main ${testWorkDir}`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
     
@@ -122,7 +141,8 @@ describe("Loops Control API Integration", () => {
     await Bun.$`git -C ${testWorkDir} commit -m "Add planning files"`.quiet();
 
     // Set up backend manager with test executor factory
-    backendManager.setBackendForTesting(createMockBackend());
+    mockBackend = createMockBackend();
+    backendManager.setBackendForTesting(mockBackend);
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
 
     // Start test server on random port
@@ -166,6 +186,9 @@ describe("Loops Control API Integration", () => {
     
     // Clear all running engines first
     loopManager.resetForTesting();
+    mockBackend = createMockBackend();
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
     
     const loops = await listLoops();
     const activeStatuses = ["idle", "planning", "starting", "running", "waiting"];
@@ -211,8 +234,10 @@ describe("Loops Control API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test prompt",
+          attachments: [],
           name: "Test Loop",
           planMode: true,
           model: testModel,
@@ -253,8 +278,10 @@ describe("Loops Control API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId: testWorkspaceId,
           prompt: "Test prompt",
+          attachments: [],
           name: "Test Loop",
           draft: true,
           planMode: false,
@@ -276,20 +303,24 @@ describe("Loops Control API Integration", () => {
 
     test("returns diff data for branch-only loops without a worktree", async () => {
       const diffTestDir = await createTrackedTempDir("ralpher-branch-only-diff-");
-      await Bun.$`git init ${diffTestDir}`.quiet();
+      await Bun.$`git init -b main ${diffTestDir}`.quiet();
       await Bun.$`git -C ${diffTestDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${diffTestDir} config user.name "Test User"`.quiet();
       await writeFile(join(diffTestDir, "README.md"), "# Branch-only diff");
       await Bun.$`git -C ${diffTestDir} add .`.quiet();
       await Bun.$`git -C ${diffTestDir} commit -m "Initial commit"`.quiet();
+      await Bun.$`git -C ${diffTestDir} remote add origin ${testBareRepoDir}`.quiet();
+      await Bun.$`git -C ${diffTestDir} push -u -f origin main`.quiet();
 
       const workspaceId = await getOrCreateWorkspace(diffTestDir);
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId,
           prompt: "Test branch-only diff",
+          attachments: [],
           name: "Test Loop",
           planMode: false,
           model: testModel,
@@ -320,7 +351,7 @@ describe("Loops Control API Integration", () => {
     test("returns plan.md content", async () => {
       // Create a fresh workdir with .ralph-planning to avoid pollution from other tests
       const planTestDir = await createTrackedTempDir("ralpher-plan-test-");
-      await Bun.$`git init ${planTestDir}`.quiet();
+      await Bun.$`git init -b main ${planTestDir}`.quiet();
       await Bun.$`git -C ${planTestDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${planTestDir} config user.name "Test User"`.quiet();
       await writeFile(join(planTestDir, "README.md"), "# Test");
@@ -339,8 +370,10 @@ describe("Loops Control API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId,
           prompt: "Test",
+          attachments: [],
           name: "Test Loop",
           planMode: false,
           model: testModel,
@@ -372,7 +405,7 @@ describe("Loops Control API Integration", () => {
 
     test("returns plan.md content for branch-only loops without a worktree", async () => {
       const branchOnlyPlanDir = await createTrackedTempDir("ralpher-branch-only-plan-");
-      await Bun.$`git init ${branchOnlyPlanDir}`.quiet();
+      await Bun.$`git init -b main ${branchOnlyPlanDir}`.quiet();
       await Bun.$`git -C ${branchOnlyPlanDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${branchOnlyPlanDir} config user.name "Test User"`.quiet();
       await writeFile(join(branchOnlyPlanDir, "README.md"), "# Branch-only plan");
@@ -380,14 +413,18 @@ describe("Loops Control API Integration", () => {
       await writeFile(join(branchOnlyPlanDir, ".ralph-planning/plan.md"), "# Branch-only Plan\n\nPlan content.");
       await Bun.$`git -C ${branchOnlyPlanDir} add .`.quiet();
       await Bun.$`git -C ${branchOnlyPlanDir} commit -m "Initial commit"`.quiet();
+      await Bun.$`git -C ${branchOnlyPlanDir} remote add origin ${testBareRepoDir}`.quiet();
+      await Bun.$`git -C ${branchOnlyPlanDir} push -u -f origin main`.quiet();
 
       const workspaceId = await getOrCreateWorkspace(branchOnlyPlanDir);
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId,
           prompt: "Read branch-only plan",
+          attachments: [],
           name: "Test Loop",
           planMode: false,
           model: testModel,
@@ -413,7 +450,7 @@ describe("Loops Control API Integration", () => {
     test("returns 400 for draft loop without worktree", async () => {
       // Create a new workdir (with git but without .ralph-planning)
       const emptyWorkDir = await createTrackedTempDir("ralpher-empty-work-");
-      await Bun.$`git init ${emptyWorkDir}`.quiet();
+      await Bun.$`git init -b main ${emptyWorkDir}`.quiet();
       await Bun.$`git -C ${emptyWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${emptyWorkDir} config user.name "Test User"`.quiet();
       await writeFile(join(emptyWorkDir, "README.md"), "# Empty");
@@ -428,8 +465,10 @@ describe("Loops Control API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId,
           prompt: "Test",
+          attachments: [],
           name: "Test Loop",
           draft: true,
           planMode: false,
@@ -494,7 +533,7 @@ describe("Loops Control API Integration", () => {
     test("returns status.md content", async () => {
       // Create a fresh workdir with .ralph-planning to avoid pollution from other tests
       const statusTestDir = await createTrackedTempDir("ralpher-status-test-");
-      await Bun.$`git init ${statusTestDir}`.quiet();
+      await Bun.$`git init -b main ${statusTestDir}`.quiet();
       await Bun.$`git -C ${statusTestDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${statusTestDir} config user.name "Test User"`.quiet();
       await writeFile(join(statusTestDir, "README.md"), "# Test");
@@ -513,8 +552,10 @@ describe("Loops Control API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId,
           prompt: "Test",
+          attachments: [],
           name: "Test Loop",
           planMode: false,
           model: testModel,
@@ -546,7 +587,7 @@ describe("Loops Control API Integration", () => {
 
     test("returns status.md content for branch-only loops without a worktree", async () => {
       const branchOnlyStatusDir = await createTrackedTempDir("ralpher-branch-only-status-");
-      await Bun.$`git init ${branchOnlyStatusDir}`.quiet();
+      await Bun.$`git init -b main ${branchOnlyStatusDir}`.quiet();
       await Bun.$`git -C ${branchOnlyStatusDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${branchOnlyStatusDir} config user.name "Test User"`.quiet();
       await writeFile(join(branchOnlyStatusDir, "README.md"), "# Branch-only status");
@@ -554,14 +595,18 @@ describe("Loops Control API Integration", () => {
       await writeFile(join(branchOnlyStatusDir, ".ralph-planning/status.md"), "# Branch-only Status\n\nStatus content.");
       await Bun.$`git -C ${branchOnlyStatusDir} add .`.quiet();
       await Bun.$`git -C ${branchOnlyStatusDir} commit -m "Initial commit"`.quiet();
+      await Bun.$`git -C ${branchOnlyStatusDir} remote add origin ${testBareRepoDir}`.quiet();
+      await Bun.$`git -C ${branchOnlyStatusDir} push -u -f origin main`.quiet();
 
       const workspaceId = await getOrCreateWorkspace(branchOnlyStatusDir);
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           workspaceId,
           prompt: "Read branch-only status",
+          attachments: [],
           name: "Test Loop",
           planMode: false,
           model: testModel,
@@ -589,7 +634,7 @@ describe("Loops Control API Integration", () => {
     test("PUT /api/loops/:id/pending-prompt returns 409 when loop is not running", async () => {
       // Use unique directory to avoid conflicts
       const uniqueWorkDir = await createTrackedTempDir("ralpher-pending-prompt-test-");
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -605,8 +650,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -623,7 +670,7 @@ describe("Loops Control API Integration", () => {
         const response = await fetch(`${baseUrl}/api/loops/${loopId}/pending-prompt`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: "New prompt" }),
+          body: JSON.stringify({ prompt: "New prompt", attachments: [] }),
         });
 
         expect(response.status).toBe(409);
@@ -637,7 +684,7 @@ describe("Loops Control API Integration", () => {
     test("PUT /api/loops/:id/pending-prompt requires prompt in body", async () => {
       // Use unique directory to avoid conflicts
       const uniqueWorkDir = await createTrackedTempDir("ralpher-pending-body-test-");
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -652,8 +699,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -681,7 +730,7 @@ describe("Loops Control API Integration", () => {
     test("PUT /api/loops/:id/pending-prompt rejects empty prompt", async () => {
       // Use unique directory to avoid conflicts
       const uniqueWorkDir = await createTrackedTempDir("ralpher-pending-empty-test-");
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -696,8 +745,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -711,7 +762,7 @@ describe("Loops Control API Integration", () => {
         const response = await fetch(`${baseUrl}/api/loops/${loopId}/pending-prompt`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: "   " }),
+          body: JSON.stringify({ prompt: "   ", attachments: [] }),
         });
 
         expect(response.status).toBe(400);
@@ -725,7 +776,7 @@ describe("Loops Control API Integration", () => {
     test("DELETE /api/loops/:id/pending-prompt returns 409 when loop is not running", async () => {
       // Use unique directory to avoid conflicts
       const uniqueWorkDir = await createTrackedTempDir("ralpher-pending-del-test-");
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -741,8 +792,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -771,7 +824,7 @@ describe("Loops Control API Integration", () => {
       const response = await fetch(`${baseUrl}/api/loops/non-existent/pending-prompt`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: "Test" }),
+        body: JSON.stringify({ prompt: "Test", attachments: [] }),
       });
       expect(response.status).toBe(404);
     });
@@ -788,7 +841,7 @@ describe("Loops Control API Integration", () => {
     test("GET /api/loops/:id/comments returns empty array for new loop", async () => {
       // Use unique directory to avoid conflicts
       const uniqueWorkDir = await createTrackedTempDir("ralpher-comments-empty-test-");
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -803,8 +856,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -835,7 +890,7 @@ describe("Loops Control API Integration", () => {
       const uniqueWorkDir = await createTrackedTempDir("ralpher-comments-store-test-");
       const uniqueBareRepo = await createTrackedTempDir("ralpher-comments-store-bare-");
       await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
@@ -852,8 +907,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -881,7 +938,7 @@ describe("Loops Control API Integration", () => {
         const addressResponse = await fetch(`${baseUrl}/api/loops/${loopId}/address-comments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ comments: commentsText }),
+          body: JSON.stringify({ comments: commentsText, attachments: [] }),
         });
 
         if (addressResponse.status !== 200) {
@@ -913,7 +970,7 @@ describe("Loops Control API Integration", () => {
       const uniqueWorkDir = await createTrackedTempDir("ralpher-auto-pr-comments-test-");
       const uniqueBareRepo = await createTrackedTempDir("ralpher-auto-pr-comments-bare-");
       await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
@@ -930,8 +987,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Automatic PR comments loop",
             planMode: false,
             model: testModel,
@@ -1000,7 +1059,7 @@ describe("Loops Control API Integration", () => {
     test("POST /api/loops/:id/address-comments returns 400 for loop not in review mode", async () => {
       // Use unique directory to avoid conflicts
       const uniqueWorkDir = await createTrackedTempDir("ralpher-comments-notreview-test-");
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`touch ${uniqueWorkDir}/README.md`.quiet();
@@ -1016,8 +1075,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -1034,7 +1095,7 @@ describe("Loops Control API Integration", () => {
         const response = await fetch(`${baseUrl}/api/loops/${loopId}/address-comments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ comments: "Some comment" }),
+          body: JSON.stringify({ comments: "Some comment", attachments: [] }),
         });
 
         expect(response.status).toBe(400);
@@ -1049,7 +1110,7 @@ describe("Loops Control API Integration", () => {
       const response = await fetch(`${baseUrl}/api/loops/non-existent/address-comments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comments: "Some comment" }),
+        body: JSON.stringify({ comments: "Some comment", attachments: [] }),
       });
       expect(response.status).toBe(404);
     });
@@ -1118,7 +1179,7 @@ describe("Loops Control API Integration", () => {
       const uniqueWorkDir = await createTrackedTempDir("ralpher-comments-order-test-");
       const uniqueBareRepo = await createTrackedTempDir("ralpher-comments-order-bare-");
       await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
@@ -1135,8 +1196,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -1155,7 +1218,7 @@ describe("Loops Control API Integration", () => {
         const addressResponse = await fetch(`${baseUrl}/api/loops/${loopId}/address-comments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ comments: "First comment" }),
+          body: JSON.stringify({ comments: "First comment", attachments: [] }),
         });
         expect(addressResponse.status).toBe(200);
 
@@ -1180,7 +1243,7 @@ describe("Loops Control API Integration", () => {
       const uniqueWorkDir = await createTrackedTempDir("ralpher-comments-get-test-");
       const uniqueBareRepo = await createTrackedTempDir("ralpher-comments-get-bare-");
       await Bun.$`git init --bare ${uniqueBareRepo}`.quiet();
-      await Bun.$`git init ${uniqueWorkDir}`.quiet();
+      await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.email "test@test.com"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} config user.name "Test User"`.quiet();
       await Bun.$`git -C ${uniqueWorkDir} remote add origin ${uniqueBareRepo}`.quiet();
@@ -1197,8 +1260,10 @@ describe("Loops Control API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             workspaceId,
             prompt: "Test prompt",
+          attachments: [],
             name: "Test Loop",
             planMode: false,
             model: testModel,
@@ -1219,7 +1284,7 @@ describe("Loops Control API Integration", () => {
         const addressResponse = await fetch(`${baseUrl}/api/loops/${loopId}/address-comments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ comments: "Test comment" }),
+          body: JSON.stringify({ comments: "Test comment", attachments: [] }),
         });
         expect(addressResponse.status).toBe(200);
 

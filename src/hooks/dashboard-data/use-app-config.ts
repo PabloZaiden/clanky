@@ -31,7 +31,7 @@ export function useAppConfig(): UseAppConfigResult {
     appFetch("/api/config")
       .then((res) => res.json())
       .then((config: AppConfig) => {
-        setConfiguredPublicBasePath(config.publicBasePath || undefined);
+        setConfiguredPublicBasePath(config.publicBasePath ?? undefined);
         setRemoteOnly(config.remoteOnly);
       })
       .catch(() => {

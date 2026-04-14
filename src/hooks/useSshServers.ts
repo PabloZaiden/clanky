@@ -130,8 +130,8 @@ export function useSshServers(): UseSshServersResult {
       setError(null);
       const session = await createStandaloneSshSessionApi({
         serverId,
-        name: options.name,
-        connectionMode: options.connectionMode,
+        name: options.name ?? "SSH session",
+        connectionMode: options.connectionMode ?? "dtach",
       });
       setSessionsByServerId((prev) => ({
         ...prev,

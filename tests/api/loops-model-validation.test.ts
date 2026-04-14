@@ -54,6 +54,7 @@ describe("Model Validation in API Endpoints", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
+        serverSettings: { agent: { provider: "opencode", transport: "stdio" } },
       }),
     });
     const data = await createResponse.json();
@@ -72,7 +73,7 @@ describe("Model Validation in API Endpoints", () => {
   // Helper to create a unique work directory with git AND workspace
   async function createTestWorkDirWithWorkspace(): Promise<{ workDir: string; workspaceId: string }> {
     const workDir = await mkdtemp(join(tmpdir(), "ralpher-model-validation-test-work-"));
-    await Bun.$`git init ${workDir}`.quiet();
+    await Bun.$`git init -b main ${workDir}`.quiet();
     await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
     await writeFile(join(workDir, "README.md"), "# Test");
@@ -81,6 +82,57 @@ describe("Model Validation in API Endpoints", () => {
     await mkdir(join(workDir, ".ralph-planning"), { recursive: true });
     const workspaceId = await getOrCreateWorkspace(workDir, "Test Workspace");
     return { workDir, workspaceId };
+  }
+
+  function createLoopRequestPayload(workspaceId: string, overrides: {
+    [key: string]: unknown;
+    model?: Record<string, unknown>;
+    git?: Record<string, unknown>;
+  } = {}): Record<string, unknown> {
+    const payload: Record<string, unknown> = {
+      name: "Test Loop",
+      workspaceId,
+      prompt: "Test prompt",
+      attachments: [],
+      model: {
+        providerID: "anthropic",
+        modelID: "claude-sonnet-4-20250514",
+        variant: "",
+        ...(overrides.model ?? {}),
+      },
+      cheapModel: { mode: "same-as-loop" },
+      maxIterations: null,
+      maxConsecutiveErrors: 10,
+      activityTimeoutSeconds: 300,
+      stopPattern: "<promise>COMPLETE</promise>$",
+      git: {
+        branchPrefix: "",
+        commitScope: "",
+        ...(overrides.git ?? {}),
+      },
+      baseBranch: "main",
+      useWorktree: true,
+      clearPlanningFolder: false,
+      planMode: false,
+      autoAcceptPlan: false,
+      fullyAutonomous: false,
+      draft: false,
+      ...overrides,
+    };
+
+    if ("model" in overrides) {
+      payload["model"] = overrides.model;
+    }
+
+    if ("git" in overrides) {
+      payload["git"] = {
+        branchPrefix: "",
+        commitScope: "",
+        ...(overrides.git ?? {}),
+      };
+    }
+
+    return payload;
   }
 
   beforeAll(async () => {
@@ -166,17 +218,7 @@ describe("Model Validation in API Endpoints", () => {
         const response = await fetch(`${baseUrl}/api/loops`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workspaceId,
-            prompt: "Test prompt",
-            name: "Test Loop",
-            planMode: false,
-            useWorktree: true,
-            model: {
-              providerID: "anthropic",
-              modelID: "claude-sonnet-4-20250514",
-            },
-          }),
+          body: JSON.stringify(createLoopRequestPayload(workspaceId)),
         });
 
         // Should succeed because anthropic is connected
@@ -195,14 +237,11 @@ describe("Model Validation in API Endpoints", () => {
         const response = await fetch(`${baseUrl}/api/loops`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workspaceId,
-            prompt: "Test prompt",
-            name: "Test Loop",
-            planMode: false,
-            useWorktree: true,
-            // No model specified - should be rejected
-          }),
+          body: JSON.stringify((() => {
+            const payload = createLoopRequestPayload(workspaceId);
+            delete payload["model"];
+            return payload;
+          })()),
         });
 
         // Should fail with 400 since model is required
@@ -223,18 +262,14 @@ describe("Model Validation in API Endpoints", () => {
         const response = await fetch(`${baseUrl}/api/loops`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workspaceId,
-            prompt: "Test prompt",
-            name: "Test Loop",
-            planMode: false,
-            useWorktree: true,
+          body: JSON.stringify(createLoopRequestPayload(workspaceId, {
             draft: true,
             model: {
               providerID: "openai",
               modelID: "gpt-4o",
+              variant: "",
             },
-          }),
+          })),
         });
 
         // Drafts also require connected models now
@@ -255,17 +290,7 @@ describe("Model Validation in API Endpoints", () => {
         const createRes = await fetch(`${baseUrl}/api/loops`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workspaceId,
-            prompt: "Test prompt",
-            name: "Test Loop",
-            planMode: false,
-            useWorktree: true,
-            model: {
-              providerID: "anthropic",
-              modelID: "claude-sonnet-4-20250514",
-            },
-          }),
+          body: JSON.stringify(createLoopRequestPayload(workspaceId)),
         });
         expect(createRes.status).toBe(201);
         const loop = await createRes.json();
@@ -278,10 +303,14 @@ describe("Model Validation in API Endpoints", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            message: null,
             model: {
               providerID: "openai",
               modelID: "gpt-4o",
+              variant: "",
             },
+            immediate: true,
+            attachments: [],
           }),
         });
 
@@ -302,17 +331,7 @@ describe("Model Validation in API Endpoints", () => {
         const createRes = await fetch(`${baseUrl}/api/loops`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workspaceId,
-            prompt: "Test prompt",
-            name: "Test Loop",
-            planMode: false,
-            useWorktree: true,
-            model: {
-              providerID: "anthropic",
-              modelID: "claude-sonnet-4-20250514",
-            },
-          }),
+          body: JSON.stringify(createLoopRequestPayload(workspaceId)),
         });
         expect(createRes.status).toBe(201);
         const loop = await createRes.json();
@@ -324,10 +343,14 @@ describe("Model Validation in API Endpoints", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            message: null,
             model: {
               providerID: "anthropic",
               modelID: "claude-sonnet-4-20250514",
+              variant: "",
             },
+            immediate: true,
+            attachments: [],
           }),
         });
 
@@ -356,16 +379,13 @@ describe("Model Validation in API Endpoints", () => {
         const response = await fetch(`${baseUrl}/api/loops`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            workspaceId,
-            prompt: "Test prompt",
-            name: "Test Loop",
-            planMode: false,
+          body: JSON.stringify(createLoopRequestPayload(workspaceId, {
             model: {
               // Missing providerID - should be rejected
               modelID: "gpt-4o",
+              variant: "",
             },
-          }),
+          })),
         });
 
         // Model with missing providerID should be rejected

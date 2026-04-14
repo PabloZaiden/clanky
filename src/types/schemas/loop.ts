@@ -57,36 +57,12 @@ export const MessageImageAttachmentsSchema = z
  * If both are provided, `commitScope` takes precedence.
  */
 export const GitConfigSchema = z.object({
-  branchPrefix: z.string().optional(),
-  commitScope: z.string().optional(),
-  /** @deprecated Use `commitScope` instead. */
-  commitPrefix: z.string().optional(),
+  branchPrefix: z.string(),
+  commitScope: z.string(),
 }).transform((val) => {
-  const toConfiguredCommitScope = (scope: string | undefined): string | undefined => {
-    if (scope === undefined) {
-      return undefined;
-    }
-
+  const toConfiguredCommitScope = (scope: string): string => {
     return normalizeCommitScope(scope) ?? "";
   };
-
-  // Map deprecated commitPrefix to commitScope if commitScope is not set
-  if (val.commitPrefix !== undefined && val.commitScope === undefined) {
-    // Strip brackets and lowercase: "[Auth]" -> "auth"
-    const cleaned = val.commitPrefix
-      .replace(/^\[/, "")
-      .replace(/\]$/, "")
-      .trim()
-      .toLowerCase();
-    return {
-      branchPrefix: val.branchPrefix,
-      commitScope: toConfiguredCommitScope(cleaned),
-    };
-  }
-
-  // Drop the deprecated field from the output.
-  // Preserve omitted commitScope as undefined, but normalize explicit generic
-  // or empty values to an empty string so callers can intentionally clear scope.
   return {
     branchPrefix: val.branchPrefix,
     commitScope: toConfiguredCommitScope(val.commitScope),
@@ -107,24 +83,24 @@ export const CreateLoopRequestSchema = z.object({
   name: LoopNameSchema,
   workspaceId: z.string().min(1, "workspaceId is required"),
   prompt: z.string().min(1, "prompt is required and must be a non-empty string"),
-  attachments: MessageImageAttachmentsSchema.optional(),
+  attachments: MessageImageAttachmentsSchema,
   model: ModelConfigSchema,
-  cheapModel: CheapModelSelectionSchema.optional(),
-  maxIterations: z.number().optional(),
-  maxConsecutiveErrors: z.number().optional(),
+  cheapModel: CheapModelSelectionSchema,
+  maxIterations: z.number().positive().nullable(),
+  maxConsecutiveErrors: z.number(),
   activityTimeoutSeconds: z
     .number()
     .min(60, "activityTimeoutSeconds must be at least 60 seconds")
-    .optional(),
-  stopPattern: z.string().optional(),
-  git: GitConfigSchema.optional(),
-  baseBranch: z.string().optional(),
+  ,
+  stopPattern: z.string(),
+  git: GitConfigSchema,
+  baseBranch: z.string().min(1, "baseBranch is required"),
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
-  clearPlanningFolder: z.boolean().optional(),
+  clearPlanningFolder: z.boolean(),
   planMode: z.boolean({ error: "planMode is required and must be a boolean (true or false)" }),
-  autoAcceptPlan: z.boolean().optional(),
-  fullyAutonomous: z.boolean().optional(),
-  draft: z.boolean().optional(),
+  autoAcceptPlan: z.boolean(),
+  fullyAutonomous: z.boolean(),
+  draft: z.boolean(),
 });
 
 /**
@@ -162,7 +138,7 @@ export const GenerateLoopTitleRequestSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
   prompt: z.string().trim().min(1, "prompt is required and must be a non-empty string"),
   model: ModelConfigSchema,
-  cheapModel: CheapModelSelectionSchema.optional(),
+  cheapModel: CheapModelSelectionSchema,
 });
 
 /**
@@ -172,7 +148,7 @@ export const AddressCommentsRequestSchema = z.object({
   comments: z.string().refine((val) => val.trim().length > 0, {
     message: "comments cannot be empty",
   }),
-  attachments: MessageImageAttachmentsSchema.optional(),
+  attachments: MessageImageAttachmentsSchema,
 });
 
 /**
@@ -182,14 +158,14 @@ export const PlanFeedbackRequestSchema = z.object({
   feedback: z.string().refine((val) => val.trim().length > 0, {
     message: "feedback cannot be empty",
   }),
-  attachments: MessageImageAttachmentsSchema.optional(),
+  attachments: MessageImageAttachmentsSchema,
 });
 
 /**
  * Schema for plan acceptance - POST /api/loops/:id/plan/accept
  */
 export const PlanAcceptRequestSchema = z.object({
-  mode: z.enum(["start_loop", "open_ssh"]).optional(),
+  mode: z.enum(["start_loop", "open_ssh"]),
 });
 
 /**
@@ -199,7 +175,7 @@ export const PendingPromptRequestSchema = z.object({
   prompt: z.string().refine((val) => val.trim().length > 0, {
     message: "prompt is required and cannot be empty or whitespace-only",
   }),
-  attachments: MessageImageAttachmentsSchema.optional(),
+  attachments: MessageImageAttachmentsSchema,
 });
 
 /**
@@ -209,10 +185,10 @@ export const PendingPromptRequestSchema = z.object({
  * send `true` or omit it entirely.
  */
 export const SetPendingRequestSchema = z.object({
-  message: z.string().optional(),
-  model: ModelConfigSchema.optional(),
-  immediate: z.boolean().optional(),
-  attachments: MessageImageAttachmentsSchema.optional(),
+  message: z.string().nullable(),
+  model: ModelConfigSchema.nullable(),
+  immediate: z.boolean(),
+  attachments: MessageImageAttachmentsSchema,
 });
 
 /**
@@ -220,7 +196,7 @@ export const SetPendingRequestSchema = z.object({
  */
 export const StartDraftRequestSchema = z.object({
   planMode: z.boolean({ error: "planMode is required" }),
-  attachments: MessageImageAttachmentsSchema.optional(),
+  attachments: MessageImageAttachmentsSchema,
 });
 
 /**
@@ -230,6 +206,6 @@ export const FollowUpRequestSchema = z.object({
   message: z.string().refine((val) => val.trim().length > 0, {
     message: "message cannot be empty",
   }),
-  model: ModelConfigSchema.optional(),
-  attachments: MessageImageAttachmentsSchema.optional(),
+  model: ModelConfigSchema.nullable(),
+  attachments: MessageImageAttachmentsSchema,
 });

@@ -24,7 +24,7 @@ export const GetWorkspaceFileRequestSchema = z.object({
 export const WriteWorkspaceFileRequestSchema = z.object({
   path: WorkspaceRelativePathSchema.min(1, "path is required"),
   content: z.string(),
-  expectedVersionToken: z.string().trim().nullable().optional(),
-  overwrite: z.boolean().optional().default(false),
-  startDirectory: WorkspaceStartDirectorySchema.optional(),
+  expectedVersionToken: z.string().trim().nullable(),
+  overwrite: z.boolean(),
+  startDirectory: WorkspaceStartDirectorySchema.nullable(),
 });

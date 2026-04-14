@@ -49,7 +49,7 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
     model: {
       providerID: options.modelProviderID,
       modelID: options.modelID,
-      variant: options.modelVariant,
+      variant: options.modelVariant ?? "",
     },
     cheapModel: options.cheapModel ?? DEFAULT_LOOP_CONFIG.cheapModel,
     maxIterations: options.maxIterations ?? DEFAULT_LOOP_CONFIG.maxIterations,

@@ -179,6 +179,7 @@ describe("Standalone SSH servers API integration", () => {
         name: "Shared host",
         address: "ssh.example.com",
         username: "deploy",
+        repositoriesBasePath: null,
       }),
     });
     expect(createResponse.status).toBe(201);
@@ -228,6 +229,7 @@ describe("Standalone SSH servers API integration", () => {
         name: "Shared host",
         address: "ssh.example.com",
         username: "deploy",
+        repositoriesBasePath: null,
       }),
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
@@ -246,6 +248,7 @@ describe("Standalone SSH servers API integration", () => {
       body: JSON.stringify({
         credentialToken: exchange.credentialToken,
         name: "Deploy shell",
+        connectionMode: "dtach",
       }),
     });
     expect(createSessionResponse.status).toBe(201);
@@ -256,7 +259,7 @@ describe("Standalone SSH servers API integration", () => {
     expect(getSessionResponse.ok).toBe(true);
   });
 
-  test("accepts legacy credential tokens when creating standalone SSH sessions", async () => {
+  test("creates a standalone SSH session with a null credential token for direct mode", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -264,6 +267,7 @@ describe("Standalone SSH servers API integration", () => {
         name: "Shared host",
         address: "ssh.example.com",
         username: "deploy",
+        repositoriesBasePath: null,
       }),
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
@@ -272,22 +276,20 @@ describe("Standalone SSH servers API integration", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        credentialToken: "not-a-real-token",
-        name: "Deploy shell",
+        credentialToken: null,
+        name: "Direct shell",
+        connectionMode: "direct",
       }),
     });
     expect(createSessionResponse.status).toBe(201);
     const session = await createSessionResponse.json() as {
       config: { id: string; name: string; connectionMode: string };
     };
-    expect(session.config.name).toBe("Deploy shell");
-    expect(session.config.connectionMode).toBe("dtach");
-
-    const getSessionResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
-    expect(getSessionResponse.ok).toBe(true);
+    expect(session.config.name).toBe("Direct shell");
+    expect(session.config.connectionMode).toBe("direct");
   });
 
-  test("deletes direct standalone SSH sessions without requiring a request body", async () => {
+  test("deletes direct standalone SSH sessions", async () => {
     const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -295,6 +297,7 @@ describe("Standalone SSH servers API integration", () => {
         name: "Shared host",
         address: "ssh.example.com",
         username: "deploy",
+        repositoriesBasePath: null,
       }),
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
@@ -305,6 +308,7 @@ describe("Standalone SSH servers API integration", () => {
       body: JSON.stringify({
         name: "Direct shell",
         connectionMode: "direct",
+        credentialToken: null,
       }),
     });
     expect(createSessionResponse.status).toBe(201);
@@ -312,6 +316,8 @@ describe("Standalone SSH servers API integration", () => {
 
     const deleteSessionResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`, {
       method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: null }),
     });
     expect(deleteSessionResponse.ok).toBe(true);
 
@@ -334,6 +340,8 @@ describe("Standalone SSH servers API integration", () => {
 
     const checkResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/prerequisites/check`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: null }),
     });
     expect(checkResponse.ok).toBe(true);
     const report = await checkResponse.json() as {
@@ -362,12 +370,15 @@ describe("Standalone SSH servers API integration", () => {
         name: "Terminal Host",
         address: "ssh.example.com",
         username: "deploy",
+        repositoriesBasePath: null,
       }),
     });
     const createdServer = await createServerResponse.json() as { config: { id: string } };
 
     const checkResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/prerequisites/check`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: null }),
     });
     expect(checkResponse.ok).toBe(true);
     const report = await checkResponse.json() as {

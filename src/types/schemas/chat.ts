@@ -13,7 +13,7 @@ export const CreateChatRequestSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
   model: ModelConfigSchema,
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
-  baseBranch: z.string().optional(),
+  baseBranch: z.string().min(1, "baseBranch is required"),
 });
 
 export const UpdateChatRequestSchema = z.object({
@@ -24,8 +24,8 @@ export const UpdateChatRequestSchema = z.object({
 });
 
 export const SendChatMessageRequestSchema = z.object({
-  message: z.string().optional(),
-  attachments: MessageImageAttachmentsSchema.optional(),
+  message: z.string().nullable(),
+  attachments: MessageImageAttachmentsSchema,
 }).superRefine((value, ctx) => {
   const hasMessage = typeof value.message === "string" && value.message.trim().length > 0;
   const hasAttachments = Array.isArray(value.attachments) && value.attachments.length > 0;
@@ -40,5 +40,5 @@ export const SendChatMessageRequestSchema = z.object({
 });
 
 export const InterruptChatRequestSchema = z.object({
-  reason: z.string().trim().min(1).optional(),
+  reason: z.string().trim(),
 });

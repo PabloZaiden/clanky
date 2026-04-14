@@ -51,7 +51,7 @@ async function readApiError(response: Response): Promise<string> {
 }
 
 function getPasskeyStatus(config: AppConfig): PasskeyAuthStatusResponse {
-  return config.passkeyAuth ?? DEFAULT_PASSKEY_STATUS;
+  return config.passkeyAuth;
 }
 
 export function usePasskeyAuth(): UsePasskeyAuthResult {
@@ -73,8 +73,8 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
     }
 
     const config = (await response.json()) as AppConfig;
-    setConfiguredPublicBasePath(config.publicBasePath || undefined);
-    setBasicAuthEnabled(Boolean(config.basicAuthEnabled));
+    setConfiguredPublicBasePath(config.publicBasePath ?? undefined);
+    setBasicAuthEnabled(config.basicAuthEnabled);
     setStatus(getPasskeyStatus(config));
   }, []);
 
@@ -91,8 +91,8 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
         }
 
         const config = (await response.json()) as AppConfig;
-        setConfiguredPublicBasePath(config.publicBasePath || undefined);
-        setBasicAuthEnabled(Boolean(config.basicAuthEnabled));
+        setConfiguredPublicBasePath(config.publicBasePath ?? undefined);
+        setBasicAuthEnabled(config.basicAuthEnabled);
         setStatus(getPasskeyStatus(config));
         setError(null);
       } catch (loadError) {

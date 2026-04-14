@@ -42,7 +42,7 @@ export async function addressReviewCommentsApi(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comments, attachments }),
+        body: JSON.stringify({ comments, attachments: attachments ?? [] }),
     },
     "Address comments",
     // Handle both error shapes:
@@ -69,7 +69,7 @@ export async function sendFollowUpApi(
   return apiActionWithBody(
     `/api/loops/${loopId}/follow-up`,
     "POST",
-    { message, model, attachments },
+    { message, model: model ? { ...model, variant: "" } : null, attachments: attachments ?? [] },
     "Send follow-up",
   );
 }

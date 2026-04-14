@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { handleCreateLoopSubmit } from "@/components/dashboard-modals/loop-submit-handlers";
 import { createLoopWithStatus, createWorkspace } from "../helpers/factories";
+import { DEFAULT_LOOP_CONFIG } from "@/types/loop";
 
 const originalFetch = globalThis.fetch;
 
@@ -72,6 +73,7 @@ describe("handleCreateLoopSubmit", () => {
           model: {
             providerID: "anthropic",
             modelID: "claude-sonnet-4-20250514",
+            variant: "",
           },
         },
       }),
@@ -82,12 +84,25 @@ describe("handleCreateLoopSubmit", () => {
         model: {
           providerID: "anthropic",
           modelID: "claude-sonnet-4-20250514",
+          variant: "",
         },
         draft: false,
         planMode: false,
         useWorktree: true,
         clearPlanningFolder: false,
         attachments: [],
+        cheapModel: { mode: "same-as-loop" },
+        maxIterations: null,
+        maxConsecutiveErrors: DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
+        activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+        stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
+        git: {
+          branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,
+          commitScope: DEFAULT_LOOP_CONFIG.git.commitScope,
+        },
+        baseBranch: "",
+        autoAcceptPlan: false,
+        fullyAutonomous: false,
       },
       toast,
     );

@@ -43,7 +43,7 @@ function draftLoop(id = "draft-1", name = "My Draft", planMode = false) {
       directory: "/workspaces/my-project",
       workspaceId: "ws-1",
       prompt: "Build a feature",
-      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
       useWorktree: true,
       planMode,
     },

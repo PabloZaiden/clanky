@@ -16,7 +16,25 @@ import { closeDatabase } from "../../src/persistence/database";
 import { PlanModeMockBackend } from "../mocks/mock-backend";
 
 // Default test model for loop creation (model is now required)
-const testModel = { providerID: "test-provider", modelID: "test-model" };
+const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
+const defaultServerSettings = { agent: { provider: "opencode", transport: "stdio" } };
+const baseCreateLoopPayload = {
+  attachments: [],
+  cheapModel: { mode: "same-as-loop" as const },
+  maxIterations: null,
+  maxConsecutiveErrors: 10,
+  activityTimeoutSeconds: 300,
+  stopPattern: "<promise>COMPLETE</promise>$",
+  git: {
+    branchPrefix: "",
+    commitScope: "",
+  },
+  baseBranch: "main",
+  clearPlanningFolder: false,
+  autoAcceptPlan: false,
+  fullyAutonomous: false,
+  draft: false,
+};
 
 describe("Plan Mode API Integration", () => {
   let testDataDir: string;
@@ -41,7 +59,7 @@ describe("Plan Mode API Integration", () => {
       body: JSON.stringify({
         name: name || directory.split("/").pop() || "Test",
         directory,
-        serverSettings,
+        serverSettings: serverSettings ?? defaultServerSettings,
       }),
     });
     const data = await createResponse.json();
@@ -154,7 +172,7 @@ describe("Plan Mode API Integration", () => {
   // Helper to create a unique work directory with git initialized
   async function createTestWorkDir(): Promise<string> {
     const workDir = await mkdtemp(join(tmpdir(), "ralpher-api-plan-test-work-"));
-    await Bun.$`git init ${workDir}`.quiet();
+    await Bun.$`git init -b main ${workDir}`.quiet();
     await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
     await Bun.$`touch ${workDir}/README.md`.quiet();
@@ -276,6 +294,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           prompt: "Create a plan",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,
@@ -312,6 +331,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           prompt: "Create a plan",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,
@@ -350,6 +370,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           // Missing name, prompt, directory
           planMode: true,
         }),
@@ -366,6 +387,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           prompt: "Create a plan",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,
@@ -394,6 +416,7 @@ describe("Plan Mode API Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           feedback: "Please add more details",
+          attachments: [],
         }),
       });
 
@@ -412,6 +435,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           prompt: "Do something",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,
@@ -433,6 +457,7 @@ describe("Plan Mode API Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           feedback: "This should fail",
+          attachments: [],
         }),
       });
 
@@ -445,6 +470,7 @@ describe("Plan Mode API Integration", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           feedback: "Test",
+          attachments: [],
         }),
       });
 
@@ -459,6 +485,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           prompt: "Create a plan",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,
@@ -484,6 +511,8 @@ describe("Plan Mode API Integration", () => {
       // Accept the plan
       const acceptResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/accept`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "start_loop" }),
       });
 
       expect(acceptResponse.status).toBe(200);
@@ -509,6 +538,7 @@ describe("Plan Mode API Integration", () => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+          ...baseCreateLoopPayload,
             prompt: "Create a plan",
             name: "Test Loop",
             workspaceId: sshWorkspaceId,
@@ -562,6 +592,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           prompt: "Create a plan",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,
@@ -590,7 +621,11 @@ describe("Plan Mode API Integration", () => {
       await Bun.$`git -C ${currentTestWorkDir} commit -m "Add plan file"`.quiet();
 
       // Accept the plan
-      const acceptResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/accept`, { method: "POST" });
+      const acceptResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "start_loop" }),
+      });
       if (acceptResponse.status !== 200) {
         const body = await acceptResponse.json();
         throw new Error(`Accept failed with ${acceptResponse.status}: ${JSON.stringify(body)}`);
@@ -616,6 +651,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           prompt: "Do something",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,
@@ -655,6 +691,7 @@ describe("Plan Mode API Integration", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...baseCreateLoopPayload,
           prompt: "Create a plan",
           name: "Test Loop",
           workspaceId: currentWorkspaceId,

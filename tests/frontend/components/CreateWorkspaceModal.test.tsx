@@ -16,6 +16,7 @@ const registeredSshServers = [
       name: "Build Box",
       address: "10.0.0.5",
       username: "vscode",
+      repositoriesBasePath: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },

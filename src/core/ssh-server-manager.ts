@@ -65,7 +65,7 @@ export class SshServerManager {
       name: request.name.trim(),
       address: request.address.trim(),
       username: request.username.trim(),
-      repositoriesBasePath: request.repositoriesBasePath?.trim() || undefined,
+      repositoriesBasePath: request.repositoriesBasePath?.trim() || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -86,7 +86,7 @@ export class SshServerManager {
       ...(request.address !== undefined ? { address: request.address.trim() } : {}),
       ...(request.username !== undefined ? { username: request.username.trim() } : {}),
       ...(request.repositoriesBasePath !== undefined
-        ? { repositoriesBasePath: request.repositoriesBasePath?.trim() || undefined }
+        ? { repositoriesBasePath: request.repositoriesBasePath?.trim() || null }
         : {}),
       updatedAt: new Date().toISOString(),
     });
@@ -124,7 +124,7 @@ export class SshServerManager {
 
   async checkPrerequisites(
     serverId: string,
-    request: CheckSshServerPrerequisitesRequest = {},
+    request: CheckSshServerPrerequisitesRequest = { credentialToken: null },
   ): Promise<SshServerPrerequisiteReport> {
     const server = await this.requireServerConfig(serverId);
     const credentialToken = request.credentialToken?.trim();

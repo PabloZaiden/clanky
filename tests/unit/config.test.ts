@@ -95,13 +95,33 @@ describe("getAppConfig", () => {
   test("returns remoteOnly: false when env var is not set", () => {
     delete process.env["RALPHER_REMOTE_ONLY"];
     const config = getAppConfig();
-    expect(config).toEqual({ remoteOnly: false });
+    expect(config).toEqual({
+      remoteOnly: false,
+      basicAuthEnabled: false,
+      passkeyAuth: {
+        passkeyConfigured: false,
+        passkeyDisabled: false,
+        passkeyRequired: false,
+        authenticated: false,
+      },
+      publicBasePath: null,
+    });
   });
 
   test("returns remoteOnly: true when env var is set to true", () => {
     process.env["RALPHER_REMOTE_ONLY"] = "true";
     const config = getAppConfig();
-    expect(config).toEqual({ remoteOnly: true });
+    expect(config).toEqual({
+      remoteOnly: true,
+      basicAuthEnabled: false,
+      passkeyAuth: {
+        passkeyConfigured: false,
+        passkeyDisabled: false,
+        passkeyRequired: false,
+        authenticated: false,
+      },
+      publicBasePath: null,
+    });
   });
 });
 

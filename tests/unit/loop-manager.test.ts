@@ -262,6 +262,7 @@ describe("LoopManager", () => {
           model: {
             providerID: "missing-provider",
             modelID: "missing-model",
+            variant: "",
           },
         },
       });

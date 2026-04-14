@@ -165,7 +165,7 @@ describe("StopPatternDetector", () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       workspaceId: "test-workspace-id",
-      model: { providerID: "test-provider", modelID: "test-model" },
+      model: { providerID: "test-provider", modelID: "test-model", variant: "" },
       // Backend is now global, not per-loop config
       stopPattern: "<promise>COMPLETE</promise>$",
       git: { branchPrefix: "", commitScope: "" },

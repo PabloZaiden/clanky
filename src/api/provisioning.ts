@@ -45,11 +45,11 @@ export const provisioningRoutes = {
           sshServerId: validation.data.sshServerId,
           repoUrl: validation.data.repoUrl,
           basePath: validation.data.basePath,
-          devcontainerSubpath: validation.data.devcontainerSubpath,
+          devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,
           provider: validation.data.provider,
           mode: validation.data.mode,
-          targetDirectory: validation.data.targetDirectory,
-          workspaceId: validation.data.workspaceId,
+          targetDirectory: validation.data.targetDirectory ?? undefined,
+          workspaceId: validation.data.workspaceId ?? undefined,
           password,
         });
         return Response.json(snapshot, { status: 201 });

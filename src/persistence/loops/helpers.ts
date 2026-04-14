@@ -191,20 +191,19 @@ export function normalizeLoopMode(mode: unknown, rowId: unknown): LoopConfig["mo
  */
 export function rowToLoop(row: Record<string, unknown>): Loop {
   // Handle model - required field, but may be missing in legacy data
-  let model: { providerID: string; modelID: string; variant?: string };
+  let model: { providerID: string; modelID: string; variant: string };
   if (row["model_provider_id"] && row["model_model_id"]) {
     model = {
       providerID: row["model_provider_id"] as string,
       modelID: row["model_model_id"] as string,
+      variant: (row["model_variant"] as string | null) ?? "",
     };
-    if (row["model_variant"]) {
-      model.variant = row["model_variant"] as string;
-    }
   } else {
     // Legacy loops without model - provide a placeholder that indicates missing config
     model = {
       providerID: "unknown",
       modelID: "not-configured",
+      variant: "",
     };
   }
 
@@ -316,10 +315,8 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
     state.pendingModel = {
       providerID: row["pending_model_provider_id"] as string,
       modelID: row["pending_model_model_id"] as string,
+      variant: (row["pending_model_variant"] as string | null) ?? "",
     };
-    if (row["pending_model_variant"]) {
-      state.pendingModel.variant = row["pending_model_variant"] as string;
-    }
   }
   // Reconstruct planMode if any plan mode field is set (not just when active)
   if (row["plan_mode_active"] !== null || row["planning_folder_cleared"] === 1 ||

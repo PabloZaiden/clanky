@@ -173,6 +173,7 @@ describe("SshServerManager", () => {
       name: "Shared host",
       address: "ssh.example.com",
       username: "deploy",
+      repositoriesBasePath: null,
     });
 
     expect(server.publicKey.publicKey).toContain("BEGIN PUBLIC KEY");
@@ -192,10 +193,13 @@ describe("SshServerManager", () => {
       name: "Shared host",
       address: "ssh.example.com",
       username: "deploy",
+      repositoriesBasePath: null,
     });
 
     const session = await sshServerManager.createSession(server.config.id, {
       name: "Deploy shell",
+      credentialToken: null,
+      connectionMode: "dtach",
     });
     expect(session.config.name).toBe("Deploy shell");
     expect(session.config.connectionMode).toBe("dtach");
@@ -213,9 +217,14 @@ describe("SshServerManager", () => {
       name: "Shared host",
       address: "ssh.example.com",
       username: "deploy",
+      repositoriesBasePath: null,
     });
 
-    const session = await sshServerManager.createSession(server.config.id, {});
+    const session = await sshServerManager.createSession(server.config.id, {
+      name: "Shared host shell",
+      credentialToken: null,
+      connectionMode: "dtach",
+    });
     expect(session.config.connectionMode).toBe("dtach");
   });
 
@@ -247,6 +256,7 @@ describe("SshServerManager", () => {
       name: "Terminal Host",
       address: "ssh.example.com",
       username: "deploy",
+      repositoriesBasePath: null,
     });
 
     const report = await sshServerManager.checkPrerequisites(server.config.id);

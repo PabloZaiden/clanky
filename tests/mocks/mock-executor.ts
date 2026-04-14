@@ -28,11 +28,12 @@ export class TestCommandExecutor implements CommandExecutor {
       }
 
       // Use Bun.spawn which handles cwd more reliably than Bun.$
-      const proc = Bun.spawn([command, ...args], {
+      const executable = Bun.which(command) ?? command;
+      const proc = Bun.spawn([executable, ...args], {
         cwd,
         stdout: "pipe",
         stderr: "pipe",
-        ...(options?.env ? { env: { ...process.env, ...options.env } } : {}),
+        env: { ...process.env, ...(options?.env ?? {}) },
       });
 
       const [stdout, stderr, exitCode] = await Promise.all([

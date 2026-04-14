@@ -69,7 +69,7 @@ function rowToSshServerConfig(row: Record<string, unknown>): SshServerConfig {
     name: row["name"] as string,
     address: row["address"] as string,
     username: row["username"] as string,
-    repositoriesBasePath: (row["repositories_base_path"] as string | null) ?? undefined,
+    repositoriesBasePath: (row["repositories_base_path"] as string | null) ?? null,
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
   };

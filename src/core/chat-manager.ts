@@ -80,7 +80,7 @@ export class ChatManager {
         model: {
           providerID: options.modelProviderID,
           modelID: options.modelID,
-          variant: options.modelVariant,
+          variant: options.modelVariant ?? "",
         },
         useWorktree: options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree,
         baseBranch: options.baseBranch,

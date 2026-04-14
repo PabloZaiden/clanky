@@ -103,6 +103,7 @@ describe("createWorkspace", () => {
       created = await result.current.createWorkspace({
         name: "New WS",
         directory: "/workspaces/new",
+        serverSettings: createServerSettings(),
       });
     });
 
@@ -143,6 +144,7 @@ describe("createWorkspace", () => {
       created = await result.current.createWorkspace({
         name: "Existing",
         directory: "/workspaces/existing",
+        serverSettings: createServerSettings(),
       });
     });
 
@@ -168,6 +170,7 @@ describe("createWorkspace", () => {
       created = await result.current.createWorkspace({
         name: "Bad",
         directory: "not-a-path",
+        serverSettings: createServerSettings(),
       });
     });
 
