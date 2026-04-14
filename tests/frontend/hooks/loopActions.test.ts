@@ -298,7 +298,7 @@ describe("sendFollowUpApi", () => {
 
     expect(api.calls(`/api/loops/${LOOP_ID}/follow-up`, "POST")[0]?.body).toEqual({
       message: "Please restart this",
-      model: undefined,
+      model: null,
       attachments: [SAMPLE_ATTACHMENT],
     });
   });
@@ -344,7 +344,7 @@ describe("setPendingPromptApi", () => {
     expect(result).toBe(true);
     const calls = api.calls(`/api/loops/${LOOP_ID}/pending-prompt`, "PUT");
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.body).toEqual({ prompt: "Do this next" });
+    expect(calls[0]!.body).toEqual({ prompt: "Do this next", attachments: [] });
   });
 
   test("throws error with message from error response", async () => {
@@ -415,7 +415,7 @@ describe("sendPlanFeedbackApi", () => {
     expect(result).toBe(true);
     const calls = api.calls(`/api/loops/${LOOP_ID}/plan/feedback`, "POST");
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.body).toEqual({ feedback: "Add error handling" });
+    expect(calls[0]!.body).toEqual({ feedback: "Add error handling", attachments: [] });
   });
 
   test("throws error with message from error response", async () => {
@@ -519,7 +519,7 @@ describe("setPendingApi", () => {
     expect(result).toEqual({ success: true });
     const calls = api.calls(`/api/loops/${LOOP_ID}/pending`, "POST");
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.body).toEqual({ message: "Next instruction" });
+    expect(calls[0]!.body).toEqual({ message: "Next instruction", model: null, immediate: true, attachments: [] });
   });
 
   test("calls POST /api/loops/:id/pending with model and returns result", async () => {
@@ -533,7 +533,10 @@ describe("setPendingApi", () => {
     const calls = api.calls(`/api/loops/${LOOP_ID}/pending`, "POST");
     expect(calls).toHaveLength(1);
     expect(calls[0]!.body).toEqual({
-      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
+      message: null,
+      model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514", variant: "" },
+      immediate: true,
+      attachments: [],
     });
   });
 
@@ -550,7 +553,9 @@ describe("setPendingApi", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.body).toEqual({
       message: "Fix the bug",
-      model: { providerID: "openai", modelID: "gpt-4o" },
+      model: { providerID: "openai", modelID: "gpt-4o", variant: "" },
+      immediate: true,
+      attachments: [],
     });
   });
 
@@ -619,7 +624,7 @@ describe("addressReviewCommentsApi", () => {
     });
     const calls = api.calls(`/api/loops/${LOOP_ID}/address-comments`, "POST");
     expect(calls).toHaveLength(1);
-    expect(calls[0]!.body).toEqual({ comments: "Please fix the typo on line 42" });
+    expect(calls[0]!.body).toEqual({ comments: "Please fix the typo on line 42", attachments: [] });
   });
 
   test("throws error using message field from error response", async () => {

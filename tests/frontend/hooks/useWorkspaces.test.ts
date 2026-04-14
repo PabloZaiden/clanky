@@ -116,6 +116,9 @@ describe("createWorkspace", () => {
     expect(postCalls[0]!.body).toEqual({
       name: "New WS",
       directory: "/workspaces/new",
+      serverSettings: {
+        agent: { provider: "opencode", transport: "stdio" },
+      },
     });
   });
 

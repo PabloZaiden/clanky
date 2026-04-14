@@ -21,7 +21,7 @@ function setupDefaultApi() {
   api.get("/api/workspaces", () => []);
   api.get("/api/ssh-sessions", () => []);
   api.get("/api/ssh-servers", () => []);
-  api.get("/api/config", () => ({ remoteOnly: false }));
+  api.get("/api/config", () => ({ remoteOnly: false, basicAuthEnabled: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
   api.get("/api/preferences/last-model", () => null);
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
@@ -162,7 +162,7 @@ describe("ssh section", () => {
 
     const sessionCreates = api.calls("/api/ssh-sessions", "POST");
     expect(sessionCreates).toHaveLength(1);
-    expect(sessionCreates[0]?.body).toEqual({ workspaceId: "ws-2" });
+    expect(sessionCreates[0]?.body).toEqual({ workspaceId: "ws-2", name: "Beta SSH terminal", connectionMode: "dtach" });
   });
 
   test("renders a single collapsed SSH section that can reveal workspace sessions", async () => {

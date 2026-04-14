@@ -147,6 +147,10 @@ describe("CreateWorkspaceModal", () => {
       basePath: "/srv/workspaces",
       devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
       provider: "copilot",
+      credentialToken: null,
+      mode: "provision",
+      targetDirectory: null,
+      workspaceId: null,
     });
     expect(ws.getConnections("/api/ws")[0]?.queryParams["provisioningJobId"]).toBe("job-1");
   });
@@ -315,6 +319,10 @@ describe("CreateWorkspaceModal", () => {
       basePath: "/srv/workspaces",
       devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
       provider: "copilot",
+      credentialToken: null,
+      mode: "provision",
+      targetDirectory: null,
+      workspaceId: null,
     });
   });
 

@@ -81,6 +81,7 @@ describe("server file explorer actions", () => {
         path: "src/index.ts",
         content: "export const value = 2;\n",
         expectedVersionToken: "token-a",
+        overwrite: false,
         startDirectory: "/srv/apps",
       });
       return {
