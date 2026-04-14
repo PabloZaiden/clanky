@@ -16,7 +16,6 @@ import {
 } from "../helpers/factories";
 import type { ModelInfo, CreateLoopRequest } from "@/types";
 import type { Workspace } from "@/types/workspace";
-import { DEFAULT_LOOP_CONFIG } from "@/types/loop";
 import { PROMPT_TEMPLATES, getTemplateById } from "@/lib/prompt-templates";
 import {
   createTestFile,
@@ -766,12 +765,12 @@ describe("CreateLoopForm", () => {
       expect((getByLabelText("Max Consecutive Errors") as HTMLInputElement).value).toBe("10");
     });
 
-    test(`activity timeout defaults to ${DEFAULT_LOOP_CONFIG.activityTimeoutSeconds}`, async () => {
+    test("activity timeout defaults to unlimited", async () => {
       const { getByText, getByLabelText, user } = renderWithUser(
         <CreateLoopForm {...defaultProps()} />
       );
       await user.click(getByText("Show advanced options"));
-      expect((getByLabelText("Activity Timeout (seconds)") as HTMLInputElement).value).toBe(String(DEFAULT_LOOP_CONFIG.activityTimeoutSeconds));
+      expect((getByLabelText("Activity Timeout (seconds)") as HTMLInputElement).value).toBe("");
     });
   });
 
@@ -926,6 +925,7 @@ describe("CreateLoopForm", () => {
       expect(req.useWorktree).toBe(true);
       expect(req.model).toBeDefined();
       expect(req.model.providerID).toBe("anthropic");
+      expect(req.activityTimeoutSeconds).toBeNull();
 
       // onCancel should be called on success (closes the modal)
       await waitFor(() => {
@@ -1062,6 +1062,40 @@ describe("CreateLoopForm", () => {
 
       const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
       expect(req.name).toBe("Loop title");
+    });
+
+    test("submits a finite activity timeout when one is entered", async () => {
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, getByText, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Do it");
+      await setInputValue(user, getByLabelText(/Title/) as HTMLInputElement, "Loop title");
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+      });
+
+      await user.click(getByText("Show advanced options"));
+      await setInputValue(user, getByLabelText("Activity Timeout (seconds)") as HTMLInputElement, "120");
+
+      await user.click(getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
+      expect(req.activityTimeoutSeconds).toBe(120);
     });
   });
 

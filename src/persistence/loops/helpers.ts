@@ -226,7 +226,9 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
     // Mandatory fields with defaults for backward compatibility with old data
     maxIterations: (row["max_iterations"] as number | null) ?? Infinity,
     maxConsecutiveErrors: (row["max_consecutive_errors"] as number | null) ?? 10,
-    activityTimeoutSeconds: (row["activity_timeout_seconds"] as number | null) ?? DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+    activityTimeoutSeconds:
+      (row["activity_timeout_seconds"] as number | null | undefined) ??
+      DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
     useWorktree: row["use_worktree"] === 1,
     clearPlanningFolder: row["clear_planning_folder"] === 1,
     planMode: row["plan_mode"] === 1,

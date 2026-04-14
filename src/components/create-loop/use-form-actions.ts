@@ -157,7 +157,7 @@ export function useFormActions({
           : DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
         activityTimeoutSeconds: activityTimeoutSeconds.trim()
           ? Math.max(parseInt(activityTimeoutSeconds, 10), 60)
-          : DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+          : null,
         stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
         git: {
           branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,

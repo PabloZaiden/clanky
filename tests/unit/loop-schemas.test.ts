@@ -26,6 +26,58 @@ const baseCreateLoopRequest = {
 };
 
 describe("loop attachment schemas", () => {
+  test("accepts unlimited activity timeout on create-loop requests", () => {
+    expect(CreateLoopRequestSchema.safeParse({
+      name: "Unlimited timeout loop",
+      workspaceId: "ws-1",
+      prompt: "Do a task",
+      attachments: [],
+      model: {
+        providerID: "provider",
+        modelID: "model",
+        variant: "",
+      },
+      ...baseCreateLoopRequest,
+      activityTimeoutSeconds: null,
+      useWorktree: true,
+      planMode: false,
+    }).success).toBe(true);
+
+    const { activityTimeoutSeconds: _activityTimeoutSeconds, ...requestWithoutTimeout } = baseCreateLoopRequest;
+    expect(CreateLoopRequestSchema.safeParse({
+      name: "Default timeout loop",
+      workspaceId: "ws-1",
+      prompt: "Do a task",
+      attachments: [],
+      model: {
+        providerID: "provider",
+        modelID: "model",
+        variant: "",
+      },
+      ...requestWithoutTimeout,
+      useWorktree: true,
+      planMode: false,
+    }).success).toBe(true);
+  });
+
+  test("rejects finite activity timeout values below the minimum", () => {
+    expect(CreateLoopRequestSchema.safeParse({
+      name: "Too short timeout",
+      workspaceId: "ws-1",
+      prompt: "Do a task",
+      attachments: [],
+      model: {
+        providerID: "provider",
+        modelID: "model",
+        variant: "",
+      },
+      ...baseCreateLoopRequest,
+      activityTimeoutSeconds: 59,
+      useWorktree: true,
+      planMode: false,
+    }).success).toBe(false);
+  });
+
   test("accepts transient image attachments on create-loop requests", () => {
     const result = CreateLoopRequestSchema.safeParse({
       name: "Screenshot review",

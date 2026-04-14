@@ -75,6 +75,11 @@ export const LoopNameSchema = z
   .min(1, "name is required")
   .max(100, "name cannot exceed 100 characters");
 
+const ActivityTimeoutSecondsSchema = z
+  .number()
+  .min(60, "activityTimeoutSeconds must be at least 60 seconds")
+  .nullable();
+
 /**
  * Schema for CreateLoopRequest - POST /api/loops
  *
@@ -88,9 +93,7 @@ export const CreateLoopRequestSchema = z.object({
   cheapModel: CheapModelSelectionSchema,
   maxIterations: z.number().positive().nullable(),
   maxConsecutiveErrors: z.number(),
-  activityTimeoutSeconds: z
-    .number()
-    .min(60, "activityTimeoutSeconds must be at least 60 seconds"),
+  activityTimeoutSeconds: ActivityTimeoutSecondsSchema.optional(),
   stopPattern: z.string(),
   git: GitConfigSchema,
   baseBranch: z.string().min(1, "baseBranch is required"),
@@ -116,10 +119,7 @@ export const UpdateLoopRequestSchema = z.object({
   cheapModel: CheapModelSelectionSchema.optional(),
   maxIterations: z.number().optional(),
   maxConsecutiveErrors: z.number().optional(),
-  activityTimeoutSeconds: z
-    .number()
-    .min(60, "activityTimeoutSeconds must be at least 60 seconds")
-    .optional(),
+  activityTimeoutSeconds: ActivityTimeoutSecondsSchema.optional(),
   stopPattern: z.string().optional(),
   git: GitConfigSchema.optional(),
   baseBranch: z.string().optional(),

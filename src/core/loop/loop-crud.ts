@@ -54,7 +54,10 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
     cheapModel: options.cheapModel ?? DEFAULT_LOOP_CONFIG.cheapModel,
     maxIterations: options.maxIterations ?? DEFAULT_LOOP_CONFIG.maxIterations,
     maxConsecutiveErrors: options.maxConsecutiveErrors ?? DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
-    activityTimeoutSeconds: options.activityTimeoutSeconds ?? DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+    activityTimeoutSeconds:
+      options.activityTimeoutSeconds !== undefined
+        ? options.activityTimeoutSeconds
+        : DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
     stopPattern: options.stopPattern ?? DEFAULT_LOOP_CONFIG.stopPattern,
     git: {
       branchPrefix: normalizeBranchPrefix(options.gitBranchPrefix ?? DEFAULT_LOOP_CONFIG.git.branchPrefix),

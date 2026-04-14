@@ -57,8 +57,7 @@ export function useFormFields({
     initialLoopData?.maxConsecutiveErrors?.toString() ?? "10"
   );
   const [activityTimeoutSeconds, setActivityTimeoutSeconds] = useState<string>(
-    initialLoopData?.activityTimeoutSeconds?.toString() ??
-      String(DEFAULT_LOOP_CONFIG.activityTimeoutSeconds)
+    initialLoopData?.activityTimeoutSeconds?.toString() ?? ""
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [planMode, setPlanMode] = useState(initialLoopData?.planMode ?? true);
