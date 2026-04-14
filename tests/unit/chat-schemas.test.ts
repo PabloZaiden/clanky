@@ -54,6 +54,7 @@ describe("SendChatMessageRequestSchema", () => {
 describe("InterruptChatRequestSchema", () => {
   test("requires an explicit reason field and trims it", () => {
     expect(InterruptChatRequestSchema.safeParse({}).success).toBe(false);
+    expect(InterruptChatRequestSchema.safeParse({ reason: "   " }).success).toBe(false);
     const result = InterruptChatRequestSchema.safeParse({
       reason: " user requested stop ",
     });

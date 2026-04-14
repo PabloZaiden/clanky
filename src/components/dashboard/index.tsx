@@ -353,7 +353,7 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
           if (editingSshServer) {
             return updateServer(editingSshServer.config.id, request, password);
           }
-          return createServer({ ...request, repositoriesBasePath: null }, password);
+          return createServer({ ...request, repositoriesBasePath: request.repositoriesBasePath ?? null }, password);
         }}
       />
 

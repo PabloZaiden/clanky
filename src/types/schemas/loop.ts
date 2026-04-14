@@ -90,8 +90,7 @@ export const CreateLoopRequestSchema = z.object({
   maxConsecutiveErrors: z.number(),
   activityTimeoutSeconds: z
     .number()
-    .min(60, "activityTimeoutSeconds must be at least 60 seconds")
-  ,
+    .min(60, "activityTimeoutSeconds must be at least 60 seconds"),
   stopPattern: z.string(),
   git: GitConfigSchema,
   baseBranch: z.string().min(1, "baseBranch is required"),

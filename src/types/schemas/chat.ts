@@ -40,5 +40,5 @@ export const SendChatMessageRequestSchema = z.object({
 });
 
 export const InterruptChatRequestSchema = z.object({
-  reason: z.string().trim(),
+  reason: z.string().trim().min(1, "reason is required"),
 });
