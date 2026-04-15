@@ -12,6 +12,7 @@ import type { LoopEvent } from "../../src/types/events";
 import { updateLoopState } from "../../src/persistence/loops";
 import { getDefaultServerSettings } from "../../src/types/settings";
 import { backendManager } from "../../src/core/backend-manager";
+import type { LoopState } from "../../src/types/loop";
 import { createMockBackend, MockAcpBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
@@ -607,6 +608,83 @@ describe("LoopManager", () => {
     // - Loop status becomes "merged"
     // - Repository stays on the original branch
     // - loop.merged event is emitted
+  });
+
+  describe("manualCompleteLoop", () => {
+    test("requires halted loops to have git state", async () => {
+      const loop = await manager.createLoop({
+        ...testModelFields,
+        directory: testWorkDir,
+        prompt: "Test",
+        name: "Test Loop",
+        workspaceId: testWorkspaceId,
+        planMode: false,
+      });
+
+      await updateLoopState(loop.config.id, {
+        ...loop.state,
+        status: "failed",
+        error: {
+          message: "Loop failed before git setup",
+          iteration: 0,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      const result = await manager.manualCompleteLoop(loop.config.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("No git branch");
+
+      const fetched = await manager.getLoop(loop.config.id);
+      expect(fetched).not.toBeNull();
+      expect(fetched!.state.status).toBe("failed");
+    });
+
+    test("removes stale engines before persisting manual completion", async () => {
+      const loop = await manager.createLoop({
+        ...testModelFields,
+        directory: testWorkDir,
+        prompt: "Test",
+        name: "Test Loop",
+        workspaceId: testWorkspaceId,
+        planMode: false,
+      });
+      const failedState = {
+        ...loop.state,
+        status: "failed" as const,
+        git: {
+          originalBranch: "main",
+          workingBranch: "manual-complete-test-branch",
+          commits: [],
+        },
+        error: {
+          message: "Manual completion regression",
+          iteration: 1,
+          timestamp: new Date().toISOString(),
+        },
+      };
+      await updateLoopState(loop.config.id, failedState);
+
+      const staleEngineState = structuredClone(failedState) as LoopState;
+      const engineMap = (manager as unknown as { engines: Map<string, unknown> }).engines;
+      engineMap.set(loop.config.id, {
+        config: loop.config,
+        state: staleEngineState,
+      });
+
+      const result = await manager.manualCompleteLoop(loop.config.id);
+
+      expect(result.success).toBe(true);
+      expect(manager.isRunning(loop.config.id)).toBe(false);
+      expect(staleEngineState.status).toBe("completed");
+      expect(staleEngineState.error).toBeUndefined();
+
+      const fetched = await manager.getLoop(loop.config.id);
+      expect(fetched).not.toBeNull();
+      expect(fetched!.state.status).toBe("completed");
+      expect(fetched!.state.error).toBeUndefined();
+    });
   });
 
   describe("isRunning", () => {

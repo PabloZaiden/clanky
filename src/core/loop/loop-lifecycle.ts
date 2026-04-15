@@ -8,6 +8,11 @@ import { assertValidTransition } from "../loop-state-machine";
 import { sshSessionManager } from "../ssh-session-manager";
 import { portForwardManager } from "../port-forward-manager";
 
+async function disconnectLoopEngine(ctx: LoopCtx, loopId: string): Promise<void> {
+  ctx.engines.delete(loopId);
+  await backendManager.disconnectLoop(loopId);
+}
+
 export async function deleteLoopImpl(ctx: LoopCtx, loopId: string): Promise<boolean> {
   log.info("Deleting loop", { loopId, hasActiveEngine: ctx.engines.has(loopId) });
 
@@ -260,6 +265,12 @@ export async function manualCompleteLoopImpl(ctx: LoopCtx, loopId: string): Prom
     };
   }
 
+  const persistedLoop = await loadLoop(loopId);
+  const gitState = persistedLoop ? persistedLoop.state.git : loop.state.git;
+  if (!gitState) {
+    return { success: false, error: "No git branch was created for this loop" };
+  }
+
   try {
     assertValidTransition(loop.state.status, "completed", "manualCompleteLoop");
 
@@ -269,7 +280,15 @@ export async function manualCompleteLoopImpl(ctx: LoopCtx, loopId: string): Prom
       completedAt: createTimestamp(),
       error: undefined,
       consecutiveErrors: undefined,
+      git: gitState,
     };
+
+    const engine = ctx.engines.get(loopId);
+    if (engine) {
+      Object.assign(engine.state, updatedState);
+      await disconnectLoopEngine(ctx, loopId);
+    }
+
     await updateLoopState(loopId, updatedState);
 
     ctx.emitter.emit({

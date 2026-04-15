@@ -1523,6 +1523,48 @@ Updated line 3`;
       expect(body.message).toContain("Cannot manually complete loop");
     });
 
+    test("returns 400 when the halted loop has no git state", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Test manual complete without git",
+          name: "Manual Complete Without Git",
+          draft: true,
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      const createBody = await createResponse.json();
+      const loopId = createBody.config.id;
+
+      const { updateLoopState, loadLoop } = await import("../../src/persistence/loops");
+      const loop = await loadLoop(loopId);
+      expect(loop).toBeTruthy();
+
+      await updateLoopState(loopId, {
+        ...loop!.state,
+        status: "failed",
+        error: {
+          message: "Failed before git setup",
+          iteration: 0,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}/manual-complete`, {
+        method: "POST",
+      });
+      expect(response.status).toBe(400);
+
+      const body = await response.json();
+      expect(body.error).toBe("manual_complete_failed");
+      expect(body.message).toContain("No git branch was created for this loop");
+    });
+
     test("promotes a failed loop to completed and clears the persisted error", async () => {
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
