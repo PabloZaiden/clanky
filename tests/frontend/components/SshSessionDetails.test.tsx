@@ -226,6 +226,43 @@ describe("SshSessionDetails", () => {
     });
   });
 
+  test("hides the browser caret on the contenteditable terminal host", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Hidden Browser Caret" } }),
+    );
+
+    const { getByText } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-hidden-caret-1" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(getByText("SSH Hidden Browser Caret")).toBeTruthy();
+      expect(lastTerminal).not.toBeNull();
+      expect(lastTerminal?.element).not.toBeUndefined();
+    });
+
+    const terminalHost = lastTerminal!.element!;
+    expect(terminalHost.style.caretColor).toBe("transparent");
+    expect(terminalHost.classList.contains("caret-transparent")).toBe(true);
+  });
+
+  test("does not refocus the terminal after ghostty open already focused it", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Initial Focus" } }),
+    );
+
+    const { getByText } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-initial-focus-1" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(getByText("SSH Initial Focus")).toBeTruthy();
+      expect(lastTerminal).not.toBeNull();
+    });
+
+    expect(lastTerminal?.focusCalls).toBe(1);
+  });
+
   test("prefers local Nerd fonts over the bundled fallback font when available", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Local Font Preference" } }),

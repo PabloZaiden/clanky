@@ -76,7 +76,6 @@ export function useTerminalRenderer({
         terminal.loadAddon(fitAddon);
         terminal.open(terminalContainerRef.current);
         fitAddon.observeResize();
-        terminal.focus();
         terminalRef.current = terminal;
         fitAddonRef.current = fitAddon;
         syncTerminalSelectionState();
