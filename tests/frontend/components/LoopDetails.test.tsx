@@ -56,6 +56,7 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   api.delete("/api/loops/:id", () => ({ success: true }));
   api.post("/api/loops/:id/purge", () => ({ success: true }));
   api.post("/api/loops/:id/mark-merged", () => ({ success: true }));
+  api.post("/api/loops/:id/manual-complete", () => ({ success: true }));
   api.post("/api/loops/:id/address-comments", () => ({ success: true }));
   api.post("/api/loops/:id/automatic-pr-flow/start", () => ({
     success: true,
@@ -769,6 +770,56 @@ describe("actions tab content", () => {
     await waitFor(() => {
       expect(getByText("Accept")).toBeTruthy();
       expect(getByText("Delete Loop")).toBeTruthy();
+    });
+  });
+
+  test("stopped loop shows manual complete action and refreshes into accept state", async () => {
+    let currentLoop = createLoopWithStatus("stopped", {
+      config: { id: LOOP_ID, name: "Stopped Loop" },
+    });
+    api.get("/api/loops/:id", () => currentLoop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+    api.post("/api/loops/:id/manual-complete", () => {
+      currentLoop = createLoopWithStatus("completed", {
+        config: { id: LOOP_ID, name: "Stopped Loop" },
+      });
+      return { success: true };
+    });
+
+    const { getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Stopped Loop")).toBeTruthy();
+    });
+
+    await user.click(getByText("Actions"));
+
+    await waitFor(() => {
+      expect(getByText("Manually complete loop")).toBeTruthy();
+      expect(getByText("Delete Loop")).toBeTruthy();
+    });
+
+    await user.click(getByText("Manually complete loop"));
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Manually complete loop" })).toBeTruthy();
+      expect(getByText(/Use this when the loop was stopped or failed/)).toBeTruthy();
+    });
+
+    const dialog = getByRole("dialog");
+    const confirmButton = within(dialog).getByRole("button", { name: "Manually complete loop" });
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/manual-complete", "POST")).toHaveLength(1);
+      expect(getByText("Accept")).toBeTruthy();
+      expect(queryByText("Manually complete loop")).toBeNull();
     });
   });
 

@@ -13,6 +13,7 @@ import {
   DeleteLoopModal,
   PurgeLoopModal,
   MarkMergedModal,
+  ManualCompleteLoopModal,
   UpdateBranchModal,
   RenameLoopModal,
 } from "../LoopModals";
@@ -51,6 +52,12 @@ export function LoopDetailsModals({ loopName, state, actions }: LoopDetailsModal
         isOpen={actions.markMergedModal}
         onClose={() => actions.setMarkMergedModal(false)}
         onMarkMerged={actions.handleMarkMerged}
+      />
+
+      <ManualCompleteLoopModal
+        isOpen={actions.manualCompleteModal}
+        onClose={() => actions.setManualCompleteModal(false)}
+        onManualComplete={actions.handleManualComplete}
       />
 
       <UpdateBranchModal

@@ -16,6 +16,7 @@ import {
   purgeArchivedWorkspaceLoopsApi,
   getLoopSshSessionApi,
   getOrCreateLoopSshSessionApi,
+  manualCompleteLoopApi,
   markMergedApi,
   setPendingPromptApi,
   clearPendingPromptApi,
@@ -330,6 +331,37 @@ describe("markMergedApi", () => {
     });
 
     await expect(markMergedApi(LOOP_ID)).rejects.toThrow("Failed to mark loop as merged");
+  });
+});
+
+// ─── manualCompleteLoopApi ────────────────────────────────────────────────────
+
+describe("manualCompleteLoopApi", () => {
+  test("calls POST /api/loops/:id/manual-complete and returns true", async () => {
+    api.post(`/api/loops/${LOOP_ID}/manual-complete`, () => ({ success: true }));
+
+    const result = await manualCompleteLoopApi(LOOP_ID);
+
+    expect(result).toBe(true);
+    expect(api.calls(`/api/loops/${LOOP_ID}/manual-complete`, "POST")).toHaveLength(1);
+  });
+
+  test("throws error with message from error response", async () => {
+    api.post(`/api/loops/${LOOP_ID}/manual-complete`, () => {
+      throw new MockApiError(400, { message: "Only stopped or failed loops can be manually completed" });
+    });
+
+    await expect(manualCompleteLoopApi(LOOP_ID)).rejects.toThrow(
+      "Only stopped or failed loops can be manually completed",
+    );
+  });
+
+  test("throws fallback error when no message in response", async () => {
+    api.post(`/api/loops/${LOOP_ID}/manual-complete`, () => {
+      throw new MockApiError(500, {});
+    });
+
+    await expect(manualCompleteLoopApi(LOOP_ID)).rejects.toThrow("Failed to manually complete loop");
   });
 });
 

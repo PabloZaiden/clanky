@@ -13,6 +13,10 @@ const MARK_MERGED_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
   "max_iterations",
   "pushed",
 ]);
+const MANUAL_COMPLETE_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
+  "stopped",
+  "failed",
+]);
 
 /**
  * Get a human-readable label for a loop status.
@@ -89,6 +93,16 @@ export function isFinalState(status: LoopStatus): boolean {
 export function canMarkMerged(status: LoopStatus, hasGit: boolean): boolean {
   const result = hasGit && MARK_MERGED_UI_ELIGIBLE_STATUSES.has(status);
   log.trace("canMarkMerged check", { status, hasGit, result });
+  return result;
+}
+
+/**
+ * Check if the UI should offer the "manually complete loop" action.
+ * This is only useful for halted loops that should be finalized without resuming execution.
+ */
+export function canManualComplete(status: LoopStatus, hasGit: boolean): boolean {
+  const result = hasGit && MANUAL_COMPLETE_UI_ELIGIBLE_STATUSES.has(status);
+  log.trace("canManualComplete check", { status, hasGit, result });
   return result;
 }
 

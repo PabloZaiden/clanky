@@ -60,6 +60,13 @@ export async function purgeLoopApi(loopId: string): Promise<boolean> {
 }
 
 /**
+ * Promote a stopped or failed loop into completed status via the API.
+ */
+export async function manualCompleteLoopApi(loopId: string): Promise<boolean> {
+  return apiAction(`/api/loops/${loopId}/manual-complete`, "POST", "Manually complete loop");
+}
+
+/**
  * Purge all archived loops for a workspace via the API.
  */
 export async function purgeArchivedWorkspaceLoopsApi(workspaceId: string): Promise<PurgeArchivedLoopsResult> {

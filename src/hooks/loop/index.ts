@@ -73,6 +73,8 @@ export interface UseLoopResult {
   purge: () => Promise<boolean>;
   /** Mark a loop as merged and sync with remote (only for final-state loops) */
   markMerged: () => Promise<boolean>;
+  /** Promote a stopped or failed loop into completed status without resuming execution */
+  manualCompleteLoop: () => Promise<boolean>;
   /** Set a pending prompt for the next iteration (only works when loop is running) */
   setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
   /** Clear the pending prompt (only works when loop is running) */

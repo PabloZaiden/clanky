@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   canAccept,
   canJumpstart,
+  canManualComplete,
   canMarkMerged,
   canSendTerminalFollowUp,
   getLoopStatusLabel,
@@ -109,11 +110,16 @@ describe("getStatusLabel", () => {
 describe("status action helpers", () => {
   test("exposes the expected accept, merge, final, active, running, and jumpstart states", () => {
     expectStatuses(canAccept, ["completed", "max_iterations"]);
+    expectStatuses((status) => canManualComplete(status, true), ["stopped", "failed"]);
     expectStatuses((status) => canMarkMerged(status, true), ["completed", "max_iterations", "pushed"]);
     expectStatuses(isFinalState, ["merged", "pushed", "deleted"]);
     expectStatuses(isLoopActive, ["starting", "running", "waiting"]);
     expectStatuses(isLoopRunning, ["starting", "running"]);
     expectStatuses(canJumpstart, ["completed", "stopped", "failed", "max_iterations"]);
+  });
+
+  test("never exposes manual-complete when git metadata is missing", () => {
+    expectStatuses((status) => canManualComplete(status, false), []);
   });
 
   test("never exposes mark-as-merged when git metadata is missing", () => {

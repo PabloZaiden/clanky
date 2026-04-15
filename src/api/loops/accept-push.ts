@@ -5,6 +5,7 @@
  * - POST /api/loops/:id/push         - Push loop branch to remote for PR workflow
  * - POST /api/loops/:id/update-branch - Sync pushed branch with base branch
  * - POST /api/loops/:id/mark-merged  - Mark an externally merged loop as merged
+ * - POST /api/loops/:id/manual-complete - Promote a stopped/failed loop to completed
  */
 
 import { loopManager } from "../../core/loop-manager";
@@ -139,6 +140,29 @@ export const loopsAcceptPushRoutes = {
           return errorResponse("not_found", "Loop not found", 404);
         }
         return errorResponse("mark_merged_failed", result.error ?? "Unknown error", 400);
+      }
+
+      return successResponse();
+    },
+  },
+
+  "/api/loops/:id/manual-complete": {
+    /**
+     * POST /api/loops/:id/manual-complete - Manually finalize a halted loop.
+     *
+     * Promotes a stopped or failed loop into `completed` status without resuming
+     * execution so the existing accept/push flows become available.
+     *
+     * @returns Success response
+     */
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const result = await loopManager.manualCompleteLoop(req.params.id);
+
+      if (!result.success) {
+        if (result.error?.includes("not found")) {
+          return errorResponse("not_found", "Loop not found", 404);
+        }
+        return errorResponse("manual_complete_failed", result.error ?? "Unknown error", 400);
       }
 
       return successResponse();

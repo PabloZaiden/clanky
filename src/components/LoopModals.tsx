@@ -148,6 +148,53 @@ export function MarkMergedModal({
 }
 
 // ============================================================================
+// Manual Complete Loop Modal
+// ============================================================================
+
+export interface ManualCompleteLoopModalProps {
+  /** Whether the modal is open */
+  isOpen: boolean;
+  /** Callback when modal should close */
+  onClose: () => void;
+  /** Callback to manually complete the loop */
+  onManualComplete: () => Promise<void>;
+}
+
+/**
+ * Modal for confirming manual loop completion.
+ * Used when a halted loop should be promoted to completed without resuming execution.
+ */
+export function ManualCompleteLoopModal({
+  isOpen,
+  onClose,
+  onManualComplete,
+}: ManualCompleteLoopModalProps) {
+  const [loading, setLoading] = useState(false);
+
+  async function handleConfirm() {
+    setLoading(true);
+    try {
+      await onManualComplete();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <ConfirmModal
+      isOpen={isOpen}
+      onClose={onClose}
+      onConfirm={handleConfirm}
+      title="Manually complete loop"
+      message="Use this when the loop was stopped or failed, but you still want Ralph to treat the current branch as completed work. This will unlock the normal push and merge actions without resuming execution."
+      confirmLabel="Manually complete loop"
+      loading={loading}
+      variant="primary"
+    />
+  );
+}
+
+// ============================================================================
 // Update Branch Modal
 // ============================================================================
 

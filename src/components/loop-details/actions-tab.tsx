@@ -1,7 +1,7 @@
 import type { Loop, ReviewComment, LoopState } from "../../types/loop";
 import type { FileContentResponse, PullRequestDestinationResponse } from "../../types";
 import type { EntityLabels } from "../../utils";
-import { isFinalState, canAccept, canMarkMerged } from "../../utils";
+import { isFinalState, canAccept, canManualComplete, canMarkMerged } from "../../utils";
 import { ReviewTab } from "./review-tab";
 
 interface ActionsTabProps {
@@ -20,6 +20,7 @@ interface ActionsTabProps {
   onAddressCommentsModal: () => void;
   onUpdateBranchModal: () => void;
   onMarkMergedModal: () => void;
+  onManualCompleteModal: () => void;
   onPurgeModal: () => void;
   onAcceptModal: () => void;
   onDeleteModal: () => void;
@@ -45,6 +46,7 @@ export function ActionsTab({
   onAddressCommentsModal,
   onUpdateBranchModal,
   onMarkMergedModal,
+  onManualCompleteModal,
   onPurgeModal,
   onAcceptModal,
   onDeleteModal,
@@ -282,6 +284,21 @@ export function ActionsTab({
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Accept</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">Accept changes and merge or push to remote</div>
+                </div>
+                <span className="text-gray-400 dark:text-gray-500">→</span>
+              </button>
+            )}
+            {canManualComplete(state.status, Boolean(state.git)) && (
+              <button
+                onClick={onManualCompleteModal}
+                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+              >
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <span className="text-blue-600 dark:text-blue-400 text-sm">✓</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Manually complete loop</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Mark this halted loop as completed so push and merge actions become available</div>
                 </div>
                 <span className="text-gray-400 dark:text-gray-500">→</span>
               </button>

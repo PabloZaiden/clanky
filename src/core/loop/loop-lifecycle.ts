@@ -8,6 +8,11 @@ import { assertValidTransition } from "../loop-state-machine";
 import { sshSessionManager } from "../ssh-session-manager";
 import { portForwardManager } from "../port-forward-manager";
 
+async function disconnectLoopEngine(ctx: LoopCtx, loopId: string): Promise<void> {
+  ctx.engines.delete(loopId);
+  await backendManager.disconnectLoop(loopId);
+}
+
 export async function deleteLoopImpl(ctx: LoopCtx, loopId: string): Promise<boolean> {
   log.info("Deleting loop", { loopId, hasActiveEngine: ctx.engines.has(loopId) });
 
@@ -239,6 +244,61 @@ export async function markMergedImpl(ctx: LoopCtx, loopId: string): Promise<{ su
     });
 
     log.info("Loop marked as merged", { loopId });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+export async function manualCompleteLoopImpl(ctx: LoopCtx, loopId: string): Promise<{ success: boolean; error?: string }> {
+  log.info("Manually completing loop", { loopId });
+  const loop = await ctx.getLoop(loopId);
+  if (!loop) {
+    return { success: false, error: "Loop not found" };
+  }
+
+  const allowedStatuses = new Set(["stopped", "failed"]);
+  if (!allowedStatuses.has(loop.state.status)) {
+    return {
+      success: false,
+      error: `Cannot manually complete loop in status: ${loop.state.status}. Only stopped or failed loops can be manually completed.`,
+    };
+  }
+
+  const persistedLoop = await loadLoop(loopId);
+  const gitState = persistedLoop ? persistedLoop.state.git : loop.state.git;
+  if (!gitState) {
+    return { success: false, error: "No git branch was created for this loop" };
+  }
+
+  try {
+    assertValidTransition(loop.state.status, "completed", "manualCompleteLoop");
+
+    const updatedState = {
+      ...loop.state,
+      status: "completed" as const,
+      completedAt: createTimestamp(),
+      error: undefined,
+      consecutiveErrors: undefined,
+      git: gitState,
+    };
+
+    const engine = ctx.engines.get(loopId);
+    if (engine) {
+      Object.assign(engine.state, updatedState);
+      await disconnectLoopEngine(ctx, loopId);
+    }
+
+    await updateLoopState(loopId, updatedState);
+
+    ctx.emitter.emit({
+      type: "loop.completed",
+      loopId,
+      totalIterations: loop.state.currentIteration,
+      timestamp: createTimestamp(),
+    });
+
+    log.info("Loop manually completed", { loopId, previousStatus: loop.state.status });
     return { success: true };
   } catch (error) {
     return { success: false, error: String(error) };
