@@ -12,7 +12,7 @@ export interface UnassignedSectionProps {
   onSelectLoop?: (loopId: string) => void;
 }
 
-/** Renders the "Unassigned" loops section for loops without a workspace */
+/** Renders the fallback loop section for loops without a workspace or with a missing workspace. */
 export function UnassignedSection({
   unassignedLoops,
   unassignedStatusGroups,
@@ -38,6 +38,9 @@ export function UnassignedSection({
           ({unassignedLoops.length} {unassignedLoops.length === 1 ? "loop" : "loops"})
         </span>
       </div>
+      <p className="mb-4 pl-2 text-sm text-gray-500 dark:text-gray-400">
+        Loops appear here when they are not assigned to a workspace or when their saved workspace is no longer available.
+      </p>
       <div className="space-y-6 pl-2">
         <StatusSections
           statusGroups={unassignedStatusGroups}

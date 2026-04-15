@@ -80,7 +80,11 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
   const modals = useDashboardModals(dashboardData.resetCreateModalState);
 
   // Loop grouping hook (memoized)
-  const { workspaceGroups, unassignedLoops, unassignedStatusGroups } = useLoopGrouping(loops, workspaces);
+  const { workspaceGroups, unassignedLoops, unassignedStatusGroups } = useLoopGrouping(
+    loops,
+    workspaces,
+    !workspacesLoading,
+  );
   const [workspaceArchivedLoopsPurging, setWorkspaceArchivedLoopsPurging] = useState(false);
   const sshWorkspaces = useMemo(() => {
     return workspaces.filter((workspace) => workspace.serverSettings.agent.transport === "ssh");
@@ -229,6 +233,8 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
           <DashboardSshSection
             sshServers={sshServers}
             sessionsByServerId={sessionsByServerId}
+            workspaces={workspaces}
+            workspacesLoaded={!workspacesLoading}
             sshServersLoading={sshServersLoading}
             sshServersError={sshServersError}
             hasStoredCredential={hasStoredCredential}

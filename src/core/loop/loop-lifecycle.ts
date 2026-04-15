@@ -1,6 +1,13 @@
 import type { LoopCtx } from "./context";
 import { createTimestamp } from "../../types/events";
-import { loadLoop, updateLoopState, deleteLoop as deleteLoopFile, resetStaleLoops } from "../../persistence/loops";
+import {
+  loadLoop,
+  updateLoopConfig,
+  updateLoopState,
+  deleteLoop as deleteLoopFile,
+  resetStaleLoops,
+} from "../../persistence/loops";
+import { getWorkspace } from "../../persistence/workspaces";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
 import { log } from "../logger";
@@ -11,6 +18,59 @@ import { portForwardManager } from "../port-forward-manager";
 async function disconnectLoopEngine(ctx: LoopCtx, loopId: string): Promise<void> {
   ctx.engines.delete(loopId);
   await backendManager.disconnectLoop(loopId);
+}
+
+async function detachLoopFromMissingWorkspace(loopId: string): Promise<void> {
+  const loop = await loadLoop(loopId);
+  if (!loop || !loop.config.workspaceId) {
+    return;
+  }
+
+  const workspace = await getWorkspace(loop.config.workspaceId);
+  if (workspace) {
+    return;
+  }
+
+  await updateLoopConfig(loopId, {
+    ...loop.config,
+    workspaceId: "",
+    updatedAt: createTimestamp(),
+  });
+}
+
+async function getLoopGitCleanupContext(workspaceId: string, directory: string): Promise<{
+  git: GitService;
+  cleanupDirectory: string;
+} | null> {
+  const workspace = await getWorkspace(workspaceId);
+  if (!workspace) {
+    log.warn("Skipping loop git cleanup because the workspace record is missing", { workspaceId, directory });
+    return null;
+  }
+
+  try {
+    const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+    const directoryExists = await executor.directoryExists(directory);
+    if (!directoryExists) {
+      log.warn("Skipping loop git cleanup because the workspace directory is unavailable", {
+        workspaceId: workspace.id,
+        directory,
+      });
+      return null;
+    }
+
+    return {
+      git: GitService.withExecutor(executor),
+      cleanupDirectory: directory,
+    };
+  } catch (error) {
+    log.warn("Skipping loop git cleanup because the workspace host is unavailable", {
+      workspaceId: workspace.id,
+      directory,
+      error: String(error),
+    });
+    return null;
+  }
 }
 
 export async function deleteLoopImpl(ctx: LoopCtx, loopId: string): Promise<boolean> {
@@ -35,6 +95,8 @@ export async function deleteLoopImpl(ctx: LoopCtx, loopId: string): Promise<bool
       log.warn(`Failed to discard git branch during delete: ${discardResult.error}`);
     }
   }
+
+  await detachLoopFromMissingWorkspace(loopId);
 
   log.debug(`[LoopManager] deleteLoop: Updating status to deleted for loop ${loopId}`);
   assertValidTransition(loop.state.status, "deleted", "deleteLoop");
@@ -78,13 +140,16 @@ export async function discardLoopImpl(ctx: LoopCtx, loopId: string): Promise<{ s
   }
 
   try {
+    await detachLoopFromMissingWorkspace(loopId);
+
     if (!loop.config.useWorktree) {
-      const executor = await backendManager.getCommandExecutorAsync(loop.config.workspaceId, loop.config.directory);
-      const git = GitService.withExecutor(executor);
-      await git.resetHard(loop.config.directory, {
-        expectedBranch: loop.state.git.workingBranch,
-      });
-      await git.checkoutBranch(loop.config.directory, loop.state.git.originalBranch);
+      const cleanupContext = await getLoopGitCleanupContext(loop.config.workspaceId, loop.config.directory);
+      if (cleanupContext) {
+        await cleanupContext.git.resetHard(cleanupContext.cleanupDirectory, {
+          expectedBranch: loop.state.git.workingBranch,
+        });
+        await cleanupContext.git.checkoutBranch(cleanupContext.cleanupDirectory, loop.state.git.originalBranch);
+      }
     }
 
     assertValidTransition(loop.state.status, "deleted", "discardLoop");
@@ -138,40 +203,43 @@ export async function purgeLoopImpl(_ctx: LoopCtx, loopId: string): Promise<{ su
 
   if (!isDraft) {
     try {
-      const executor = await backendManager.getCommandExecutorAsync(loop.config.workspaceId, loop.config.directory);
-      const git = GitService.withExecutor(executor);
+      await detachLoopFromMissingWorkspace(loopId);
+      const cleanupContext = await getLoopGitCleanupContext(loop.config.workspaceId, loop.config.directory);
+      if (cleanupContext) {
+        const { git, cleanupDirectory } = cleanupContext;
 
-      const worktreePath = loop.state.git?.worktreePath;
-      if (worktreePath) {
-        await git.ensureWorktreeRemoved(loop.config.directory, worktreePath, { force: true });
-        log.debug(`[LoopManager] purgeLoop: Removed worktree and pruned metadata for loop ${loopId}: ${worktreePath}`);
-      }
-
-      if (!loop.config.useWorktree && loop.state.git?.workingBranch && loop.state.git.originalBranch) {
-        try {
-          await git.checkoutBranch(loop.config.directory, loop.state.git.originalBranch);
-        } catch (error) {
-          log.debug(`[LoopManager] purgeLoop: Could not switch back to original branch: ${String(error)}`);
+        const worktreePath = loop.state.git?.worktreePath;
+        if (worktreePath) {
+          await git.ensureWorktreeRemoved(cleanupDirectory, worktreePath, { force: true });
+          log.debug(`[LoopManager] purgeLoop: Removed worktree and pruned metadata for loop ${loopId}: ${worktreePath}`);
         }
-      }
 
-      if (loop.state.git?.workingBranch) {
-        try {
-          await git.deleteBranch(loop.config.directory, loop.state.git.workingBranch);
-          log.debug(`[LoopManager] purgeLoop: Deleted working branch for loop ${loopId}`);
-        } catch (error) {
-          log.debug(`[LoopManager] purgeLoop: Could not delete working branch: ${String(error)}`);
-        }
-      }
-
-      if (loop.state.reviewMode?.reviewBranches && loop.state.reviewMode.reviewBranches.length > 0) {
-        for (const branchName of loop.state.reviewMode.reviewBranches) {
-          if (branchName === loop.state.git?.workingBranch) continue;
+        if (!loop.config.useWorktree && loop.state.git?.workingBranch && loop.state.git.originalBranch) {
           try {
-            await git.deleteBranch(loop.config.directory, branchName);
-            log.debug(`[LoopManager] purgeLoop: Cleaned up review branch: ${branchName}`);
+            await git.checkoutBranch(cleanupDirectory, loop.state.git.originalBranch);
           } catch (error) {
-            log.debug(`[LoopManager] purgeLoop: Could not delete branch ${branchName}: ${String(error)}`);
+            log.debug(`[LoopManager] purgeLoop: Could not switch back to original branch: ${String(error)}`);
+          }
+        }
+
+        if (loop.state.git?.workingBranch) {
+          try {
+            await git.deleteBranch(cleanupDirectory, loop.state.git.workingBranch);
+            log.debug(`[LoopManager] purgeLoop: Deleted working branch for loop ${loopId}`);
+          } catch (error) {
+            log.debug(`[LoopManager] purgeLoop: Could not delete working branch: ${String(error)}`);
+          }
+        }
+
+        if (loop.state.reviewMode?.reviewBranches && loop.state.reviewMode.reviewBranches.length > 0) {
+          for (const branchName of loop.state.reviewMode.reviewBranches) {
+            if (branchName === loop.state.git?.workingBranch) continue;
+            try {
+              await git.deleteBranch(cleanupDirectory, branchName);
+              log.debug(`[LoopManager] purgeLoop: Cleaned up review branch: ${branchName}`);
+            } catch (error) {
+              log.debug(`[LoopManager] purgeLoop: Could not delete branch ${branchName}: ${String(error)}`);
+            }
           }
         }
       }
@@ -181,6 +249,7 @@ export async function purgeLoopImpl(_ctx: LoopCtx, loopId: string): Promise<{ su
   }
 
   if (loop.state.reviewMode) {
+    await detachLoopFromMissingWorkspace(loopId);
     loop.state.reviewMode.addressable = false;
     await updateLoopState(loopId, loop.state);
   }

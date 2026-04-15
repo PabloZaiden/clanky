@@ -78,7 +78,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   } = useWorkspaces();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
-  const { workspaceGroups } = useLoopGrouping(loops, workspaces);
+  const { workspaceGroups } = useLoopGrouping(loops, workspaces, !workspacesLoading);
 
   const sidebar = useSidebar(route, onNavigate);
   const { navigateWithinShell } = sidebar;
