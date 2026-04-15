@@ -6,11 +6,12 @@
 import { CollapsibleSection } from "../common";
 import { SshServerSection } from "../SshServerSection";
 import { SshSessionSection } from "../SshSessionSection";
-import type { SshServer, SshServerSession, SshSession } from "../../types";
+import type { SshServer, SshServerSession, SshSession, Workspace } from "../../types";
 
 export interface DashboardSshSectionProps {
   sshServers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
+  workspaces: Workspace[];
   sshServersLoading: boolean;
   sshServersError: string | null;
   hasStoredCredential: (serverId: string) => boolean;
@@ -27,6 +28,7 @@ export interface DashboardSshSectionProps {
 export function DashboardSshSection({
   sshServers,
   sessionsByServerId,
+  workspaces,
   sshServersLoading,
   sshServersError,
   hasStoredCredential,
@@ -69,11 +71,13 @@ export function DashboardSshSection({
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Workspace SSH Sessions</h3>
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Saved terminal sessions for SSH-configured workspaces. Use persistent SSH to keep shells alive across
-                reconnects, or direct SSH for a fresh shell.
+                reconnects, or direct SSH for a fresh shell. Sessions whose workspace is missing stay listed here so
+                they can still be deleted.
               </p>
             </div>
             <SshSessionSection
               sessions={sessions}
+              workspaces={workspaces}
               loading={sshSessionsLoading}
               error={sshSessionsError}
               onSelect={(sessionId) => onSelectSession(sessionId)}

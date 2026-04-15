@@ -547,9 +547,75 @@ describe("LoopManager", () => {
       expect(fetched!.state.status).toBe("deleted");
     });
 
+    test("purges a deleted loop even when its workspace record is missing", async () => {
+      const loop = await manager.createLoop({
+        ...testModelFields,
+        directory: testWorkDir,
+        prompt: "Test",
+        name: "Test Loop",
+        workspaceId: testWorkspaceId,
+        planMode: false,
+        useWorktree: true,
+      });
+
+      await updateLoopState(loop.config.id, {
+        ...loop.state,
+        status: "deleted",
+        git: {
+          originalBranch: "main",
+          workingBranch: "missing-workspace-a1b2c3d",
+          worktreePath: `${testWorkDir}/.ralph-worktrees/${loop.config.id}`,
+          commits: [],
+        },
+      });
+
+      const { getDatabase } = await import("../../src/persistence/database");
+      const db = getDatabase();
+      db.run("PRAGMA foreign_keys = OFF");
+      db.run("DELETE FROM workspaces WHERE id = ?", [testWorkspaceId]);
+      db.run("PRAGMA foreign_keys = ON");
+
+      const purgeResult = await manager.purgeLoop(loop.config.id);
+
+      expect(purgeResult.success).toBe(true);
+      expect(await manager.getLoop(loop.config.id)).toBeNull();
+    });
+
     test("returns false for non-existent loop", async () => {
       const deleted = await manager.deleteLoop("non-existent");
       expect(deleted).toBe(false);
+    });
+
+    test("soft-deletes a loop with git state even when its workspace record is missing", async () => {
+      const loop = await manager.createLoop({
+        ...testModelFields,
+        directory: testWorkDir,
+        prompt: "Test",
+        name: "Test Loop",
+        workspaceId: testWorkspaceId,
+        planMode: false,
+      });
+
+      await updateLoopState(loop.config.id, {
+        ...loop.state,
+        git: {
+          originalBranch: "main",
+          workingBranch: "missing-workspace-delete-a1b2c3d",
+          commits: [],
+        },
+      });
+
+      const { getDatabase } = await import("../../src/persistence/database");
+      const db = getDatabase();
+      db.run("PRAGMA foreign_keys = OFF");
+      db.run("DELETE FROM workspaces WHERE id = ?", [testWorkspaceId]);
+      db.run("PRAGMA foreign_keys = ON");
+
+      const deleted = await manager.deleteLoop(loop.config.id);
+      const updated = await manager.getLoop(loop.config.id);
+
+      expect(deleted).toBe(true);
+      expect(updated?.state.status).toBe("deleted");
     });
   });
 

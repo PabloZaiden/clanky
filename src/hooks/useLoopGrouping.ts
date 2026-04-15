@@ -91,6 +91,8 @@ export interface UseLoopGroupingResult {
  * Hook that memoizes loop grouping by workspace and status.
  */
 export function useLoopGrouping(loops: Loop[], workspaces: Workspace[]): UseLoopGroupingResult {
+  const workspaceIds = useMemo(() => new Set(workspaces.map((workspace) => workspace.id)), [workspaces]);
+
   const workspaceGroups = useMemo(() => {
     return workspaces
       .map((workspace, index) => {
@@ -118,8 +120,8 @@ export function useLoopGrouping(loops: Loop[], workspaces: Workspace[]): UseLoop
   }, [loops, workspaces]);
 
   const unassignedLoops = useMemo(() => {
-    return loops.filter((loop) => !loop.config.workspaceId);
-  }, [loops]);
+    return loops.filter((loop) => !loop.config.workspaceId || !workspaceIds.has(loop.config.workspaceId));
+  }, [loops, workspaceIds]);
 
   const unassignedStatusGroups = useMemo(() => {
     return groupLoopsByStatus(unassignedLoops);

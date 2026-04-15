@@ -649,6 +649,55 @@ describe("loop grid rendering", () => {
     expect(getByText("Orphan Loop")).toBeTruthy();
   });
 
+  test("renders loops with a missing workspace in the unassigned section", async () => {
+    const loop = createLoopWithStatus("running", {
+      config: { id: "l2", name: "Missing Workspace Loop", workspaceId: "missing-workspace" },
+    });
+
+    api.get("/api/loops", () => [loop]);
+    api.get("/api/workspaces", () => []);
+
+    const { getByText } = renderWithUser(<Dashboard />);
+
+    await waitFor(() => {
+      expect(getByText("Unassigned")).toBeTruthy();
+      expect(
+        getByText("Loops appear here when they are not assigned to a workspace or when their saved workspace is no longer available.")
+      ).toBeTruthy();
+    });
+    expect(getByText("Missing Workspace Loop")).toBeTruthy();
+  });
+
+  test("marks workspace SSH sessions whose workspace is missing", async () => {
+    const session = createSshSession({
+      config: {
+        id: "ssh-orphan-1",
+        name: "Orphaned Shell",
+        workspaceId: "missing-workspace",
+      },
+      state: { status: "failed", error: "Workspace missing" },
+    });
+
+    api.get("/api/workspaces", () => []);
+    api.get("/api/ssh-sessions", () => [session]);
+
+    const { getByRole, getByText, user } = renderWithUser(<Dashboard />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /SSH \(1\)/ })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: /SSH \(1\)/ }));
+
+    await waitFor(() => {
+      expect(getByText("Orphaned Shell")).toBeTruthy();
+      expect(getByText("Workspace missing")).toBeTruthy();
+      expect(
+        getByText("The saved workspace for this SSH session is no longer available, but the session can still be opened or deleted.")
+      ).toBeTruthy();
+    });
+  });
+
   test("renders archived loops (merged/pushed/deleted)", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
     const mergedLoop = createLoopWithStatus("merged", {

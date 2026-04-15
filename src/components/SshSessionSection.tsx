@@ -2,12 +2,13 @@
  * Dashboard section for SSH sessions.
  */
 
-import type { SshSession } from "../types";
+import type { SshSession, Workspace } from "../types";
 import { getEffectiveSshConnectionMode, getSshConnectionModeLabel, isPersistentSshSession } from "../utils";
-import { Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
+import { Badge, Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionStatusLabel, StatusBadge } from "./common";
 
 export interface SshSessionSectionProps {
   sessions: SshSession[];
+  workspaces: Workspace[];
   loading: boolean;
   error: string | null;
   onSelect: (sessionId: string) => void;
@@ -16,11 +17,14 @@ export interface SshSessionSectionProps {
 
 export function SshSessionSection({
   sessions,
+  workspaces,
   loading,
   error,
   onSelect,
   onRename,
 }: SshSessionSectionProps) {
+  const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
+
   return (
     <Card>
       {loading ? (
@@ -35,6 +39,7 @@ export function SshSessionSection({
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {sessions.map((session) => {
             const effectiveConnectionMode = getEffectiveSshConnectionMode(session);
+            const workspaceMissing = !workspaceIds.has(session.config.workspaceId);
             return (
               <div
                 key={session.config.id}
@@ -52,6 +57,11 @@ export function SshSessionSection({
                       <h3 className="break-words font-medium text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
                         {session.config.name}
                       </h3>
+                      {workspaceMissing && (
+                        <div className="mt-1">
+                          <Badge variant="warning" size="sm">Workspace missing</Badge>
+                        </div>
+                      )}
                       <p className="mt-1 break-words text-xs font-mono text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
                         {session.config.directory}
                       </p>
@@ -78,6 +88,11 @@ export function SshSessionSection({
                   <p className="mt-1 break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
                     Mode: {getSshConnectionModeLabel(effectiveConnectionMode)}
                   </p>
+                  {workspaceMissing && (
+                    <p className="mt-1 break-words text-xs text-amber-700 dark:text-amber-300 [overflow-wrap:anywhere]">
+                      The saved workspace for this SSH session is no longer available, but the session can still be opened or deleted.
+                    </p>
+                  )}
                   {isPersistentSshSession(session) && (
                     <p className="mt-1 break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
                       Persistent ID: {session.config.remoteSessionName}

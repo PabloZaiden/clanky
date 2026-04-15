@@ -229,6 +229,7 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
           <DashboardSshSection
             sshServers={sshServers}
             sessionsByServerId={sessionsByServerId}
+            workspaces={workspaces}
             sshServersLoading={sshServersLoading}
             sshServersError={sshServersError}
             hasStoredCredential={hasStoredCredential}

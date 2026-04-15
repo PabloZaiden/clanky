@@ -8,7 +8,7 @@ import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createWorkspace } from "../../src/persistence/workspaces";
 import { updateLoopState } from "../../src/persistence/loops";
-import { closeDatabase, ensureDataDirectories } from "../../src/persistence/database";
+import { closeDatabase, ensureDataDirectories, getDatabase } from "../../src/persistence/database";
 import { getDefaultServerSettings } from "../../src/types/settings";
 import { sshSessionManager } from "../../src/core/ssh-session-manager";
 import { portForwardManager } from "../../src/core/port-forward-manager";
@@ -33,6 +33,21 @@ class SshCapableExecutor extends TestCommandExecutor {
         stdout: "",
         stderr: "",
         exitCode: 0,
+      };
+    }
+    return await super.exec(command, args, options);
+  }
+}
+
+class FailingDeleteExecutor extends SshCapableExecutor {
+  override async exec(command: string, args: string[], options?: Parameters<TestCommandExecutor["exec"]>[2]) {
+    if (command === "bash" && args[0] === "-lc" && args[1]?.includes(".dtach.sock")) {
+      this.deleteCommands.push(args[1]);
+      return {
+        success: false,
+        stdout: "",
+        stderr: "Failed to stop remote persistent SSH session",
+        exitCode: 1,
       };
     }
     return await super.exec(command, args, options);
@@ -224,5 +239,74 @@ describe("SshSessionManager loop-linked sessions", () => {
     await sshSessionManager.deleteSession(session.config.id);
 
     expect(await portForwardManager.getPortForward(forward.config.id)).toBeNull();
+  });
+
+  test("deletes a workspace SSH session even when its workspace record is missing", async () => {
+    const loop = await manager.createLoop({
+      ...modelFields,
+      directory: workDir,
+      prompt: "Delete session without workspace",
+      name: "Test Loop",
+      workspaceId,
+      planMode: false,
+      useWorktree: true,
+    });
+    const worktreePath = join(workDir, ".ralph-worktrees", loop.config.id);
+
+    await updateLoopState(loop.config.id, {
+      ...loop.state,
+      git: {
+        originalBranch: "main",
+        workingBranch: "missing-workspace-a1b2c3d",
+        worktreePath,
+        commits: [],
+      },
+    });
+
+    const session = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
+    const db = getDatabase();
+    db.run("PRAGMA foreign_keys = OFF");
+    db.run("DELETE FROM workspaces WHERE id = ?", [workspaceId]);
+    db.run("PRAGMA foreign_keys = ON");
+
+    const deleted = await sshSessionManager.deleteSession(session.config.id);
+
+    expect(deleted).toBe(true);
+    expect(await sshSessionManager.getSession(session.config.id)).toBeNull();
+  });
+
+  test("deletes a failed SSH session even when remote cleanup fails again", async () => {
+    const loop = await manager.createLoop({
+      ...modelFields,
+      directory: workDir,
+      prompt: "Delete failed session",
+      name: "Test Loop",
+      workspaceId,
+      planMode: false,
+      useWorktree: true,
+    });
+    const worktreePath = join(workDir, ".ralph-worktrees", loop.config.id);
+
+    await updateLoopState(loop.config.id, {
+      ...loop.state,
+      git: {
+        originalBranch: "main",
+        workingBranch: "failed-session-a1b2c3d",
+        worktreePath,
+        commits: [],
+      },
+    });
+
+    const session = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
+    await sshSessionManager.markStatus(session.config.id, "failed", "dtach socket is gone");
+
+    const failingExecutor = new FailingDeleteExecutor();
+    backendManager.setExecutorFactoryForTesting(() => failingExecutor);
+
+    const deleted = await sshSessionManager.deleteSession(session.config.id);
+
+    expect(deleted).toBe(true);
+    expect(await sshSessionManager.getSession(session.config.id)).toBeNull();
+    expect(failingExecutor.deleteCommands.some((command) => command.includes(session.config.remoteSessionName))).toBe(true);
   });
 });
