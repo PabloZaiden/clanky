@@ -572,8 +572,11 @@ describe("LoopManager", () => {
       const { getDatabase } = await import("../../src/persistence/database");
       const db = getDatabase();
       db.run("PRAGMA foreign_keys = OFF");
-      db.run("DELETE FROM workspaces WHERE id = ?", [testWorkspaceId]);
-      db.run("PRAGMA foreign_keys = ON");
+      try {
+        db.run("DELETE FROM workspaces WHERE id = ?", [testWorkspaceId]);
+      } finally {
+        db.run("PRAGMA foreign_keys = ON");
+      }
 
       const purgeResult = await manager.purgeLoop(loop.config.id);
 
@@ -608,8 +611,11 @@ describe("LoopManager", () => {
       const { getDatabase } = await import("../../src/persistence/database");
       const db = getDatabase();
       db.run("PRAGMA foreign_keys = OFF");
-      db.run("DELETE FROM workspaces WHERE id = ?", [testWorkspaceId]);
-      db.run("PRAGMA foreign_keys = ON");
+      try {
+        db.run("DELETE FROM workspaces WHERE id = ?", [testWorkspaceId]);
+      } finally {
+        db.run("PRAGMA foreign_keys = ON");
+      }
 
       const deleted = await manager.deleteLoop(loop.config.id);
       const updated = await manager.getLoop(loop.config.id);

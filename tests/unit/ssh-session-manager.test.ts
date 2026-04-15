@@ -266,8 +266,11 @@ describe("SshSessionManager loop-linked sessions", () => {
     const session = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
     const db = getDatabase();
     db.run("PRAGMA foreign_keys = OFF");
-    db.run("DELETE FROM workspaces WHERE id = ?", [workspaceId]);
-    db.run("PRAGMA foreign_keys = ON");
+    try {
+      db.run("DELETE FROM workspaces WHERE id = ?", [workspaceId]);
+    } finally {
+      db.run("PRAGMA foreign_keys = ON");
+    }
 
     const deleted = await sshSessionManager.deleteSession(session.config.id);
 

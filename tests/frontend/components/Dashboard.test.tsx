@@ -668,6 +668,36 @@ describe("loop grid rendering", () => {
     expect(getByText("Missing Workspace Loop")).toBeTruthy();
   });
 
+  test("does not classify missing-workspace loops as unassigned before workspaces finish loading", async () => {
+    const loop = createLoopWithStatus("running", {
+      config: { id: "l3", name: "Loading Workspace Loop", workspaceId: "missing-workspace" },
+    });
+    let resolveWorkspaces: (value: ReturnType<typeof createWorkspace>[]) => void = () => {};
+    const workspacesPromise = new Promise<ReturnType<typeof createWorkspace>[]>((resolve) => {
+      resolveWorkspaces = resolve;
+    });
+
+    api.get("/api/loops", () => [loop]);
+    api.get("/api/workspaces", async () => await workspacesPromise);
+
+    const { queryByText } = renderWithUser(<Dashboard />);
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops", "GET").length).toBe(1);
+      expect(api.calls("/api/workspaces", "GET").length).toBe(1);
+    });
+
+    expect(queryByText("Unassigned")).toBeNull();
+    expect(queryByText("Loading Workspace Loop")).toBeNull();
+
+    resolveWorkspaces([]);
+
+    await waitFor(() => {
+      expect(queryByText("Unassigned")).toBeTruthy();
+      expect(queryByText("Loading Workspace Loop")).toBeTruthy();
+    });
+  });
+
   test("marks workspace SSH sessions whose workspace is missing", async () => {
     const session = createSshSession({
       config: {
@@ -694,6 +724,50 @@ describe("loop grid rendering", () => {
       expect(getByText("Workspace missing")).toBeTruthy();
       expect(
         getByText("The saved workspace for this SSH session is no longer available, but the session can still be opened or deleted.")
+      ).toBeTruthy();
+    });
+  });
+
+  test("does not show workspace-missing SSH warnings before workspaces finish loading", async () => {
+    const session = createSshSession({
+      config: {
+        id: "ssh-orphan-2",
+        name: "Loading Shell",
+        workspaceId: "missing-workspace",
+      },
+      state: { status: "failed", error: "Workspace missing" },
+    });
+    let resolveWorkspaces: (value: ReturnType<typeof createWorkspace>[]) => void = () => {};
+    const workspacesPromise = new Promise<ReturnType<typeof createWorkspace>[]>((resolve) => {
+      resolveWorkspaces = resolve;
+    });
+
+    api.get("/api/workspaces", async () => await workspacesPromise);
+    api.get("/api/ssh-sessions", () => [session]);
+
+    const { getByRole, queryByText, user } = renderWithUser(<Dashboard />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /SSH \(1\)/ })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: /SSH \(1\)/ }));
+
+    await waitFor(() => {
+      expect(queryByText("Loading Shell")).toBeTruthy();
+    });
+
+    expect(queryByText("Workspace missing")).toBeNull();
+    expect(
+      queryByText("The saved workspace for this SSH session is no longer available, but the session can still be opened or deleted.")
+    ).toBeNull();
+
+    resolveWorkspaces([]);
+
+    await waitFor(() => {
+      expect(queryByText("Workspace missing")).toBeTruthy();
+      expect(
+        queryByText("The saved workspace for this SSH session is no longer available, but the session can still be opened or deleted.")
       ).toBeTruthy();
     });
   });

@@ -12,6 +12,7 @@ export interface DashboardSshSectionProps {
   sshServers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   workspaces: Workspace[];
+  workspacesLoaded: boolean;
   sshServersLoading: boolean;
   sshServersError: string | null;
   hasStoredCredential: (serverId: string) => boolean;
@@ -29,6 +30,7 @@ export function DashboardSshSection({
   sshServers,
   sessionsByServerId,
   workspaces,
+  workspacesLoaded,
   sshServersLoading,
   sshServersError,
   hasStoredCredential,
@@ -78,6 +80,7 @@ export function DashboardSshSection({
             <SshSessionSection
               sessions={sessions}
               workspaces={workspaces}
+              workspacesLoaded={workspacesLoaded}
               loading={sshSessionsLoading}
               error={sshSessionsError}
               onSelect={(sessionId) => onSelectSession(sessionId)}

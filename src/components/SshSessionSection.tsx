@@ -9,6 +9,7 @@ import { Badge, Card, EditIcon, getSshSessionStatusBadgeVariant, getSshSessionSt
 export interface SshSessionSectionProps {
   sessions: SshSession[];
   workspaces: Workspace[];
+  workspacesLoaded: boolean;
   loading: boolean;
   error: string | null;
   onSelect: (sessionId: string) => void;
@@ -18,6 +19,7 @@ export interface SshSessionSectionProps {
 export function SshSessionSection({
   sessions,
   workspaces,
+  workspacesLoaded,
   loading,
   error,
   onSelect,
@@ -39,7 +41,10 @@ export function SshSessionSection({
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {sessions.map((session) => {
             const effectiveConnectionMode = getEffectiveSshConnectionMode(session);
-            const workspaceMissing = !workspaceIds.has(session.config.workspaceId);
+            const workspaceMissing =
+              workspacesLoaded &&
+              !!session.config.workspaceId &&
+              !workspaceIds.has(session.config.workspaceId);
             return (
               <div
                 key={session.config.id}
