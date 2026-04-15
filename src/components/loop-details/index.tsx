@@ -51,9 +51,9 @@ export function LoopDetails({
   onOpenLoopFiles,
 }: LoopDetailsProps) {
   const {
-    loop, loading, error, messages, toolCalls, logs, gitChangeCounter,
-     accept, push, updateBranch, remove, purge, markMerged,
-     stopLoop, setPending, sendFollowUp,
+     loop, loading, error, messages, toolCalls, logs, gitChangeCounter,
+      accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
+      stopLoop, setPending, sendFollowUp,
      getDiff, getPlan, getStatusFile, getPullRequestDestination,
      sendPlanFeedback, acceptPlan, discardPlan,
     addressReviewComments, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectViaSsh,
@@ -87,8 +87,8 @@ export function LoopDetails({
       });
     },
      toast,
-     accept, push, updateBranch, remove, purge, markMerged,
-    addressReviewComments, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
+      accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
+     addressReviewComments, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
      fetchReviewComments: content.fetchReviewComments,
    });
   const { models, modelsLoading } = useModels({ directory: loop?.config.directory, workspaceId: loop?.config.workspaceId });

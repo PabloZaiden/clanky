@@ -1,7 +1,7 @@
 /**
  * Action callbacks for the useLoop hook.
  * Thin compositor that aggregates focused sub-hooks by domain:
- * - useLoopLifecycleActions – update, remove, stop, discard, purge, markMerged
+ * - useLoopLifecycleActions – update, remove, stop, discard, purge, markMerged, manualCompleteLoop
  * - useLoopGitActions       – accept, push, updateBranch
  * - useLoopPlanActions      – sendPlanFeedback, acceptPlan, discardPlan
  * - useLoopPendingActions   – setPendingPrompt, clearPendingPrompt, setPending, clearPending
@@ -50,6 +50,7 @@ export interface UseLoopActionsResult {
   discard: () => Promise<boolean>;
   purge: () => Promise<boolean>;
   markMerged: () => Promise<boolean>;
+  manualCompleteLoop: () => Promise<boolean>;
   setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
   clearPendingPrompt: () => Promise<boolean>;
   sendPlanFeedback: (feedback: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;

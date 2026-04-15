@@ -1,6 +1,6 @@
 /**
  * Loop lifecycle actions for the useLoop hook.
- * Handles CRUD and state-transition operations: update, remove, stop, discard, purge, markMerged.
+ * Handles CRUD and state-transition operations: update, remove, stop, discard, purge, markMerged, manualCompleteLoop.
  */
 
 import { useCallback } from "react";
@@ -10,6 +10,7 @@ import {
   discardLoopApi,
   purgeLoopApi,
   markMergedApi,
+  manualCompleteLoopApi,
 } from "../loopActions";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
@@ -25,6 +26,7 @@ export interface UseLoopLifecycleActionsResult {
   discard: () => Promise<boolean>;
   purge: () => Promise<boolean>;
   markMerged: () => Promise<boolean>;
+  manualCompleteLoop: () => Promise<boolean>;
 }
 
 export function useLoopLifecycleActions(
@@ -211,5 +213,31 @@ export function useLoopLifecycleActions(
     }
   }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
 
-  return { update, remove, stopLoop, discard, purge, markMerged };
+  const manualCompleteLoop = useCallback(async (): Promise<boolean> => {
+    const actionLoopId = loopId;
+    const staleAction = ignoreStaleLoopAction("manualCompleteLoop", actionLoopId, false);
+    if (staleAction !== null) {
+      return staleAction;
+    }
+    log.info("Manually completing loop", { loopId: actionLoopId });
+    try {
+      await manualCompleteLoopApi(actionLoopId);
+      await refresh();
+      if (!isActiveLoop(actionLoopId)) {
+        return false;
+      }
+      log.info("Loop manually completed", { loopId: actionLoopId });
+      return true;
+    } catch (err) {
+      const staleError = ignoreStaleLoopError("manualCompleteLoop", actionLoopId, false, err);
+      if (staleError !== null) {
+        return staleError;
+      }
+      log.error("Failed to manually complete loop", { loopId: actionLoopId, error: String(err) });
+      setError(String(err));
+      return false;
+    }
+  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
+
+  return { update, remove, stopLoop, discard, purge, markMerged, manualCompleteLoop };
 }

@@ -25,6 +25,7 @@ interface UseLoopActionsOptions {
   remove: () => Promise<boolean>;
   purge: () => Promise<boolean>;
   markMerged: () => Promise<boolean>;
+  manualCompleteLoop: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
@@ -41,6 +42,7 @@ export interface UseLoopActionsResult {
   acceptModal: boolean;
   purgeModal: boolean;
   markMergedModal: boolean;
+  manualCompleteModal: boolean;
   addressCommentsModal: boolean;
   renameModal: boolean;
   updateBranchModal: boolean;
@@ -56,6 +58,7 @@ export interface UseLoopActionsResult {
   setAcceptModal: (open: boolean) => void;
   setPurgeModal: (open: boolean) => void;
   setMarkMergedModal: (open: boolean) => void;
+  setManualCompleteModal: (open: boolean) => void;
   setAddressCommentsModal: (open: boolean) => void;
   setRenameModal: (open: boolean) => void;
   setUpdateBranchModal: (open: boolean) => void;
@@ -70,6 +73,7 @@ export interface UseLoopActionsResult {
   handlePurge: () => Promise<void>;
   handleUpdateBranch: () => Promise<void>;
   handleMarkMerged: () => Promise<void>;
+  handleManualComplete: () => Promise<void>;
   handleAddressComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<void>;
   handleOpenPullRequest: (destination: PullRequestDestinationResponse | null) => void;
   handleStartAutomaticPrFlow: () => Promise<void>;
@@ -92,6 +96,7 @@ export function useLoopActions({
   remove,
   purge,
   markMerged,
+  manualCompleteLoop,
   addressReviewComments,
   startAutomaticPrFlow,
   stopAutomaticPrFlow,
@@ -105,6 +110,7 @@ export function useLoopActions({
   const [acceptModal, setAcceptModal] = useState(false);
   const [purgeModal, setPurgeModal] = useState(false);
   const [markMergedModal, setMarkMergedModal] = useState(false);
+  const [manualCompleteModal, setManualCompleteModal] = useState(false);
   const [addressCommentsModal, setAddressCommentsModal] = useState(false);
   const [renameModal, setRenameModal] = useState(false);
   const [updateBranchModal, setUpdateBranchModal] = useState(false);
@@ -162,6 +168,11 @@ export function useLoopActions({
   async function handleMarkMerged() {
     await markMerged();
     setMarkMergedModal(false);
+  }
+
+  async function handleManualComplete() {
+    await manualCompleteLoop();
+    setManualCompleteModal(false);
   }
 
   async function handleAddressComments(comments: string, attachments?: MessageImageAttachment[]) {
@@ -267,6 +278,7 @@ export function useLoopActions({
     acceptModal,
     purgeModal,
     markMergedModal,
+    manualCompleteModal,
     addressCommentsModal,
     renameModal,
     updateBranchModal,
@@ -280,6 +292,7 @@ export function useLoopActions({
     setAcceptModal,
     setPurgeModal,
     setMarkMergedModal,
+    setManualCompleteModal,
     setAddressCommentsModal,
     setRenameModal,
     setUpdateBranchModal,
@@ -292,6 +305,7 @@ export function useLoopActions({
     handlePurge,
     handleUpdateBranch,
     handleMarkMerged,
+    handleManualComplete,
     handleAddressComments,
     handleOpenPullRequest,
     handleStartAutomaticPrFlow,

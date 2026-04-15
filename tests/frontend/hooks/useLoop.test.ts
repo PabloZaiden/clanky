@@ -880,6 +880,34 @@ describe("markMerged", () => {
   });
 });
 
+// ─── Actions: manualCompleteLoop ──────────────────────────────────────────────
+
+describe("manualCompleteLoop", () => {
+  test("calls manualCompleteLoopApi and refreshes the loop as completed", async () => {
+    let currentLoop = createLoopWithStatus("failed", { config: { id: LOOP_ID }, state: { id: LOOP_ID } });
+    api.get("/api/loops/:id", () => currentLoop);
+    api.post("/api/loops/:id/manual-complete", () => {
+      currentLoop = createLoopWithStatus("completed", {
+        config: { id: LOOP_ID },
+        state: { id: LOOP_ID, error: undefined },
+      });
+      return { success: true };
+    });
+
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+    await waitForLoad(result);
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.manualCompleteLoop();
+    });
+
+    expect(success).toBe(true);
+    expect(result.current.loop?.state.status).toBe("completed");
+    expect(result.current.loop?.state.error).toBeUndefined();
+  });
+});
+
 // ─── Actions: setPendingPrompt / clearPendingPrompt ──────────────────────────
 
 describe("setPendingPrompt / clearPendingPrompt", () => {

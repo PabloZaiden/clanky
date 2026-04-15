@@ -155,6 +155,7 @@ export function LoopDetailsTabContent({
           onAddressCommentsModal={() => actions.setAddressCommentsModal(true)}
           onUpdateBranchModal={() => actions.setUpdateBranchModal(true)}
           onMarkMergedModal={() => actions.setMarkMergedModal(true)}
+          onManualCompleteModal={() => actions.setManualCompleteModal(true)}
           onPurgeModal={() => actions.setPurgeModal(true)}
           onAcceptModal={() => actions.setAcceptModal(true)}
           onDeleteModal={() => actions.setDeleteModal(true)}

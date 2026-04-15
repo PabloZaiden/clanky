@@ -245,6 +245,47 @@ export async function markMergedImpl(ctx: LoopCtx, loopId: string): Promise<{ su
   }
 }
 
+export async function manualCompleteLoopImpl(ctx: LoopCtx, loopId: string): Promise<{ success: boolean; error?: string }> {
+  log.info("Manually completing loop", { loopId });
+  const loop = await ctx.getLoop(loopId);
+  if (!loop) {
+    return { success: false, error: "Loop not found" };
+  }
+
+  const allowedStatuses = new Set(["stopped", "failed"]);
+  if (!allowedStatuses.has(loop.state.status)) {
+    return {
+      success: false,
+      error: `Cannot manually complete loop in status: ${loop.state.status}. Only stopped or failed loops can be manually completed.`,
+    };
+  }
+
+  try {
+    assertValidTransition(loop.state.status, "completed", "manualCompleteLoop");
+
+    const updatedState = {
+      ...loop.state,
+      status: "completed" as const,
+      completedAt: createTimestamp(),
+      error: undefined,
+      consecutiveErrors: undefined,
+    };
+    await updateLoopState(loopId, updatedState);
+
+    ctx.emitter.emit({
+      type: "loop.completed",
+      loopId,
+      totalIterations: loop.state.currentIteration,
+      timestamp: createTimestamp(),
+    });
+
+    log.info("Loop manually completed", { loopId, previousStatus: loop.state.status });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
 export async function shutdownImpl(ctx: LoopCtx): Promise<void> {
   const promises = Array.from(ctx.engines.keys()).map((loopId) =>
     ctx.stopLoop(loopId, "Server shutdown")

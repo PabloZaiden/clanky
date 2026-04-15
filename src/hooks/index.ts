@@ -47,6 +47,7 @@ export {
   discardLoopApi,
   deleteLoopApi,
   purgeLoopApi,
+  manualCompleteLoopApi,
   purgeArchivedWorkspaceLoopsApi,
   getLoopSshSessionApi,
   getOrCreateLoopSshSessionApi,

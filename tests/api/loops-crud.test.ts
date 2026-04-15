@@ -1484,6 +1484,96 @@ Updated line 3`;
     });
   });
 
+  describe("POST /api/loops/:id/manual-complete", () => {
+    test("returns 404 for non-existent loop", async () => {
+      const response = await fetch(`${baseUrl}/api/loops/non-existent-id/manual-complete`, {
+        method: "POST",
+      });
+      expect(response.status).toBe(404);
+
+      const body = await response.json();
+      expect(body.error).toBe("not_found");
+    });
+
+    test("returns 400 for loop that is not halted", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Test manual complete",
+          name: "Manual Complete Loop",
+          draft: true,
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      const createBody = await createResponse.json();
+      const loopId = createBody.config.id;
+
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}/manual-complete`, {
+        method: "POST",
+      });
+      expect(response.status).toBe(400);
+
+      const body = await response.json();
+      expect(body.error).toBe("manual_complete_failed");
+      expect(body.message).toContain("Cannot manually complete loop");
+    });
+
+    test("promotes a failed loop to completed and clears the persisted error", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Test manual complete",
+          name: "Manual Complete Loop",
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      const createBody = await createResponse.json();
+      const loopId = createBody.config.id;
+
+      await waitForLoopCompletion(loopId);
+
+      const { updateLoopState, loadLoop } = await import("../../src/persistence/loops");
+      const loop = await loadLoop(loopId);
+      expect(loop).toBeTruthy();
+
+      await updateLoopState(loopId, {
+        ...loop!.state,
+        status: "failed",
+        error: {
+          message: "Manual completion regression",
+          iteration: loop!.state.currentIteration,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      const { loopManager } = await import("../../src/core/loop-manager");
+      loopManager.resetForTesting();
+
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}/manual-complete`, {
+        method: "POST",
+      });
+      expect(response.status).toBe(200);
+
+      const body = await response.json();
+      expect(body.success).toBe(true);
+
+      const getResponse = await fetch(`${baseUrl}/api/loops/${loopId}`);
+      expect(getResponse.status).toBe(200);
+      const getBody = await getResponse.json();
+      expect(getBody.state.status).toBe("completed");
+      expect(getBody.state.error).toBeUndefined();
+    });
+  });
+
   describe("Rename loops via PATCH", () => {
     test("renames a draft loop", async () => {
       // Create a draft loop

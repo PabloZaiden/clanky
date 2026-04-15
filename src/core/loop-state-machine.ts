@@ -69,15 +69,17 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   // stopped: manually stopped by user
   // → starting: restart via engine.start
   // → planning: restart in plan mode via engine.start
+  // → completed: manually finalize without resuming execution
   // → deleted: delete/discard
   // → stopped: jumpstart (re-enter stopped to allow engine.start)
-  stopped: new Set(["starting", "planning", "deleted", "stopped"]),
+  stopped: new Set(["starting", "planning", "completed", "deleted", "stopped"]),
 
   // failed: unrecoverable error occurred
+  // → completed: manually finalize after reviewing the failure
   // → deleted: delete/discard
   // → stopped: jumpstart (reset to stopped for restart)
   // → planning: jumpstart in planning mode
-  failed: new Set(["deleted", "stopped", "planning"]),
+  failed: new Set(["completed", "deleted", "stopped", "planning"]),
 
   // max_iterations: hit the iteration limit
   // → merged: accepted

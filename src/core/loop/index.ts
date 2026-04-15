@@ -24,7 +24,7 @@ import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
 import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
 import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
 import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
-import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
+import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, manualCompleteLoopImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
 import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
 import {
@@ -150,6 +150,10 @@ export class LoopManager {
 
   async markMerged(loopId: string): Promise<{ success: boolean; error?: string }> {
     return markMergedImpl(this.ctx, loopId);
+  }
+
+  async manualCompleteLoop(loopId: string): Promise<{ success: boolean; error?: string }> {
+    return manualCompleteLoopImpl(this.ctx, loopId);
   }
 
   async setPendingPrompt(
