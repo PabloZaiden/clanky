@@ -8,6 +8,7 @@ export class MockTerminal {
   focusCalls = 0;
   element: HTMLDivElement | null = null;
   canvas: HTMLCanvasElement | null = null;
+  textarea: HTMLTextAreaElement | null = null;
   wheelHandler: ((event: WheelEvent) => boolean) | undefined;
   keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
   mouseTracking = false;
@@ -37,6 +38,12 @@ export class MockTerminal {
     }
 
     this.element = parent;
+    parent.setAttribute("tabindex", "0");
+    parent.setAttribute("contenteditable", "true");
+    parent.setAttribute("role", "textbox");
+    parent.setAttribute("aria-label", "Terminal input");
+    parent.setAttribute("aria-multiline", "true");
+
     const canvas = document.createElement("canvas");
     Object.defineProperty(canvas, "getBoundingClientRect", {
       configurable: true,
@@ -54,6 +61,20 @@ export class MockTerminal {
     });
     parent.appendChild(canvas);
     this.canvas = canvas;
+
+    const textarea = document.createElement("textarea");
+    textarea.setAttribute("tabindex", "0");
+    textarea.setAttribute("aria-hidden", "true");
+    textarea.style.position = "absolute";
+    textarea.style.left = "0";
+    textarea.style.top = "0";
+    textarea.style.width = "1px";
+    textarea.style.height = "1px";
+    textarea.style.opacity = "0";
+    textarea.style.clipPath = "inset(50%)";
+    parent.appendChild(textarea);
+    this.textarea = textarea;
+
     canvas.addEventListener("wheel", (event) => {
       this.wheelHandler?.(event as WheelEvent);
     });
@@ -64,10 +85,12 @@ export class MockTerminal {
       resize: () => {},
       render: () => {},
     };
+    this.focus();
   }
 
   focus() {
     this.focusCalls += 1;
+    this.element?.focus();
   }
 
   write(data: string) {
@@ -154,7 +177,9 @@ export class MockTerminal {
     this.resizeHandler = null;
     this.selectionChangeHandler = null;
     this.canvas?.remove();
+    this.textarea?.remove();
     this.canvas = null;
+    this.textarea = null;
     this.element = null;
     this.renderer = null;
     this.wheelHandler = undefined;
