@@ -345,7 +345,7 @@ describe("SSH sessions API integration", () => {
     expect(session.state.notice).toBeUndefined();
   });
 
-  test("treats persistent session cleanup failures as server errors", async () => {
+  test("deletes the session even when persistent remote cleanup fails", async () => {
     const workspace = await createWorkspace({ transport: "ssh" });
 
     const createResponse = await fetch(`${baseUrl}/api/ssh-sessions`, {
@@ -367,9 +367,10 @@ describe("SSH sessions API integration", () => {
       method: "DELETE",
     });
 
-    expect(deleteResponse.status).toBe(500);
-    const data = await deleteResponse.json() as { error: string; message: string };
-    expect(data.error).toBe("ssh_session_error");
-    expect(data.message).toContain("Failed to stop remote persistent SSH session");
+    expect(deleteResponse.ok).toBe(true);
+    expect(await deleteResponse.json()).toEqual({ success: true });
+
+    const getResponse = await fetch(`${baseUrl}/api/ssh-sessions/${created.config.id}`);
+    expect(getResponse.status).toBe(404);
   });
 });

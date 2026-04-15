@@ -105,7 +105,7 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     prompt: config.prompt,
     created_at: config.createdAt,
     updated_at: config.updatedAt,
-    workspace_id: config.workspaceId,
+    workspace_id: config.workspaceId || null,
     model_provider_id: config.model?.providerID ?? null,
     model_model_id: config.model?.modelID ?? null,
     model_variant: config.model?.variant ?? null,
@@ -214,7 +214,7 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
     prompt: row["prompt"] as string,
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
-    workspaceId: row["workspace_id"] as string,
+    workspaceId: (row["workspace_id"] as string | null) ?? "",
     stopPattern: row["stop_pattern"] as string,
     git: {
       branchPrefix: row["git_branch_prefix"] as string,
