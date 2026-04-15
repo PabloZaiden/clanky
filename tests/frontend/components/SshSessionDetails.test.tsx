@@ -226,6 +226,40 @@ describe("SshSessionDetails", () => {
     });
   });
 
+  test("hides the browser caret on the contenteditable terminal host", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Hidden Browser Caret" } }),
+    );
+
+    const { container, getByText } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-hidden-caret-1" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(getByText("SSH Hidden Browser Caret")).toBeTruthy();
+      expect(lastTerminal?.element).not.toBeNull();
+    });
+
+    expect(container.querySelector('div[style*="caret-color: transparent"]')).toBeTruthy();
+  });
+
+  test("does not refocus the terminal after ghostty open already focused it", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Initial Focus" } }),
+    );
+
+    const { getByText } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-initial-focus-1" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(getByText("SSH Initial Focus")).toBeTruthy();
+      expect(lastTerminal).not.toBeNull();
+    });
+
+    expect(lastTerminal?.focusCalls).toBe(1);
+  });
+
   test("prefers local Nerd fonts over the bundled fallback font when available", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Local Font Preference" } }),
