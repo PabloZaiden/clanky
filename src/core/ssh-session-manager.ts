@@ -24,10 +24,13 @@ import {
 import { loadLoop } from "../persistence/loops";
 import { backendManager } from "./backend-manager";
 import { sshSessionEventEmitter } from "./event-emitter";
+import { createLogger } from "./logger";
 import { buildDefaultSshSessionName, buildLoopSshSessionName } from "../utils";
 import { isPersistentSshSession } from "../utils";
 import { portForwardManager } from "./port-forward-manager";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
+
+const log = createLogger("core:ssh-session-manager");
 
 function buildRemoteSessionName(id: string): string {
   return `ralpher-${id.replace(/-/g, "").slice(0, 24)}`;
@@ -100,16 +103,7 @@ export class SshSessionManager {
   async deleteSession(id: string): Promise<boolean> {
     const session = await this.requireSession(id);
     await portForwardManager.deleteForwardsBySshSessionId(id);
-    if (isPersistentSshSession(session)) {
-      const workspace = await requireSshWorkspace(session.config.workspaceId);
-      const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
-      const killResult = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand(session)], {
-        cwd: workspace.directory,
-      });
-      if (!killResult.success) {
-        throw new Error(killResult.stderr.trim() || killResult.stdout.trim() || "Failed to stop remote persistent SSH session");
-      }
-    }
+    await this.deletePersistentSessionBestEffort(session);
 
     const deleted = await deleteSshSession(id);
     if (deleted) {
@@ -272,6 +266,39 @@ export class SshSessionManager {
       throw new Error(`SSH session not found: ${id}`);
     }
     return session;
+  }
+
+  private async deletePersistentSessionBestEffort(session: SshSession): Promise<void> {
+    if (!isPersistentSshSession(session)) {
+      return;
+    }
+
+    const workspace = await getWorkspace(session.config.workspaceId);
+    if (!workspace) {
+      return;
+    }
+
+    if (workspace.serverSettings.agent.transport !== "ssh") {
+      return;
+    }
+
+    try {
+      const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
+      const killResult = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand(session)], {
+        cwd: workspace.directory,
+      });
+      if (!killResult.success) {
+        throw new Error(killResult.stderr.trim() || killResult.stdout.trim() || "Failed to stop remote persistent SSH session");
+      }
+    } catch (error) {
+      log.warn("Failed to stop remote persistent SSH session during deletion", {
+        sshSessionId: session.config.id,
+        workspaceId: session.config.workspaceId,
+        remoteSessionName: session.config.remoteSessionName,
+        status: session.state.status,
+        error: String(error),
+      });
+    }
   }
 }
 
