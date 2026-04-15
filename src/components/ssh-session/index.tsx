@@ -349,7 +349,7 @@ export function SshSessionDetails({
         >
           <div
             ref={terminalContainerRef}
-            className="relative box-border min-h-0 h-full flex-1 bg-[#1e1e1e] w-full caret-transparent focus:outline-none"
+            className="relative box-border min-h-0 h-full flex-1 bg-[#1e1e1e] w-full caret-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
             style={{
               caretColor: "transparent",
               padding: `${TERMINAL_PADDING_TOP_PX}px ${TERMINAL_PADDING_X_PX}px ${TERMINAL_PADDING_BOTTOM_PX}px`,

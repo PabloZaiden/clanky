@@ -64,7 +64,7 @@ export class MockTerminal {
 
     const textarea = document.createElement("textarea");
     textarea.setAttribute("tabindex", "0");
-    textarea.setAttribute("aria-label", "Terminal input");
+    textarea.setAttribute("aria-hidden", "true");
     textarea.style.position = "absolute";
     textarea.style.left = "0";
     textarea.style.top = "0";

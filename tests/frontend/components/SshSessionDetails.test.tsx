@@ -231,16 +231,19 @@ describe("SshSessionDetails", () => {
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Hidden Browser Caret" } }),
     );
 
-    const { container, getByText } = renderWithUser(
+    const { getByText } = renderWithUser(
       <SshSessionDetails sshSessionId="ssh-hidden-caret-1" onBack={() => {}} />,
     );
 
     await waitFor(() => {
       expect(getByText("SSH Hidden Browser Caret")).toBeTruthy();
-      expect(lastTerminal?.element).not.toBeNull();
+      expect(lastTerminal).not.toBeNull();
+      expect(lastTerminal?.element).not.toBeUndefined();
     });
 
-    expect(container.querySelector('div[style*="caret-color: transparent"]')).toBeTruthy();
+    const terminalHost = lastTerminal!.element!;
+    expect(terminalHost.style.caretColor).toBe("transparent");
+    expect(terminalHost.classList.contains("caret-transparent")).toBe(true);
   });
 
   test("does not refocus the terminal after ghostty open already focused it", async () => {
