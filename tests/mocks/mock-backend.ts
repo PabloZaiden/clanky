@@ -8,6 +8,7 @@ import type {
   AgentResponse,
   AgentEvent,
   BackendConnectionConfig,
+  ConfigOption,
   CreateSessionOptions,
   PromptInput,
   Backend,
@@ -65,6 +66,9 @@ export class MockAcpBackend implements Backend {
   private readonly responses: string[];
   private readonly models: MockModelInfo[];
   private readonly sessions = new Map<string, AgentSession>();
+  private readonly sentPrompts: PromptInput[] = [];
+  private readonly configOptionUpdates: Array<{ sessionId: string; configId: string; value: string }> = [];
+  private readonly sessionModelUpdates: Array<{ sessionId: string; modelId: string }> = [];
   private nextCreateSessionError: string | null = null;
   private nextGetSessionError: string | null = null;
 
@@ -119,12 +123,14 @@ export class MockAcpBackend implements Backend {
       id: createMockSessionId("mock-session"),
       title: options.title,
       createdAt: new Date().toISOString(),
+      model: options.model,
     };
     this.sessions.set(session.id, session);
     return session;
   }
 
   async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    this.sentPrompts.push(_prompt);
     const response = this.getNextResponse();
     this.checkForError(response);
     return {
@@ -135,6 +141,7 @@ export class MockAcpBackend implements Backend {
   }
 
   async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
+    this.sentPrompts.push(_prompt);
     this.pendingPrompt = true;
   }
 
@@ -183,11 +190,24 @@ export class MockAcpBackend implements Backend {
     // Mock - no-op
   }
 
-  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+  async setConfigOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]> {
+    this.configOptionUpdates.push({ sessionId, configId, value });
+    if (configId === "model") {
+      const session = this.sessions.get(sessionId);
+      if (session) {
+        session.model = value;
+      }
+    }
     return [];
   }
 
-  async setSessionModel(_sessionId: string, _modelId: string) {}
+  async setSessionModel(sessionId: string, modelId: string) {
+    this.sessionModelUpdates.push({ sessionId, modelId });
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      session.model = modelId;
+    }
+  }
 
   // ============================================
   // Backend-specific methods (used by BackendManager)
@@ -263,6 +283,18 @@ export class MockAcpBackend implements Backend {
 
   failNextGetSession(message: string): void {
     this.nextGetSessionError = message;
+  }
+
+  getSentPrompts(): PromptInput[] {
+    return [...this.sentPrompts];
+  }
+
+  getConfigOptionUpdates(): Array<{ sessionId: string; configId: string; value: string }> {
+    return [...this.configOptionUpdates];
+  }
+
+  getSessionModelUpdates(): Array<{ sessionId: string; modelId: string }> {
+    return [...this.sessionModelUpdates];
   }
 }
 
@@ -375,7 +407,7 @@ export class NeverCompletingMockBackend implements Backend {
     // No-op
   }
 
-  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+  async setConfigOption(_sessionId: string, _configId: string, _value: string): Promise<ConfigOption[]> {
     return [];
   }
 
@@ -516,7 +548,7 @@ export class PlanModeMockBackend implements Backend {
     // No-op
   }
 
-  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+  async setConfigOption(_sessionId: string, _configId: string, _value: string): Promise<ConfigOption[]> {
     return [];
   }
 

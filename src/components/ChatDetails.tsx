@@ -4,6 +4,13 @@ import {
   ImageAttachmentControl,
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
+import {
+  getModelDisplayName,
+  isModelEnabled,
+  makeModelKey,
+  ModelSelector,
+  parseModelKey,
+} from "./ModelSelector";
 import { RenameChatModal } from "./RenameChatModal";
 import {
   ActionMenu,
@@ -20,7 +27,7 @@ import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
 import { getFocusModeViewportStyle, useVisualViewport } from "./ssh-session/use-visual-viewport";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
-import { useMarkdownPreference, useToast, useWebSocket } from "../hooks";
+import { useAvailableModels, useMarkdownPreference, useToast, useWebSocket } from "../hooks";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import type {
   Chat,
@@ -110,6 +117,7 @@ export function ChatDetails({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSpawnPending, setIsSpawnPending] = useState(false);
@@ -123,6 +131,10 @@ export function ChatDetails({
   const { isFocusMode, toggleFocusMode } = useChatFocusMode();
   const viewport = useVisualViewport(isFocusMode);
   const focusModeContainerStyle = getFocusModeViewportStyle(isFocusMode, viewport);
+  const { models, modelsLoading } = useAvailableModels({
+    directory: chat?.config.directory,
+    workspaceId: chat?.config.workspaceId,
+  });
 
   const refreshChat = useCallback(async () => {
     try {
@@ -244,7 +256,15 @@ export function ChatDetails({
     void refreshChat();
   }, [refreshChat]);
 
+  useEffect(() => {
+    setSelectedModel("");
+  }, [chat?.config.model.modelID, chat?.config.model.providerID, chat?.config.model.variant]);
+
   const isActive = chat ? ACTIVE_CHAT_STATUSES.has(chat.state.status) : false;
+  const currentModelKey = chat
+    ? makeModelKey(chat.config.model.providerID, chat.config.model.modelID, chat.config.model.variant)
+    : "";
+  const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
 
   const handleReconnect = useCallback(async () => {
     try {
@@ -297,12 +317,47 @@ export function ChatDetails({
     }
 
     const trimmedMessage = message.trim();
-    if (trimmedMessage.length === 0 && attachments.length === 0) {
+    const hasPendingModelChange = selectedModel.length > 0;
+    if (trimmedMessage.length === 0 && attachments.length === 0 && !hasPendingModelChange) {
+      return;
+    }
+
+    if (hasPendingModelChange && !selectedModelEnabled) {
+      toast.error("The selected model's provider is not connected. Please select a different model.");
       return;
     }
 
     setIsSubmitting(true);
     try {
+      if (hasPendingModelChange) {
+        const parsedModel = parseModelKey(selectedModel);
+        if (!parsedModel) {
+          throw new Error("Failed to parse selected model");
+        }
+
+        const updateResponse = await appFetch(`/api/chats/${chatId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: {
+              providerID: parsedModel.providerID,
+              modelID: parsedModel.modelID,
+              variant: parsedModel.variant,
+            },
+          }),
+        });
+        if (!updateResponse.ok) {
+          throw new Error(await parseError(updateResponse, "Failed to update chat model"));
+        }
+        const updatedChat = (await updateResponse.json()) as Chat;
+        setChat(updatedChat);
+        setSelectedModel("");
+      }
+
+      if (trimmedMessage.length === 0 && attachments.length === 0) {
+        return;
+      }
+
       const response = await appFetch(`/api/chats/${chatId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -479,7 +534,7 @@ export function ChatDetails({
     );
   }
 
-  const hasPendingInput = message.trim().length > 0 || attachments.length > 0;
+  const hasPendingInput = message.trim().length > 0 || attachments.length > 0 || selectedModel.length > 0;
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
@@ -506,8 +561,23 @@ export function ChatDetails({
       onSubmit={handleSubmit}
       className={`border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-neutral-900 ${isFocusMode ? "" : "safe-area-bottom"}`}
     >
+      <label htmlFor="chat-model" className="sr-only">Model</label>
       <label htmlFor="chat-message" className="sr-only">Message</label>
       <div className="flex flex-row items-end gap-2 sm:gap-3">
+        <ModelSelector
+          id="chat-model"
+          value={selectedModel}
+          onChange={setSelectedModel}
+          models={models}
+          loading={modelsLoading}
+          disabled={isActive || isSubmitting}
+          showDisconnected
+          currentModelKey={currentModelKey}
+          placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
+          loadingText="Loading..."
+          emptyText="No models available"
+          className="min-w-[112px] sm:min-w-[128px] md:w-48 max-w-[120px] sm:max-w-none flex-shrink-0 h-9 text-sm rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:focus:ring-gray-600"
+        />
         <textarea
           ref={composerRef}
           id="chat-message"
@@ -544,7 +614,7 @@ export function ChatDetails({
         ) : (
           <FocusPreservingButton
             type="submit"
-            disabled={isSubmitting || !hasPendingInput}
+            disabled={isSubmitting || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
             className={sendButtonClassName}
             aria-label="Send"
             title="Send"
@@ -557,6 +627,11 @@ export function ChatDetails({
           </FocusPreservingButton>
         )}
       </div>
+      {selectedModel && !selectedModelEnabled && (
+        <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+          The selected model's provider is not connected. Please select a different model.
+        </p>
+      )}
     </form>
   );
 

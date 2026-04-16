@@ -12,17 +12,35 @@ import { ensureDataDirectories } from "../../src/persistence/database";
 import { loadChat, updateChatState } from "../../src/persistence/chats";
 import { backendManager } from "../../src/core/backend-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { createMockBackend } from "../mocks/mock-backend";
+import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
+const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
 
 describe("Chats API Integration", () => {
   let testDataDir: string;
   let testWorkDir: string;
+  let testOriginDir: string;
   let server: Server<unknown>;
   let baseUrl: string;
   let testWorkspaceId: string;
-  let mockBackend: ReturnType<typeof createMockBackend>;
+  let mockBackend: MockAcpBackend;
+
+  function installMockBackend(responses: string[]): void {
+    mockBackend = new MockAcpBackend({
+      responses,
+      models: [
+        defaultTestModel,
+        {
+          ...defaultTestModel,
+          modelID: updatedTestModel.modelID,
+          modelName: "Test Model 2",
+        },
+      ],
+    });
+    backendManager.setBackendForTesting(mockBackend);
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+  }
 
   async function getOrCreateWorkspace(directory: string, name?: string): Promise<string> {
     const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -67,6 +85,7 @@ describe("Chats API Integration", () => {
   beforeAll(async () => {
     testDataDir = await mkdtemp(join(tmpdir(), "ralpher-api-chats-test-data-"));
     testWorkDir = await mkdtemp(join(tmpdir(), "ralpher-api-chats-test-work-"));
+    testOriginDir = await mkdtemp(join(tmpdir(), "ralpher-api-chats-test-origin-"));
 
     process.env["RALPHER_DATA_DIR"] = testDataDir;
 
@@ -78,10 +97,11 @@ describe("Chats API Integration", () => {
     await Bun.$`touch ${testWorkDir}/README.md`.quiet();
     await Bun.$`git -C ${testWorkDir} add .`.quiet();
     await Bun.$`git -C ${testWorkDir} commit -m "Initial commit"`.quiet();
+    await Bun.$`git init --bare ${testOriginDir}`.quiet();
+    await Bun.$`git -C ${testWorkDir} remote add origin ${testOriginDir}`.quiet();
+    await Bun.$`git -C ${testWorkDir} push -u origin main`.quiet();
 
-    mockBackend = createMockBackend(["Hello from chat API", "Second response"]);
-    backendManager.setBackendForTesting(mockBackend);
-    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+    installMockBackend(["Hello from chat API", "Second response"]);
 
     server = serve({
       port: 0,
@@ -98,6 +118,7 @@ describe("Chats API Integration", () => {
     backendManager.resetForTesting();
     await rm(testDataDir, { recursive: true, force: true });
     await rm(testWorkDir, { recursive: true, force: true });
+    await rm(testOriginDir, { recursive: true, force: true });
     delete process.env["RALPHER_DATA_DIR"];
   });
 
@@ -337,7 +358,60 @@ describe("Chats API Integration", () => {
     expect(persisted.config.name).toBe("Renamed Chat");
   });
 
+  test("updates a chat model and uses it for the next turn", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Model Update Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const updateResponse = await fetch(`${baseUrl}/api/chats/${chatId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: updatedTestModel,
+      }),
+    });
+
+    expect(updateResponse.status).toBe(200);
+    const updated = await updateResponse.json();
+    expect(updated.config.model).toEqual(updatedTestModel);
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Use the updated model",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    await waitForChatIdle(chatId);
+
+    const lastPrompt = mockBackend.getSentPrompts().at(-1);
+    expect(lastPrompt?.model).toEqual(updatedTestModel);
+
+    const persisted = await loadChat(chatId);
+    expect(persisted?.config.model).toEqual(updatedTestModel);
+  });
+
   test("spawns a plan-mode loop from an existing chat without deleting the chat", async () => {
+    installMockBackend([
+      "Hello from chat API",
+      "Plan created\n<promise>PLAN_READY</promise>",
+    ]);
+
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

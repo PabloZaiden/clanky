@@ -3,6 +3,7 @@ import { ChatManager } from "../../src/core/chat-manager";
 import { backendManager } from "../../src/core/backend-manager";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import { GitService } from "../../src/core/git-service";
+import { loopManager } from "../../src/core";
 import * as chatPersistence from "../../src/persistence/chats";
 import { loadChat } from "../../src/persistence/chats";
 import type { ChatEvent } from "../../src/types";
@@ -1550,6 +1551,133 @@ describe("ChatManager", () => {
     expect(reconnected?.state.session?.id).not.toBe(sessionId);
     expect(reconnected?.state.error).toBeUndefined();
     expect(await context.mockBackend?.getSession(sessionId!)).toBeNull();
+  });
+
+  test("reconfigures an active session when the chat model changes", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the updated model"],
+    });
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Model Update Runtime Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Create the session",
+    });
+    const completed = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    const sessionId = completed.state.session?.id;
+
+    expect(sessionId).toBeString();
+
+    const updated = await manager.updateChat(chat.config.id, {
+      model: {
+        providerID: testModelFields.modelProviderID,
+        modelID: "test-model-2",
+        variant: "",
+      },
+    });
+
+    expect(updated?.config.model.modelID).toBe("test-model-2");
+    expect(context.mockBackend?.getConfigOptionUpdates().some((update) =>
+      update.sessionId === sessionId && update.configId === "model" && update.value === "test-model-2"
+    )).toBe(true);
+  });
+
+  test("uses the updated chat model for the next prompt after a model-only update", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Initial response", "Follow-up response"],
+    });
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Prompt Model Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Initial prompt",
+    });
+    await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+
+    await manager.updateChat(chat.config.id, {
+      model: {
+        providerID: testModelFields.modelProviderID,
+        modelID: "test-model-2",
+        variant: "",
+      },
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Use the new model",
+    });
+    await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "Follow-up response"),
+    );
+
+    const lastPrompt = context.mockBackend?.getSentPrompts().at(-1);
+    expect(lastPrompt?.model).toEqual({
+      providerID: testModelFields.modelProviderID,
+      modelID: "test-model-2",
+      variant: "",
+    });
+  });
+
+  test("spawns a loop using the chat's updated model", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Chat response"],
+      initGit: true,
+    });
+
+    const startPlanModeSpy = spyOn(loopManager, "startPlanMode");
+    startPlanModeSpy.mockResolvedValue();
+
+    try {
+      const manager = new ChatManager();
+      const chat = await manager.createChat({
+        name: "Spawn Model Chat",
+        workspaceId: testWorkspaceId,
+        directory: context.workDir,
+        useWorktree: false,
+        baseBranch: "main",
+        ...testModelFields,
+      });
+
+      await manager.sendMessage(chat.config.id, {
+        message: "Turn this into a loop",
+      });
+      await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+
+      await manager.updateChat(chat.config.id, {
+        model: {
+          providerID: testModelFields.modelProviderID,
+          modelID: "test-model-2",
+          variant: "",
+        },
+      });
+
+      const spawned = await manager.spawnLoopFromChat(chat.config.id);
+
+      expect(spawned.config.model).toEqual({
+        providerID: testModelFields.modelProviderID,
+        modelID: "test-model-2",
+        variant: "",
+      });
+    } finally {
+      startPlanModeSpy.mockRestore();
+    }
   });
 
   test("treats uninitialized database errors by error message instead of String(error)", async () => {
