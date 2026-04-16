@@ -109,6 +109,32 @@ describe("LogViewer", () => {
       expect(container.querySelector("img")?.getAttribute("src")).toContain("data:image/png;base64,ZmFrZQ==");
     });
 
+    test("opens a larger preview when a message attachment is clicked", async () => {
+      const msg = createMessageData({
+        role: "user",
+        content: "Hello world",
+        attachments: [{
+          id: "img-1",
+          filename: "screen.png",
+          mimeType: "image/png",
+          data: "ZmFrZQ==",
+          size: 1234,
+        }],
+      });
+
+      const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(
+        <LogViewer messages={[msg]} toolCalls={[]} />
+      );
+
+      await user.click(getByRole("button", { name: "View screen.png" }));
+
+      expect(getByRole("dialog", { name: "screen.png" })).toBeInTheDocument();
+
+      await user.click(getByLabelText("Close"));
+
+      expect(queryByRole("dialog", { name: "screen.png" })).not.toBeInTheDocument();
+    });
+
     test("shared conversation viewer can render assistant messages", () => {
       const msg = createMessageData({ role: "assistant", content: "I can help with that" });
       const { getByText } = renderWithUser(

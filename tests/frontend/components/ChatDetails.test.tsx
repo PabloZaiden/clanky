@@ -125,6 +125,48 @@ describe("ChatDetails", () => {
     });
   });
 
+  test("opens a larger preview for attachment thumbnails in the transcript", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "idle",
+        logs: [],
+        toolCalls: [],
+        messages: [{
+          id: "user-1",
+          role: "user",
+          content: "Can you inspect this screenshot?",
+          timestamp: "2025-01-01T00:00:00.000Z",
+          attachments: [{
+            id: "img-1",
+            filename: "screen.png",
+            mimeType: "image/png",
+            data: "ZmFrZQ==",
+            size: 1234,
+          }],
+        }],
+      },
+    }));
+
+    const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "View screen.png" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "View screen.png" }));
+
+    await waitFor(() => {
+      expect(getByRole("dialog", { name: "screen.png" })).toBeInTheDocument();
+    });
+
+    await user.click(getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(queryByRole("dialog", { name: "screen.png" })).not.toBeInTheDocument();
+    });
+  });
+
   test("shows interrupt while active and posts interrupt requests", async () => {
     const streamingChat = createChat({
       state: {
