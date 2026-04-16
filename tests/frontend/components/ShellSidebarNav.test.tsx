@@ -277,8 +277,70 @@ describe("ShellSidebarNav", () => {
   });
 
   test("keeps compact row padding for subtitles, badges, history items, and active rows", () => {
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [
+        createWorkspace({
+          id: "workspace-1",
+          name: "Workspace 1",
+          directory: "/workspaces/workspace-1",
+          sshServerId: "server-1",
+        }),
+        createWorkspace({
+          id: "workspace-2",
+          name: "Workspace 2",
+          directory: "/workspaces/workspace-2",
+        }),
+      ],
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-3",
+            name: "Completed Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-4",
+            name: "Merged Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "merged",
+          },
+        }),
+      ],
+      chats: [
+        createChat({
+          config: {
+            id: "chat-1",
+            name: "Workspace Chat",
+            workspaceId: "workspace-1",
+          },
+        }),
+      ],
+      sessions: [
+        createSshSession({
+          config: {
+            id: "workspace-session-2",
+            name: "Workspace SSH",
+            workspaceId: "workspace-1",
+            createdAt: "2026-04-16T11:30:00.000Z",
+          },
+          state: {
+            status: "ready",
+          },
+        }),
+      ],
+    });
     const { getAllByText, getByText } = renderWithUser(
-      <SidebarHarness route={{ view: "workspace", workspaceId: "workspace-1" }} />,
+      <SidebarHarness
+        route={{ view: "workspace", workspaceId: "workspace-1" }}
+        workspaceGroups={workspaceGroups}
+      />,
     );
 
     const workspaceButton = getByTextButton(getAllByText("Workspace 1")[0]!);
@@ -286,7 +348,7 @@ describe("ShellSidebarNav", () => {
     expect(workspaceButton).toHaveClass("border-gray-900", "bg-gray-900", "text-white");
     expect(getByTextButton(getAllByText("/workspaces/workspace-1")[0]!)).toBe(workspaceButton);
 
-    const historyLoopButton = getByTextButton(getAllByText("Completed Loop")[0]!);
+    const historyLoopButton = getByTextButton(getAllByText("Merged Loop")[0]!);
     expect(historyLoopButton).toHaveClass("pl-0", "pr-3");
 
     const standaloneServerButton = getByTextButton(getByText("Server 1"));
