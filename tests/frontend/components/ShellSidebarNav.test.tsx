@@ -243,20 +243,42 @@ describe("ShellSidebarNav", () => {
 
     const workspaceRow = getTreeRowForText(getAllByText("Workspace 1")[0]!);
     expect(workspaceRow.style.marginLeft).toBe("0.375rem");
-    expect(workspaceRow.firstElementChild).toHaveClass("w-4");
+    expect(workspaceRow.firstElementChild).toHaveClass("w-3");
+    expect(getByTextButton(getAllByText("Workspace 1")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const loopRow = getTreeRowForText(getAllByText("Feature Loop")[0]!);
     expect(loopRow.style.marginLeft).toBe("1.125rem");
-    expect(loopRow.firstElementChild).toHaveClass("w-4");
+    expect(loopRow.firstElementChild).toHaveClass("w-3");
+    expect(getByTextButton(getAllByText("Feature Loop")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const sessionRow = getTreeRowForText(getAllByText("Loop SSH Session")[0]!);
     expect(sessionRow.style.marginLeft).toBe("1.5rem");
-    expect(sessionRow.firstElementChild).toHaveClass("w-4");
+    expect(sessionRow.firstElementChild).toHaveClass("w-3");
+    expect(getByTextButton(getAllByText("Loop SSH Session")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const chatRow = getTreeRowForText(getAllByText("Workspace Chat")[0]!);
     expect(chatRow.style.marginLeft).toBe("1.125rem");
     expect(chatRow.firstElementChild).toHaveAttribute("aria-hidden", "true");
-    expect(chatRow.firstElementChild).toHaveClass("w-4");
+    expect(chatRow.firstElementChild).toHaveClass("w-3");
+    expect(getByTextButton(getAllByText("Workspace Chat")[0]!)).toHaveClass("pl-0", "pr-3");
+  });
+
+  test("keeps compact row padding for subtitles, badges, history items, and active rows", () => {
+    const { getAllByText, getByText } = renderWithUser(
+      <SidebarHarness route={{ view: "workspace", workspaceId: "workspace-1" }} />,
+    );
+
+    const workspaceButton = getByTextButton(getAllByText("Workspace 1")[0]!);
+    expect(workspaceButton).toHaveClass("pl-0", "pr-3");
+    expect(workspaceButton).toHaveClass("border-gray-900", "bg-gray-900", "text-white");
+    expect(getByTextButton(getAllByText("/workspaces/workspace-1")[0]!)).toBe(workspaceButton);
+
+    const historyLoopButton = getByTextButton(getAllByText("Completed Loop")[0]!);
+    expect(historyLoopButton).toHaveClass("pl-0", "pr-3");
+
+    const standaloneServerButton = getByTextButton(getByText("Server 1"));
+    expect(standaloneServerButton).toHaveClass("pl-0", "pr-3");
+    expect(getByTextButton(getByText("ubuntu@server.example.com"))).toBe(standaloneServerButton);
   });
 
   test("keeps pushed loops in regular workspace groups while routing merged and terminal loops to history", () => {

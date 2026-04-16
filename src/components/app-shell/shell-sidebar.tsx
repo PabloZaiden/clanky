@@ -2,7 +2,7 @@ import { useId, type MouseEvent, type ReactNode } from "react";
 import { StatusBadge, type BadgeVariant } from "../common";
 
 const TREE_INDENT_REM = 0.375;
-const TREE_ITEM_GUTTER_WIDTH_CLASS = "w-4";
+const TREE_ITEM_GUTTER_WIDTH_CLASS = "w-3";
 
 function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined {
   if (indentLevel <= 0) {
@@ -162,7 +162,7 @@ export function SidebarTreeItem({
   onToggle?: () => void;
 }) {
   return (
-    <div className="flex items-stretch gap-2" style={getIndentStyle(indentLevel)}>
+    <div className="flex items-stretch gap-1" style={getIndentStyle(indentLevel)}>
       {onToggle ? (
         <button
           type="button"
@@ -183,7 +183,7 @@ export function SidebarTreeItem({
         type="button"
         onClick={onClick}
         className={[
-          "flex min-w-0 flex-1 items-center justify-between rounded-xl border px-3 py-2 text-left transition",
+          "flex min-w-0 flex-1 items-center justify-between rounded-xl border py-2 pl-0 pr-3 text-left transition",
           active
             ? "border-gray-900 bg-gray-900 text-white shadow-sm dark:border-gray-100 dark:bg-neutral-100 dark:text-gray-950"
             : "border-transparent bg-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-100 dark:text-gray-200 dark:hover:border-gray-800 dark:hover:bg-neutral-800/80",
