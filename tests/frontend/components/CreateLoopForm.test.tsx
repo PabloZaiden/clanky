@@ -444,12 +444,40 @@ describe("CreateLoopForm", () => {
   });
 
   describe("prompt", () => {
-    test("title is optional", () => {
-      const { getByLabelText } = renderWithUser(
+    test("title is optional when creating a new loop", () => {
+      const { getByLabelText, getByText } = renderWithUser(
         <CreateLoopForm {...defaultProps()} />
       );
       const input = getByLabelText(/Title/) as HTMLInputElement;
       expect(input.required).toBe(false);
+      expect(input.getAttribute("aria-required")).toBe("false");
+      expect(
+        getByText("You can leave the title blank when first creating a loop, or let AI suggest one from the current prompt. A title is required for drafts and edits.")
+      ).toBeInTheDocument();
+    });
+
+    test("title is required when editing a loop", () => {
+      const { getByLabelText, getByText } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            editLoopId: "loop-1",
+            initialLoopData: {
+              name: "Existing title",
+              directory: "/workspaces/project-a",
+              prompt: "Existing prompt text",
+              workspaceId: "ws-1",
+            },
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+      const input = getByLabelText(/Title/) as HTMLInputElement;
+      expect(input.required).toBe(true);
+      expect(input.getAttribute("aria-required")).toBe("true");
+      expect(
+        getByText("A title is required for drafts and edits. You can still let AI suggest one from the current prompt.")
+      ).toBeInTheDocument();
     });
 
     test("prompt is required", () => {

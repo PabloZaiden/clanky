@@ -186,6 +186,7 @@ export function CreateLoopForm({
         onGenerate={() => void handleGenerateTitle()}
         canGenerate={canGenerateTitle}
         generating={generatingTitle}
+        required={isEditing || isEditingDraft}
       />
 
       {/* Prompt */}
