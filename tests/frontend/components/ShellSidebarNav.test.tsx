@@ -195,18 +195,16 @@ function createSidebarData() {
 function SidebarHarness({
   route,
   navigateWithinShell,
-  workspaces: workspacesOverride,
   workspaceGroups: workspaceGroupsOverride,
   serverNodes: serverNodesOverride,
 }: {
   route?: ShellRoute;
   navigateWithinShell?: (route: ShellRoute) => void;
-  workspaces?: ReturnType<typeof createSidebarData>["workspaces"];
   workspaceGroups?: ReturnType<typeof createSidebarData>["workspaceGroups"];
   serverNodes?: ReturnType<typeof createSidebarData>["serverNodes"];
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const { workspaces, workspaceGroups, serverNodes } = createSidebarData();
+  const { workspaceGroups, serverNodes } = createSidebarData();
 
   return (
     <ShellSidebarNav
@@ -217,7 +215,6 @@ function SidebarHarness({
       hideSidebar={mock(() => {})}
       isNodeCollapsed={(key) => collapsed[key] ?? false}
       toggleNodeCollapsed={(key) => setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? false) }))}
-      workspaces={workspacesOverride ?? workspaces}
       workspaceGroups={workspaceGroupsOverride ?? workspaceGroups}
       serverNodes={serverNodesOverride ?? serverNodes}
       version="test"
@@ -226,37 +223,83 @@ function SidebarHarness({
 }
 
 describe("ShellSidebarNav", () => {
-  test("renders the workspace and server trees with active and all groups", () => {
+  test("renders the workspace and server trees with active and inactive groups", () => {
     const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
 
     expect(getByText("Active")).toBeInTheDocument();
-    expect(getByText("All")).toBeInTheDocument();
-    expect(getAllByText("Workspace 1")).toHaveLength(2);
+    expect(getByText("Inactive")).toBeInTheDocument();
+    expect(getAllByText("Workspace 1")).toHaveLength(1);
     expect(getByText("Workspace 2")).toBeInTheDocument();
-    expect(getAllByText("Feature Loop")).toHaveLength(2);
+    expect(getAllByText("Feature Loop")).toHaveLength(1);
     expect(getByText("Server 1")).toBeInTheDocument();
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
   });
 
   test("uses compact indentation and gutter spacing for nested sidebar rows", () => {
-    const { getAllByText } = renderWithUser(<SidebarHarness />);
+    const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
 
     const workspaceRow = getTreeRowForText(getAllByText("Workspace 1")[0]!);
     expect(workspaceRow.style.marginLeft).toBe("0.375rem");
-    expect(workspaceRow.firstElementChild).toHaveClass("w-4");
+    expect(workspaceRow.firstElementChild).toHaveClass("w-3");
+    expect(getTreeToggleButton(getAllByText("Workspace 1")[0]!)).toHaveClass("-mx-1.5", "w-6");
+    expect(getByTextButton(getAllByText("Workspace 1")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const loopRow = getTreeRowForText(getAllByText("Feature Loop")[0]!);
     expect(loopRow.style.marginLeft).toBe("1.125rem");
-    expect(loopRow.firstElementChild).toHaveClass("w-4");
+    expect(loopRow.firstElementChild?.tagName).toBe("BUTTON");
+    expect(getByTextButton(getAllByText("Feature Loop")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const sessionRow = getTreeRowForText(getAllByText("Loop SSH Session")[0]!);
-    expect(sessionRow.style.marginLeft).toBe("1.5rem");
-    expect(sessionRow.firstElementChild).toHaveClass("w-4");
+    expect(sessionRow.style.marginLeft).toBe("1.125rem");
+    expect(sessionRow.firstElementChild?.tagName).toBe("BUTTON");
+    expect(getByTextButton(getAllByText("Loop SSH Session")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const chatRow = getTreeRowForText(getAllByText("Workspace Chat")[0]!);
     expect(chatRow.style.marginLeft).toBe("1.125rem");
-    expect(chatRow.firstElementChild).toHaveAttribute("aria-hidden", "true");
-    expect(chatRow.firstElementChild).toHaveClass("w-4");
+    expect(chatRow.firstElementChild?.tagName).toBe("BUTTON");
+    expect(getByTextButton(getAllByText("Workspace Chat")[0]!)).toHaveClass("pl-0", "pr-3");
+
+    const serverRow = getTreeRowForText(getByText("Server 1"));
+    expect(serverRow.style.marginLeft).toBe("0.375rem");
+    expect(serverRow.firstElementChild).toHaveClass("w-3");
+    expect(getTreeToggleButton(getByText("Server 1"))).toHaveClass("-mx-1.5", "w-6");
+
+    const standaloneSessionRow = getTreeRowForText(getByText("Standalone Server Session"));
+    expect(standaloneSessionRow.style.marginLeft).toBe("1.125rem");
+    expect(standaloneSessionRow.firstElementChild?.tagName).toBe("BUTTON");
+  });
+
+  test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {
+    const { getAllByText, queryAllByText } = renderWithUser(<SidebarHarness />);
+
+    expect(getAllByText("Loop SSH Session")).toHaveLength(2);
+    expect(queryAllByText("Expand Loop With SSH")).toHaveLength(0);
+  });
+
+  test("keeps compact row padding for subtitles, badges, history items, and active rows", () => {
+    const { getAllByText, getByText } = renderWithUser(
+      <SidebarHarness route={{ view: "workspace", workspaceId: "workspace-1" }} />,
+    );
+
+    const workspaceButton = getByTextButton(getAllByText("Workspace 1")[0]!);
+    expect(workspaceButton).toHaveClass("pl-0", "pr-3");
+    expect(workspaceButton).toHaveClass("border-gray-900", "bg-gray-900", "text-white");
+    expect(getByTextButton(getAllByText("/workspaces/workspace-1")[0]!)).toBe(workspaceButton);
+
+    const historyLoopButton = getByTextButton(getAllByText("Completed Loop")[0]!);
+    expect(historyLoopButton).toHaveClass("pl-0", "pr-3");
+
+    const standaloneServerButton = getByTextButton(getByText("Server 1"));
+    expect(standaloneServerButton).toHaveClass("pl-0", "pr-3");
+    expect(getByTextButton(getByText("ubuntu@server.example.com"))).toBe(standaloneServerButton);
+  });
+
+  test("does not render sidebar count pills for sections or server rows", () => {
+    const { queryByText } = renderWithUser(<SidebarHarness />);
+
+    expect(queryByText("2")).toBeNull();
+    expect(queryByText("3")).toBeNull();
+    expect(queryByText("1")).toBeNull();
   });
 
   test("keeps pushed loops in regular workspace groups while routing merged and terminal loops to history", () => {
@@ -321,28 +364,107 @@ describe("ShellSidebarNav", () => {
     expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Pushed Loop"]);
     expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop", "Completed Loop"]);
 
-    const { getAllByText } = renderWithUser(
-      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
+    const { getAllByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
+
+    expect(getAllByText("History")).toHaveLength(1);
+    expect(getAllByText("Pushed Loop")).toHaveLength(1);
+    expect(getAllByText("Merged Loop")).toHaveLength(1);
+    expect(getAllByText("Completed Loop")).toHaveLength(1);
+  });
+
+  test("nests history inside loops so collapsing loops hides the whole history branch", async () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-1",
+        name: "Workspace 1",
+        directory: "/workspaces/workspace-1",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-running",
+            name: "Feature Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "running",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-completed",
+            name: "Completed Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+    const { getAllByText, queryByText, user } = renderWithUser(
+      <SidebarHarness workspaceGroups={workspaceGroups} />,
     );
 
-    expect(getAllByText("History")).toHaveLength(2);
-    expect(getAllByText("Pushed Loop")).toHaveLength(2);
-    expect(getAllByText("Merged Loop")).toHaveLength(2);
-    expect(getAllByText("Completed Loop")).toHaveLength(2);
+    expect(getAllByText("History")).toHaveLength(1);
+    expect(getAllByText("Feature Loop")).toHaveLength(1);
+    expect(getAllByText("Completed Loop")).toHaveLength(1);
+
+    await user.click(getByTextButton(getAllByText("Loops")[0]!));
+
+    expect(queryByText("Feature Loop")).not.toBeInTheDocument();
+    expect(queryByText("History")).not.toBeInTheDocument();
+    expect(queryByText("Completed Loop")).not.toBeInTheDocument();
+  });
+
+  test("routes workspaces with only history items into the inactive group", () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-history",
+        name: "History Workspace",
+        directory: "/workspaces/history",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-history",
+            name: "Completed Loop",
+            workspaceId: "workspace-history",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+
+    expect(workspaceGroups.find((group) => group.key === "active")?.workspaces).toHaveLength(0);
+    expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces.map((node) => node.workspace.name))
+      .toEqual(["History Workspace"]);
   });
 
   test("collapses groups and routes scoped new actions", async () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
-    const { getAllByRole, getAllByText, getByRole, user } = renderWithUser(
+    const { getAllByRole, getAllByText, getByRole, queryAllByText, user } = renderWithUser(
       <SidebarHarness navigateWithinShell={navigateWithinShell} />,
     );
 
-    expect(getAllByText("Workspace 1")).toHaveLength(2);
+    expect(getAllByText("Workspace 1")).toHaveLength(1);
 
     const [activeButtonLabel] = getAllByText("Active");
     expect(activeButtonLabel).toBeDefined();
     await user.click(getByTextButton(activeButtonLabel!));
-    expect(getAllByText("Workspace 1")).toHaveLength(1);
+    expect(queryAllByText("Workspace 1")).toHaveLength(0);
 
     await user.click(getByRole("button", { name: "New Workspaces" }));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "workspace" });
@@ -354,7 +476,7 @@ describe("ShellSidebarNav", () => {
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "ssh-session", scopeId: "server-1" });
 
     await user.click(getAllByRole("button", { name: "New Loops" })[0]!);
-    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-1" });
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-2" });
   });
 
   test("hides empty workspace groups", () => {
@@ -372,27 +494,25 @@ describe("ShellSidebarNav", () => {
       sessions: [],
     });
     const { getByText, queryByText } = renderWithUser(
-      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
+      <SidebarHarness workspaceGroups={workspaceGroups} />,
     );
 
     expect(queryByText("Active")).not.toBeInTheDocument();
-    expect(getByText("All")).toBeInTheDocument();
+    expect(getByText("Inactive")).toBeInTheDocument();
     expect(getByText("Empty Workspace")).toBeInTheDocument();
   });
 
-  test("hides the all group when there are no workspaces", () => {
+  test("hides the inactive group when there are no workspaces", () => {
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces: [],
       loops: [],
       chats: [],
       sessions: [],
     });
-    const { queryByText } = renderWithUser(
-      <SidebarHarness workspaces={[]} workspaceGroups={workspaceGroups} />,
-    );
+    const { queryByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
 
     expect(queryByText("Active")).not.toBeInTheDocument();
-    expect(queryByText("All")).not.toBeInTheDocument();
+    expect(queryByText("Inactive")).not.toBeInTheDocument();
   });
 
   test("supports in-app navigation and modified-click new-tab navigation", () => {
@@ -434,4 +554,13 @@ function getTreeRowForText(node: HTMLElement): HTMLDivElement {
   const row = getByTextButton(node).parentElement;
   expect(row).not.toBeNull();
   return row as HTMLDivElement;
+}
+
+function getTreeToggleButton(node: HTMLElement): HTMLButtonElement {
+  const row = getTreeRowForText(node);
+  const wrapper = row.firstElementChild;
+  expect(wrapper).not.toBeNull();
+  const button = wrapper?.querySelector("button");
+  expect(button).not.toBeNull();
+  return button as HTMLButtonElement;
 }

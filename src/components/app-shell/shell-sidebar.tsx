@@ -2,7 +2,7 @@ import { useId, type MouseEvent, type ReactNode } from "react";
 import { StatusBadge, type BadgeVariant } from "../common";
 
 const TREE_INDENT_REM = 0.375;
-const TREE_ITEM_GUTTER_WIDTH_CLASS = "w-4";
+const TREE_ITEM_GUTTER_WIDTH_CLASS = "w-3";
 
 function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined {
   if (indentLevel <= 0) {
@@ -16,7 +16,6 @@ function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined
 
 export function ShellSection({
   title,
-  count,
   actionLabel,
   onAction,
   collapsed,
@@ -24,7 +23,6 @@ export function ShellSection({
   children,
 }: {
   title: string;
-  count?: number;
   actionLabel?: string;
   onAction?: () => void;
   collapsed: boolean;
@@ -37,28 +35,21 @@ export function ShellSection({
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2 px-1">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <h2 className="min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={onToggle}
-              aria-expanded={!collapsed}
-              aria-controls={contentId}
-              aria-label={toggleLabel}
-              className="flex w-full min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60"
-            >
-              <span className="text-xs text-gray-500 dark:text-gray-400">{collapsed ? "\u25B6" : "\u25BC"}</span>
-              <span className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                {title}
-              </span>
-            </button>
-          </h2>
-          {typeof count === "number" && (
-            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
-              {count}
+        <h2 className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            aria-controls={contentId}
+            aria-label={toggleLabel}
+            className="flex w-full min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60"
+          >
+            <span className="text-xs text-gray-500 dark:text-gray-400">{collapsed ? "\u25B6" : "\u25BC"}</span>
+            <span className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              {title}
             </span>
-          )}
-        </div>
+          </button>
+        </h2>
         {onAction && actionLabel && (
           <button
             type="button"
@@ -81,7 +72,6 @@ export function ShellSection({
 
 export function SidebarTreeSection({
   title,
-  count,
   actionLabel,
   onAction,
   collapsed,
@@ -90,7 +80,6 @@ export function SidebarTreeSection({
   children,
 }: {
   title: string;
-  count?: number;
   actionLabel?: string;
   onAction?: () => void;
   collapsed: boolean;
@@ -114,11 +103,6 @@ export function SidebarTreeSection({
           <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
             {title}
           </span>
-          {typeof count === "number" && (
-            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
-              {count}
-            </span>
-          )}
         </button>
         {onAction && actionLabel && (
           <button
@@ -161,29 +145,28 @@ export function SidebarTreeItem({
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
+  const hasToggle = typeof onToggle === "function";
+
   return (
-    <div className="flex items-stretch gap-2" style={getIndentStyle(indentLevel)}>
-      {onToggle ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={collapsed === undefined ? undefined : !collapsed}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${title}`}
-          className={[
-            "mt-1 inline-flex h-8 shrink-0 items-center justify-center rounded-lg text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100",
-            TREE_ITEM_GUTTER_WIDTH_CLASS,
-          ].join(" ")}
-        >
-          {collapsed ? "\u25B6" : "\u25BC"}
-        </button>
-      ) : (
-        <span className={`${TREE_ITEM_GUTTER_WIDTH_CLASS} shrink-0`} aria-hidden="true" />
+    <div className={hasToggle ? "flex items-stretch gap-1" : "flex items-stretch"} style={getIndentStyle(indentLevel)}>
+      {hasToggle && (
+        <div className={`${TREE_ITEM_GUTTER_WIDTH_CLASS} shrink-0`}>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={collapsed === undefined ? undefined : !collapsed}
+            aria-label={`${collapsed ? "Expand" : "Collapse"} ${title}`}
+            className="mt-1 -mx-1.5 inline-flex h-8 w-6 items-center justify-center rounded-lg text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
+          >
+            {collapsed ? "\u25B6" : "\u25BC"}
+          </button>
+        </div>
       )}
       <button
         type="button"
         onClick={onClick}
         className={[
-          "flex min-w-0 flex-1 items-center justify-between rounded-xl border px-3 py-2 text-left transition",
+          "flex min-w-0 flex-1 items-center justify-between rounded-xl border py-2 pl-0 pr-3 text-left transition",
           active
             ? "border-gray-900 bg-gray-900 text-white shadow-sm dark:border-gray-100 dark:bg-neutral-100 dark:text-gray-950"
             : "border-transparent bg-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-100 dark:text-gray-200 dark:hover:border-gray-800 dark:hover:bg-neutral-800/80",
