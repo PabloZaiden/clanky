@@ -5,7 +5,7 @@
 
 import type { AppConfig } from "../types/api";
 
-function isTruthyEnvFlag(name: string): boolean {
+export function isTruthyEnvFlag(name: string): boolean {
   const value = process.env[name]?.toLowerCase();
   return value === "true" || value === "1" || value === "yes";
 }
@@ -28,6 +28,18 @@ export function isRemoteOnlyMode(): boolean {
  */
 export function isMockAcpEnabled(): boolean {
   return isTruthyEnvFlag("RALPHER_MOCK_ACP");
+}
+
+/**
+ * Check if same-origin request protection should be bypassed.
+ *
+ * Intended for development setups where the browser origin differs from the
+ * backend origin on purpose.
+ *
+ * Set RALPHER_DISABLE_SAME_ORIGIN_CHECK=true, 1, or yes to disable.
+ */
+export function isSameOriginCheckDisabled(): boolean {
+  return isTruthyEnvFlag("RALPHER_DISABLE_SAME_ORIGIN_CHECK");
 }
 
 /**

@@ -50,6 +50,29 @@ describe("same-origin guard", () => {
     expect(await response.json()).toEqual({ ok: true });
   });
 
+  test("allows cross-origin mutating requests when protection is disabled", async () => {
+    const wrappedRoutes = wrapRoutesWithSameOriginProtection({
+      "/api/loops": {
+        POST: async () => Response.json({ ok: true }),
+      },
+    }, {
+      disabled: true,
+    });
+    const route = wrappedRoutes["/api/loops"] as {
+      POST: (req: Request) => Promise<Response>;
+    };
+
+    const response = await route.POST(new Request("https://ralpher.example.test/api/loops", {
+      method: "POST",
+      headers: {
+        origin: "https://attacker.example.test",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
   test("falls back to Referer when Origin is missing", async () => {
     const wrappedRoutes = wrapRoutesWithSameOriginProtection({
       "/api/loops": {
@@ -130,5 +153,32 @@ describe("same-origin guard", () => {
 
     expect(response?.status).toBe(403);
     expect(handlerCalled).toBe(false);
+  });
+
+  test("allows websocket upgrades when protection is disabled", async () => {
+    let upgradeCalled = false;
+    const wrappedHandler = wrapRouteHandlerWithSameOriginProtection(
+      (_req: Request, server: { upgrade: () => boolean }) => {
+        upgradeCalled = true;
+        server.upgrade();
+        return undefined;
+      },
+      {
+        alwaysProtect: true,
+        disabled: true,
+      },
+    );
+
+    const response = await wrappedHandler(
+      new Request("https://ralpher.example.test/api/ws", {
+        headers: {
+          origin: "https://attacker.example.test",
+        },
+      }),
+      { upgrade: () => true },
+    );
+
+    expect(response).toBeUndefined();
+    expect(upgradeCalled).toBe(true);
   });
 });

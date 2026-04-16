@@ -13,6 +13,10 @@ type RouteLikeHandler<TArgs extends unknown[] = never[]> = (
 
 type RouteLikeMethods = Record<string, (...args: never[]) => MaybePromise<Response>>;
 type RouteLikeValue = RouteLikeMethods | RouteLikeHandler;
+type SameOriginProtectionOptions = {
+  alwaysProtect?: boolean;
+  disabled?: boolean;
+};
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -38,7 +42,12 @@ function shouldProtectRequest(req: Request, alwaysProtect: boolean): boolean {
     || req.headers.get("upgrade")?.toLowerCase() === "websocket";
 }
 
-function requireSameOrigin(req: Request, alwaysProtect = false): Response | undefined {
+function requireSameOrigin(req: Request, options: SameOriginProtectionOptions = {}): Response | undefined {
+  if (options.disabled) {
+    return undefined;
+  }
+
+  const alwaysProtect = options.alwaysProtect ?? false;
   if (!shouldProtectRequest(req, alwaysProtect)) {
     return undefined;
   }
@@ -53,11 +62,11 @@ function requireSameOrigin(req: Request, alwaysProtect = false): Response | unde
 
 export function wrapRouteHandlerWithSameOriginProtection<TArgs extends unknown[]>(
   handler: RouteLikeHandler<TArgs>,
-  options: { alwaysProtect?: boolean } = {},
+  options: SameOriginProtectionOptions = {},
 ): RouteLikeHandler<TArgs> {
   return async (...args: TArgs): Promise<Response | undefined> => {
     const req = getRequestFromArgs(args);
-    const rejection = requireSameOrigin(req, options.alwaysProtect ?? false);
+    const rejection = requireSameOrigin(req, options);
     if (rejection) {
       return rejection;
     }
@@ -67,6 +76,7 @@ export function wrapRouteHandlerWithSameOriginProtection<TArgs extends unknown[]
 
 function wrapRouteMethodsWithSameOriginProtection<TRoute extends RouteLikeMethods>(
   route: TRoute,
+  options: SameOriginProtectionOptions = {},
 ): TRoute {
   const wrappedRoute = {} as TRoute;
 
@@ -75,7 +85,7 @@ function wrapRouteMethodsWithSameOriginProtection<TRoute extends RouteLikeMethod
       ...args: Parameters<TRoute[keyof TRoute]>
     ): Promise<Response> => {
       const req = getRequestFromArgs(args);
-      const rejection = requireSameOrigin(req);
+      const rejection = requireSameOrigin(req, options);
       if (rejection) {
         return rejection;
       }
@@ -88,13 +98,14 @@ function wrapRouteMethodsWithSameOriginProtection<TRoute extends RouteLikeMethod
 
 export function wrapRoutesWithSameOriginProtection<TRoutes extends Record<string, RouteLikeValue>>(
   routes: TRoutes,
+  options: SameOriginProtectionOptions = {},
 ): TRoutes {
   const wrappedRoutes = {} as TRoutes;
 
   for (const [path, route] of Object.entries(routes) as [keyof TRoutes, TRoutes[keyof TRoutes]][]) {
     wrappedRoutes[path] = typeof route === "function"
-      ? wrapRouteHandlerWithSameOriginProtection(route) as TRoutes[keyof TRoutes]
-      : wrapRouteMethodsWithSameOriginProtection(route) as TRoutes[keyof TRoutes];
+      ? wrapRouteHandlerWithSameOriginProtection(route, options) as TRoutes[keyof TRoutes]
+      : wrapRouteMethodsWithSameOriginProtection(route, options) as TRoutes[keyof TRoutes];
   }
 
   return wrappedRoutes;

@@ -5,6 +5,8 @@
  * so startup code can stay centralized and testable.
  */
 
+import { isSameOriginCheckDisabled } from "./config";
+
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3000;
 const DEFAULT_BASIC_AUTH_USERNAME = "ralpher";
@@ -23,6 +25,9 @@ export interface ServerRuntimeConfig {
   port: number;
   hostSource: "RALPHER_HOST" | "default";
   basicAuth: BasicAuthConfig;
+  sameOriginProtection: {
+    disabled: boolean;
+  };
 }
 
 export type BunDevelopmentConfig = false | {
@@ -68,6 +73,9 @@ export function getServerRuntimeConfig(): ServerRuntimeConfig {
       password: trimmedPassword,
       usernameSource: usernameFromEnv ? "RALPHER_USERNAME" : "default",
     },
+    sameOriginProtection: {
+      disabled: isSameOriginCheckDisabled(),
+    },
   };
 }
 
@@ -94,14 +102,30 @@ export function getServerStartupMessages(config: ServerRuntimeConfig): string[] 
       ? `using the username "${config.basicAuth.username}" from RALPHER_USERNAME`
       : `using the default username "${config.basicAuth.username}" because RALPHER_USERNAME was not set`;
 
-    return [
+    const messages = [
       listenMessage,
       `Basic auth is enabled because RALPHER_PASSWORD was set to a non-empty value after trimming, ${usernameMessage}.`,
     ];
+
+    if (config.sameOriginProtection.disabled) {
+      messages.push(
+        "Same-origin protection is disabled because RALPHER_DISABLE_SAME_ORIGIN_CHECK was set. Use this only for development setups where browser and backend origins intentionally differ.",
+      );
+    }
+
+    return messages;
   }
 
-  return [
+  const messages = [
     listenMessage,
     `Basic auth is disabled because RALPHER_PASSWORD was not set or became empty after trimming. Set RALPHER_PASSWORD to enable auth, and optionally set RALPHER_USERNAME to override the default username "${DEFAULT_BASIC_AUTH_USERNAME}".`,
   ];
+
+  if (config.sameOriginProtection.disabled) {
+    messages.push(
+      "Same-origin protection is disabled because RALPHER_DISABLE_SAME_ORIGIN_CHECK was set. Use this only for development setups where browser and backend origins intentionally differ.",
+    );
+  }
+
+  return messages;
 }
