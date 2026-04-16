@@ -63,13 +63,21 @@ staticAssetServer = runtimeConfig.basicAuth.enabled
 const staticRoute = staticAssetServer
   ? createAuthenticatedStaticRoute(staticAssetServer, runtimeConfig.basicAuth)
   : index;
+const sameOriginProtectionOptions = {
+  disabled: runtimeConfig.sameOriginProtection.disabled,
+};
 const protectedApiRoutes = wrapRoutesWithBasicAuth(apiRoutes, runtimeConfig.basicAuth);
-const loggedApiRoutes = wrapRoutesWithLogging(wrapRoutesWithSameOriginProtection(protectedApiRoutes));
+const loggedApiRoutes = wrapRoutesWithLogging(
+  wrapRoutesWithSameOriginProtection(protectedApiRoutes, sameOriginProtectionOptions),
+);
 const protectedPortForwardRoutes = wrapRoutesWithBasicAuth(
   portForwardProxyRoutes,
   runtimeConfig.basicAuth,
 );
-const sameOriginProtectedPortForwardRoutes = wrapRoutesWithSameOriginProtection(protectedPortForwardRoutes);
+const sameOriginProtectedPortForwardRoutes = wrapRoutesWithSameOriginProtection(
+  protectedPortForwardRoutes,
+  sameOriginProtectionOptions,
+);
 
 const websocketRoute = wrapRouteHandlerWithLogging(
   wrapRouteHandlerWithSameOriginProtection(
@@ -101,7 +109,10 @@ const websocketRoute = wrapRouteHandlerWithLogging(
       },
       runtimeConfig.basicAuth,
     ),
-    { alwaysProtect: true },
+    {
+      ...sameOriginProtectionOptions,
+      alwaysProtect: true,
+    },
   ),
   "/api/ws",
 );
@@ -130,7 +141,10 @@ const sshTerminalRoute = wrapRouteHandlerWithLogging(
       },
       runtimeConfig.basicAuth,
     ),
-    { alwaysProtect: true },
+    {
+      ...sameOriginProtectionOptions,
+      alwaysProtect: true,
+    },
   ),
   "/api/ssh-terminal",
 );
