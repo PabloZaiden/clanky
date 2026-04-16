@@ -8,6 +8,7 @@ import type {
   AgentResponse,
   AgentEvent,
   BackendConnectionConfig,
+  ConfigOption,
   CreateSessionOptions,
   PromptInput,
   Backend,
@@ -189,7 +190,7 @@ export class MockAcpBackend implements Backend {
     // Mock - no-op
   }
 
-  async setConfigOption(sessionId: string, configId: string, value: string) {
+  async setConfigOption(sessionId: string, configId: string, value: string): Promise<ConfigOption[]> {
     this.configOptionUpdates.push({ sessionId, configId, value });
     if (configId === "model") {
       const session = this.sessions.get(sessionId);
@@ -406,7 +407,7 @@ export class NeverCompletingMockBackend implements Backend {
     // No-op
   }
 
-  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+  async setConfigOption(_sessionId: string, _configId: string, _value: string): Promise<ConfigOption[]> {
     return [];
   }
 
@@ -547,7 +548,7 @@ export class PlanModeMockBackend implements Backend {
     // No-op
   }
 
-  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+  async setConfigOption(_sessionId: string, _configId: string, _value: string): Promise<ConfigOption[]> {
     return [];
   }
 

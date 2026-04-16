@@ -59,6 +59,7 @@ export function useAvailableModels({
           return;
         }
         log.error("Failed to fetch models:", String(error));
+        setModels([]);
       } finally {
         if (!controller.signal.aborted) {
           setModelsLoading(false);
