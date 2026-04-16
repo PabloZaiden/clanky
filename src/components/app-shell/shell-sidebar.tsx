@@ -161,9 +161,11 @@ export function SidebarTreeItem({
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
+  const hasToggle = typeof onToggle === "function";
+
   return (
-    <div className="flex items-stretch gap-1" style={getIndentStyle(indentLevel)}>
-      {onToggle ? (
+    <div className={hasToggle ? "flex items-stretch gap-1" : "flex items-stretch"} style={getIndentStyle(indentLevel)}>
+      {hasToggle && (
         <div className={`${TREE_ITEM_GUTTER_WIDTH_CLASS} shrink-0`}>
           <button
             type="button"
@@ -175,8 +177,6 @@ export function SidebarTreeItem({
             {collapsed ? "\u25B6" : "\u25BC"}
           </button>
         </div>
-      ) : (
-        <span className={`${TREE_ITEM_GUTTER_WIDTH_CLASS} shrink-0`} aria-hidden="true" />
       )}
       <button
         type="button"

@@ -249,23 +249,29 @@ describe("ShellSidebarNav", () => {
 
     const loopRow = getTreeRowForText(getAllByText("Feature Loop")[0]!);
     expect(loopRow.style.marginLeft).toBe("1.125rem");
-    expect(loopRow.firstElementChild).toHaveClass("w-3");
+    expect(loopRow.firstElementChild?.tagName).toBe("BUTTON");
     expect(getByTextButton(getAllByText("Feature Loop")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const sessionRow = getTreeRowForText(getAllByText("Loop SSH Session")[0]!);
-    expect(sessionRow.style.marginLeft).toBe("1.5rem");
-    expect(sessionRow.firstElementChild).toHaveClass("w-3");
+    expect(sessionRow.style.marginLeft).toBe("1.125rem");
+    expect(sessionRow.firstElementChild?.tagName).toBe("BUTTON");
     expect(getByTextButton(getAllByText("Loop SSH Session")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const chatRow = getTreeRowForText(getAllByText("Workspace Chat")[0]!);
     expect(chatRow.style.marginLeft).toBe("1.125rem");
-    expect(chatRow.firstElementChild).toHaveAttribute("aria-hidden", "true");
-    expect(chatRow.firstElementChild).toHaveClass("w-3");
+    expect(chatRow.firstElementChild?.tagName).toBe("BUTTON");
     expect(getByTextButton(getAllByText("Workspace Chat")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const serverRow = getTreeRowForText(getByText("Server 1"));
     expect(serverRow.firstElementChild).toHaveClass("w-3");
     expect(getTreeToggleButton(getByText("Server 1"))).toHaveClass("-mx-1.5", "w-6");
+  });
+
+  test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {
+    const { getAllByText, queryAllByText } = renderWithUser(<SidebarHarness />);
+
+    expect(getAllByText("Loop SSH Session")).toHaveLength(3);
+    expect(queryAllByText("Expand Loop With SSH")).toHaveLength(0);
   });
 
   test("keeps compact row padding for subtitles, badges, history items, and active rows", () => {
