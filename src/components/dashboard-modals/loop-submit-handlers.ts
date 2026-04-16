@@ -8,7 +8,7 @@ import type { CreateLoopFormSubmitRequest } from "../CreateLoopForm";
 import type { CreateLoopResult } from "../../hooks/useLoops";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
-import { stripTransientAttachments } from "../../lib/image-attachments";
+import { toDraftLoopUpdateRequest } from "../../lib/loop-request";
 
 const log = createLogger("DashboardModals");
 
@@ -79,7 +79,7 @@ export async function handleCreateLoopSubmit(
         const response = await appFetch(`/api/loops/${editLoop.config.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(stripTransientAttachments(request)),
+          body: JSON.stringify(toDraftLoopUpdateRequest(request)),
         });
 
         if (!response.ok) {

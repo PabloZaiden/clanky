@@ -28,6 +28,24 @@ async function setPlanMode(page: Page, enabled: boolean): Promise<void> {
   }
 }
 
+async function setManualPlanReview(page: Page): Promise<void> {
+  const fullyAutonomous = page
+    .locator("label")
+    .filter({ has: page.getByText(/^Fully autonomous loop$/) })
+    .locator("input[type='checkbox']");
+  if (await fullyAutonomous.isChecked()) {
+    await fullyAutonomous.uncheck();
+  }
+
+  const autoAcceptPlan = page
+    .locator("label")
+    .filter({ has: page.getByText(/^Auto-accept plan$/) })
+    .locator("input[type='checkbox']");
+  if (await autoAcceptPlan.isChecked()) {
+    await autoAcceptPlan.uncheck();
+  }
+}
+
 async function waitForLoopId(
   app: Awaited<ReturnType<typeof import("./support/test-app.js").startTestApp>>,
   loopName: string,
@@ -97,6 +115,7 @@ test("creates a loop in plan mode and accepts the generated plan", async () => {
     await selectWorkspace(page, workspace.id);
     await fillLoopBasics(page, "Plan Browser Loop", "Create a detailed plan for this browser flow.");
     await setPlanMode(page, true);
+    await setManualPlanReview(page);
     await page.getByRole("button", { name: "Create" }).click();
 
     const loopId = await waitForLoopId(app, "Plan Browser Loop");

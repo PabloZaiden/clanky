@@ -123,7 +123,8 @@ export function useFormActions({
       if (!selectedWorkspaceId) return;
       if (!currentPrompt.trim()) return;
       if (!currentName.trim()) return;
-      if (!selectedModel || !selectedModelEnabled) return;
+      if (!selectedModel) return;
+      if (!asDraft && !selectedModelEnabled) return;
 
       setSubmitting(true);
 
