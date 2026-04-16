@@ -6,16 +6,34 @@ interface TitleFieldProps {
   onGenerate: () => void;
   canGenerate: boolean;
   generating: boolean;
+  required?: boolean;
 }
 
-export function TitleField({ name, onChange, onGenerate, canGenerate, generating }: TitleFieldProps) {
+export function TitleField({
+  name,
+  onChange,
+  onGenerate,
+  canGenerate,
+  generating,
+  required = false,
+}: TitleFieldProps) {
+  const helperText = required
+    ? "A title is required for drafts and edits. You can still let AI suggest one from the current prompt."
+    : "You can leave the title blank when first creating a loop, or let AI suggest one from the current prompt. A title is required for drafts and edits.";
+
   return (
     <div>
       <label
         htmlFor="name"
         className="block text-sm font-medium text-gray-700 dark:text-gray-300"
       >
-        Title <span className="text-red-500">*</span>
+        Title
+        {required && (
+          <>
+            <span aria-hidden="true"> *</span>
+            <span className="sr-only"> (required)</span>
+          </>
+        )}
       </label>
       <div className="mt-1 flex items-start gap-2">
         <input
@@ -24,8 +42,9 @@ export function TitleField({ name, onChange, onGenerate, canGenerate, generating
           value={name}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Short loop title"
-          required
           maxLength={100}
+          required={required}
+          aria-required={required}
           className="block flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
         />
         <Button
@@ -44,7 +63,7 @@ export function TitleField({ name, onChange, onGenerate, canGenerate, generating
         </Button>
       </div>
       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-        Give the loop a clear title, or use AI to suggest one from the current prompt.
+        {helperText}
       </p>
       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
         {name.trim().length}/100 characters
