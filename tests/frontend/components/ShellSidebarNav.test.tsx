@@ -226,14 +226,14 @@ function SidebarHarness({
 }
 
 describe("ShellSidebarNav", () => {
-  test("renders the workspace and server trees with active and all groups", () => {
+  test("renders the workspace and server trees with active and inactive groups", () => {
     const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
 
     expect(getByText("Active")).toBeInTheDocument();
-    expect(getByText("All")).toBeInTheDocument();
-    expect(getAllByText("Workspace 1")).toHaveLength(2);
+    expect(getByText("Inactive")).toBeInTheDocument();
+    expect(getAllByText("Workspace 1")).toHaveLength(1);
     expect(getByText("Workspace 2")).toBeInTheDocument();
-    expect(getAllByText("Feature Loop")).toHaveLength(2);
+    expect(getAllByText("Feature Loop")).toHaveLength(1);
     expect(getByText("Server 1")).toBeInTheDocument();
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
   });
@@ -270,7 +270,7 @@ describe("ShellSidebarNav", () => {
   test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {
     const { getAllByText, queryAllByText } = renderWithUser(<SidebarHarness />);
 
-    expect(getAllByText("Loop SSH Session")).toHaveLength(3);
+    expect(getAllByText("Loop SSH Session")).toHaveLength(2);
     expect(queryAllByText("Expand Loop With SSH")).toHaveLength(0);
   });
 
@@ -358,24 +358,55 @@ describe("ShellSidebarNav", () => {
       <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
     );
 
-    expect(getAllByText("History")).toHaveLength(2);
-    expect(getAllByText("Pushed Loop")).toHaveLength(2);
-    expect(getAllByText("Merged Loop")).toHaveLength(2);
-    expect(getAllByText("Completed Loop")).toHaveLength(2);
+    expect(getAllByText("History")).toHaveLength(1);
+    expect(getAllByText("Pushed Loop")).toHaveLength(1);
+    expect(getAllByText("Merged Loop")).toHaveLength(1);
+    expect(getAllByText("Completed Loop")).toHaveLength(1);
+  });
+
+  test("routes workspaces with only history items into the inactive group", () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-history",
+        name: "History Workspace",
+        directory: "/workspaces/history",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-history",
+            name: "Completed Loop",
+            workspaceId: "workspace-history",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+
+    expect(workspaceGroups.find((group) => group.key === "active")?.workspaces).toHaveLength(0);
+    expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces.map((node) => node.workspace.name))
+      .toEqual(["History Workspace"]);
   });
 
   test("collapses groups and routes scoped new actions", async () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
-    const { getAllByRole, getAllByText, getByRole, user } = renderWithUser(
+    const { getAllByRole, getAllByText, getByRole, queryAllByText, user } = renderWithUser(
       <SidebarHarness navigateWithinShell={navigateWithinShell} />,
     );
 
-    expect(getAllByText("Workspace 1")).toHaveLength(2);
+    expect(getAllByText("Workspace 1")).toHaveLength(1);
 
     const [activeButtonLabel] = getAllByText("Active");
     expect(activeButtonLabel).toBeDefined();
     await user.click(getByTextButton(activeButtonLabel!));
-    expect(getAllByText("Workspace 1")).toHaveLength(1);
+    expect(queryAllByText("Workspace 1")).toHaveLength(0);
 
     await user.click(getByRole("button", { name: "New Workspaces" }));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "workspace" });
@@ -387,7 +418,7 @@ describe("ShellSidebarNav", () => {
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "ssh-session", scopeId: "server-1" });
 
     await user.click(getAllByRole("button", { name: "New Loops" })[0]!);
-    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-1" });
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-2" });
   });
 
   test("hides empty workspace groups", () => {
@@ -409,11 +440,11 @@ describe("ShellSidebarNav", () => {
     );
 
     expect(queryByText("Active")).not.toBeInTheDocument();
-    expect(getByText("All")).toBeInTheDocument();
+    expect(getByText("Inactive")).toBeInTheDocument();
     expect(getByText("Empty Workspace")).toBeInTheDocument();
   });
 
-  test("hides the all group when there are no workspaces", () => {
+  test("hides the inactive group when there are no workspaces", () => {
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces: [],
       loops: [],
@@ -425,7 +456,7 @@ describe("ShellSidebarNav", () => {
     );
 
     expect(queryByText("Active")).not.toBeInTheDocument();
-    expect(queryByText("All")).not.toBeInTheDocument();
+    expect(queryByText("Inactive")).not.toBeInTheDocument();
   });
 
   test("supports in-app navigation and modified-click new-tab navigation", () => {

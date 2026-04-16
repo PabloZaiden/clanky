@@ -15,7 +15,7 @@ const log = createLogger("AppShell");
 export const SIDEBAR_SECTION_STORAGE_KEY = "ralpher.sidebarSectionCollapseState";
 
 export type SidebarSectionId = "workspaces" | "ssh-servers";
-export type SidebarWorkspaceGroupId = "active" | "all";
+export type SidebarWorkspaceGroupId = "active" | "inactive";
 export type SidebarCollapseState = Record<string, boolean>;
 
 export interface SidebarCollapseStateLoadResult {
@@ -320,9 +320,9 @@ export function buildWorkspaceSidebarGroups({
       workspaces: workspaceNodes.filter((workspaceNode) => workspaceNode.hasActivity),
     },
     {
-      key: "all",
-      title: "All",
-      workspaces: workspaceNodes,
+      key: "inactive",
+      title: "Inactive",
+      workspaces: workspaceNodes.filter((workspaceNode) => !workspaceNode.hasActivity),
     },
   ];
 }
