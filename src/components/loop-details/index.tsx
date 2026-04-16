@@ -130,7 +130,7 @@ export function LoopDetails({
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
   const showActionBar = isActive || isPlanning || canTerminalFollowUp;
-  const errorBannerSpacingClassName = isLogFocusActive ? "mx-3 mt-3 mb-3" : "mb-3";
+  const errorBannerSpacingClassName = isLogFocusActive ? "mx-3 mt-3 mb-3" : "mx-3 mt-3 mb-3 sm:mx-4";
 
   return (
     <div
@@ -163,7 +163,7 @@ export function LoopDetails({
         </header>
       )}
 
-      <main className={isLogFocusActive ? "flex flex-1 min-h-0 flex-col overflow-hidden" : "px-4 sm:px-6 lg:px-8 py-3 flex flex-col flex-1 min-h-0 overflow-hidden"}>
+      <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {error && (
           <div className={`${errorBannerSpacingClassName} rounded-md bg-red-50 dark:bg-red-900/20 p-3 flex-shrink-0`}>
             <p className="text-sm text-red-800 dark:text-red-300">{error}</p>
@@ -192,56 +192,54 @@ export function LoopDetails({
         )}
 
         <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden">
-          <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden">
-            {!isLogFocusActive && (
-              <div className="mb-3 flex flex-shrink-0 overflow-x-auto border-b border-gray-200 dark:border-gray-700">
-                {visibleTabs.map((tab) => {
-                  const hasUpdate = tabsWithUpdates.has(tab.id as TabId);
-                  const showPlanIndicator = tab.id === "plan" && isPlanning && !isPlanReady && activeTab !== "plan";
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => handleTabChange(tab.id as TabId)}
-                      className={`relative px-1.5 sm:px-4 py-1.5 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                        activeTab === tab.id
-                          ? "border-gray-900 text-gray-900 dark:border-gray-100 dark:text-gray-100"
-                          : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                      }`}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        {tab.label}
-                        {showPlanIndicator && (
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-500 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-600" />
-                          </span>
-                        )}
-                      </span>
-                      {hasUpdate && !showPlanIndicator && activeTab !== tab.id && (
-                        <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-gray-500" />
+          {!isLogFocusActive && (
+            <div className="flex flex-shrink-0 overflow-x-auto border-b border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-neutral-800 sm:px-4">
+              {visibleTabs.map((tab) => {
+                const hasUpdate = tabsWithUpdates.has(tab.id as TabId);
+                const showPlanIndicator = tab.id === "plan" && isPlanning && !isPlanReady && activeTab !== "plan";
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id as TabId)}
+                    className={`relative px-1.5 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? "border-gray-900 text-gray-900 dark:border-gray-100 dark:text-gray-100"
+                        : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      {tab.label}
+                      {showPlanIndicator && (
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-500 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-600" />
+                        </span>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                    </span>
+                    {hasUpdate && !showPlanIndicator && activeTab !== tab.id && (
+                      <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-gray-500" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-        <LoopDetailsTabContent
-              activeTab={activeTab} loop={loop} loopId={loopId} labels={labels}
-              isActive={isActive} isPlanning={isPlanning} isPlanReady={isPlanReady}
-              isLogActive={isLogActive} feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
-              messages={messages} toolCalls={toolCalls} logs={logs}
-              logDisplay={logDisplay}
-          portForward={portForward}
-              portForwardData={{ forwards, forwardsLoading, forwardsError }}
-              content={content}
-              actions={actions}
-              isLogFocusMode={isLogFocusActive}
-              onEnterLogFocusMode={toggleLogFocusMode}
-              onExitLogFocusMode={toggleLogFocusMode}
-              applySafeAreaBottomToLogFocusBar={!showActionBar}
-            />
-          </div>
+          <LoopDetailsTabContent
+            activeTab={activeTab} loop={loop} loopId={loopId} labels={labels}
+            isActive={isActive} isPlanning={isPlanning} isPlanReady={isPlanReady}
+            isLogActive={isLogActive} feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
+            messages={messages} toolCalls={toolCalls} logs={logs}
+            logDisplay={logDisplay}
+            portForward={portForward}
+            portForwardData={{ forwards, forwardsLoading, forwardsError }}
+            content={content}
+            actions={actions}
+            isLogFocusMode={isLogFocusActive}
+            onEnterLogFocusMode={toggleLogFocusMode}
+            onExitLogFocusMode={toggleLogFocusMode}
+            applySafeAreaBottomToLogFocusBar={!showActionBar}
+          />
         </div>
       </main>
 

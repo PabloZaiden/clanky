@@ -1,5 +1,6 @@
 import type { FileDiff } from "../../types";
 import { DiffPatchViewer } from "./diff-patch-viewer";
+import { loopDetailsTabContentClassName, loopDetailsTabScrollContainerClassName } from "./tab-layout";
 
 interface DiffTabProps {
   diffContent: FileDiff[];
@@ -10,8 +11,8 @@ interface DiffTabProps {
 
 export function DiffTab({ diffContent, loadingContent, expandedFiles, onExpandedFilesChange }: DiffTabProps) {
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
-      <div className="min-w-0 flex-1">
+    <div className={loopDetailsTabScrollContainerClassName}>
+      <div className={loopDetailsTabContentClassName}>
         {loadingContent ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-500 border-t-transparent" />

@@ -186,6 +186,17 @@ export function isArchivedLoop(status: LoopStatus, reviewModeAddressable: boolea
 }
 
 /**
+ * Check if a loop should appear in the workspace screen's History list.
+ * Workspace history is intentionally narrower than archived loop handling:
+ * only merged and deleted loops move out of the Activity box.
+ */
+export function isWorkspaceHistoryLoop(status: LoopStatus): boolean {
+  const result = status === "merged" || status === "deleted";
+  log.trace("isWorkspaceHistoryLoop check", { status, result });
+  return result;
+}
+
+/**
  * Check if a loop should appear in the shell overview's Recent activity list.
  * Recent activity is reserved for in-progress or otherwise non-terminal work.
  */

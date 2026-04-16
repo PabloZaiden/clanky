@@ -123,13 +123,16 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 | `RALPHER_REMOTE_ONLY` | Disables local `stdio` transport | unset |
 | `RALPHER_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `RALPHER_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
+| `RALPHER_DISABLE_SAME_ORIGIN_CHECK` | Disables `Origin`/`Referer` validation for state-changing requests and WebSocket upgrades | unset |
 | `RALPHER_LOG_LEVEL` | Server log level override | `info` |
 
 ### Auth notes
 
 - Built-in HTTP Basic auth is optional and applies to browser requests, API requests, and WebSocket upgrades.
+- Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
 - Passkey authentication is a separate app-session layer you can enable from **Settings**.
 - Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override; it does not disable HTTP Basic auth.
+- Set `RALPHER_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
 - In production, Ralpher is typically deployed behind a reverse proxy that handles authentication and authorization.
 
 ### Docker

@@ -3,7 +3,12 @@
  */
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { isRemoteOnlyMode, isMockAcpEnabled, getAppConfig } from "../../src/core/config";
+import {
+  getAppConfig,
+  isMockAcpEnabled,
+  isRemoteOnlyMode,
+  isSameOriginCheckDisabled,
+} from "../../src/core/config";
 
 describe("isRemoteOnlyMode", () => {
   const originalEnv = process.env["RALPHER_REMOTE_ONLY"];
@@ -158,5 +163,46 @@ describe("isMockAcpEnabled", () => {
 
     process.env["RALPHER_MOCK_ACP"] = "on";
     expect(isMockAcpEnabled()).toBe(false);
+  });
+});
+
+describe("isSameOriginCheckDisabled", () => {
+  const originalEnv = process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+    } else {
+      process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = originalEnv;
+    }
+  });
+
+  test("returns false when env var is not set", () => {
+    delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+    expect(isSameOriginCheckDisabled()).toBe(false);
+  });
+
+  test("returns true for supported truthy values", () => {
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "true";
+    expect(isSameOriginCheckDisabled()).toBe(true);
+
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "1";
+    expect(isSameOriginCheckDisabled()).toBe(true);
+
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "YES";
+    expect(isSameOriginCheckDisabled()).toBe(true);
+  });
+
+  test("returns true for supported truthy values with surrounding whitespace", () => {
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = " true ";
+    expect(isSameOriginCheckDisabled()).toBe(true);
+  });
+
+  test("returns false for unsupported values", () => {
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "false";
+    expect(isSameOriginCheckDisabled()).toBe(false);
+
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "on";
+    expect(isSameOriginCheckDisabled()).toBe(false);
   });
 });

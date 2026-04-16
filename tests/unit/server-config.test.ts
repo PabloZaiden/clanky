@@ -2,7 +2,7 @@
  * Tests for server runtime configuration helpers.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   getServerDevelopmentConfig,
   getServerRuntimeConfig,
@@ -13,6 +13,7 @@ const originalHost = process.env["RALPHER_HOST"];
 const originalPort = process.env["RALPHER_PORT"];
 const originalUsername = process.env["RALPHER_USERNAME"];
 const originalPassword = process.env["RALPHER_PASSWORD"];
+const originalSameOriginDisabled = process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -27,15 +28,19 @@ afterEach(() => {
   restoreEnv("RALPHER_PORT", originalPort);
   restoreEnv("RALPHER_USERNAME", originalUsername);
   restoreEnv("RALPHER_PASSWORD", originalPassword);
+  restoreEnv("RALPHER_DISABLE_SAME_ORIGIN_CHECK", originalSameOriginDisabled);
 });
 
 describe("getServerRuntimeConfig", () => {
-  test("returns defaults when server auth and host env vars are unset", () => {
+  beforeEach(() => {
     delete process.env["RALPHER_HOST"];
     delete process.env["RALPHER_PORT"];
     delete process.env["RALPHER_USERNAME"];
     delete process.env["RALPHER_PASSWORD"];
+    delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+  });
 
+  test("returns defaults when server auth and host env vars are unset", () => {
     expect(getServerRuntimeConfig()).toEqual({
       host: "127.0.0.1",
       port: 3000,
@@ -45,6 +50,9 @@ describe("getServerRuntimeConfig", () => {
         username: "ralpher",
         password: "",
         usernameSource: "default",
+      },
+      sameOriginProtection: {
+        disabled: false,
       },
     });
   });
@@ -65,6 +73,9 @@ describe("getServerRuntimeConfig", () => {
         password: "secret",
         usernameSource: "RALPHER_USERNAME",
       },
+      sameOriginProtection: {
+        disabled: false,
+      },
     });
   });
 
@@ -83,6 +94,14 @@ describe("getServerRuntimeConfig", () => {
       username: "custom",
       password: "",
       usernameSource: "RALPHER_USERNAME",
+    });
+  });
+
+  test("enables the same-origin bypass when the env var is truthy", () => {
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "yes";
+
+    expect(getServerRuntimeConfig().sameOriginProtection).toEqual({
+      disabled: true,
     });
   });
 
@@ -121,11 +140,14 @@ describe("getServerDevelopmentConfig", () => {
 });
 
 describe("getServerStartupMessages", () => {
-  test("describes default host binding and disabled auth", () => {
+  beforeEach(() => {
     delete process.env["RALPHER_HOST"];
     delete process.env["RALPHER_USERNAME"];
     delete process.env["RALPHER_PASSWORD"];
+    delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+  });
 
+  test("describes default host binding and disabled auth", () => {
     const messages = getServerStartupMessages(getServerRuntimeConfig());
 
     expect(messages).toHaveLength(2);
@@ -151,5 +173,16 @@ describe("getServerStartupMessages", () => {
     expect(messages[1]).toContain("RALPHER_PASSWORD");
     expect(messages[1]).toContain("RALPHER_USERNAME");
     expect(messages[1]).toContain("\"admin\"");
+  });
+
+  test("describes when same-origin protection is disabled", () => {
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "true";
+
+    const messages = getServerStartupMessages(getServerRuntimeConfig());
+
+    expect(messages).toHaveLength(3);
+    expect(messages[2]).toContain("RALPHER_DISABLE_SAME_ORIGIN_CHECK");
+    expect(messages[2]).toContain("development");
+    expect(messages[2]).toContain("disabled");
   });
 });
