@@ -113,4 +113,26 @@ describe("ImageAttachmentControl", () => {
       expect(getByText(/You can attach up to 3 images at a time/i)).toBeInTheDocument();
     });
   });
+
+  test("opens and closes a larger preview when an attachment thumbnail is clicked", async () => {
+    const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(<AttachmentPasteHarness />);
+
+    pasteFiles(getByLabelText("Message"), [createTestFile()]);
+
+    await waitFor(() => {
+      expect(getByLabelText("View clipboard-image.png")).toBeInTheDocument();
+    });
+
+    await user.click(getByLabelText("View clipboard-image.png"));
+
+    await waitFor(() => {
+      expect(getByRole("dialog", { name: "clipboard-image.png" })).toBeInTheDocument();
+    });
+
+    await user.click(getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(queryByRole("dialog", { name: "clipboard-image.png" })).not.toBeInTheDocument();
+    });
+  });
 });

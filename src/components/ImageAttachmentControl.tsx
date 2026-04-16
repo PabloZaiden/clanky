@@ -17,6 +17,7 @@ import {
   getClipboardImageFiles,
   revokeComposerImageAttachments,
 } from "../lib/image-attachments";
+import { ImageViewerModal } from "./ImageViewerModal";
 
 interface ImageAttachmentControlProps {
   attachments: ComposerImageAttachment[];
@@ -44,6 +45,7 @@ function ImageAttachmentControlInner({
   const inputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef(attachments);
   const [error, setError] = useState<string | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<ComposerImageAttachment | null>(null);
 
   useEffect(() => {
     const previous = attachmentsRef.current;
@@ -63,6 +65,12 @@ function ImageAttachmentControlInner({
       revokeComposerImageAttachments(attachmentsRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (selectedAttachment && !attachments.some((attachment) => attachment.id === selectedAttachment.id)) {
+      setSelectedAttachment(null);
+    }
+  }, [attachments, selectedAttachment]);
 
   const addFiles = useCallback(async (files: File[]) => {
     if (disabled || files.length === 0) {
@@ -114,6 +122,9 @@ function ImageAttachmentControlInner({
     const removedAttachment = attachments.find((attachment) => attachment.id === attachmentId);
     if (removedAttachment) {
       URL.revokeObjectURL(removedAttachment.previewUrl);
+      if (selectedAttachment?.id === attachmentId) {
+        setSelectedAttachment(null);
+      }
     }
     onChange(nextAttachments);
     setError(null);
@@ -122,6 +133,12 @@ function ImageAttachmentControlInner({
   const buttonLabel = attachments.length > 0
     ? `Add image (${attachments.length}/${MESSAGE_IMAGE_ATTACHMENT_LIMIT})`
     : "Add image";
+  const selectedImage = selectedAttachment ? {
+    src: selectedAttachment.previewUrl,
+    alt: selectedAttachment.filename,
+    title: selectedAttachment.filename,
+    description: `${Math.max(1, Math.round(selectedAttachment.size / 1024))} KB`,
+  } : null;
 
   return (
     <div className={iconOnly && attachments.length === 0 && !error ? "" : "space-y-2"}>
@@ -180,19 +197,26 @@ function ImageAttachmentControlInner({
               key={attachment.id}
               className="group relative flex items-center gap-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-neutral-800 px-2 py-2"
             >
-              <img
-                src={attachment.previewUrl}
-                alt={attachment.filename}
-                className="h-10 w-10 rounded object-cover"
-              />
-              <div className="min-w-0">
-                <p className="max-w-32 truncate text-xs text-gray-700 dark:text-gray-200">
-                  {attachment.filename}
-                </p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  {Math.max(1, Math.round(attachment.size / 1024))} KB
-                </p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAttachment(attachment)}
+                className="flex min-w-0 items-center gap-2 rounded text-left focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-500"
+                aria-label={`View ${attachment.filename}`}
+              >
+                <img
+                  src={attachment.previewUrl}
+                  alt={attachment.filename}
+                  className="h-10 w-10 rounded object-cover"
+                />
+                <div className="min-w-0">
+                  <p className="max-w-32 truncate text-xs text-gray-700 dark:text-gray-200">
+                    {attachment.filename}
+                  </p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {Math.max(1, Math.round(attachment.size / 1024))} KB
+                  </p>
+                </div>
+              </button>
               <button
                 type="button"
                 onClick={() => handleRemoveAttachment(attachment.id)}
@@ -206,6 +230,11 @@ function ImageAttachmentControlInner({
           ))}
         </div>
       )}
+
+      <ImageViewerModal
+        image={selectedImage}
+        onClose={() => setSelectedAttachment(null)}
+      />
     </div>
   );
 }
