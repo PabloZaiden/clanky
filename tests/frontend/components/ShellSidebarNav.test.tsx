@@ -123,6 +123,16 @@ function createSidebarData() {
         },
       },
     }),
+    createLoop({
+      config: {
+        id: "loop-3",
+        name: "Completed Loop",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        status: "completed",
+      },
+    }),
   ];
   const chats = [
     createChat({
@@ -226,6 +236,23 @@ describe("ShellSidebarNav", () => {
     expect(getAllByText("Feature Loop")).toHaveLength(2);
     expect(getByText("Server 1")).toBeInTheDocument();
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
+  });
+
+  test("moves terminal-state loops into per-workspace history groups", () => {
+    const sidebarData = createSidebarData();
+    const activeWorkspace = sidebarData.workspaceGroups
+      .find((group) => group.key === "active")
+      ?.workspaces.find((workspaceNode) => workspaceNode.workspace.id === "workspace-1");
+
+    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Loop With SSH"]);
+    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Completed Loop"]);
+
+    const { getAllByText } = renderWithUser(
+      <SidebarHarness workspaceGroups={sidebarData.workspaceGroups} />,
+    );
+
+    expect(getAllByText("History")).toHaveLength(2);
+    expect(getAllByText("Completed Loop")).toHaveLength(2);
   });
 
   test("collapses groups and routes scoped new actions", async () => {

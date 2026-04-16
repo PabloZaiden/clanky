@@ -1,4 +1,4 @@
-import { getLoopStatusLabel } from "../../utils";
+import { canJumpstart, getLoopStatusLabel, isFinalState } from "../../utils";
 import { createLogger } from "../../lib/logger";
 import type { Chat, Loop, SshSession, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
@@ -51,6 +51,7 @@ export interface SidebarWorkspaceNode {
   workspace: Workspace;
   key: string;
   loops: SidebarLoopNode[];
+  historyLoops: SidebarLoopNode[];
   chats: SidebarChatNode[];
   sshSessions: SidebarWorkspaceSessionNode[];
   hasActivity: boolean;
@@ -154,7 +155,7 @@ export function getSidebarWorkspaceSectionCollapseKey(
   sectionId: SidebarSectionId,
   groupId: SidebarWorkspaceGroupId,
   workspaceId: string,
-  childSectionId: "loops" | "chats" | "ssh-sessions",
+  childSectionId: "loops" | "history" | "chats" | "ssh-sessions",
 ): string {
   return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, childSectionId);
 }
@@ -222,6 +223,10 @@ function sortByDesc<T>(items: T[], getValue: (item: T) => string): T[] {
   return [...items].sort((left, right) => getValue(right).localeCompare(getValue(left)));
 }
 
+function isTerminalSidebarLoop(loop: Loop): boolean {
+  return canJumpstart(loop.state.status) || isFinalState(loop.state.status);
+}
+
 export function buildWorkspaceSidebarGroups({
   workspaces,
   loops,
@@ -280,11 +285,14 @@ export function buildWorkspaceSidebarGroups({
       ),
       sessions: workspaceSessionsByLoopId.get(loop.config.id) ?? [],
     }));
+    const activeLoopNodes = loopNodes.filter((loopNode) => !isTerminalSidebarLoop(loopNode.loop));
+    const historyLoopNodes = loopNodes.filter((loopNode) => isTerminalSidebarLoop(loopNode.loop));
 
     return {
       workspace,
       key: workspace.id,
-      loops: loopNodes,
+      loops: activeLoopNodes,
+      historyLoops: historyLoopNodes,
       chats: workspaceChats.map((chat) => ({
         chat,
         title: chat.config.name,
@@ -292,7 +300,7 @@ export function buildWorkspaceSidebarGroups({
         badgeVariant: getChatStatusBadgeVariant(chat.state.status),
       })),
       sshSessions: workspaceSessions,
-      hasActivity: loopNodes.length > 0 || workspaceChats.length > 0 || workspaceSessions.length > 0,
+      hasActivity: activeLoopNodes.length > 0 || workspaceChats.length > 0 || workspaceSessions.length > 0,
     } satisfies SidebarWorkspaceNode;
   });
 
