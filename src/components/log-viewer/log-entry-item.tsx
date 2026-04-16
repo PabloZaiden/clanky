@@ -2,14 +2,13 @@ import { memo, useCallback } from "react";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { LazyDetails } from "./lazy-details";
 import type { LogEntry, StreamingTransitionState } from "./types";
-import { formatTime, getLogLevelColor } from "./utils";
+import { formatTime, getLogLevelColor, isReasoningLogEntry, isStreamingLogEntry } from "./utils";
 
 interface LogEntryItemProps {
   data: LogEntry;
   showTimestamp: boolean;
   showGroupHeader: boolean;
   spacingClass: string;
-  index: number;
   markdownEnabled: boolean;
   streamingTransition: StreamingTransitionState;
 }
@@ -25,13 +24,12 @@ export const LogEntryItem = memo(function LogEntryItem({
   showTimestamp,
   showGroupHeader,
   spacingClass,
-  index,
   markdownEnabled,
   streamingTransition,
 }: LogEntryItemProps) {
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
-  const isReasoning = logKind === "reasoning" || (!logKind && log.message === "AI reasoning...");
+  const isReasoning = isReasoningLogEntry(log);
   const responseContent = log.details?.["responseContent"];
   const hasResponseContent = typeof responseContent === "string" && responseContent.length > 0;
   const hasOtherDetails = details
@@ -54,19 +52,23 @@ export const LogEntryItem = memo(function LogEntryItem({
 
   // Streaming text entries (response, reasoning) don't need a message label —
   // their rendered content is already self-explanatory.
-  const isStreamingEntry = logKind === "response" || logKind === "reasoning";
-  const showMessageLabel = showGroupHeader && !isStreamingEntry;
+  const isStreamingTransitionEntry = isStreamingLogEntry(log);
+  const hidesTypedStreamingLabel = logKind === "response" || logKind === "reasoning";
+  const showMessageLabel = showGroupHeader && !hidesTypedStreamingLabel;
   const transitionClassName = streamingTransition === "enter"
     ? "animate-soft-stream-enter"
     : streamingTransition === "update"
       ? "animate-soft-stream-update"
       : "";
+  const responseContentKey = isStreamingTransitionEntry && hasResponseContent
+    ? `log-content-${log.id}-${(responseContent as string).length}`
+    : `log-content-${log.id}`;
   const transitionProps = streamingTransition
     ? { "data-stream-transition": streamingTransition }
     : {};
 
   return (
-    <div key={`log-${log.id}-${index}`} className={`group ${isReasoning ? "opacity-60" : ""} ${spacingClass}`}>
+    <div className={`group ${isReasoning ? "opacity-60" : ""} ${spacingClass}`}>
       {showTimestamp && (
         <time className="text-gray-500 text-xs mb-0.5 block" dateTime={log.timestamp}>
           {formatTime(log.timestamp)}
@@ -80,6 +82,7 @@ export const LogEntryItem = memo(function LogEntryItem({
         {hasResponseContent && (
           markdownEnabled ? (
             <div
+              key={responseContentKey}
               {...transitionProps}
               className={`mt-2 rounded bg-neutral-800 p-2 sm:p-3 ${isReasoning ? "italic" : ""} ${transitionClassName}`}
             >
@@ -87,6 +90,7 @@ export const LogEntryItem = memo(function LogEntryItem({
             </div>
           ) : (
             <div
+              key={responseContentKey}
               {...transitionProps}
               className={`mt-2 rounded bg-neutral-800 p-2 text-xs leading-relaxed whitespace-pre-wrap break-words sm:p-3 ${isReasoning ? "text-gray-400 italic" : "text-gray-200"} ${transitionClassName}`}
             >

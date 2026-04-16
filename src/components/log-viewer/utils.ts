@@ -1,5 +1,5 @@
 import type { LogLevel } from "../../types";
-import type { EntryBase, DisplayEntry, StreamingTransitionState } from "./types";
+import type { EntryBase, DisplayEntry, LogEntry, StreamingTransitionState } from "./types";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
@@ -77,6 +77,20 @@ export function getEntryRenderKey(entry: EntryBase): string {
   }
 }
 
+export function isReasoningLogEntry(logEntry: LogEntry): boolean {
+  const logKind = logEntry.details?.["logKind"] as string | undefined;
+  return logKind === "reasoning" || (!logKind && logEntry.message === "AI reasoning...");
+}
+
+export function isResponseLogEntry(logEntry: LogEntry): boolean {
+  const logKind = logEntry.details?.["logKind"] as string | undefined;
+  return logKind === "response" || (!logKind && logEntry.message === "AI generating response...");
+}
+
+export function isStreamingLogEntry(logEntry: LogEntry): boolean {
+  return isResponseLogEntry(logEntry) || isReasoningLogEntry(logEntry);
+}
+
 /**
  * Returns the streaming text payload for entries that should receive the
  * soft fade treatment. Non-streaming entries return null.
@@ -90,9 +104,7 @@ export function getStreamingEntryText(entry: EntryBase): string | null {
     return null;
   }
 
-  const logKind = entry.data.details?.["logKind"] as string | undefined;
-  const isStreamingLog = logKind === "response" || logKind === "reasoning";
-  if (!isStreamingLog) {
+  if (!isStreamingLogEntry(entry.data)) {
     return null;
   }
 

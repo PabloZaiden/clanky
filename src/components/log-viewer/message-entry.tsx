@@ -7,7 +7,6 @@ interface MessageEntryProps {
   data: MessageData;
   showTimestamp: boolean;
   spacingClass: string;
-  index: number;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
   streamingTransition: StreamingTransitionState;
@@ -28,7 +27,6 @@ export function MessageEntry({
   data: msg,
   showTimestamp,
   spacingClass,
-  index,
   markdownEnabled,
   showRoleLabel,
   streamingTransition,
@@ -36,12 +34,15 @@ export function MessageEntry({
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
   const transitionClassName = getStreamingTransitionClassName(streamingTransition);
+  const contentKey = msg.role === "assistant"
+    ? `message-content-${msg.id}-${msg.content.length}`
+    : `message-content-${msg.id}`;
   const transitionProps = streamingTransition
     ? { "data-stream-transition": streamingTransition }
     : {};
 
   return (
-    <div key={`msg-${msg.id}-${index}`} className={`group ${spacingClass}`}>
+    <div className={`group ${spacingClass}`}>
       {showTimestamp && (
         <time className="text-gray-500 text-xs mb-0.5 block" dateTime={msg.timestamp}>
           {formatTime(msg.timestamp)}
@@ -55,6 +56,7 @@ export function MessageEntry({
         )}
         {shouldRenderMarkdown ? (
           <div
+            key={contentKey}
             {...transitionProps}
             className={`rounded bg-neutral-800 p-2 sm:p-3 ${transitionClassName}`}
           >
@@ -62,6 +64,7 @@ export function MessageEntry({
           </div>
         ) : (
           <div
+            key={contentKey}
             {...transitionProps}
             className={`whitespace-pre-wrap break-words ${transitionClassName}`}
           >

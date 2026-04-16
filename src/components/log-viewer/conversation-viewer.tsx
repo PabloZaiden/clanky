@@ -1,6 +1,13 @@
 import { useEffect, useRef, useMemo, memo } from "react";
 import type { ConversationViewerProps, EntryBase } from "./types";
-import { annotateDisplayEntries, getEntryRenderKey, getStreamingEntryText, getStreamingTransitionState } from "./utils";
+import {
+  annotateDisplayEntries,
+  getEntryRenderKey,
+  getStreamingEntryText,
+  getStreamingTransitionState,
+  isReasoningLogEntry,
+  isResponseLogEntry,
+} from "./utils";
 import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
 import { LogEntryItem } from "./log-entry-item";
@@ -68,7 +75,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     logs.forEach((logEntry) => {
       const logKind = logEntry.details?.["logKind"] as string | undefined;
 
-      if (logKind === "reasoning" || (!logKind && logEntry.message === "AI reasoning...")) {
+      if (isReasoningLogEntry(logEntry)) {
         if (!showReasoning) return;
         const content = logEntry.details?.["responseContent"];
         if (typeof content === "string" && content.length > 0) {
@@ -81,7 +88,7 @@ export const ConversationViewer = memo(function ConversationViewer({
         return;
       }
 
-      if (logKind === "response" || (!logKind && logEntry.message === "AI generating response...")) {
+      if (isResponseLogEntry(logEntry)) {
         if (!showResponseLogs) return;
         const content = logEntry.details?.["responseContent"];
         if (typeof content === "string" && content.length > 0) {
@@ -177,7 +184,6 @@ export const ConversationViewer = memo(function ConversationViewer({
                   data={entry.data}
                   showTimestamp={entry.showTimestamp}
                   spacingClass={spacingClass}
-                  index={index}
                   markdownEnabled={markdownEnabled}
                   showRoleLabel={showMessageRoles}
                   streamingTransition={entry.streamingTransition}
@@ -201,7 +207,6 @@ export const ConversationViewer = memo(function ConversationViewer({
                   showTimestamp={entry.showTimestamp}
                   showGroupHeader={entry.showGroupHeader}
                   spacingClass={spacingClass}
-                  index={index}
                   markdownEnabled={markdownEnabled}
                   streamingTransition={entry.streamingTransition}
                 />

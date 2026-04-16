@@ -196,6 +196,20 @@ describe("LogViewer", () => {
       expect(transitionElement).not.toBeNull();
       expect(transitionElement.dataset["streamTransition"]).toBe("update");
       expect(transitionElement.className).toContain("animate-soft-stream-update");
+
+      rendered.rerender(
+        <ConversationViewer
+          messages={[{ ...assistantMessage, content: "Thinking a bit more again" }]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+        />
+      );
+
+      const nextTransitionElement = rendered.getByText("Thinking a bit more again").closest("[data-stream-transition]") as HTMLElement;
+      expect(nextTransitionElement).not.toBeNull();
+      expect(nextTransitionElement.dataset["streamTransition"]).toBe("update");
+      expect(nextTransitionElement.className).toContain("animate-soft-stream-update");
+      expect(nextTransitionElement).not.toBe(transitionElement);
     });
 
     test("does not animate user message updates as streaming transitions", () => {
@@ -943,6 +957,54 @@ describe("LogViewer", () => {
       );
 
       const transitionElement = rendered.getByText("Hello world").closest("[data-stream-transition]") as HTMLElement;
+      expect(transitionElement).not.toBeNull();
+      expect(transitionElement.dataset["streamTransition"]).toBe("update");
+      expect(transitionElement.className).toContain("animate-soft-stream-update");
+
+      rendered.rerender(
+        <LogViewer
+          messages={[]}
+          toolCalls={[]}
+          logs={[{
+            ...responseLog,
+            details: { logKind: "response", responseContent: "Hello world again" },
+          }]}
+        />
+      );
+
+      const nextTransitionElement = rendered.getByText("Hello world again").closest("[data-stream-transition]") as HTMLElement;
+      expect(nextTransitionElement).not.toBeNull();
+      expect(nextTransitionElement.dataset["streamTransition"]).toBe("update");
+      expect(nextTransitionElement.className).toContain("animate-soft-stream-update");
+      expect(nextTransitionElement).not.toBe(transitionElement);
+    });
+
+    test("marks legacy streamed response content updates with a transition", () => {
+      const legacyResponseLog = createLogEntry({
+        id: "legacy-response-log-update",
+        level: "agent",
+        message: "AI generating response...",
+        timestamp: SAME_MINUTE_TIME_A,
+        details: { responseContent: "Legacy" },
+      });
+      const rendered = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[legacyResponseLog]} />
+      );
+
+      expect(rendered.getByText("Legacy").closest("[data-stream-transition]")).toBeNull();
+
+      rendered.rerender(
+        <LogViewer
+          messages={[]}
+          toolCalls={[]}
+          logs={[{
+            ...legacyResponseLog,
+            details: { responseContent: "Legacy response" },
+          }]}
+        />
+      );
+
+      const transitionElement = rendered.getByText("Legacy response").closest("[data-stream-transition]") as HTMLElement;
       expect(transitionElement).not.toBeNull();
       expect(transitionElement.dataset["streamTransition"]).toBe("update");
       expect(transitionElement.className).toContain("animate-soft-stream-update");
