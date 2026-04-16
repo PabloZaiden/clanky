@@ -302,7 +302,7 @@ describe("ShellSidebarNav", () => {
     expect(queryByText("1")).toBeNull();
   });
 
-  test("keeps pushed loops in regular workspace groups while routing merged and terminal loops to history", () => {
+  test("keeps pushed and completed loops in regular workspace groups while routing archived terminal loops to history", () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-1",
@@ -361,8 +361,12 @@ describe("ShellSidebarNav", () => {
       .find((group) => group.key === "active")
       ?.workspaces.find((workspaceNode) => workspaceNode.workspace.id === "workspace-1");
 
-    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Pushed Loop"]);
-    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop", "Completed Loop"]);
+    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual([
+      "Feature Loop",
+      "Pushed Loop",
+      "Completed Loop",
+    ]);
+    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop"]);
 
     const { getAllByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
 
@@ -395,12 +399,12 @@ describe("ShellSidebarNav", () => {
         }),
         createLoop({
           config: {
-            id: "loop-completed",
-            name: "Completed Loop",
+            id: "loop-merged",
+            name: "Merged Loop",
             workspaceId: "workspace-1",
           },
           state: {
-            status: "completed",
+            status: "merged",
           },
         }),
       ],
@@ -413,13 +417,13 @@ describe("ShellSidebarNav", () => {
 
     expect(getAllByText("History")).toHaveLength(1);
     expect(getAllByText("Feature Loop")).toHaveLength(1);
-    expect(getAllByText("Completed Loop")).toHaveLength(1);
+    expect(getAllByText("Merged Loop")).toHaveLength(1);
 
     await user.click(getByTextButton(getAllByText("Loops")[0]!));
 
     expect(queryByText("Feature Loop")).not.toBeInTheDocument();
     expect(queryByText("History")).not.toBeInTheDocument();
-    expect(queryByText("Completed Loop")).not.toBeInTheDocument();
+    expect(queryByText("Merged Loop")).not.toBeInTheDocument();
   });
 
   test("routes workspaces with only history items into the inactive group", () => {
@@ -436,11 +440,11 @@ describe("ShellSidebarNav", () => {
         createLoop({
           config: {
             id: "loop-history",
-            name: "Completed Loop",
+            name: "Merged Loop",
             workspaceId: "workspace-history",
           },
           state: {
-            status: "completed",
+            status: "merged",
           },
         }),
       ],
@@ -451,6 +455,37 @@ describe("ShellSidebarNav", () => {
     expect(workspaceGroups.find((group) => group.key === "active")?.workspaces).toHaveLength(0);
     expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces.map((node) => node.workspace.name))
       .toEqual(["History Workspace"]);
+  });
+
+  test("keeps workspaces with only completed loops in the active group", () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-completed",
+        name: "Completed Workspace",
+        directory: "/workspaces/completed",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-completed",
+            name: "Completed Loop",
+            workspaceId: "workspace-completed",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+
+    expect(workspaceGroups.find((group) => group.key === "active")?.workspaces.map((node) => node.workspace.name))
+      .toEqual(["Completed Workspace"]);
+    expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces).toHaveLength(0);
   });
 
   test("collapses groups and routes scoped new actions", async () => {
