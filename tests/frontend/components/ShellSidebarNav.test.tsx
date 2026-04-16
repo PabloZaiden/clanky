@@ -259,20 +259,75 @@ describe("ShellSidebarNav", () => {
     expect(chatRow.firstElementChild).toHaveClass("w-4");
   });
 
-  test("moves terminal-state loops into per-workspace history groups", () => {
-    const sidebarData = createSidebarData();
-    const activeWorkspace = sidebarData.workspaceGroups
+  test("keeps pushed loops in regular workspace groups while routing merged and terminal loops to history", () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-1",
+        name: "Workspace 1",
+        directory: "/workspaces/workspace-1",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-running",
+            name: "Feature Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "running",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-pushed",
+            name: "Pushed Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "pushed",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-merged",
+            name: "Merged Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "merged",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-completed",
+            name: "Completed Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+    const activeWorkspace = workspaceGroups
       .find((group) => group.key === "active")
       ?.workspaces.find((workspaceNode) => workspaceNode.workspace.id === "workspace-1");
 
-    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Loop With SSH"]);
-    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Completed Loop"]);
+    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Pushed Loop"]);
+    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop", "Completed Loop"]);
 
     const { getAllByText } = renderWithUser(
-      <SidebarHarness workspaceGroups={sidebarData.workspaceGroups} />,
+      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
     );
 
     expect(getAllByText("History")).toHaveLength(2);
+    expect(getAllByText("Pushed Loop")).toHaveLength(2);
+    expect(getAllByText("Merged Loop")).toHaveLength(2);
     expect(getAllByText("Completed Loop")).toHaveLength(2);
   });
 
