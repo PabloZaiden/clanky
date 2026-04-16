@@ -195,18 +195,16 @@ function createSidebarData() {
 function SidebarHarness({
   route,
   navigateWithinShell,
-  workspaces: workspacesOverride,
   workspaceGroups: workspaceGroupsOverride,
   serverNodes: serverNodesOverride,
 }: {
   route?: ShellRoute;
   navigateWithinShell?: (route: ShellRoute) => void;
-  workspaces?: ReturnType<typeof createSidebarData>["workspaces"];
   workspaceGroups?: ReturnType<typeof createSidebarData>["workspaceGroups"];
   serverNodes?: ReturnType<typeof createSidebarData>["serverNodes"];
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const { workspaces, workspaceGroups, serverNodes } = createSidebarData();
+  const { workspaceGroups, serverNodes } = createSidebarData();
 
   return (
     <ShellSidebarNav
@@ -217,7 +215,6 @@ function SidebarHarness({
       hideSidebar={mock(() => {})}
       isNodeCollapsed={(key) => collapsed[key] ?? false}
       toggleNodeCollapsed={(key) => setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? false) }))}
-      workspaces={workspacesOverride ?? workspaces}
       workspaceGroups={workspaceGroupsOverride ?? workspaceGroups}
       serverNodes={serverNodesOverride ?? serverNodes}
       version="test"
@@ -297,6 +294,14 @@ describe("ShellSidebarNav", () => {
     expect(getByTextButton(getByText("ubuntu@server.example.com"))).toBe(standaloneServerButton);
   });
 
+  test("does not render sidebar count pills for sections or server rows", () => {
+    const { queryByText } = renderWithUser(<SidebarHarness />);
+
+    expect(queryByText("2")).toBeNull();
+    expect(queryByText("3")).toBeNull();
+    expect(queryByText("1")).toBeNull();
+  });
+
   test("keeps pushed loops in regular workspace groups while routing merged and terminal loops to history", () => {
     const workspaces = [
       createWorkspace({
@@ -359,9 +364,7 @@ describe("ShellSidebarNav", () => {
     expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Pushed Loop"]);
     expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop", "Completed Loop"]);
 
-    const { getAllByText } = renderWithUser(
-      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
-    );
+    const { getAllByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
 
     expect(getAllByText("History")).toHaveLength(1);
     expect(getAllByText("Pushed Loop")).toHaveLength(1);
@@ -405,7 +408,7 @@ describe("ShellSidebarNav", () => {
       sessions: [],
     });
     const { getAllByText, queryByText, user } = renderWithUser(
-      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
+      <SidebarHarness workspaceGroups={workspaceGroups} />,
     );
 
     expect(getAllByText("History")).toHaveLength(1);
@@ -491,7 +494,7 @@ describe("ShellSidebarNav", () => {
       sessions: [],
     });
     const { getByText, queryByText } = renderWithUser(
-      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
+      <SidebarHarness workspaceGroups={workspaceGroups} />,
     );
 
     expect(queryByText("Active")).not.toBeInTheDocument();
@@ -506,9 +509,7 @@ describe("ShellSidebarNav", () => {
       chats: [],
       sessions: [],
     });
-    const { queryByText } = renderWithUser(
-      <SidebarHarness workspaces={[]} workspaceGroups={workspaceGroups} />,
-    );
+    const { queryByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
 
     expect(queryByText("Active")).not.toBeInTheDocument();
     expect(queryByText("Inactive")).not.toBeInTheDocument();

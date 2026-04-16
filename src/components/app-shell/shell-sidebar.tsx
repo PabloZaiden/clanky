@@ -16,7 +16,6 @@ function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined
 
 export function ShellSection({
   title,
-  count,
   actionLabel,
   onAction,
   collapsed,
@@ -24,7 +23,6 @@ export function ShellSection({
   children,
 }: {
   title: string;
-  count?: number;
   actionLabel?: string;
   onAction?: () => void;
   collapsed: boolean;
@@ -37,28 +35,21 @@ export function ShellSection({
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2 px-1">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <h2 className="min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={onToggle}
-              aria-expanded={!collapsed}
-              aria-controls={contentId}
-              aria-label={toggleLabel}
-              className="flex w-full min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60"
-            >
-              <span className="text-xs text-gray-500 dark:text-gray-400">{collapsed ? "\u25B6" : "\u25BC"}</span>
-              <span className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                {title}
-              </span>
-            </button>
-          </h2>
-          {typeof count === "number" && (
-            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
-              {count}
+        <h2 className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            aria-controls={contentId}
+            aria-label={toggleLabel}
+            className="flex w-full min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60"
+          >
+            <span className="text-xs text-gray-500 dark:text-gray-400">{collapsed ? "\u25B6" : "\u25BC"}</span>
+            <span className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              {title}
             </span>
-          )}
-        </div>
+          </button>
+        </h2>
         {onAction && actionLabel && (
           <button
             type="button"
@@ -81,7 +72,6 @@ export function ShellSection({
 
 export function SidebarTreeSection({
   title,
-  count,
   actionLabel,
   onAction,
   collapsed,
@@ -90,7 +80,6 @@ export function SidebarTreeSection({
   children,
 }: {
   title: string;
-  count?: number;
   actionLabel?: string;
   onAction?: () => void;
   collapsed: boolean;
@@ -114,11 +103,6 @@ export function SidebarTreeSection({
           <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
             {title}
           </span>
-          {typeof count === "number" && (
-            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
-              {count}
-            </span>
-          )}
         </button>
         {onAction && actionLabel && (
           <button

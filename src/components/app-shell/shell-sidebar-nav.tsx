@@ -1,5 +1,4 @@
 import type { MouseEvent } from "react";
-import type { Workspace } from "../../types";
 import { CodeIcon, GearIcon, RefreshIcon, SidebarIcon } from "../common";
 import { getShellRouteUrl, isModifiedNavigationClick } from "./shell-navigation";
 import { EmptySection, ShellSection, SidebarTreeItem, SidebarTreeSection } from "./shell-sidebar";
@@ -24,7 +23,6 @@ interface ShellSidebarNavProps {
   hideSidebar: () => void;
   isNodeCollapsed: (collapseKey: string) => boolean;
   toggleNodeCollapsed: (collapseKey: string) => void;
-  workspaces: Workspace[];
   workspaceGroups: SidebarWorkspaceGroupNode[];
   serverNodes: SidebarServerNode[];
   version: string | undefined;
@@ -45,7 +43,6 @@ export function ShellSidebarNav({
   hideSidebar,
   isNodeCollapsed,
   toggleNodeCollapsed,
-  workspaces,
   workspaceGroups,
   serverNodes,
   version,
@@ -203,7 +200,6 @@ export function ShellSidebarNav({
       <div className="flex-1 space-y-6 overflow-y-auto px-3 py-4 dark-scrollbar">
         <ShellSection
           title="Workspaces"
-          count={workspaces.length}
           actionLabel="New"
           onAction={() => navigateWithinShell({ view: "compose", kind: "workspace" })}
           collapsed={isNodeCollapsed(workspacesCollapseKey)}
@@ -215,7 +211,6 @@ export function ShellSidebarNav({
               <SidebarTreeSection
                 key={group.key}
                 title={group.title}
-                count={group.workspaces.length}
                 collapsed={isNodeCollapsed(groupCollapseKey)}
                 onToggle={() => toggleNodeCollapsed(groupCollapseKey)}
               >
@@ -267,7 +262,6 @@ export function ShellSidebarNav({
                         <div className="space-y-1">
                           <SidebarTreeSection
                             title="Loops"
-                            count={workspaceNode.loops.length + workspaceNode.historyLoops.length}
                             actionLabel="New"
                             onAction={() => navigateWithinShell({
                               view: "compose",
@@ -284,7 +278,6 @@ export function ShellSidebarNav({
                             {workspaceNode.historyLoops.length > 0 && (
                               <SidebarTreeSection
                                 title="History"
-                                count={workspaceNode.historyLoops.length}
                                 collapsed={isNodeCollapsed(historyCollapseKey)}
                                 onToggle={() => toggleNodeCollapsed(historyCollapseKey)}
                                 indentLevel={3}
@@ -298,7 +291,6 @@ export function ShellSidebarNav({
 
                           <SidebarTreeSection
                             title="Chats"
-                            count={workspaceNode.chats.length}
                             actionLabel="New"
                             onAction={() => navigateWithinShell({
                               view: "compose",
@@ -327,7 +319,6 @@ export function ShellSidebarNav({
 
                           <SidebarTreeSection
                             title="SSH sessions"
-                            count={workspaceNode.sshSessions.length}
                             actionLabel="New"
                             onAction={() => navigateWithinShell({
                               view: "compose",
@@ -366,7 +357,6 @@ export function ShellSidebarNav({
 
         <ShellSection
           title="SSH servers"
-          count={serverNodes.length}
           actionLabel="New"
           onAction={() => navigateWithinShell({ view: "compose", kind: "ssh-server" })}
           collapsed={isNodeCollapsed(serversCollapseKey)}
@@ -384,14 +374,13 @@ export function ShellSidebarNav({
               );
               return (
                 <div key={serverNode.key} className="space-y-1">
-                  <SidebarTreeItem
-                    active={isServerActive(serverNode.server.config.id)}
-                    title={serverNode.server.config.name}
-                    subtitle={`${serverNode.server.config.username}@${serverNode.server.config.address}`}
-                    badge={serverNode.sessions.length > 0 ? String(serverNode.sessions.length) : undefined}
-                    indentLevel={1}
-                    collapsed={isNodeCollapsed(serverCollapseKey)}
-                    onToggle={() => toggleNodeCollapsed(serverCollapseKey)}
+                    <SidebarTreeItem
+                      active={isServerActive(serverNode.server.config.id)}
+                      title={serverNode.server.config.name}
+                      subtitle={`${serverNode.server.config.username}@${serverNode.server.config.address}`}
+                      indentLevel={1}
+                      collapsed={isNodeCollapsed(serverCollapseKey)}
+                      onToggle={() => toggleNodeCollapsed(serverCollapseKey)}
                     onClick={(event) => handleSidebarItemClick(event, {
                       view: "ssh-server",
                       serverId: serverNode.server.config.id,
@@ -400,7 +389,6 @@ export function ShellSidebarNav({
                   {!isNodeCollapsed(serverCollapseKey) && (
                     <SidebarTreeSection
                       title="Sessions"
-                      count={serverNode.sessions.length}
                       actionLabel="New"
                       onAction={() => navigateWithinShell({
                         view: "compose",
