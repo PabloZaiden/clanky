@@ -169,6 +169,12 @@ bun dev
 
 `bun run build` creates a standalone executable in `dist/ralpher`.
 
+To repopulate local demo data for the UI, run:
+
+```bash
+bun tests/test-data-generation/generate-demo-ui-data.ts
+```
+
 ## Contributing
 
 1. Fork the repository.
