@@ -238,6 +238,27 @@ describe("ShellSidebarNav", () => {
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
   });
 
+  test("uses compact indentation and gutter spacing for nested sidebar rows", () => {
+    const { getAllByText } = renderWithUser(<SidebarHarness />);
+
+    const workspaceRow = getTreeRowForText(getAllByText("Workspace 1")[0]!);
+    expect(workspaceRow.style.marginLeft).toBe("0.375rem");
+    expect(workspaceRow.firstElementChild).toHaveClass("w-4");
+
+    const loopRow = getTreeRowForText(getAllByText("Feature Loop")[0]!);
+    expect(loopRow.style.marginLeft).toBe("1.125rem");
+    expect(loopRow.firstElementChild).toHaveClass("w-4");
+
+    const sessionRow = getTreeRowForText(getAllByText("Loop SSH Session")[0]!);
+    expect(sessionRow.style.marginLeft).toBe("1.5rem");
+    expect(sessionRow.firstElementChild).toHaveClass("w-4");
+
+    const chatRow = getTreeRowForText(getAllByText("Workspace Chat")[0]!);
+    expect(chatRow.style.marginLeft).toBe("1.125rem");
+    expect(chatRow.firstElementChild).toHaveAttribute("aria-hidden", "true");
+    expect(chatRow.firstElementChild).toHaveClass("w-4");
+  });
+
   test("moves terminal-state loops into per-workspace history groups", () => {
     const sidebarData = createSidebarData();
     const activeWorkspace = sidebarData.workspaceGroups
@@ -352,4 +373,10 @@ function getByTextButton(node: HTMLElement): HTMLButtonElement {
   const button = node.closest("button");
   expect(button).not.toBeNull();
   return button as HTMLButtonElement;
+}
+
+function getTreeRowForText(node: HTMLElement): HTMLDivElement {
+  const row = getByTextButton(node).parentElement;
+  expect(row).not.toBeNull();
+  return row as HTMLDivElement;
 }
