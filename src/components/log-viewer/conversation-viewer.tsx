@@ -1,6 +1,13 @@
 import { useEffect, useRef, useMemo, memo } from "react";
 import type { ConversationViewerProps, EntryBase } from "./types";
-import { annotateDisplayEntries } from "./utils";
+import {
+  annotateDisplayEntries,
+  getEntryRenderKey,
+  getStreamingEntryText,
+  getStreamingTransitionState,
+  isReasoningLogEntry,
+  isResponseLogEntry,
+} from "./utils";
 import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
 import { LogEntryItem } from "./log-entry-item";
@@ -24,6 +31,8 @@ export const ConversationViewer = memo(function ConversationViewer({
   activeStateMessage = "Working...",
 }: ConversationViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasSeenInitialEntriesRef = useRef(false);
+  const previousStreamingTextRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (autoScroll && containerRef.current) {
@@ -66,7 +75,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     logs.forEach((logEntry) => {
       const logKind = logEntry.details?.["logKind"] as string | undefined;
 
-      if (logKind === "reasoning" || (!logKind && logEntry.message === "AI reasoning...")) {
+      if (isReasoningLogEntry(logEntry)) {
         if (!showReasoning) return;
         const content = logEntry.details?.["responseContent"];
         if (typeof content === "string" && content.length > 0) {
@@ -79,7 +88,7 @@ export const ConversationViewer = memo(function ConversationViewer({
         return;
       }
 
-      if (logKind === "response" || (!logKind && logEntry.message === "AI generating response...")) {
+      if (isResponseLogEntry(logEntry)) {
         if (!showResponseLogs) return;
         const content = logEntry.details?.["responseContent"];
         if (typeof content === "string" && content.length > 0) {
@@ -114,6 +123,33 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
   const isEmpty = entries.length === 0;
+  const displayEntries = useMemo(() => {
+    const canAnimateStreamingEntries = hasSeenInitialEntriesRef.current;
+    return entries.map((entry) => ({
+      ...entry,
+      streamingTransition: getStreamingTransitionState(
+        entry,
+        previousStreamingTextRef.current,
+        canAnimateStreamingEntries,
+      ),
+    }));
+  }, [entries]);
+
+  useEffect(() => {
+    const nextStreamingText = new Map<string, string>();
+
+    entries.forEach((entry) => {
+      const streamingText = getStreamingEntryText(entry);
+      if (typeof streamingText === "string") {
+        nextStreamingText.set(getEntryRenderKey(entry), streamingText);
+      }
+    });
+
+    previousStreamingTextRef.current = nextStreamingText;
+    if (entries.length > 0) {
+      hasSeenInitialEntriesRef.current = true;
+    }
+  }, [entries]);
 
   return (
     <div
@@ -133,9 +169,9 @@ export const ConversationViewer = memo(function ConversationViewer({
             emptyStateMessage
           )}
         </div>
-      ) : (
-        <div className="p-2 sm:p-4">
-          {entries.map((entry, index) => {
+        ) : (
+          <div className="p-2 sm:p-4">
+          {displayEntries.map((entry, index) => {
             const spacingClass = index === 0
               ? ""
               : entry.showTimestamp || entry.showGroupHeader
@@ -144,19 +180,19 @@ export const ConversationViewer = memo(function ConversationViewer({
             if (entry.type === "message") {
               return (
                 <MessageEntry
-                  key={`msg-${entry.data.id}-${index}`}
+                  key={`msg-${entry.data.id}`}
                   data={entry.data}
                   showTimestamp={entry.showTimestamp}
                   spacingClass={spacingClass}
-                  index={index}
                   markdownEnabled={markdownEnabled}
                   showRoleLabel={showMessageRoles}
+                  streamingTransition={entry.streamingTransition}
                 />
               );
             } else if (entry.type === "tool") {
               return (
                 <ToolEntry
-                  key={`tool-${entry.data.id}-${index}`}
+                  key={`tool-${entry.data.id}`}
                   data={entry.data}
                   timestamp={entry.timestamp}
                   showTimestamp={entry.showTimestamp}
@@ -166,13 +202,13 @@ export const ConversationViewer = memo(function ConversationViewer({
             } else {
               return (
                 <LogEntryItem
-                  key={`log-${entry.data.id}-${index}`}
+                  key={`log-${entry.data.id}`}
                   data={entry.data}
                   showTimestamp={entry.showTimestamp}
                   showGroupHeader={entry.showGroupHeader}
                   spacingClass={spacingClass}
-                  index={index}
                   markdownEnabled={markdownEnabled}
+                  streamingTransition={entry.streamingTransition}
                 />
               );
             }

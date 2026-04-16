@@ -1,5 +1,5 @@
 import type { LogLevel } from "../../types";
-import type { EntryBase, DisplayEntry } from "./types";
+import type { EntryBase, DisplayEntry, LogEntry, StreamingTransitionState } from "./types";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
@@ -63,6 +63,84 @@ export function getEntryGroupKey(entry: EntryBase): string {
 }
 
 /**
+ * Get the stable render key for an entry so update detection can survive
+ * insertions elsewhere in the transcript without forcing remounts.
+ */
+export function getEntryRenderKey(entry: EntryBase): string {
+  switch (entry.type) {
+    case "message":
+      return `message|${entry.data.id}`;
+    case "tool":
+      return `tool|${entry.data.id}`;
+    case "log":
+      return `log|${entry.data.id}`;
+  }
+}
+
+export function isReasoningLogEntry(logEntry: LogEntry): boolean {
+  const logKind = logEntry.details?.["logKind"] as string | undefined;
+  return logKind === "reasoning" || (!logKind && logEntry.message === "AI reasoning...");
+}
+
+export function isResponseLogEntry(logEntry: LogEntry): boolean {
+  const logKind = logEntry.details?.["logKind"] as string | undefined;
+  return logKind === "response" || (!logKind && logEntry.message === "AI generating response...");
+}
+
+export function isStreamingLogEntry(logEntry: LogEntry): boolean {
+  return isResponseLogEntry(logEntry) || isReasoningLogEntry(logEntry);
+}
+
+/**
+ * Returns the streaming text payload for entries that should receive the
+ * soft fade treatment. Non-streaming entries return null.
+ */
+export function getStreamingEntryText(entry: EntryBase): string | null {
+  if (entry.type === "message") {
+    return entry.data.role === "assistant" ? entry.data.content : null;
+  }
+
+  if (entry.type !== "log") {
+    return null;
+  }
+
+  if (!isStreamingLogEntry(entry.data)) {
+    return null;
+  }
+
+  const responseContent = entry.data.details?.["responseContent"];
+  return typeof responseContent === "string" && responseContent.length > 0
+    ? responseContent
+    : null;
+}
+
+export function getStreamingTransitionState(
+  entry: EntryBase,
+  previousStreamingText: Map<string, string>,
+  canAnimate: boolean,
+): StreamingTransitionState {
+  if (!canAnimate) {
+    return null;
+  }
+
+  const nextText = getStreamingEntryText(entry);
+  if (nextText === null) {
+    return null;
+  }
+
+  const previousText = previousStreamingText.get(getEntryRenderKey(entry));
+  if (typeof previousText !== "string") {
+    return "enter";
+  }
+
+  if (nextText.length > previousText.length && nextText.startsWith(previousText)) {
+    return "update";
+  }
+
+  return null;
+}
+
+/**
  * Annotate a sorted array of entries with derived render metadata.
  * Timestamps are shown only when the visible formatted time changes.
  * Group headers remain driven by entry grouping so spacing and labels
@@ -78,5 +156,6 @@ export function annotateDisplayEntries(sorted: EntryBase[]): DisplayEntry[] {
     ...entry,
     showTimestamp: i === 0 || minuteBuckets[i] !== minuteBuckets[i - 1],
     showGroupHeader: i === 0 || keys[i] !== keys[i - 1],
+    streamingTransition: null,
   }));
 }
