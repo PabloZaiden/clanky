@@ -1,7 +1,7 @@
 import { memo, useCallback } from "react";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { LazyDetails } from "./lazy-details";
-import type { LogEntry } from "./types";
+import type { LogEntry, StreamingTransitionState } from "./types";
 import { formatTime, getLogLevelColor } from "./utils";
 
 interface LogEntryItemProps {
@@ -11,6 +11,7 @@ interface LogEntryItemProps {
   spacingClass: string;
   index: number;
   markdownEnabled: boolean;
+  streamingTransition: StreamingTransitionState;
 }
 
 function getOtherDetails(details: Record<string, unknown>): Record<string, unknown> {
@@ -26,6 +27,7 @@ export const LogEntryItem = memo(function LogEntryItem({
   spacingClass,
   index,
   markdownEnabled,
+  streamingTransition,
 }: LogEntryItemProps) {
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
@@ -54,6 +56,14 @@ export const LogEntryItem = memo(function LogEntryItem({
   // their rendered content is already self-explanatory.
   const isStreamingEntry = logKind === "response" || logKind === "reasoning";
   const showMessageLabel = showGroupHeader && !isStreamingEntry;
+  const transitionClassName = streamingTransition === "enter"
+    ? "animate-soft-stream-enter"
+    : streamingTransition === "update"
+      ? "animate-soft-stream-update"
+      : "";
+  const transitionProps = streamingTransition
+    ? { "data-stream-transition": streamingTransition }
+    : {};
 
   return (
     <div key={`log-${log.id}-${index}`} className={`group ${isReasoning ? "opacity-60" : ""} ${spacingClass}`}>
@@ -69,11 +79,17 @@ export const LogEntryItem = memo(function LogEntryItem({
         {/* Show responseContent as proper text */}
         {hasResponseContent && (
           markdownEnabled ? (
-            <div className={`mt-2 p-2 sm:p-3 bg-neutral-800 rounded ${isReasoning ? "italic" : ""}`}>
+            <div
+              {...transitionProps}
+              className={`mt-2 rounded bg-neutral-800 p-2 sm:p-3 ${isReasoning ? "italic" : ""} ${transitionClassName}`}
+            >
               <MarkdownRenderer content={responseContent as string} className="text-xs" dimmed={isReasoning} />
             </div>
           ) : (
-            <div className={`mt-2 p-2 sm:p-3 rounded bg-neutral-800 text-xs leading-relaxed whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400 italic" : "text-gray-200"}`}>
+            <div
+              {...transitionProps}
+              className={`mt-2 rounded bg-neutral-800 p-2 text-xs leading-relaxed whitespace-pre-wrap break-words sm:p-3 ${isReasoning ? "text-gray-400 italic" : "text-gray-200"} ${transitionClassName}`}
+            >
               {responseContent}
             </div>
           )

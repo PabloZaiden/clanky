@@ -58,6 +58,8 @@ export interface ConversationViewerProps extends LogViewerProps {
   activeStateMessage?: string;
 }
 
+export type StreamingTransitionState = "enter" | "update" | null;
+
 /**
  * Base type for a display entry before render metadata annotation.
  */
@@ -74,4 +76,6 @@ export type DisplayEntry = EntryBase & {
   showTimestamp: boolean;
   /** Whether this entry starts a new grouped row for spacing and labels. */
   showGroupHeader: boolean;
+  /** Whether the entry's streaming text should render with a soft transition. */
+  streamingTransition: StreamingTransitionState;
 };

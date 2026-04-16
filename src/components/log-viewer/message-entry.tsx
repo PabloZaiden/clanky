@@ -1,5 +1,6 @@
 import type { MessageData } from "../../types";
 import { MarkdownRenderer } from "../MarkdownRenderer";
+import type { StreamingTransitionState } from "./types";
 import { formatTime } from "./utils";
 
 interface MessageEntryProps {
@@ -9,11 +10,35 @@ interface MessageEntryProps {
   index: number;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
+  streamingTransition: StreamingTransitionState;
 }
 
-export function MessageEntry({ data: msg, showTimestamp, spacingClass, index, markdownEnabled, showRoleLabel }: MessageEntryProps) {
+function getStreamingTransitionClassName(streamingTransition: StreamingTransitionState): string {
+  switch (streamingTransition) {
+    case "enter":
+      return "animate-soft-stream-enter";
+    case "update":
+      return "animate-soft-stream-update";
+    default:
+      return "";
+  }
+}
+
+export function MessageEntry({
+  data: msg,
+  showTimestamp,
+  spacingClass,
+  index,
+  markdownEnabled,
+  showRoleLabel,
+  streamingTransition,
+}: MessageEntryProps) {
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
+  const transitionClassName = getStreamingTransitionClassName(streamingTransition);
+  const transitionProps = streamingTransition
+    ? { "data-stream-transition": streamingTransition }
+    : {};
 
   return (
     <div key={`msg-${msg.id}-${index}`} className={`group ${spacingClass}`}>
@@ -29,11 +54,17 @@ export function MessageEntry({ data: msg, showTimestamp, spacingClass, index, ma
           </div>
         )}
         {shouldRenderMarkdown ? (
-          <div className="rounded bg-neutral-800 p-2 sm:p-3">
+          <div
+            {...transitionProps}
+            className={`rounded bg-neutral-800 p-2 sm:p-3 ${transitionClassName}`}
+          >
             <MarkdownRenderer content={msg.content} className="text-xs" />
           </div>
         ) : (
-          <div className="whitespace-pre-wrap break-words">
+          <div
+            {...transitionProps}
+            className={`whitespace-pre-wrap break-words ${transitionClassName}`}
+          >
             {msg.content}
           </div>
         )}
