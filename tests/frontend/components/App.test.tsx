@@ -712,11 +712,11 @@ describe("App shell", () => {
     await waitFor(() => {
       const sidebar = document.querySelector("aside");
       expect(sidebar).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Plan Ready Loop")).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Plan Ready")).toBeTruthy();
+      expect(within(sidebar as HTMLElement).getAllByText("Plan Ready Loop").length).toBeGreaterThan(0);
+      expect(within(sidebar as HTMLElement).getAllByText("Plan Ready").length).toBeGreaterThan(0);
     });
 
-    expect(getByRole("button", { name: /Collapse Loops section/ })).toBeTruthy();
+    expect(getByRole("button", { name: /Collapse Workspaces section/ })).toBeTruthy();
   });
 
   test("keeps non-ready planning loops labeled 'Planning' in the sidebar", async () => {
@@ -743,9 +743,9 @@ describe("App shell", () => {
     await waitFor(() => {
       const sidebar = document.querySelector("aside");
       expect(sidebar).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Planning Loop")).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Planning")).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Running")).toBeTruthy();
+      expect(within(sidebar as HTMLElement).getAllByText("Planning Loop").length).toBeGreaterThan(0);
+      expect(within(sidebar as HTMLElement).getAllByText("Planning").length).toBeGreaterThan(0);
+      expect(within(sidebar as HTMLElement).getAllByText("Running").length).toBeGreaterThan(0);
     });
   });
 
@@ -833,11 +833,11 @@ describe("App shell", () => {
       const persistedState = JSON.parse(window.localStorage.getItem("ralpher.sidebarSectionCollapseState") ?? "{}") as Record<string, boolean>;
       expect(persistedState["workspaces"]).toBe(true);
       expect(persistedState["loops"]).toBe(false);
-      expect("drafts" in persistedState).toBe(false);
+      expect(persistedState["drafts"]).toBe(true);
     });
   });
 
-  test("shows draft loops under Loops and removes workspace subgroup counts", async () => {
+  test("shows draft loops under workspace sections without reviving legacy draft buckets", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
     const draftLoop = createLoopWithStatus("draft", {
       config: { id: "loop-draft", name: "Sprint Draft", workspaceId: workspace.id },
@@ -850,7 +850,7 @@ describe("App shell", () => {
     const { getAllByText, getByRole, queryByText } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Collapse Loops section" })).toBeTruthy();
+      expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
       expect(getAllByText("Sprint Draft").length).toBeGreaterThan(0);
       expect(getAllByText("Shipping Loop").length).toBeGreaterThan(0);
     });
@@ -858,11 +858,7 @@ describe("App shell", () => {
     expect(queryByText("Drafts")).toBeNull();
     expect(getAllByText("Draft").length).toBeGreaterThan(0);
 
-    const workspaceButton = Array.from(document.querySelectorAll("button[aria-expanded]")).find((button) =>
-      button.textContent?.includes("Frontend")
-    );
-    expect(workspaceButton).toBeTruthy();
-    expect(workspaceButton?.textContent).not.toContain("2");
+    expect(getAllByText("Frontend").length).toBeGreaterThan(0);
   });
 
   test("hides and reopens the sidebar with header icon controls", async () => {

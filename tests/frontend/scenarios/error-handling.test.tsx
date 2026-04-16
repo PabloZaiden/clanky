@@ -50,6 +50,13 @@ function setupBaseApi() {
 }
 
 function getSectionActionButton(sectionTitle: string, actionLabel = "New"): HTMLButtonElement | undefined {
+  const actionByLabel = document.querySelector(
+    `button[aria-label="${actionLabel} ${sectionTitle}"]`,
+  ) as HTMLButtonElement | null;
+  if (actionByLabel) {
+    return actionByLabel;
+  }
+
   const section = Array.from(document.querySelectorAll("section")).find((candidate) =>
     candidate.textContent?.includes(sectionTitle)
   );
@@ -180,7 +187,7 @@ describe("error handling scenario", () => {
     expect(loopsNewButton).toBeTruthy();
     await user.click(loopsNewButton!);
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Start a new loop" })).toBeTruthy();
+      expect(getByRole("heading", { name: /Start a new loop/ })).toBeTruthy();
     });
 
     // Select workspace

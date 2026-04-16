@@ -1,8 +1,15 @@
-import { useId, type MouseEvent } from "react";
-import type { Loop } from "../../types";
+import { useId, type MouseEvent, type ReactNode } from "react";
 import { StatusBadge, type BadgeVariant } from "../common";
-import { getWorkspaceGroupCollapseKey } from "./shell-types";
-import type { SidebarSectionId, WorkspaceSidebarGroup } from "./shell-types";
+
+function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined {
+  if (indentLevel <= 0) {
+    return undefined;
+  }
+
+  return {
+    marginLeft: `${indentLevel * 0.75}rem`,
+  };
+}
 
 export function ShellSection({
   title,
@@ -19,7 +26,7 @@ export function ShellSection({
   onAction?: () => void;
   collapsed: boolean;
   onToggle: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const contentId = useId();
   const toggleLabel = `${collapsed ? "Expand" : "Collapse"} ${title} section`;
@@ -53,6 +60,7 @@ export function ShellSection({
           <button
             type="button"
             onClick={onAction}
+            aria-label={`${actionLabel} ${title}`}
             className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
           >
             {actionLabel}
@@ -68,112 +76,155 @@ export function ShellSection({
   );
 }
 
-export interface SectionItemProps {
-  active?: boolean;
+export function SidebarTreeSection({
+  title,
+  count,
+  actionLabel,
+  onAction,
+  collapsed,
+  onToggle,
+  indentLevel = 0,
+  children,
+}: {
   title: string;
-  subtitle?: string;
-  badge?: string;
-  badgeVariant?: BadgeVariant;
-  nested?: boolean;
-  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  count?: number;
+  actionLabel?: string;
+  onAction?: () => void;
+  collapsed: boolean;
+  onToggle: () => void;
+  indentLevel?: number;
+  children: ReactNode;
+}) {
+  const contentId = useId();
+
+  return (
+    <div className="space-y-1" style={getIndentStyle(indentLevel)}>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          aria-controls={contentId}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60"
+        >
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">{collapsed ? "\u25B6" : "\u25BC"}</span>
+          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            {title}
+          </span>
+          {typeof count === "number" && (
+            <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
+              {count}
+            </span>
+          )}
+        </button>
+        {onAction && actionLabel && (
+          <button
+            type="button"
+            onClick={onAction}
+            aria-label={`${actionLabel} ${title}`}
+            className="rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
+          >
+            {actionLabel}
+          </button>
+        )}
+      </div>
+      {!collapsed && (
+        <div id={contentId} className="space-y-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
 }
 
-export function SectionItem({
+export function SidebarTreeItem({
   active = false,
   title,
   subtitle,
   badge,
   badgeVariant = "default",
-  nested = false,
+  indentLevel = 0,
   onClick,
-}: SectionItemProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left transition",
-        nested ? "ml-3 w-[calc(100%-0.75rem)]" : "",
-        active
-          ? "border-gray-900 bg-gray-900 text-white shadow-sm dark:border-gray-100 dark:bg-neutral-100 dark:text-gray-950"
-          : "border-transparent bg-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-100 dark:text-gray-200 dark:hover:border-gray-800 dark:hover:bg-neutral-800/80",
-      ].join(" ")}
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{title}</span>
-        {subtitle && (
-          <span
-            className={[
-              "mt-0.5 block truncate text-xs",
-              active ? "text-gray-300 dark:text-gray-700" : "text-gray-500 dark:text-gray-400",
-            ].join(" ")}
-          >
-            {subtitle}
-          </span>
-        )}
-      </span>
-      {badge && (
-        <StatusBadge
-          variant={badgeVariant}
-          size="sm"
-          className={[
-            "ml-3 shrink-0",
-            active ? "ring-1 ring-white/10 dark:ring-gray-300/20" : "",
-          ].join(" ")}
-        >
-          {badge}
-        </StatusBadge>
-      )}
-    </button>
-  );
-}
-
-export function WorkspaceGroupedSectionItems({
-  sectionId,
-  groups,
-  collapsedGroups,
-  onToggleGroup,
-  renderItem,
+  collapsed,
+  onToggle,
 }: {
-  sectionId: SidebarSectionId;
-  groups: readonly WorkspaceSidebarGroup[];
-  collapsedGroups: Partial<Record<string, boolean>>;
-  onToggleGroup: (sectionId: SidebarSectionId, groupKey: string) => void;
-  renderItem: (loop: Loop) => React.ReactNode;
+  active?: boolean;
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  badgeVariant?: BadgeVariant;
+  indentLevel?: number;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
   return (
-    <div className="space-y-3">
-      {groups.map((group) => {
-        const collapseKey = getWorkspaceGroupCollapseKey(sectionId, group.key);
-        const collapsed = collapsedGroups[collapseKey] ?? false;
-        return (
-          <div key={group.key} className="space-y-1">
-            <button
-              type="button"
-              onClick={() => onToggleGroup(sectionId, group.key)}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60"
-              aria-expanded={!collapsed}
+    <div className="flex items-stretch gap-2" style={getIndentStyle(indentLevel)}>
+      {onToggle ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={collapsed === undefined ? undefined : !collapsed}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${title}`}
+          className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
+        >
+          {collapsed ? "\u25B6" : "\u25BC"}
+        </button>
+      ) : (
+        <span className="w-8 shrink-0" aria-hidden="true" />
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        className={[
+          "flex min-w-0 flex-1 items-center justify-between rounded-xl border px-3 py-2 text-left transition",
+          active
+            ? "border-gray-900 bg-gray-900 text-white shadow-sm dark:border-gray-100 dark:bg-neutral-100 dark:text-gray-950"
+            : "border-transparent bg-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-100 dark:text-gray-200 dark:hover:border-gray-800 dark:hover:bg-neutral-800/80",
+        ].join(" ")}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{title}</span>
+          {subtitle && (
+            <span
+              className={[
+                "mt-0.5 block truncate text-xs",
+                active ? "text-gray-300 dark:text-gray-700" : "text-gray-500 dark:text-gray-400",
+              ].join(" ")}
             >
-              <span className="text-[11px] text-gray-500 dark:text-gray-400">{collapsed ? "\u25B6" : "\u25BC"}</span>
-              <span className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-                {group.title}
-              </span>
-            </button>
-            {!collapsed && (
-              <div className="space-y-1">
-                {group.items.map(renderItem)}
-              </div>
-            )}
-          </div>
-        );
-      })}
+              {subtitle}
+            </span>
+          )}
+        </span>
+        {badge && (
+          <StatusBadge
+            variant={badgeVariant}
+            size="sm"
+            className={[
+              "ml-3 shrink-0",
+              active ? "ring-1 ring-white/10 dark:ring-gray-300/20" : "",
+            ].join(" ")}
+          >
+            {badge}
+          </StatusBadge>
+        )}
+      </button>
     </div>
   );
 }
 
-export function EmptySection({ message }: { message: string }) {
+export function EmptySection({
+  message,
+  indentLevel = 0,
+}: {
+  message: string;
+  indentLevel?: number;
+}) {
   return (
-    <div className="rounded-xl border border-dashed border-gray-300 px-3 py-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+    <div
+      className="rounded-xl border border-dashed border-gray-300 px-3 py-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400"
+      style={getIndentStyle(indentLevel)}
+    >
       {message}
     </div>
   );
