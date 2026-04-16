@@ -17,6 +17,7 @@ import type { ModelConfig } from "../../types/loop";
 import type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
 import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedback";
 
 import { LoopEngine } from "../loop-engine";
 import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
@@ -213,8 +214,7 @@ export class LoopManager {
     loopId: string,
     options: {
       batchId: string;
-      itemIds: string[];
-      feedbackItems: Array<{
+      sourceItems: Array<{
         id: string;
         source: "review_thread" | "review_comment" | "review";
         body: string;
@@ -225,6 +225,7 @@ export class LoopManager {
         path?: string;
         line?: number;
       }>;
+      feedbackItems: AutomaticPrFlowExtractedFeedbackItem[];
     },
   ): Promise<SendFollowUpResult> {
     return startAutomaticPrReviewCycleImpl(this.ctx, loopId, options);
