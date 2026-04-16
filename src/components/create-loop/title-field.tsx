@@ -15,7 +15,7 @@ export function TitleField({ name, onChange, onGenerate, canGenerate, generating
         htmlFor="name"
         className="block text-sm font-medium text-gray-700 dark:text-gray-300"
       >
-        Title <span className="text-red-500">*</span>
+        Title
       </label>
       <div className="mt-1 flex items-start gap-2">
         <input
@@ -24,7 +24,6 @@ export function TitleField({ name, onChange, onGenerate, canGenerate, generating
           value={name}
           onChange={(e) => onChange(e.target.value)}
           placeholder="Short loop title"
-          required
           maxLength={100}
           className="block flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
         />
@@ -44,7 +43,7 @@ export function TitleField({ name, onChange, onGenerate, canGenerate, generating
         </Button>
       </div>
       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-        Give the loop a clear title, or use AI to suggest one from the current prompt.
+        Optional. Give the loop a clear title, or let AI suggest one from the current prompt when you create it.
       </p>
       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
         {name.trim().length}/100 characters

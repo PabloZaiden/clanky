@@ -8,7 +8,7 @@ import type { CheapModelSelection } from "../../types";
 export interface CreateLoopFormActionState {
   /** Whether the form is currently submitting */
   isSubmitting: boolean;
-  /** Whether the form can be submitted to start a loop (has required fields AND model is enabled) */
+  /** Whether the form can be submitted to start a loop (create mode can auto-generate a missing title) */
   canSubmit: boolean;
   /** Whether the form can be saved as a draft (has required fields, model can be disconnected) */
   canSaveDraft: boolean;

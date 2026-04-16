@@ -51,6 +51,7 @@ export function useFormActions({
   isEditingDraft,
   renderActions,
   generatingTitle,
+  generateTitle,
   prompt,
   name,
   attachments,
@@ -79,6 +80,7 @@ export function useFormActions({
   isEditingDraft: boolean | undefined;
   renderActions: CreateLoopFormProps["renderActions"];
   generatingTitle: boolean;
+  generateTitle: () => Promise<string | null>;
   prompt: string;
   name: string;
   attachments: ComposerImageAttachment[];
@@ -90,21 +92,21 @@ export function useFormActions({
   const submitActionRef = useRef<() => void>(() => {});
   const saveAsDraftActionRef = useRef<() => void>(() => {});
 
-  const isSubmitting = loading || submitting;
+  const isSubmitting = loading || submitting || generatingTitle;
 
-  const canSaveDraft = !!selectedWorkspaceId && !!prompt.trim() && !!name.trim();
+  const canSaveDraft = !!selectedWorkspaceId && !!prompt.trim() && !!name.trim() && !isSubmitting;
   const canSubmit =
     !!selectedWorkspaceId &&
     !!prompt.trim() &&
-    !!name.trim() &&
-    selectedModelEnabled;
+    selectedModelEnabled &&
+    !isSubmitting &&
+    (isEditing ? !!name.trim() : true);
   const canGenerateTitle =
     !!selectedWorkspaceId &&
     !!prompt.trim() &&
     !!selectedModel &&
     selectedModelEnabled &&
-    !isSubmitting &&
-    !generatingTitle;
+    !isSubmitting;
 
   const handleSubmit = useCallback(
     async (e: FormEvent, asDraft = false) => {
@@ -122,54 +124,63 @@ export function useFormActions({
 
       if (!selectedWorkspaceId) return;
       if (!currentPrompt.trim()) return;
-      if (!currentName.trim()) return;
       if (!selectedModel || !selectedModelEnabled) return;
+      if ((asDraft || isEditing) && !currentName.trim()) return;
 
       setSubmitting(true);
 
-      const parsedModel = parseModelKey(selectedModel);
-      if (!parsedModel) {
-        setSubmitting(false);
-        return;
-      }
-
-      const model = {
-        providerID: parsedModel.providerID,
-        modelID: parsedModel.modelID,
-        variant: parsedModel.variant ?? "",
-      };
-
-      const request: CreateLoopFormSubmitRequest = {
-        name: currentName.trim(),
-        workspaceId: selectedWorkspaceId,
-        prompt: currentPrompt.trim(),
-        attachments: attachments.length > 0 && !asDraft ? toMessageImageAttachments(attachments) : [],
-        planMode,
-        autoAcceptPlan: planMode ? (fullyAutonomous ? true : autoAcceptPlan) : false,
-        fullyAutonomous: planMode ? fullyAutonomous : false,
-        model,
-        cheapModel: cheapModelValueToSelection(selectedCheapModel),
-        maxIterations: maxIterations.trim()
-          ? Math.max(parseInt(maxIterations, 10), 1)
-          : null,
-        maxConsecutiveErrors: maxConsecutiveErrors.trim()
-          ? Math.max(parseInt(maxConsecutiveErrors, 10), 0)
-          : DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
-        activityTimeoutSeconds: activityTimeoutSeconds.trim()
-          ? Math.max(parseInt(activityTimeoutSeconds, 10), 60)
-          : null,
-        stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
-        git: {
-          branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,
-          commitScope: DEFAULT_LOOP_CONFIG.git.commitScope,
-        },
-        baseBranch: selectedBranch.trim() || currentBranch.trim(),
-        useWorktree,
-        clearPlanningFolder,
-        draft: asDraft,
-      };
-
       try {
+        let finalName = currentName.trim();
+        if (!finalName && !asDraft && !isEditing) {
+          const generatedTitle = await generateTitle();
+          finalName = generatedTitle?.trim() ?? nameRef.current.trim();
+        }
+
+        if (!finalName) {
+          return;
+        }
+
+        const parsedModel = parseModelKey(selectedModel);
+        if (!parsedModel) {
+          return;
+        }
+
+        const model = {
+          providerID: parsedModel.providerID,
+          modelID: parsedModel.modelID,
+          variant: parsedModel.variant ?? "",
+        };
+
+        const request: CreateLoopFormSubmitRequest = {
+          name: finalName,
+          workspaceId: selectedWorkspaceId,
+          prompt: currentPrompt.trim(),
+          attachments: attachments.length > 0 && !asDraft ? toMessageImageAttachments(attachments) : [],
+          planMode,
+          autoAcceptPlan: planMode ? (fullyAutonomous ? true : autoAcceptPlan) : false,
+          fullyAutonomous: planMode ? fullyAutonomous : false,
+          model,
+          cheapModel: cheapModelValueToSelection(selectedCheapModel),
+          maxIterations: maxIterations.trim()
+            ? Math.max(parseInt(maxIterations, 10), 1)
+            : null,
+          maxConsecutiveErrors: maxConsecutiveErrors.trim()
+            ? Math.max(parseInt(maxConsecutiveErrors, 10), 0)
+            : DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
+          activityTimeoutSeconds: activityTimeoutSeconds.trim()
+            ? Math.max(parseInt(activityTimeoutSeconds, 10), 60)
+            : null,
+          stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
+          git: {
+            branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,
+            commitScope: DEFAULT_LOOP_CONFIG.git.commitScope,
+          },
+          baseBranch: selectedBranch.trim() || currentBranch.trim(),
+          useWorktree,
+          clearPlanningFolder,
+          draft: asDraft,
+        };
+
         const success = await onSubmit(request);
         if (success && closeOnSuccess) {
           onCancel();
@@ -199,7 +210,7 @@ export function useFormActions({
       clearPlanningFolder,
       useWorktree,
       attachments,
-      fullyAutonomous,
+      generateTitle,
     ]
   );
 

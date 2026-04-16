@@ -13,6 +13,7 @@ const log = createLogger("CreateLoopForm");
 
 export interface UseTitleGenerationReturn {
   generatingTitle: boolean;
+  generateTitle: () => Promise<string | null>;
   handleGenerateTitle: () => Promise<void>;
 }
 
@@ -34,16 +35,20 @@ export function useTitleGeneration({
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const toast = useToast();
 
-  const handleGenerateTitle = useCallback(async () => {
+  const generateTitle = useCallback(async (): Promise<string | null> => {
+    if (generatingTitle) {
+      return null;
+    }
+
     if (!selectedWorkspaceId || !promptRef.current.trim()) {
-      return;
+      return null;
     }
 
     const parsedModel = parseModelKey(selectedModel);
     if (!parsedModel) {
       log.error("Failed to generate loop title: invalid selected model", { selectedModel });
       toast.error("Select a valid model before generating a title.");
-      return;
+      return null;
     }
 
     setGeneratingTitle(true);
@@ -58,15 +63,27 @@ export function useTitleGeneration({
         },
         cheapModel: cheapModelValueToSelection(selectedCheapModel),
       });
-      setName(generatedTitle);
-      nameRef.current = generatedTitle;
+      const trimmedTitle = generatedTitle.trim();
+      if (!trimmedTitle) {
+        log.warn("Loop title generation returned an empty title");
+        toast.error("Failed to generate a title.");
+        return null;
+      }
+      setName(trimmedTitle);
+      nameRef.current = trimmedTitle;
+      return trimmedTitle;
     } catch (error) {
       log.error("Failed to generate loop title:", error);
       toast.error(error instanceof Error ? error.message : String(error));
+      return null;
     } finally {
       setGeneratingTitle(false);
     }
-  }, [selectedCheapModel, selectedModel, selectedWorkspaceId, nameRef, promptRef, setName, toast]);
+  }, [generatingTitle, selectedCheapModel, selectedModel, selectedWorkspaceId, nameRef, promptRef, setName, toast]);
 
-  return { generatingTitle, handleGenerateTitle };
+  const handleGenerateTitle = useCallback(async () => {
+    await generateTitle();
+  }, [generateTitle]);
+
+  return { generatingTitle, generateTitle, handleGenerateTitle };
 }

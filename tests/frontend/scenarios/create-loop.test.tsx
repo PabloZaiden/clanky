@@ -132,6 +132,44 @@ describe("create loop scenario", () => {
     });
   });
 
+  test("create flow auto-generates a missing title before creating the loop", async () => {
+    const createdLoop = createLoopWithStatus("running", {
+      config: {
+        id: "new-loop-generated-title",
+        name: "Generated Loop Title",
+        directory: "/workspaces/my-project",
+        prompt: "X",
+        workspaceId: "ws-1",
+      },
+    });
+
+    setupApi();
+    api.post("/api/loops/title", () => ({ title: "Generated Loop Title" }));
+    api.post("/api/loops", (req) => {
+      expect((req.body as { name: string }).name).toBe("Generated Loop Title");
+      return createdLoop;
+    });
+    api.put("/api/preferences/last-model", () => ({ success: true }));
+    api.put("/api/preferences/last-directory", () => ({ success: true }));
+
+    const { getByLabelText, user } = renderWithUser(<App />, { route: "#/new/loop" });
+
+    await selectWorkspace(user);
+    await user.type(getByLabelText(/Prompt/) as HTMLTextAreaElement, "X");
+
+    const submitBtn = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Create"),
+    );
+    expect(submitBtn).toBeTruthy();
+    await user.click(submitBtn!);
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/title", "POST").length).toBe(1);
+      expect(api.calls("/api/loops", "POST").length).toBe(1);
+      expect(window.location.hash).toBe("#/loop/new-loop-generated-title");
+    });
+  });
+
   test("does not auto-open a created loop after leaving compose before the request resolves", async () => {
     const createdLoop = createLoopWithStatus("running", {
       config: {
@@ -212,6 +250,29 @@ describe("create loop scenario", () => {
 
     await waitFor(() => {
       expect(getByText("Title generation failed")).toBeTruthy();
+    });
+  });
+
+  test("create flow stops and shows an error when automatic title generation fails", async () => {
+    setupApi();
+    api.post("/api/loops/title", () => ({ message: "Title generation failed" }), 500);
+
+    const { getByText, getByLabelText, user } = renderWithUser(<App />, { route: "#/new/loop" });
+
+    await selectWorkspace(user);
+    await user.type(getByLabelText(/Prompt/) as HTMLTextAreaElement, "X");
+
+    const submitBtn = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes("Create"),
+    );
+    expect(submitBtn).toBeTruthy();
+    await user.click(submitBtn!);
+
+    await waitFor(() => {
+      expect(getByText("Title generation failed")).toBeTruthy();
+      expect(api.calls("/api/loops/title", "POST").length).toBe(1);
+      expect(api.calls("/api/loops", "POST").length).toBe(0);
+      expect(window.location.hash).toBe("#/new/loop");
     });
   });
 
