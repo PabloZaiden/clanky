@@ -121,6 +121,7 @@ describe("ChatDetails", () => {
     expect(sendCalls).toHaveLength(1);
     expect(sendCalls[0]?.body).toMatchObject({
       message: "Please summarize the risk.",
+      attachments: [],
     });
   });
 

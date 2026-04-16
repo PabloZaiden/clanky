@@ -25,13 +25,33 @@ describe("CreateChatRequestSchema", () => {
 });
 
 describe("SendChatMessageRequestSchema", () => {
-  test("accepts text-only and attachment-only messages", () => {
-    expect(SendChatMessageRequestSchema.safeParse({
+  test("normalizes omitted fields for text-only and attachment-only messages", () => {
+    const textOnly = SendChatMessageRequestSchema.safeParse({
+      message: "Please inspect this image",
+    });
+    expect(textOnly.success).toBe(true);
+    if (!textOnly.success) {
+      return;
+    }
+    expect(textOnly.data).toEqual({
       message: "Please inspect this image",
       attachments: [],
-    }).success).toBe(true);
+    });
 
-    expect(SendChatMessageRequestSchema.safeParse({
+    const attachmentOnly = SendChatMessageRequestSchema.safeParse({
+      attachments: [{
+        id: "img-1",
+        filename: "screen.png",
+        mimeType: "image/png",
+        data: "ZmFrZQ==",
+        size: 1024,
+      }],
+    });
+    expect(attachmentOnly.success).toBe(true);
+    if (!attachmentOnly.success) {
+      return;
+    }
+    expect(attachmentOnly.data).toEqual({
       message: null,
       attachments: [{
         id: "img-1",
@@ -40,7 +60,7 @@ describe("SendChatMessageRequestSchema", () => {
         data: "ZmFrZQ==",
         size: 1024,
       }],
-    }).success).toBe(true);
+    });
   });
 
   test("rejects empty messages without attachments", () => {
