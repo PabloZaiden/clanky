@@ -1,7 +1,7 @@
 import type { Chat, SshServer, Workspace } from "../../types";
 import { findRegisteredSshServer } from "../../types/settings";
 import type { useChats, useLoops, useSshSessions } from "../../hooks";
-import { getLoopStatusLabel } from "../../utils";
+import { getLoopStatusLabel, isWorkspaceHistoryLoop } from "../../utils";
 import {
   ActionMenu,
   Button,
@@ -55,11 +55,14 @@ export function WorkspaceView({
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
   const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
+  const activityLoops = relatedLoops.filter((loop) => !isWorkspaceHistoryLoop(loop.state.status));
+  const historyLoops = relatedLoops.filter((loop) => isWorkspaceHistoryLoop(loop.state.status));
   const activityDescription = workspaceSshEnabled
-    ? "Loops, chats, and SSH sessions in this workspace."
-    : "Loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.";
-  const hasActivity = relatedLoops.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
+    ? "Active loops, chats, and SSH sessions in this workspace."
+    : "Active loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.";
+  const hasActivity = activityLoops.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
   const activityRowClassName = "flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800";
+  const historyDescription = "Merged and deleted loops from this workspace.";
   const createActionItems: ActionMenuItem[] = [
     {
       label: "New Loop",
@@ -87,6 +90,30 @@ export function WorkspaceView({
       : []),
   ];
 
+  function renderLoopRow(loop: ReturnType<typeof useLoops>["loops"][number]) {
+    const route: ShellRoute = { view: "loop", loopId: loop.config.id };
+    return (
+      <button
+        key={loop.config.id}
+        type="button"
+        onClick={() => onNavigate(route)}
+        className={activityRowClassName}
+      >
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+            {loop.config.name}
+          </span>
+          <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+            Loop
+          </span>
+        </span>
+        <StatusBadge className="ml-auto shrink-0" variant={getStatusBadgeVariant(loop.state.status)}>
+          {getLoopStatusLabel(loop)}
+        </StatusBadge>
+      </button>
+    );
+  }
+
   return (
     <ShellPanel
       eyebrow="Workspace"
@@ -111,83 +138,81 @@ export function WorkspaceView({
         </>
       )}
     >
-      <div className="min-w-0 space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Activity</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">{activityDescription}</p>
-        </div>
-        {hasActivity ? (
-          <div className="space-y-2">
-            {relatedLoops.map((loop) => {
-              const route: ShellRoute = { view: "loop", loopId: loop.config.id };
-              return (
+      <div className="min-w-0 space-y-6">
+        <div
+          data-testid="workspace-activity-card"
+          className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50"
+        >
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Activity</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400">{activityDescription}</p>
+          </div>
+          {hasActivity ? (
+            <div className="space-y-2">
+              {activityLoops.map((loop) => renderLoopRow(loop))}
+              {relatedChats.map((chat: Chat) => (
                 <button
-                  key={loop.config.id}
+                  key={chat.config.id}
                   type="button"
-                  onClick={() => onNavigate(route)}
+                  onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}
                   className={activityRowClassName}
                 >
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {loop.config.name}
+                      {chat.config.name}
                     </span>
                     <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                      Loop
+                      Chat
                     </span>
                   </span>
-                  <StatusBadge className="ml-auto shrink-0" variant={getStatusBadgeVariant(loop.state.status)}>
-                    {getLoopStatusLabel(loop)}
+                  <StatusBadge className="ml-auto shrink-0" variant={getChatStatusBadgeVariant(chat.state.status)}>
+                    {chat.state.status}
                   </StatusBadge>
                 </button>
-              );
-            })}
-            {relatedChats.map((chat: Chat) => (
-              <button
-                key={chat.config.id}
-                type="button"
-                onClick={() => onNavigate({ view: "chat", chatId: chat.config.id })}
-                className={activityRowClassName}
-              >
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {chat.config.name}
-                  </span>
-                  <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                    Chat
-                  </span>
-                </span>
-                <StatusBadge className="ml-auto shrink-0" variant={getChatStatusBadgeVariant(chat.state.status)}>
-                  {chat.state.status}
-                </StatusBadge>
-              </button>
-            ))}
-            {relatedSessions.map((session) => (
-              <button
-                key={session.config.id}
-                type="button"
-                onClick={() => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
-                className={activityRowClassName}
-              >
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                    {session.config.name}
-                  </span>
-                  <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-                    {session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
-                  </span>
-                </span>
-                <StatusBadge
-                  className="ml-auto shrink-0"
-                  variant={getSshSessionStatusBadgeVariant(session.state.status)}
+              ))}
+              {relatedSessions.map((session) => (
+                <button
+                  key={session.config.id}
+                  type="button"
+                  onClick={() => onNavigate({ view: "ssh", sshSessionId: session.config.id })}
+                  className={activityRowClassName}
                 >
-                  {getSshSessionStatusLabel(session.state.status)}
-                </StatusBadge>
-              </button>
-            ))}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {session.config.name}
+                    </span>
+                    <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                      {session.config.connectionMode === "direct" ? "Direct SSH" : "Persistent SSH"}
+                    </span>
+                  </span>
+                  <StatusBadge
+                    className="ml-auto shrink-0"
+                    variant={getSshSessionStatusBadgeVariant(session.state.status)}
+                  >
+                    {getSshSessionStatusLabel(session.state.status)}
+                  </StatusBadge>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-600 dark:text-gray-400">No activity in this workspace yet.</p>
+          )}
+        </div>
+
+        {historyLoops.length > 0 ? (
+          <div
+            data-testid="workspace-history-card"
+            className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50"
+          >
+            <div className="flex flex-col gap-1">
+              <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">History</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">{historyDescription}</p>
+            </div>
+            <div className="space-y-2">
+              {historyLoops.map((loop) => renderLoopRow(loop))}
+            </div>
           </div>
-        ) : (
-          <p className="text-sm text-gray-600 dark:text-gray-400">No activity in this workspace yet.</p>
-        )}
+        ) : null}
       </div>
     </ShellPanel>
   );
