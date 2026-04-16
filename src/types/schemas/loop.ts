@@ -117,7 +117,7 @@ export const UpdateLoopRequestSchema = z.object({
   prompt: z.string().optional(),
   model: ModelConfigSchema.optional(),
   cheapModel: CheapModelSelectionSchema.optional(),
-  maxIterations: z.number().optional(),
+  maxIterations: z.number().positive().nullable().optional(),
   maxConsecutiveErrors: z.number().optional(),
   activityTimeoutSeconds: ActivityTimeoutSecondsSchema.optional(),
   stopPattern: z.string().optional(),

@@ -59,7 +59,14 @@ async function runGit(args, cwd) {
 }
 
 async function requestJson(baseUrl, path, init) {
-  const response = await fetch(`${baseUrl}${path}`, init);
+  const headers = new Headers(init?.headers);
+  headers.set("Origin", baseUrl);
+  headers.set("Referer", `${baseUrl}/`);
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...init,
+    headers,
+  });
   if (!response.ok) {
     throw createHttpError(response.status, await response.text());
   }

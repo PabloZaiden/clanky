@@ -307,8 +307,8 @@ export function ChatDetails({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: trimmedMessage.length > 0 ? trimmedMessage : undefined,
-          attachments: attachments.length > 0 ? toMessageImageAttachments(attachments) : undefined,
+          message: trimmedMessage.length > 0 ? trimmedMessage : null,
+          attachments: attachments.length > 0 ? toMessageImageAttachments(attachments) : [],
         }),
       });
       if (!response.ok) {

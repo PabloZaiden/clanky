@@ -124,7 +124,8 @@ export function useFormActions({
 
       if (!selectedWorkspaceId) return;
       if (!currentPrompt.trim()) return;
-      if (!selectedModel || !selectedModelEnabled) return;
+      if (!selectedModel) return;
+      if (!asDraft && !selectedModelEnabled) return;
       if ((asDraft || isEditing) && !currentName.trim()) return;
 
       setSubmitting(true);

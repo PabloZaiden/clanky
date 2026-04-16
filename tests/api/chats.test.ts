@@ -130,7 +130,6 @@ describe("Chats API Integration", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "Say hello",
-        attachments: [],
       }),
     });
     expect(sendResponse.status).toBe(200);

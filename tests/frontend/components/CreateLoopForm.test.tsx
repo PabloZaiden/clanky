@@ -1544,6 +1544,66 @@ describe("CreateLoopForm", () => {
       expect(getByRole("button", { name: "Update" })).toBeInTheDocument();
     });
 
+    test("allows draft updates even when the current model is disconnected", async () => {
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+      let actionState: CreateLoopFormActionState | null = null;
+
+      const disconnectedDraftModel = createModelInfo({
+        providerID: "anthropic",
+        modelID: "claude-sonnet-4-20250514",
+        modelName: "Claude Sonnet 4",
+        providerName: "Anthropic",
+        connected: false,
+      });
+
+      renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            editLoopId: "loop-1",
+            isEditingDraft: true,
+            initialLoopData: {
+              name: "Draft loop",
+              directory: "/workspaces/project-a",
+              prompt: "Refine the draft",
+              model: {
+                providerID: disconnectedDraftModel.providerID,
+                modelID: disconnectedDraftModel.modelID,
+                variant: "",
+              },
+              workspaceId: "ws-1",
+            },
+            renderActions: (state: CreateLoopFormActionState) => {
+              actionState = state;
+            },
+            workspaces: testWorkspaces(),
+            models: [disconnectedDraftModel],
+          })}
+        />
+      );
+
+      await waitFor(() => {
+        expect(actionState?.canSaveDraft).toBe(true);
+        expect(actionState?.canSubmit).toBe(false);
+      });
+
+      await act(async () => {
+        actionState?.onSaveAsDraft();
+      });
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
+      expect(req.draft).toBe(true);
+      expect(req.model).toEqual({
+        providerID: disconnectedDraftModel.providerID,
+        modelID: disconnectedDraftModel.modelID,
+        variant: "",
+      });
+    });
+
     test("pre-populates advanced options from initialLoopData", async () => {
       const { getByLabelText, getByText, user } = renderWithUser(
         <CreateLoopForm

@@ -14,7 +14,7 @@ import { Button, ConfirmModal } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import type { CreateLoopRequest } from "../../types";
-import { stripTransientAttachments } from "../../lib/image-attachments";
+import { toDraftLoopUpdateRequest } from "../../lib/loop-request";
 
 const log = createLogger("DraftLoopComposer");
 
@@ -116,7 +116,7 @@ export function DraftLoopComposer({
       const response = await appFetch(`/api/loops/${loop.config.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(stripTransientAttachments(request)),
+        body: JSON.stringify(toDraftLoopUpdateRequest(request)),
       });
 
       if (!response.ok) {

@@ -4,6 +4,7 @@ import {
   CreateLoopRequestSchema,
   GenerateLoopTitleRequestSchema,
   SetPendingRequestSchema,
+  UpdateLoopRequestSchema,
 } from "../../src/types/schemas/loop";
 import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
 
@@ -57,6 +58,12 @@ describe("loop attachment schemas", () => {
       ...requestWithoutTimeout,
       useWorktree: true,
       planMode: false,
+    }).success).toBe(true);
+  });
+
+  test("accepts clearing max iterations on update-loop requests", () => {
+    expect(UpdateLoopRequestSchema.safeParse({
+      maxIterations: null,
     }).success).toBe(true);
   });
 
