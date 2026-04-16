@@ -1023,8 +1023,7 @@ describe("Loops Control API Integration", () => {
 
         const reviewCycleResult = await loopManager.startAutomaticPrReviewCycle(loopId, {
           batchId: "batch-1",
-          itemIds: ["thread-1"],
-          feedbackItems: [
+          sourceItems: [
             {
               id: "thread-1",
               source: "review_thread",
@@ -1033,6 +1032,12 @@ describe("Loops Control API Integration", () => {
               path: "src/index.ts",
               line: 12,
               url: "https://github.com/owner/repo/pull/42#discussion_r1",
+            },
+          ],
+          feedbackItems: [
+            {
+              text: "Add a missing edge-case test.",
+              sourceItemIds: ["thread-1"],
             },
           ],
         });
@@ -1049,7 +1054,7 @@ describe("Loops Control API Integration", () => {
         expect(commentsBody.comments[0].reviewCycle).toBe(1);
         expect(commentsBody.comments[0].status).toBe("pending");
         expect(commentsBody.comments[0].commentText).toContain("Automatic PR feedback batch:");
-        expect(commentsBody.comments[0].commentText).toContain("Please add a missing edge-case test.");
+        expect(commentsBody.comments[0].commentText).toContain("Add a missing edge-case test.");
       } finally {
         await rm(uniqueWorkDir, { recursive: true, force: true });
         await rm(uniqueBareRepo, { recursive: true, force: true });

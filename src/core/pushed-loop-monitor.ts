@@ -11,6 +11,7 @@ import type {
   AutomaticPrFlowPullRequest,
   AutomaticPrFlowSnapshot,
 } from "./automatic-pr-flow-github";
+import type { AutomaticPrFlowExtractedFeedbackItem, AutomaticPrFlowFeedbackExtractionResult } from "./automatic-pr-feedback";
 import type { PushLoopResult } from "./loop-manager";
 import { listLoops, loadLoop, updateLoopState } from "../persistence/loops";
 import { backendManager } from "./backend-manager";
@@ -25,6 +26,7 @@ import {
   fetchAutomaticPrFlowSnapshot,
   resolveAutomaticPrFlowReviewThread,
 } from "./automatic-pr-flow-github";
+import { extractAutomaticPrFeedback } from "./automatic-pr-feedback";
 
 const log = createLogger("core:pushed-loop-monitor");
 
@@ -90,12 +92,17 @@ export interface PushedLoopMonitorDependencies {
     executor: CommandExecutor,
     git: PullRequestNavigationGitService,
   ) => Promise<AutomaticPrFlowSnapshot>;
+  extractAutomaticPrFeedback: (
+    loop: Loop,
+    directory: string,
+    feedbackItems: AutomaticPrFlowFeedbackItem[],
+  ) => Promise<AutomaticPrFlowFeedbackExtractionResult>;
   startAutomaticPrReviewCycle: (
     loopId: string,
     options: {
       batchId: string;
-      itemIds: string[];
-      feedbackItems: AutomaticPrFlowFeedbackItem[];
+      sourceItems: AutomaticPrFlowFeedbackItem[];
+      feedbackItems: AutomaticPrFlowExtractedFeedbackItem[];
     },
   ) => Promise<{ success: boolean; error?: string; reviewCycle?: number; branch?: string; commentIds?: string[] }>;
   resolveAutomaticPrFlowReviewThread: (
@@ -126,6 +133,7 @@ export class PushedLoopMonitor {
       probePullRequestMonitoring,
       ensureAutomaticPrFlowPullRequest,
       fetchAutomaticPrFlowSnapshot,
+      extractAutomaticPrFeedback,
       startAutomaticPrReviewCycle: (loopId: string, options) => loopManager.startAutomaticPrReviewCycle(loopId, options),
       resolveAutomaticPrFlowReviewThread,
       intervalMs: getMonitorIntervalMs(),
@@ -334,11 +342,37 @@ export class PushedLoopMonitor {
       (item) => !handledItems.some((handledItem) => handledItem.id === item.id),
     );
     if (pendingFeedbackItems.length > 0) {
+      const extractedFeedback = await this.deps.extractAutomaticPrFeedback(loop, workingDirectory, pendingFeedbackItems);
+      const sourceItemIds = new Set(
+        extractedFeedback.feedbackItems.flatMap((item) => item.sourceItemIds),
+      );
+      const sourceItems = pendingFeedbackItems.filter((item) => sourceItemIds.has(item.id));
+      const ignoredHandledItems = pendingFeedbackItems
+        .filter((item) => extractedFeedback.ignoredItems.some((ignoredItem) => ignoredItem.itemId === item.id))
+        .map((item) => ({
+          id: item.id,
+          source: item.source,
+          outcome: "ignored" as const,
+          handledAt: now,
+        }));
+      const nextHandledItems = [...handledItems, ...ignoredHandledItems];
+
+      if (sourceItems.length === 0 || extractedFeedback.feedbackItems.length === 0) {
+        return {
+          automaticPrFlowState: {
+            ...baseState,
+            status: "monitoring",
+            handledItems: nextHandledItems,
+          },
+          monitoringState: this.mergeMonitoringStateFromSnapshot(loop.state.pullRequestMonitoring, snapshot, now),
+        };
+      }
+
       const batchId = crypto.randomUUID();
       const result = await this.deps.startAutomaticPrReviewCycle(loop.config.id, {
         batchId,
-        itemIds: pendingFeedbackItems.map((item) => item.id),
-        feedbackItems: pendingFeedbackItems,
+        sourceItems,
+        feedbackItems: extractedFeedback.feedbackItems,
       });
       if (!result.success) {
         throw new Error(result.error ?? "Automatic PR review cycle failed to start.");
@@ -348,10 +382,11 @@ export class PushedLoopMonitor {
         automaticPrFlowState: {
           ...baseState,
           status: "processing_feedback",
+          handledItems: nextHandledItems,
           activeBatch: {
             batchId,
-            itemIds: pendingFeedbackItems.map((item) => item.id),
-            items: pendingFeedbackItems.map((item) => ({
+            itemIds: sourceItems.map((item) => item.id),
+            items: sourceItems.map((item) => ({
               id: item.id,
               source: item.source,
               threadId: item.threadId,
