@@ -133,7 +133,7 @@ export function useCreateLoopForm({
 
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : false;
 
-  const { generatingTitle, handleGenerateTitle } = useTitleGeneration({
+  const { generatingTitle, generateTitle, handleGenerateTitle } = useTitleGeneration({
     selectedWorkspaceId: workspace.selectedWorkspaceId,
     selectedModel,
     selectedCheapModel,
@@ -167,6 +167,7 @@ export function useCreateLoopForm({
     isEditingDraft,
     renderActions,
     generatingTitle,
+    generateTitle,
     prompt: fields.prompt,
     name: fields.name,
     attachments,

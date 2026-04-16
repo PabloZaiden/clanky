@@ -6,7 +6,7 @@
  * advanced options, and draft saving.
  */
 
-import { test, expect, describe, mock } from "bun:test";
+import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { CreateLoopForm, type CreateLoopFormActionState, type CreateLoopFormSubmitRequest } from "@/components/CreateLoopForm";
 import { renderWithUser, waitFor, act } from "../helpers/render";
 import {
@@ -14,6 +14,7 @@ import {
   createBranchInfo,
   createWorkspace,
 } from "../helpers/factories";
+import { createMockApi } from "../helpers/mock-api";
 import type { ModelInfo, CreateLoopRequest } from "@/types";
 import type { Workspace } from "@/types/workspace";
 import { PROMPT_TEMPLATES, getTemplateById } from "@/lib/prompt-templates";
@@ -24,6 +25,16 @@ import {
 } from "../helpers/image-paste";
 
 installImageAttachmentMocks();
+const api = createMockApi();
+
+beforeEach(() => {
+  api.reset();
+  api.install();
+});
+
+afterEach(() => {
+  api.uninstall();
+});
 
 /**
  * Helper to set a textarea/input value for form testing.
@@ -433,12 +444,40 @@ describe("CreateLoopForm", () => {
   });
 
   describe("prompt", () => {
-    test("title is required", () => {
-      const { getByLabelText } = renderWithUser(
+    test("title is optional when creating a new loop", () => {
+      const { getByLabelText, getByText } = renderWithUser(
         <CreateLoopForm {...defaultProps()} />
       );
       const input = getByLabelText(/Title/) as HTMLInputElement;
+      expect(input.required).toBe(false);
+      expect(input.getAttribute("aria-required")).toBe("false");
+      expect(
+        getByText("You can leave the title blank when first creating a loop, or let AI suggest one from the current prompt. A title is required for drafts and edits.")
+      ).toBeInTheDocument();
+    });
+
+    test("title is required when editing a loop", () => {
+      const { getByLabelText, getByText } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            editLoopId: "loop-1",
+            initialLoopData: {
+              name: "Existing title",
+              directory: "/workspaces/project-a",
+              prompt: "Existing prompt text",
+              workspaceId: "ws-1",
+            },
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+      const input = getByLabelText(/Title/) as HTMLInputElement;
       expect(input.required).toBe(true);
+      expect(input.getAttribute("aria-required")).toBe("true");
+      expect(
+        getByText("A title is required for drafts and edits. You can still let AI suggest one from the current prompt.")
+      ).toBeInTheDocument();
     });
 
     test("prompt is required", () => {
@@ -879,6 +918,92 @@ describe("CreateLoopForm", () => {
       });
     });
 
+    test("submit button is enabled for new loops without a title when other fields are valid", async () => {
+      const { getByRole, getByLabelText, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Test");
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+      });
+
+      expect(getByRole("button", { name: "Create" })).toBeEnabled();
+      expect(getByRole("button", { name: "Save as Draft" })).toBeDisabled();
+    });
+
+    test("create auto-generates a missing title before submitting", async () => {
+      api.post("/api/loops/title", () => ({ title: "Generated Loop Title" }));
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Do it");
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+      });
+
+      await user.click(getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      expect(api.calls("/api/loops/title", "POST").length).toBe(1);
+      expect((getByLabelText(/Title/) as HTMLInputElement).value).toBe("Generated Loop Title");
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
+      expect(req.name).toBe("Generated Loop Title");
+    });
+
+    test("create stops when auto-title generation fails", async () => {
+      api.post("/api/loops/title", () => ({ message: "Title generation failed" }), 500);
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, getByText, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Do it");
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+      });
+
+      await user.click(getByRole("button", { name: "Create" }));
+
+      await waitFor(() => {
+        expect(getByText("Title generation failed")).toBeInTheDocument();
+      });
+
+      expect(api.calls("/api/loops/title", "POST").length).toBe(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
     test("calls onSubmit with correct request and onCancel on success", async () => {
       const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
       const onCancel = mock(() => {});
@@ -1062,6 +1187,45 @@ describe("CreateLoopForm", () => {
 
       const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
       expect(req.name).toBe("Loop title");
+    });
+
+    test("external submit action auto-generates a missing title", async () => {
+      api.post("/api/loops/title", () => ({ title: "Generated Loop Title" }));
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+      let actionState: CreateLoopFormActionState | null = null;
+
+      const { getByLabelText, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            renderActions: (state: CreateLoopFormActionState) => {
+              actionState = state;
+            },
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Do it");
+
+      await waitFor(() => {
+        expect(actionState?.canSubmit).toBe(true);
+      });
+
+      await act(async () => {
+        actionState?.onSubmit();
+      });
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      expect(api.calls("/api/loops/title", "POST").length).toBe(1);
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
+      expect(req.name).toBe("Generated Loop Title");
     });
 
     test("submits a finite activity timeout when one is entered", async () => {
