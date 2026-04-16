@@ -238,20 +238,96 @@ describe("ShellSidebarNav", () => {
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
   });
 
-  test("moves terminal-state loops into per-workspace history groups", () => {
-    const sidebarData = createSidebarData();
-    const activeWorkspace = sidebarData.workspaceGroups
+  test("uses compact indentation and gutter spacing for nested sidebar rows", () => {
+    const { getAllByText } = renderWithUser(<SidebarHarness />);
+
+    const workspaceRow = getTreeRowForText(getAllByText("Workspace 1")[0]!);
+    expect(workspaceRow.style.marginLeft).toBe("0.375rem");
+    expect(workspaceRow.firstElementChild).toHaveClass("w-4");
+
+    const loopRow = getTreeRowForText(getAllByText("Feature Loop")[0]!);
+    expect(loopRow.style.marginLeft).toBe("1.125rem");
+    expect(loopRow.firstElementChild).toHaveClass("w-4");
+
+    const sessionRow = getTreeRowForText(getAllByText("Loop SSH Session")[0]!);
+    expect(sessionRow.style.marginLeft).toBe("1.5rem");
+    expect(sessionRow.firstElementChild).toHaveClass("w-4");
+
+    const chatRow = getTreeRowForText(getAllByText("Workspace Chat")[0]!);
+    expect(chatRow.style.marginLeft).toBe("1.125rem");
+    expect(chatRow.firstElementChild).toHaveAttribute("aria-hidden", "true");
+    expect(chatRow.firstElementChild).toHaveClass("w-4");
+  });
+
+  test("keeps pushed loops in regular workspace groups while routing merged and terminal loops to history", () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-1",
+        name: "Workspace 1",
+        directory: "/workspaces/workspace-1",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-running",
+            name: "Feature Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "running",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-pushed",
+            name: "Pushed Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "pushed",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-merged",
+            name: "Merged Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "merged",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-completed",
+            name: "Completed Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+    const activeWorkspace = workspaceGroups
       .find((group) => group.key === "active")
       ?.workspaces.find((workspaceNode) => workspaceNode.workspace.id === "workspace-1");
 
-    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Loop With SSH"]);
-    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Completed Loop"]);
+    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Pushed Loop"]);
+    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop", "Completed Loop"]);
 
     const { getAllByText } = renderWithUser(
-      <SidebarHarness workspaceGroups={sidebarData.workspaceGroups} />,
+      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
     );
 
     expect(getAllByText("History")).toHaveLength(2);
+    expect(getAllByText("Pushed Loop")).toHaveLength(2);
+    expect(getAllByText("Merged Loop")).toHaveLength(2);
     expect(getAllByText("Completed Loop")).toHaveLength(2);
   });
 
@@ -352,4 +428,10 @@ function getByTextButton(node: HTMLElement): HTMLButtonElement {
   const button = node.closest("button");
   expect(button).not.toBeNull();
   return button as HTMLButtonElement;
+}
+
+function getTreeRowForText(node: HTMLElement): HTMLDivElement {
+  const row = getByTextButton(node).parentElement;
+  expect(row).not.toBeNull();
+  return row as HTMLDivElement;
 }

@@ -240,7 +240,7 @@ function sortByDesc<T>(items: T[], getValue: (item: T) => string): T[] {
 }
 
 function isTerminalSidebarLoop(loop: Loop): boolean {
-  return canJumpstart(loop.state.status) || isFinalState(loop.state.status);
+  return loop.state.status !== "pushed" && (canJumpstart(loop.state.status) || isFinalState(loop.state.status));
 }
 
 export function buildWorkspaceSidebarGroups({

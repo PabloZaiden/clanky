@@ -1,13 +1,16 @@
 import { useId, type MouseEvent, type ReactNode } from "react";
 import { StatusBadge, type BadgeVariant } from "../common";
 
+const TREE_INDENT_REM = 0.375;
+const TREE_ITEM_GUTTER_WIDTH_CLASS = "w-4";
+
 function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined {
   if (indentLevel <= 0) {
     return undefined;
   }
 
   return {
-    marginLeft: `${indentLevel * 0.75}rem`,
+    marginLeft: `${indentLevel * TREE_INDENT_REM}rem`,
   };
 }
 
@@ -166,12 +169,15 @@ export function SidebarTreeItem({
           onClick={onToggle}
           aria-expanded={collapsed === undefined ? undefined : !collapsed}
           aria-label={`${collapsed ? "Expand" : "Collapse"} ${title}`}
-          className="mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
+          className={[
+            "mt-1 inline-flex h-8 shrink-0 items-center justify-center rounded-lg text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100",
+            TREE_ITEM_GUTTER_WIDTH_CLASS,
+          ].join(" ")}
         >
           {collapsed ? "\u25B6" : "\u25BC"}
         </button>
       ) : (
-        <span className="w-8 shrink-0" aria-hidden="true" />
+        <span className={`${TREE_ITEM_GUTTER_WIDTH_CLASS} shrink-0`} aria-hidden="true" />
       )}
       <button
         type="button"
