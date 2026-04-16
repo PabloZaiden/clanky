@@ -6,7 +6,7 @@
 import type { AppConfig } from "../types/api";
 
 export function isTruthyEnvFlag(name: string): boolean {
-  const value = process.env[name]?.toLowerCase();
+  const value = process.env[name]?.trim().toLowerCase();
   return value === "true" || value === "1" || value === "yes";
 }
 

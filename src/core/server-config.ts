@@ -12,6 +12,8 @@ const DEFAULT_PORT = 3000;
 const DEFAULT_BASIC_AUTH_USERNAME = "ralpher";
 export const DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS = 120;
 const MAX_PORT = 65535;
+const SAME_ORIGIN_DISABLED_MESSAGE =
+  "Same-origin protection is disabled because RALPHER_DISABLE_SAME_ORIGIN_CHECK was set. Use this only for development setups where browser and backend origins intentionally differ.";
 
 export interface BasicAuthConfig {
   enabled: boolean;
@@ -108,9 +110,7 @@ export function getServerStartupMessages(config: ServerRuntimeConfig): string[] 
     ];
 
     if (config.sameOriginProtection.disabled) {
-      messages.push(
-        "Same-origin protection is disabled because RALPHER_DISABLE_SAME_ORIGIN_CHECK was set. Use this only for development setups where browser and backend origins intentionally differ.",
-      );
+      messages.push(SAME_ORIGIN_DISABLED_MESSAGE);
     }
 
     return messages;
@@ -122,9 +122,7 @@ export function getServerStartupMessages(config: ServerRuntimeConfig): string[] 
   ];
 
   if (config.sameOriginProtection.disabled) {
-    messages.push(
-      "Same-origin protection is disabled because RALPHER_DISABLE_SAME_ORIGIN_CHECK was set. Use this only for development setups where browser and backend origins intentionally differ.",
-    );
+    messages.push(SAME_ORIGIN_DISABLED_MESSAGE);
   }
 
   return messages;

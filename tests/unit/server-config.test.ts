@@ -2,7 +2,7 @@
  * Tests for server runtime configuration helpers.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   getServerDevelopmentConfig,
   getServerRuntimeConfig,
@@ -32,12 +32,15 @@ afterEach(() => {
 });
 
 describe("getServerRuntimeConfig", () => {
-  test("returns defaults when server auth and host env vars are unset", () => {
+  beforeEach(() => {
     delete process.env["RALPHER_HOST"];
     delete process.env["RALPHER_PORT"];
     delete process.env["RALPHER_USERNAME"];
     delete process.env["RALPHER_PASSWORD"];
+    delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+  });
 
+  test("returns defaults when server auth and host env vars are unset", () => {
     expect(getServerRuntimeConfig()).toEqual({
       host: "127.0.0.1",
       port: 3000,
@@ -137,11 +140,14 @@ describe("getServerDevelopmentConfig", () => {
 });
 
 describe("getServerStartupMessages", () => {
-  test("describes default host binding and disabled auth", () => {
+  beforeEach(() => {
     delete process.env["RALPHER_HOST"];
     delete process.env["RALPHER_USERNAME"];
     delete process.env["RALPHER_PASSWORD"];
+    delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+  });
 
+  test("describes default host binding and disabled auth", () => {
     const messages = getServerStartupMessages(getServerRuntimeConfig());
 
     expect(messages).toHaveLength(2);

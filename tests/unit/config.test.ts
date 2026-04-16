@@ -193,6 +193,11 @@ describe("isSameOriginCheckDisabled", () => {
     expect(isSameOriginCheckDisabled()).toBe(true);
   });
 
+  test("returns true for supported truthy values with surrounding whitespace", () => {
+    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = " true ";
+    expect(isSameOriginCheckDisabled()).toBe(true);
+  });
+
   test("returns false for unsupported values", () => {
     process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "false";
     expect(isSameOriginCheckDisabled()).toBe(false);
