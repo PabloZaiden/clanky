@@ -4,6 +4,7 @@ import type { EntityLabels } from "../../utils";
 import { formatDateTime, formatModelDisplay } from "./types";
 import { appAbsoluteUrl } from "../../lib/public-path";
 import { Button, getPortForwardStatusBadgeVariant, getPortForwardStatusLabel, StatusBadge } from "../common";
+import { loopDetailsTabContentFullWidthClassName, loopDetailsTabScrollContainerClassName } from "./tab-layout";
 
 interface InfoTabProps {
   loop: Loop;
@@ -45,8 +46,8 @@ export function InfoTab({
   const { config, state } = loop;
 
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
-      <div className="min-w-0 w-full space-y-4">
+    <div className={loopDetailsTabScrollContainerClassName}>
+      <div className={`${loopDetailsTabContentFullWidthClassName} space-y-4`}>
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{labels.capitalized} Information</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Statistics */}
