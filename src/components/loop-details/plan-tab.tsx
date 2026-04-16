@@ -22,8 +22,8 @@ export function PlanTab({
   markdownEnabled,
 }: PlanTabProps) {
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
-      <div className="min-w-0 flex-1 space-y-4">
+    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto dark-scrollbar">
+      <div className="min-w-0 flex-1 space-y-4 px-3 py-3 sm:px-4 sm:py-4">
         <div>
           {/* Feedback rounds counter (planning mode only) */}
           {isPlanning && feedbackRounds > 0 && (

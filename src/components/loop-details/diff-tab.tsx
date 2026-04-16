@@ -10,8 +10,8 @@ interface DiffTabProps {
 
 export function DiffTab({ diffContent, loadingContent, expandedFiles, onExpandedFilesChange }: DiffTabProps) {
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
-      <div className="min-w-0 flex-1">
+    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto dark-scrollbar">
+      <div className="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4">
         {loadingContent ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-500 border-t-transparent" />

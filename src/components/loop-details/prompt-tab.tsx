@@ -9,8 +9,8 @@ interface PromptTabProps {
 
 export function PromptTab({ config, state, isActive }: PromptTabProps) {
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
-      <div className="min-w-0 w-full space-y-6">
+    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto dark-scrollbar">
+      <div className="min-w-0 w-full space-y-6 px-3 py-3 sm:px-4 sm:py-4">
         {/* Original Task Prompt (read-only) */}
         <div>
           <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">

@@ -29,8 +29,10 @@ export function StatusTab({ statusContent, loadingContent, markdownEnabled, embe
   if (embedded) return content;
 
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
-      {content}
+    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto dark-scrollbar">
+      <div className="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4">
+        {content}
+      </div>
     </div>
   );
 }

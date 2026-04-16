@@ -62,9 +62,9 @@ export function ActionsTab({
     : null;
 
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 dark-scrollbar">
-      <div className="min-w-0 w-full space-y-4">
-        <div className="max-w-md min-w-0 space-y-2">
+    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto dark-scrollbar">
+      <div className="min-w-0 w-full space-y-4 px-3 py-3 sm:px-4 sm:py-4">
+        <div className="min-w-0 space-y-2">
 
         {isPlanning ? (
           <>
@@ -322,10 +322,10 @@ export function ActionsTab({
 
         {/* Review cycle history — shown when review mode is active */}
         {loop.state.reviewMode && (
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-            <ReviewTab
-              loop={loop}
-              labels={labels}
+            <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
+              <ReviewTab
+                loop={loop}
+                labels={labels}
               loadingComments={loadingComments}
               reviewComments={reviewComments}
               embedded
