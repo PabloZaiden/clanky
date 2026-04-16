@@ -347,8 +347,11 @@ export class PushedLoopMonitor {
         extractedFeedback.feedbackItems.flatMap((item) => item.sourceItemIds),
       );
       const sourceItems = pendingFeedbackItems.filter((item) => sourceItemIds.has(item.id));
+      const ignoredItemIds = new Set(
+        extractedFeedback.ignoredItems.map((ignoredItem) => ignoredItem.itemId),
+      );
       const ignoredHandledItems = pendingFeedbackItems
-        .filter((item) => extractedFeedback.ignoredItems.some((ignoredItem) => ignoredItem.itemId === item.id))
+        .filter((item) => ignoredItemIds.has(item.id))
         .map((item) => ({
           id: item.id,
           source: item.source,

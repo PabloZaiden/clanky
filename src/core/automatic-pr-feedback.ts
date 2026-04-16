@@ -13,7 +13,7 @@ import { createLogger } from "./logger";
 const log = createLogger("core:automatic-pr-feedback");
 
 export const DEFAULT_AUTOMATIC_PR_FEEDBACK_TIMEOUT_MS = 30_000;
-const MAX_EXTRACTED_FEEDBACK_ITEMS = 24;
+const MAX_SOURCE_FEEDBACK_ITEMS_PER_PROMPT = 24;
 const MAX_EXTRACTED_FEEDBACK_LENGTH = 1_500;
 
 const ExtractionReasonSchema = z.enum(["malicious", "irrelevant", "non_actionable", "duplicate"]);
@@ -102,7 +102,6 @@ export function buildAutomaticPrFeedbackExtractionPrompt(
   feedbackItems: AutomaticPrFlowFeedbackItem[],
 ): PromptInput {
   const feedbackText = feedbackItems
-    .slice(0, MAX_EXTRACTED_FEEDBACK_ITEMS)
     .map((item, index) => buildFeedbackItemBlock(item, index))
     .join("\n\n---\n\n");
 
@@ -194,22 +193,26 @@ function normalizeExtractionResult(
   }
 
   return {
-    feedbackItems: [...mergedFeedbackItems.values()].slice(0, MAX_EXTRACTED_FEEDBACK_ITEMS),
+    feedbackItems: [...mergedFeedbackItems.values()],
     ignoredItems: [...ignoredItems.values()],
   };
 }
 
-export interface ExtractAutomaticPrFeedbackOptions {
-  loop: Loop;
-  directory: string;
-  feedbackItems: AutomaticPrFlowFeedbackItem[];
-  backend: AutomaticPrFeedbackBackendInterface;
-  sessionId: string;
-  model?: ModelConfig;
-  timeoutMs?: number;
+function chunkFeedbackItems(
+  feedbackItems: AutomaticPrFlowFeedbackItem[],
+): AutomaticPrFlowFeedbackItem[][] {
+  const chunks: AutomaticPrFlowFeedbackItem[][] = [];
+  for (let index = 0; index < feedbackItems.length; index += MAX_SOURCE_FEEDBACK_ITEMS_PER_PROMPT) {
+    chunks.push(feedbackItems.slice(index, index + MAX_SOURCE_FEEDBACK_ITEMS_PER_PROMPT));
+  }
+  return chunks;
 }
 
-export async function extractAutomaticPrFeedbackWithSession(
+function createAutomaticPrFeedbackTimeoutError(timeoutMs: number): Error {
+  return new Error(`Automatic PR feedback extraction timed out after ${timeoutMs}ms`);
+}
+
+async function extractAutomaticPrFeedbackChunkWithSession(
   options: ExtractAutomaticPrFeedbackOptions,
 ): Promise<AutomaticPrFlowFeedbackExtractionResult> {
   const {
@@ -221,17 +224,10 @@ export async function extractAutomaticPrFeedbackWithSession(
     timeoutMs = DEFAULT_AUTOMATIC_PR_FEEDBACK_TIMEOUT_MS,
   } = options;
 
-  if (feedbackItems.length === 0) {
-    return {
-      feedbackItems: [],
-      ignoredItems: [],
-    };
-  }
-
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(
-      () => reject(new Error(`Automatic PR feedback extraction timed out after ${timeoutMs}ms`)),
+      () => reject(createAutomaticPrFeedbackTimeoutError(timeoutMs)),
       timeoutMs,
     );
   });
@@ -259,6 +255,52 @@ export async function extractAutomaticPrFeedbackWithSession(
       cause: error,
     });
   }
+}
+
+export interface ExtractAutomaticPrFeedbackOptions {
+  loop: Loop;
+  directory: string;
+  feedbackItems: AutomaticPrFlowFeedbackItem[];
+  backend: AutomaticPrFeedbackBackendInterface;
+  sessionId: string;
+  model?: ModelConfig;
+  timeoutMs?: number;
+}
+
+export async function extractAutomaticPrFeedbackWithSession(
+  options: ExtractAutomaticPrFeedbackOptions,
+): Promise<AutomaticPrFlowFeedbackExtractionResult> {
+  const {
+    feedbackItems,
+    timeoutMs = DEFAULT_AUTOMATIC_PR_FEEDBACK_TIMEOUT_MS,
+  } = options;
+
+  if (feedbackItems.length === 0) {
+    return {
+      feedbackItems: [],
+      ignoredItems: [],
+    };
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  const chunkResults: AutomaticPrFlowFeedbackExtractionResult[] = [];
+  for (const feedbackChunk of chunkFeedbackItems(feedbackItems)) {
+    const remainingTimeoutMs = deadline - Date.now();
+    if (remainingTimeoutMs <= 0) {
+      throw createAutomaticPrFeedbackTimeoutError(timeoutMs);
+    }
+
+    chunkResults.push(await extractAutomaticPrFeedbackChunkWithSession({
+      ...options,
+      feedbackItems: feedbackChunk,
+      timeoutMs: remainingTimeoutMs,
+    }));
+  }
+
+  return normalizeExtractionResult(feedbackItems, {
+    feedback: chunkResults.flatMap((result) => result.feedbackItems),
+    ignoredItems: chunkResults.flatMap((result) => result.ignoredItems),
+  });
 }
 
 export async function extractAutomaticPrFeedback(
