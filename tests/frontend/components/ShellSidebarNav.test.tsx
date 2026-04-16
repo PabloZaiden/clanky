@@ -185,9 +185,15 @@ function createSidebarData() {
 function SidebarHarness({
   route,
   navigateWithinShell,
+  workspaces: workspacesOverride,
+  workspaceGroups: workspaceGroupsOverride,
+  serverNodes: serverNodesOverride,
 }: {
   route?: ShellRoute;
   navigateWithinShell?: (route: ShellRoute) => void;
+  workspaces?: ReturnType<typeof createSidebarData>["workspaces"];
+  workspaceGroups?: ReturnType<typeof createSidebarData>["workspaceGroups"];
+  serverNodes?: ReturnType<typeof createSidebarData>["serverNodes"];
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const { workspaces, workspaceGroups, serverNodes } = createSidebarData();
@@ -201,9 +207,9 @@ function SidebarHarness({
       hideSidebar={mock(() => {})}
       isNodeCollapsed={(key) => collapsed[key] ?? false}
       toggleNodeCollapsed={(key) => setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? false) }))}
-      workspaces={workspaces}
-      workspaceGroups={workspaceGroups}
-      serverNodes={serverNodes}
+      workspaces={workspacesOverride ?? workspaces}
+      workspaceGroups={workspaceGroupsOverride ?? workspaceGroups}
+      serverNodes={serverNodesOverride ?? serverNodes}
       version="test"
     />
   );
@@ -246,6 +252,44 @@ describe("ShellSidebarNav", () => {
 
     await user.click(getAllByRole("button", { name: "New Loops" })[0]!);
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-1" });
+  });
+
+  test("hides empty workspace groups", () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-empty",
+        name: "Empty Workspace",
+        directory: "/workspaces/empty",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [],
+      chats: [],
+      sessions: [],
+    });
+    const { getByText, queryByText } = renderWithUser(
+      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
+    );
+
+    expect(queryByText("Active")).not.toBeInTheDocument();
+    expect(getByText("All")).toBeInTheDocument();
+    expect(getByText("Empty Workspace")).toBeInTheDocument();
+  });
+
+  test("hides the all group when there are no workspaces", () => {
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [],
+      loops: [],
+      chats: [],
+      sessions: [],
+    });
+    const { queryByText } = renderWithUser(
+      <SidebarHarness workspaces={[]} workspaceGroups={workspaceGroups} />,
+    );
+
+    expect(queryByText("Active")).not.toBeInTheDocument();
+    expect(queryByText("All")).not.toBeInTheDocument();
   });
 
   test("supports in-app navigation and modified-click new-tab navigation", () => {

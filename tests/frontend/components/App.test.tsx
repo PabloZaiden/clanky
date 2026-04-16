@@ -767,11 +767,12 @@ describe("App shell", () => {
   });
 
   test("lets users collapse and expand sidebar sections", async () => {
-    const { getByRole, getByText, queryByText, user } = renderWithUser(<App />);
+    const { getByRole, queryByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
-      expect(getByText("No workspaces yet.")).toBeTruthy();
+      expect(queryByText("Active")).toBeNull();
+      expect(queryByText("All")).toBeNull();
     });
 
     const collapseButton = getByRole("button", { name: "Collapse Workspaces section" });
@@ -788,7 +789,8 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
-      expect(getByText("No workspaces yet.")).toBeTruthy();
+      expect(queryByText("Active")).toBeNull();
+      expect(queryByText("All")).toBeNull();
     });
   });
 
@@ -803,7 +805,8 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(firstRender.getByRole("button", { name: "Expand Workspaces section" })).toBeTruthy();
-      expect(firstRender.queryByText("No workspaces yet.")).toBeNull();
+      expect(firstRender.queryByText("Active")).toBeNull();
+      expect(firstRender.queryByText("All")).toBeNull();
     });
 
     firstRender.unmount();
@@ -812,7 +815,8 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(secondRender.getByRole("button", { name: "Expand Workspaces section" })).toBeTruthy();
-      expect(secondRender.queryByText("No workspaces yet.")).toBeNull();
+      expect(secondRender.queryByText("Active")).toBeNull();
+      expect(secondRender.queryByText("All")).toBeNull();
     });
   });
 

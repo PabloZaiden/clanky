@@ -114,6 +114,7 @@ export function ShellSidebarNav({
 
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
+  const visibleWorkspaceGroups = workspaceGroups.filter((group) => group.workspaces.length > 0);
 
   return (
     <aside
@@ -187,7 +188,7 @@ export function ShellSidebarNav({
           collapsed={isNodeCollapsed(workspacesCollapseKey)}
           onToggle={() => toggleNodeCollapsed(workspacesCollapseKey)}
         >
-          {workspaceGroups.map((group) => {
+          {visibleWorkspaceGroups.map((group) => {
             const groupCollapseKey = getSidebarGroupCollapseKey("workspaces", group.key);
             return (
               <SidebarTreeSection
@@ -197,178 +198,171 @@ export function ShellSidebarNav({
                 collapsed={isNodeCollapsed(groupCollapseKey)}
                 onToggle={() => toggleNodeCollapsed(groupCollapseKey)}
               >
-                {group.workspaces.length === 0 ? (
-                  <EmptySection
-                    message={group.key === "active" ? "No active workspaces." : "No workspaces yet."}
-                    indentLevel={1}
-                  />
-                ) : (
-                  group.workspaces.map((workspaceNode) => {
-                    const workspaceCollapseKey = getSidebarWorkspaceCollapseKey(
-                      "workspaces",
-                      group.key,
-                      workspaceNode.workspace.id,
-                    );
-                    const loopsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
-                      "workspaces",
-                      group.key,
-                      workspaceNode.workspace.id,
-                      "loops",
-                    );
-                    const chatsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
-                      "workspaces",
-                      group.key,
-                      workspaceNode.workspace.id,
-                      "chats",
-                    );
-                    const sessionsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
-                      "workspaces",
-                      group.key,
-                      workspaceNode.workspace.id,
-                      "ssh-sessions",
-                    );
-                    return (
-                      <div key={`${group.key}:${workspaceNode.key}`} className="space-y-1">
-                        <SidebarTreeItem
-                          active={isWorkspaceActive(workspaceNode.workspace.id)}
-                          title={workspaceNode.workspace.name}
-                          subtitle={workspaceNode.workspace.directory}
-                          indentLevel={1}
-                          collapsed={isNodeCollapsed(workspaceCollapseKey)}
-                          onToggle={() => toggleNodeCollapsed(workspaceCollapseKey)}
-                          onClick={(event) => handleSidebarItemClick(event, {
-                            view: "workspace",
-                            workspaceId: workspaceNode.workspace.id,
-                          })}
-                        />
-                        {!isNodeCollapsed(workspaceCollapseKey) && (
-                          <div className="space-y-1">
-                            <SidebarTreeSection
-                              title="Loops"
-                              count={workspaceNode.loops.length}
-                              actionLabel="New"
-                              onAction={() => navigateWithinShell({
-                                view: "compose",
-                                kind: "loop",
-                                scopeId: workspaceNode.workspace.id,
-                              })}
-                              collapsed={isNodeCollapsed(loopsCollapseKey)}
-                              onToggle={() => toggleNodeCollapsed(loopsCollapseKey)}
-                              indentLevel={2}
-                            >
-                              {workspaceNode.loops.map((loopNode) => {
-                                const loopCollapseKey = getSidebarLoopCollapseKey(
-                                  "workspaces",
-                                  group.key,
-                                  workspaceNode.workspace.id,
-                                  loopNode.loop.config.id,
-                                );
-                                const loopCollapsed = isNodeCollapsed(loopCollapseKey);
-                                return (
-                                  <div key={loopNode.loop.config.id} className="space-y-1">
-                                    <SidebarTreeItem
-                                      active={isLoopActive(loopNode.loop.config.id)}
-                                      title={loopNode.title}
-                                      badge={loopNode.badge}
-                                      badgeVariant={loopNode.badgeVariant}
-                                      indentLevel={3}
-                                      collapsed={loopNode.sessions.length > 0 ? loopCollapsed : undefined}
-                                      onToggle={loopNode.sessions.length > 0
-                                        ? () => toggleNodeCollapsed(loopCollapseKey)
-                                        : undefined}
-                                      onClick={(event) => handleSidebarItemClick(event, {
-                                        view: "loop",
-                                        loopId: loopNode.loop.config.id,
-                                      })}
-                                    />
-                                    {loopNode.sessions.length > 0 && !loopCollapsed && (
-                                      <div className="space-y-1">
-                                        {loopNode.sessions.map((sessionNode) => (
-                                          <SidebarTreeItem
-                                            key={sessionNode.session.config.id}
-                                            active={route.view === "ssh" && route.sshSessionId === sessionNode.session.config.id}
-                                            title={sessionNode.title}
-                                            subtitle={sessionNode.subtitle}
-                                            badge={sessionNode.badge}
-                                            badgeVariant={sessionNode.badgeVariant}
-                                            indentLevel={4}
-                                            onClick={(event) => handleSidebarItemClick(event, {
-                                              view: "ssh",
-                                              sshSessionId: sessionNode.session.config.id,
-                                            })}
-                                          />
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </SidebarTreeSection>
+                {group.workspaces.map((workspaceNode) => {
+                  const workspaceCollapseKey = getSidebarWorkspaceCollapseKey(
+                    "workspaces",
+                    group.key,
+                    workspaceNode.workspace.id,
+                  );
+                  const loopsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                    "workspaces",
+                    group.key,
+                    workspaceNode.workspace.id,
+                    "loops",
+                  );
+                  const chatsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                    "workspaces",
+                    group.key,
+                    workspaceNode.workspace.id,
+                    "chats",
+                  );
+                  const sessionsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                    "workspaces",
+                    group.key,
+                    workspaceNode.workspace.id,
+                    "ssh-sessions",
+                  );
+                  return (
+                    <div key={`${group.key}:${workspaceNode.key}`} className="space-y-1">
+                      <SidebarTreeItem
+                        active={isWorkspaceActive(workspaceNode.workspace.id)}
+                        title={workspaceNode.workspace.name}
+                        subtitle={workspaceNode.workspace.directory}
+                        indentLevel={1}
+                        collapsed={isNodeCollapsed(workspaceCollapseKey)}
+                        onToggle={() => toggleNodeCollapsed(workspaceCollapseKey)}
+                        onClick={(event) => handleSidebarItemClick(event, {
+                          view: "workspace",
+                          workspaceId: workspaceNode.workspace.id,
+                        })}
+                      />
+                      {!isNodeCollapsed(workspaceCollapseKey) && (
+                        <div className="space-y-1">
+                          <SidebarTreeSection
+                            title="Loops"
+                            count={workspaceNode.loops.length}
+                            actionLabel="New"
+                            onAction={() => navigateWithinShell({
+                              view: "compose",
+                              kind: "loop",
+                              scopeId: workspaceNode.workspace.id,
+                            })}
+                            collapsed={isNodeCollapsed(loopsCollapseKey)}
+                            onToggle={() => toggleNodeCollapsed(loopsCollapseKey)}
+                            indentLevel={2}
+                          >
+                            {workspaceNode.loops.map((loopNode) => {
+                              const loopCollapseKey = getSidebarLoopCollapseKey(
+                                "workspaces",
+                                group.key,
+                                workspaceNode.workspace.id,
+                                loopNode.loop.config.id,
+                              );
+                              const loopCollapsed = isNodeCollapsed(loopCollapseKey);
+                              return (
+                                <div key={loopNode.loop.config.id} className="space-y-1">
+                                  <SidebarTreeItem
+                                    active={isLoopActive(loopNode.loop.config.id)}
+                                    title={loopNode.title}
+                                    badge={loopNode.badge}
+                                    badgeVariant={loopNode.badgeVariant}
+                                    indentLevel={3}
+                                    collapsed={loopNode.sessions.length > 0 ? loopCollapsed : undefined}
+                                    onToggle={loopNode.sessions.length > 0
+                                      ? () => toggleNodeCollapsed(loopCollapseKey)
+                                      : undefined}
+                                    onClick={(event) => handleSidebarItemClick(event, {
+                                      view: "loop",
+                                      loopId: loopNode.loop.config.id,
+                                    })}
+                                  />
+                                  {loopNode.sessions.length > 0 && !loopCollapsed && (
+                                    <div className="space-y-1">
+                                      {loopNode.sessions.map((sessionNode) => (
+                                        <SidebarTreeItem
+                                          key={sessionNode.session.config.id}
+                                          active={route.view === "ssh" && route.sshSessionId === sessionNode.session.config.id}
+                                          title={sessionNode.title}
+                                          subtitle={sessionNode.subtitle}
+                                          badge={sessionNode.badge}
+                                          badgeVariant={sessionNode.badgeVariant}
+                                          indentLevel={4}
+                                          onClick={(event) => handleSidebarItemClick(event, {
+                                            view: "ssh",
+                                            sshSessionId: sessionNode.session.config.id,
+                                          })}
+                                        />
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </SidebarTreeSection>
 
-                            <SidebarTreeSection
-                              title="Chats"
-                              count={workspaceNode.chats.length}
-                              actionLabel="New"
-                              onAction={() => navigateWithinShell({
-                                view: "compose",
-                                kind: "chat",
-                                scopeId: workspaceNode.workspace.id,
-                              })}
-                              collapsed={isNodeCollapsed(chatsCollapseKey)}
-                              onToggle={() => toggleNodeCollapsed(chatsCollapseKey)}
-                              indentLevel={2}
-                            >
-                              {workspaceNode.chats.map((chatNode) => (
-                                <SidebarTreeItem
-                                  key={chatNode.chat.config.id}
-                                  active={isChatActive(chatNode.chat.config.id)}
-                                  title={chatNode.title}
-                                  badge={chatNode.badge}
-                                  badgeVariant={chatNode.badgeVariant}
-                                  indentLevel={3}
-                                  onClick={(event) => handleSidebarItemClick(event, {
-                                    view: "chat",
-                                    chatId: chatNode.chat.config.id,
-                                  })}
-                                />
-                              ))}
-                            </SidebarTreeSection>
+                          <SidebarTreeSection
+                            title="Chats"
+                            count={workspaceNode.chats.length}
+                            actionLabel="New"
+                            onAction={() => navigateWithinShell({
+                              view: "compose",
+                              kind: "chat",
+                              scopeId: workspaceNode.workspace.id,
+                            })}
+                            collapsed={isNodeCollapsed(chatsCollapseKey)}
+                            onToggle={() => toggleNodeCollapsed(chatsCollapseKey)}
+                            indentLevel={2}
+                          >
+                            {workspaceNode.chats.map((chatNode) => (
+                              <SidebarTreeItem
+                                key={chatNode.chat.config.id}
+                                active={isChatActive(chatNode.chat.config.id)}
+                                title={chatNode.title}
+                                badge={chatNode.badge}
+                                badgeVariant={chatNode.badgeVariant}
+                                indentLevel={3}
+                                onClick={(event) => handleSidebarItemClick(event, {
+                                  view: "chat",
+                                  chatId: chatNode.chat.config.id,
+                                })}
+                              />
+                            ))}
+                          </SidebarTreeSection>
 
-                            <SidebarTreeSection
-                              title="SSH sessions"
-                              count={workspaceNode.sshSessions.length}
-                              actionLabel="New"
-                              onAction={() => navigateWithinShell({
-                                view: "compose",
-                                kind: "ssh-session",
-                                scopeId: workspaceNode.workspace.id,
-                              })}
-                              collapsed={isNodeCollapsed(sessionsCollapseKey)}
-                              onToggle={() => toggleNodeCollapsed(sessionsCollapseKey)}
-                              indentLevel={2}
-                            >
-                              {workspaceNode.sshSessions.map((sessionNode) => (
-                                <SidebarTreeItem
-                                  key={sessionNode.session.config.id}
-                                  active={route.view === "ssh" && route.sshSessionId === sessionNode.session.config.id}
-                                  title={sessionNode.title}
-                                  subtitle={sessionNode.subtitle}
-                                  badge={sessionNode.badge}
-                                  badgeVariant={sessionNode.badgeVariant}
-                                  indentLevel={3}
-                                  onClick={(event) => handleSidebarItemClick(event, {
-                                    view: "ssh",
-                                    sshSessionId: sessionNode.session.config.id,
-                                  })}
-                                />
-                              ))}
-                            </SidebarTreeSection>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
+                          <SidebarTreeSection
+                            title="SSH sessions"
+                            count={workspaceNode.sshSessions.length}
+                            actionLabel="New"
+                            onAction={() => navigateWithinShell({
+                              view: "compose",
+                              kind: "ssh-session",
+                              scopeId: workspaceNode.workspace.id,
+                            })}
+                            collapsed={isNodeCollapsed(sessionsCollapseKey)}
+                            onToggle={() => toggleNodeCollapsed(sessionsCollapseKey)}
+                            indentLevel={2}
+                          >
+                            {workspaceNode.sshSessions.map((sessionNode) => (
+                              <SidebarTreeItem
+                                key={sessionNode.session.config.id}
+                                active={route.view === "ssh" && route.sshSessionId === sessionNode.session.config.id}
+                                title={sessionNode.title}
+                                subtitle={sessionNode.subtitle}
+                                badge={sessionNode.badge}
+                                badgeVariant={sessionNode.badgeVariant}
+                                indentLevel={3}
+                                onClick={(event) => handleSidebarItemClick(event, {
+                                  view: "ssh",
+                                  sshSessionId: sessionNode.session.config.id,
+                                })}
+                              />
+                            ))}
+                          </SidebarTreeSection>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </SidebarTreeSection>
             );
           })}
