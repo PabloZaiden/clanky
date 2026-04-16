@@ -59,6 +59,22 @@ beforeEach(() => {
   api.reset();
   api.install();
   api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+  api.get("/api/models", () => [
+    {
+      providerID: "github",
+      providerName: "GitHub",
+      modelID: "gpt-5.4",
+      modelName: "GPT-5.4",
+      connected: true,
+    },
+    {
+      providerID: "github",
+      providerName: "GitHub",
+      modelID: "gpt-5.5",
+      modelName: "GPT-5.5",
+      connected: true,
+    },
+  ]);
   ws.reset();
   ws.install();
 });
@@ -304,6 +320,141 @@ describe("ChatDetails", () => {
     });
 
     expect(api.calls("/api/chats/:id/spawn-loop", "POST")).toHaveLength(1);
+  });
+
+  test("applies a chat model change before spawning a loop", async () => {
+    let currentChat = createChat();
+    let openedLoopId: string | null = null;
+
+    api.get("/api/chats/:id", () => currentChat);
+    api.patch("/api/chats/:id", (req) => {
+      currentChat = createChat({
+        config: {
+          ...currentChat.config,
+          model: req.body && typeof req.body === "object" && "model" in req.body
+            ? (req.body as { model: Chat["config"]["model"] }).model
+            : currentChat.config.model,
+          updatedAt: "2025-01-01T00:00:02.000Z",
+        },
+      });
+      return currentChat;
+    }, 200);
+    api.post("/api/chats/:id/spawn-loop", () => createLoop({
+      config: {
+        id: "loop-2",
+        name: "Plan from Repo pairing",
+        workspaceId: currentChat.config.workspaceId,
+        model: currentChat.config.model,
+        planMode: true,
+      },
+    }));
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <ChatDetails
+        chatId={CHAT_ID}
+        onOpenLoop={(loopId) => {
+          openedLoopId = loopId;
+        }}
+      />,
+    );
+
+    const modelSelect = await waitFor(() => {
+      const select = getByLabelText("Model") as HTMLSelectElement;
+      expect(select.disabled).toBe(false);
+      expect(Array.from(select.options).some((option) => option.value === "github:gpt-5.5:")).toBe(true);
+      return select;
+    });
+
+    await user.selectOptions(modelSelect, "github:gpt-5.5:");
+    await user.click(getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id", "PATCH")).toHaveLength(1);
+    });
+
+    expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(0);
+
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Spawn Loop" }));
+
+    await waitFor(() => {
+      expect(openedLoopId).toBe("loop-2");
+    });
+
+    expect(currentChat.config.model).toEqual({
+      providerID: "github",
+      modelID: "gpt-5.5",
+      variant: "",
+    });
+  });
+
+  test("updates the chat model before sending the next message", async () => {
+    let currentChat = createChat();
+
+    api.get("/api/chats/:id", () => currentChat);
+    api.patch("/api/chats/:id", () => {
+      currentChat = createChat({
+        config: {
+          ...currentChat.config,
+          model: {
+            providerID: "github",
+            modelID: "gpt-5.5",
+            variant: "",
+          },
+          updatedAt: "2025-01-01T00:00:02.000Z",
+        },
+      });
+      return currentChat;
+    }, 200);
+    api.post("/api/chats/:id/messages", () => createChat({
+      config: {
+        ...currentChat.config,
+        updatedAt: "2025-01-01T00:00:03.000Z",
+      },
+      state: {
+        ...currentChat.state,
+        status: "streaming",
+        messages: [
+          ...currentChat.state.messages,
+          {
+            id: "user-2",
+            role: "user",
+            content: "Use the new model",
+            timestamp: "2025-01-01T00:00:03.000Z",
+          },
+        ],
+      },
+    }), 200);
+
+    const { getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    const modelSelect = await waitFor(() => {
+      const select = getByLabelText("Model") as HTMLSelectElement;
+      expect(select.disabled).toBe(false);
+      expect(Array.from(select.options).some((option) => option.value === "github:gpt-5.5:")).toBe(true);
+      return select;
+    });
+
+    await user.selectOptions(modelSelect, "github:gpt-5.5:");
+    await user.type(getByLabelText("Message"), "Use the new model");
+    await user.click(getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id", "PATCH")).toHaveLength(1);
+      expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(1);
+    });
+
+    expect(api.calls("/api/chats/:id", "PATCH")[0]?.body).toMatchObject({
+      model: {
+        providerID: "github",
+        modelID: "gpt-5.5",
+        variant: "",
+      },
+    });
+    expect(api.calls("/api/chats/:id/messages", "POST")[0]?.body).toMatchObject({
+      message: "Use the new model",
+      attachments: [],
+    });
   });
 
   test("uses the latest onOpenLoop handler for the header action menu spawn action", async () => {

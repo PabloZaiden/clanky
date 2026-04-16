@@ -28,6 +28,11 @@ export { useDashboardData, type UseDashboardDataResult } from "./useDashboardDat
 export { useViewModePreference, type UseViewModePreferenceResult, type DashboardViewMode } from "./useViewModePreference";
 export { useProvisioningJob, type UseProvisioningJobResult, type StartProvisioningJobRequest } from "./useProvisioningJob";
 export {
+  useAvailableModels,
+  type UseAvailableModelsOptions,
+  type UseAvailableModelsResult,
+} from "./useAvailableModels";
+export {
   useFileExplorer,
   useWorkspaceFiles,
   useServerFiles,

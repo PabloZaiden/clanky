@@ -134,9 +134,23 @@ export class ChatManager {
       return null;
     }
 
-    const updatedChat = await loadChat(chatId);
+    let updatedChat = await loadChat(chatId);
     if (!updatedChat) {
       return null;
+    }
+
+    if (updates.model && updatedChat.state.session?.id) {
+      try {
+        const backend = await this.ensureBackendConnected(updatedChat);
+        await this.configureSessionModel(backend, updatedChat.state.session.id, updatedChat.config.model.modelID);
+        updatedChat = await loadChat(chatId) ?? updatedChat;
+      } catch (error) {
+        log.warn("Failed to reconfigure active chat session after model update", {
+          chatId,
+          model: updatedChat.config.model.modelID,
+          error: String(error),
+        });
+      }
     }
 
     this.emitter.emit({
@@ -245,6 +259,8 @@ export class ChatManager {
     if (!sessionChat?.state.session?.id) {
       throw new Error("Failed to establish chat session");
     }
+
+    await this.configureSessionModel(backend, sessionChat.state.session.id, sessionChat.config.model.modelID);
 
     const message = options.message?.trim() ?? "";
     const attachments = options.attachments ?? [];
