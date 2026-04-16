@@ -1,6 +1,7 @@
 import type { FileContentResponse } from "../../types";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { StatusTab } from "./status-tab";
+import { loopDetailsTabContentClassName, loopDetailsTabScrollContainerClassName } from "./tab-layout";
 
 interface PlanTabProps {
   isPlanning: boolean;
@@ -22,8 +23,8 @@ export function PlanTab({
   markdownEnabled,
 }: PlanTabProps) {
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto dark-scrollbar">
-      <div className="min-w-0 flex-1 space-y-4 px-3 py-3 sm:px-4 sm:py-4">
+    <div className={loopDetailsTabScrollContainerClassName}>
+      <div className={`${loopDetailsTabContentClassName} space-y-4`}>
         <div>
           {/* Feedback rounds counter (planning mode only) */}
           {isPlanning && feedbackRounds > 0 && (

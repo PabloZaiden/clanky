@@ -3,6 +3,7 @@ import type { FileContentResponse, PullRequestDestinationResponse } from "../../
 import type { EntityLabels } from "../../utils";
 import { isFinalState, canAccept, canManualComplete, canMarkMerged } from "../../utils";
 import { ReviewTab } from "./review-tab";
+import { loopDetailsTabContentFullWidthClassName, loopDetailsTabScrollContainerClassName } from "./tab-layout";
 
 interface ActionsTabProps {
   isPlanning: boolean;
@@ -62,270 +63,269 @@ export function ActionsTab({
     : null;
 
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto dark-scrollbar">
-      <div className="min-w-0 w-full space-y-4 px-3 py-3 sm:px-4 sm:py-4">
+    <div className={loopDetailsTabScrollContainerClassName}>
+      <div className={`${loopDetailsTabContentFullWidthClassName} space-y-4`}>
         <div className="min-w-0 space-y-2">
-
-        {isPlanning ? (
-          <>
-            <button
-              onClick={() => onAcceptPlan("start_loop")}
-              disabled={planActionSubmitting || !isPlanReady || !planContent?.content?.trim()}
-              className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                <span className="text-green-600 dark:text-green-400 text-sm">✓</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {planActionSubmitting ? "Accepting..." : "Accept Plan & Start Loop"}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {isPlanReady
-                    ? "Accept the plan and begin loop execution"
-                    : "Waiting for AI to finish writing the plan..."}
-                </div>
-              </div>
-              <span className="text-gray-400 dark:text-gray-500">→</span>
-            </button>
-            <button
-              onClick={() => onAcceptPlan("open_ssh")}
-              disabled={planActionSubmitting || !isPlanReady || !planContent?.content?.trim()}
-              className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
-                <span className="text-gray-700 dark:text-gray-300 text-sm">⌁</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {planActionSubmitting ? "Accepting..." : "Accept Plan & Open SSH"}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {isPlanReady
-                    ? "Accept the plan, mark the loop complete, and open its SSH session"
-                    : "Waiting for AI to finish writing the plan..."}
-                </div>
-              </div>
-              <span className="text-gray-400 dark:text-gray-500">→</span>
-            </button>
-            <button
-              onClick={onDiscardPlanModal}
-              disabled={planActionSubmitting}
-              className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                <span className="text-red-600 dark:text-red-400 text-sm">✗</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Discard Plan</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Discard this plan and delete the loop</div>
-              </div>
-              <span className="text-gray-400 dark:text-gray-500">→</span>
-            </button>
-          </>
-        ) : isFinalState(state.status) ? (
-          <>
-            {state.status === "pushed" && state.reviewMode?.addressable && (
-              <>
-                <button
-                  onClick={onOpenPullRequest}
-                  disabled={loadingPullRequestDestination || !pullRequestDestination?.enabled}
-                  className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
-                    <span className="text-gray-700 dark:text-gray-300 text-sm">↗</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Go to PR</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {loadingPullRequestDestination
-                        ? "Checking for an existing pull request..."
-                        : pullRequestDestination?.enabled
-                        ? pullRequestDestination.destinationType === "existing_pr"
-                          ? "Open the existing pull request for this branch"
-                          : "Open GitHub to create a pull request from this branch"
-                        : pullRequestDestination?.disabledReason ?? "Pull request navigation is unavailable."}
-                    </div>
-                  </div>
-                  <span className="text-gray-400 dark:text-gray-500">→</span>
-                </button>
-
-                {automaticPrFlowEnabled ? (
-                  <button
-                    onClick={onStopAutomaticPrFlowModal}
-                    className="w-full flex items-center gap-4 p-3 rounded-lg border border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors text-left"
-                  >
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                      <span className="text-amber-700 dark:text-amber-300 text-sm">⏸</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Stop Automatic PR flow</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {automaticPrFlowStatus
-                          ? `Automatic review handling is ${automaticPrFlowStatus}. Stop it to resume manual handling.`
-                          : "Stop automatic PR monitoring and handle the next review updates yourself."}
-                      </div>
-                      {(automaticPrFlow?.pullRequestUrl || automaticPrFlow?.lastCheckedAt || automaticPrFlow?.lastError) && (
-                        <div className="mt-1 space-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                          {automaticPrFlow.pullRequestUrl && (
-                            <div>PR: #{automaticPrFlow.pullRequestNumber ?? "?"}</div>
-                          )}
-                          {automaticPrFlow.lastCheckedAt && (
-                            <div>Last check: {new Date(automaticPrFlow.lastCheckedAt).toLocaleString()}</div>
-                          )}
-                          {automaticPrFlow.lastError && (
-                            <div className="text-red-600 dark:text-red-400">Last error: {automaticPrFlow.lastError}</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-gray-400 dark:text-gray-500">→</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={onStartAutomaticPrFlowModal}
-                    className="w-full flex items-center gap-4 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-colors text-left"
-                  >
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-                      <span className="text-indigo-700 dark:text-indigo-300 text-sm">⚙</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Automatic PR flow</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {automaticPrFlow?.status === "stopped"
-                          ? "Restart automatic monitoring so Ralph can respond to new PR feedback again."
-                          : "Create or reuse the pull request, monitor reviewer feedback, and push automatic follow-up fixes until merge is ready."}
-                      </div>
-                      {(automaticPrFlow?.stoppedAt || automaticPrFlow?.lastError) && (
-                        <div className="mt-1 space-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                          {automaticPrFlow.stoppedAt && (
-                            <div>Stopped: {new Date(automaticPrFlow.stoppedAt).toLocaleString()}</div>
-                          )}
-                          {automaticPrFlow.lastError && (
-                            <div className="text-red-600 dark:text-red-400">Last error: {automaticPrFlow.lastError}</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-gray-400 dark:text-gray-500">→</span>
-                  </button>
-                )}
-              </>
-            )}
-            {state.reviewMode?.addressable && state.status !== "deleted" && (
+          {isPlanning ? (
+            <>
               <button
-                onClick={onAddressCommentsModal}
-                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
-              >
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
-                  <span className="text-gray-700 dark:text-gray-300 text-sm">💬</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Address Comments</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Submit comments for the next review cycle</div>
-                </div>
-                <span className="text-gray-400 dark:text-gray-500">→</span>
-              </button>
-            )}
-            {state.status === "pushed" && state.git && (
-              <button
-                onClick={onUpdateBranchModal}
-                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
-              >
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
-                  <span className="text-gray-700 dark:text-gray-300 text-sm">⟳</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Update Branch</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Sync with base branch and push latest changes</div>
-                </div>
-                <span className="text-gray-400 dark:text-gray-500">→</span>
-              </button>
-            )}
-            {canMarkMerged(state.status, Boolean(state.git)) && (
-              <button
-                onClick={onMarkMergedModal}
-                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
-              >
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                  <span className="text-green-600 dark:text-green-400 text-sm">⤵</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Mark as Merged</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Keep this loop as merged after the branch landed elsewhere</div>
-                </div>
-                <span className="text-gray-400 dark:text-gray-500">→</span>
-              </button>
-            )}
-            <button
-              onClick={onPurgeModal}
-              className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
-            >
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                <span className="text-red-600 dark:text-red-400 text-sm">🗑</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Purge {labels.capitalized}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Delete this {labels.singular} and all associated data</div>
-              </div>
-              <span className="text-gray-400 dark:text-gray-500">→</span>
-            </button>
-          </>
-        ) : (
-          <>
-            {canAccept(state.status) && state.git && (
-              <button
-                onClick={onAcceptModal}
-                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+                onClick={() => onAcceptPlan("start_loop")}
+                disabled={planActionSubmitting || !isPlanReady || !planContent?.content?.trim()}
+                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                   <span className="text-green-600 dark:text-green-400 text-sm">✓</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Accept</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Accept changes and merge or push to remote</div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {planActionSubmitting ? "Accepting..." : "Accept Plan & Start Loop"}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {isPlanReady
+                      ? "Accept the plan and begin loop execution"
+                      : "Waiting for AI to finish writing the plan..."}
+                  </div>
                 </div>
                 <span className="text-gray-400 dark:text-gray-500">→</span>
               </button>
-            )}
-            {canManualComplete(state.status, Boolean(state.git)) && (
               <button
-                onClick={onManualCompleteModal}
-                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+                onClick={() => onAcceptPlan("open_ssh")}
+                disabled={planActionSubmitting || !isPlanReady || !planContent?.content?.trim()}
+                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <span className="text-blue-600 dark:text-blue-400 text-sm">✓</span>
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                  <span className="text-gray-700 dark:text-gray-300 text-sm">⌁</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Manually complete loop</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">Mark this halted loop as completed so push and merge actions become available</div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {planActionSubmitting ? "Accepting..." : "Accept Plan & Open SSH"}
+                  </div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {isPlanReady
+                      ? "Accept the plan, mark the loop complete, and open its SSH session"
+                      : "Waiting for AI to finish writing the plan..."}
+                  </div>
                 </div>
                 <span className="text-gray-400 dark:text-gray-500">→</span>
               </button>
-            )}
-            <button
-              onClick={onDeleteModal}
-              className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
-            >
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                <span className="text-red-600 dark:text-red-400 text-sm">✗</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Delete {labels.capitalized}</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">Cancel and delete this {labels.singular}</div>
-              </div>
-              <span className="text-gray-400 dark:text-gray-500">→</span>
-            </button>
-          </>
-        )}
+              <button
+                onClick={onDiscardPlanModal}
+                disabled={planActionSubmitting}
+                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <span className="text-red-600 dark:text-red-400 text-sm">✗</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Discard Plan</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Discard this plan and delete the loop</div>
+                </div>
+                <span className="text-gray-400 dark:text-gray-500">→</span>
+              </button>
+            </>
+          ) : isFinalState(state.status) ? (
+            <>
+              {state.status === "pushed" && state.reviewMode?.addressable && (
+                <>
+                  <button
+                    onClick={onOpenPullRequest}
+                    disabled={loadingPullRequestDestination || !pullRequestDestination?.enabled}
+                    className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                      <span className="text-gray-700 dark:text-gray-300 text-sm">↗</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Go to PR</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {loadingPullRequestDestination
+                          ? "Checking for an existing pull request..."
+                          : pullRequestDestination?.enabled
+                          ? pullRequestDestination.destinationType === "existing_pr"
+                            ? "Open the existing pull request for this branch"
+                            : "Open GitHub to create a pull request from this branch"
+                          : pullRequestDestination?.disabledReason ?? "Pull request navigation is unavailable."}
+                      </div>
+                    </div>
+                    <span className="text-gray-400 dark:text-gray-500">→</span>
+                  </button>
+
+                  {automaticPrFlowEnabled ? (
+                    <button
+                      onClick={onStopAutomaticPrFlowModal}
+                      className="w-full flex items-center gap-4 p-3 rounded-lg border border-amber-200 dark:border-amber-800 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors text-left"
+                    >
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                        <span className="text-amber-700 dark:text-amber-300 text-sm">⏸</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Stop Automatic PR flow</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {automaticPrFlowStatus
+                            ? `Automatic review handling is ${automaticPrFlowStatus}. Stop it to resume manual handling.`
+                            : "Stop automatic PR monitoring and handle the next review updates yourself."}
+                        </div>
+                        {(automaticPrFlow?.pullRequestUrl || automaticPrFlow?.lastCheckedAt || automaticPrFlow?.lastError) && (
+                          <div className="mt-1 space-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                            {automaticPrFlow.pullRequestUrl && (
+                              <div>PR: #{automaticPrFlow.pullRequestNumber ?? "?"}</div>
+                            )}
+                            {automaticPrFlow.lastCheckedAt && (
+                              <div>Last check: {new Date(automaticPrFlow.lastCheckedAt).toLocaleString()}</div>
+                            )}
+                            {automaticPrFlow.lastError && (
+                              <div className="text-red-600 dark:text-red-400">Last error: {automaticPrFlow.lastError}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-gray-400 dark:text-gray-500">→</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={onStartAutomaticPrFlowModal}
+                      className="w-full flex items-center gap-4 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-colors text-left"
+                    >
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                        <span className="text-indigo-700 dark:text-indigo-300 text-sm">⚙</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Automatic PR flow</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {automaticPrFlow?.status === "stopped"
+                            ? "Restart automatic monitoring so Ralph can respond to new PR feedback again."
+                            : "Create or reuse the pull request, monitor reviewer feedback, and push automatic follow-up fixes until merge is ready."}
+                        </div>
+                        {(automaticPrFlow?.stoppedAt || automaticPrFlow?.lastError) && (
+                          <div className="mt-1 space-y-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                            {automaticPrFlow.stoppedAt && (
+                              <div>Stopped: {new Date(automaticPrFlow.stoppedAt).toLocaleString()}</div>
+                            )}
+                            {automaticPrFlow.lastError && (
+                              <div className="text-red-600 dark:text-red-400">Last error: {automaticPrFlow.lastError}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-gray-400 dark:text-gray-500">→</span>
+                    </button>
+                  )}
+                </>
+              )}
+              {state.reviewMode?.addressable && state.status !== "deleted" && (
+                <button
+                  onClick={onAddressCommentsModal}
+                  className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+                >
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                    <span className="text-gray-700 dark:text-gray-300 text-sm">💬</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Address Comments</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Submit comments for the next review cycle</div>
+                  </div>
+                  <span className="text-gray-400 dark:text-gray-500">→</span>
+                </button>
+              )}
+              {state.status === "pushed" && state.git && (
+                <button
+                  onClick={onUpdateBranchModal}
+                  className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+                >
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-neutral-800 flex items-center justify-center">
+                    <span className="text-gray-700 dark:text-gray-300 text-sm">⟳</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Update Branch</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Sync with base branch and push latest changes</div>
+                  </div>
+                  <span className="text-gray-400 dark:text-gray-500">→</span>
+                </button>
+              )}
+              {canMarkMerged(state.status, Boolean(state.git)) && (
+                <button
+                  onClick={onMarkMergedModal}
+                  className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+                >
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <span className="text-green-600 dark:text-green-400 text-sm">⤵</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Mark as Merged</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Keep this loop as merged after the branch landed elsewhere</div>
+                  </div>
+                  <span className="text-gray-400 dark:text-gray-500">→</span>
+                </button>
+              )}
+              <button
+                onClick={onPurgeModal}
+                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+              >
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <span className="text-red-600 dark:text-red-400 text-sm">🗑</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Purge {labels.capitalized}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Delete this {labels.singular} and all associated data</div>
+                </div>
+                <span className="text-gray-400 dark:text-gray-500">→</span>
+              </button>
+            </>
+          ) : (
+            <>
+              {canAccept(state.status) && state.git && (
+                <button
+                  onClick={onAcceptModal}
+                  className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+                >
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <span className="text-green-600 dark:text-green-400 text-sm">✓</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Accept</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Accept changes and merge or push to remote</div>
+                  </div>
+                  <span className="text-gray-400 dark:text-gray-500">→</span>
+                </button>
+              )}
+              {canManualComplete(state.status, Boolean(state.git)) && (
+                <button
+                  onClick={onManualCompleteModal}
+                  className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+                >
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <span className="text-blue-600 dark:text-blue-400 text-sm">✓</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Manually complete loop</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Mark this halted loop as completed so push and merge actions become available</div>
+                  </div>
+                  <span className="text-gray-400 dark:text-gray-500">→</span>
+                </button>
+              )}
+              <button
+                onClick={onDeleteModal}
+                className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"
+              >
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <span className="text-red-600 dark:text-red-400 text-sm">✗</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Delete {labels.capitalized}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Cancel and delete this {labels.singular}</div>
+                </div>
+                <span className="text-gray-400 dark:text-gray-500">→</span>
+              </button>
+            </>
+          )}
         </div>
 
         {/* Review cycle history — shown when review mode is active */}
         {loop.state.reviewMode && (
-            <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
-              <ReviewTab
-                loop={loop}
-                labels={labels}
+          <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
+            <ReviewTab
+              loop={loop}
+              labels={labels}
               loadingComments={loadingComments}
               reviewComments={reviewComments}
               embedded

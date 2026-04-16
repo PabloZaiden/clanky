@@ -1,5 +1,6 @@
 import type { FileContentResponse } from "../../types";
 import { MarkdownRenderer } from "../MarkdownRenderer";
+import { loopDetailsTabContentClassName, loopDetailsTabScrollContainerClassName } from "./tab-layout";
 
 interface StatusTabProps {
   statusContent: FileContentResponse | null;
@@ -29,8 +30,8 @@ export function StatusTab({ statusContent, loadingContent, markdownEnabled, embe
   if (embedded) return content;
 
   return (
-    <div className="flex min-w-0 flex-1 overflow-x-hidden overflow-y-auto dark-scrollbar">
-      <div className="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-4">
+    <div className={loopDetailsTabScrollContainerClassName}>
+      <div className={loopDetailsTabContentClassName}>
         {content}
       </div>
     </div>

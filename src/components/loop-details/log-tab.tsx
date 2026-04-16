@@ -2,6 +2,7 @@ import type { PersistedMessage, PersistedToolCall, LoopLogEntry } from "../../ty
 import { LogViewer } from "../LogViewer";
 import { Button } from "../common";
 import { LogFocusModeBar } from "./log-focus-mode-bar";
+import { loopDetailsTabPaddingClassName } from "./tab-layout";
 
 interface LogTabProps {
   messages: PersistedMessage[];
@@ -52,7 +53,13 @@ export function LogTab({
           : "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
       }
     >
-      <div className={isFocusMode ? "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden px-3 pt-3" : "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden px-3 py-3 sm:px-4 sm:py-4"}>
+      <div
+        className={
+          isFocusMode
+            ? "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden px-3 pt-3"
+            : `flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden ${loopDetailsTabPaddingClassName}`
+        }
+      >
         <div className="flex min-w-0 min-h-0 flex-1 flex-col">
           <LogViewer
             id={logViewerId}
