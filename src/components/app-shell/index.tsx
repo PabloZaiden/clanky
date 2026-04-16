@@ -11,8 +11,7 @@ import {
   useWorkspaces,
 } from "../../hooks";
 import type { UsePasskeyAuthResult } from "../../hooks";
-import { getSshSessionStatusBadgeVariant } from "../common";
-import { getSshConnectionModeLabel, groupSidebarChatsByWorkspace, groupSidebarItemsByWorkspace } from "./shell-types";
+import { buildServerSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import { ShellSidebarNav } from "./shell-sidebar-nav";
 import { ShellMainContent } from "./shell-main-content";
 import { useSidebar } from "./use-sidebar";
@@ -109,49 +108,23 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   });
 
   // Derived memos
-  const workspacesById = useMemo(() => new Map(workspaces.map((w) => [w.id, w])), [workspaces]);
-  const serversById = useMemo(() => new Map(servers.map((s) => [s.config.id, s])), [servers]);
-  const loopItems = loops;
-  const standaloneSessions = useMemo(() => Object.values(sessionsByServerId).flat(), [sessionsByServerId]);
-  const loopGroups = useMemo(
-    () => groupSidebarItemsByWorkspace(loopItems, workspaces),
-    [loopItems, workspaces],
+  const sidebarWorkspaceGroups = useMemo(
+    () => buildWorkspaceSidebarGroups({
+      workspaces,
+      loops,
+      chats,
+      sessions,
+    }),
+    [chats, loops, sessions, workspaces],
   );
-  const chatGroups = useMemo(
-    () => groupSidebarChatsByWorkspace(chats, workspaces),
-    [chats, workspaces],
-  );
-  const chatItems = useMemo(
-    () =>
-      chatGroups.flatMap((group) =>
-        group.items.map((chat) => ({
-          chat,
-          workspaceName: group.title,
-        })),
-      ),
-    [chatGroups],
-  );
-  const allShellSessions = useMemo(
-    () =>
-      [
-        ...sessions.map((session) => ({
-          id: session.config.id,
-          title: session.config.name,
-          subtitle: `${workspacesById.get(session.config.workspaceId)?.name ?? "Unknown workspace"} · ${getSshConnectionModeLabel(session.config.connectionMode)}`,
-          badge: session.state.status,
-          badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
-          createdAt: session.config.createdAt,
-        })),
-        ...standaloneSessions.map((session) => ({
-          id: session.config.id,
-          title: session.config.name,
-          subtitle: `${serversById.get(session.config.sshServerId)?.config.name ?? "Unknown server"} · ${getSshConnectionModeLabel(session.config.connectionMode)}`,
-          badge: session.state.status,
-          badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
-          createdAt: session.config.createdAt,
-        })),
-      ].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    [serversById, sessions, standaloneSessions, workspacesById],
+  const serverNodes = useMemo(
+    () => buildServerSidebarNodes({
+      servers,
+      sessionsByServerId,
+      workspaces,
+      workspaceSessions: sessions,
+    }),
+    [servers, sessions, sessionsByServerId, workspaces],
   );
 
   const shellLoading = chatsLoading || loopsLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
@@ -229,17 +202,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         sidebarCollapsed={sidebar.sidebarCollapsed}
         navigateWithinShell={navigateWithinShell}
         hideSidebar={sidebar.hideSidebar}
-        isSectionCollapsed={sidebar.isSectionCollapsed}
-        toggleSectionCollapsed={sidebar.toggleSectionCollapsed}
-        toggleWorkspaceGroupCollapsed={sidebar.toggleWorkspaceGroupCollapsed}
-        collapsedWorkspaceGroups={sidebar.collapsedWorkspaceGroups}
+        isNodeCollapsed={sidebar.isNodeCollapsed}
+        toggleNodeCollapsed={sidebar.toggleNodeCollapsed}
         workspaces={workspaces}
-        loopGroups={loopGroups}
-        loopItems={loopItems}
-        chatItems={chatItems}
-        allShellSessions={allShellSessions}
-        servers={servers}
-        sessionsByServerId={sessionsByServerId}
+        workspaceGroups={sidebarWorkspaceGroups}
+        serverNodes={serverNodes}
         version={dashboardData.version ?? undefined}
       />
 

@@ -712,11 +712,11 @@ describe("App shell", () => {
     await waitFor(() => {
       const sidebar = document.querySelector("aside");
       expect(sidebar).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Plan Ready Loop")).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Plan Ready")).toBeTruthy();
+      expect(within(sidebar as HTMLElement).getAllByText("Plan Ready Loop").length).toBeGreaterThan(0);
+      expect(within(sidebar as HTMLElement).getAllByText("Plan Ready").length).toBeGreaterThan(0);
     });
 
-    expect(getByRole("button", { name: /Collapse Loops section/ })).toBeTruthy();
+    expect(getByRole("button", { name: /Collapse Workspaces section/ })).toBeTruthy();
   });
 
   test("keeps non-ready planning loops labeled 'Planning' in the sidebar", async () => {
@@ -743,9 +743,9 @@ describe("App shell", () => {
     await waitFor(() => {
       const sidebar = document.querySelector("aside");
       expect(sidebar).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Planning Loop")).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Planning")).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getByText("Running")).toBeTruthy();
+      expect(within(sidebar as HTMLElement).getAllByText("Planning Loop").length).toBeGreaterThan(0);
+      expect(within(sidebar as HTMLElement).getAllByText("Planning").length).toBeGreaterThan(0);
+      expect(within(sidebar as HTMLElement).getAllByText("Running").length).toBeGreaterThan(0);
     });
   });
 
@@ -767,11 +767,12 @@ describe("App shell", () => {
   });
 
   test("lets users collapse and expand sidebar sections", async () => {
-    const { getByRole, getByText, queryByText, user } = renderWithUser(<App />);
+    const { getByRole, queryByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
-      expect(getByText("No workspaces yet.")).toBeTruthy();
+      expect(queryByText("Active")).toBeNull();
+      expect(queryByText("All")).toBeNull();
     });
 
     const collapseButton = getByRole("button", { name: "Collapse Workspaces section" });
@@ -788,7 +789,9 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
-      expect(getByText("No workspaces yet.")).toBeTruthy();
+      expect(queryByText("Active")).toBeNull();
+      expect(queryByText("All")).toBeNull();
+      expect(window.localStorage.getItem("ralpher.sidebarSectionCollapseState")).toBeNull();
     });
   });
 
@@ -803,7 +806,8 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(firstRender.getByRole("button", { name: "Expand Workspaces section" })).toBeTruthy();
-      expect(firstRender.queryByText("No workspaces yet.")).toBeNull();
+      expect(firstRender.queryByText("Active")).toBeNull();
+      expect(firstRender.queryByText("All")).toBeNull();
     });
 
     firstRender.unmount();
@@ -812,11 +816,12 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(secondRender.getByRole("button", { name: "Expand Workspaces section" })).toBeTruthy();
-      expect(secondRender.queryByText("No workspaces yet.")).toBeNull();
+      expect(secondRender.queryByText("Active")).toBeNull();
+      expect(secondRender.queryByText("All")).toBeNull();
     });
   });
 
-  test("cleans stale drafts sidebar state from browser storage", async () => {
+  test("drops stale and expanded sidebar keys from browser storage", async () => {
     window.localStorage.setItem("ralpher.sidebarSectionCollapseState", JSON.stringify({
       workspaces: true,
       drafts: true,
@@ -832,12 +837,12 @@ describe("App shell", () => {
     await waitFor(() => {
       const persistedState = JSON.parse(window.localStorage.getItem("ralpher.sidebarSectionCollapseState") ?? "{}") as Record<string, boolean>;
       expect(persistedState["workspaces"]).toBe(true);
-      expect(persistedState["loops"]).toBe(false);
+      expect("loops" in persistedState).toBe(false);
       expect("drafts" in persistedState).toBe(false);
     });
   });
 
-  test("shows draft loops under Loops and removes workspace subgroup counts", async () => {
+  test("shows draft loops under workspace sections without reviving legacy draft buckets", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
     const draftLoop = createLoopWithStatus("draft", {
       config: { id: "loop-draft", name: "Sprint Draft", workspaceId: workspace.id },
@@ -850,7 +855,7 @@ describe("App shell", () => {
     const { getAllByText, getByRole, queryByText } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Collapse Loops section" })).toBeTruthy();
+      expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
       expect(getAllByText("Sprint Draft").length).toBeGreaterThan(0);
       expect(getAllByText("Shipping Loop").length).toBeGreaterThan(0);
     });
@@ -858,11 +863,7 @@ describe("App shell", () => {
     expect(queryByText("Drafts")).toBeNull();
     expect(getAllByText("Draft").length).toBeGreaterThan(0);
 
-    const workspaceButton = Array.from(document.querySelectorAll("button[aria-expanded]")).find((button) =>
-      button.textContent?.includes("Frontend")
-    );
-    expect(workspaceButton).toBeTruthy();
-    expect(workspaceButton?.textContent).not.toContain("2");
+    expect(getAllByText("Frontend").length).toBeGreaterThan(0);
   });
 
   test("hides and reopens the sidebar with header icon controls", async () => {

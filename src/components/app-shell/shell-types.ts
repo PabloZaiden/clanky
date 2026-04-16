@@ -1,43 +1,81 @@
+import { canJumpstart, getLoopStatusLabel, isFinalState } from "../../utils";
 import { createLogger } from "../../lib/logger";
-import type { Chat, Loop, Workspace } from "../../types";
-import type { BadgeVariant } from "../common";
+import type { Chat, Loop, SshSession, Workspace } from "../../types";
+import type { SshServer, SshServerSession } from "../../types/ssh-server";
+import {
+  getChatStatusBadgeVariant,
+  getLoopStatusBadgeVariant,
+  getSshSessionStatusBadgeVariant,
+  getSshSessionStatusLabel,
+  type BadgeVariant,
+} from "../common";
 
 const log = createLogger("AppShell");
 
 export const SIDEBAR_SECTION_STORAGE_KEY = "ralpher.sidebarSectionCollapseState";
 
-export type SidebarSectionId =
-  | "workspaces"
-  | "loops"
-  | "chats"
-  | "workspace-ssh"
-  | "ssh-servers";
+export type SidebarSectionId = "workspaces" | "ssh-servers";
+export type SidebarWorkspaceGroupId = "active" | "all";
+export type SidebarCollapseState = Record<string, boolean>;
 
-export type SidebarSectionCollapseState = Partial<Record<SidebarSectionId, boolean>>;
-
-export interface SidebarSectionCollapseStateLoadResult {
-  state: SidebarSectionCollapseState;
+export interface SidebarCollapseStateLoadResult {
+  state: SidebarCollapseState;
   invalidReason: string | null;
 }
 
-export const SIDEBAR_SECTION_IDS: SidebarSectionId[] = [
-  "workspaces",
-  "loops",
-  "chats",
-  "workspace-ssh",
-  "ssh-servers",
-];
-
-export interface WorkspaceSidebarGroup {
-  key: string;
+export interface SidebarWorkspaceSessionNode {
+  session: SshSession;
   title: string;
-  items: Loop[];
+  subtitle: string;
+  badge: string;
+  badgeVariant: BadgeVariant;
+  createdAt: string;
 }
 
-export interface ChatSidebarGroup {
-  key: string;
+export interface SidebarLoopNode {
+  loop: Loop;
   title: string;
-  items: Chat[];
+  badge: string;
+  badgeVariant: BadgeVariant;
+  sessions: SidebarWorkspaceSessionNode[];
+}
+
+export interface SidebarChatNode {
+  chat: Chat;
+  title: string;
+  badge: string;
+  badgeVariant: BadgeVariant;
+}
+
+export interface SidebarWorkspaceNode {
+  workspace: Workspace;
+  key: string;
+  loops: SidebarLoopNode[];
+  historyLoops: SidebarLoopNode[];
+  chats: SidebarChatNode[];
+  sshSessions: SidebarWorkspaceSessionNode[];
+  hasActivity: boolean;
+}
+
+export interface SidebarWorkspaceGroupNode {
+  key: SidebarWorkspaceGroupId;
+  title: string;
+  workspaces: SidebarWorkspaceNode[];
+}
+
+export interface SidebarServerSessionNode {
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  badgeVariant: BadgeVariant;
+  createdAt: string;
+}
+
+export interface SidebarServerNode {
+  server: SshServer;
+  key: string;
+  sessions: SidebarServerSessionNode[];
 }
 
 export type CodeExplorerTarget =
@@ -93,8 +131,70 @@ export type ShellRoute =
 
 export type ComposeKind = Extract<ShellRoute, { view: "compose" }>["kind"];
 
-export function getWorkspaceGroupCollapseKey(sectionId: SidebarSectionId, groupKey: string): string {
-  return `${sectionId}:${groupKey}`;
+function buildSidebarCollapseKey(...parts: string[]): string {
+  return parts.join(":");
+}
+
+function isRecognizedSidebarCollapseKey(key: string): boolean {
+  return key === "workspaces"
+    || key.startsWith("workspaces:")
+    || key === "ssh-servers"
+    || key.startsWith("ssh-servers:");
+}
+
+function normalizeSidebarCollapseState(state: Record<string, unknown>): SidebarCollapseState {
+  return Object.entries(state).reduce<SidebarCollapseState>((normalizedState, [key, value]) => {
+    if (value === true && isRecognizedSidebarCollapseKey(key)) {
+      normalizedState[key] = true;
+    }
+    return normalizedState;
+  }, {});
+}
+
+export function getSidebarSectionCollapseKey(sectionId: SidebarSectionId): string {
+  return buildSidebarCollapseKey(sectionId);
+}
+
+export function getSidebarGroupCollapseKey(sectionId: SidebarSectionId, groupId: SidebarWorkspaceGroupId): string {
+  return buildSidebarCollapseKey(sectionId, "group", groupId);
+}
+
+export function getSidebarWorkspaceCollapseKey(
+  sectionId: SidebarSectionId,
+  groupId: SidebarWorkspaceGroupId,
+  workspaceId: string,
+): string {
+  return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId);
+}
+
+export function getSidebarWorkspaceSectionCollapseKey(
+  sectionId: SidebarSectionId,
+  groupId: SidebarWorkspaceGroupId,
+  workspaceId: string,
+  childSectionId: "loops" | "history" | "chats" | "ssh-sessions",
+): string {
+  return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, childSectionId);
+}
+
+export function getSidebarLoopCollapseKey(
+  sectionId: SidebarSectionId,
+  groupId: SidebarWorkspaceGroupId,
+  workspaceId: string,
+  loopId: string,
+): string {
+  return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, "loop", loopId);
+}
+
+export function getSidebarServerCollapseKey(sectionId: SidebarSectionId, serverId: string): string {
+  return buildSidebarCollapseKey(sectionId, "server", serverId);
+}
+
+export function getSidebarServerSectionCollapseKey(
+  sectionId: SidebarSectionId,
+  serverId: string,
+  childSectionId: "sessions",
+): string {
+  return buildSidebarCollapseKey(sectionId, "server", serverId, childSectionId);
 }
 
 export function getSshConnectionModeLabel(mode: "direct" | "dtach" | string): string {
@@ -118,70 +218,197 @@ export function getProvisioningStatusBadgeVariant(status: string | undefined): B
   }
 }
 
-export function groupSidebarItemsByWorkspace(
-  items: Loop[],
-  workspaces: readonly Workspace[],
-): WorkspaceSidebarGroup[] {
-  const workspacesById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-  const workspaceOrder = new Map(workspaces.map((workspace, index) => [workspace.id, index]));
-  const groups = new Map<string, WorkspaceSidebarGroup & { order: number }>();
-
-  for (const item of items) {
-    const workspace = workspacesById.get(item.config.workspaceId);
-    const key = workspace?.id ?? `missing:${item.config.workspaceId ?? item.config.id}`;
-    const group = groups.get(key) ?? {
-      key,
-      title: workspace?.name ?? "Unknown workspace",
-      order: workspace ? (workspaceOrder.get(workspace.id) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER,
-      items: [],
-    };
-    group.items.push(item);
-    groups.set(key, group);
-  }
-
-  return Array.from(groups.values())
-    .sort((left, right) => {
-      if (left.order !== right.order) {
-        return left.order - right.order;
-      }
-      return left.title.localeCompare(right.title);
-    })
-    .map(({ key, title, items: groupedItems }) => ({ key, title, items: groupedItems }));
+function createWorkspaceSessionNode(
+  session: SshSession,
+  loopNameById: ReadonlyMap<string, string>,
+): SidebarWorkspaceSessionNode {
+  const linkedLoopName = session.config.loopId ? loopNameById.get(session.config.loopId) : undefined;
+  return {
+    session,
+    title: session.config.name,
+    subtitle: linkedLoopName
+      ? `${linkedLoopName} · ${getSshConnectionModeLabel(session.config.connectionMode)}`
+      : getSshConnectionModeLabel(session.config.connectionMode),
+    badge: getSshSessionStatusLabel(session.state.status),
+    badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
+    createdAt: session.config.createdAt,
+  };
 }
 
-export function groupSidebarChatsByWorkspace(
-  chats: Chat[],
-  workspaces: readonly Workspace[],
-): ChatSidebarGroup[] {
-  const workspacesById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-  const workspaceOrder = new Map(workspaces.map((workspace, index) => [workspace.id, index]));
-  const groups = new Map<string, ChatSidebarGroup & { order: number }>();
+function sortByDesc<T>(items: T[], getValue: (item: T) => string): T[] {
+  return [...items].sort((left, right) => getValue(right).localeCompare(getValue(left)));
+}
 
-  for (const chat of chats) {
-    const workspace = workspacesById.get(chat.config.workspaceId);
-    const key = workspace?.id ?? `missing:${chat.config.workspaceId ?? chat.config.id}`;
-    const group = groups.get(key) ?? {
-      key,
-      title: workspace?.name ?? "Unknown workspace",
-      order: workspace ? (workspaceOrder.get(workspace.id) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER,
-      items: [],
-    };
-    group.items.push(chat);
-    groups.set(key, group);
+function isTerminalSidebarLoop(loop: Loop): boolean {
+  return canJumpstart(loop.state.status) || isFinalState(loop.state.status);
+}
+
+export function buildWorkspaceSidebarGroups({
+  workspaces,
+  loops,
+  chats,
+  sessions,
+}: {
+  workspaces: Workspace[];
+  loops: Loop[];
+  chats: Chat[];
+  sessions: SshSession[];
+}): SidebarWorkspaceGroupNode[] {
+  const loopsByWorkspaceId = new Map<string, Loop[]>();
+  const chatsByWorkspaceId = new Map<string, Chat[]>();
+  const sessionsByWorkspaceId = new Map<string, SshSession[]>();
+  const loopNameById = new Map(loops.map((loop) => [loop.config.id, loop.config.name]));
+
+  for (const loop of loops) {
+    const workspaceLoops = loopsByWorkspaceId.get(loop.config.workspaceId) ?? [];
+    workspaceLoops.push(loop);
+    loopsByWorkspaceId.set(loop.config.workspaceId, workspaceLoops);
   }
 
-  return Array.from(groups.values())
-    .sort((left, right) => {
-      if (left.order !== right.order) {
-        return left.order - right.order;
+  for (const chat of chats) {
+    const workspaceChats = chatsByWorkspaceId.get(chat.config.workspaceId) ?? [];
+    workspaceChats.push(chat);
+    chatsByWorkspaceId.set(chat.config.workspaceId, workspaceChats);
+  }
+
+  for (const session of sessions) {
+    const workspaceSessions = sessionsByWorkspaceId.get(session.config.workspaceId) ?? [];
+    workspaceSessions.push(session);
+    sessionsByWorkspaceId.set(session.config.workspaceId, workspaceSessions);
+  }
+
+  const workspaceNodes = workspaces.map((workspace) => {
+    const workspaceLoops = loopsByWorkspaceId.get(workspace.id) ?? [];
+    const workspaceChats = [...(chatsByWorkspaceId.get(workspace.id) ?? [])]
+      .sort((left, right) => right.config.updatedAt.localeCompare(left.config.updatedAt));
+    const workspaceSessions = sortByDesc(
+      sessionsByWorkspaceId.get(workspace.id) ?? [],
+      (session) => session.config.createdAt,
+    )
+      .map((session) => createWorkspaceSessionNode(session, loopNameById));
+    const workspaceSessionsByLoopId = new Map<string, SidebarWorkspaceSessionNode[]>();
+
+    for (const session of workspaceSessions) {
+      const loopId = session.session.config.loopId;
+      if (!loopId) {
+        continue;
       }
-      return left.title.localeCompare(right.title);
-    })
-    .map(({ key, title, items }) => ({
-      key,
-      title,
-      items: items.sort((left, right) => right.config.updatedAt.localeCompare(left.config.updatedAt)),
+      const loopSessions = workspaceSessionsByLoopId.get(loopId) ?? [];
+      loopSessions.push(session);
+      workspaceSessionsByLoopId.set(loopId, loopSessions);
+    }
+
+    const loopNodes = workspaceLoops.map((loop) => ({
+      loop,
+      title: loop.config.name,
+      badge: getLoopStatusLabel(loop),
+      badgeVariant: getLoopStatusBadgeVariant(
+        loop.state.status,
+        loop.state.planMode?.isPlanReady ?? false,
+      ),
+      sessions: workspaceSessionsByLoopId.get(loop.config.id) ?? [],
     }));
+    const activeLoopNodes = loopNodes.filter((loopNode) => !isTerminalSidebarLoop(loopNode.loop));
+    const historyLoopNodes = loopNodes.filter((loopNode) => isTerminalSidebarLoop(loopNode.loop));
+
+    return {
+      workspace,
+      key: workspace.id,
+      loops: activeLoopNodes,
+      historyLoops: historyLoopNodes,
+      chats: workspaceChats.map((chat) => ({
+        chat,
+        title: chat.config.name,
+        badge: chat.state.status,
+        badgeVariant: getChatStatusBadgeVariant(chat.state.status),
+      })),
+      sshSessions: workspaceSessions,
+      hasActivity: activeLoopNodes.length > 0 || workspaceChats.length > 0 || workspaceSessions.length > 0,
+    } satisfies SidebarWorkspaceNode;
+  });
+
+  return [
+    {
+      key: "active",
+      title: "Active",
+      workspaces: workspaceNodes.filter((workspaceNode) => workspaceNode.hasActivity),
+    },
+    {
+      key: "all",
+      title: "All",
+      workspaces: workspaceNodes,
+    },
+  ];
+}
+
+function createServerSessionNodeFromWorkspaceSession(
+  session: SshSession,
+  workspaceName: string,
+): SidebarServerSessionNode {
+  return {
+    id: session.config.id,
+    title: session.config.name,
+    subtitle: `${workspaceName} · ${getSshConnectionModeLabel(session.config.connectionMode)}`,
+    badge: getSshSessionStatusLabel(session.state.status),
+    badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
+    createdAt: session.config.createdAt,
+  };
+}
+
+function createServerSessionNodeFromStandaloneSession(session: SshServerSession): SidebarServerSessionNode {
+  return {
+    id: session.config.id,
+    title: session.config.name,
+    subtitle: getSshConnectionModeLabel(session.config.connectionMode),
+    badge: getSshSessionStatusLabel(session.state.status),
+    badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
+    createdAt: session.config.createdAt,
+  };
+}
+
+export function buildServerSidebarNodes({
+  servers,
+  sessionsByServerId,
+  workspaces,
+  workspaceSessions,
+}: {
+  servers: SshServer[];
+  sessionsByServerId: Record<string, SshServerSession[]>;
+  workspaces: Workspace[];
+  workspaceSessions: SshSession[];
+}): SidebarServerNode[] {
+  const workspacesById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
+  const workspaceSessionsByServerId = new Map<string, SidebarServerSessionNode[]>();
+
+  for (const session of workspaceSessions) {
+    const workspace = workspacesById.get(session.config.workspaceId);
+    const serverId = workspace?.sshServerId;
+    if (!serverId) {
+      continue;
+    }
+    const groupedSessions = workspaceSessionsByServerId.get(serverId) ?? [];
+    groupedSessions.push(
+      createServerSessionNodeFromWorkspaceSession(
+        session,
+        workspace?.name ?? "Unknown workspace",
+      ),
+    );
+    workspaceSessionsByServerId.set(serverId, groupedSessions);
+  }
+
+  return servers.map((server) => {
+    const standaloneSessions = (sessionsByServerId[server.config.id] ?? [])
+      .map(createServerSessionNodeFromStandaloneSession);
+    const workspaceBackedSessions = workspaceSessionsByServerId.get(server.config.id) ?? [];
+    return {
+      server,
+      key: server.config.id,
+      sessions: sortByDesc([
+        ...workspaceBackedSessions,
+        ...standaloneSessions,
+      ], (session) => session.createdAt),
+    };
+  });
 }
 
 export function isDesktopShellViewport(): boolean {
@@ -205,7 +432,7 @@ function getSidebarSectionStorage(): Storage | null {
   }
 }
 
-export function loadSidebarSectionCollapseState(): SidebarSectionCollapseStateLoadResult {
+export function loadSidebarSectionCollapseState(): SidebarCollapseStateLoadResult {
   const storage = getSidebarSectionStorage();
   if (!storage) {
     return {
@@ -229,12 +456,7 @@ export function loadSidebarSectionCollapseState(): SidebarSectionCollapseStateLo
     }
 
     const parsedState = parsed as Record<string, unknown>;
-    const sanitizedState = SIDEBAR_SECTION_IDS.reduce<SidebarSectionCollapseState>((state, sectionId) => {
-      if (typeof parsedState[sectionId] === "boolean") {
-        state[sectionId] = parsedState[sectionId] as boolean;
-      }
-      return state;
-    }, {});
+    const sanitizedState = normalizeSidebarCollapseState(parsedState);
     return {
       state: sanitizedState,
       invalidReason: null,
@@ -247,21 +469,19 @@ export function loadSidebarSectionCollapseState(): SidebarSectionCollapseStateLo
   }
 }
 
-export function saveSidebarSectionCollapseState(state: SidebarSectionCollapseState): void {
+export function saveSidebarSectionCollapseState(state: SidebarCollapseState): void {
   const storage = getSidebarSectionStorage();
   if (!storage) {
     return;
   }
 
-  const persistedState = SIDEBAR_SECTION_IDS.reduce<SidebarSectionCollapseState>((result, sectionId) => {
-    if (typeof state[sectionId] === "boolean") {
-      result[sectionId] = state[sectionId];
-    }
-    return result;
-  }, {});
-
   try {
-    storage.setItem(SIDEBAR_SECTION_STORAGE_KEY, JSON.stringify(persistedState));
+    const normalizedState = normalizeSidebarCollapseState(state);
+    if (Object.keys(normalizedState).length === 0) {
+      storage.removeItem(SIDEBAR_SECTION_STORAGE_KEY);
+      return;
+    }
+    storage.setItem(SIDEBAR_SECTION_STORAGE_KEY, JSON.stringify(normalizedState));
   } catch (error) {
     log.warn("Failed to persist sidebar section state", { error: String(error) });
   }

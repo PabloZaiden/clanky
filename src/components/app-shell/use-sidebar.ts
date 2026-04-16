@@ -2,9 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createLogger } from "../../lib/logger";
 import {
   type ShellRoute,
-  type SidebarSectionId,
-  type SidebarSectionCollapseState,
-  getWorkspaceGroupCollapseKey,
   isDesktopShellViewport,
   loadSidebarSectionCollapseState,
   saveSidebarSectionCollapseState,
@@ -19,20 +16,15 @@ export interface UseSidebarResult {
   navigateWithinShell: (route: ShellRoute) => void;
   openSidebar: () => void;
   hideSidebar: () => void;
-  isSectionCollapsed: (sectionId: SidebarSectionId) => boolean;
-  toggleSectionCollapsed: (sectionId: SidebarSectionId) => void;
-  toggleWorkspaceGroupCollapsed: (sectionId: SidebarSectionId, groupKey: string) => void;
-  collapsedWorkspaceGroups: Partial<Record<string, boolean>>;
+  isNodeCollapsed: (collapseKey: string) => boolean;
+  toggleNodeCollapsed: (collapseKey: string) => void;
 }
 
 export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) => void): UseSidebarResult {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const initialSidebarSectionState = useMemo(() => loadSidebarSectionCollapseState(), []);
-  const [collapsedSections, setCollapsedSections] = useState<SidebarSectionCollapseState>(
-    initialSidebarSectionState.state,
-  );
-  const [collapsedWorkspaceGroups, setCollapsedWorkspaceGroups] = useState<Partial<Record<string, boolean>>>({});
+  const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>(initialSidebarSectionState.state);
 
   const shellHeaderOffsetClassName = sidebarCollapsed
     ? "ml-14 sm:ml-16 lg:ml-[4.5rem]"
@@ -46,8 +38,8 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
   }, [initialSidebarSectionState.invalidReason]);
 
   useEffect(() => {
-    saveSidebarSectionCollapseState(collapsedSections);
-  }, [collapsedSections]);
+    saveSidebarSectionCollapseState(collapsedNodes);
+  }, [collapsedNodes]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -90,26 +82,27 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
     setSidebarOpen(false);
   };
 
-  function isSectionCollapsed(sectionId: SidebarSectionId): boolean {
-    return collapsedSections[sectionId] ?? false;
+  function isNodeCollapsed(collapseKey: string): boolean {
+    return collapsedNodes[collapseKey] ?? false;
   }
 
-  function toggleSectionCollapsed(sectionId: SidebarSectionId) {
-    setCollapsedSections((current) => ({
-      ...current,
-      [sectionId]: !(current[sectionId] ?? false),
-    }));
+  function toggleNodeCollapsed(collapseKey: string) {
+    setCollapsedNodes((current) => {
+      const nextCollapsed = !(current[collapseKey] ?? false);
+
+      if (!nextCollapsed) {
+        const { [collapseKey]: _removed, ...remaining } = current;
+        return remaining;
+      }
+
+      return {
+        ...current,
+        [collapseKey]: true,
+      };
+    });
   }
 
-  function toggleWorkspaceGroupCollapsed(sectionId: SidebarSectionId, groupKey: string) {
-    const collapseKey = getWorkspaceGroupCollapseKey(sectionId, groupKey);
-    setCollapsedWorkspaceGroups((current) => ({
-      ...current,
-      [collapseKey]: !(current[collapseKey] ?? false),
-    }));
-  }
-
-// Suppress unused warning — route may be used in the future for route-aware sidebar behavior.
+  // Suppress unused warning — route may be used in the future for route-aware sidebar behavior.
   return {
     sidebarOpen,
     sidebarCollapsed,
@@ -117,9 +110,7 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
     navigateWithinShell,
     openSidebar,
     hideSidebar,
-    isSectionCollapsed,
-    toggleSectionCollapsed,
-    toggleWorkspaceGroupCollapsed,
-    collapsedWorkspaceGroups,
+    isNodeCollapsed,
+    toggleNodeCollapsed,
   };
 }
