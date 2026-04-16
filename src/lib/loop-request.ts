@@ -10,7 +10,7 @@ export function toDraftLoopUpdateRequest(request: CreateLoopRequest): UpdateLoop
     prompt: request.prompt,
     model: request.model,
     cheapModel: request.cheapModel,
-    maxIterations: request.maxIterations ?? undefined,
+    maxIterations: request.maxIterations,
     maxConsecutiveErrors: request.maxConsecutiveErrors,
     activityTimeoutSeconds: request.activityTimeoutSeconds,
     stopPattern: request.stopPattern,

@@ -113,11 +113,11 @@ export function DraftLoopComposer({
 
   async function persistDraftChanges(request: CreateLoopRequest): Promise<boolean> {
     try {
-        const response = await appFetch(`/api/loops/${loop.config.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(toDraftLoopUpdateRequest(request)),
-        });
+      const response = await appFetch(`/api/loops/${loop.config.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(toDraftLoopUpdateRequest(request)),
+      });
 
       if (!response.ok) {
         const error = await response.json() as { message?: string };

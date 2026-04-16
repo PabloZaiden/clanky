@@ -980,6 +980,47 @@ describe("Loops CRUD API Integration", () => {
       expect(updateBody.state.status).toBe("draft");
     });
 
+    test("can clear a draft loop max-iteration limit via PUT", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Original prompt",
+          name: "Finite Draft Loop",
+          draft: true,
+          planMode: false,
+          model: testModel,
+          useWorktree: true,
+          maxIterations: 5,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const createBody = await createResponse.json();
+      const loopId = createBody.config.id;
+      expect(createBody.config.maxIterations).toBe(5);
+
+      const updateResponse = await fetch(`${baseUrl}/api/loops/${loopId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          maxIterations: null,
+        }),
+      });
+
+      expect(updateResponse.status).toBe(200);
+      const updateBody = await updateResponse.json();
+      expect(updateBody.config.maxIterations).toBeNull();
+      expect(updateBody.state.status).toBe("draft");
+
+      const getResponse = await fetch(`${baseUrl}/api/loops/${loopId}`);
+      expect(getResponse.status).toBe(200);
+      const getBody = await getResponse.json();
+      expect(getBody.config.maxIterations).toBeNull();
+    });
+
     test("cannot update non-draft loop via PUT", async () => {
       // Create a unique directory for this test to avoid conflicts
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "ralpher-put-test-"));

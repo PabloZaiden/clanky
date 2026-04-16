@@ -40,7 +40,9 @@ async function applyLoopUpdates(
     }
     if (body.directory !== undefined) updates.directory = body.directory;
     if (body.prompt !== undefined) updates.prompt = body.prompt;
-    if (body.maxIterations !== undefined) updates.maxIterations = body.maxIterations;
+    if (body.maxIterations !== undefined) {
+      updates.maxIterations = body.maxIterations ?? Infinity;
+    }
     if (body.maxConsecutiveErrors !== undefined) updates.maxConsecutiveErrors = body.maxConsecutiveErrors;
     if (body.activityTimeoutSeconds !== undefined) updates.activityTimeoutSeconds = body.activityTimeoutSeconds;
     if (body.stopPattern !== undefined) updates.stopPattern = body.stopPattern;
