@@ -239,7 +239,8 @@ function sortByDesc<T>(items: T[], getValue: (item: T) => string): T[] {
 }
 
 function isTerminalSidebarLoop(loop: Loop): boolean {
-  return loop.state.status !== "pushed" && (canJumpstart(loop.state.status) || isFinalState(loop.state.status));
+  const { status } = loop.state;
+  return status !== "completed" && status !== "pushed" && (canJumpstart(status) || isFinalState(status));
 }
 
 export function buildWorkspaceSidebarGroups({

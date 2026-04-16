@@ -15,6 +15,7 @@ export {
   canSendTerminalFollowUp,
   isAwaitingFeedback,
   isArchivedLoop,
+  isWorkspaceHistoryLoop,
   shouldShowInRecentActivity,
   getPlanningStatusLabel,
   getLoopStatusLabel,

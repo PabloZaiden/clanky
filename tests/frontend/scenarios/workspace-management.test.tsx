@@ -349,14 +349,20 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
     expect(getByRole("heading", { name: "Activity" })).toBeTruthy();
-    expect(getByText("No activity in this workspace yet.")).toBeTruthy();
+    expect(getByText("No active items in this workspace right now.")).toBeTruthy();
   });
 
-  test("workspace route shows header server info and a unified activity card", async () => {
+  test("workspace route splits active items from workspace history", async () => {
     setupBaseApi();
 
     const loop = createLoopWithStatus("running", {
       config: { id: "ws-loop-1", name: "In Workspace", directory: "/workspaces/existing", workspaceId: "ws-1" },
+    });
+    const mergedLoop = createLoopWithStatus("merged", {
+      config: { id: "ws-loop-2", name: "Merged Workspace Loop", directory: "/workspaces/existing", workspaceId: "ws-1" },
+    });
+    const deletedLoop = createLoopWithStatus("deleted", {
+      config: { id: "ws-loop-3", name: "Deleted Workspace Loop", directory: "/workspaces/existing", workspaceId: "ws-1" },
     });
     const chat: Chat = {
       config: {
@@ -420,7 +426,7 @@ describe("workspace management scenario", () => {
       },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/loops", () => [loop, mergedLoop, deletedLoop]);
     api.get("/api/chats", () => [chat]);
     api.get("/api/ssh-sessions", () => [session]);
     api.get("/api/ssh-servers", () => [server]);
@@ -442,7 +448,7 @@ describe("workspace management scenario", () => {
     const activityHeading = getByRole("heading", { name: "Activity" });
     const activityCard = activityHeading.closest("div.rounded-2xl") as HTMLElement | null;
     expect(activityCard).toBeTruthy();
-    expect(within(activityCard!).getByText("Loops, chats, and SSH sessions in this workspace.")).toBeTruthy();
+    expect(within(activityCard!).getByText("Active loops, chats, and SSH sessions in this workspace.")).toBeTruthy();
     expect(
       getAllByText((content) => content === "Build host" || content === "server.example.com").length
     ).toBeGreaterThan(0);
@@ -451,9 +457,19 @@ describe("workspace management scenario", () => {
     expect(queryByRole("heading", { name: "Loops" })).toBeNull();
     expect(queryByRole("heading", { name: "Chats" })).toBeNull();
     expect(queryByRole("heading", { name: "SSH sessions" })).toBeNull();
-    expect(getAllByText("In Workspace").length).toBeGreaterThan(0);
+    expect(within(activityCard!).getByText("In Workspace")).toBeTruthy();
+    expect(within(activityCard!).queryByText("Merged Workspace Loop")).toBeNull();
+    expect(within(activityCard!).queryByText("Deleted Workspace Loop")).toBeNull();
     expect(getAllByText("Workspace Chat").length).toBeGreaterThan(0);
     expect(getAllByText("Workspace SSH").length).toBeGreaterThan(0);
+
+    const historyHeading = getByRole("heading", { name: "History" });
+    const historyCard = historyHeading.closest("div.rounded-2xl") as HTMLElement | null;
+    expect(historyCard).toBeTruthy();
+    expect(within(historyCard!).getByText("Merged and deleted loops from this workspace.")).toBeTruthy();
+    expect(within(historyCard!).getByText("Merged Workspace Loop")).toBeTruthy();
+    expect(within(historyCard!).getByText("Deleted Workspace Loop")).toBeTruthy();
+    expect(within(historyCard!).queryByText("In Workspace")).toBeNull();
   });
 
   test("workspace route shows stdio in the header for local workspaces", async () => {
@@ -555,7 +571,7 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Activity" })).toBeTruthy();
     });
 
-    expect(getByText("Loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.")).toBeTruthy();
+    expect(getByText("Active loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.")).toBeTruthy();
     expect(getAllByText("Legacy SSH").length).toBeGreaterThan(0);
     expect(document.body.textContent?.includes("stay at 0")).toBe(false);
   });
@@ -593,8 +609,7 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
 
-    const activityCard = getByRole("heading", { name: "Activity" }).closest("div.rounded-2xl");
-    expect(activityCard?.className).toContain("min-w-0");
+    const activityCard = document.querySelector('[data-testid="workspace-activity-card"]');
 
     const loopRow = Array.from(activityCard?.querySelectorAll("button") ?? []).find((button) =>
       button.textContent?.includes(longLoopName)
