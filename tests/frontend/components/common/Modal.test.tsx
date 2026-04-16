@@ -31,6 +31,28 @@ describe("Modal", () => {
       await user.click(getByLabelText("Close"));
       expect(onClose).toHaveBeenCalledTimes(1);
     });
+
+    test("does not submit an enclosing form when the close button is clicked", async () => {
+      const onClose = mock(() => {});
+      const onSubmit = mock(() => {});
+      const { user, getByLabelText } = renderWithUser(
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <Modal isOpen={true} onClose={onClose} title="Title">
+            <p>Content</p>
+          </Modal>
+        </form>
+      );
+
+      await user.click(getByLabelText("Close"));
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
   });
 
   describe("escape key", () => {

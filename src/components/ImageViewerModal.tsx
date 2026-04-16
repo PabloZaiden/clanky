@@ -20,7 +20,7 @@ export function ImageViewerModal({ image, onClose }: ImageViewerModalProps) {
       title={image?.title ?? "Image preview"}
       size="xl"
       footer={(
-        <Button variant="ghost" onClick={onClose}>
+        <Button type="button" variant="ghost" onClick={onClose}>
           Close
         </Button>
       )}
