@@ -267,7 +267,7 @@ export function ShellSidebarNav({
                         <div className="space-y-1">
                           <SidebarTreeSection
                             title="Loops"
-                            count={workspaceNode.loops.length}
+                            count={workspaceNode.loops.length + workspaceNode.historyLoops.length}
                             actionLabel="New"
                             onAction={() => navigateWithinShell({
                               view: "compose",
@@ -277,25 +277,24 @@ export function ShellSidebarNav({
                              collapsed={isNodeCollapsed(loopsCollapseKey)}
                              onToggle={() => toggleNodeCollapsed(loopsCollapseKey)}
                              indentLevel={2}
-                           >
-                             {renderLoopNodes({
-                               loopNodes: workspaceNode.loops,
-                             })}
-                           </SidebarTreeSection>
-
-                          {workspaceNode.historyLoops.length > 0 && (
-                            <SidebarTreeSection
-                              title="History"
-                              count={workspaceNode.historyLoops.length}
-                              collapsed={isNodeCollapsed(historyCollapseKey)}
-                              onToggle={() => toggleNodeCollapsed(historyCollapseKey)}
-                              indentLevel={2}
-                            >
-                               {renderLoopNodes({
-                                 loopNodes: workspaceNode.historyLoops,
-                               })}
-                             </SidebarTreeSection>
-                          )}
+                          >
+                            {renderLoopNodes({
+                              loopNodes: workspaceNode.loops,
+                            })}
+                            {workspaceNode.historyLoops.length > 0 && (
+                              <SidebarTreeSection
+                                title="History"
+                                count={workspaceNode.historyLoops.length}
+                                collapsed={isNodeCollapsed(historyCollapseKey)}
+                                onToggle={() => toggleNodeCollapsed(historyCollapseKey)}
+                                indentLevel={3}
+                              >
+                                {renderLoopNodes({
+                                  loopNodes: workspaceNode.historyLoops,
+                                })}
+                              </SidebarTreeSection>
+                            )}
+                          </SidebarTreeSection>
 
                           <SidebarTreeSection
                             title="Chats"

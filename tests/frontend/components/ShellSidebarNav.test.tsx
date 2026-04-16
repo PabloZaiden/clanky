@@ -369,6 +369,56 @@ describe("ShellSidebarNav", () => {
     expect(getAllByText("Completed Loop")).toHaveLength(1);
   });
 
+  test("nests history inside loops so collapsing loops hides the whole history branch", async () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-1",
+        name: "Workspace 1",
+        directory: "/workspaces/workspace-1",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-running",
+            name: "Feature Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "running",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-completed",
+            name: "Completed Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+    const { getAllByText, queryByText, user } = renderWithUser(
+      <SidebarHarness workspaces={workspaces} workspaceGroups={workspaceGroups} />,
+    );
+
+    expect(getAllByText("History")).toHaveLength(1);
+    expect(getAllByText("Feature Loop")).toHaveLength(1);
+    expect(getAllByText("Completed Loop")).toHaveLength(1);
+
+    await user.click(getByTextButton(getAllByText("Loops")[0]!));
+
+    expect(queryByText("Feature Loop")).not.toBeInTheDocument();
+    expect(queryByText("History")).not.toBeInTheDocument();
+    expect(queryByText("Completed Loop")).not.toBeInTheDocument();
+  });
+
   test("routes workspaces with only history items into the inactive group", () => {
     const workspaces = [
       createWorkspace({
