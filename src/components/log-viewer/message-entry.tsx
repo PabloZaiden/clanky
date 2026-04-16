@@ -3,18 +3,37 @@ import type { MessageData } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { MarkdownRenderer } from "../MarkdownRenderer";
+import type { StreamingTransitionState } from "./types";
 import { formatTime } from "./utils";
 
 interface MessageEntryProps {
   data: MessageData;
   showTimestamp: boolean;
   spacingClass: string;
-  index: number;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
+  streamingTransition: StreamingTransitionState;
 }
 
-export function MessageEntry({ data: msg, showTimestamp, spacingClass, index, markdownEnabled, showRoleLabel }: MessageEntryProps) {
+function getStreamingTransitionClassName(streamingTransition: StreamingTransitionState): string {
+  switch (streamingTransition) {
+    case "enter":
+      return "animate-soft-stream-enter";
+    case "update":
+      return "animate-soft-stream-update";
+    default:
+      return "";
+  }
+}
+
+export function MessageEntry({
+  data: msg,
+  showTimestamp,
+  spacingClass,
+  markdownEnabled,
+  showRoleLabel,
+  streamingTransition,
+}: MessageEntryProps) {
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
   const [selectedAttachment, setSelectedAttachment] = useState<MessageImageAttachment | null>(null);
@@ -24,9 +43,16 @@ export function MessageEntry({ data: msg, showTimestamp, spacingClass, index, ma
     title: selectedAttachment.filename,
     description: `${Math.max(1, Math.round(selectedAttachment.size / 1024))} KB`,
   } : null;
+  const transitionClassName = getStreamingTransitionClassName(streamingTransition);
+  const contentKey = msg.role === "assistant"
+    ? `message-content-${msg.id}-${msg.content.length}`
+    : `message-content-${msg.id}`;
+  const transitionProps = streamingTransition
+    ? { "data-stream-transition": streamingTransition }
+    : {};
 
   return (
-    <div key={`msg-${msg.id}-${index}`} className={`group ${spacingClass}`}>
+    <div className={`group ${spacingClass}`}>
       {showTimestamp && (
         <time className="text-gray-500 text-xs mb-0.5 block" dateTime={msg.timestamp}>
           {formatTime(msg.timestamp)}
@@ -39,11 +65,19 @@ export function MessageEntry({ data: msg, showTimestamp, spacingClass, index, ma
           </div>
         )}
         {shouldRenderMarkdown ? (
-          <div className="rounded bg-neutral-800 p-2 sm:p-3">
+          <div
+            key={contentKey}
+            {...transitionProps}
+            className={`rounded bg-neutral-800 p-2 sm:p-3 ${transitionClassName}`}
+          >
             <MarkdownRenderer content={msg.content} className="text-xs" />
           </div>
         ) : (
-          <div className="whitespace-pre-wrap break-words">
+          <div
+            key={contentKey}
+            {...transitionProps}
+            className={`whitespace-pre-wrap break-words ${transitionClassName}`}
+          >
             {msg.content}
           </div>
         )}
