@@ -390,7 +390,7 @@ export function ShellSidebarNav({
                     title={serverNode.server.config.name}
                     subtitle={`${serverNode.server.config.username}@${serverNode.server.config.address}`}
                     badge={serverNode.sessions.length > 0 ? String(serverNode.sessions.length) : undefined}
-                    indentLevel={0}
+                    indentLevel={1}
                     collapsed={isNodeCollapsed(serverCollapseKey)}
                     onToggle={() => toggleNodeCollapsed(serverCollapseKey)}
                     onClick={(event) => handleSidebarItemClick(event, {
@@ -410,7 +410,7 @@ export function ShellSidebarNav({
                       })}
                       collapsed={isNodeCollapsed(sessionsCollapseKey)}
                       onToggle={() => toggleNodeCollapsed(sessionsCollapseKey)}
-                      indentLevel={1}
+                      indentLevel={2}
                     >
                       {serverNode.sessions.map((sessionNode) => (
                         <SidebarTreeItem
@@ -420,7 +420,7 @@ export function ShellSidebarNav({
                           subtitle={sessionNode.subtitle}
                           badge={sessionNode.badge}
                           badgeVariant={sessionNode.badgeVariant}
-                          indentLevel={2}
+                          indentLevel={3}
                           onClick={(event) => handleSidebarItemClick(event, {
                             view: "ssh",
                             sshSessionId: sessionNode.id,

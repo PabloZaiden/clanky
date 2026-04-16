@@ -263,8 +263,13 @@ describe("ShellSidebarNav", () => {
     expect(getByTextButton(getAllByText("Workspace Chat")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const serverRow = getTreeRowForText(getByText("Server 1"));
+    expect(serverRow.style.marginLeft).toBe("0.375rem");
     expect(serverRow.firstElementChild).toHaveClass("w-3");
     expect(getTreeToggleButton(getByText("Server 1"))).toHaveClass("-mx-1.5", "w-6");
+
+    const standaloneSessionRow = getTreeRowForText(getByText("Standalone Server Session"));
+    expect(standaloneSessionRow.style.marginLeft).toBe("1.125rem");
+    expect(standaloneSessionRow.firstElementChild?.tagName).toBe("BUTTON");
   });
 
   test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {
