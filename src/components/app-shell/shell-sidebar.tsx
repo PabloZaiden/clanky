@@ -164,18 +164,17 @@ export function SidebarTreeItem({
   return (
     <div className="flex items-stretch gap-1" style={getIndentStyle(indentLevel)}>
       {onToggle ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={collapsed === undefined ? undefined : !collapsed}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${title}`}
-          className={[
-            "mt-1 inline-flex h-8 shrink-0 items-center justify-center rounded-lg text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100",
-            TREE_ITEM_GUTTER_WIDTH_CLASS,
-          ].join(" ")}
-        >
-          {collapsed ? "\u25B6" : "\u25BC"}
-        </button>
+        <div className={`${TREE_ITEM_GUTTER_WIDTH_CLASS} shrink-0`}>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={collapsed === undefined ? undefined : !collapsed}
+            aria-label={`${collapsed ? "Expand" : "Collapse"} ${title}`}
+            className="mt-1 -mx-1.5 inline-flex h-8 w-6 items-center justify-center rounded-lg text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
+          >
+            {collapsed ? "\u25B6" : "\u25BC"}
+          </button>
+        </div>
       ) : (
         <span className={`${TREE_ITEM_GUTTER_WIDTH_CLASS} shrink-0`} aria-hidden="true" />
       )}

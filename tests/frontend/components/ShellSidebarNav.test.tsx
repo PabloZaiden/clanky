@@ -239,11 +239,12 @@ describe("ShellSidebarNav", () => {
   });
 
   test("uses compact indentation and gutter spacing for nested sidebar rows", () => {
-    const { getAllByText } = renderWithUser(<SidebarHarness />);
+    const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
 
     const workspaceRow = getTreeRowForText(getAllByText("Workspace 1")[0]!);
     expect(workspaceRow.style.marginLeft).toBe("0.375rem");
     expect(workspaceRow.firstElementChild).toHaveClass("w-3");
+    expect(getTreeToggleButton(getAllByText("Workspace 1")[0]!)).toHaveClass("-mx-1.5", "w-6");
     expect(getByTextButton(getAllByText("Workspace 1")[0]!)).toHaveClass("pl-0", "pr-3");
 
     const loopRow = getTreeRowForText(getAllByText("Feature Loop")[0]!);
@@ -261,6 +262,10 @@ describe("ShellSidebarNav", () => {
     expect(chatRow.firstElementChild).toHaveAttribute("aria-hidden", "true");
     expect(chatRow.firstElementChild).toHaveClass("w-3");
     expect(getByTextButton(getAllByText("Workspace Chat")[0]!)).toHaveClass("pl-0", "pr-3");
+
+    const serverRow = getTreeRowForText(getByText("Server 1"));
+    expect(serverRow.firstElementChild).toHaveClass("w-3");
+    expect(getTreeToggleButton(getByText("Server 1"))).toHaveClass("-mx-1.5", "w-6");
   });
 
   test("keeps compact row padding for subtitles, badges, history items, and active rows", () => {
@@ -456,4 +461,13 @@ function getTreeRowForText(node: HTMLElement): HTMLDivElement {
   const row = getByTextButton(node).parentElement;
   expect(row).not.toBeNull();
   return row as HTMLDivElement;
+}
+
+function getTreeToggleButton(node: HTMLElement): HTMLButtonElement {
+  const row = getTreeRowForText(node);
+  const wrapper = row.firstElementChild;
+  expect(wrapper).not.toBeNull();
+  const button = wrapper?.querySelector("button");
+  expect(button).not.toBeNull();
+  return button as HTMLButtonElement;
 }
