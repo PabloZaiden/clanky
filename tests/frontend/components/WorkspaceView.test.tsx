@@ -120,4 +120,35 @@ describe("WorkspaceView", () => {
     expect(within(historyCard).queryByText("Active Loop")).toBeNull();
     expect(within(historyCard).queryByText("Pushed Loop")).toBeNull();
   });
+
+  test("shows an active-items empty state when a workspace only has history loops", () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+    });
+    const mergedLoop = createLoopWithStatus("merged", {
+      config: { id: "loop-merged", name: "Merged Loop", workspaceId: workspace.id, directory: workspace.directory },
+    });
+
+    const { getByTestId, getByText } = renderWithUser(
+      <WorkspaceView
+        workspace={workspace}
+        relatedLoops={[mergedLoop]}
+        relatedChats={[]}
+        relatedSessions={[]}
+        registeredSshServers={[]}
+        onOpenSettings={() => {}}
+        onNavigate={() => {}}
+      />,
+    );
+
+    const activityCard = getByTestId("workspace-activity-card");
+    const historyCard = getByTestId("workspace-history-card");
+
+    expect(within(activityCard).getByText("No active items in this workspace right now.")).toBeTruthy();
+    expect(within(activityCard).queryByText("Merged Loop")).toBeNull();
+    expect(within(historyCard).getByText("Merged Loop")).toBeTruthy();
+    expect(getByText("History")).toBeTruthy();
+  });
 });

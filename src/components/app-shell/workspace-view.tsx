@@ -195,7 +195,7 @@ export function WorkspaceView({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-600 dark:text-gray-400">No activity in this workspace yet.</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">No active items in this workspace right now.</p>
           )}
         </div>
 

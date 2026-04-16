@@ -349,7 +349,7 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
     expect(getByRole("heading", { name: "Activity" })).toBeTruthy();
-    expect(getByText("No activity in this workspace yet.")).toBeTruthy();
+    expect(getByText("No active items in this workspace right now.")).toBeTruthy();
   });
 
   test("workspace route splits active items from workspace history", async () => {
