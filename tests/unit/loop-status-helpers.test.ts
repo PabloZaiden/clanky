@@ -14,6 +14,7 @@ import {
   isLoopActive,
   isLoopPlanReady,
   isLoopRunning,
+  isWorkspaceHistoryLoop,
   shouldShowInRecentActivity,
 } from "../../src/utils/loop-status";
 import type { Loop, LoopStatus } from "../../src/types/loop";
@@ -136,6 +137,10 @@ describe("status action helpers", () => {
       "waiting",
       "resolving_conflicts",
     ]);
+  });
+
+  test("only moves merged and deleted loops into workspace history", () => {
+    expectStatuses(isWorkspaceHistoryLoop, ["merged", "deleted"]);
   });
 });
 

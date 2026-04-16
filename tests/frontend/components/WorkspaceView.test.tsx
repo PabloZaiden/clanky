@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { renderWithUser, waitFor } from "../helpers/render";
-import { createWorkspace } from "../helpers/factories";
+import { renderWithUser, waitFor, within } from "../helpers/render";
+import { createLoopWithStatus, createWorkspace } from "../helpers/factories";
 
 import { WorkspaceView } from "@/components/app-shell/workspace-view";
 
@@ -74,5 +74,81 @@ describe("WorkspaceView", () => {
     await user.click(getByRole("button", { name: "Create items in workspace Frontend" }));
 
     expect(queryByRole("menuitem", { name: "Open in GitHub" })).toBeNull();
+  });
+
+  test("moves merged and deleted loops into the history card", () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+    });
+    const runningLoop = createLoopWithStatus("running", {
+      config: { id: "loop-running", name: "Active Loop", workspaceId: workspace.id, directory: workspace.directory },
+    });
+    const pushedLoop = createLoopWithStatus("pushed", {
+      config: { id: "loop-pushed", name: "Pushed Loop", workspaceId: workspace.id, directory: workspace.directory },
+    });
+    const mergedLoop = createLoopWithStatus("merged", {
+      config: { id: "loop-merged", name: "Merged Loop", workspaceId: workspace.id, directory: workspace.directory },
+    });
+    const deletedLoop = createLoopWithStatus("deleted", {
+      config: { id: "loop-deleted", name: "Deleted Loop", workspaceId: workspace.id, directory: workspace.directory },
+    });
+
+    const { getByTestId } = renderWithUser(
+      <WorkspaceView
+        workspace={workspace}
+        relatedLoops={[runningLoop, pushedLoop, mergedLoop, deletedLoop]}
+        relatedChats={[]}
+        relatedSessions={[]}
+        registeredSshServers={[]}
+        onOpenSettings={() => {}}
+        onNavigate={() => {}}
+      />,
+    );
+
+    const activityCard = getByTestId("workspace-activity-card");
+    const historyCard = getByTestId("workspace-history-card");
+
+    expect(within(activityCard).getByText("Active Loop")).toBeTruthy();
+    expect(within(activityCard).getByText("Pushed Loop")).toBeTruthy();
+    expect(within(activityCard).queryByText("Merged Loop")).toBeNull();
+    expect(within(activityCard).queryByText("Deleted Loop")).toBeNull();
+
+    expect(within(historyCard).getByText("Merged Loop")).toBeTruthy();
+    expect(within(historyCard).getByText("Deleted Loop")).toBeTruthy();
+    expect(within(historyCard).queryByText("Active Loop")).toBeNull();
+    expect(within(historyCard).queryByText("Pushed Loop")).toBeNull();
+  });
+
+  test("shows an active-items empty state when a workspace only has history loops", () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+    });
+    const mergedLoop = createLoopWithStatus("merged", {
+      config: { id: "loop-merged", name: "Merged Loop", workspaceId: workspace.id, directory: workspace.directory },
+    });
+
+    const { getByTestId, getByText } = renderWithUser(
+      <WorkspaceView
+        workspace={workspace}
+        relatedLoops={[mergedLoop]}
+        relatedChats={[]}
+        relatedSessions={[]}
+        registeredSshServers={[]}
+        onOpenSettings={() => {}}
+        onNavigate={() => {}}
+      />,
+    );
+
+    const activityCard = getByTestId("workspace-activity-card");
+    const historyCard = getByTestId("workspace-history-card");
+
+    expect(within(activityCard).getByText("No active items in this workspace right now.")).toBeTruthy();
+    expect(within(activityCard).queryByText("Merged Loop")).toBeNull();
+    expect(within(historyCard).getByText("Merged Loop")).toBeTruthy();
+    expect(getByText("History")).toBeTruthy();
   });
 });
