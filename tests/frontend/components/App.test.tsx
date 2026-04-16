@@ -791,6 +791,7 @@ describe("App shell", () => {
       expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
       expect(queryByText("Active")).toBeNull();
       expect(queryByText("All")).toBeNull();
+      expect(window.localStorage.getItem("ralpher.sidebarSectionCollapseState")).toBeNull();
     });
   });
 
@@ -820,7 +821,7 @@ describe("App shell", () => {
     });
   });
 
-  test("cleans stale drafts sidebar state from browser storage", async () => {
+  test("drops stale and expanded sidebar keys from browser storage", async () => {
     window.localStorage.setItem("ralpher.sidebarSectionCollapseState", JSON.stringify({
       workspaces: true,
       drafts: true,
@@ -836,8 +837,8 @@ describe("App shell", () => {
     await waitFor(() => {
       const persistedState = JSON.parse(window.localStorage.getItem("ralpher.sidebarSectionCollapseState") ?? "{}") as Record<string, boolean>;
       expect(persistedState["workspaces"]).toBe(true);
-      expect(persistedState["loops"]).toBe(false);
-      expect(persistedState["drafts"]).toBe(true);
+      expect("loops" in persistedState).toBe(false);
+      expect("drafts" in persistedState).toBe(false);
     });
   });
 

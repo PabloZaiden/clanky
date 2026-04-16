@@ -135,6 +135,22 @@ function buildSidebarCollapseKey(...parts: string[]): string {
   return parts.join(":");
 }
 
+function isRecognizedSidebarCollapseKey(key: string): boolean {
+  return key === "workspaces"
+    || key.startsWith("workspaces:")
+    || key === "ssh-servers"
+    || key.startsWith("ssh-servers:");
+}
+
+function normalizeSidebarCollapseState(state: Record<string, unknown>): SidebarCollapseState {
+  return Object.entries(state).reduce<SidebarCollapseState>((normalizedState, [key, value]) => {
+    if (value === true && isRecognizedSidebarCollapseKey(key)) {
+      normalizedState[key] = true;
+    }
+    return normalizedState;
+  }, {});
+}
+
 export function getSidebarSectionCollapseKey(sectionId: SidebarSectionId): string {
   return buildSidebarCollapseKey(sectionId);
 }
@@ -238,9 +254,16 @@ export function buildWorkspaceSidebarGroups({
   chats: Chat[];
   sessions: SshSession[];
 }): SidebarWorkspaceGroupNode[] {
+  const loopsByWorkspaceId = new Map<string, Loop[]>();
   const chatsByWorkspaceId = new Map<string, Chat[]>();
   const sessionsByWorkspaceId = new Map<string, SshSession[]>();
   const loopNameById = new Map(loops.map((loop) => [loop.config.id, loop.config.name]));
+
+  for (const loop of loops) {
+    const workspaceLoops = loopsByWorkspaceId.get(loop.config.workspaceId) ?? [];
+    workspaceLoops.push(loop);
+    loopsByWorkspaceId.set(loop.config.workspaceId, workspaceLoops);
+  }
 
   for (const chat of chats) {
     const workspaceChats = chatsByWorkspaceId.get(chat.config.workspaceId) ?? [];
@@ -255,7 +278,7 @@ export function buildWorkspaceSidebarGroups({
   }
 
   const workspaceNodes = workspaces.map((workspace) => {
-    const workspaceLoops = loops.filter((loop) => loop.config.workspaceId === workspace.id);
+    const workspaceLoops = loopsByWorkspaceId.get(workspace.id) ?? [];
     const workspaceChats = [...(chatsByWorkspaceId.get(workspace.id) ?? [])]
       .sort((left, right) => right.config.updatedAt.localeCompare(left.config.updatedAt));
     const workspaceSessions = sortByDesc(
@@ -433,12 +456,7 @@ export function loadSidebarSectionCollapseState(): SidebarCollapseStateLoadResul
     }
 
     const parsedState = parsed as Record<string, unknown>;
-    const sanitizedState = Object.entries(parsedState).reduce<SidebarCollapseState>((state, [key, value]) => {
-      if (typeof value === "boolean") {
-        state[key] = value;
-      }
-      return state;
-    }, {});
+    const sanitizedState = normalizeSidebarCollapseState(parsedState);
     return {
       state: sanitizedState,
       invalidReason: null,
@@ -458,7 +476,12 @@ export function saveSidebarSectionCollapseState(state: SidebarCollapseState): vo
   }
 
   try {
-    storage.setItem(SIDEBAR_SECTION_STORAGE_KEY, JSON.stringify(state));
+    const normalizedState = normalizeSidebarCollapseState(state);
+    if (Object.keys(normalizedState).length === 0) {
+      storage.removeItem(SIDEBAR_SECTION_STORAGE_KEY);
+      return;
+    }
+    storage.setItem(SIDEBAR_SECTION_STORAGE_KEY, JSON.stringify(normalizedState));
   } catch (error) {
     log.warn("Failed to persist sidebar section state", { error: String(error) });
   }

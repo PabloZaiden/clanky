@@ -87,10 +87,19 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
   }
 
   function toggleNodeCollapsed(collapseKey: string) {
-    setCollapsedNodes((current) => ({
-      ...current,
-      [collapseKey]: !(current[collapseKey] ?? false),
-    }));
+    setCollapsedNodes((current) => {
+      const nextCollapsed = !(current[collapseKey] ?? false);
+
+      if (!nextCollapsed) {
+        const { [collapseKey]: _removed, ...remaining } = current;
+        return remaining;
+      }
+
+      return {
+        ...current,
+        [collapseKey]: true,
+      };
+    });
   }
 
   // Suppress unused warning — route may be used in the future for route-aware sidebar behavior.

@@ -322,23 +322,29 @@ describe("ShellSidebarNav", () => {
   test("supports in-app navigation and modified-click new-tab navigation", () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
     const openSpy = mock(() => null);
+    const originalOpen = window.open;
     window.open = openSpy as typeof window.open;
-    const { getAllByText } = renderWithUser(
-      <SidebarHarness navigateWithinShell={navigateWithinShell} />,
-    );
 
-    const [loopLabel] = getAllByText("Feature Loop");
-    expect(loopLabel).toBeDefined();
-    const loopButton = getByTextButton(loopLabel!);
-    fireEvent.click(loopButton);
-    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "loop", loopId: "loop-1" });
+    try {
+      const { getAllByText } = renderWithUser(
+        <SidebarHarness navigateWithinShell={navigateWithinShell} />,
+      );
 
-    fireEvent.click(loopButton, { ctrlKey: true });
-    expect(openSpy).toHaveBeenCalledWith(
-      "http://localhost:3000/#/loop/loop-1",
-      "_blank",
-      "noopener,noreferrer",
-    );
+      const [loopLabel] = getAllByText("Feature Loop");
+      expect(loopLabel).toBeDefined();
+      const loopButton = getByTextButton(loopLabel!);
+      fireEvent.click(loopButton);
+      expect(navigateWithinShell).toHaveBeenCalledWith({ view: "loop", loopId: "loop-1" });
+
+      fireEvent.click(loopButton, { ctrlKey: true });
+      expect(openSpy).toHaveBeenCalledWith(
+        "http://localhost:3000/#/loop/loop-1",
+        "_blank",
+        "noopener,noreferrer",
+      );
+    } finally {
+      window.open = originalOpen;
+    }
   });
 });
 
