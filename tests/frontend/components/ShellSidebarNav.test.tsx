@@ -277,8 +277,70 @@ describe("ShellSidebarNav", () => {
   });
 
   test("keeps compact row padding for subtitles, badges, history items, and active rows", () => {
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [
+        createWorkspace({
+          id: "workspace-1",
+          name: "Workspace 1",
+          directory: "/workspaces/workspace-1",
+          sshServerId: "server-1",
+        }),
+        createWorkspace({
+          id: "workspace-2",
+          name: "Workspace 2",
+          directory: "/workspaces/workspace-2",
+        }),
+      ],
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-3",
+            name: "Completed Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+        createLoop({
+          config: {
+            id: "loop-4",
+            name: "Merged Loop",
+            workspaceId: "workspace-1",
+          },
+          state: {
+            status: "merged",
+          },
+        }),
+      ],
+      chats: [
+        createChat({
+          config: {
+            id: "chat-1",
+            name: "Workspace Chat",
+            workspaceId: "workspace-1",
+          },
+        }),
+      ],
+      sessions: [
+        createSshSession({
+          config: {
+            id: "workspace-session-2",
+            name: "Workspace SSH",
+            workspaceId: "workspace-1",
+            createdAt: "2026-04-16T11:30:00.000Z",
+          },
+          state: {
+            status: "ready",
+          },
+        }),
+      ],
+    });
     const { getAllByText, getByText } = renderWithUser(
-      <SidebarHarness route={{ view: "workspace", workspaceId: "workspace-1" }} />,
+      <SidebarHarness
+        route={{ view: "workspace", workspaceId: "workspace-1" }}
+        workspaceGroups={workspaceGroups}
+      />,
     );
 
     const workspaceButton = getByTextButton(getAllByText("Workspace 1")[0]!);
@@ -286,7 +348,7 @@ describe("ShellSidebarNav", () => {
     expect(workspaceButton).toHaveClass("border-gray-900", "bg-gray-900", "text-white");
     expect(getByTextButton(getAllByText("/workspaces/workspace-1")[0]!)).toBe(workspaceButton);
 
-    const historyLoopButton = getByTextButton(getAllByText("Completed Loop")[0]!);
+    const historyLoopButton = getByTextButton(getAllByText("Merged Loop")[0]!);
     expect(historyLoopButton).toHaveClass("pl-0", "pr-3");
 
     const standaloneServerButton = getByTextButton(getByText("Server 1"));
@@ -302,7 +364,7 @@ describe("ShellSidebarNav", () => {
     expect(queryByText("1")).toBeNull();
   });
 
-  test("keeps pushed loops in regular workspace groups while routing merged and terminal loops to history", () => {
+  test("keeps pushed and completed loops in regular workspace groups while routing archived terminal loops to history", () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-1",
@@ -361,8 +423,12 @@ describe("ShellSidebarNav", () => {
       .find((group) => group.key === "active")
       ?.workspaces.find((workspaceNode) => workspaceNode.workspace.id === "workspace-1");
 
-    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual(["Feature Loop", "Pushed Loop"]);
-    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop", "Completed Loop"]);
+    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual([
+      "Feature Loop",
+      "Pushed Loop",
+      "Completed Loop",
+    ]);
+    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop"]);
 
     const { getAllByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
 
@@ -395,12 +461,12 @@ describe("ShellSidebarNav", () => {
         }),
         createLoop({
           config: {
-            id: "loop-completed",
-            name: "Completed Loop",
+            id: "loop-merged",
+            name: "Merged Loop",
             workspaceId: "workspace-1",
           },
           state: {
-            status: "completed",
+            status: "merged",
           },
         }),
       ],
@@ -413,13 +479,13 @@ describe("ShellSidebarNav", () => {
 
     expect(getAllByText("History")).toHaveLength(1);
     expect(getAllByText("Feature Loop")).toHaveLength(1);
-    expect(getAllByText("Completed Loop")).toHaveLength(1);
+    expect(getAllByText("Merged Loop")).toHaveLength(1);
 
     await user.click(getByTextButton(getAllByText("Loops")[0]!));
 
     expect(queryByText("Feature Loop")).not.toBeInTheDocument();
     expect(queryByText("History")).not.toBeInTheDocument();
-    expect(queryByText("Completed Loop")).not.toBeInTheDocument();
+    expect(queryByText("Merged Loop")).not.toBeInTheDocument();
   });
 
   test("routes workspaces with only history items into the inactive group", () => {
@@ -436,11 +502,11 @@ describe("ShellSidebarNav", () => {
         createLoop({
           config: {
             id: "loop-history",
-            name: "Completed Loop",
+            name: "Merged Loop",
             workspaceId: "workspace-history",
           },
           state: {
-            status: "completed",
+            status: "merged",
           },
         }),
       ],
@@ -451,6 +517,37 @@ describe("ShellSidebarNav", () => {
     expect(workspaceGroups.find((group) => group.key === "active")?.workspaces).toHaveLength(0);
     expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces.map((node) => node.workspace.name))
       .toEqual(["History Workspace"]);
+  });
+
+  test("keeps workspaces with only completed loops in the active group", () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-completed",
+        name: "Completed Workspace",
+        directory: "/workspaces/completed",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-completed",
+            name: "Completed Loop",
+            workspaceId: "workspace-completed",
+          },
+          state: {
+            status: "completed",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+
+    expect(workspaceGroups.find((group) => group.key === "active")?.workspaces.map((node) => node.workspace.name))
+      .toEqual(["Completed Workspace"]);
+    expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces).toHaveLength(0);
   });
 
   test("collapses groups and routes scoped new actions", async () => {
