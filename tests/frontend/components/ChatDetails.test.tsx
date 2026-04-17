@@ -1145,6 +1145,9 @@ describe("ChatDetails", () => {
     await waitFor(() => {
       expect(getByRole("button", { name: "Exit focus mode" })).toBeTruthy();
     });
+
+    const focusModeActionsRow = getByRole("button", { name: "Exit focus mode" }).parentElement;
+    expect(focusModeActionsRow?.className).toContain("justify-end");
     expect(queryByText("Repo pairing")).toBeNull();
   });
 
@@ -1202,8 +1205,12 @@ describe("ChatDetails", () => {
     const branchMetadata = getByText(longChat.state.worktree?.workingBranch ?? "");
     expect(branchMetadata.className).toContain("truncate");
 
-    expect(getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
+    const focusButton = getByRole("button", { name: "Enter focus mode" });
+    const headerActionRow = focusButton.parentElement;
+
+    expect(focusButton).toBeTruthy();
     expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    expect(headerActionRow?.className).toContain("justify-end");
     expect(queryByRole("button", { name: "Spawn loop" })).toBeNull();
     expect(queryByRole("button", { name: "Delete chat" })).toBeNull();
     expect(queryByRole("button", { name: "Code explorer" })).toBeNull();

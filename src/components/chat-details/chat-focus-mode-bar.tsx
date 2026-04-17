@@ -24,7 +24,7 @@ export function ChatFocusModeBar({
       ].join(" ").trim()}
     >
       <div
-        className="hide-scrollbar flex items-center gap-1 overflow-x-auto px-1.5 py-1.5"
+        className="hide-scrollbar flex items-center justify-end gap-1 overflow-x-auto px-1.5 py-1.5"
         style={{ WebkitOverflowScrolling: "touch" }}
       >
         <Button
