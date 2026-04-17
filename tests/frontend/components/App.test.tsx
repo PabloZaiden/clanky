@@ -6,6 +6,7 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor, act, within } from "../helpers/render";
 import { createLoop, createLoopWithStatus, createSshSession, createWorkspace } from "../helpers/factories";
+import { expectHamburgerIcon } from "../helpers/icon-assertions";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -532,9 +533,11 @@ describe("App shell", () => {
     });
 
     const settingsButton = getByRole("button", { name: "Open workspace settings" });
+    const createItemsButton = getByRole("button", { name: "Create items in workspace Frontend" });
     expect(settingsButton.getAttribute("title")).toBe("Workspace Settings");
     expect(settingsButton.textContent?.trim() ?? "").toBe("");
     expect(settingsButton.querySelector("svg")).toBeTruthy();
+    expectHamburgerIcon(createItemsButton);
 
     await user.click(settingsButton);
 

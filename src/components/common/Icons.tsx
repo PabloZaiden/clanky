@@ -94,6 +94,27 @@ export function ListIcon({ className = "", size = "h-4 w-4" }: IconProps) {
 }
 
 /**
+ * Hamburger icon for compact action menus.
+ */
+export function HamburgerIcon({ className = "", size = "h-5 w-5" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4 7h16M4 12h16M4 17h16"
+      />
+    </svg>
+  );
+}
+
+/**
  * Gear/settings icon for app settings.
  */
 export function GearIcon({ className = "", size = "h-4 w-4" }: IconProps) {
