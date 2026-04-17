@@ -1207,7 +1207,7 @@ describe("ChatDetails", () => {
     expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
     expect(headerActionRow?.className).toContain("justify-end");
     expect(queryByRole("button", { name: "Enter focus mode" })).toBeNull();
-    expect(queryByRole("button", { name: "Spawn loop" })).toBeNull();
+    expect(queryByRole("button", { name: /spawn loop/i })).toBeNull();
     expect(queryByRole("button", { name: "Delete chat" })).toBeNull();
     expect(queryByRole("button", { name: "Code explorer" })).toBeNull();
     expect(queryByRole("button", { name: "Rename" })).toBeNull();
