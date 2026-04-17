@@ -1,10 +1,7 @@
 import { useEffect, useRef, useMemo, memo } from "react";
-import type { ConversationViewerProps, EntryBase } from "./types";
+import type { ConversationViewerProps, EntryBase, DisplayEntry } from "./types";
 import {
   annotateDisplayEntries,
-  getEntryRenderKey,
-  getStreamingEntryText,
-  getStreamingTextSegments,
   isReasoningLogEntry,
   isResponseLogEntry,
 } from "./utils";
@@ -31,8 +28,6 @@ export const ConversationViewer = memo(function ConversationViewer({
   activeStateMessage = "Working...",
 }: ConversationViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const hasSeenInitialEntriesRef = useRef(false);
-  const previousStreamingTextRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (autoScroll && containerRef.current) {
@@ -123,33 +118,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
   const isEmpty = entries.length === 0;
-  const displayEntries = useMemo(() => {
-    const canAnimateStreamingEntries = hasSeenInitialEntriesRef.current;
-    return entries.map((entry) => ({
-      ...entry,
-      streamingText: getStreamingTextSegments(
-        entry,
-        previousStreamingTextRef.current,
-        canAnimateStreamingEntries,
-      ),
-    }));
-  }, [entries]);
-
-  useEffect(() => {
-    const nextStreamingText = new Map<string, string>();
-
-    entries.forEach((entry) => {
-      const streamingText = getStreamingEntryText(entry);
-      if (typeof streamingText === "string") {
-        nextStreamingText.set(getEntryRenderKey(entry), streamingText);
-      }
-    });
-
-    previousStreamingTextRef.current = nextStreamingText;
-    if (entries.length > 0) {
-      hasSeenInitialEntriesRef.current = true;
-    }
-  }, [entries]);
+  const displayEntries = useMemo<DisplayEntry[]>(() => entries, [entries]);
 
   return (
     <div
@@ -186,7 +155,6 @@ export const ConversationViewer = memo(function ConversationViewer({
                   spacingClass={spacingClass}
                   markdownEnabled={markdownEnabled}
                   showRoleLabel={showMessageRoles}
-                  streamingText={entry.streamingText}
                 />
               );
             } else if (entry.type === "tool") {
@@ -208,7 +176,6 @@ export const ConversationViewer = memo(function ConversationViewer({
                   showGroupHeader={entry.showGroupHeader}
                   spacingClass={spacingClass}
                   markdownEnabled={markdownEnabled}
-                  streamingText={entry.streamingText}
                 />
               );
             }

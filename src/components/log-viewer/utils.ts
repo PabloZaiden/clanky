@@ -3,7 +3,6 @@ import type {
   EntryBase,
   DisplayEntry,
   LogEntry,
-  StreamingTextSegments,
 } from "./types";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
@@ -67,21 +66,6 @@ export function getEntryGroupKey(entry: EntryBase): string {
   }
 }
 
-/**
- * Get the stable render key for an entry so update detection can survive
- * insertions elsewhere in the transcript without forcing remounts.
- */
-export function getEntryRenderKey(entry: EntryBase): string {
-  switch (entry.type) {
-    case "message":
-      return `message|${entry.data.id}`;
-    case "tool":
-      return `tool|${entry.data.id}`;
-    case "log":
-      return `log|${entry.data.id}`;
-  }
-}
-
 export function isReasoningLogEntry(logEntry: LogEntry): boolean {
   const logKind = logEntry.details?.["logKind"] as string | undefined;
   return logKind === "reasoning" || (!logKind && logEntry.message === "AI reasoning...");
@@ -90,80 +74,6 @@ export function isReasoningLogEntry(logEntry: LogEntry): boolean {
 export function isResponseLogEntry(logEntry: LogEntry): boolean {
   const logKind = logEntry.details?.["logKind"] as string | undefined;
   return logKind === "response" || (!logKind && logEntry.message === "AI generating response...");
-}
-
-export function isStreamingLogEntry(logEntry: LogEntry): boolean {
-  return isResponseLogEntry(logEntry) || isReasoningLogEntry(logEntry);
-}
-
-/**
- * Returns the streaming text payload for entries that should receive the
- * left-to-right suffix reveal treatment. Non-streaming entries return null.
- */
-export function getStreamingEntryText(entry: EntryBase): string | null {
-  if (entry.type === "message") {
-    return entry.data.role === "assistant" ? entry.data.content : null;
-  }
-
-  if (entry.type !== "log") {
-    return null;
-  }
-
-  if (!isStreamingLogEntry(entry.data)) {
-    return null;
-  }
-
-  const responseContent = entry.data.details?.["responseContent"];
-  return typeof responseContent === "string" && responseContent.length > 0
-    ? responseContent
-    : null;
-}
-
-export function getStreamingTextSegments(
-  entry: EntryBase,
-  previousStreamingText: Map<string, string>,
-  canAnimate: boolean,
-): StreamingTextSegments | null {
-  const nextText = getStreamingEntryText(entry);
-  if (nextText === null) {
-    return null;
-  }
-
-  if (!canAnimate) {
-    return {
-      stablePrefix: nextText,
-      animatedSuffix: "",
-      transition: null,
-      animationKey: null,
-    };
-  }
-
-  const renderKey = getEntryRenderKey(entry);
-  const previousText = previousStreamingText.get(renderKey);
-  if (typeof previousText !== "string") {
-    return {
-      stablePrefix: "",
-      animatedSuffix: nextText,
-      transition: "enter",
-      animationKey: `${renderKey}:enter:${nextText.length}`,
-    };
-  }
-
-  if (nextText.length > previousText.length && nextText.startsWith(previousText)) {
-    return {
-      stablePrefix: previousText,
-      animatedSuffix: nextText.slice(previousText.length),
-      transition: "update",
-      animationKey: `${renderKey}:update:${previousText.length}:${nextText.length}`,
-    };
-  }
-
-  return {
-    stablePrefix: nextText,
-    animatedSuffix: "",
-    transition: null,
-    animationKey: null,
-  };
 }
 
 /**
@@ -182,6 +92,5 @@ export function annotateDisplayEntries(sorted: EntryBase[]): DisplayEntry[] {
     ...entry,
     showTimestamp: i === 0 || minuteBuckets[i] !== minuteBuckets[i - 1],
     showGroupHeader: i === 0 || keys[i] !== keys[i - 1],
-    streamingText: null,
   }));
 }
