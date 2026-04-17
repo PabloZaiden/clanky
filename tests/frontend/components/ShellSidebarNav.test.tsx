@@ -276,7 +276,7 @@ describe("ShellSidebarNav", () => {
     expect(queryAllByText("Expand Loop With SSH")).toHaveLength(0);
   });
 
-  test("keeps compact row padding for subtitles, badges, history items, and active rows", () => {
+  test("keeps compact row padding for inactive rows while adding a slight inset to active rows", () => {
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces: [
         createWorkspace({
@@ -344,7 +344,7 @@ describe("ShellSidebarNav", () => {
     );
 
     const workspaceButton = getByTextButton(getAllByText("Workspace 1")[0]!);
-    expect(workspaceButton).toHaveClass("pl-0", "pr-3");
+    expect(workspaceButton).toHaveClass("pl-2", "pr-3");
     expect(workspaceButton).toHaveClass("border-gray-900", "bg-gray-900", "text-white");
     expect(getByTextButton(getAllByText("/workspaces/workspace-1")[0]!)).toBe(workspaceButton);
 
@@ -354,6 +354,16 @@ describe("ShellSidebarNav", () => {
     const standaloneServerButton = getByTextButton(getByText("Server 1"));
     expect(standaloneServerButton).toHaveClass("pl-0", "pr-3");
     expect(getByTextButton(getByText("ubuntu@server.example.com"))).toBe(standaloneServerButton);
+  });
+
+  test("applies the same active inset padding to selected standalone server rows", () => {
+    const { getByText } = renderWithUser(
+      <SidebarHarness route={{ view: "ssh-server", serverId: "server-1" }} />,
+    );
+
+    const standaloneServerButton = getByTextButton(getByText("Server 1"));
+    expect(standaloneServerButton).toHaveClass("pl-2", "pr-3");
+    expect(standaloneServerButton).toHaveClass("border-gray-900", "bg-gray-900");
   });
 
   test("does not render sidebar count pills for sections or server rows", () => {
