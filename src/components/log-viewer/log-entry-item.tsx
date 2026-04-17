@@ -2,6 +2,7 @@ import { memo, useCallback } from "react";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import { LazyDetails } from "./lazy-details";
 import type { LogEntry, StreamingTransitionState } from "./types";
+import { useStreamingTransitionClass } from "./use-streaming-transition";
 import { formatTime, getLogLevelColor, isReasoningLogEntry, isStreamingLogEntry } from "./utils";
 
 interface LogEntryItemProps {
@@ -55,14 +56,10 @@ export const LogEntryItem = memo(function LogEntryItem({
   const isStreamingTransitionEntry = isStreamingLogEntry(log);
   const hidesTypedStreamingLabel = logKind === "response" || logKind === "reasoning";
   const showMessageLabel = showGroupHeader && !hidesTypedStreamingLabel;
-  const transitionClassName = streamingTransition === "enter"
-    ? "animate-soft-stream-enter"
-    : streamingTransition === "update"
-      ? "animate-soft-stream-update"
-      : "";
-  const responseContentKey = isStreamingTransitionEntry && hasResponseContent
+  const transitionToken = isStreamingTransitionEntry && hasResponseContent
     ? `log-content-${log.id}-${(responseContent as string).length}`
-    : `log-content-${log.id}`;
+    : null;
+  const transitionClassName = useStreamingTransitionClass(streamingTransition, transitionToken);
   const transitionProps = streamingTransition
     ? { "data-stream-transition": streamingTransition }
     : {};
@@ -82,7 +79,6 @@ export const LogEntryItem = memo(function LogEntryItem({
         {hasResponseContent && (
           markdownEnabled ? (
             <div
-              key={responseContentKey}
               {...transitionProps}
               className={`mt-2 rounded bg-neutral-800 p-2 sm:p-3 ${isReasoning ? "italic" : ""} ${transitionClassName}`}
             >
@@ -90,7 +86,6 @@ export const LogEntryItem = memo(function LogEntryItem({
             </div>
           ) : (
             <div
-              key={responseContentKey}
               {...transitionProps}
               className={`mt-2 rounded bg-neutral-800 p-2 text-xs leading-relaxed whitespace-pre-wrap break-words sm:p-3 ${isReasoning ? "text-gray-400 italic" : "text-gray-200"} ${transitionClassName}`}
             >
