@@ -5,6 +5,7 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createLoop } from "../helpers/factories";
+import { expectHamburgerIcon } from "../helpers/icon-assertions";
 import { mockComposerSoftWrap } from "../helpers/composer-measurement";
 
 const api = createMockApi();
@@ -85,6 +86,15 @@ afterEach(() => {
 });
 
 describe("ChatDetails", () => {
+  test("renders a hamburger icon for the chat header action menu", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByRole } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    const actionsButton = await waitFor(() => getByRole("button", { name: "Chat actions" }));
+    expectHamburgerIcon(actionsButton);
+  });
+
   test("renders the transcript and sends a new message", async () => {
     const initialChat = createChat();
     const updatedChat = createChat({
