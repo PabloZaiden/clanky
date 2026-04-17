@@ -498,7 +498,7 @@ describe("ShellSidebarNav", () => {
     expect(queryByText("Merged Loop")).not.toBeInTheDocument();
   });
 
-  test("routes workspaces with only history items into the inactive group", () => {
+  test("keeps workspaces with only history items in the active group", () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-history",
@@ -524,9 +524,45 @@ describe("ShellSidebarNav", () => {
       sessions: [],
     });
 
-    expect(workspaceGroups.find((group) => group.key === "active")?.workspaces).toHaveLength(0);
-    expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces.map((node) => node.workspace.name))
+    expect(workspaceGroups.find((group) => group.key === "active")?.workspaces.map((node) => node.workspace.name))
       .toEqual(["History Workspace"]);
+    expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces).toHaveLength(0);
+  });
+
+  test("renders history-only workspaces under active with the nested history branch", () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-history",
+        name: "History Workspace",
+        directory: "/workspaces/history",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-history",
+            name: "Merged Loop",
+            workspaceId: "workspace-history",
+          },
+          state: {
+            status: "merged",
+          },
+        }),
+      ],
+      chats: [],
+      sessions: [],
+    });
+    const { getAllByText, queryByText } = renderWithUser(
+      <SidebarHarness workspaceGroups={workspaceGroups} />,
+    );
+
+    expect(getAllByText("Active")).toHaveLength(1);
+    expect(queryByText("Inactive")).not.toBeInTheDocument();
+    expect(getAllByText("History Workspace")).toHaveLength(1);
+    expect(getAllByText("History")).toHaveLength(1);
+    expect(getAllByText("Merged Loop")).toHaveLength(1);
   });
 
   test("keeps workspaces with only completed loops in the active group", () => {

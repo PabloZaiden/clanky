@@ -310,7 +310,7 @@ export function buildWorkspaceSidebarGroups({
         badgeVariant: getChatStatusBadgeVariant(chat.state.status),
       })),
       sshSessions: workspaceSessions,
-      hasActivity: activeLoopNodes.length > 0 || workspaceChats.length > 0 || workspaceSessions.length > 0,
+      hasActivity: loopNodes.length > 0 || workspaceChats.length > 0 || workspaceSessions.length > 0,
     } satisfies SidebarWorkspaceNode;
   });
 
