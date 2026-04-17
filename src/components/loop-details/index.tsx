@@ -144,20 +144,30 @@ export function LoopDetails({
       {!isLogFocusActive && (
         <header className="bg-white dark:bg-neutral-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 safe-area-top">
           <div className="px-4 sm:px-6 lg:px-8 py-2">
-            <div className={[(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "flex min-h-14 flex-wrap items-center gap-3"].join(" ")}>
+            <div
+              data-testid="loop-header-primary-row"
+              className={[(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "flex min-h-14 items-center gap-2"].join(" ")}
+            >
               {showBackButton && onBack && <Button variant="ghost" size="sm" onClick={onBack}>← Back</Button>}
-              <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate">{config.name}</h1>
-              <button
-                onClick={() => actions.setRenameModal(true)}
-                className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-neutral-700"
-                aria-label={`Rename ${labels.singular}`} title={`Rename ${labels.singular}`}
-              >
-                <EditIcon />
-              </button>
-              <StatusBadge variant={isPlanning ? (isPlanReady ? "plan_ready" : "planning") : getStatusBadgeVariant(state.status)} size="sm">
-                {isPlanning ? getPlanningStatusLabel(isPlanReady) : getStatusLabel(state.status, state.syncState)}
-              </StatusBadge>
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate hidden sm:inline">{config.directory}</span>
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-gray-900 dark:text-gray-100">{config.name}</h1>
+                <button
+                  onClick={() => actions.setRenameModal(true)}
+                  className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-neutral-700"
+                  aria-label={`Rename ${labels.singular}`} title={`Rename ${labels.singular}`}
+                >
+                  <EditIcon />
+                </button>
+                <StatusBadge variant={isPlanning ? (isPlanReady ? "plan_ready" : "planning") : getStatusBadgeVariant(state.status)} size="sm" className="shrink-0">
+                  {isPlanning ? getPlanningStatusLabel(isPlanReady) : getStatusLabel(state.status, state.syncState)}
+                </StatusBadge>
+              </div>
+            </div>
+            <div
+              data-testid="loop-header-directory"
+              className={[(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "mt-1 hidden min-w-0 sm:block"].join(" ")}
+            >
+              <span className="block truncate text-xs text-gray-500 dark:text-gray-400 font-mono">{config.directory}</span>
             </div>
           </div>
         </header>

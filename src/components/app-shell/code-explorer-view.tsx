@@ -88,7 +88,7 @@ export function CodeExplorerView({
         }
       }}
       aria-label="Select code explorer content"
-      className="min-w-0 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 sm:w-[18rem] lg:w-[20rem] dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
+      className="h-9 min-w-0 w-full max-w-[12rem] rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 sm:h-10 sm:max-w-none sm:w-[18rem] lg:w-[20rem] dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
     >
       <option value="">Select code explorer content</option>
       {options.map((option) => (
