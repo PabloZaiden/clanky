@@ -172,9 +172,14 @@ describe("draft workflow scenario", () => {
 
   test("save as draft from the shell create loop form", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    let loops = [] as ReturnType<typeof draftLoop>[];
+    api.get("/api/loops", () => loops);
     api.get("/api/workspaces", () => [WORKSPACE]);
-    api.post("/api/loops", () => draftLoop("new-draft", "New Draft"));
+    api.post("/api/loops", () => {
+      const loop = draftLoop("new-draft", "New Draft");
+      loops = [loop];
+      return loop;
+    });
     api.put("/api/preferences/last-model", () => ({ success: true }));
     api.put("/api/preferences/last-directory", () => ({ success: true }));
 
@@ -205,6 +210,8 @@ describe("draft workflow scenario", () => {
       const body = calls[0]!.body as Record<string, unknown>;
       expect(body["draft"]).toBe(true);
       expect(body["name"]).toBe("New Draft");
+      expect(window.location.hash).toBe("#/loop/new-draft");
+      expect(getByRole("heading", { name: "Edit New Draft" })).toBeTruthy();
     });
   });
 });

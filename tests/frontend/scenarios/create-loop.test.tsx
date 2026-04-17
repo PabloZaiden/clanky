@@ -7,7 +7,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { act, renderWithUser, waitFor } from "../helpers/render";
+import { renderWithUser, waitFor } from "../helpers/render";
 import {
   createLoop,
   createLoopWithStatus,
@@ -98,7 +98,7 @@ afterEach(() => {
 });
 
 describe("create loop scenario", () => {
-  test("full create loop flow: fill form and submit", async () => {
+  test("full create loop flow: fill form and return to the workspace", async () => {
     const createdLoop = createLoopWithStatus("running", {
       config: {
         id: "new-loop-1",
@@ -128,11 +128,11 @@ describe("create loop scenario", () => {
     await user.click(submitBtn!);
 
     await waitFor(() => {
-      expect(window.location.hash).toBe("#/loop/new-loop-1");
+      expect(window.location.hash).toBe("#/workspace/ws-1");
     });
   });
 
-  test("create flow auto-generates a missing title before creating the loop", async () => {
+  test("create flow auto-generates a missing title before creating the loop and returns to the workspace", async () => {
     const createdLoop = createLoopWithStatus("running", {
       config: {
         id: "new-loop-generated-title",
@@ -166,11 +166,11 @@ describe("create loop scenario", () => {
     await waitFor(() => {
       expect(api.calls("/api/loops/title", "POST").length).toBe(1);
       expect(api.calls("/api/loops", "POST").length).toBe(1);
-      expect(window.location.hash).toBe("#/loop/new-loop-generated-title");
+      expect(window.location.hash).toBe("#/workspace/ws-1");
     });
   });
 
-  test("does not auto-open a created loop after leaving compose before the request resolves", async () => {
+  test("returns to the workspace immediately and does not auto-open the created loop later", async () => {
     const createdLoop = createLoopWithStatus("running", {
       config: {
         id: "new-loop-late",
@@ -202,24 +202,16 @@ describe("create loop scenario", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/loops", "POST").length).toBe(1);
+      expect(window.location.hash).toBe("#/workspace/ws-1");
     });
 
     const loopGetCountBeforeResolve = api.calls("/api/loops", "GET").length;
-
-    await act(async () => {
-      window.location.hash = "#/";
-      window.dispatchEvent(new HashChangeEvent("hashchange"));
-    });
-
-    await waitFor(() => {
-      expect(window.location.hash).toBe("#/");
-    });
 
     createRequest.resolve(createdLoop);
 
     await waitFor(() => {
       expect(api.calls("/api/loops", "GET").length).toBeGreaterThan(loopGetCountBeforeResolve);
-      expect(window.location.hash).toBe("#/");
+      expect(window.location.hash).toBe("#/workspace/ws-1");
     });
   });
 
@@ -301,6 +293,7 @@ describe("create loop scenario", () => {
     await user.click(submitBtn!);
 
     await waitFor(() => {
+      expect(window.location.hash).toBe("#/workspace/ws-1");
       expect(document.body.textContent).toContain("Uncommitted changes blocked the new run. Resolve them and try again.");
     });
   });
