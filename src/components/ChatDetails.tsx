@@ -682,47 +682,27 @@ export function ChatDetails({
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
       <header className={`border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3 sm:flex-1">
-            {showBackButton && onBack && (
-              <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-                Back
-              </Button>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 items-center gap-2">
-                <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-gray-950 dark:text-gray-100" title={chat.config.name}>
-                  {chat.config.name}
-                </h1>
-                <StatusBadge
-                  variant={getChatStatusBadgeVariant(chat.state.status)}
-                  className="shrink-0"
-                >
-                  {getChatStatusLabel(chat.state.status)}
-                </StatusBadge>
-              </div>
-              <p
-                className="mt-1 truncate text-sm text-gray-500 dark:text-gray-400"
-                title={transcriptDescription}
-              >
-                {transcriptDescription}
-              </p>
-              {chat.state.worktree?.workingBranch && (
-                <p
-                  className="mt-1 truncate text-xs font-mono text-gray-500 dark:text-gray-400"
-                  title={chat.state.worktree.workingBranch}
-                >
-                  {chat.state.worktree.workingBranch}
-                </p>
-              )}
-              {chat.state.error && (
-                <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-                  {chat.state.error.message}
-                </p>
-              )}
-            </div>
+        <div
+          data-testid="chat-header-primary-row"
+          className="flex min-h-14 items-center gap-2"
+        >
+          {showBackButton && onBack && (
+            <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+              Back
+            </Button>
+          )}
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-gray-950 dark:text-gray-100" title={chat.config.name}>
+              {chat.config.name}
+            </h1>
+            <StatusBadge
+              variant={getChatStatusBadgeVariant(chat.state.status)}
+              className="shrink-0"
+            >
+              {getChatStatusLabel(chat.state.status)}
+            </StatusBadge>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
             <Button
               type="button"
               variant="ghost"
@@ -743,6 +723,27 @@ export function ChatDetails({
             </div>
           </div>
         </div>
+        <div data-testid="chat-header-metadata" className="mt-1 hidden min-w-0 sm:block">
+          <p
+            className="truncate text-sm text-gray-500 dark:text-gray-400"
+            title={transcriptDescription}
+          >
+            {transcriptDescription}
+          </p>
+          {chat.state.worktree?.workingBranch && (
+            <p
+              className="mt-1 truncate text-xs font-mono text-gray-500 dark:text-gray-400"
+              title={chat.state.worktree.workingBranch}
+            >
+              {chat.state.worktree.workingBranch}
+            </p>
+          )}
+        </div>
+        {chat.state.error && (
+          <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+            {chat.state.error.message}
+          </p>
+        )}
       </header>
 
       {conversation}
