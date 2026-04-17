@@ -622,6 +622,19 @@ describe("ShellSidebarNav", () => {
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-2" });
   });
 
+  test("uses the same shared action slot and button styling for every sidebar new action", () => {
+    const { getAllByRole } = renderWithUser(<SidebarHarness />);
+    const newButtons = getAllByRole("button", { name: /^New / });
+
+    expect(newButtons.length).toBeGreaterThan(0);
+
+    for (const button of newButtons) {
+      expect(button).toHaveClass("min-w-[2.75rem]", "justify-center", "text-[11px]");
+      expect(button.parentElement).not.toBeNull();
+      expect(button.parentElement as HTMLElement).toHaveClass("min-w-12", "justify-end");
+    }
+  });
+
   test("hides empty workspace groups", () => {
     const workspaces = [
       createWorkspace({
