@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { MessageData } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
-import type { StreamingTextSegments } from "./types";
 import { StreamingTextContent } from "./streaming-text-content";
 import { formatTime } from "./utils";
 
@@ -12,7 +11,6 @@ interface MessageEntryProps {
   spacingClass: string;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
-  streamingText: StreamingTextSegments | null;
 }
 
 export function MessageEntry({
@@ -21,7 +19,6 @@ export function MessageEntry({
   spacingClass,
   markdownEnabled,
   showRoleLabel,
-  streamingText,
 }: MessageEntryProps) {
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
@@ -50,7 +47,6 @@ export function MessageEntry({
           <div className="rounded bg-neutral-800 p-2 sm:p-3">
             <StreamingTextContent
               content={msg.content}
-              streamingText={streamingText}
               markdownEnabled={true}
               markdownClassName="text-xs"
               plainTextClassName="text-xs whitespace-pre-wrap break-words"
@@ -59,7 +55,6 @@ export function MessageEntry({
         ) : (
           <StreamingTextContent
             content={msg.content}
-            streamingText={streamingText}
             markdownEnabled={false}
             plainTextClassName="whitespace-pre-wrap break-words"
           />

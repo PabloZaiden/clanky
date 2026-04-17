@@ -16,8 +16,6 @@ import {
 } from "../helpers/factories";
 import type { MessageData } from "@/types";
 
-const appStylesPath = new URL("../../../src/index.css", import.meta.url);
-
 // Helper to create a log entry
 function createLogEntry(overrides?: Partial<LogEntry>): LogEntry {
   return {
@@ -34,21 +32,7 @@ const SAME_MINUTE_TIME_B = "2026-04-09T16:42:45.000Z";
 const NEXT_MINUTE_TIME = "2026-04-09T16:43:05.000Z";
 const NEXT_DAY_SAME_VISIBLE_TIME = "2026-04-10T16:42:15.000Z";
 
-function getAnimatedSuffix(container: HTMLElement): HTMLElement | null {
-  return container.querySelector("[data-stream-suffix=\"true\"]");
-}
-
 describe("LogViewer", () => {
-  describe("streaming animation accessibility", () => {
-    test("disables streaming animations for reduced-motion users with a valid media query", async () => {
-      const appStyles = await Bun.file(appStylesPath).text();
-
-      expect(appStyles).toContain("@media (prefers-reduced-motion: reduce)");
-      expect(appStyles).not.toContain("@media (prefers-reduced-motion) {");
-      expect(appStyles).toContain("animation: none !important;");
-    });
-  });
-
   describe("empty state", () => {
     test("renders empty state message when no entries", () => {
       const { getByText } = renderWithUser(
@@ -234,13 +218,12 @@ describe("LogViewer", () => {
         />
       );
 
-      expect(getAnimatedSuffix(rendered.container)).toBeNull();
       const strong = rendered.container.querySelector("strong");
       expect(strong).not.toBeNull();
       expect(strong?.textContent).toBe("bold");
     });
 
-    test("marks only the appended assistant message suffix with an update transition", () => {
+    test("renders updated assistant message content without suffix animation markup", () => {
       const assistantMessage = createMessageData({
         id: "assistant-streaming-message",
         role: "assistant",
@@ -255,8 +238,6 @@ describe("LogViewer", () => {
         />
       );
 
-      expect(getAnimatedSuffix(rendered.container)).toBeNull();
-
       rendered.rerender(
         <ConversationViewer
           messages={[{ ...assistantMessage, content: "Thinking a bit more" }]}
@@ -266,11 +247,7 @@ describe("LogViewer", () => {
       );
 
       expect(rendered.container.textContent).toContain("Thinking a bit more");
-      const transitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
-      expect(transitionElement).not.toBeNull();
-      expect(transitionElement.textContent).toBe(" a bit more");
-      expect(transitionElement.dataset["streamTransition"]).toBe("update");
-      expect(transitionElement.className).toContain("animate-stream-reveal-update");
+      expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
 
       rendered.rerender(
         <ConversationViewer
@@ -281,14 +258,10 @@ describe("LogViewer", () => {
       );
 
       expect(rendered.container.textContent).toContain("Thinking a bit more again");
-      const nextTransitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
-      expect(nextTransitionElement).not.toBeNull();
-      expect(nextTransitionElement.textContent).toBe(" again");
-      expect(nextTransitionElement.dataset["streamTransition"]).toBe("update");
-      expect(nextTransitionElement.className).toContain("animate-stream-reveal-update");
+      expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
 
-    test("does not animate user message updates as streaming transitions", () => {
+    test("renders updated user message content without suffix animation markup", () => {
       const userMessage = createMessageData({
         id: "user-message-static",
         role: "user",
@@ -307,7 +280,8 @@ describe("LogViewer", () => {
         />
       );
 
-      expect(getAnimatedSuffix(rendered.container)).toBeNull();
+      expect(rendered.container.textContent).toContain("First draft updated");
+      expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
 
     test("user messages are always shown regardless of filter settings", () => {
@@ -976,7 +950,7 @@ describe("LogViewer", () => {
       expect(getByText("Details")).toBeInTheDocument();
     });
 
-    test("marks a newly visible streamed response row with an enter transition", async () => {
+    test("renders a newly visible streamed response row as static content", async () => {
       const firstResponse = createLogEntry({
         id: "response-log-enter-a",
         level: "agent",
@@ -995,21 +969,15 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[]} logs={[firstResponse]} />
       );
 
-      expect(getAnimatedSuffix(rendered.container)).toBeNull();
-
       rendered.rerender(
         <LogViewer messages={[]} toolCalls={[]} logs={[firstResponse, secondResponse]} />
       );
 
       expect(rendered.container.textContent).toContain("Second response");
-      const transitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
-      expect(transitionElement).not.toBeNull();
-      expect(transitionElement.textContent).toBe("Second response");
-      expect(transitionElement.dataset["streamTransition"]).toBe("enter");
-      expect(transitionElement.className).toContain("animate-stream-reveal-enter");
+      expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
 
-    test("marks only appended streamed response content with an update transition", () => {
+    test("renders appended streamed response content without suffix animation markup", () => {
       const responseLog = createLogEntry({
         id: "response-log-update",
         level: "agent",
@@ -1020,8 +988,6 @@ describe("LogViewer", () => {
       const rendered = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[responseLog]} />
       );
-
-      expect(getAnimatedSuffix(rendered.container)).toBeNull();
 
       rendered.rerender(
         <LogViewer
@@ -1035,11 +1001,7 @@ describe("LogViewer", () => {
       );
 
       expect(rendered.container.textContent).toContain("Hello world");
-      const transitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
-      expect(transitionElement).not.toBeNull();
-      expect(transitionElement.textContent).toBe(" world");
-      expect(transitionElement.dataset["streamTransition"]).toBe("update");
-      expect(transitionElement.className).toContain("animate-stream-reveal-update");
+      expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
 
       rendered.rerender(
         <LogViewer
@@ -1053,14 +1015,10 @@ describe("LogViewer", () => {
       );
 
       expect(rendered.container.textContent).toContain("Hello world again");
-      const nextTransitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
-      expect(nextTransitionElement).not.toBeNull();
-      expect(nextTransitionElement.textContent).toBe(" again");
-      expect(nextTransitionElement.dataset["streamTransition"]).toBe("update");
-      expect(nextTransitionElement.className).toContain("animate-stream-reveal-update");
+      expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
 
-    test("marks only the legacy streamed response suffix with a transition", () => {
+    test("renders legacy streamed response content without suffix animation markup", () => {
       const legacyResponseLog = createLogEntry({
         id: "legacy-response-log-update",
         level: "agent",
@@ -1071,8 +1029,6 @@ describe("LogViewer", () => {
       const rendered = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[legacyResponseLog]} />
       );
-
-      expect(getAnimatedSuffix(rendered.container)).toBeNull();
 
       rendered.rerender(
         <LogViewer
@@ -1086,11 +1042,7 @@ describe("LogViewer", () => {
       );
 
       expect(rendered.container.textContent).toContain("Legacy response");
-      const transitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
-      expect(transitionElement).not.toBeNull();
-      expect(transitionElement.textContent).toBe(" response");
-      expect(transitionElement.dataset["streamTransition"]).toBe("update");
-      expect(transitionElement.className).toContain("animate-stream-reveal-update");
+      expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
   });
 
