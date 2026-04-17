@@ -81,6 +81,11 @@ export function LoopActionBar({
   const hasAttachmentWithoutMessage = attachments.length > 0 && trimmedMessage.length === 0;
   const canSubmit = hasLocalChanges && !hasAttachmentWithoutMessage && (!requireMessage || trimmedMessage.length > 0);
   const showStopButton = isGenerating && onStop !== undefined;
+  const hasModelSelector = !isPlanning;
+  const composerLayoutClassName = hasModelSelector
+    ? "grid items-start gap-x-2 gap-y-2 sm:gap-x-3 sm:gap-y-2 grid-cols-[minmax(112px,120px)_minmax(0,1fr)] sm:grid-cols-[minmax(128px,12rem)_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]"
+    : "grid gap-y-2";
+  const attachmentsRowClassName = hasModelSelector ? "col-start-2 min-w-0 flex" : "flex";
 
   // Check if the selected model is enabled (connected)
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
@@ -167,81 +172,81 @@ export function LoopActionBar({
     <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-neutral-800 flex-shrink-0 safe-area-bottom">
       {/* Action bar form */}
       <form ref={composerFormRef} onSubmit={handleSubmit} className="p-3 sm:p-4">
-        <div className="flex flex-row items-end gap-2 sm:gap-3" data-testid="loop-composer-layout">
+        <div className={composerLayoutClassName} data-testid="loop-composer-layout">
           {/* Model selector - hidden during planning since model changes are not supported */}
           {!isPlanning && (
-            <ModelSelector
-              value={selectedModel}
-              onChange={setSelectedModel}
-              models={models}
-              loading={modelsLoading}
-              disabled={disabled || isSubmitting}
-              showDisconnected={true}
-              currentModelKey={currentModelKey}
-              placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
-              loadingText="Loading..."
-              emptyText="Select model..."
-              className="min-w-[112px] sm:min-w-[128px] md:w-48 max-w-[120px] sm:max-w-none flex-shrink-0 h-9 text-sm rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
-            />
+            <div className="min-w-0" data-testid="loop-composer-model-cell">
+              <ModelSelector
+                value={selectedModel}
+                onChange={setSelectedModel}
+                models={models}
+                loading={modelsLoading}
+                disabled={disabled || isSubmitting}
+                showDisconnected={true}
+                currentModelKey={currentModelKey}
+                placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
+                loadingText="Loading..."
+                emptyText="Select model..."
+                className="min-w-[112px] sm:min-w-[128px] md:w-48 max-w-[120px] sm:max-w-none flex-shrink-0 h-9 text-sm rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              />
+            </div>
           )}
 
-          <div className="min-w-0 flex-1 space-y-2" data-testid="loop-composer-input-column">
-            <div className="flex items-end gap-2 sm:gap-3" data-testid="loop-composer-main-row">
-              {/* Message input */}
-              <textarea
-                ref={composerRef}
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={handleComposerKeyDown}
-                onPaste={handlePaste}
-                disabled={disabled || isSubmitting}
-                rows={composerRows}
-                aria-label={isPlanning ? "Plan feedback" : "Loop message"}
-                className={`${composerMinHeightClass} ${composerPaddingClass} flex-1 min-w-0 w-full resize-y text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50`}
-              />
+          <div className="min-w-0 flex items-end gap-2 sm:gap-3" data-testid="loop-composer-main-row">
+            {/* Message input */}
+            <textarea
+              ref={composerRef}
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              onPaste={handlePaste}
+              disabled={disabled || isSubmitting}
+              rows={composerRows}
+              aria-label={isPlanning ? "Plan feedback" : "Loop message"}
+              className={`${composerMinHeightClass} ${composerPaddingClass} flex-1 min-w-0 w-full resize-y text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50`}
+            />
 
-              {/* Primary action button */}
-              {showStopButton ? (
-                <button
-                  type="button"
-                  onClick={handleStop}
-                  disabled={disabled || isSubmitting}
-                  className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
-                  aria-label="Stop"
-                  title="Stop"
-                >
-                  {isSubmitting ? (
-                    <span className="animate-spin text-sm">⏳</span>
-                  ) : (
-                    <span className="text-lg leading-none">×</span>
-                  )}
-                </button>
-              ) : (
-                <FocusPreservingButton
-                  type="submit"
-                  disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
-                  className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
-                  aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
-                  title={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
-                >
-                  {isSubmitting ? (
-                    <span className="animate-spin text-sm">⏳</span>
-                  ) : (
-                    <span className="text-lg leading-none">↑</span>
-                  )}
-                </FocusPreservingButton>
-              )}
-            </div>
-
-            <div className="flex" data-testid="loop-composer-attachments-row">
-              <ImageAttachmentControl
-                ref={attachmentControlRef}
-                attachments={attachments}
-                onChange={setAttachments}
+            {/* Primary action button */}
+            {showStopButton ? (
+              <button
+                type="button"
+                onClick={handleStop}
                 disabled={disabled || isSubmitting}
-                iconOnly
-              />
-            </div>
+                className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
+                aria-label="Stop"
+                title="Stop"
+              >
+                {isSubmitting ? (
+                  <span className="animate-spin text-sm">⏳</span>
+                ) : (
+                  <span className="text-lg leading-none">×</span>
+                )}
+              </button>
+            ) : (
+              <FocusPreservingButton
+                type="submit"
+                disabled={disabled || isSubmitting || !canSubmit || (selectedModel !== "" && !selectedModelEnabled)}
+                className="flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500"
+                aria-label={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
+                title={submitLabel ?? (isPlanning ? "Send Feedback" : "Send")}
+              >
+                {isSubmitting ? (
+                  <span className="animate-spin text-sm">⏳</span>
+                ) : (
+                  <span className="text-lg leading-none">↑</span>
+                )}
+              </FocusPreservingButton>
+            )}
+          </div>
+
+          <div className={attachmentsRowClassName} data-testid="loop-composer-attachments-row">
+            <ImageAttachmentControl
+              ref={attachmentControlRef}
+              attachments={attachments}
+              onChange={setAttachments}
+              disabled={disabled || isSubmitting}
+              iconOnly
+            />
           </div>
         </div>
 

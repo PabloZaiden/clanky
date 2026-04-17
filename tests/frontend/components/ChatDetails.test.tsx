@@ -265,9 +265,16 @@ describe("ChatDetails", () => {
 
     const messageInput = getByLabelText("Message");
     const attachmentButton = getByRole("button", { name: "Add image" });
+    const modelSelector = getByRole("combobox");
+    const layout = getByTestId("chat-composer-layout");
+    const modelCell = getByTestId("chat-composer-model-cell");
     const mainRow = getByTestId("chat-composer-main-row");
     const attachmentsRow = getByTestId("chat-composer-attachments-row");
 
+    expect(layout.firstElementChild).toBe(modelCell);
+    expect(layout.children.item(1)).toBe(mainRow);
+    expect(layout.lastElementChild).toBe(attachmentsRow);
+    expect(modelCell).toContainElement(modelSelector);
     expect(attachmentButton.closest("[data-testid='chat-composer-main-row']")).toBeNull();
     expect(attachmentButton.closest("[data-testid='chat-composer-attachments-row']")).toBe(attachmentsRow);
 
@@ -279,6 +286,7 @@ describe("ChatDetails", () => {
 
     expect(mainRow).not.toContainElement(getByText("chat-image.png"));
     expect(attachmentsRow).toContainElement(getByText("chat-image.png"));
+    expect(modelCell).not.toContainElement(getByText("chat-image.png"));
   });
 
   test("renames the chat from the header actions", async () => {
