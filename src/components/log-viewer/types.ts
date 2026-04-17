@@ -58,19 +58,6 @@ export interface ConversationViewerProps extends LogViewerProps {
   activeStateMessage?: string;
 }
 
-export type StreamingTransitionState = "enter" | "update" | null;
-
-export interface StreamingTextSegments {
-  /** Previously stable text that should remain visually unchanged. */
-  stablePrefix: string;
-  /** Newly appended suffix that should animate into view. */
-  animatedSuffix: string;
-  /** Transition mode that produced the animated suffix, if any. */
-  transition: StreamingTransitionState;
-  /** Stable key so a newly appended suffix mounts as a fresh DOM node. */
-  animationKey: string | null;
-}
-
 /**
  * Base type for a display entry before render metadata annotation.
  */
@@ -87,6 +74,4 @@ export type DisplayEntry = EntryBase & {
   showTimestamp: boolean;
   /** Whether this entry starts a new grouped row for spacing and labels. */
   showGroupHeader: boolean;
-  /** Stable prefix + appended suffix metadata for streaming text rendering. */
-  streamingText: StreamingTextSegments | null;
 };

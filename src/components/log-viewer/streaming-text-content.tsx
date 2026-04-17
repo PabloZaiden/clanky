@@ -1,9 +1,7 @@
 import { MarkdownRenderer } from "../MarkdownRenderer";
-import type { StreamingTextSegments } from "./types";
 
 interface StreamingTextContentProps {
   content: string;
-  streamingText: StreamingTextSegments | null;
   markdownEnabled: boolean;
   plainTextClassName: string;
   markdownClassName?: string;
@@ -12,7 +10,6 @@ interface StreamingTextContentProps {
 
 export function StreamingTextContent({
   content,
-  streamingText,
   markdownEnabled,
   plainTextClassName,
   markdownClassName,
@@ -35,30 +32,9 @@ export function StreamingTextContent({
     );
   }
 
-  const hasAnimatedSuffix = Boolean(
-    streamingText
-    && streamingText.transition
-    && streamingText.animatedSuffix.length > 0
-  );
-  const animatedStreamingText = hasAnimatedSuffix ? streamingText : null;
-
   return (
     <div className={plainTextClassName}>
-      {animatedStreamingText ? (
-        <>
-          {animatedStreamingText.stablePrefix}
-          <span
-            key={animatedStreamingText.animationKey ?? undefined}
-            data-stream-suffix="true"
-            data-stream-transition={animatedStreamingText.transition ?? undefined}
-            className={`streaming-text-suffix ${animatedStreamingText.transition === "enter" ? "animate-stream-reveal-enter" : "animate-stream-reveal-update"}`}
-          >
-            {animatedStreamingText.animatedSuffix}
-          </span>
-        </>
-      ) : (
-        content
-      )}
+      {content}
     </div>
   );
 }

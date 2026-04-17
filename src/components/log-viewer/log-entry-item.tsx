@@ -1,8 +1,8 @@
 import { memo, useCallback } from "react";
 import { LazyDetails } from "./lazy-details";
 import { StreamingTextContent } from "./streaming-text-content";
-import type { LogEntry, StreamingTextSegments } from "./types";
-import { formatTime, getLogLevelColor, isReasoningLogEntry, isStreamingLogEntry } from "./utils";
+import type { LogEntry } from "./types";
+import { formatTime, getLogLevelColor, isReasoningLogEntry } from "./utils";
 
 interface LogEntryItemProps {
   data: LogEntry;
@@ -10,7 +10,6 @@ interface LogEntryItemProps {
   showGroupHeader: boolean;
   spacingClass: string;
   markdownEnabled: boolean;
-  streamingText: StreamingTextSegments | null;
 }
 
 function getOtherDetails(details: Record<string, unknown>): Record<string, unknown> {
@@ -25,7 +24,6 @@ export const LogEntryItem = memo(function LogEntryItem({
   showGroupHeader,
   spacingClass,
   markdownEnabled,
-  streamingText,
 }: LogEntryItemProps) {
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
@@ -52,7 +50,6 @@ export const LogEntryItem = memo(function LogEntryItem({
 
   // Streaming text entries (response, reasoning) don't need a message label —
   // their rendered content is already self-explanatory.
-  const isStreamingTransitionEntry = isStreamingLogEntry(log);
   const hidesTypedStreamingLabel = logKind === "response" || logKind === "reasoning";
   const showMessageLabel = showGroupHeader && !hidesTypedStreamingLabel;
 
@@ -72,7 +69,6 @@ export const LogEntryItem = memo(function LogEntryItem({
           <div className={`mt-2 rounded bg-neutral-800 p-2 sm:p-3 ${isReasoning ? "italic" : ""}`}>
             <StreamingTextContent
               content={responseContent as string}
-              streamingText={isStreamingTransitionEntry ? streamingText : null}
               markdownEnabled={markdownEnabled}
               markdownClassName="text-xs"
               plainTextClassName={`text-xs leading-relaxed whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400 italic" : "text-gray-200"}`}
