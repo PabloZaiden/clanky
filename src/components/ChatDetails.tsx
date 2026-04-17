@@ -22,9 +22,6 @@ import {
   getChatStatusBadgeVariant,
   useComposerSizing,
 } from "./common";
-import { ChatFocusModeBar } from "./chat-details/chat-focus-mode-bar";
-import { useChatFocusMode } from "./chat-details/use-chat-focus-mode";
-import { getFocusModeViewportStyle, useVisualViewport } from "./ssh-session/use-visual-viewport";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { useAvailableModels, useMarkdownPreference, useToast, useWebSocket } from "../hooks";
@@ -124,13 +121,9 @@ export function ChatDetails({
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const reconnectAttemptedRef = useRef(false);
-  const { isFocusMode, toggleFocusMode } = useChatFocusMode();
-  const viewport = useVisualViewport(isFocusMode);
-  const focusModeContainerStyle = getFocusModeViewportStyle(isFocusMode, viewport);
   const { models, modelsLoading } = useAvailableModels({
     directory: chat?.config.directory,
     workspaceId: chat?.config.workspaceId,
@@ -535,6 +528,7 @@ export function ChatDetails({
   }
 
   const hasPendingInput = message.trim().length > 0 || attachments.length > 0 || selectedModel.length > 0;
+  const autoScroll = true;
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
@@ -559,7 +553,7 @@ export function ChatDetails({
     <form
       ref={composerFormRef}
       onSubmit={handleSubmit}
-      className={`border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-neutral-900 ${isFocusMode ? "" : "safe-area-bottom"}`}
+      className="safe-area-bottom border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-neutral-900"
     >
       <label htmlFor="chat-model" className="sr-only">Model</label>
       <label htmlFor="chat-message" className="sr-only">Message</label>
@@ -656,29 +650,6 @@ export function ChatDetails({
     />
   );
 
-  if (isFocusMode) {
-    return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e]" style={focusModeContainerStyle}>
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3">
-          {chat.state.error && (
-            <p className="mb-3 shrink-0 text-sm text-red-300">
-              {chat.state.error.message}
-            </p>
-          )}
-          {conversation}
-        </div>
-        {composer}
-        <ChatFocusModeBar
-          autoScroll={autoScroll}
-          onAutoScrollChange={setAutoScroll}
-          onExitFocusMode={toggleFocusMode}
-          applySafeAreaBottom
-        />
-        {deleteConfirmModal}
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
       <header className={`border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}>
@@ -703,17 +674,6 @@ export function ChatDetails({
             </StatusBadge>
           </div>
           <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-9 w-9 px-0"
-              onClick={toggleFocusMode}
-              aria-label="Enter focus mode"
-              title="Focus mode — fullscreen chat with compact controls"
-            >
-              <span aria-hidden="true" className="text-base leading-none">⤢</span>
-            </Button>
             <div data-testid="chat-header-actions">
               <ActionMenu
                 items={headerActionMenuItems}
