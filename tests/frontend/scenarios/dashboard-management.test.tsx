@@ -325,6 +325,13 @@ describe("dashboard management scenario", () => {
     const { getByTestId } = renderWithUser(<App />);
 
     const recentActivityCard = await waitFor(() => getByTestId("recent-activity-card"));
+
+    await waitFor(() => {
+      expect(within(recentActivityCard).getByRole("button", { name: /Most Recent Activity/ })).toBeTruthy();
+      expect(within(recentActivityCard).getByRole("button", { name: /Newer Created/ })).toBeTruthy();
+      expect(within(recentActivityCard).getByRole("button", { name: /Fallback Updated/ })).toBeTruthy();
+    });
+
     const labels = within(recentActivityCard)
       .getAllByRole("button")
       .map((button) => button.textContent ?? "");

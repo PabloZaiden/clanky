@@ -249,5 +249,18 @@ describe("recent activity timestamps", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
       },
     })).toBe("2026-01-02T00:00:00.000Z");
+
+    expect(getRecentActivityTimestamp({
+      ...baseLoop,
+      state: {
+        ...baseLoop.state,
+        lastActivityAt: undefined,
+        completedAt: undefined,
+      },
+      config: {
+        ...baseLoop.config,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    })).toBe("2026-01-01T00:00:00.000Z");
   });
 });

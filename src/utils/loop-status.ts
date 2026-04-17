@@ -4,24 +4,13 @@
  * to determine what actions are available for a loop.
  */
 
-import type { Loop, LoopConfig, LoopStatus } from "../types";
+import type { Loop, LoopConfig, LoopState, LoopStatus } from "../types";
 import { createLogger } from "../lib/logger";
 
 const log = createLogger("LoopStatus");
 const MARK_MERGED_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
   "completed",
   "max_iterations",
-  "pushed",
-]);
-const RECENT_ACTIVITY_STATUSES: ReadonlySet<LoopStatus> = new Set([
-  "idle",
-  "draft",
-  "planning",
-  "starting",
-  "running",
-  "waiting",
-  "resolving_conflicts",
-  "completed",
   "pushed",
 ]);
 const MANUAL_COMPLETE_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
@@ -213,7 +202,10 @@ export function isWorkspaceHistoryLoop(status: LoopStatus): boolean {
  * benefits from quick revisit, specifically completed and pushed loops.
  */
 export function shouldShowInRecentActivity(status: LoopStatus): boolean {
-  const result = RECENT_ACTIVITY_STATUSES.has(status);
+  const result =
+    !isWorkspaceHistoryLoop(status) &&
+    !MANUAL_COMPLETE_UI_ELIGIBLE_STATUSES.has(status) &&
+    status !== "max_iterations";
   log.trace("shouldShowInRecentActivity check", { status, result });
   return result;
 }
@@ -223,7 +215,10 @@ export function shouldShowInRecentActivity(status: LoopStatus): boolean {
  * Prefer actual loop activity over configuration timestamps so newly completed or
  * pushed loops surface based on when they most recently changed.
  */
-export function getRecentActivityTimestamp(loop: Pick<Loop, "config" | "state">): string {
+export function getRecentActivityTimestamp(loop: {
+  config: Pick<LoopConfig, "createdAt"> & Partial<Pick<LoopConfig, "updatedAt">>;
+  state: Pick<LoopState, "lastActivityAt" | "completedAt">;
+}): string {
   return loop.state.lastActivityAt
     ?? loop.state.completedAt
     ?? loop.config.updatedAt
