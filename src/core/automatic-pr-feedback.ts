@@ -81,27 +81,6 @@ function sanitizeExtractedFeedbackText(value: string): string {
     .trim();
 }
 
-function isLowConfidenceSuppressionNotice(value: string): boolean {
-  const normalized = value
-    .replace(/\r\n/g, "\n")
-    .replace(/[^\S\n]+/g, " ")
-    .trim()
-    .toLowerCase();
-
-  if (!normalized) {
-    return false;
-  }
-
-  return [
-    /\b(?:comment|feedback|suggestion|warning|review|message|notice)?\s*(?:was|were|is|has been|have been)?\s*suppressed\s+(?:because of|because|due to)\s+(?:low[- ]confidence|confidence being low)\b/,
-    /\b(?:comment|feedback|suggestion|warning|review|message|notice)?\s*(?:was|were|is|has been|have been)?\s*skipped\s+(?:because of|because|due to)\s+(?:low[- ]confidence|confidence being low)\b/,
-    /\b(?:comment|feedback|suggestion|warning|review|message|notice)?\s*(?:was|were|is|has been|have been)?\s*withheld\s+(?:because of|because|due to)\s+(?:low[- ]confidence|confidence being low)\b/,
-    /\bsuppressed\s+(?:because of|because|due to)\s+(?:low[- ]confidence|confidence being low)\b/,
-    /\bskipped\s+(?:because of|because|due to)\s+(?:low[- ]confidence|confidence being low)\b/,
-    /\bwithheld\s+(?:because of|because|due to)\s+(?:low[- ]confidence|confidence being low)\b/,
-  ].some((pattern) => pattern.test(normalized));
-}
-
 function buildSourceMetadata(item: AutomaticPrFlowFeedbackItem): string {
   return [
     `id=${item.id}`,
@@ -169,11 +148,6 @@ function normalizeExtractionResult(
 ): AutomaticPrFlowFeedbackExtractionResult {
   const parsed = AutomaticPrFeedbackExtractionResponseSchema.parse(response);
   const validItemIds = new Set(feedbackItems.map((item) => item.id));
-  const lowConfidenceSuppressionItemIds = new Set(
-    feedbackItems
-      .filter((item) => isLowConfidenceSuppressionNotice(item.body))
-      .map((item) => item.id),
-  );
 
   const mergedFeedbackItems = new Map<string, AutomaticPrFlowExtractedFeedbackItem>();
   const usedSourceItemIds = new Set<string>();
@@ -186,42 +160,20 @@ function normalizeExtractionResult(
       continue;
     }
 
-    const filteredSourceItemIds = sourceItemIds.filter((itemId) => !lowConfidenceSuppressionItemIds.has(itemId));
     for (const itemId of sourceItemIds) {
-      if (lowConfidenceSuppressionItemIds.has(itemId)) {
-        ignoredItems.set(itemId, {
-          itemId,
-          reason: "non_actionable",
-        });
-      }
-    }
-    if (
-      filteredSourceItemIds.length === 0
-      || isLowConfidenceSuppressionNotice(text)
-    ) {
-      for (const itemId of sourceItemIds) {
-        ignoredItems.set(itemId, {
-          itemId,
-          reason: "non_actionable",
-        });
-      }
-      continue;
-    }
-
-    for (const itemId of filteredSourceItemIds) {
       usedSourceItemIds.add(itemId);
     }
 
     const key = text.toLowerCase();
     const existing = mergedFeedbackItems.get(key);
     if (existing) {
-      existing.sourceItemIds = [...new Set([...existing.sourceItemIds, ...filteredSourceItemIds])];
+      existing.sourceItemIds = [...new Set([...existing.sourceItemIds, ...sourceItemIds])];
       continue;
     }
 
     mergedFeedbackItems.set(key, {
       text,
-      sourceItemIds: filteredSourceItemIds,
+      sourceItemIds,
     });
   }
 
