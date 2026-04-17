@@ -87,10 +87,10 @@ describe("dashboard management scenario", () => {
     await waitFor(() => {
       expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
     });
-    expect(getByText("Recent activity will appear here as you start work.")).toBeTruthy();
+    expect(getByText("Recent activity will appear here as you start and finish work.")).toBeTruthy();
   });
 
-  test("overview shows recent loops, server maps, and the workspaces map", async () => {
+  test("overview shows active and recently finished loops, server maps, and the workspaces map", async () => {
     setupBaseApi();
 
     const runningLoop = createLoopWithStatus("running", {
@@ -99,11 +99,14 @@ describe("dashboard management scenario", () => {
     const completedLoop = createLoopWithStatus("completed", {
       config: { id: "loop-comp-1", name: "Done Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
+    const pushedLoop = createLoopWithStatus("pushed", {
+      config: { id: "loop-pushed-1", name: "Pushed Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    });
     const draftLoop = createLoopWithStatus("draft", {
       config: { id: "loop-draft-1", name: "Draft Task", directory: "/workspaces/beta", workspaceId: "ws-b" },
     });
 
-    api.get("/api/loops", () => [runningLoop, completedLoop, draftLoop]);
+    api.get("/api/loops", () => [runningLoop, completedLoop, pushedLoop, draftLoop]);
     api.get("/api/workspaces", () => [WORKSPACE_A, WORKSPACE_B]);
 
     const { getAllByText, getByRole, getByTestId, getByText } = renderWithUser(<App />);
@@ -122,8 +125,9 @@ describe("dashboard management scenario", () => {
     const recentActivityCard = getByTestId("recent-activity-card");
 
     expect(within(recentActivityCard).getByText("Running Task")).toBeTruthy();
+    expect(within(recentActivityCard).getByText("Done Task")).toBeTruthy();
+    expect(within(recentActivityCard).getByText("Pushed Task")).toBeTruthy();
     expect(within(recentActivityCard).getByText("Draft Task")).toBeTruthy();
-    expect(within(recentActivityCard).queryByText("Done Task")).toBeNull();
 
     expect(recentActivityHeading.compareDocumentPosition(serverMapsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(serverMapsHeading.compareDocumentPosition(workspacesMapHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -230,7 +234,7 @@ describe("dashboard management scenario", () => {
     });
   });
 
-  test("recent activity omits terminal-state loops while keeping active loops visible", async () => {
+  test("recent activity keeps completed and pushed loops visible while omitting other terminal states", async () => {
     setupBaseApi();
 
     const runningLoop = createLoopWithStatus("running", {
@@ -240,16 +244,19 @@ describe("dashboard management scenario", () => {
       config: { id: "loop-plan-visible", name: "Visible Planning", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
     const completedLoop = createLoopWithStatus("completed", {
-      config: { id: "loop-completed-hidden", name: "Hidden Completed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+      config: { id: "loop-completed-visible", name: "Visible Completed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
     const failedLoop = createLoopWithStatus("failed", {
       config: { id: "loop-failed-hidden", name: "Hidden Failed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
     const pushedLoop = createLoopWithStatus("pushed", {
-      config: { id: "loop-pushed-hidden", name: "Hidden Pushed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+      config: { id: "loop-pushed-visible", name: "Visible Pushed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    });
+    const mergedLoop = createLoopWithStatus("merged", {
+      config: { id: "loop-merged-hidden", name: "Hidden Merged", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
 
-    api.get("/api/loops", () => [runningLoop, planningLoop, completedLoop, failedLoop, pushedLoop]);
+    api.get("/api/loops", () => [runningLoop, planningLoop, completedLoop, failedLoop, pushedLoop, mergedLoop]);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
 
     const { getByRole, getByTestId } = renderWithUser(<App />);
@@ -263,11 +270,68 @@ describe("dashboard management scenario", () => {
     await waitFor(() => {
       expect(within(recentActivityCard).getByText("Visible Running")).toBeTruthy();
       expect(within(recentActivityCard).getByText("Visible Planning")).toBeTruthy();
+      expect(within(recentActivityCard).getByText("Visible Completed")).toBeTruthy();
+      expect(within(recentActivityCard).getByText("Visible Pushed")).toBeTruthy();
     });
 
-    expect(within(recentActivityCard).queryByText("Hidden Completed")).toBeNull();
     expect(within(recentActivityCard).queryByText("Hidden Failed")).toBeNull();
-    expect(within(recentActivityCard).queryByText("Hidden Pushed")).toBeNull();
+    expect(within(recentActivityCard).queryByText("Hidden Merged")).toBeNull();
+  });
+
+  test("recent activity is ordered by latest activity instead of loop creation time", async () => {
+    setupBaseApi();
+
+    const oldestCreatedMostRecentActivity = createLoopWithStatus("completed", {
+      config: {
+        id: "loop-most-recent-activity",
+        name: "Most Recent Activity",
+        directory: "/workspaces/alpha",
+        workspaceId: "ws-a",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+      state: {
+        completedAt: "2026-01-03T00:00:00.000Z",
+        lastActivityAt: "2026-01-05T00:00:00.000Z",
+      },
+    });
+    const newestCreatedOlderActivity = createLoopWithStatus("running", {
+      config: {
+        id: "loop-newer-created",
+        name: "Newer Created",
+        directory: "/workspaces/alpha",
+        workspaceId: "ws-a",
+        createdAt: "2026-01-04T00:00:00.000Z",
+        updatedAt: "2026-01-04T00:00:00.000Z",
+      },
+      state: {
+        lastActivityAt: "2026-01-04T12:00:00.000Z",
+      },
+    });
+    const fallbackUpdatedAtLoop = createLoopWithStatus("draft", {
+      config: {
+        id: "loop-fallback-updated",
+        name: "Fallback Updated",
+        directory: "/workspaces/alpha",
+        workspaceId: "ws-a",
+        createdAt: "2026-01-02T00:00:00.000Z",
+        updatedAt: "2026-01-04T06:00:00.000Z",
+      },
+    });
+
+    api.get("/api/loops", () => [newestCreatedOlderActivity, fallbackUpdatedAtLoop, oldestCreatedMostRecentActivity]);
+    api.get("/api/workspaces", () => [WORKSPACE_A]);
+
+    const { getByTestId } = renderWithUser(<App />);
+
+    const recentActivityCard = await waitFor(() => getByTestId("recent-activity-card"));
+    const labels = within(recentActivityCard)
+      .getAllByRole("button")
+      .map((button) => button.textContent ?? "");
+
+    expect(labels[0]).toContain("Most Recent Activity");
+    expect(labels[1]).toContain("Newer Created");
+    expect(labels[2]).toContain("Fallback Updated");
   });
 
   test("overview omits removed shell summary cards", async () => {

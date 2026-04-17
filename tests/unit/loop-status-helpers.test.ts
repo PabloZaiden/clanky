@@ -5,6 +5,7 @@ import {
   canManualComplete,
   canMarkMerged,
   canSendTerminalFollowUp,
+  getRecentActivityTimestamp,
   getLoopStatusLabel,
   getPlanningStatusLabel,
   getStatusLabel,
@@ -44,6 +45,10 @@ function createTestLoop(
     config: {
       id: "test-loop-1",
       name: "Test Loop",
+      directory: "/workspaces/test",
+      prompt: "Test prompt",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
       workspaceId: "ws-1",
     },
     state: {
@@ -127,7 +132,7 @@ describe("status action helpers", () => {
     expectStatuses((status) => canMarkMerged(status, false), []);
   });
 
-  test("hides terminal and restartable loops from recent activity", () => {
+  test("shows active loops plus completed and pushed loops in recent activity", () => {
     expectStatuses(shouldShowInRecentActivity, [
       "idle",
       "draft",
@@ -136,6 +141,8 @@ describe("status action helpers", () => {
       "running",
       "waiting",
       "resolving_conflicts",
+      "completed",
+      "pushed",
     ]);
   });
 
@@ -194,5 +201,53 @@ describe("planning helpers", () => {
     for (const status of ALL_STATUSES.filter((loopStatus) => loopStatus !== "planning")) {
       expect(isLoopPlanReady(createTestLoop(status, true))).toBe(false);
     }
+  });
+});
+
+describe("recent activity timestamps", () => {
+  test("prefers last activity, then completion, then config update and creation time", () => {
+    const baseLoop = createTestLoop("completed");
+
+    expect(getRecentActivityTimestamp({
+      ...baseLoop,
+      state: {
+        ...baseLoop.state,
+        lastActivityAt: "2026-01-04T00:00:00.000Z",
+        completedAt: "2026-01-03T00:00:00.000Z",
+      },
+      config: {
+        ...baseLoop.config,
+        updatedAt: "2026-01-02T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    })).toBe("2026-01-04T00:00:00.000Z");
+
+    expect(getRecentActivityTimestamp({
+      ...baseLoop,
+      state: {
+        ...baseLoop.state,
+        lastActivityAt: undefined,
+        completedAt: "2026-01-03T00:00:00.000Z",
+      },
+      config: {
+        ...baseLoop.config,
+        updatedAt: "2026-01-02T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    })).toBe("2026-01-03T00:00:00.000Z");
+
+    expect(getRecentActivityTimestamp({
+      ...baseLoop,
+      state: {
+        ...baseLoop.state,
+        lastActivityAt: undefined,
+        completedAt: undefined,
+      },
+      config: {
+        ...baseLoop.config,
+        updatedAt: "2026-01-02T00:00:00.000Z",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    })).toBe("2026-01-02T00:00:00.000Z");
   });
 });

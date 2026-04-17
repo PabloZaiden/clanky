@@ -13,6 +13,17 @@ const MARK_MERGED_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
   "max_iterations",
   "pushed",
 ]);
+const RECENT_ACTIVITY_STATUSES: ReadonlySet<LoopStatus> = new Set([
+  "idle",
+  "draft",
+  "planning",
+  "starting",
+  "running",
+  "waiting",
+  "resolving_conflicts",
+  "completed",
+  "pushed",
+]);
 const MANUAL_COMPLETE_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
   "stopped",
   "failed",
@@ -198,12 +209,25 @@ export function isWorkspaceHistoryLoop(status: LoopStatus): boolean {
 
 /**
  * Check if a loop should appear in the shell overview's Recent activity list.
- * Recent activity is reserved for in-progress or otherwise non-terminal work.
+ * Recent activity includes active loops plus recently finished work that still
+ * benefits from quick revisit, specifically completed and pushed loops.
  */
 export function shouldShowInRecentActivity(status: LoopStatus): boolean {
-  const result = !(canJumpstart(status) || isFinalState(status));
+  const result = RECENT_ACTIVITY_STATUSES.has(status);
   log.trace("shouldShowInRecentActivity check", { status, result });
   return result;
+}
+
+/**
+ * Get the timestamp used to sort loops in the shell overview's Recent activity list.
+ * Prefer actual loop activity over configuration timestamps so newly completed or
+ * pushed loops surface based on when they most recently changed.
+ */
+export function getRecentActivityTimestamp(loop: Pick<Loop, "config" | "state">): string {
+  return loop.state.lastActivityAt
+    ?? loop.state.completedAt
+    ?? loop.config.updatedAt
+    ?? loop.config.createdAt;
 }
 
 /**
