@@ -557,7 +557,7 @@ export function ChatDetails({
     >
       <label htmlFor="chat-model" className="sr-only">Model</label>
       <label htmlFor="chat-message" className="sr-only">Message</label>
-      <div className="flex flex-row items-end gap-2 sm:gap-3">
+      <div className="flex flex-row items-end gap-2 sm:gap-3" data-testid="chat-composer-layout">
         <ModelSelector
           id="chat-model"
           value={selectedModel}
@@ -572,54 +572,60 @@ export function ChatDetails({
           emptyText="No models available"
           className="min-w-[112px] sm:min-w-[128px] md:w-48 max-w-[120px] sm:max-w-none flex-shrink-0 h-9 text-sm rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:focus:ring-gray-600"
         />
-        <textarea
-          ref={composerRef}
-          id="chat-message"
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onKeyDown={handleComposerKeyDown}
-          onPaste={handlePaste}
-          disabled={isActive || isSubmitting}
-          rows={composerRows}
-          className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
-        />
-        <ImageAttachmentControl
-          ref={attachmentControlRef}
-          attachments={attachments}
-          onChange={setAttachments}
-          disabled={isActive || isSubmitting}
-          iconOnly
-        />
-        {isActive ? (
-          <button
-            type="button"
-            onClick={() => void handleInterrupt()}
-            disabled={isSubmitting}
-            className={interruptButtonClassName}
-            aria-label="Interrupt"
-            title="Interrupt"
-          >
-            {isSubmitting ? (
-              <span className="animate-spin text-sm">⏳</span>
+        <div className="min-w-0 flex-1 space-y-2" data-testid="chat-composer-input-column">
+          <div className="flex items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
+            <textarea
+              ref={composerRef}
+              id="chat-message"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              onPaste={handlePaste}
+              disabled={isActive || isSubmitting}
+              rows={composerRows}
+              className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
+            />
+            {isActive ? (
+              <button
+                type="button"
+                onClick={() => void handleInterrupt()}
+                disabled={isSubmitting}
+                className={interruptButtonClassName}
+                aria-label="Interrupt"
+                title="Interrupt"
+              >
+                {isSubmitting ? (
+                  <span className="animate-spin text-sm">⏳</span>
+                ) : (
+                  <span className="text-lg leading-none">×</span>
+                )}
+              </button>
             ) : (
-              <span className="text-lg leading-none">×</span>
+              <FocusPreservingButton
+                type="submit"
+                disabled={isSubmitting || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
+                className={sendButtonClassName}
+                aria-label="Send"
+                title="Send"
+              >
+                {isSubmitting ? (
+                  <span className="animate-spin text-sm">⏳</span>
+                ) : (
+                  <span className="text-lg leading-none">↑</span>
+                )}
+              </FocusPreservingButton>
             )}
-          </button>
-        ) : (
-          <FocusPreservingButton
-            type="submit"
-            disabled={isSubmitting || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
-            className={sendButtonClassName}
-            aria-label="Send"
-            title="Send"
-          >
-            {isSubmitting ? (
-              <span className="animate-spin text-sm">⏳</span>
-            ) : (
-              <span className="text-lg leading-none">↑</span>
-            )}
-          </FocusPreservingButton>
-        )}
+          </div>
+          <div className="flex" data-testid="chat-composer-attachments-row">
+            <ImageAttachmentControl
+              ref={attachmentControlRef}
+              attachments={attachments}
+              onChange={setAttachments}
+              disabled={isActive || isSubmitting}
+              iconOnly
+            />
+          </div>
+        </div>
       </div>
       {selectedModel && !selectedModelEnabled && (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400">

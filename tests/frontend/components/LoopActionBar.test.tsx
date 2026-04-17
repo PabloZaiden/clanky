@@ -82,6 +82,30 @@ describe("LoopActionBar", () => {
       );
       expect(getByRole("button", { name: "Stop" })).toBeInTheDocument();
     });
+
+    test("renders the attachment control below the loop composer main row", async () => {
+      const { getByRole, getByTestId, getByText, user } = renderWithUser(
+        <LoopActionBar {...defaultProps()} />
+      );
+
+      const composer = getLoopMessageInput(getByRole);
+      const attachmentButton = getByRole("button", { name: "Add image" });
+      const mainRow = getByTestId("loop-composer-main-row");
+      const attachmentsRow = getByTestId("loop-composer-attachments-row");
+
+      expect(attachmentButton.closest("[data-testid='loop-composer-main-row']")).toBeNull();
+      expect(attachmentButton.closest("[data-testid='loop-composer-attachments-row']")).toBe(attachmentsRow);
+
+      await user.type(composer, "Please inspect this");
+      pasteFiles(composer, [createTestFile({ name: "loop-image.png" })]);
+
+      await waitFor(() => {
+        expect(getByText("loop-image.png")).toBeInTheDocument();
+      });
+
+      expect(mainRow).not.toContainElement(getByText("loop-image.png"));
+      expect(attachmentsRow).toContainElement(getByText("loop-image.png"));
+    });
   });
 
   describe("model selector", () => {
