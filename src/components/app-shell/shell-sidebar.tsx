@@ -3,6 +3,9 @@ import { StatusBadge, type BadgeVariant } from "../common";
 
 const TREE_INDENT_REM = 0.375;
 const TREE_ITEM_GUTTER_WIDTH_CLASS = "w-3";
+const SECTION_ACTION_SLOT_CLASS = "flex min-w-12 shrink-0 justify-end";
+const SECTION_ACTION_BUTTON_CLASS =
+  "inline-flex min-w-[2.75rem] items-center justify-center rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100";
 
 function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined {
   if (indentLevel <= 0) {
@@ -12,6 +15,33 @@ function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined
   return {
     marginLeft: `${indentLevel * TREE_INDENT_REM}rem`,
   };
+}
+
+function SectionAction({
+  title,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  if (!onAction || !actionLabel) {
+    return null;
+  }
+
+  return (
+    <div className={SECTION_ACTION_SLOT_CLASS}>
+      <button
+        type="button"
+        onClick={onAction}
+        aria-label={`${actionLabel} ${title}`}
+        className={SECTION_ACTION_BUTTON_CLASS}
+      >
+        {actionLabel}
+      </button>
+    </div>
+  );
 }
 
 export function ShellSection({
@@ -50,16 +80,7 @@ export function ShellSection({
             </span>
           </button>
         </h2>
-        {onAction && actionLabel && (
-          <button
-            type="button"
-            onClick={onAction}
-            aria-label={`${actionLabel} ${title}`}
-            className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
-          >
-            {actionLabel}
-          </button>
-        )}
+        <SectionAction title={title} actionLabel={actionLabel} onAction={onAction} />
       </div>
       {!collapsed && (
         <div id={contentId} className="space-y-1">
@@ -104,16 +125,7 @@ export function SidebarTreeSection({
             {title}
           </span>
         </button>
-        {onAction && actionLabel && (
-          <button
-            type="button"
-            onClick={onAction}
-            aria-label={`${actionLabel} ${title}`}
-            className="rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
-          >
-            {actionLabel}
-          </button>
-        )}
+        <SectionAction title={title} actionLabel={actionLabel} onAction={onAction} />
       </div>
       {!collapsed && (
         <div id={contentId} className="space-y-1">
