@@ -4,7 +4,7 @@
  * to determine what actions are available for a loop.
  */
 
-import type { Loop, LoopConfig, LoopStatus } from "../types";
+import type { Loop, LoopConfig, LoopState, LoopStatus } from "../types";
 import { createLogger } from "../lib/logger";
 
 const log = createLogger("LoopStatus");
@@ -198,12 +198,31 @@ export function isWorkspaceHistoryLoop(status: LoopStatus): boolean {
 
 /**
  * Check if a loop should appear in the shell overview's Recent activity list.
- * Recent activity is reserved for in-progress or otherwise non-terminal work.
+ * Recent activity includes active loops plus recently finished work that still
+ * benefits from quick revisit, specifically completed and pushed loops.
  */
 export function shouldShowInRecentActivity(status: LoopStatus): boolean {
-  const result = !(canJumpstart(status) || isFinalState(status));
+  const result =
+    !isWorkspaceHistoryLoop(status) &&
+    !MANUAL_COMPLETE_UI_ELIGIBLE_STATUSES.has(status) &&
+    status !== "max_iterations";
   log.trace("shouldShowInRecentActivity check", { status, result });
   return result;
+}
+
+/**
+ * Get the timestamp used to sort loops in the shell overview's Recent activity list.
+ * Prefer actual loop activity over configuration timestamps so newly completed or
+ * pushed loops surface based on when they most recently changed.
+ */
+export function getRecentActivityTimestamp(loop: {
+  config: Pick<LoopConfig, "createdAt"> & Partial<Pick<LoopConfig, "updatedAt">>;
+  state: Pick<LoopState, "lastActivityAt" | "completedAt">;
+}): string {
+  return loop.state.lastActivityAt
+    ?? loop.state.completedAt
+    ?? loop.config.updatedAt
+    ?? loop.config.createdAt;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { SshServer, SshServerSession } from "../../types";
 import type { useLoopGrouping, useLoops } from "../../hooks";
-import { getLoopStatusLabel, shouldShowInRecentActivity } from "../../utils";
+import { getLoopStatusLabel, getRecentActivityTimestamp, shouldShowInRecentActivity } from "../../utils";
 import { getStatusBadgeVariant, StatusBadge } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
@@ -25,7 +25,7 @@ export function OverviewView({
   const recentLoops = useMemo(() => {
     return loops
       .filter((loop) => shouldShowInRecentActivity(loop.state.status))
-      .sort((left, right) => right.config.createdAt.localeCompare(left.config.createdAt))
+      .sort((left, right) => getRecentActivityTimestamp(right).localeCompare(getRecentActivityTimestamp(left)))
       .slice(0, 5);
   }, [loops]);
   const serverMapItems = useMemo(() => {
@@ -50,12 +50,12 @@ export function OverviewView({
           <div>
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Recent activity</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Jump back into active loops from the overview.
+              Jump back into active and recently finished loops from the overview.
             </p>
           </div>
           <div className="space-y-2">
             {recentLoops.length === 0 ? (
-              <EmptySection message="Recent activity will appear here as you start work." />
+              <EmptySection message="Recent activity will appear here as you start and finish work." />
             ) : (
               recentLoops.map((loop) => {
                 const route: ShellRoute = { view: "loop", loopId: loop.config.id };

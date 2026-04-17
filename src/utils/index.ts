@@ -17,6 +17,7 @@ export {
   isArchivedLoop,
   isWorkspaceHistoryLoop,
   shouldShowInRecentActivity,
+  getRecentActivityTimestamp,
   getPlanningStatusLabel,
   getLoopStatusLabel,
   isLoopPlanReady,
