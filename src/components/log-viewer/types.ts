@@ -61,8 +61,6 @@ export interface ConversationViewerProps extends LogViewerProps {
 export type StreamingTransitionState = "enter" | "update" | null;
 
 export interface StreamingTextSegments {
-  /** Full text currently available for the streaming entry. */
-  fullText: string;
   /** Previously stable text that should remain visually unchanged. */
   stablePrefix: string;
   /** Newly appended suffix that should animate into view. */

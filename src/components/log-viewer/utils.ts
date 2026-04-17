@@ -98,7 +98,7 @@ export function isStreamingLogEntry(logEntry: LogEntry): boolean {
 
 /**
  * Returns the streaming text payload for entries that should receive the
- * soft fade treatment. Non-streaming entries return null.
+ * left-to-right suffix reveal treatment. Non-streaming entries return null.
  */
 export function getStreamingEntryText(entry: EntryBase): string | null {
   if (entry.type === "message") {
@@ -131,7 +131,6 @@ export function getStreamingTextSegments(
 
   if (!canAnimate) {
     return {
-      fullText: nextText,
       stablePrefix: nextText,
       animatedSuffix: "",
       transition: null,
@@ -140,10 +139,9 @@ export function getStreamingTextSegments(
   }
 
   const renderKey = getEntryRenderKey(entry);
-  const previousText = previousStreamingText.get(getEntryRenderKey(entry));
+  const previousText = previousStreamingText.get(renderKey);
   if (typeof previousText !== "string") {
     return {
-      fullText: nextText,
       stablePrefix: "",
       animatedSuffix: nextText,
       transition: "enter",
@@ -153,7 +151,6 @@ export function getStreamingTextSegments(
 
   if (nextText.length > previousText.length && nextText.startsWith(previousText)) {
     return {
-      fullText: nextText,
       stablePrefix: previousText,
       animatedSuffix: nextText.slice(previousText.length),
       transition: "update",
@@ -162,7 +159,6 @@ export function getStreamingTextSegments(
   }
 
   return {
-    fullText: nextText,
     stablePrefix: nextText,
     animatedSuffix: "",
     transition: null,
