@@ -143,7 +143,7 @@ describe("automatic PR feedback extraction", () => {
     }]);
   });
 
-  test("extractAutomaticPrFeedbackWithSession keeps low-confidence suppression notices out of actionable feedback", async () => {
+  test("extractAutomaticPrFeedbackWithSession filters low-confidence suppression notices returned as feedback", async () => {
     const loop = createPushedLoop();
     let promptText = "";
 
@@ -168,14 +168,17 @@ describe("automatic PR feedback extraction", () => {
           return {
             id: "response-1",
             content: JSON.stringify({
-              feedback: [{
-                text: "Add a regression test for the error path.",
-                sourceItemIds: ["thread-2"],
-              }],
-              ignoredItems: [{
-                itemId: "review-1",
-                reason: "non_actionable",
-              }],
+              feedback: [
+                {
+                  text: "This suggestion was suppressed because of low confidence.",
+                  sourceItemIds: ["review-1"],
+                },
+                {
+                  text: "Add a regression test for the error path.",
+                  sourceItemIds: ["thread-2"],
+                },
+              ],
+              ignoredItems: [],
             }),
             parts: [],
           };
