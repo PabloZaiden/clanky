@@ -124,36 +124,49 @@
   animation: slide-in 0.2s ease-out;
 }
 
-@keyframes soft-stream-enter {
+@keyframes stream-reveal-enter {
   from {
-    opacity: 0.25;
-    filter: brightness(0.86);
+    opacity: 0.18;
+    clip-path: inset(0 100% 0 0);
+    filter: blur(1px) brightness(0.92);
   }
 
   to {
     opacity: 1;
-    filter: brightness(1);
+    clip-path: inset(0 0 0 0);
+    filter: blur(0) brightness(1);
   }
 }
 
-@keyframes soft-stream-update {
+@keyframes stream-reveal-update {
   from {
-    opacity: 0.58;
-    filter: brightness(0.9);
+    opacity: 0.35;
+    clip-path: inset(0 100% 0 0);
+    filter: brightness(0.94);
   }
 
   to {
     opacity: 1;
+    clip-path: inset(0 0 0 0);
     filter: brightness(1);
   }
 }
 
-.animate-soft-stream-enter {
-  animation: soft-stream-enter 0.32s ease-out;
+.streaming-text-suffix {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: baseline;
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  will-change: clip-path, opacity, filter;
 }
 
-.animate-soft-stream-update {
-  animation: soft-stream-update 0.28s ease-out;
+.animate-stream-reveal-enter {
+  animation: stream-reveal-enter 0.36s ease-out both;
+}
+
+.animate-stream-reveal-update {
+  animation: stream-reveal-update 0.24s ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {

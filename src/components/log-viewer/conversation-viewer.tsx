@@ -4,7 +4,7 @@ import {
   annotateDisplayEntries,
   getEntryRenderKey,
   getStreamingEntryText,
-  getStreamingTransitionState,
+  getStreamingTextSegments,
   isReasoningLogEntry,
   isResponseLogEntry,
 } from "./utils";
@@ -127,7 +127,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     const canAnimateStreamingEntries = hasSeenInitialEntriesRef.current;
     return entries.map((entry) => ({
       ...entry,
-      streamingTransition: getStreamingTransitionState(
+      streamingText: getStreamingTextSegments(
         entry,
         previousStreamingTextRef.current,
         canAnimateStreamingEntries,
@@ -186,7 +186,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                   spacingClass={spacingClass}
                   markdownEnabled={markdownEnabled}
                   showRoleLabel={showMessageRoles}
-                  streamingTransition={entry.streamingTransition}
+                  streamingText={entry.streamingText}
                 />
               );
             } else if (entry.type === "tool") {
@@ -208,7 +208,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                   showGroupHeader={entry.showGroupHeader}
                   spacingClass={spacingClass}
                   markdownEnabled={markdownEnabled}
-                  streamingTransition={entry.streamingTransition}
+                  streamingText={entry.streamingText}
                 />
               );
             }

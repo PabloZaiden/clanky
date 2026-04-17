@@ -1,5 +1,10 @@
 import type { LogLevel } from "../../types";
-import type { EntryBase, DisplayEntry, LogEntry, StreamingTransitionState } from "./types";
+import type {
+  EntryBase,
+  DisplayEntry,
+  LogEntry,
+  StreamingTextSegments,
+} from "./types";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "2-digit",
@@ -93,7 +98,7 @@ export function isStreamingLogEntry(logEntry: LogEntry): boolean {
 
 /**
  * Returns the streaming text payload for entries that should receive the
- * soft fade treatment. Non-streaming entries return null.
+ * left-to-right suffix reveal treatment. Non-streaming entries return null.
  */
 export function getStreamingEntryText(entry: EntryBase): string | null {
   if (entry.type === "message") {
@@ -114,30 +119,51 @@ export function getStreamingEntryText(entry: EntryBase): string | null {
     : null;
 }
 
-export function getStreamingTransitionState(
+export function getStreamingTextSegments(
   entry: EntryBase,
   previousStreamingText: Map<string, string>,
   canAnimate: boolean,
-): StreamingTransitionState {
-  if (!canAnimate) {
-    return null;
-  }
-
+): StreamingTextSegments | null {
   const nextText = getStreamingEntryText(entry);
   if (nextText === null) {
     return null;
   }
 
-  const previousText = previousStreamingText.get(getEntryRenderKey(entry));
+  if (!canAnimate) {
+    return {
+      stablePrefix: nextText,
+      animatedSuffix: "",
+      transition: null,
+      animationKey: null,
+    };
+  }
+
+  const renderKey = getEntryRenderKey(entry);
+  const previousText = previousStreamingText.get(renderKey);
   if (typeof previousText !== "string") {
-    return "enter";
+    return {
+      stablePrefix: "",
+      animatedSuffix: nextText,
+      transition: "enter",
+      animationKey: `${renderKey}:enter:${nextText.length}`,
+    };
   }
 
   if (nextText.length > previousText.length && nextText.startsWith(previousText)) {
-    return "update";
+    return {
+      stablePrefix: previousText,
+      animatedSuffix: nextText.slice(previousText.length),
+      transition: "update",
+      animationKey: `${renderKey}:update:${previousText.length}:${nextText.length}`,
+    };
   }
 
-  return null;
+  return {
+    stablePrefix: nextText,
+    animatedSuffix: "",
+    transition: null,
+    animationKey: null,
+  };
 }
 
 /**
@@ -156,6 +182,6 @@ export function annotateDisplayEntries(sorted: EntryBase[]): DisplayEntry[] {
     ...entry,
     showTimestamp: i === 0 || minuteBuckets[i] !== minuteBuckets[i - 1],
     showGroupHeader: i === 0 || keys[i] !== keys[i - 1],
-    streamingTransition: null,
+    streamingText: null,
   }));
 }
