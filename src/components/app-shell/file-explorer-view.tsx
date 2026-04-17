@@ -325,6 +325,7 @@ export function FileExplorerView({
     <ShellPanel
       title={title}
       description={description}
+      descriptionClassName="hidden font-mono sm:inline"
       variant="compact"
       headerOffsetClassName={headerOffsetClassName}
       actions={(

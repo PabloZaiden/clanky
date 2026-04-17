@@ -1194,12 +1194,15 @@ describe("ChatDetails", () => {
 
     api.get("/api/chats/:id", () => longChat);
 
-    const { getByRole, getByText, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByTestId, getByText, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     const heading = await waitFor(() => getByText(longChat.config.name));
     expect(heading.className).toContain("truncate");
+    expect(getByTestId("chat-header-primary-row").className).toContain("min-h-14");
 
     const transcriptMetadata = getByText(`${longChat.config.directory} · ${longChat.state.worktree?.worktreePath}`);
+    expect(getByTestId("chat-header-metadata").className).toContain("hidden");
+    expect(getByTestId("chat-header-metadata").className).toContain("sm:block");
     expect(transcriptMetadata.className).toContain("truncate");
 
     const branchMetadata = getByText(longChat.state.worktree?.workingBranch ?? "");
