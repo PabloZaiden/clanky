@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo, memo } from "react";
-import type { ConversationViewerProps, EntryBase, DisplayEntry } from "./types";
+import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
   isReasoningLogEntry,
@@ -118,7 +118,6 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
   const isEmpty = entries.length === 0;
-  const displayEntries = useMemo<DisplayEntry[]>(() => entries, [entries]);
 
   return (
     <div
@@ -140,7 +139,7 @@ export const ConversationViewer = memo(function ConversationViewer({
         </div>
         ) : (
           <div className="p-2 sm:p-4">
-          {displayEntries.map((entry, index) => {
+          {entries.map((entry, index) => {
             const spacingClass = index === 0
               ? ""
               : entry.showTimestamp || entry.showGroupHeader
