@@ -235,6 +235,18 @@ describe("ShellSidebarNav", () => {
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
   });
 
+  test("uses the same action-row padding for top-level and nested New buttons", () => {
+    const { getAllByRole, getByRole } = renderWithUser(<SidebarHarness />);
+
+    const topLevelRow = getByRole("button", { name: "New Workspaces" }).parentElement?.parentElement;
+    const nestedRow = getAllByRole("button", { name: "New Loops" })[0]?.parentElement?.parentElement;
+
+    expect(topLevelRow).not.toHaveClass("px-1");
+    expect(nestedRow).not.toHaveClass("px-1");
+    expect(topLevelRow).toHaveClass("flex", "items-center", "justify-between", "gap-2");
+    expect(nestedRow).toHaveClass("flex", "items-center", "gap-2");
+  });
+
   test("uses compact indentation and gutter spacing for nested sidebar rows", () => {
     const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
 
