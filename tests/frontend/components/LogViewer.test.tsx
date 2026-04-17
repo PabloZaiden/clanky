@@ -17,6 +17,8 @@ import {
 } from "../helpers/factories";
 import type { MessageData } from "@/types";
 
+const appStylesPath = new URL("../../../src/index.css", import.meta.url);
+
 // Helper to create a log entry
 function createLogEntry(overrides?: Partial<LogEntry>): LogEntry {
   return {
@@ -34,6 +36,16 @@ const NEXT_MINUTE_TIME = "2026-04-09T16:43:05.000Z";
 const NEXT_DAY_SAME_VISIBLE_TIME = "2026-04-10T16:42:15.000Z";
 
 describe("LogViewer", () => {
+  describe("streaming animation accessibility", () => {
+    test("disables streaming animations for reduced-motion users with a valid media query", async () => {
+      const appStyles = await Bun.file(appStylesPath).text();
+
+      expect(appStyles).toContain("@media (prefers-reduced-motion: reduce)");
+      expect(appStyles).not.toContain("@media (prefers-reduced-motion) {");
+      expect(appStyles).toContain("animation: none !important;");
+    });
+  });
+
   describe("empty state", () => {
     test("renders empty state message when no entries", () => {
       const { getByText } = renderWithUser(

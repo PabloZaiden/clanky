@@ -156,7 +156,7 @@
   animation: soft-stream-update 0.28s ease-out;
 }
 
-@media (prefers-reduced-motion) {
+@media (prefers-reduced-motion: reduce) {
   *,
   ::before,
   ::after {
