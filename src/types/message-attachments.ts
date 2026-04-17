@@ -5,7 +5,7 @@
  * be persisted with loop messages so refreshed log views can still render them.
  */
 
-export const MESSAGE_IMAGE_ATTACHMENT_LIMIT = 3;
+export const MESSAGE_IMAGE_ATTACHMENT_LIMIT = 8;
 export const MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 /** Explicit MIME allowlist — excludes image/svg+xml to avoid script-injection risks. */
