@@ -4,6 +4,7 @@ import type { MessageImageAttachment } from "../../types/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { MarkdownRenderer } from "../MarkdownRenderer";
 import type { StreamingTransitionState } from "./types";
+import { useStreamingTransitionClass } from "./use-streaming-transition";
 import { formatTime } from "./utils";
 
 interface MessageEntryProps {
@@ -13,17 +14,6 @@ interface MessageEntryProps {
   markdownEnabled: boolean;
   showRoleLabel: boolean;
   streamingTransition: StreamingTransitionState;
-}
-
-function getStreamingTransitionClassName(streamingTransition: StreamingTransitionState): string {
-  switch (streamingTransition) {
-    case "enter":
-      return "animate-soft-stream-enter";
-    case "update":
-      return "animate-soft-stream-update";
-    default:
-      return "";
-  }
 }
 
 export function MessageEntry({
@@ -43,10 +33,10 @@ export function MessageEntry({
     title: selectedAttachment.filename,
     description: `${Math.max(1, Math.round(selectedAttachment.size / 1024))} KB`,
   } : null;
-  const transitionClassName = getStreamingTransitionClassName(streamingTransition);
-  const contentKey = msg.role === "assistant"
+  const transitionToken = msg.role === "assistant"
     ? `message-content-${msg.id}-${msg.content.length}`
-    : `message-content-${msg.id}`;
+    : null;
+  const transitionClassName = useStreamingTransitionClass(streamingTransition, transitionToken);
   const transitionProps = streamingTransition
     ? { "data-stream-transition": streamingTransition }
     : {};
@@ -66,7 +56,6 @@ export function MessageEntry({
         )}
         {shouldRenderMarkdown ? (
           <div
-            key={contentKey}
             {...transitionProps}
             className={`rounded bg-neutral-800 p-2 sm:p-3 ${transitionClassName}`}
           >
@@ -74,7 +63,6 @@ export function MessageEntry({
           </div>
         ) : (
           <div
-            key={contentKey}
             {...transitionProps}
             className={`whitespace-pre-wrap break-words ${transitionClassName}`}
           >
