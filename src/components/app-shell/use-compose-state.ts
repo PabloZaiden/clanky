@@ -51,29 +51,39 @@ export function useComposeState({
     }
   }, [route.view, route.view === "compose" ? route.kind : undefined]);
 
-  async function handleLoopSubmit(request: CreateLoopFormSubmitRequest): Promise<boolean> {
-    const createLoopPromise = createLoop(request as CreateLoopRequest);
-
-    if (!request.draft) {
-      navigateWithinShell({ view: "workspace", workspaceId: request.workspaceId });
-    }
-
-    const result = await createLoopPromise;
+  async function finalizeLoopCreation(request: CreateLoopFormSubmitRequest) {
+    const result = await createLoop(request as CreateLoopRequest);
 
     if (result.startError) {
       toast.error("Uncommitted changes blocked the new run. Resolve them and try again.");
-      return false;
+      return null;
     }
 
     if (!result.loop) {
       toast.error("Failed to create loop");
-      return false;
+      return null;
     }
 
     await refreshLoops();
     dashboardData.setLastModel(request.model);
     dashboardData.setLastCheapModel(request.cheapModel ?? null);
 
+    return result.loop;
+  }
+
+  async function handleLoopSubmit(request: CreateLoopFormSubmitRequest): Promise<boolean> {
+    if (!request.draft) {
+      void finalizeLoopCreation(request);
+      navigateWithinShell({ view: "workspace", workspaceId: request.workspaceId });
+      return true;
+    }
+
+    const loop = await finalizeLoopCreation(request);
+    if (!loop) {
+      return false;
+    }
+
+    navigateWithinShell({ view: "loop", loopId: loop.config.id });
     return true;
   }
 
