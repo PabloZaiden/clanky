@@ -87,6 +87,19 @@ describe("automatic PR feedback extraction", () => {
     expect(prompt.parts[0]?.type === "text" ? prompt.parts[0].text : "").toContain("Feedback item 26");
   });
 
+  test("buildAutomaticPrFeedbackExtractionPrompt tells the helper to ignore low-confidence suppression notices", () => {
+    const prompt = buildAutomaticPrFeedbackExtractionPrompt([{
+      id: "review-1",
+      source: "review",
+      body: "This feedback was suppressed because of low confidence.",
+    }]);
+
+    expect(prompt.parts[0]?.type).toBe("text");
+    expect(prompt.parts[0]?.type === "text" ? prompt.parts[0].text : "").toContain(
+      "suppressed, skipped, or withheld because of low confidence",
+    );
+  });
+
   test("extractAutomaticPrFeedbackWithSession parses extracted feedback and defaults missing items to ignored", async () => {
     const loop = createPushedLoop();
     const result = await extractAutomaticPrFeedbackWithSession({
@@ -126,6 +139,58 @@ describe("automatic PR feedback extraction", () => {
     }]);
     expect(result.ignoredItems).toEqual([{
       itemId: "comment-2",
+      reason: "non_actionable",
+    }]);
+  });
+
+  test("extractAutomaticPrFeedbackWithSession keeps low-confidence suppression notices out of actionable feedback", async () => {
+    const loop = createPushedLoop();
+    let promptText = "";
+
+    const result = await extractAutomaticPrFeedbackWithSession({
+      loop,
+      directory: "/tmp/repo",
+      feedbackItems: [
+        {
+          id: "review-1",
+          source: "review",
+          body: "This suggestion was suppressed because of low confidence.",
+        },
+        {
+          id: "thread-2",
+          source: "review_thread",
+          body: "Please add a regression test for the error path.",
+        },
+      ],
+      backend: {
+        sendPrompt: async (_sessionId, prompt) => {
+          promptText = prompt.parts[0]?.type === "text" ? prompt.parts[0].text : "";
+          return {
+            id: "response-1",
+            content: JSON.stringify({
+              feedback: [{
+                text: "Add a regression test for the error path.",
+                sourceItemIds: ["thread-2"],
+              }],
+              ignoredItems: [{
+                itemId: "review-1",
+                reason: "non_actionable",
+              }],
+            }),
+            parts: [],
+          };
+        },
+      },
+      sessionId: "session-1",
+    });
+
+    expect(promptText).toContain("suppressed, skipped, or withheld because of low confidence");
+    expect(result.feedbackItems).toEqual([{
+      text: "Add a regression test for the error path.",
+      sourceItemIds: ["thread-2"],
+    }]);
+    expect(result.ignoredItems).toEqual([{
+      itemId: "review-1",
       reason: "non_actionable",
     }]);
   });
