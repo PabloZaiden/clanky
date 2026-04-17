@@ -7,11 +7,18 @@ import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createLoop } from "../helpers/factories";
 import { expectHamburgerIcon } from "../helpers/icon-assertions";
 import { mockComposerSoftWrap } from "../helpers/composer-measurement";
+import {
+  createTestFile,
+  installImageAttachmentMocks,
+  pasteFiles,
+} from "../helpers/image-paste";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
 
 const CHAT_ID = "chat-1";
+
+installImageAttachmentMocks();
 
 function createChat(overrides?: Partial<Chat>): Chat {
   return {
@@ -245,6 +252,41 @@ describe("ChatDetails", () => {
 
     expect(sendButton.dispatchEvent(mouseDown)).toBe(false);
     expect(mouseDown.defaultPrevented).toBe(true);
+  });
+
+  test("renders the attachment control below the chat composer main row", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByLabelText, getByRole, getByTestId, getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Send" })).toBeTruthy();
+    });
+
+    const messageInput = getByLabelText("Message");
+    const attachmentButton = getByRole("button", { name: "Add image" });
+    const modelSelector = getByRole("combobox");
+    const layout = getByTestId("chat-composer-layout");
+    const modelCell = getByTestId("chat-composer-model-cell");
+    const mainRow = getByTestId("chat-composer-main-row");
+    const attachmentsRow = getByTestId("chat-composer-attachments-row");
+
+    expect(layout.firstElementChild).toBe(modelCell);
+    expect(layout.children.item(1)).toBe(mainRow);
+    expect(layout.lastElementChild).toBe(attachmentsRow);
+    expect(modelCell).toContainElement(modelSelector);
+    expect(attachmentButton.closest("[data-testid='chat-composer-main-row']")).toBeNull();
+    expect(attachmentButton.closest("[data-testid='chat-composer-attachments-row']")).toBe(attachmentsRow);
+
+    pasteFiles(messageInput, [createTestFile({ name: "chat-image.png" })]);
+
+    await waitFor(() => {
+      expect(getByText("chat-image.png")).toBeInTheDocument();
+    });
+
+    expect(mainRow).not.toContainElement(getByText("chat-image.png"));
+    expect(attachmentsRow).toContainElement(getByText("chat-image.png"));
+    expect(modelCell).not.toContainElement(getByText("chat-image.png"));
   });
 
   test("renames the chat from the header actions", async () => {

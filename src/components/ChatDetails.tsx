@@ -532,6 +532,7 @@ export function ChatDetails({
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
+  const composerLayoutClassName = "grid items-start gap-x-2 gap-y-2 sm:gap-x-3 sm:gap-y-2 grid-cols-[minmax(112px,120px)_minmax(0,1fr)] sm:grid-cols-[minmax(128px,12rem)_minmax(0,1fr)] md:grid-cols-[12rem_minmax(0,1fr)]";
 
   const conversation = (
     <ConversationViewer
@@ -557,69 +558,75 @@ export function ChatDetails({
     >
       <label htmlFor="chat-model" className="sr-only">Model</label>
       <label htmlFor="chat-message" className="sr-only">Message</label>
-      <div className="flex flex-row items-end gap-2 sm:gap-3">
-        <ModelSelector
-          id="chat-model"
-          value={selectedModel}
-          onChange={setSelectedModel}
-          models={models}
-          loading={modelsLoading}
-          disabled={isActive || isSubmitting}
-          showDisconnected
-          currentModelKey={currentModelKey}
-          placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
-          loadingText="Loading..."
-          emptyText="No models available"
-          className="min-w-[112px] sm:min-w-[128px] md:w-48 max-w-[120px] sm:max-w-none flex-shrink-0 h-9 text-sm rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:focus:ring-gray-600"
-        />
-        <textarea
-          ref={composerRef}
-          id="chat-message"
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onKeyDown={handleComposerKeyDown}
-          onPaste={handlePaste}
-          disabled={isActive || isSubmitting}
-          rows={composerRows}
-          className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
-        />
-        <ImageAttachmentControl
-          ref={attachmentControlRef}
-          attachments={attachments}
-          onChange={setAttachments}
-          disabled={isActive || isSubmitting}
-          iconOnly
-        />
-        {isActive ? (
-          <button
-            type="button"
-            onClick={() => void handleInterrupt()}
-            disabled={isSubmitting}
-            className={interruptButtonClassName}
-            aria-label="Interrupt"
-            title="Interrupt"
-          >
-            {isSubmitting ? (
-              <span className="animate-spin text-sm">⏳</span>
-            ) : (
-              <span className="text-lg leading-none">×</span>
-            )}
-          </button>
-        ) : (
-          <FocusPreservingButton
-            type="submit"
-            disabled={isSubmitting || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
-            className={sendButtonClassName}
-            aria-label="Send"
-            title="Send"
-          >
-            {isSubmitting ? (
-              <span className="animate-spin text-sm">⏳</span>
-            ) : (
-              <span className="text-lg leading-none">↑</span>
-            )}
-          </FocusPreservingButton>
-        )}
+      <div className={composerLayoutClassName} data-testid="chat-composer-layout">
+        <div className="min-w-0" data-testid="chat-composer-model-cell">
+          <ModelSelector
+            id="chat-model"
+            value={selectedModel}
+            onChange={setSelectedModel}
+            models={models}
+            loading={modelsLoading}
+            disabled={isActive || isSubmitting}
+            showDisconnected
+            currentModelKey={currentModelKey}
+            placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
+            loadingText="Loading..."
+            emptyText="No models available"
+            className="min-w-[112px] sm:min-w-[128px] md:w-48 max-w-[120px] sm:max-w-none flex-shrink-0 h-9 text-sm rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:focus:ring-gray-600"
+          />
+        </div>
+        <div className="min-w-0 flex items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
+          <textarea
+            ref={composerRef}
+            id="chat-message"
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
+            onPaste={handlePaste}
+            disabled={isActive || isSubmitting}
+            rows={composerRows}
+            className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
+          />
+          {isActive ? (
+            <button
+              type="button"
+              onClick={() => void handleInterrupt()}
+              disabled={isSubmitting}
+              className={interruptButtonClassName}
+              aria-label="Interrupt"
+              title="Interrupt"
+            >
+              {isSubmitting ? (
+                <span className="animate-spin text-sm">⏳</span>
+              ) : (
+                <span className="text-lg leading-none">×</span>
+              )}
+            </button>
+          ) : (
+            <FocusPreservingButton
+              type="submit"
+              disabled={isSubmitting || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
+              className={sendButtonClassName}
+              aria-label="Send"
+              title="Send"
+            >
+              {isSubmitting ? (
+                <span className="animate-spin text-sm">⏳</span>
+              ) : (
+                <span className="text-lg leading-none">↑</span>
+              )}
+            </FocusPreservingButton>
+          )}
+        </div>
+        <div className="col-start-2 min-w-0 flex" data-testid="chat-composer-attachments-row">
+          <ImageAttachmentControl
+            ref={attachmentControlRef}
+            attachments={attachments}
+            onChange={setAttachments}
+            disabled={isActive || isSubmitting}
+            iconOnly
+          />
+        </div>
       </div>
       {selectedModel && !selectedModelEnabled && (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400">
