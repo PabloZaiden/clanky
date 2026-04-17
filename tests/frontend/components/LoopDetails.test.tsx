@@ -293,13 +293,18 @@ describe("header display", () => {
     expect(pinger).toBeNull();
   });
 
-  test("shows directory in header", async () => {
+  test("keeps directory metadata out of the primary mobile header row", async () => {
     setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByTestId, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("/workspaces/test-project")).toBeTruthy();
     });
+
+    expect(getByTestId("loop-header-primary-row").className).toContain("min-h-14");
+    expect(getByTestId("loop-header-primary-row").className).not.toContain("flex-wrap");
+    expect(getByTestId("loop-header-directory").className).toContain("hidden");
+    expect(getByTestId("loop-header-directory").className).toContain("sm:block");
   });
 });
 

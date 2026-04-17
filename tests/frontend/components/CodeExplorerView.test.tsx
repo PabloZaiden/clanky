@@ -44,7 +44,11 @@ describe("CodeExplorerView", () => {
       expect(getByRole("heading", { name: "Code explorer" })).toBeInTheDocument();
     });
 
-    await user.selectOptions(getByLabelText("Select code explorer content"), "loop:picker-loop");
+    const switcher = getByLabelText("Select code explorer content");
+    expect(switcher.className).toContain("h-9");
+    expect(switcher.className).toContain("max-w-[12rem]");
+
+    await user.selectOptions(switcher, "loop:picker-loop");
 
     expect(navigations).toEqual([{
       view: "code-explorer",
