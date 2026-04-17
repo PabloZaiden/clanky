@@ -6,7 +6,6 @@
  */
 
 import { test, expect, describe } from "bun:test";
-import { waitFor } from "@testing-library/react";
 import { ConversationViewer, LogViewer } from "@/components/LogViewer";
 import type { LogEntry } from "@/components/LogViewer";
 import { formatTime } from "@/components/log-viewer/utils";
@@ -34,6 +33,10 @@ const SAME_MINUTE_TIME_A = "2026-04-09T16:42:01.000Z";
 const SAME_MINUTE_TIME_B = "2026-04-09T16:42:45.000Z";
 const NEXT_MINUTE_TIME = "2026-04-09T16:43:05.000Z";
 const NEXT_DAY_SAME_VISIBLE_TIME = "2026-04-10T16:42:15.000Z";
+
+function getAnimatedSuffix(container: HTMLElement): HTMLElement | null {
+  return container.querySelector("[data-stream-suffix=\"true\"]");
+}
 
 describe("LogViewer", () => {
   describe("streaming animation accessibility", () => {
@@ -206,7 +209,38 @@ describe("LogViewer", () => {
       expect(getByText("bold text")).toBeInTheDocument();
     });
 
-    test("marks appended assistant message content with an update transition", async () => {
+    test("degrades streaming markdown assistant updates to the stable full render", () => {
+      const assistantMessage = createMessageData({
+        id: "assistant-markdown-streaming-message",
+        role: "assistant",
+        content: "**bo",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const rendered = renderWithUser(
+        <ConversationViewer
+          messages={[assistantMessage]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+          markdownEnabled={true}
+        />
+      );
+
+      rendered.rerender(
+        <ConversationViewer
+          messages={[{ ...assistantMessage, content: "**bold**" }]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+          markdownEnabled={true}
+        />
+      );
+
+      expect(getAnimatedSuffix(rendered.container)).toBeNull();
+      const strong = rendered.container.querySelector("strong");
+      expect(strong).not.toBeNull();
+      expect(strong?.textContent).toBe("bold");
+    });
+
+    test("marks only the appended assistant message suffix with an update transition", () => {
       const assistantMessage = createMessageData({
         id: "assistant-streaming-message",
         role: "assistant",
@@ -221,7 +255,7 @@ describe("LogViewer", () => {
         />
       );
 
-      expect(rendered.getByText("Thinking").closest("[data-stream-transition]")).toBeNull();
+      expect(getAnimatedSuffix(rendered.container)).toBeNull();
 
       rendered.rerender(
         <ConversationViewer
@@ -231,12 +265,12 @@ describe("LogViewer", () => {
         />
       );
 
-      const transitionElement = rendered.getByText("Thinking a bit more").closest("[data-stream-transition]") as HTMLElement;
+      expect(rendered.container.textContent).toContain("Thinking a bit more");
+      const transitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
       expect(transitionElement).not.toBeNull();
+      expect(transitionElement.textContent).toBe(" a bit more");
       expect(transitionElement.dataset["streamTransition"]).toBe("update");
-      await waitFor(() => {
-        expect(transitionElement.className).toContain("animate-soft-stream-update");
-      });
+      expect(transitionElement.className).toContain("animate-stream-reveal-update");
 
       rendered.rerender(
         <ConversationViewer
@@ -246,13 +280,12 @@ describe("LogViewer", () => {
         />
       );
 
-      const nextTransitionElement = rendered.getByText("Thinking a bit more again").closest("[data-stream-transition]") as HTMLElement;
+      expect(rendered.container.textContent).toContain("Thinking a bit more again");
+      const nextTransitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
       expect(nextTransitionElement).not.toBeNull();
+      expect(nextTransitionElement.textContent).toBe(" again");
       expect(nextTransitionElement.dataset["streamTransition"]).toBe("update");
-      await waitFor(() => {
-        expect(nextTransitionElement.className).toContain("animate-soft-stream-update");
-      });
-      expect(nextTransitionElement).toBe(transitionElement);
+      expect(nextTransitionElement.className).toContain("animate-stream-reveal-update");
     });
 
     test("does not animate user message updates as streaming transitions", () => {
@@ -274,7 +307,7 @@ describe("LogViewer", () => {
         />
       );
 
-      expect(rendered.getByText("First draft updated").closest("[data-stream-transition]")).toBeNull();
+      expect(getAnimatedSuffix(rendered.container)).toBeNull();
     });
 
     test("user messages are always shown regardless of filter settings", () => {
@@ -962,21 +995,21 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[]} logs={[firstResponse]} />
       );
 
-      expect(rendered.getByText("First response").closest("[data-stream-transition]")).toBeNull();
+      expect(getAnimatedSuffix(rendered.container)).toBeNull();
 
       rendered.rerender(
         <LogViewer messages={[]} toolCalls={[]} logs={[firstResponse, secondResponse]} />
       );
 
-      const transitionElement = rendered.getByText("Second response").closest("[data-stream-transition]") as HTMLElement;
+      expect(rendered.container.textContent).toContain("Second response");
+      const transitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
       expect(transitionElement).not.toBeNull();
+      expect(transitionElement.textContent).toBe("Second response");
       expect(transitionElement.dataset["streamTransition"]).toBe("enter");
-      await waitFor(() => {
-        expect(transitionElement.className).toContain("animate-soft-stream-enter");
-      });
+      expect(transitionElement.className).toContain("animate-stream-reveal-enter");
     });
 
-    test("marks appended streamed response content with an update transition", async () => {
+    test("marks only appended streamed response content with an update transition", () => {
       const responseLog = createLogEntry({
         id: "response-log-update",
         level: "agent",
@@ -988,7 +1021,7 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[]} logs={[responseLog]} />
       );
 
-      expect(rendered.getByText("Hello").closest("[data-stream-transition]")).toBeNull();
+      expect(getAnimatedSuffix(rendered.container)).toBeNull();
 
       rendered.rerender(
         <LogViewer
@@ -1001,12 +1034,12 @@ describe("LogViewer", () => {
         />
       );
 
-      const transitionElement = rendered.getByText("Hello world").closest("[data-stream-transition]") as HTMLElement;
+      expect(rendered.container.textContent).toContain("Hello world");
+      const transitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
       expect(transitionElement).not.toBeNull();
+      expect(transitionElement.textContent).toBe(" world");
       expect(transitionElement.dataset["streamTransition"]).toBe("update");
-      await waitFor(() => {
-        expect(transitionElement.className).toContain("animate-soft-stream-update");
-      });
+      expect(transitionElement.className).toContain("animate-stream-reveal-update");
 
       rendered.rerender(
         <LogViewer
@@ -1019,16 +1052,15 @@ describe("LogViewer", () => {
         />
       );
 
-      const nextTransitionElement = rendered.getByText("Hello world again").closest("[data-stream-transition]") as HTMLElement;
+      expect(rendered.container.textContent).toContain("Hello world again");
+      const nextTransitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
       expect(nextTransitionElement).not.toBeNull();
+      expect(nextTransitionElement.textContent).toBe(" again");
       expect(nextTransitionElement.dataset["streamTransition"]).toBe("update");
-      await waitFor(() => {
-        expect(nextTransitionElement.className).toContain("animate-soft-stream-update");
-      });
-      expect(nextTransitionElement).toBe(transitionElement);
+      expect(nextTransitionElement.className).toContain("animate-stream-reveal-update");
     });
 
-    test("marks legacy streamed response content updates with a transition", async () => {
+    test("marks only the legacy streamed response suffix with a transition", () => {
       const legacyResponseLog = createLogEntry({
         id: "legacy-response-log-update",
         level: "agent",
@@ -1040,7 +1072,7 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[]} logs={[legacyResponseLog]} />
       );
 
-      expect(rendered.getByText("Legacy").closest("[data-stream-transition]")).toBeNull();
+      expect(getAnimatedSuffix(rendered.container)).toBeNull();
 
       rendered.rerender(
         <LogViewer
@@ -1053,12 +1085,12 @@ describe("LogViewer", () => {
         />
       );
 
-      const transitionElement = rendered.getByText("Legacy response").closest("[data-stream-transition]") as HTMLElement;
+      expect(rendered.container.textContent).toContain("Legacy response");
+      const transitionElement = getAnimatedSuffix(rendered.container) as HTMLElement;
       expect(transitionElement).not.toBeNull();
+      expect(transitionElement.textContent).toBe(" response");
       expect(transitionElement.dataset["streamTransition"]).toBe("update");
-      await waitFor(() => {
-        expect(transitionElement.className).toContain("animate-soft-stream-update");
-      });
+      expect(transitionElement.className).toContain("animate-stream-reveal-update");
     });
   });
 

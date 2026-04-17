@@ -2,9 +2,8 @@ import { useState } from "react";
 import type { MessageData } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
-import { MarkdownRenderer } from "../MarkdownRenderer";
-import type { StreamingTransitionState } from "./types";
-import { useStreamingTransitionClass } from "./use-streaming-transition";
+import type { StreamingTextSegments } from "./types";
+import { StreamingTextContent } from "./streaming-text-content";
 import { formatTime } from "./utils";
 
 interface MessageEntryProps {
@@ -13,7 +12,7 @@ interface MessageEntryProps {
   spacingClass: string;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
-  streamingTransition: StreamingTransitionState;
+  streamingText: StreamingTextSegments | null;
 }
 
 export function MessageEntry({
@@ -22,7 +21,7 @@ export function MessageEntry({
   spacingClass,
   markdownEnabled,
   showRoleLabel,
-  streamingTransition,
+  streamingText,
 }: MessageEntryProps) {
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
@@ -33,13 +32,6 @@ export function MessageEntry({
     title: selectedAttachment.filename,
     description: `${Math.max(1, Math.round(selectedAttachment.size / 1024))} KB`,
   } : null;
-  const transitionToken = msg.role === "assistant"
-    ? `message-content-${msg.id}-${msg.content.length}`
-    : null;
-  const transitionClassName = useStreamingTransitionClass(streamingTransition, transitionToken);
-  const transitionProps = streamingTransition
-    ? { "data-stream-transition": streamingTransition }
-    : {};
 
   return (
     <div className={`group ${spacingClass}`}>
@@ -55,19 +47,22 @@ export function MessageEntry({
           </div>
         )}
         {shouldRenderMarkdown ? (
-          <div
-            {...transitionProps}
-            className={`rounded bg-neutral-800 p-2 sm:p-3 ${transitionClassName}`}
-          >
-            <MarkdownRenderer content={msg.content} className="text-xs" />
+          <div className="rounded bg-neutral-800 p-2 sm:p-3">
+            <StreamingTextContent
+              content={msg.content}
+              streamingText={streamingText}
+              markdownEnabled={true}
+              markdownClassName="text-xs"
+              plainTextClassName="text-xs whitespace-pre-wrap break-words"
+            />
           </div>
         ) : (
-          <div
-            {...transitionProps}
-            className={`whitespace-pre-wrap break-words ${transitionClassName}`}
-          >
-            {msg.content}
-          </div>
+          <StreamingTextContent
+            content={msg.content}
+            streamingText={streamingText}
+            markdownEnabled={false}
+            plainTextClassName="whitespace-pre-wrap break-words"
+          />
         )}
         {msg.attachments && msg.attachments.length > 0 && (
           <div className="flex flex-wrap gap-2">

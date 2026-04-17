@@ -1,8 +1,7 @@
 import { memo, useCallback } from "react";
-import { MarkdownRenderer } from "../MarkdownRenderer";
 import { LazyDetails } from "./lazy-details";
-import type { LogEntry, StreamingTransitionState } from "./types";
-import { useStreamingTransitionClass } from "./use-streaming-transition";
+import { StreamingTextContent } from "./streaming-text-content";
+import type { LogEntry, StreamingTextSegments } from "./types";
 import { formatTime, getLogLevelColor, isReasoningLogEntry, isStreamingLogEntry } from "./utils";
 
 interface LogEntryItemProps {
@@ -11,7 +10,7 @@ interface LogEntryItemProps {
   showGroupHeader: boolean;
   spacingClass: string;
   markdownEnabled: boolean;
-  streamingTransition: StreamingTransitionState;
+  streamingText: StreamingTextSegments | null;
 }
 
 function getOtherDetails(details: Record<string, unknown>): Record<string, unknown> {
@@ -26,7 +25,7 @@ export const LogEntryItem = memo(function LogEntryItem({
   showGroupHeader,
   spacingClass,
   markdownEnabled,
-  streamingTransition,
+  streamingText,
 }: LogEntryItemProps) {
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
@@ -56,13 +55,6 @@ export const LogEntryItem = memo(function LogEntryItem({
   const isStreamingTransitionEntry = isStreamingLogEntry(log);
   const hidesTypedStreamingLabel = logKind === "response" || logKind === "reasoning";
   const showMessageLabel = showGroupHeader && !hidesTypedStreamingLabel;
-  const transitionToken = isStreamingTransitionEntry && hasResponseContent
-    ? `log-content-${log.id}-${(responseContent as string).length}`
-    : null;
-  const transitionClassName = useStreamingTransitionClass(streamingTransition, transitionToken);
-  const transitionProps = streamingTransition
-    ? { "data-stream-transition": streamingTransition }
-    : {};
 
   return (
     <div className={`group ${isReasoning ? "opacity-60" : ""} ${spacingClass}`}>
@@ -77,21 +69,16 @@ export const LogEntryItem = memo(function LogEntryItem({
         )}
         {/* Show responseContent as proper text */}
         {hasResponseContent && (
-          markdownEnabled ? (
-            <div
-              {...transitionProps}
-              className={`mt-2 rounded bg-neutral-800 p-2 sm:p-3 ${isReasoning ? "italic" : ""} ${transitionClassName}`}
-            >
-              <MarkdownRenderer content={responseContent as string} className="text-xs" dimmed={isReasoning} />
-            </div>
-          ) : (
-            <div
-              {...transitionProps}
-              className={`mt-2 rounded bg-neutral-800 p-2 text-xs leading-relaxed whitespace-pre-wrap break-words sm:p-3 ${isReasoning ? "text-gray-400 italic" : "text-gray-200"} ${transitionClassName}`}
-            >
-              {responseContent}
-            </div>
-          )
+          <div className={`mt-2 rounded bg-neutral-800 p-2 sm:p-3 ${isReasoning ? "italic" : ""}`}>
+            <StreamingTextContent
+              content={responseContent as string}
+              streamingText={isStreamingTransitionEntry ? streamingText : null}
+              markdownEnabled={markdownEnabled}
+              markdownClassName="text-xs"
+              plainTextClassName={`text-xs leading-relaxed whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400 italic" : "text-gray-200"}`}
+              dimmed={isReasoning}
+            />
+          </div>
         )}
         {/* Show other details as JSON */}
         {hasOtherDetails && (
