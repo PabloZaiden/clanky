@@ -6,6 +6,7 @@ import {
   SetPendingRequestSchema,
   UpdateLoopRequestSchema,
 } from "../../src/types/schemas/loop";
+import { MESSAGE_IMAGE_ATTACHMENT_LIMIT } from "../../src/types/message-attachments";
 import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
 
 const baseCreateLoopRequest = {
@@ -111,6 +112,17 @@ describe("loop attachment schemas", () => {
   });
 
   test("rejects non-image attachments and oversized attachment batches", () => {
+    const oversizedAttachmentBatch = Array.from(
+      { length: MESSAGE_IMAGE_ATTACHMENT_LIMIT + 1 },
+      (_value, index) => ({
+        id: String(index + 1),
+        filename: `${index + 1}.png`,
+        mimeType: "image/png",
+        data: "x",
+        size: 1,
+      }),
+    );
+
     expect(CreateLoopRequestSchema.safeParse({
       name: "Invalid attachment",
       workspaceId: "ws-1",
@@ -134,15 +146,10 @@ describe("loop attachment schemas", () => {
 
     expect(SetPendingRequestSchema.safeParse({
       message: "Too many images",
-        attachments: [
-          { id: "1", filename: "a.png", mimeType: "image/png", data: "x", size: 1 },
-          { id: "2", filename: "b.png", mimeType: "image/png", data: "x", size: 1 },
-          { id: "3", filename: "c.png", mimeType: "image/png", data: "x", size: 1 },
-          { id: "4", filename: "d.png", mimeType: "image/png", data: "x", size: 1 },
-        ],
-        model: null,
-        immediate: true,
-      }).success).toBe(false);
+      attachments: oversizedAttachmentBatch,
+      model: null,
+      immediate: true,
+    }).success).toBe(false);
   });
 
   test("accepts cheap model selections on create and title-generation requests", () => {

@@ -97,6 +97,7 @@ describe("ImageAttachmentControl", () => {
   test("enforces the attachment limit across repeated pastes", async () => {
     const { getByLabelText, getByText } = renderWithUser(<AttachmentPasteHarness />);
     const textarea = getByLabelText("Message");
+    const overLimitFilename = `image-${MESSAGE_IMAGE_ATTACHMENT_LIMIT + 1}.png`;
 
     for (let index = 0; index < MESSAGE_IMAGE_ATTACHMENT_LIMIT; index += 1) {
       const filename = `image-${index + 1}.png`;
@@ -107,10 +108,12 @@ describe("ImageAttachmentControl", () => {
       });
     }
 
-    pasteFiles(textarea, [createTestFile({ name: "image-4.png" })]);
+    pasteFiles(textarea, [createTestFile({ name: overLimitFilename })]);
 
     await waitFor(() => {
-      expect(getByText(/You can attach up to 3 images at a time/i)).toBeInTheDocument();
+      expect(
+        getByText(new RegExp(`You can attach up to ${MESSAGE_IMAGE_ATTACHMENT_LIMIT} images at a time`, "i")),
+      ).toBeInTheDocument();
     });
   });
 
