@@ -64,7 +64,7 @@ export function ShellSection({
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between gap-2 px-1">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="min-w-0 flex-1">
           <button
             type="button"
