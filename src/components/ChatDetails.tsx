@@ -722,7 +722,7 @@ export function ChatDetails({
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2 sm:justify-end">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button
               type="button"
               variant="ghost"

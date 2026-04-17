@@ -1209,7 +1209,7 @@ describe("ChatDetails", () => {
     const headerActionRow = focusButton.parentElement;
 
     expect(focusButton).toBeTruthy();
-    expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    getByRole("button", { name: "Chat actions" });
     expect(headerActionRow?.className).toContain("justify-end");
     expect(queryByRole("button", { name: "Spawn loop" })).toBeNull();
     expect(queryByRole("button", { name: "Delete chat" })).toBeNull();
