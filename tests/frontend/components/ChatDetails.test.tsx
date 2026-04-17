@@ -1131,24 +1131,18 @@ describe("ChatDetails", () => {
     expect(navigatedBack).toBe(true);
   });
 
-  test("supports focus mode for chat", async () => {
+  test("keeps chat in the standard layout without focus mode controls", async () => {
     api.get("/api/chats/:id", () => createChat());
 
-    const { getByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByText, queryByRole } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Enter focus mode" }));
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Exit focus mode" })).toBeTruthy();
-    });
-
-    const focusModeActionsRow = getByRole("button", { name: "Exit focus mode" }).parentElement;
-    expect(focusModeActionsRow?.className).toContain("justify-end");
-    expect(queryByText("Repo pairing")).toBeNull();
+    expect(queryByRole("button", { name: "Enter focus mode" })).toBeNull();
+    expect(queryByRole("button", { name: "Exit focus mode" })).toBeNull();
+    expect(getByText("Repo pairing")).toBeTruthy();
   });
 
   test("opens the code explorer for the chat context", async () => {
@@ -1174,7 +1168,7 @@ describe("ChatDetails", () => {
     expect(openedChatId).toBe(CHAT_ID);
   });
 
-  test("renders chat header actions in a single plus menu while keeping focus mode separate", async () => {
+  test("renders chat header actions in a single plus menu", async () => {
     const baseChat = createChat();
     const longChat = createChat({
       config: {
@@ -1208,13 +1202,12 @@ describe("ChatDetails", () => {
     const branchMetadata = getByText(longChat.state.worktree?.workingBranch ?? "");
     expect(branchMetadata.className).toContain("truncate");
 
-    const focusButton = getByRole("button", { name: "Enter focus mode" });
-    const headerActionRow = focusButton.parentElement;
+    const headerActionRow = getByTestId("chat-header-actions").parentElement;
 
-    expect(focusButton).toBeTruthy();
-    getByRole("button", { name: "Chat actions" });
+    expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
     expect(headerActionRow?.className).toContain("justify-end");
-    expect(queryByRole("button", { name: "Spawn loop" })).toBeNull();
+    expect(queryByRole("button", { name: "Enter focus mode" })).toBeNull();
+    expect(queryByRole("button", { name: /spawn loop/i })).toBeNull();
     expect(queryByRole("button", { name: "Delete chat" })).toBeNull();
     expect(queryByRole("button", { name: "Code explorer" })).toBeNull();
     expect(queryByRole("button", { name: "Rename" })).toBeNull();
