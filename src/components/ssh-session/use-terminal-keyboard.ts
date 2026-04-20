@@ -51,13 +51,6 @@ export function useTerminalKeyboard({
     }
   }, [resetTerminalModifiers, sendTerminalInput, showErrorToast]);
 
-  const sendTerminalTextShortcut = useCallback((data: string) => {
-    const didSend = sendTerminalInput(data);
-    if (didSend) {
-      resetTerminalModifiers();
-    }
-  }, [resetTerminalModifiers, sendTerminalInput]);
-
   const sendTerminalKeystroke = useCallback((data: string) => {
     const modifiers = terminalModifiersRef.current;
     if (!hasActiveTerminalModifiers(modifiers)) {
@@ -74,5 +67,5 @@ export function useTerminalKeyboard({
     }
   }, [resetTerminalModifiers, sendTerminalInput, showErrorToast, terminalModifiersRef]);
 
-  return { sendEncodedTerminalKey, sendCtrlC, sendTerminalTextShortcut, sendTerminalKeystroke };
+  return { sendEncodedTerminalKey, sendCtrlC, sendTerminalKeystroke };
 }

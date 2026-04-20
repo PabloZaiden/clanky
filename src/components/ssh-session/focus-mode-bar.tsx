@@ -18,7 +18,6 @@ export interface FocusModeBarProps {
   copySelectedTerminalText: () => void;
   sendEncodedTerminalKey: (key: TerminalSpecialKey | string) => void;
   sendCtrlC: () => void;
-  sendTerminalTextShortcut: (data: string) => void;
   onExitFocusMode: () => void;
 }
 
@@ -30,7 +29,6 @@ export function FocusModeBar({
   copySelectedTerminalText,
   sendEncodedTerminalKey,
   sendCtrlC,
-  sendTerminalTextShortcut,
   onExitFocusMode,
 }: FocusModeBarProps) {
   const hasModifiers = useMemo(
@@ -150,22 +148,6 @@ export function FocusModeBar({
           onClick={copySelectedTerminalText}
         >
           Copy
-        </TouchControlButton>
-
-        <span className={separatorClass} aria-hidden="true" />
-
-        {/* Shortcuts */}
-        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut("nvim\n")}>
-          nvim
-        </TouchControlButton>
-        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut(":Ntree\n")}>
-          Ntree
-        </TouchControlButton>
-        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut(":q\n")}>
-          :q
-        </TouchControlButton>
-        <TouchControlButton variant="secondary" size="xs" className={btnClass} onClick={() => sendTerminalTextShortcut("fresh\n")}>
-          fresh
         </TouchControlButton>
       </div>
     </div>

@@ -18,7 +18,6 @@ export interface TouchControlsSectionProps {
   copySelectedTerminalText: () => void;
   sendEncodedTerminalKey: (key: TerminalSpecialKey | string) => void;
   sendCtrlC: () => void;
-  sendTerminalTextShortcut: (data: string) => void;
   onEnterFocusMode?: () => void;
 }
 
@@ -30,7 +29,6 @@ export function TouchControlsSection({
   copySelectedTerminalText,
   sendEncodedTerminalKey,
   sendCtrlC,
-  sendTerminalTextShortcut,
   onEnterFocusMode,
 }: TouchControlsSectionProps) {
   const [expanded, setExpanded] = useState(false);
@@ -213,56 +211,6 @@ export function TouchControlsSection({
               onClick={copySelectedTerminalText}
             >
               Copy selection
-            </TouchControlButton>
-            <span className="mx-0.5 h-4 w-px shrink-0 bg-gray-200 dark:bg-neutral-700" aria-hidden="true" />
-            <TouchControlButton
-              variant="secondary"
-              size="xs"
-              className={touchButtonClassName}
-              onClick={() => sendTerminalTextShortcut("sudo apt update && sudo apt install neovim")}
-            >
-              Install Neovim
-            </TouchControlButton>
-            <TouchControlButton
-              variant="secondary"
-              size="xs"
-              className={touchButtonClassName}
-              onClick={() => sendTerminalTextShortcut("nvim\n")}
-            >
-              Neovim
-            </TouchControlButton>
-            <TouchControlButton
-              variant="secondary"
-              size="xs"
-              className={touchButtonClassName}
-              onClick={() => sendTerminalTextShortcut(":Ntree\n")}
-            >
-              Ntree
-            </TouchControlButton>
-            <TouchControlButton
-              variant="secondary"
-              size="xs"
-              className={touchButtonClassName}
-              onClick={() => sendTerminalTextShortcut(":q\n")}
-            >
-              :q
-            </TouchControlButton>
-            <span className="mx-0.5 h-4 w-px shrink-0 bg-gray-200 dark:bg-neutral-700" aria-hidden="true" />
-            <TouchControlButton
-              variant="secondary"
-              size="xs"
-              className={touchButtonClassName}
-              onClick={() => sendTerminalTextShortcut("curl https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh | sh")}
-            >
-              Install fresh
-            </TouchControlButton>
-            <TouchControlButton
-              variant="secondary"
-              size="xs"
-              className={touchButtonClassName}
-              onClick={() => sendTerminalTextShortcut("fresh\n")}
-            >
-              Fresh
             </TouchControlButton>
           </div>
         </div>
