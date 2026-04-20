@@ -1304,6 +1304,9 @@ describe("ChatDetails", () => {
 
     const heading = await waitFor(() => getByText(longChat.config.name));
     expect(heading.className).toContain("truncate");
+    const chatHeader = getByTestId("chat-header");
+    expect(chatHeader.classList.contains("py-2")).toBe(true);
+    expect(chatHeader.classList.contains("py-3")).toBe(false);
     expect(getByTestId("chat-header-primary-row").className).toContain("min-h-14");
 
     const transcriptMetadata = getByText(`${longChat.config.directory} · ${longChat.state.worktree?.worktreePath}`);

@@ -513,7 +513,10 @@ export function ChatDetails({
   if (!chat) {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <header className={`border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}>
+        <header
+          data-testid="chat-header"
+          className={`border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}
+        >
           <div className="flex items-center gap-3">
             {showBackButton && onBack && (
               <Button type="button" variant="ghost" size="sm" onClick={onBack}>
@@ -681,7 +684,10 @@ export function ChatDetails({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
-      <header className={`border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}>
+      <header
+        data-testid="chat-header"
+        className={`border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}
+      >
         <div
           data-testid="chat-header-primary-row"
           className="flex min-h-14 items-center gap-2"
