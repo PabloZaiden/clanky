@@ -83,8 +83,8 @@ describe("LoopActionBar", () => {
       expect(getByRole("button", { name: "Stop" })).toBeInTheDocument();
     });
 
-    test("renders the attachment control below the loop composer main row", async () => {
-      const { getByRole, getByTestId, getByText, user } = renderWithUser(
+    test("keeps the attachment button inline and renders image previews below the loop composer row", async () => {
+      const { getByRole, getByTestId, getByText, queryByTestId, user } = renderWithUser(
         <LoopActionBar {...defaultProps()} />
       );
 
@@ -94,14 +94,13 @@ describe("LoopActionBar", () => {
       const layout = getByTestId("loop-composer-layout");
       const modelCell = getByTestId("loop-composer-model-cell");
       const mainRow = getByTestId("loop-composer-main-row");
-      const attachmentsRow = getByTestId("loop-composer-attachments-row");
+      const attachmentCell = getByTestId("loop-composer-attachment-cell");
 
-      expect(layout.firstElementChild).toBe(modelCell);
-      expect(layout.children.item(1)).toBe(mainRow);
-      expect(layout.lastElementChild).toBe(attachmentsRow);
+      expect(layout.firstElementChild).toBe(mainRow);
       expect(modelCell).toContainElement(modelSelector);
-      expect(attachmentButton.closest("[data-testid='loop-composer-main-row']")).toBeNull();
-      expect(attachmentButton.closest("[data-testid='loop-composer-attachments-row']")).toBe(attachmentsRow);
+      expect(attachmentCell).toContainElement(attachmentButton);
+      expect(mainRow).toContainElement(attachmentButton);
+      expect(queryByTestId("loop-composer-attachments-row")).toBeNull();
 
       await user.type(composer, "Please inspect this");
       pasteFiles(composer, [createTestFile({ name: "loop-image.png" })]);
@@ -109,6 +108,8 @@ describe("LoopActionBar", () => {
       await waitFor(() => {
         expect(getByText("loop-image.png")).toBeInTheDocument();
       });
+
+      const attachmentsRow = getByTestId("loop-composer-attachments-row");
 
       expect(mainRow).not.toContainElement(getByText("loop-image.png"));
       expect(attachmentsRow).toContainElement(getByText("loop-image.png"));

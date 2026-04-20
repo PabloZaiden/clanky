@@ -254,10 +254,10 @@ describe("ChatDetails", () => {
     expect(mouseDown.defaultPrevented).toBe(true);
   });
 
-  test("renders the attachment control below the chat composer main row", async () => {
+  test("keeps the attachment button inline and renders image previews below the chat composer row", async () => {
     api.get("/api/chats/:id", () => createChat());
 
-    const { getByLabelText, getByRole, getByTestId, getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, getByTestId, getByText, queryByTestId } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Send" })).toBeTruthy();
@@ -269,20 +269,21 @@ describe("ChatDetails", () => {
     const layout = getByTestId("chat-composer-layout");
     const modelCell = getByTestId("chat-composer-model-cell");
     const mainRow = getByTestId("chat-composer-main-row");
-    const attachmentsRow = getByTestId("chat-composer-attachments-row");
+    const attachmentCell = getByTestId("chat-composer-attachment-cell");
 
-    expect(layout.firstElementChild).toBe(modelCell);
-    expect(layout.children.item(1)).toBe(mainRow);
-    expect(layout.lastElementChild).toBe(attachmentsRow);
+    expect(layout.firstElementChild).toBe(mainRow);
     expect(modelCell).toContainElement(modelSelector);
-    expect(attachmentButton.closest("[data-testid='chat-composer-main-row']")).toBeNull();
-    expect(attachmentButton.closest("[data-testid='chat-composer-attachments-row']")).toBe(attachmentsRow);
+    expect(attachmentCell).toContainElement(attachmentButton);
+    expect(mainRow).toContainElement(attachmentButton);
+    expect(queryByTestId("chat-composer-attachments-row")).toBeNull();
 
     pasteFiles(messageInput, [createTestFile({ name: "chat-image.png" })]);
 
     await waitFor(() => {
       expect(getByText("chat-image.png")).toBeInTheDocument();
     });
+
+    const attachmentsRow = getByTestId("chat-composer-attachments-row");
 
     expect(mainRow).not.toContainElement(getByText("chat-image.png"));
     expect(attachmentsRow).toContainElement(getByText("chat-image.png"));
