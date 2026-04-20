@@ -15,10 +15,9 @@ import {
 
 const api = createMockApi();
 const ws = createMockWebSocket();
+const imageAttachmentMocks = installImageAttachmentMocks();
 
 const CHAT_ID = "chat-1";
-
-installImageAttachmentMocks();
 
 function createChat(overrides?: Partial<Chat>): Chat {
   return {
@@ -254,10 +253,10 @@ describe("ChatDetails", () => {
     expect(mouseDown.defaultPrevented).toBe(true);
   });
 
-  test("renders the attachment control below the chat composer main row", async () => {
+  test("keeps the attachment button inline and renders image previews below the chat composer row", async () => {
     api.get("/api/chats/:id", () => createChat());
 
-    const { getByLabelText, getByRole, getByTestId, getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, getByTestId, getByText, queryByTestId } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Send" })).toBeTruthy();
@@ -269,14 +268,13 @@ describe("ChatDetails", () => {
     const layout = getByTestId("chat-composer-layout");
     const modelCell = getByTestId("chat-composer-model-cell");
     const mainRow = getByTestId("chat-composer-main-row");
-    const attachmentsRow = getByTestId("chat-composer-attachments-row");
+    const attachmentCell = getByTestId("chat-composer-attachment-cell");
 
-    expect(layout.firstElementChild).toBe(modelCell);
-    expect(layout.children.item(1)).toBe(mainRow);
-    expect(layout.lastElementChild).toBe(attachmentsRow);
+    expect(layout.firstElementChild).toBe(mainRow);
     expect(modelCell).toContainElement(modelSelector);
-    expect(attachmentButton.closest("[data-testid='chat-composer-main-row']")).toBeNull();
-    expect(attachmentButton.closest("[data-testid='chat-composer-attachments-row']")).toBe(attachmentsRow);
+    expect(attachmentCell).toContainElement(attachmentButton);
+    expect(mainRow).toContainElement(attachmentButton);
+    expect(queryByTestId("chat-composer-attachments-row")).toBeNull();
 
     pasteFiles(messageInput, [createTestFile({ name: "chat-image.png" })]);
 
@@ -284,9 +282,81 @@ describe("ChatDetails", () => {
       expect(getByText("chat-image.png")).toBeInTheDocument();
     });
 
+    const attachmentsRow = getByTestId("chat-composer-attachments-row");
+
     expect(mainRow).not.toContainElement(getByText("chat-image.png"));
     expect(attachmentsRow).toContainElement(getByText("chat-image.png"));
     expect(modelCell).not.toContainElement(getByText("chat-image.png"));
+  });
+
+  test("clears stale attachment errors after a successful send", async () => {
+    const initialChat = createChat();
+    const updatedChat = createChat({
+      state: {
+        ...initialChat.state,
+        messages: [
+          ...initialChat.state.messages,
+          {
+            id: "user-2",
+            role: "user",
+            content: "Please summarize the risk.",
+            timestamp: "2025-01-01T00:00:02.000Z",
+          },
+        ],
+      },
+    });
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/messages", () => updatedChat, 200);
+
+    const { getByLabelText, getByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Send" })).toBeTruthy();
+    });
+
+    const messageInput = getByLabelText("Message");
+    pasteFiles(messageInput, [createTestFile({ name: "clipboard-image.svg", type: "image/svg+xml" })]);
+
+    await waitFor(() => {
+      expect(queryByText(/clipboard-image\.svg is not a supported image type/i)).toBeInTheDocument();
+    });
+
+    await user.type(messageInput, "Please summarize the risk.");
+    await user.click(getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(1);
+      expect(queryByText(/clipboard-image\.svg is not a supported image type/i)).not.toBeInTheDocument();
+    });
+  });
+
+  test("revokes removed chat attachment previews once through shared cleanup", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByLabelText, getByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Send" })).toBeTruthy();
+    });
+
+    const messageInput = getByLabelText("Message");
+    pasteFiles(messageInput, [createTestFile({ name: "chat-image.png" })]);
+
+    await waitFor(() => {
+      expect(queryByText("chat-image.png")).toBeInTheDocument();
+    });
+
+    expect(imageAttachmentMocks.revokeObjectURL).toHaveBeenCalledTimes(0);
+
+    await user.click(getByRole("button", { name: "Remove chat-image.png" }));
+
+    await waitFor(() => {
+      expect(queryByText("chat-image.png")).not.toBeInTheDocument();
+    });
+
+    expect(imageAttachmentMocks.revokeObjectURL).toHaveBeenCalledTimes(1);
+    expect(imageAttachmentMocks.revokeObjectURL).toHaveBeenLastCalledWith("blob:mock:chat-image.png");
   });
 
   test("renames the chat from the header actions", async () => {
