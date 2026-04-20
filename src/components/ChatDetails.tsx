@@ -368,6 +368,7 @@ export function ChatDetails({
       setChat(nextChat);
       setMessage("");
       setAttachments([]);
+      setAttachmentError(null);
     } catch (submitError) {
       toast.error(String(submitError));
     } finally {
@@ -636,13 +637,7 @@ export function ChatDetails({
             <ImageAttachmentPreviewList
               attachments={attachments}
               onRemoveAttachment={(attachmentId) => {
-                setAttachments((current) => {
-                  const removedAttachment = current.find((attachment) => attachment.id === attachmentId);
-                  if (removedAttachment) {
-                    URL.revokeObjectURL(removedAttachment.previewUrl);
-                  }
-                  return current.filter((attachment) => attachment.id !== attachmentId);
-                });
+                setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
                 setAttachmentError(null);
               }}
               disabled={isActive || isSubmitting}

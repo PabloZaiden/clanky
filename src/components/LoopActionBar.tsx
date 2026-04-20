@@ -93,6 +93,13 @@ export function LoopActionBar({
     composerPaddingClass,
   } = useComposerSizing(message);
 
+  const resetComposerState = useCallback(() => {
+    setMessage("");
+    setSelectedModel("");
+    setAttachments([]);
+    setAttachmentError(null);
+  }, []);
+
   // Handle form submission
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
@@ -130,17 +137,14 @@ export function LoopActionBar({
       const success = await onSubmit(options);
       if (success) {
         log.debug("Action bar changes submitted successfully");
-        // Clear local state on success
-        setMessage("");
-        setSelectedModel("");
-        setAttachments([]);
+        resetComposerState();
       } else {
         log.warn("Failed to submit action bar changes");
       }
     } finally {
       setIsSubmitting(false);
     }
-  }, [attachments, canSubmit, disabled, isSubmitting, message, onSubmit, selectedModel, selectedModelEnabled, showStopButton]);
+  }, [attachments, canSubmit, disabled, isSubmitting, message, onSubmit, resetComposerState, selectedModel, selectedModelEnabled, showStopButton]);
 
   const handleStop = useCallback(async () => {
     if (!onStop || disabled || isSubmitting) return;
@@ -253,13 +257,7 @@ export function LoopActionBar({
               <ImageAttachmentPreviewList
                 attachments={attachments}
                 onRemoveAttachment={(attachmentId) => {
-                  setAttachments((current) => {
-                    const removedAttachment = current.find((attachment) => attachment.id === attachmentId);
-                    if (removedAttachment) {
-                      URL.revokeObjectURL(removedAttachment.previewUrl);
-                    }
-                    return current.filter((attachment) => attachment.id !== attachmentId);
-                  });
+                  setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
                   setAttachmentError(null);
                 }}
                 disabled={disabled || isSubmitting}

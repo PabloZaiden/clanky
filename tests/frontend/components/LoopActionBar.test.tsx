@@ -16,7 +16,7 @@ import {
 } from "../helpers/image-paste";
 import { mockComposerSoftWrap } from "../helpers/composer-measurement";
 
-installImageAttachmentMocks();
+const imageAttachmentMocks = installImageAttachmentMocks();
 
 // Default props factory
 function defaultProps(overrides?: Partial<Parameters<typeof LoopActionBar>[0]>) {
@@ -463,6 +463,52 @@ describe("LoopActionBar", () => {
           ]),
         }),
       );
+    });
+
+    test("clears stale attachment errors after a successful send", async () => {
+      const onSubmit = mock(async () => true);
+      const { getByRole, queryByText, user } = renderWithUser(
+        <LoopActionBar {...defaultProps({ onSubmit })} />
+      );
+
+      const input = getLoopMessageInput(getByRole);
+      pasteFiles(input, [createTestFile({ name: "clipboard-image.svg", type: "image/svg+xml" })]);
+
+      await waitFor(() => {
+        expect(queryByText(/clipboard-image\.svg is not a supported image type/i)).toBeInTheDocument();
+      });
+
+      await user.type(input, "Please inspect this");
+      await user.click(getByRole("button", { name: "Send" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+        expect(queryByText(/clipboard-image\.svg is not a supported image type/i)).not.toBeInTheDocument();
+      });
+    });
+
+    test("revokes removed loop attachment previews once through shared cleanup", async () => {
+      const { getByRole, queryByText, user } = renderWithUser(
+        <LoopActionBar {...defaultProps()} />
+      );
+
+      const input = getLoopMessageInput(getByRole);
+      pasteFiles(input, [createTestFile({ name: "loop-image.png" })]);
+
+      await waitFor(() => {
+        expect(queryByText("loop-image.png")).toBeInTheDocument();
+      });
+
+      expect(imageAttachmentMocks.revokeObjectURL).toHaveBeenCalledTimes(0);
+
+      await user.click(getByRole("button", { name: "Remove loop-image.png" }));
+
+      await waitFor(() => {
+        expect(queryByText("loop-image.png")).not.toBeInTheDocument();
+      });
+
+      expect(imageAttachmentMocks.revokeObjectURL).toHaveBeenCalledTimes(1);
+      expect(imageAttachmentMocks.revokeObjectURL).toHaveBeenLastCalledWith("blob:mock:loop-image.png");
     });
 
     test("clears message input after successful submission", async () => {
