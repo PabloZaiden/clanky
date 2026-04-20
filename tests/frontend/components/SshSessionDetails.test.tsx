@@ -738,127 +738,40 @@ describe("SshSessionDetails", () => {
     });
   });
 
-  test("sends raw text shortcuts from touch controls", async () => {
+  test("ends touch controls at copy selection", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
-      createSshSession({ config: { id: req.params["id"]!, name: "SSH Text Shortcuts" } }),
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Copy Final Control" } }),
     );
 
-    const { getByText, user } = renderWithUser(
-      <SshSessionDetails sshSessionId="ssh-mobile-text-shortcuts" onBack={() => {}} />,
+    const { getByRole, getByText, getByTestId, queryByRole, user } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-copy-final-control" onBack={() => {}} />,
     );
 
     await waitFor(() => {
-      expect(getByText("SSH Text Shortcuts")).toBeTruthy();
-    });
-
-    await waitFor(() => {
-      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
-      expect(lastTerminal).not.toBeNull();
-    });
-
-    const terminalConnection = ws.getConnections("/api/ssh-terminal")[0]!;
-    await act(async () => {
-      ws.sendEventTo(terminalConnection, {
-        type: "terminal.connected",
-        sshSessionId: "ssh-mobile-text-shortcuts",
-      });
+      expect(getByText("SSH Copy Final Control")).toBeTruthy();
     });
 
     await user.click(getByText("Touch controls"));
-    await user.click(getByText("Install Neovim"));
-    await user.click(getByText("Neovim"));
-    await user.click(getByText("Ntree"));
-    await user.click(getByText(":q"));
-    await user.click(getByText("Install fresh"));
-    await user.click(getByText("Fresh"));
-
-    await waitFor(() => {
-      expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-        type: "terminal.input",
-        data: "sudo apt update && sudo apt install neovim",
-      }));
-      expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-        type: "terminal.input",
-        data: "nvim\n",
-      }));
-      expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-        type: "terminal.input",
-        data: ":Ntree\n",
-      }));
-      expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-        type: "terminal.input",
-        data: ":q\n",
-      }));
-      expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-        type: "terminal.input",
-        data: "curl https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh | sh",
-      }));
-      expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-        type: "terminal.input",
-        data: "fresh\n",
-      }));
-    });
-  });
-
-  test("wraps touch controls instead of forcing horizontal scrolling", async () => {
-    api.get("/api/ssh-sessions/:id", (req) =>
-      createSshSession({ config: { id: req.params["id"]!, name: "SSH Wrapped Controls" } }),
-    );
-
-    const { getByRole, getByText, getByTestId, user } = renderWithUser(
-      <SshSessionDetails sshSessionId="ssh-mobile-wrap" onBack={() => {}} />,
-    );
-
-    await waitFor(() => {
-      expect(getByText("SSH Wrapped Controls")).toBeTruthy();
-    });
-
-    await user.click(getByText("Touch controls"));
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "↓" })).toBeTruthy();
-    });
 
     const layout = getByTestId("ssh-touch-controls-layout");
     const buttons = getByTestId("ssh-touch-controls-buttons");
+    const buttonLabels = Array.from(buttons.querySelectorAll("button")).map((button) =>
+      button.textContent?.trim() ?? ""
+    );
+    const separators = buttons.querySelectorAll("span[aria-hidden='true']");
 
     expect(layout.className).not.toContain("overflow-x-auto");
     expect(buttons.className).toContain("flex-wrap");
     expect(buttons.className).not.toContain("min-w-max");
-  });
-
-  test("keeps neovim and fresh touch controls grouped at the end after separators", async () => {
-    api.get("/api/ssh-sessions/:id", (req) =>
-      createSshSession({ config: { id: req.params["id"]!, name: "SSH Neovim Group" } }),
-    );
-
-    const { getByText, getByTestId, user } = renderWithUser(
-      <SshSessionDetails sshSessionId="ssh-mobile-neovim-group" onBack={() => {}} />,
-    );
-
-    await waitFor(() => {
-      expect(getByText("SSH Neovim Group")).toBeTruthy();
-    });
-
-    await user.click(getByText("Touch controls"));
-
-    const buttons = getByTestId("ssh-touch-controls-buttons");
-    const buttonLabels = Array.from(buttons.querySelectorAll("button")).map((button) =>
-      button.textContent?.trim() ?? "",
-    );
-    const separators = buttons.querySelectorAll("span[aria-hidden='true']");
-
-    expect(buttonLabels.slice(-6, -2)).toEqual([
-      "Install Neovim",
-      "Neovim",
-      "Ntree",
-      ":q",
-    ]);
-    expect(buttonLabels.slice(-2)).toEqual([
-      "Install fresh",
-      "Fresh",
-    ]);
-    expect(separators).toHaveLength(4);
+    expect(buttonLabels.at(-1)).toBe("Copy selection");
+    expect(separators).toHaveLength(2);
+    expect(getByRole("button", { name: "Copy selection" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Install Neovim" })).toBeNull();
+    expect(queryByRole("button", { name: "Neovim" })).toBeNull();
+    expect(queryByRole("button", { name: "Ntree" })).toBeNull();
+    expect(queryByRole("button", { name: ":q" })).toBeNull();
+    expect(queryByRole("button", { name: "Install fresh" })).toBeNull();
+    expect(queryByRole("button", { name: "Fresh" })).toBeNull();
   });
 
   test("prevents touch controls from taking focus on press", async () => {
@@ -2098,6 +2011,9 @@ describe("SshSessionDetails", () => {
     expect(getByLabelText("Arrow right")).toBeTruthy();
     expect(getByLabelText("Enter")).toBeTruthy();
     expect(getByLabelText("Space")).toBeTruthy();
+    expect(getByText("Copy")).toBeTruthy();
+    expect(queryByText("nvim")).toBeNull();
+    expect(queryByText("fresh")).toBeNull();
 
     // Exit focus mode — normal view should be restored with the "Enter focus mode" button
     await user.click(exitButton);

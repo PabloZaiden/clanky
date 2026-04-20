@@ -239,7 +239,6 @@ export function SshSessionDetails({
     copySelectedTerminalText: clipboard.copySelectedTerminalText,
     sendEncodedTerminalKey: keyboard.sendEncodedTerminalKey,
     sendCtrlC: keyboard.sendCtrlC,
-    sendTerminalTextShortcut: keyboard.sendTerminalTextShortcut,
   };
 
   function renderClipboardFallback(compact: boolean) {
