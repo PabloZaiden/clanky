@@ -2,12 +2,14 @@
  * Terminal entrypoint for `ralpher cli`.
  */
 
+import { mkdir } from "fs/promises";
+import { homedir } from "os";
 import { join } from "path";
 import { z } from "zod";
-import { ensureDataDirectories, getDataDir } from "../persistence/database";
 
 const DEFAULT_CLIENT_ID = "ralpher-cli";
 const DEFAULT_SCOPE = "";
+const CLI_STATE_DIRECTORY = ".ralpher";
 const CLI_CREDENTIALS_FILE = "cli-auth.json";
 
 const CLI_USAGE = [
@@ -95,8 +97,22 @@ function getRequestUrl(input: string | URL | Request): string {
   return String(input);
 }
 
+function getCliStateDir(): string {
+  const explicitCliHome = process.env["RALPHER_CLI_HOME"]?.trim();
+  if (explicitCliHome) {
+    return explicitCliHome;
+  }
+
+  const resolvedHome = process.env["HOME"]?.trim() || homedir().trim();
+  if (!resolvedHome) {
+    throw new Error("Could not determine the CLI state directory. Set HOME or RALPHER_CLI_HOME.");
+  }
+
+  return join(resolvedHome, CLI_STATE_DIRECTORY);
+}
+
 function getCliCredentialsPath(): string {
-  return join(getDataDir(), CLI_CREDENTIALS_FILE);
+  return join(getCliStateDir(), CLI_CREDENTIALS_FILE);
 }
 
 function parseOptionValue(option: string, rawValue?: string): string {
@@ -224,7 +240,7 @@ export async function loadStoredCliCredentials(): Promise<StoredCliCredentials |
 }
 
 export async function saveStoredCliCredentials(credentials: StoredCliCredentials): Promise<void> {
-  await ensureDataDirectories();
+  await mkdir(getCliStateDir(), { recursive: true });
   await Bun.write(
     getCliCredentialsPath(),
     `${JSON.stringify(StoredCliCredentialsSchema.parse(credentials), null, 2)}\n`,

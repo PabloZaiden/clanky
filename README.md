@@ -93,7 +93,7 @@ ralpher cli auth --base-url http://localhost:3000
 ralpher cli status
 ```
 
-`ralpher cli auth` stores the chosen server URL alongside the tokens, so later `ralpher cli status` requests reuse that same server unless you pass `--base-url <url>` to override it.
+`ralpher cli auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher cli status` requests reuse that same server unless you pass `--base-url <url>` to override it.
 
 ### Create your first loop
 
@@ -144,7 +144,7 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 - Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
-- `ralpher cli auth` stores bearer credentials locally, and `ralpher cli status` validates them through `GET /api/auth/status`.
+- `ralpher cli auth` stores bearer credentials in per-user CLI state under the home directory, and `ralpher cli status` validates them through `GET /api/auth/status`.
 - Ralpher exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `RALPHER_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.

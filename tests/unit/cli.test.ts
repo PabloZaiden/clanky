@@ -28,14 +28,22 @@ function createFetchMock(
 
 describe("ralpher cli", () => {
   let dataDir: string;
+  let homeDir: string;
   let originalDataDir: string | undefined;
+  let originalCliHome: string | undefined;
+  let originalHome: string | undefined;
   let originalBaseUrl: string | undefined;
 
   beforeEach(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "ralpher-cli-test-"));
+    homeDir = await mkdtemp(join(tmpdir(), "ralpher-cli-home-"));
     originalDataDir = process.env["RALPHER_DATA_DIR"];
+    originalCliHome = process.env["RALPHER_CLI_HOME"];
+    originalHome = process.env["HOME"];
     originalBaseUrl = process.env["RALPHER_BASE_URL"];
     process.env["RALPHER_DATA_DIR"] = dataDir;
+    process.env["HOME"] = homeDir;
+    delete process.env["RALPHER_CLI_HOME"];
     delete process.env["RALPHER_BASE_URL"];
   });
 
@@ -45,12 +53,23 @@ describe("ralpher cli", () => {
     } else {
       process.env["RALPHER_DATA_DIR"] = originalDataDir;
     }
+    if (originalCliHome === undefined) {
+      delete process.env["RALPHER_CLI_HOME"];
+    } else {
+      process.env["RALPHER_CLI_HOME"] = originalCliHome;
+    }
+    if (originalHome === undefined) {
+      delete process.env["HOME"];
+    } else {
+      process.env["HOME"] = originalHome;
+    }
     if (originalBaseUrl === undefined) {
       delete process.env["RALPHER_BASE_URL"];
     } else {
       process.env["RALPHER_BASE_URL"] = originalBaseUrl;
     }
     await rm(dataDir, { recursive: true, force: true });
+    await rm(homeDir, { recursive: true, force: true });
   });
 
   test("auth requires an explicit base URL instead of defaulting to localhost", async () => {
@@ -160,6 +179,8 @@ describe("ralpher cli", () => {
       "http://example.test/api/auth/token",
     ]);
     expect(fetchCalls.every((call) => call.origin === "http://example.test")).toBe(true);
+    expect(await Bun.file(join(homeDir, ".ralpher", "cli-auth.json")).exists()).toBe(true);
+    expect(await Bun.file(join(dataDir, "cli-auth.json")).exists()).toBe(false);
   });
 
   test("status refreshes expired credentials before probing auth status", async () => {
