@@ -102,4 +102,18 @@ describe("buildPersistentSessionAttachCommand stale session cleanup", () => {
 
     expect(command).toContain("kill -9 \"$mpid\"");
   });
+
+  test("starts tmux inside the persistent shell when it is available", () => {
+    const command = buildPersistentSessionAttachCommand(session);
+
+    expect(command).toContain("if command -v tmux >/dev/null 2>&1; then");
+    expect(command).toContain("exec tmux new-session \\; set-option destroy-unattached on;");
+  });
+
+  test("falls back to the interactive shell when tmux is unavailable", () => {
+    const command = buildPersistentSessionAttachCommand(session);
+
+    expect(command).toContain("shell=\"${SHELL:-/bin/sh}\";");
+    expect(command).toContain("\"$shell\" -i");
+  });
 });
