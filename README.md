@@ -86,14 +86,14 @@ The UI is available at `http://localhost:3000` by default. Use `RALPHER_PORT` to
 The same binary now exposes an initial terminal client surface:
 
 ```bash
-# Start device authorization against the default local server
-ralpher cli auth
+# Start device authorization against a specific Ralpher server
+ralpher cli auth --base-url http://localhost:3000
 
 # Check whether stored CLI credentials are still valid
 ralpher cli status
 ```
 
-Use `RALPHER_BASE_URL` or `--base-url <url>` if the CLI should talk to a different Ralpher instance.
+`ralpher cli auth` stores the chosen server URL alongside the tokens, so later `ralpher cli status` requests reuse that same server unless you pass `--base-url <url>` to override it.
 
 ### Create your first loop
 
@@ -132,7 +132,7 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 | `RALPHER_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
 | `RALPHER_PORT` | HTTP port | `3000` |
 | `RALPHER_DATA_DIR` | Data directory for SQLite persistence | `./data` |
-| `RALPHER_BASE_URL` | Default base URL used by `ralpher cli` commands | `http://127.0.0.1:3000` |
+| `RALPHER_BASE_URL` | Optional default base URL used by `ralpher cli` commands when `--base-url` is omitted | unset |
 | `RALPHER_REMOTE_ONLY` | Disables local `stdio` transport | unset |
 | `RALPHER_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `RALPHER_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |

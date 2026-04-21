@@ -6,14 +6,13 @@ import { join } from "path";
 import { z } from "zod";
 import { ensureDataDirectories, getDataDir } from "../persistence/database";
 
-const DEFAULT_BASE_URL = "http://127.0.0.1:3000";
 const DEFAULT_CLIENT_ID = "ralpher-cli";
 const DEFAULT_SCOPE = "";
 const CLI_CREDENTIALS_FILE = "cli-auth.json";
 
 const CLI_USAGE = [
   "Usage:",
-  "  ralpher cli auth [--base-url <url>] [--client-id <client-id>]",
+  "  ralpher cli auth --base-url <url> [--client-id <client-id>]",
   "  ralpher cli status [--base-url <url>]",
 ].join("\n");
 
@@ -73,7 +72,10 @@ export type CliCommand =
   };
 
 function normalizeBaseUrl(rawValue?: string): string {
-  const trimmed = rawValue?.trim() || process.env["RALPHER_BASE_URL"]?.trim() || DEFAULT_BASE_URL;
+  const trimmed = rawValue?.trim() || process.env["RALPHER_BASE_URL"]?.trim();
+  if (!trimmed) {
+    throw new Error(`Missing value for --base-url\n\n${CLI_USAGE}`);
+  }
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
@@ -84,6 +86,13 @@ function normalizeBaseUrl(rawValue?: string): string {
     throw new Error(`Invalid base URL protocol: ${parsed.protocol}`);
   }
   return parsed.toString().replace(/\/+$/, "");
+}
+
+function getRequestUrl(input: string | URL | Request): string {
+  if (input instanceof Request) {
+    return input.url;
+  }
+  return String(input);
 }
 
 function getCliCredentialsPath(): string {
@@ -145,15 +154,16 @@ export function parseCliCommand(args: string[]): CliCommand {
 
 async function requestJson(
   fetchFn: typeof fetch,
-  input: string,
+  input: string | URL | Request,
   init?: RequestInit,
 ): Promise<{ response: Response; body: unknown }> {
+  const headers = new Headers(init?.headers);
+  headers.set("accept", "application/json");
+  headers.set("origin", new URL(getRequestUrl(input)).origin);
+
   const response = await fetchFn(input, {
     ...init,
-    headers: {
-      accept: "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
   const rawBody = await response.text();
   if (!rawBody) {
