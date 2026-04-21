@@ -67,6 +67,10 @@ async function parseError(response: Response, fallback: string): Promise<string>
   }
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
   const next = items.filter((entry) => entry.id !== item.id);
   next.push(item);
@@ -461,7 +465,7 @@ export function ChatDetails({
       const loop = (await response.json()) as Loop;
       onOpenLoop?.(loop.config.id);
     } catch (spawnError) {
-      toast.error(String(spawnError));
+      toast.error(getErrorMessage(spawnError));
     } finally {
       setIsSpawnCurrentPlanPending(false);
     }

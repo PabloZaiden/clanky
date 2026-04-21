@@ -10,9 +10,20 @@ export interface ValidatedPlanningFiles {
   statusContent?: string;
 }
 
+function normalizePlanContent(content: string): string {
+  return content.replace(/^\uFEFF/, "").replace(PLAN_READY_MARKER, "").trim();
+}
+
 function hasMeaningfulPlanContent(content: string): boolean {
-  const normalized = content.replace(/^\uFEFF/, "").replace(PLAN_READY_MARKER, "").trim();
-  return normalized.length > 0;
+  return normalizePlanContent(content).length > 0;
+}
+
+function sanitizeLoopNameForStatusContent(loopName: string): string {
+  return loopName
+    .replace(/[`]/g, "")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export async function readValidatedPlanningFiles(
@@ -20,11 +31,12 @@ export async function readValidatedPlanningFiles(
   directory: string,
 ): Promise<ValidatedPlanningFiles> {
   const planPath = getPlanFilePath(directory);
-  const planContent = await executor.readFile(planPath);
-  if (planContent === null) {
+  const rawPlanContent = await executor.readFile(planPath);
+  if (rawPlanContent === null) {
     throw new InvalidCurrentPlanError("No Ralpher plan file was found in the current chat workspace.");
   }
-  if (!hasMeaningfulPlanContent(planContent)) {
+  const planContent = normalizePlanContent(rawPlanContent);
+  if (!hasMeaningfulPlanContent(rawPlanContent)) {
     throw new InvalidCurrentPlanError("The current Ralpher plan file is empty.");
   }
 
@@ -36,11 +48,12 @@ export async function readValidatedPlanningFiles(
 }
 
 export function buildSeededPlanStatusContent(loopName: string): string {
+  const safeLoopName = sanitizeLoopNameForStatusContent(loopName) || "this loop";
   return `# Status
 
 ## Current state
 
-- Imported plan ready for \`${loopName}\`
+- Imported plan ready for ${safeLoopName}
 - Current task: review the imported plan and either accept it or send feedback
 - Notes: This loop was spawned from the chat's current Ralpher plan
 

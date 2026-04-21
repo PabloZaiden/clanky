@@ -542,7 +542,7 @@ describe("Chats API Integration", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "Plan Source Chat",
+        name: "Plan`Source\nChat",
         workspaceId: testWorkspaceId,
         model: testModel,
         useWorktree: true,
@@ -577,7 +577,10 @@ describe("Chats API Integration", () => {
 
     const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
     await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
-    await writeFile(getPlanFilePath(chatWorktreePath), "# Imported plan\n\n1. Do the seeded work.\n");
+    await writeFile(
+      getPlanFilePath(chatWorktreePath),
+      "\uFEFF# Imported plan\n\n1. Do the seeded work.\n\n<promise>PLAN_READY</promise>\n",
+    );
 
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
       method: "POST",
@@ -587,20 +590,20 @@ describe("Chats API Integration", () => {
     const spawnedLoop = await spawnResponse.json();
     expect(spawnedLoop.state.status).toBe("planning");
     expect(spawnedLoop.state.planMode?.isPlanReady).toBe(true);
-    expect(spawnedLoop.state.planMode?.planContent).toContain("Imported plan");
+    expect(spawnedLoop.state.planMode?.planContent).toBe("# Imported plan\n\n1. Do the seeded work.");
 
     const planResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/plan`);
     expect(planResponse.status).toBe(200);
     await expect(planResponse.json()).resolves.toMatchObject({
       exists: true,
-      content: expect.stringContaining("Imported plan"),
+      content: "# Imported plan\n\n1. Do the seeded work.",
     });
 
     const statusResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/status-file`);
     expect(statusResponse.status).toBe(200);
     await expect(statusResponse.json()).resolves.toMatchObject({
       exists: true,
-      content: expect.stringContaining("Imported plan ready"),
+      content: expect.stringContaining("Imported plan ready for Plan from PlanSource Chat"),
     });
   });
 
