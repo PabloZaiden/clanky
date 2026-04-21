@@ -38,6 +38,37 @@ function resolveStorage(
   }
 }
 
+function readStorageItem(
+  storage: ModelPreferenceStorageLike,
+  storageKey: string,
+): string | null {
+  try {
+    return storage.getItem(storageKey);
+  } catch (error) {
+    log.warn("Failed to read model preference", {
+      storageKey,
+      error: String(error),
+    });
+    return null;
+  }
+}
+
+function removeStoredPreference(
+  storage: ModelPreferenceStorageLike,
+  storageKey: string,
+  reason: Record<string, unknown>,
+): void {
+  try {
+    storage.removeItem(storageKey);
+  } catch (error) {
+    log.warn("Failed to clear invalid model preference", {
+      storageKey,
+      ...reason,
+      cleanupError: String(error),
+    });
+  }
+}
+
 function readStoredModelPreference(
   storageKey: string,
   dependencies: ModelSelectionPreferenceDependencies = {},
@@ -47,7 +78,7 @@ function readStoredModelPreference(
     return null;
   }
 
-  const raw = storage.getItem(storageKey);
+  const raw = readStorageItem(storage, storageKey);
   if (!raw) {
     return null;
   }
@@ -60,7 +91,9 @@ function readStoredModelPreference(
         storageKey,
         issues: validation.error.issues.map((issue) => issue.message),
       });
-      storage.removeItem(storageKey);
+      removeStoredPreference(storage, storageKey, {
+        issues: validation.error.issues.map((issue) => issue.message),
+      });
       return null;
     }
     return validation.data;
@@ -69,7 +102,9 @@ function readStoredModelPreference(
       storageKey,
       error: String(error),
     });
-    storage.removeItem(storageKey);
+    removeStoredPreference(storage, storageKey, {
+      error: String(error),
+    });
     return null;
   }
 }
@@ -82,7 +117,7 @@ function readStoredCheapModelPreference(
     return null;
   }
 
-  const raw = storage.getItem(LOOP_CHEAP_MODEL_STORAGE_KEY);
+  const raw = readStorageItem(storage, LOOP_CHEAP_MODEL_STORAGE_KEY);
   if (!raw) {
     return null;
   }
@@ -95,7 +130,9 @@ function readStoredCheapModelPreference(
         storageKey: LOOP_CHEAP_MODEL_STORAGE_KEY,
         issues: validation.error.issues.map((issue) => issue.message),
       });
-      storage.removeItem(LOOP_CHEAP_MODEL_STORAGE_KEY);
+      removeStoredPreference(storage, LOOP_CHEAP_MODEL_STORAGE_KEY, {
+        issues: validation.error.issues.map((issue) => issue.message),
+      });
       return null;
     }
     return validation.data;
@@ -104,7 +141,9 @@ function readStoredCheapModelPreference(
       storageKey: LOOP_CHEAP_MODEL_STORAGE_KEY,
       error: String(error),
     });
-    storage.removeItem(LOOP_CHEAP_MODEL_STORAGE_KEY);
+    removeStoredPreference(storage, LOOP_CHEAP_MODEL_STORAGE_KEY, {
+      error: String(error),
+    });
     return null;
   }
 }

@@ -2,7 +2,7 @@
  * useModelSelection — manages main and cheap helper-model selection state for CreateLoopForm.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   getStoredLoopCheapModelPreference,
   getStoredLoopModelPreference,
@@ -119,8 +119,8 @@ export function useModelSelection({
     SAME_AS_LOOP_CHEAP_MODEL_VALUE,
   );
   const cheapModelTouchedRef = useRef(false);
-  const storedLoopModelRef = useRef(getStoredLoopModelPreference());
-  const storedLoopCheapModelRef = useRef(getStoredLoopCheapModelPreference());
+  const storedLoopModel = useMemo(() => getStoredLoopModelPreference(), []);
+  const storedLoopCheapModel = useMemo(() => getStoredLoopCheapModelPreference(), []);
 
   useEffect(() => {
     log.debug("useEffect 2 - model selection", {
@@ -152,7 +152,7 @@ export function useModelSelection({
       }
     }
 
-    const fallbackModel = storedLoopModelRef.current ?? lastModel;
+    const fallbackModel = storedLoopModel ?? lastModel;
     if (fallbackModel && models && models.length > 0) {
       const variant = fallbackModel.variant ?? "";
       if (
@@ -195,7 +195,7 @@ export function useModelSelection({
     const preferredCheapModel = getPreferredCheapModelValue(
       models,
       initialLoopData?.cheapModel
-        ?? storedLoopCheapModelRef.current
+        ?? storedLoopCheapModel
         ?? lastCheapModel,
     );
 

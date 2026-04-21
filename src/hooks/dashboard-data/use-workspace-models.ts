@@ -6,6 +6,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { createLogger } from "../../lib/logger";
 import type { CheapModelSelection, ModelConfig, ModelInfo } from "../../types";
 import { appFetch } from "../../lib/public-path";
+import { ModelConfigSchema } from "../../types/schemas/model";
 
 export interface UseWorkspaceModelsResult {
   models: ModelInfo[];
@@ -18,6 +19,25 @@ export interface UseWorkspaceModelsResult {
   setModelsWorkspaceId: (id: string | null) => void;
   fetchModels: (directory: string, workspaceId: string | null) => Promise<void>;
   resetModels: () => void;
+}
+
+function normalizeLastModelPreference(value: unknown): ModelConfig | null {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const validation = ModelConfigSchema.safeParse({
+    providerID: candidate["providerID"],
+    modelID: candidate["modelID"],
+    variant: typeof candidate["variant"] === "string" ? candidate["variant"] : "",
+  });
+
+  if (!validation.success) {
+    return null;
+  }
+
+  return validation.data;
 }
 
 export function useWorkspaceModels(): UseWorkspaceModelsResult {
@@ -42,7 +62,11 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
       try {
         const response = await appFetch("/api/preferences/last-model");
         if (response.ok) {
-          const data = await response.json() as ModelConfig | null;
+          const raw = await response.json() as unknown;
+          const data = normalizeLastModelPreference(raw);
+          if (raw !== null && data === null) {
+            log.warn("Failed to normalize last model preference response");
+          }
           setLastModel(data);
         }
       } catch (error) {

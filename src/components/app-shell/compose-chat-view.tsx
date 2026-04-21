@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Workspace } from "../../types";
 import type { CreateChatRequest } from "../../types/api";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
@@ -86,7 +86,7 @@ export function ComposeChatView({
     resetCreateModalState,
     setLastModel,
   } = dashboardData;
-  const storedChatModelRef = useRef(getStoredChatModelPreference());
+  const storedChatModel = useMemo(() => getStoredChatModelPreference(), []);
   const [name, setName] = useState("");
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(composeWorkspace?.id ?? "");
   const [selectedModel, setSelectedModel] = useState("");
@@ -125,11 +125,11 @@ export function ComposeChatView({
     setSelectedModel(
       getPreferredModelKey(
         models,
-        storedChatModelRef.current,
+        storedChatModel,
         lastModel,
       ),
     );
-  }, [lastModel, models, selectedModel]);
+  }, [lastModel, models, selectedModel, storedChatModel]);
 
   async function handleSubmit(): Promise<void> {
     if (!selectedWorkspace) {
