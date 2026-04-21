@@ -1224,14 +1224,14 @@ describe("ChatDetails", () => {
 
     await waitFor(() => {
       expect(getByText("Alpha before tool")).toBeTruthy();
-      expect(getByText("Read /workspace/repo/README.md")).toBeTruthy();
+      expect(getByText("View /workspace/repo/README.md")).toBeTruthy();
       expect(getByText("Beta after tool")).toBeTruthy();
     });
 
     const transcript = container.querySelector("#chat-transcript");
     const text = transcript?.textContent ?? "";
-    expect(text.indexOf("Alpha before tool")).toBeLessThan(text.indexOf("Read /workspace/repo/README.md"));
-    expect(text.indexOf("Read /workspace/repo/README.md")).toBeLessThan(text.indexOf("Beta after tool"));
+    expect(text.indexOf("Alpha before tool")).toBeLessThan(text.indexOf("View /workspace/repo/README.md"));
+    expect(text.indexOf("View /workspace/repo/README.md")).toBeLessThan(text.indexOf("Beta after tool"));
   });
 
   test("preserves newer local state when chat.updated carries a stale snapshot", async () => {
