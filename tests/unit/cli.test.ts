@@ -53,9 +53,29 @@ describe("ralpher cli", () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
+  test("auth requires an explicit base URL instead of defaulting to localhost", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["auth"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      "ERR:Error: Missing value for --base-url\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>]\n  ralpher cli status [--base-url <url>]",
+    ]);
+  });
+
   test("auth completes the device flow and stores credentials", async () => {
     const output: string[] = [];
-    const fetchCalls: Array<{ url: string; method: string; body?: string; authorization?: string | null }> = [];
+    const fetchCalls: Array<{
+      url: string;
+      method: string;
+      body?: string;
+      authorization?: string | null;
+      origin?: string | null;
+    }> = [];
     let tokenPollCount = 0;
 
     const exitCode = await runCli(["auth", "--base-url", "http://example.test"], {
@@ -73,6 +93,11 @@ describe("ralpher cli", () => {
             ? init.headers.get("authorization")
             : init?.headers && "authorization" in init.headers
               ? String(init.headers["authorization"])
+              : null,
+          origin: init?.headers instanceof Headers
+            ? init.headers.get("origin")
+            : init?.headers && "origin" in init.headers
+              ? String(init.headers["origin"])
               : null,
         });
 
@@ -134,11 +159,12 @@ describe("ralpher cli", () => {
       "http://example.test/api/auth/token",
       "http://example.test/api/auth/token",
     ]);
+    expect(fetchCalls.every((call) => call.origin === "http://example.test")).toBe(true);
   });
 
   test("status refreshes expired credentials before probing auth status", async () => {
     const output: string[] = [];
-    const requests: Array<{ url: string; authorization?: string | null }> = [];
+    const requests: Array<{ url: string; authorization?: string | null; origin?: string | null }> = [];
 
     const expiredCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
@@ -165,6 +191,11 @@ describe("ralpher cli", () => {
             ? init.headers.get("authorization")
             : init?.headers && "authorization" in init.headers
               ? String(init.headers["authorization"])
+              : null,
+          origin: init?.headers instanceof Headers
+            ? init.headers.get("origin")
+            : init?.headers && "origin" in init.headers
+              ? String(init.headers["origin"])
               : null,
         });
 
@@ -200,10 +231,12 @@ describe("ralpher cli", () => {
       {
         url: "http://example.test/api/auth/token",
         authorization: null,
+        origin: "http://example.test",
       },
       {
         url: "http://example.test/api/auth/status",
         authorization: "Bearer fresh-access",
+        origin: "http://example.test",
       },
     ]);
 

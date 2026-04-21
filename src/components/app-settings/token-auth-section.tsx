@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { appFetch } from "../../lib/public-path";
 import { readApiError } from "../../lib/api-error";
 import { useToast } from "../../hooks";
-import { Button } from "../common";
+import { Button, ConfirmModal } from "../common";
 
 interface IssuerSettingsResponse {
   canonicalIssuer: string | null;
@@ -34,9 +34,11 @@ export function TokenAuthSection() {
   const [loading, setLoading] = useState(true);
   const [savingIssuer, setSavingIssuer] = useState(false);
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+  const [pendingRevokeSession, setPendingRevokeSession] = useState<AuthSessionSummary | null>(null);
   const [canonicalIssuer, setCanonicalIssuer] = useState("");
   const [effectiveIssuer, setEffectiveIssuer] = useState("");
   const [sessions, setSessions] = useState<AuthSessionSummary[]>([]);
+  const activeSessions = useMemo(() => sessions.filter((session) => session.active), [sessions]);
 
   const loadState = useCallback(async () => {
     const [issuerResponse, sessionsResponse] = await Promise.all([
@@ -105,12 +107,19 @@ export function TokenAuthSection() {
         throw new Error(await readApiError(response));
       }
       await loadState();
+      setPendingRevokeSession(null);
     } catch (error) {
       toast.error(String(error));
     } finally {
       setRevokingSessionId(null);
     }
   }, [loadState, toast]);
+
+  function handleCloseRevokeConfirm(): void {
+    if (!revokingSessionId) {
+      setPendingRevokeSession(null);
+    }
+  }
 
   return (
     <div>
@@ -164,13 +173,13 @@ export function TokenAuthSection() {
           </div>
 
           <div className="space-y-3">
-            {sessions.length === 0 && !loading ? (
+            {activeSessions.length === 0 && !loading ? (
               <div className="rounded-md border border-dashed border-gray-300 px-3 py-3 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                No CLI sessions have been issued yet.
+                No active CLI sessions.
               </div>
             ) : null}
 
-            {sessions.map((session) => (
+            {activeSessions.map((session) => (
               <div
                 key={session.id}
                 className="rounded-md border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-neutral-800"
@@ -179,28 +188,21 @@ export function TokenAuthSection() {
                   <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
                     <p>
                       <strong className="text-gray-900 dark:text-gray-100">{session.clientId}</strong>
-                      {" · "}
-                      {session.active ? "active" : "inactive"}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       Created: {formatTimestamp(session.createdAt)}
                       {" · "}Last used: {formatTimestamp(session.lastUsedAt)}
                       {" · "}Expires: {formatTimestamp(session.expiresAt)}
                     </p>
-                    {session.revokedAt ? (
-                      <p className="text-xs text-red-600 dark:text-red-300">
-                        Revoked at {formatTimestamp(session.revokedAt)} ({session.revocationReason ?? "manual"})
-                      </p>
-                    ) : null}
                   </div>
                   <Button
                     type="button"
                     size="sm"
                     variant="secondary"
                     loading={revokingSessionId === session.id}
-                    disabled={!session.active}
+                    disabled={revokingSessionId !== null}
                     onClick={() => {
-                      void revokeSession(session.id);
+                      setPendingRevokeSession(session);
                     }}
                   >
                     Revoke
@@ -211,6 +213,22 @@ export function TokenAuthSection() {
           </div>
         </div>
       </div>
+      <ConfirmModal
+        isOpen={pendingRevokeSession !== null}
+        onClose={handleCloseRevokeConfirm}
+        onConfirm={() => {
+          if (pendingRevokeSession) {
+            void revokeSession(pendingRevokeSession.id);
+          }
+        }}
+        title="Revoke CLI session?"
+        message={pendingRevokeSession
+          ? `Revoke the active token session for "${pendingRevokeSession.clientId}" now? The CLI will need to authenticate again once it can no longer refresh.`
+          : ""}
+        confirmLabel="Revoke session"
+        loading={pendingRevokeSession !== null && revokingSessionId === pendingRevokeSession.id}
+        variant="danger"
+      />
     </div>
   );
 }
