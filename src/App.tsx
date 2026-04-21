@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { AppShell, type ShellRoute } from "./components/AppShell";
+import { DeviceApprovalScreen } from "./components/DeviceApprovalScreen";
 import { PasskeyAuthScreen } from "./components/PasskeyAuthScreen";
 import { getHashForShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
@@ -160,9 +161,18 @@ function navigateTo(route: ShellRoute) {
   window.location.hash = getHashForShellRoute(route);
 }
 
+function isDeviceApprovalRoute(pathname: string): boolean {
+  return pathname.endsWith("/device");
+}
+
 export function App() {
   const [route, setRoute] = useState<ShellRoute>(parseHash);
   const passkeyAuth = usePasskeyAuth();
+  const deviceApprovalRoute = isDeviceApprovalRoute(window.location.pathname)
+    ? {
+        userCode: new URLSearchParams(window.location.search).get("user_code")?.trim() || undefined,
+      }
+    : undefined;
 
   useEffect(() => {
     function handleHashChange() {
@@ -187,12 +197,19 @@ export function App() {
     return (
       <LogLevelInitializer>
         <PasskeyAuthScreen
-          basicAuthEnabled={passkeyAuth.basicAuthEnabled}
           loading={passkeyAuth.refreshing}
           authenticating={passkeyAuth.authenticating}
           error={passkeyAuth.error}
           onAuthenticate={passkeyAuth.loginWithPasskey}
         />
+      </LogLevelInitializer>
+    );
+  }
+
+  if (deviceApprovalRoute) {
+    return (
+      <LogLevelInitializer>
+        <DeviceApprovalScreen userCode={deviceApprovalRoute.userCode} />
       </LogLevelInitializer>
     );
   }

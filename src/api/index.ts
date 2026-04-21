@@ -34,6 +34,7 @@ import { sshSessionsRoutes } from "./ssh-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats";
 import { passkeyAuthRoutes } from "./passkey-auth";
+import { authRoutes } from "./auth";
 
 /**
  * All API routes combined.
@@ -65,6 +66,7 @@ export const apiRoutes = {
   ...provisioningRoutes,
   ...chatsRoutes,
   ...passkeyAuthRoutes,
+  ...authRoutes,
 };
 
 // Re-export individual route modules
@@ -84,4 +86,5 @@ export * from "./websocket";
 export * from "./provisioning";
 export * from "./chats";
 export * from "./passkey-auth";
+export * from "./auth";
 export * from "./same-origin-guard";

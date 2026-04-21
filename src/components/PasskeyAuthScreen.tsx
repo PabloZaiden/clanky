@@ -1,7 +1,6 @@
 import { Button } from "./common";
 
 export interface PasskeyAuthScreenProps {
-  basicAuthEnabled: boolean;
   loading: boolean;
   authenticating: boolean;
   error: string | null;
@@ -9,7 +8,6 @@ export interface PasskeyAuthScreenProps {
 }
 
 export function PasskeyAuthScreen({
-  basicAuthEnabled,
   loading,
   authenticating,
   error,
@@ -26,11 +24,6 @@ export function PasskeyAuthScreen({
           <p className="text-sm text-gray-600 dark:text-gray-300">
             This browser needs a valid passkey session before it can access the app.
           </p>
-          {basicAuthEnabled ? (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              HTTP Basic auth remains separate and may still be enforced by your proxy or server.
-            </p>
-          ) : null}
         </div>
 
         <div className="mt-6 space-y-4">

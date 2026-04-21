@@ -4,7 +4,6 @@ import { Button } from "../common";
 
 export interface PasskeyAuthSectionProps {
   status: PasskeyAuthStatusResponse;
-  basicAuthEnabled?: boolean;
   registering?: boolean;
   loggingOut?: boolean;
   removingPasskey?: boolean;
@@ -15,7 +14,6 @@ export interface PasskeyAuthSectionProps {
 
 export function PasskeyAuthSection({
   status,
-  basicAuthEnabled = false,
   registering = false,
   loggingOut = false,
   removingPasskey = false,
@@ -33,7 +31,7 @@ export function PasskeyAuthSection({
       <div className="space-y-4 rounded-lg bg-gray-50 p-4 dark:bg-neutral-900">
         <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
           <p>
-            Passkeys protect the in-app session. HTTP Basic auth stays separate and can still be enabled at the transport layer.
+            Passkeys protect the in-app browser session. Bearer tokens are issued through the device flow as an equivalent API authentication option.
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Current state:{" "}
@@ -42,7 +40,7 @@ export function PasskeyAuthSection({
             </strong>
             {status.passkeyRequired ? ", login required" : ", login not required"}
             {status.authenticated ? ", this browser is logged in" : ", this browser is logged out"}
-            {basicAuthEnabled ? ", HTTP Basic auth also enabled" : ""}.
+            .
           </p>
         </div>
 

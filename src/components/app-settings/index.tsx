@@ -10,6 +10,7 @@ import { DeveloperSettingsSection } from "./developer-settings-section";
 import { ImportExportSection } from "./import-export-section";
 import { DangerZoneSection } from "./danger-zone-section";
 import { PasskeyAuthSection } from "./passkey-auth-section";
+import { TokenAuthSection } from "./token-auth-section";
 
 export interface AppSettingsPanelProps {
   /** Callback to reset all settings (destructive - deletes database) */
@@ -28,8 +29,6 @@ export interface AppSettingsPanelProps {
   configSaving?: boolean;
   /** Current passkey-auth status for this browser */
   passkeyAuthStatus?: PasskeyAuthStatusResponse;
-  /** Whether transport-level basic auth is also enabled */
-  basicAuthEnabled?: boolean;
   /** Whether passkey registration is in progress */
   registeringPasskey?: boolean;
   /** Whether passkey logout is in progress */
@@ -63,7 +62,6 @@ export function AppSettingsPanel({
   onImportConfig,
   configSaving = false,
   passkeyAuthStatus,
-  basicAuthEnabled = false,
   registeringPasskey = false,
   loggingOutPasskey = false,
   removingPasskey = false,
@@ -79,7 +77,6 @@ export function AppSettingsPanel({
       {passkeyAuthStatus ? (
         <PasskeyAuthSection
           status={passkeyAuthStatus}
-          basicAuthEnabled={basicAuthEnabled}
           registering={registeringPasskey}
           loggingOut={loggingOutPasskey}
           removingPasskey={removingPasskey}
@@ -88,6 +85,7 @@ export function AppSettingsPanel({
           onLogout={onLogoutPasskey}
         />
       ) : null}
+      <TokenAuthSection />
       <ImportExportSection
         onExportConfig={onExportConfig}
         onImportConfig={onImportConfig}

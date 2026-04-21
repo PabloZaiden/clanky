@@ -83,6 +83,11 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   defaultRoute("/api/preferences/dashboard-view-mode", () => ({
     mode: "rows",
   })),
+  defaultRoute("/api/auth/issuer", () => ({
+    canonicalIssuer: null,
+    effectiveIssuer: "urn:ralpher:instance:test",
+  })),
+  defaultRoute("/api/auth/sessions", () => []),
 ];
 
 export function resolveDefaultApiRoute(

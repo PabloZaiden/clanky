@@ -1,6 +1,7 @@
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppConfig, PasskeyAuthStatusResponse } from "../types/api";
+import { readApiError } from "../lib/api-error";
 import { appFetch, PASSKEY_AUTH_REQUIRED_EVENT, setConfiguredPublicBasePath } from "../lib/public-path";
 import { useToast } from "./useToast";
 import { createLogger } from "../lib/logger";
@@ -14,18 +15,12 @@ const DEFAULT_PASSKEY_STATUS: PasskeyAuthStatusResponse = {
   authenticated: false,
 };
 
-interface ApiErrorResponse {
-  message?: string;
-  error?: string;
-}
-
 interface PasskeyActionResponse {
   success: boolean;
 }
 
 export interface UsePasskeyAuthResult {
   status: PasskeyAuthStatusResponse;
-  basicAuthEnabled: boolean;
   loading: boolean;
   refreshing: boolean;
   authenticating: boolean;
@@ -41,15 +36,6 @@ export interface UsePasskeyAuthResult {
   removePasskey: () => Promise<boolean>;
 }
 
-async function readApiError(response: Response): Promise<string> {
-  try {
-    const data = (await response.json()) as ApiErrorResponse;
-    return data.message || data.error || `Request failed with status ${String(response.status)}`;
-  } catch {
-    return `Request failed with status ${String(response.status)}`;
-  }
-}
-
 function getPasskeyStatus(config: AppConfig): PasskeyAuthStatusResponse {
   return config.passkeyAuth;
 }
@@ -57,7 +43,6 @@ function getPasskeyStatus(config: AppConfig): PasskeyAuthStatusResponse {
 export function usePasskeyAuth(): UsePasskeyAuthResult {
   const toast = useToast();
   const [status, setStatus] = useState<PasskeyAuthStatusResponse>(DEFAULT_PASSKEY_STATUS);
-  const [basicAuthEnabled, setBasicAuthEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [authenticating, setAuthenticating] = useState(false);
@@ -74,7 +59,6 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
 
     const config = (await response.json()) as AppConfig;
     setConfiguredPublicBasePath(config.publicBasePath ?? undefined);
-    setBasicAuthEnabled(config.basicAuthEnabled);
     setStatus(getPasskeyStatus(config));
   }, []);
 
@@ -92,7 +76,6 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
 
         const config = (await response.json()) as AppConfig;
         setConfiguredPublicBasePath(config.publicBasePath ?? undefined);
-        setBasicAuthEnabled(config.basicAuthEnabled);
         setStatus(getPasskeyStatus(config));
         setError(null);
       } catch (loadError) {
@@ -270,7 +253,6 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
 
   return useMemo(() => ({
     status,
-    basicAuthEnabled,
     loading,
     refreshing,
     authenticating,
@@ -299,7 +281,6 @@ export function usePasskeyAuth(): UsePasskeyAuthResult {
     removePasskey,
   }), [
     status,
-    basicAuthEnabled,
     loading,
     refreshing,
     authenticating,

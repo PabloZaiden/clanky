@@ -16,7 +16,6 @@ interface PasskeyAuthState {
   passkeyDisabled: boolean;
   passkeyRequired: boolean;
   authenticated: boolean;
-  basicAuthEnabled?: boolean;
 }
 
 function buffer(bytes: number[]): ArrayBuffer {
@@ -87,7 +86,6 @@ function createAuthenticationCredential(): Credential {
 function setupDefaultApi(authState: PasskeyAuthState) {
   api.get("/api/config", () => ({
     remoteOnly: false,
-    basicAuthEnabled: Boolean(authState.basicAuthEnabled),
     passkeyAuth: {
       passkeyConfigured: authState.passkeyConfigured,
       passkeyDisabled: authState.passkeyDisabled,

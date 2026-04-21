@@ -139,6 +139,35 @@ describe("migration infrastructure", () => {
       expect(applied).toBe(migrations.length);
       expect(getTableColumns(db, "loops")).toContain("cheap_model");
     });
+
+    test("creates auth device and refresh tables", () => {
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(tableExists(db, "auth_device_requests")).toBe(true);
+      expect(tableExists(db, "auth_refresh_sessions")).toBe(true);
+      expect(getTableColumns(db, "auth_device_requests")).toContain("device_code_hash");
+      expect(getTableColumns(db, "auth_refresh_sessions")).toContain("refresh_token_hash");
+      expect(getTableColumns(db, "auth_refresh_sessions")).toContain("scope");
+
+      const authIndexes = db.query(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'index'
+          AND tbl_name IN ('auth_device_requests', 'auth_refresh_sessions')
+        ORDER BY name
+      `).all() as Array<{ name: string }>;
+      const authIndexNames = authIndexes.map((index) => index.name);
+
+      expect(authIndexNames).not.toContain("idx_auth_device_requests_device_code_hash");
+      expect(authIndexNames).not.toContain("idx_auth_device_requests_user_code");
+      expect(authIndexNames).not.toContain("idx_auth_refresh_sessions_token_hash");
+      expect(authIndexNames).toEqual(expect.arrayContaining([
+        "idx_auth_device_requests_status_expires_at",
+        "idx_auth_refresh_sessions_family_id",
+        "idx_auth_refresh_sessions_subject_created_at",
+      ]));
+    });
   });
 
   describe("getTableColumns", () => {
@@ -176,6 +205,8 @@ describe("migration infrastructure", () => {
       db.run("CREATE TABLE forwarded_ports (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE preferences (key TEXT PRIMARY KEY)");
       db.run("CREATE TABLE passkey_credentials (id TEXT PRIMARY KEY)");
+      db.run("CREATE TABLE auth_device_requests (id TEXT PRIMARY KEY)");
+      db.run("CREATE TABLE auth_refresh_sessions (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE review_comments (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)");
 
@@ -189,6 +220,8 @@ describe("migration infrastructure", () => {
       expect(getTableColumns(db, "forwarded_ports")).toContain("id");
       expect(getTableColumns(db, "preferences")).toContain("key");
       expect(getTableColumns(db, "passkey_credentials")).toContain("id");
+      expect(getTableColumns(db, "auth_device_requests")).toContain("id");
+      expect(getTableColumns(db, "auth_refresh_sessions")).toContain("id");
       expect(getTableColumns(db, "review_comments")).toContain("id");
       expect(getTableColumns(db, "schema_migrations")).toContain("version");
     });

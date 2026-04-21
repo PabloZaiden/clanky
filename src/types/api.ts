@@ -42,8 +42,6 @@ import type { z } from "zod";
 export interface AppConfig {
   /** Whether remote-only mode is enabled */
   remoteOnly: boolean;
-  /** Whether HTTP Basic auth is enabled at the transport layer */
-  basicAuthEnabled: boolean;
   /** Current passkey-auth status for the requesting browser */
   passkeyAuth: PasskeyAuthStatusResponse;
   /** Public base path inferred from reverse-proxy headers, if any */

@@ -30,7 +30,7 @@ Vrt5VIv2q/QnK29KDywKJrsCAwEAAQ==
 -----END PUBLIC KEY-----`;
 
 function setupBaseApi() {
-  api.get("/api/config", () => ({ remoteOnly: false, basicAuthEnabled: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
+  api.get("/api/config", () => ({ remoteOnly: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
   api.get("/api/loops", () => []);
   api.get("/api/workspaces", () => []);
