@@ -60,11 +60,13 @@ describe("LoopActionBar", () => {
     });
 
     test("renders a model selector", () => {
-      const { container } = renderWithUser(
+      const { container, getByRole } = renderWithUser(
         <LoopActionBar {...defaultProps()} />
       );
       const select = container.querySelector("select");
       expect(select).toBeInTheDocument();
+      expect(getByRole("combobox", { name: "Model" })).toBeInTheDocument();
+      expect(select?.getAttribute("aria-label")).toBe("Model");
     });
 
     test("renders the submit button with appropriate aria-label for planning mode", () => {

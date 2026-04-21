@@ -189,7 +189,8 @@ export function LoopActionBar({
                 placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
                 loadingText="Loading..."
                 emptyText="Select model..."
-                compactMobile
+                ariaLabel="Model"
+                compact
                 className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
               />
             </div>

@@ -4,13 +4,13 @@ import { renderWithUser } from "../helpers/render";
 import { createModelInfo } from "../helpers/factories";
 
 describe("ModelSelector", () => {
-  test("adds compact mobile overlay state classes for disabled and focus-visible states", () => {
+  test("adds compact overlay state classes for disabled and focus-visible states", () => {
     const { container } = renderWithUser(
       <ModelSelector
         value=""
         onChange={() => {}}
         models={[createModelInfo()]}
-        compactMobile
+        compact
         disabled
         className="h-9 w-9 rounded-md"
       />,
@@ -32,7 +32,7 @@ describe("ModelSelector", () => {
         value=""
         onChange={() => {}}
         models={[createModelInfo()]}
-        compactMobile
+        compact
         className="h-9 w-9 rounded-md"
       />,
     );
@@ -45,5 +45,18 @@ describe("ModelSelector", () => {
     expect(wrapper?.className).not.toContain("sm:h-auto");
     expect(select?.className).not.toContain("sm:static");
     expect(overlay?.className).not.toContain("sm:hidden");
+  });
+
+  test("passes through an aria-label to the underlying select", () => {
+    const { getByRole } = renderWithUser(
+      <ModelSelector
+        value=""
+        onChange={() => {}}
+        models={[createModelInfo()]}
+        ariaLabel="Model"
+      />,
+    );
+
+    expect(getByRole("combobox", { name: "Model" })).toBeInTheDocument();
   });
 });
