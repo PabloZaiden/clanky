@@ -103,31 +103,45 @@ export function SidebarTreeSection({
   title: string;
   actionLabel?: string;
   onAction?: () => void;
-  collapsed: boolean;
-  onToggle: () => void;
+  collapsed?: boolean;
+  onToggle?: () => void;
   indentLevel?: number;
   children: ReactNode;
 }) {
-  const contentId = useId();
+  const hasToggle = typeof onToggle === "function";
+  const generatedContentId = useId();
+  const contentId = hasToggle ? generatedContentId : undefined;
+  const isCollapsed = collapsed ?? false;
+  const contentVisible = !hasToggle || !isCollapsed;
+  const contentClassName =
+    "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60";
 
   return (
     <div className="space-y-1" style={getIndentStyle(indentLevel)}>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={!collapsed}
-          aria-controls={contentId}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60"
-        >
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">{collapsed ? "\u25B6" : "\u25BC"}</span>
-          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
-            {title}
-          </span>
-        </button>
+        {hasToggle ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!isCollapsed}
+            aria-controls={contentId}
+            className={contentClassName}
+          >
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">{isCollapsed ? "\u25B6" : "\u25BC"}</span>
+            <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              {title}
+            </span>
+          </button>
+        ) : (
+          <div className={contentClassName}>
+            <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+              {title}
+            </span>
+          </div>
+        )}
         <SectionAction title={title} actionLabel={actionLabel} onAction={onAction} />
       </div>
-      {!collapsed && (
+      {contentVisible && (
         <div id={contentId} className="space-y-1">
           {children}
         </div>

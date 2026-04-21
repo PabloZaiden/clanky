@@ -215,6 +215,9 @@ export function ShellSidebarNav({
                 onToggle={() => toggleNodeCollapsed(groupCollapseKey)}
               >
                 {group.workspaces.map((workspaceNode) => {
+                  const hasLoopChildren = workspaceNode.loops.length > 0 || workspaceNode.historyLoops.length > 0;
+                  const hasChatChildren = workspaceNode.chats.length > 0;
+                  const hasSessionChildren = workspaceNode.sshSessions.length > 0;
                   const workspaceCollapseKey = getSidebarWorkspaceCollapseKey(
                     "workspaces",
                     group.key,
@@ -268,11 +271,11 @@ export function ShellSidebarNav({
                               kind: "loop",
                               scopeId: workspaceNode.workspace.id,
                             })}
-                             collapsed={isNodeCollapsed(loopsCollapseKey)}
-                             onToggle={() => toggleNodeCollapsed(loopsCollapseKey)}
-                             indentLevel={2}
+                            collapsed={hasLoopChildren ? isNodeCollapsed(loopsCollapseKey) : undefined}
+                            onToggle={hasLoopChildren ? () => toggleNodeCollapsed(loopsCollapseKey) : undefined}
+                            indentLevel={2}
                           >
-                            {renderLoopNodes({
+                            {workspaceNode.loops.length > 0 && renderLoopNodes({
                               loopNodes: workspaceNode.loops,
                             })}
                             {workspaceNode.historyLoops.length > 0 && (
@@ -297,8 +300,8 @@ export function ShellSidebarNav({
                               kind: "chat",
                               scopeId: workspaceNode.workspace.id,
                             })}
-                            collapsed={isNodeCollapsed(chatsCollapseKey)}
-                            onToggle={() => toggleNodeCollapsed(chatsCollapseKey)}
+                            collapsed={hasChatChildren ? isNodeCollapsed(chatsCollapseKey) : undefined}
+                            onToggle={hasChatChildren ? () => toggleNodeCollapsed(chatsCollapseKey) : undefined}
                             indentLevel={2}
                           >
                             {workspaceNode.chats.map((chatNode) => (
@@ -325,8 +328,8 @@ export function ShellSidebarNav({
                               kind: "ssh-session",
                               scopeId: workspaceNode.workspace.id,
                             })}
-                            collapsed={isNodeCollapsed(sessionsCollapseKey)}
-                            onToggle={() => toggleNodeCollapsed(sessionsCollapseKey)}
+                            collapsed={hasSessionChildren ? isNodeCollapsed(sessionsCollapseKey) : undefined}
+                            onToggle={hasSessionChildren ? () => toggleNodeCollapsed(sessionsCollapseKey) : undefined}
                             indentLevel={2}
                           >
                             {workspaceNode.sshSessions.map((sessionNode) => (
@@ -395,8 +398,8 @@ export function ShellSidebarNav({
                         kind: "ssh-session",
                         scopeId: serverNode.server.config.id,
                       })}
-                      collapsed={isNodeCollapsed(sessionsCollapseKey)}
-                      onToggle={() => toggleNodeCollapsed(sessionsCollapseKey)}
+                      collapsed={serverNode.sessions.length > 0 ? isNodeCollapsed(sessionsCollapseKey) : undefined}
+                      onToggle={serverNode.sessions.length > 0 ? () => toggleNodeCollapsed(sessionsCollapseKey) : undefined}
                       indentLevel={2}
                     >
                       {serverNode.sessions.map((sessionNode) => (
