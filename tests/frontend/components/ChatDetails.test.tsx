@@ -462,6 +462,82 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id/spawn-loop", "POST")).toHaveLength(1);
   });
 
+  test("spawns a loop from the current plan", async () => {
+    const initialChat = createChat();
+    const spawnedLoop = createLoop({
+      config: {
+        id: "loop-plan",
+        name: "Plan from Repo pairing",
+        workspaceId: initialChat.config.workspaceId,
+        planMode: true,
+      },
+      state: {
+        status: "planning",
+        planMode: {
+          active: true,
+          feedbackRounds: 0,
+          planningFolderCleared: false,
+          isPlanReady: true,
+          planContent: "# Imported plan",
+        },
+      },
+    });
+    let openedLoopId: string | null = null;
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/spawn-loop-from-current-plan", () => spawnedLoop);
+
+    const { getByRole, user } = renderWithUser(
+      <ChatDetails
+        chatId={CHAT_ID}
+        onOpenLoop={(loopId) => {
+          openedLoopId = loopId;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+
+    await waitFor(() => {
+      expect(openedLoopId).toBe("loop-plan");
+    });
+
+    expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")).toHaveLength(1);
+  });
+
+  test("shows the parsed current-plan spawn failure message without the Error prefix", async () => {
+    const initialChat = createChat();
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post(
+      "/api/chats/:id/spawn-loop-from-current-plan",
+      () => ({
+        error: "invalid_current_plan",
+        message: "No Ralpher plan file was found in the current chat workspace.",
+      }),
+      400,
+    );
+
+    const { getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+
+    await waitFor(() => {
+      expect(getByRole("alert").textContent).toContain("No Ralpher plan file was found in the current chat workspace.");
+      expect(getByRole("alert").textContent).not.toContain("Error:");
+    });
+  });
+
   test("applies a chat model change before spawning a loop", async () => {
     let currentChat = createChat();
     let openedLoopId: string | null = null;

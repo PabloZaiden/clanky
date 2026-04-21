@@ -24,6 +24,7 @@ import { GitService } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { loopManager } from "./loop-manager";
 import { createLogger } from "./logger";
+import { buildSeededPlanStatusContent, readValidatedPlanningFiles } from "./planning-file-service";
 import { sanitizeBranchName } from "../utils";
 import { buildSpawnLoopName, buildSpawnLoopPrompt } from "../utils/chat-to-loop-prompt";
 
@@ -417,6 +418,66 @@ export class ChatManager {
         });
       }
       throw new Error("Failed to start spawned loop in plan mode", { cause: error });
+    }
+
+    return await loopManager.getLoop(loop.config.id) ?? loop;
+  }
+
+  async spawnLoopFromCurrentPlan(chatId: string): Promise<Loop> {
+    const chat = await loadChat(chatId);
+    if (!chat) {
+      throw new Error(`Chat not found: ${chatId}`);
+    }
+
+    this.assertChatIsAvailable(chat);
+
+    const working = await this.resolveWorkingDirectory(chat);
+    const workingExecutor = await backendManager.getCommandExecutorAsync(
+      working.chat.config.workspaceId,
+      working.directory,
+    );
+    const currentPlan = await readValidatedPlanningFiles(workingExecutor, working.directory);
+
+    const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const git = GitService.withExecutor(executor);
+    const baseBranch = working.chat.state.worktree?.originalBranch
+      ?? working.chat.config.baseBranch
+      ?? await git.getDefaultBranch(working.chat.config.directory);
+
+    const prompt = buildSpawnLoopPrompt(working.chat.config.name, working.chat.state.messages);
+
+    await touchWorkspace(working.chat.config.workspaceId);
+
+    const loop = await loopManager.createLoop({
+      name: buildSpawnLoopName(working.chat.config.name),
+      directory: working.chat.config.directory,
+      prompt,
+      workspaceId: working.chat.config.workspaceId,
+      modelProviderID: working.chat.config.model.providerID,
+      modelID: working.chat.config.model.modelID,
+      modelVariant: working.chat.config.model.variant,
+      baseBranch,
+      useWorktree: working.chat.config.useWorktree,
+      planMode: true,
+    });
+
+    try {
+      await loopManager.seedPlanFiles(loop.config.id, {
+        planContent: currentPlan.planContent,
+        statusContent: currentPlan.statusContent ?? buildSeededPlanStatusContent(loop.config.name),
+      });
+      await loopManager.saveLastUsedModel(working.chat.config.model);
+    } catch (error) {
+      try {
+        await loopManager.deleteLoop(loop.config.id);
+      } catch (cleanupError) {
+        log.warn("Failed to clean up spawned loop after current-plan seed failure", {
+          loopId: loop.config.id,
+          chatId,
+          error: String(cleanupError),
+        });
+      }
+      throw new Error("Failed to seed spawned loop from the current plan", { cause: error });
     }
 
     return await loopManager.getLoop(loop.config.id) ?? loop;

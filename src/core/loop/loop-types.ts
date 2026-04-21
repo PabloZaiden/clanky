@@ -62,6 +62,11 @@ export interface StartLoopOptions {
   attachments?: MessageImageAttachment[];
 }
 
+export interface SeedPlanFilesOptions {
+  planContent: string;
+  statusContent?: string;
+}
+
 export interface GenerateLoopTitleOptions {
   prompt: string;
   directory: string;
