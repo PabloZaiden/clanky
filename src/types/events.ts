@@ -54,6 +54,8 @@ export interface MessageData {
  * Represents a tool invocation by the AI during iteration execution.
  * Tool calls go through states: pending -> running -> completed/failed.
  * The same tool call ID is emitted multiple times as its status changes.
+ * Persisted backend `name` values may be coarse categories, so UI rendering
+ * should prefer inferring the concrete tool kind from the raw `input` shape.
  * 
  * @example
  * ```typescript
@@ -70,7 +72,7 @@ export interface MessageData {
 export interface ToolCallData {
   /** Unique tool call identifier (from the backend) */
   id: string;
-  /** Tool name (e.g., "Write", "Bash", "Glob", "Grep", "Read") */
+  /** Stored backend tool label or category hint; not always the canonical concrete tool kind. */
   name: string;
   /** Tool input parameters (structure varies by tool) */
   input: unknown;

@@ -19,7 +19,7 @@ export interface LogEntry {
 export interface LogViewerProps {
   /** Messages to display (only user messages are rendered; assistant messages are filtered out) */
   messages: MessageData[];
-  /** Tool calls to display */
+  /** Tool calls to display. ToolEntry infers the concrete tool kind from the raw payload shape. */
   toolCalls: ToolCallData[];
   /** Application logs to display */
   logs?: LogEntry[];
