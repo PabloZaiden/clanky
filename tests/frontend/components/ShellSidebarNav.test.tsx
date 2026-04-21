@@ -350,9 +350,13 @@ describe("ShellSidebarNav", () => {
     const loopsHeading = getAllByText("Loops")[0]!;
     expect(loopsHeading.closest("button")).toBeNull();
     expect(getByRole("button", { name: "New Loops" })).toBeInTheDocument();
+    const loopsSection = loopsHeading.closest(".space-y-1");
+    expect(loopsSection?.lastElementChild).not.toHaveAttribute("id");
 
     const chatsHeading = getAllByText("Chats")[0]!;
     expect(chatsHeading.closest("button")).not.toBeNull();
+    const chatsSection = chatsHeading.closest(".space-y-1");
+    expect(chatsSection?.lastElementChild).toHaveAttribute("id");
   });
 
   test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {

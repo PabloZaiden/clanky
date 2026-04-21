@@ -108,8 +108,9 @@ export function SidebarTreeSection({
   indentLevel?: number;
   children: ReactNode;
 }) {
-  const contentId = useId();
   const hasToggle = typeof onToggle === "function";
+  const generatedContentId = useId();
+  const contentId = hasToggle ? generatedContentId : undefined;
   const isCollapsed = collapsed ?? false;
   const contentVisible = !hasToggle || !isCollapsed;
   const contentClassName =
