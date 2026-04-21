@@ -81,6 +81,20 @@ bun dev
 
 The UI is available at `http://localhost:3000` by default. Use `RALPHER_PORT` to change the port and `RALPHER_HOST` to change the bind address.
 
+### CLI auth
+
+The same binary now exposes an initial terminal client surface:
+
+```bash
+# Start device authorization against the default local server
+ralpher cli auth
+
+# Check whether stored CLI credentials are still valid
+ralpher cli status
+```
+
+Use `RALPHER_BASE_URL` or `--base-url <url>` if the CLI should talk to a different Ralpher instance.
+
 ### Create your first loop
 
 1. Open the dashboard and click **New Loop**.
@@ -118,6 +132,7 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 | `RALPHER_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
 | `RALPHER_PORT` | HTTP port | `3000` |
 | `RALPHER_DATA_DIR` | Data directory for SQLite persistence | `./data` |
+| `RALPHER_BASE_URL` | Default base URL used by `ralpher cli` commands | `http://127.0.0.1:3000` |
 | `RALPHER_REMOTE_ONLY` | Disables local `stdio` transport | unset |
 | `RALPHER_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `RALPHER_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
@@ -129,6 +144,7 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 - Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
+- `ralpher cli auth` stores bearer credentials locally, and `ralpher cli status` validates them through `GET /api/auth/status`.
 - Ralpher exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `RALPHER_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.

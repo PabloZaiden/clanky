@@ -113,8 +113,15 @@ async function authorizeRequest(req: Request): Promise<{
   };
 }
 
+export async function authorizeApplicationRequest(req: Request): Promise<{
+  state?: AuthenticatedRequestState;
+  response?: Response;
+}> {
+  return await authorizeRequest(req);
+}
+
 export async function getApplicationAuthState(req: Request): Promise<AuthenticatedRequestState> {
-  const { state, response } = await authorizeRequest(req);
+  const { state, response } = await authorizeApplicationRequest(req);
   if (response || !state) {
     throw new Error("Application auth state requested for an unauthorized request");
   }
@@ -126,7 +133,7 @@ export function wrapRouteHandlerWithApplicationAuth<TArgs extends unknown[]>(
 ): RouteLikeHandler<TArgs> {
   return async (...args: TArgs): Promise<Response | undefined> => {
     const req = getRequestFromArgs(args);
-    const { response } = await authorizeRequest(req);
+    const { response } = await authorizeApplicationRequest(req);
     if (response) {
       return response;
     }
@@ -144,7 +151,7 @@ function wrapRouteMethodsWithApplicationAuth<TRoute extends RouteLikeMethods>(
       ...args: Parameters<TRoute[keyof TRoute]>
     ): Promise<Response> => {
       const req = getRequestFromArgs(args);
-      const { response } = await authorizeRequest(req);
+      const { response } = await authorizeApplicationRequest(req);
       if (response) {
         return response;
       }

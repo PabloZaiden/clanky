@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
+import { wrapRoutesWithApplicationAuth } from "../../src/api/application-auth";
 import { authRoutes } from "../../src/api/auth";
 import {
   getOrCreatePasskeyAuthSecret,
@@ -218,5 +219,87 @@ describe("auth routes", () => {
       error: "validation_error",
       message: expect.stringContaining("refresh_token"),
     }));
+  });
+
+  test("validates bearer credentials through /api/auth/status", async () => {
+    const startResponse = await authRoutes["/api/auth/device"].POST(
+      new Request("http://example.test/api/auth/device", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          clientId: "ralpher-cli-tests",
+        }),
+      }),
+    );
+    const startBody = await startResponse.json() as {
+      device_code: string;
+      user_code: string;
+    };
+
+    const secret = await getOrCreatePasskeyAuthSecret();
+    const version = await getPasskeyAuthVersion();
+    const cookie = createSignedPasskeySessionCookie({
+      nonce: "auth-status-session",
+      version,
+      expiresAt: Date.now() + 60_000,
+    }, secret);
+
+    await authRoutes["/api/auth/device/approve"].POST(
+      new Request("http://example.test/api/auth/device/approve", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie,
+        },
+        body: JSON.stringify({
+          userCode: startBody.user_code,
+        }),
+      }),
+    );
+
+    const tokenResponse = await authRoutes["/api/auth/token"].POST(
+      new Request("http://example.test/api/auth/token", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: startBody.device_code,
+          client_id: "ralpher-cli-tests",
+        }),
+      }),
+    );
+    const tokenBody = await tokenResponse.json() as { access_token: string };
+
+    const wrappedRoutes = wrapRoutesWithApplicationAuth({
+      "/api/auth/status": authRoutes["/api/auth/status"],
+    });
+    const protectedStatusRoute = wrappedRoutes["/api/auth/status"] as {
+      GET: (req: Request) => Promise<Response>;
+    };
+
+    const authenticatedResponse = await protectedStatusRoute.GET(
+      new Request("http://example.test/api/auth/status", {
+        headers: {
+          authorization: `Bearer ${tokenBody.access_token}`,
+        },
+      }),
+    );
+    const unauthenticatedResponse = await protectedStatusRoute.GET(
+      new Request("http://example.test/api/auth/status"),
+    );
+
+    expect(authenticatedResponse.status).toBe(200);
+    expect(await authenticatedResponse.json()).toEqual({
+      authenticated: true,
+      authKind: "bearer",
+      subject: "ralpher-user",
+      clientId: "ralpher-cli-tests",
+      scope: "",
+    });
+    expect(unauthenticatedResponse.status).toBe(401);
   });
 });

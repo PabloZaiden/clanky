@@ -19,6 +19,7 @@ import {
   revokeAuthSession,
   updateTokenIssuerSettings,
 } from "../core/token-auth";
+import { authorizeApplicationRequest } from "./application-auth";
 import { isPasskeyAuthRequired, isPasskeySessionAuthenticated } from "../core/passkey-auth";
 import { errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
@@ -271,6 +272,23 @@ export const authRoutes = {
       } catch (error) {
         return authErrorResponse(error);
       }
+    },
+  },
+
+  "/api/auth/status": {
+    async GET(req: Request): Promise<Response> {
+      const { state, response } = await authorizeApplicationRequest(req);
+      if (response || !state) {
+        return response ?? errorResponse("authentication_required", "Authentication is required", 401);
+      }
+
+      return Response.json({
+        authenticated: true,
+        authKind: state.kind,
+        subject: state.claims?.sub ?? null,
+        clientId: state.claims?.clientId ?? null,
+        scope: state.claims?.scope ?? null,
+      });
     },
   },
 

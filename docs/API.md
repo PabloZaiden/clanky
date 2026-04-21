@@ -16,6 +16,8 @@ By default, the API does not require application-level credentials. In productio
 
 When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
 
+The `ralpher cli` subcommands use the device flow endpoints plus `GET /api/auth/status` to validate stored bearer credentials.
+
 ## Response Format
 
 All responses are JSON. Successful responses return the requested data directly. Error responses follow this format:
@@ -76,6 +78,28 @@ Check if the server is running.
 ```
 
 The `version` field is read from `package.json` at startup and will reflect the actual build version.
+
+---
+
+### Auth Status
+
+#### GET /api/auth/status
+
+Validate whether the current passkey session or bearer token is authenticated.
+
+This endpoint is protected by the normal application-auth layer, so unauthenticated requests receive a `401` response.
+
+**Response**
+
+```json
+{
+  "authenticated": true,
+  "authKind": "bearer",
+  "subject": "ralpher-user",
+  "clientId": "ralpher-cli",
+  "scope": ""
+}
+```
 
 ---
 
