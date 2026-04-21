@@ -115,5 +115,15 @@ describe("DraftLoopComposer", () => {
     });
 
     expect(queryByText("Failed to update draft")).toBeNull();
+    expect(window.localStorage.getItem("ralpher.loopModelPreference")).toBe(
+      JSON.stringify({
+        providerID: "anthropic",
+        modelID: "claude-sonnet-4-20250514",
+        variant: "",
+      }),
+    );
+    expect(window.localStorage.getItem("ralpher.loopCheapModelPreference")).toBe(
+      JSON.stringify({ mode: "same-as-loop" }),
+    );
   });
 });

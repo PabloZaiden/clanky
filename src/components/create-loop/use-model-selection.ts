@@ -4,6 +4,10 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
+  getStoredLoopCheapModelPreference,
+  getStoredLoopModelPreference,
+} from "../../lib/model-selection-preferences";
+import {
   isModelEnabled,
   makeModelKey,
   modelVariantExists,
@@ -115,6 +119,8 @@ export function useModelSelection({
     SAME_AS_LOOP_CHEAP_MODEL_VALUE,
   );
   const cheapModelTouchedRef = useRef(false);
+  const storedLoopModelRef = useRef(getStoredLoopModelPreference());
+  const storedLoopCheapModelRef = useRef(getStoredLoopCheapModelPreference());
 
   useEffect(() => {
     log.debug("useEffect 2 - model selection", {
@@ -146,11 +152,23 @@ export function useModelSelection({
       }
     }
 
-    if (lastModel && models && models.length > 0) {
-      const variant = lastModel.variant ?? "";
-      if (modelVariantExists(models, lastModel.providerID, lastModel.modelID, variant)) {
-        const modelKey = makeModelKey(lastModel.providerID, lastModel.modelID, variant);
-        log.debug("Setting model from lastModel:", modelKey);
+    const fallbackModel = storedLoopModelRef.current ?? lastModel;
+    if (fallbackModel && models && models.length > 0) {
+      const variant = fallbackModel.variant ?? "";
+      if (
+        modelVariantExists(
+          models,
+          fallbackModel.providerID,
+          fallbackModel.modelID,
+          variant,
+        )
+      ) {
+        const modelKey = makeModelKey(
+          fallbackModel.providerID,
+          fallbackModel.modelID,
+          variant,
+        );
+        log.debug("Setting model from stored fallback:", modelKey);
         setSelectedModel(modelKey);
         return;
       }
@@ -176,7 +194,9 @@ export function useModelSelection({
   useEffect(() => {
     const preferredCheapModel = getPreferredCheapModelValue(
       models,
-      initialLoopData?.cheapModel ?? lastCheapModel,
+      initialLoopData?.cheapModel
+        ?? storedLoopCheapModelRef.current
+        ?? lastCheapModel,
     );
 
     if (!cheapModelTouchedRef.current) {

@@ -4,14 +4,14 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createLogger } from "../../lib/logger";
-import type { CheapModelSelection, ModelInfo } from "../../types";
+import type { CheapModelSelection, ModelConfig, ModelInfo } from "../../types";
 import { appFetch } from "../../lib/public-path";
 
 export interface UseWorkspaceModelsResult {
   models: ModelInfo[];
   modelsLoading: boolean;
-  lastModel: { providerID: string; modelID: string } | null;
-  setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  lastModel: ModelConfig | null;
+  setLastModel: (model: ModelConfig | null) => void;
   lastCheapModel: CheapModelSelection | null;
   setLastCheapModel: (selection: CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
@@ -24,7 +24,7 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
   const log = createLogger("useWorkspaceModels");
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [lastModel, setLastModel] = useState<{ providerID: string; modelID: string } | null>(null);
+  const [lastModel, setLastModel] = useState<ModelConfig | null>(null);
   const [lastCheapModel, setLastCheapModel] = useState<CheapModelSelection | null>(null);
   const [modelsWorkspaceId, setModelsWorkspaceId] = useState<string | null>(null);
 
@@ -42,7 +42,7 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
       try {
         const response = await appFetch("/api/preferences/last-model");
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as ModelConfig | null;
           setLastModel(data);
         }
       } catch (error) {
@@ -53,7 +53,7 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
       try {
         const response = await appFetch("/api/preferences/last-cheap-model");
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as CheapModelSelection | null;
           setLastCheapModel(data);
         }
       } catch (error) {

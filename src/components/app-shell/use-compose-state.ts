@@ -3,6 +3,10 @@ import type { CreateLoopRequest } from "../../types";
 import type { CreateLoopResult } from "../../hooks/useLoops";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { ToastContextValue } from "../../hooks/useToast";
+import {
+  saveStoredLoopCheapModelPreference,
+  saveStoredLoopModelPreference,
+} from "../../lib/model-selection-preferences";
 import type { ShellRoute } from "./shell-types";
 import type { CreateLoopFormActionState, CreateLoopFormSubmitRequest } from "../CreateLoopForm";
 
@@ -67,6 +71,8 @@ export function useComposeState({
     await refreshLoops();
     dashboardData.setLastModel(request.model);
     dashboardData.setLastCheapModel(request.cheapModel ?? null);
+    saveStoredLoopModelPreference(request.model);
+    saveStoredLoopCheapModelPreference(request.cheapModel);
 
     return result.loop;
   }
