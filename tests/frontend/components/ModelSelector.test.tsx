@@ -25,4 +25,25 @@ describe("ModelSelector", () => {
     expect(overlay?.className).toContain("peer-disabled:border-gray-200");
     expect(overlay?.className).toContain("peer-focus-visible:ring-2");
   });
+
+  test("keeps the compact trigger active on larger screens", () => {
+    const { container } = renderWithUser(
+      <ModelSelector
+        value=""
+        onChange={() => {}}
+        models={[createModelInfo()]}
+        compactMobile
+        className="h-9 w-9 rounded-md"
+      />,
+    );
+
+    const wrapper = container.firstElementChild;
+    const select = container.querySelector("select");
+    const overlay = container.querySelector("[aria-hidden='true']");
+
+    expect(wrapper?.className).toContain("h-9 w-9");
+    expect(wrapper?.className).not.toContain("sm:h-auto");
+    expect(select?.className).not.toContain("sm:static");
+    expect(overlay?.className).not.toContain("sm:hidden");
+  });
 });

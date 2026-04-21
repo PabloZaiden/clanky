@@ -142,6 +142,20 @@ describe("LoopActionBar", () => {
       expect(defaultOption?.text).toBe("Claude Sonnet 4");
     });
 
+    test("keeps the compact AI trigger in the composer on larger screens", () => {
+      const { getByTestId } = renderWithUser(
+        <LoopActionBar {...defaultProps()} />
+      );
+
+      const modelCell = getByTestId("loop-composer-model-cell");
+      const select = modelCell.querySelector("select");
+      const overlay = modelCell.querySelector("[aria-hidden='true']");
+
+      expect(select?.className).toContain("h-full w-full");
+      expect(select?.className).not.toContain("sm:w-40");
+      expect(overlay?.textContent).toBe("AI");
+    });
+
     test("groups models by provider", () => {
       const models = [
         createModelInfo({ providerID: "anthropic", modelID: "claude-1", modelName: "Claude 1", providerName: "Anthropic", connected: true }),

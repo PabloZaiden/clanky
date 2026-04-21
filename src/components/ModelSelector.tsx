@@ -228,7 +228,7 @@ export function ModelSelector({
       onChange={(e) => onChange(e.target.value)}
       disabled={isSelectDisabled}
       className={compactMobile
-        ? `peer absolute inset-0 h-full w-full opacity-0 sm:static sm:inset-auto sm:opacity-100 ${className}`
+        ? `peer absolute inset-0 h-full w-full opacity-0 ${className}`
         : className}
     >
       {loading && <option value="">{loadingText}</option>}
@@ -290,11 +290,11 @@ export function ModelSelector({
   }
 
   return (
-    <div className="relative h-9 w-9 shrink-0 sm:h-auto sm:w-auto">
+    <div className="relative h-9 w-9 shrink-0">
       {select}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-gray-300 bg-white text-[11px] font-semibold text-gray-700 shadow-sm transition peer-disabled:border-gray-200 peer-disabled:bg-gray-100 peer-disabled:text-gray-400 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:peer-disabled:border-gray-700 dark:peer-disabled:bg-neutral-800 dark:peer-disabled:text-gray-500 peer-focus-visible:border-gray-500 peer-focus-visible:ring-2 peer-focus-visible:ring-gray-300 dark:peer-focus-visible:border-gray-500 dark:peer-focus-visible:ring-gray-500 sm:hidden"
+        className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-gray-300 bg-white text-[11px] font-semibold text-gray-700 shadow-sm transition peer-disabled:border-gray-200 peer-disabled:bg-gray-100 peer-disabled:text-gray-400 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:peer-disabled:border-gray-700 dark:peer-disabled:bg-neutral-800 dark:peer-disabled:text-gray-500 peer-focus-visible:border-gray-500 peer-focus-visible:ring-2 peer-focus-visible:ring-gray-300 dark:peer-focus-visible:border-gray-500 dark:peer-focus-visible:ring-gray-500"
       >
         {compactMobileLabel}
       </div>

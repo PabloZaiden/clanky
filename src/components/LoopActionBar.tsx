@@ -190,7 +190,7 @@ export function LoopActionBar({
                 loadingText="Loading..."
                 emptyText="Select model..."
                 compactMobile
-                className="h-9 w-9 min-w-0 sm:min-w-[128px] sm:w-40 md:w-48 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
+                className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
               />
             </div>
           )}
