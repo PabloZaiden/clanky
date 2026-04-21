@@ -102,7 +102,6 @@ describe("getAppConfig", () => {
     const config = getAppConfig();
     expect(config).toEqual({
       remoteOnly: false,
-      basicAuthEnabled: false,
       passkeyAuth: {
         passkeyConfigured: false,
         passkeyDisabled: false,
@@ -118,7 +117,6 @@ describe("getAppConfig", () => {
     const config = getAppConfig();
     expect(config).toEqual({
       remoteOnly: true,
-      basicAuthEnabled: false,
       passkeyAuth: {
         passkeyConfigured: false,
         passkeyDisabled: false,

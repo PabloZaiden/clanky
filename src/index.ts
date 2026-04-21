@@ -7,15 +7,9 @@ import { serve, type Server } from "bun";
 import index from "./index.html";
 import { apiRoutes } from "./api";
 import {
-  createAuthenticatedStaticRoute,
-  createStaticAssetServer,
-  wrapRoutesWithBasicAuth,
-  wrapRouteHandler,
-} from "./api/basic-auth";
-import {
-  wrapRouteHandlerWithPasskeyAuth,
-  wrapRoutesWithPasskeyAuth,
-} from "./api/passkey-guard";
+  wrapRouteHandlerWithApplicationAuth,
+  wrapRoutesWithApplicationAuth,
+} from "./api/application-auth";
 import { wrapRoutesWithLogging, wrapRouteHandlerWithLogging } from "./api/request-logging";
 import { wrapRouteHandlerWithSameOriginProtection, wrapRoutesWithSameOriginProtection } from "./api/same-origin-guard";
 import { portForwardProxyRoutes } from "./api/port-forwards";
@@ -55,8 +49,6 @@ function registerServerShutdown(servers: StoppableServer[]): void {
   process.once("SIGTERM", stopServers);
 }
 
-let staticAssetServer: Server<undefined> | undefined;
-
 try {
   // Ensure data directories exist on startup
   await ensureDataDirectories();
@@ -80,69 +72,58 @@ try {
 
   const runtimeConfig = getServerRuntimeConfig();
   const development = getServerDevelopmentConfig();
-  const publicPasskeyRoutes = new Set([
+  const publicAuthRoutes = new Set([
     "/api/config",
     "/api/passkey-auth/status",
     "/api/passkey-auth/authentication/options",
     "/api/passkey-auth/authentication/verify",
     "/api/passkey-auth/logout",
+    "/api/auth/device",
+    "/api/auth/token",
+    "/api/auth/refresh",
+    "/api/auth/revoke",
+    "/.well-known/jwks.json",
+    "/.well-known/openid-configuration",
   ]);
-  staticAssetServer = runtimeConfig.basicAuth.enabled
-    ? createStaticAssetServer(index, development)
-    : undefined;
-  const staticRoute = staticAssetServer
-    ? createAuthenticatedStaticRoute(staticAssetServer, runtimeConfig.basicAuth)
-    : index;
   const sameOriginProtectionOptions = {
     disabled: runtimeConfig.sameOriginProtection.disabled,
   };
-  const protectedApiRoutes = wrapRoutesWithBasicAuth(
-    wrapRoutesWithPasskeyAuth(apiRoutes, publicPasskeyRoutes),
-    runtimeConfig.basicAuth,
-  );
+  const protectedApiRoutes = wrapRoutesWithApplicationAuth(apiRoutes, publicAuthRoutes);
   const loggedApiRoutes = wrapRoutesWithLogging(
     wrapRoutesWithSameOriginProtection(protectedApiRoutes, sameOriginProtectionOptions),
   );
-  const protectedPortForwardRoutes = wrapRoutesWithBasicAuth(
-    wrapRoutesWithPasskeyAuth(portForwardProxyRoutes),
-    runtimeConfig.basicAuth,
-  );
+  const protectedPortForwardRoutes = wrapRoutesWithApplicationAuth(portForwardProxyRoutes);
   const sameOriginProtectedPortForwardRoutes = wrapRoutesWithSameOriginProtection(
     protectedPortForwardRoutes,
     sameOriginProtectionOptions,
   );
   const websocketRoute = wrapRouteHandlerWithLogging(
     wrapRouteHandlerWithSameOriginProtection(
-      wrapRouteHandler(
-        wrapRouteHandlerWithPasskeyAuth((req: Request, server: Server<WebSocketData>) => {
-          const url = new URL(req.url);
-          const loopId = url.searchParams.get("loopId") ?? undefined;
-          const chatId = url.searchParams.get("chatId") ?? undefined;
-          const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
-          const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
-          const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
+      wrapRouteHandlerWithApplicationAuth((req: Request, server: Server<WebSocketData>) => {
+        const url = new URL(req.url);
+        const loopId = url.searchParams.get("loopId") ?? undefined;
+        const chatId = url.searchParams.get("chatId") ?? undefined;
+        const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
+        const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
+        const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
 
-          const upgraded = server.upgrade(req, {
-            data: {
-              loopId,
-              chatId,
-              sshSessionId,
-              sshServerSessionId,
-              provisioningJobId,
-              terminalMode: false,
-            } as WebSocketData,
-          });
+        const upgraded = server.upgrade(req, {
+          data: {
+            loopId,
+            chatId,
+            sshSessionId,
+            sshServerSessionId,
+            provisioningJobId,
+            terminalMode: false,
+          } as WebSocketData,
+        });
 
-          if (upgraded) {
-            // Return undefined to indicate successful upgrade (Bun handles the response)
-            return undefined;
-          }
+        if (upgraded) {
+          return undefined;
+        }
 
-          // Upgrade failed
-          return new Response("WebSocket upgrade failed", { status: 400 });
-        }),
-        runtimeConfig.basicAuth,
-      ),
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      }),
       {
         ...sameOriginProtectionOptions,
         alwaysProtect: true,
@@ -152,30 +133,25 @@ try {
   );
   const sshTerminalRoute = wrapRouteHandlerWithLogging(
     wrapRouteHandlerWithSameOriginProtection(
-      wrapRouteHandler(
-        wrapRouteHandlerWithPasskeyAuth((req: Request, server: Server<WebSocketData>) => {
-          const url = new URL(req.url);
-          const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
-          const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
+      wrapRouteHandlerWithApplicationAuth((req: Request, server: Server<WebSocketData>) => {
+        const url = new URL(req.url);
+        const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
+        const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
 
-          if (!sshSessionId && !sshServerSessionId) {
-            return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
-          }
+        if (!sshSessionId && !sshServerSessionId) {
+          return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
+        }
 
-          const upgraded = server.upgrade(req, {
-            data: { sshSessionId, sshServerSessionId, terminalMode: true } as WebSocketData,
-          });
+        const upgraded = server.upgrade(req, {
+          data: { sshSessionId, sshServerSessionId, terminalMode: true } as WebSocketData,
+        });
 
-          if (upgraded) {
-            // Return undefined to indicate successful upgrade (Bun handles the response)
-            return undefined;
-          }
+        if (upgraded) {
+          return undefined;
+        }
 
-          // Upgrade failed
-          return new Response("WebSocket upgrade failed", { status: 400 });
-        }),
-        runtimeConfig.basicAuth,
-      ),
+        return new Response("WebSocket upgrade failed", { status: 400 });
+      }),
       {
         ...sameOriginProtectionOptions,
         alwaysProtect: true,
@@ -201,7 +177,7 @@ try {
       "/api/ssh-terminal": sshTerminalRoute,
 
       // Serve index.html for all unmatched routes (SPA fallback)
-      "/*": staticRoute,
+      "/*": index,
     },
 
     // WebSocket handlers
@@ -212,16 +188,13 @@ try {
 
   pushedLoopMonitor.start();
 
-  registerServerShutdown(staticAssetServer ? [server, staticAssetServer, pushedLoopMonitor] : [server, pushedLoopMonitor]);
+  registerServerShutdown([server, pushedLoopMonitor]);
 
   for (const message of getServerStartupMessages(runtimeConfig)) {
     log.info(message);
   }
   log.info(`Ralpher server running at ${server.url}`);
 } catch (error) {
-  if (typeof staticAssetServer !== "undefined") {
-    staticAssetServer.stop(true);
-  }
   // Use console.error as a last resort since the logger may not be initialized
   console.error(`Fatal error during startup: ${String(error)}`);
   process.exit(1);

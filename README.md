@@ -117,8 +117,6 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 | --- | --- | --- |
 | `RALPHER_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
 | `RALPHER_PORT` | HTTP port | `3000` |
-| `RALPHER_PASSWORD` | Enables built-in HTTP Basic auth when non-empty | unset |
-| `RALPHER_USERNAME` | Username for built-in Basic auth | `ralpher` |
 | `RALPHER_DATA_DIR` | Data directory for SQLite persistence | `./data` |
 | `RALPHER_REMOTE_ONLY` | Disables local `stdio` transport | unset |
 | `RALPHER_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
@@ -128,10 +126,11 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 
 ### Auth notes
 
-- Built-in HTTP Basic auth is optional and applies to browser requests, API requests, and WebSocket upgrades.
 - Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
-- Passkey authentication is a separate app-session layer you can enable from **Settings**.
-- Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override; it does not disable HTTP Basic auth.
+- Passkey authentication protects the browser session and device-approval flow.
+- Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
+- Ralpher exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
+- Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `RALPHER_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
 - In production, Ralpher is typically deployed behind a reverse proxy that handles authentication and authorization.
 

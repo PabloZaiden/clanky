@@ -559,7 +559,6 @@ function renderMainContent(props: ShellMainContentProps) {
           onImportConfig={importConfig}
           configSaving={workspacesSaving}
           passkeyAuthStatus={passkeyAuth.status}
-          basicAuthEnabled={passkeyAuth.basicAuthEnabled}
           registeringPasskey={passkeyAuth.registering}
           loggingOutPasskey={passkeyAuth.loggingOut}
           removingPasskey={passkeyAuth.removingPasskey}

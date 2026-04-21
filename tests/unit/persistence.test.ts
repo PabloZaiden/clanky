@@ -189,6 +189,41 @@ describe("Persistence", () => {
       await expect(hasRegisteredPasskeys()).resolves.toBe(false);
     });
 
+    test("initializeDatabase repairs auth tables when a legacy migration version collides", async () => {
+      const { Database } = await import("bun:sqlite");
+      const databasePath = join(testDataDir, "ralpher.db");
+      const legacyDb = new Database(databasePath);
+
+      legacyDb.run(`
+        CREATE TABLE schema_migrations (
+          version INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          applied_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
+        10,
+        "legacy_reset_ten",
+        "2025-01-01T00:00:00.000Z",
+      ]);
+      legacyDb.close();
+
+      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      await initializeDatabase();
+
+      const deviceTable = getDatabase().query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_device_requests'",
+      ).get() as { name: string } | null;
+      const refreshTable = getDatabase().query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_refresh_sessions'",
+      ).get() as { name: string } | null;
+      const refreshColumns = getDatabase().query("PRAGMA table_info(auth_refresh_sessions)").all() as Array<{ name: string }>;
+
+      expect(deviceTable?.name).toBe("auth_device_requests");
+      expect(refreshTable?.name).toBe("auth_refresh_sessions");
+      expect(refreshColumns.some((column) => column.name === "scope")).toBe(true);
+    });
+
     test("initializeDatabase repairs workspaces when a legacy migration version collides", async () => {
       const { Database } = await import("bun:sqlite");
       const databasePath = join(testDataDir, "ralpher.db");

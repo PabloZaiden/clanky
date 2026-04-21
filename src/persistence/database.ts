@@ -112,10 +112,11 @@ export async function initializeDatabase(): Promise<void> {
  * here should only be updated during future clean-cut resets that fold
  * accumulated migrations back in.
  *
- * Exception: the chats and passkey_credentials tables, plus the workspaces and
-   * loops compatibility repairs for devcontainer_subpath, auto_accept_plan,
-   * pull_request_monitoring, automatic_pr_flow, fully_autonomous, and
-   * fully_autonomous_pending, and cheap_model,
+ * Exception: the chats, passkey_credentials, auth_device_requests, and
+ * auth_refresh_sessions tables, plus the workspaces and loops compatibility
+ * repairs for devcontainer_subpath, auto_accept_plan, pull_request_monitoring,
+ * automatic_pr_flow, fully_autonomous, fully_autonomous_pending, and
+ * cheap_model,
  * intentionally remain here because older databases can already contain reused
  * schema_migrations version numbers from pre-reset eras. Recreating or
  * repairing these schema objects during baseline startup is the repair path
@@ -288,6 +289,51 @@ function createTables(database: Database): void {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         last_used_at TEXT
+      )
+    `);
+
+    // Device authorization requests - stores RFC 8628-style device flow state.
+    // Keep this in the base schema so startup repairs legacy databases whose
+    // schema_migrations versions may already include later auth migration IDs.
+    database.run(`
+      CREATE TABLE IF NOT EXISTS auth_device_requests (
+        id TEXT PRIMARY KEY,
+        client_id TEXT NOT NULL,
+        device_code_hash TEXT NOT NULL UNIQUE,
+        user_code TEXT NOT NULL UNIQUE,
+        scope TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        approved_at TEXT,
+        denied_at TEXT,
+        last_polled_at TEXT,
+        poll_count INTEGER NOT NULL DEFAULT 0,
+        subject TEXT,
+        session_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+
+    // Refresh sessions - stores revocable rotating refresh-token chains.
+    // Keep this in the base schema so startup repairs legacy databases whose
+    // schema_migrations versions may already include later auth migration IDs.
+    database.run(`
+      CREATE TABLE IF NOT EXISTS auth_refresh_sessions (
+        id TEXT PRIMARY KEY,
+        family_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT '',
+        refresh_token_hash TEXT NOT NULL UNIQUE,
+        refresh_expires_at TEXT NOT NULL,
+        last_used_at TEXT,
+        revoked_at TEXT,
+        revocation_reason TEXT,
+        replaced_by_session_id TEXT,
+        parent_session_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       )
     `);
 
@@ -486,6 +532,32 @@ function createTables(database: Database): void {
       ON passkey_credentials(credential_id)
     `);
 
+    database.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_device_requests_device_code_hash
+      ON auth_device_requests(device_code_hash)
+    `);
+    database.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_device_requests_user_code
+      ON auth_device_requests(user_code)
+    `);
+    database.run(`
+      CREATE INDEX IF NOT EXISTS idx_auth_device_requests_status_expires_at
+      ON auth_device_requests(status, expires_at)
+    `);
+
+    database.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_refresh_sessions_token_hash
+      ON auth_refresh_sessions(refresh_token_hash)
+    `);
+    database.run(`
+      CREATE INDEX IF NOT EXISTS idx_auth_refresh_sessions_family_id
+      ON auth_refresh_sessions(family_id, created_at DESC)
+    `);
+    database.run(`
+      CREATE INDEX IF NOT EXISTS idx_auth_refresh_sessions_subject_created_at
+      ON auth_refresh_sessions(subject, created_at DESC)
+    `);
+
     // Note: No index needed for sessions - composite primary key (backend_name, loop_id)
     // already provides efficient lookup
   });
@@ -570,6 +642,8 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS ssh_servers");
     db!.run("DROP TABLE IF EXISTS workspaces");
     db!.run("DROP TABLE IF EXISTS sessions");
+    db!.run("DROP TABLE IF EXISTS auth_refresh_sessions");
+    db!.run("DROP TABLE IF EXISTS auth_device_requests");
     db!.run("DROP TABLE IF EXISTS passkey_credentials");
     db!.run("DROP TABLE IF EXISTS preferences");
     db!.run("DROP TABLE IF EXISTS schema_migrations");

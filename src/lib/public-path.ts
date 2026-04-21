@@ -12,6 +12,17 @@ import { isPasskeyAuthRequiredResponse } from "./passkey-auth-http";
 
 let configuredPublicBasePath: string | undefined;
 export const PASSKEY_AUTH_REQUIRED_EVENT = "ralpher:passkey-auth-required";
+const DIRECT_APP_ROUTES = ["/device"];
+
+function getPublicBasePathFromWindowLocation(): string {
+  const pathname = window.location.pathname;
+  for (const route of DIRECT_APP_ROUTES) {
+    if (pathname.endsWith(route)) {
+      return normalizePublicBasePath(pathname.slice(0, -route.length));
+    }
+  }
+  return getPublicBasePathFromPathname(pathname);
+}
 
 export function setConfiguredPublicBasePath(basePath?: string | null): void {
   if (basePath == null) {
@@ -32,7 +43,7 @@ export function getConfiguredPublicBasePath(): string {
     return "";
   }
 
-  return getPublicBasePathFromPathname(window.location.pathname);
+  return getPublicBasePathFromWindowLocation();
 }
 
 export function appPath(path: string): string {

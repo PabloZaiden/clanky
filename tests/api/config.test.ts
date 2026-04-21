@@ -60,7 +60,6 @@ describe("GET /api/config", () => {
     const body = await response.json();
     expect(body).toEqual({
       remoteOnly: false,
-      basicAuthEnabled: false,
       publicBasePath: null,
       passkeyAuth: {
         passkeyConfigured: false,

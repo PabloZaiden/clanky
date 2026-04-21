@@ -18,7 +18,6 @@ import { deleteAndReinitializeDatabase } from "../persistence/database";
 import { createLogger } from "../core/logger";
 import { getPublicBasePathFromForwardedPrefix } from "../utils/public-base-path";
 import { getPasskeyAuthStatus } from "../core/passkey-auth";
-import { getServerRuntimeConfig } from "../core/server-config";
 import { errorResponse } from "./helpers";
 
 const log = createLogger("api:settings");
@@ -48,20 +47,17 @@ export const settingsRoutes = {
     async GET(req: Request): Promise<Response> {
       log.debug("GET /api/config");
       const config = getAppConfig();
-      const runtimeConfig = getServerRuntimeConfig();
       const passkeyAuth = await getPasskeyAuthStatus(req);
       const publicBasePath = getPublicBasePathFromForwardedPrefix(
         req.headers.get("x-forwarded-prefix"),
       );
       const responseConfig = {
         ...config,
-        basicAuthEnabled: runtimeConfig.basicAuth.enabled,
         passkeyAuth,
         publicBasePath: publicBasePath || null,
       };
       log.debug("Returning app config", {
         remoteOnly: config.remoteOnly,
-        basicAuthEnabled: runtimeConfig.basicAuth.enabled,
         passkeyRequired: passkeyAuth.passkeyRequired,
         passkeyAuthenticated: passkeyAuth.authenticated,
         publicBasePath: publicBasePath || null,
