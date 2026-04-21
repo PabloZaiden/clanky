@@ -7,6 +7,7 @@ import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import {
   buildPersistentSessionAttachCommand,
 } from "../ssh-persistent-session";
+import { buildShellBootstrapCommand } from "../ssh-shell-bootstrap";
 import { DEFAULT_SSH_COLOR_TERM, DEFAULT_SSH_TERM } from "../ssh-terminal-env";
 import {
   buildSshProcessConfig,
@@ -27,11 +28,8 @@ export function buildDirectTtyFilePath(sessionId: string): string {
   return `/tmp/ralpher-terminal-${sessionId}.tty`;
 }
 
-function buildDirectShellCommand(session: { config: { id: string; directory?: string } }): string {
+export function buildDirectShellCommand(session: { config: { id: string; directory?: string } }): string {
   const ttyFile = quoteShell(buildDirectTtyFilePath(session.config.id));
-  const changeDirectoryCommand = session.config.directory
-    ? `cd ${quoteShell(session.config.directory)} || exit 1;`
-    : "";
   return [
     `tty_file=${ttyFile}`,
     "tty_path=$(tty);",
@@ -41,11 +39,7 @@ function buildDirectShellCommand(session: { config: { id: string; directory?: st
     "fi;",
     "printf '%s\\n' \"$tty_path\" > \"$tty_file\";",
     "trap 'rm -f \"$tty_file\"' EXIT HUP INT TERM;",
-    changeDirectoryCommand,
-    `COLORTERM=${quoteShell(DEFAULT_SSH_COLOR_TERM)};`,
-    "export COLORTERM;",
-    "shell=\"${SHELL:-/bin/sh}\";",
-    "\"$shell\" -i",
+    buildShellBootstrapCommand({ directory: session.config.directory }),
   ].filter((part) => part.length > 0).join(" ");
 }
 
