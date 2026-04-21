@@ -3,10 +3,21 @@
  * that delegates to the appropriate API calls and updates state accordingly.
  */
 
-import type { CheapModelSelection, Loop, CreateLoopRequest, Workspace, UncommittedChangesError } from "../../types";
+import type {
+  CheapModelSelection,
+  CreateLoopRequest,
+  Loop,
+  ModelConfig,
+  UncommittedChangesError,
+  Workspace,
+} from "../../types";
 import type { CreateLoopFormSubmitRequest } from "../CreateLoopForm";
 import type { CreateLoopResult } from "../../hooks/useLoops";
 import { createLogger } from "../../lib/logger";
+import {
+  saveStoredLoopCheapModelPreference,
+  saveStoredLoopModelPreference,
+} from "../../lib/model-selection-preferences";
 import { appFetch } from "../../lib/public-path";
 import { toDraftLoopUpdateRequest } from "../../lib/loop-request";
 
@@ -18,7 +29,7 @@ export function isCreateLoopRequest(request: CreateLoopFormSubmitRequest): reque
 
 interface SubmitHandlerProps {
   workspaces: Workspace[];
-  setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  setLastModel: (model: ModelConfig | null) => void;
   setLastCheapModel: (selection: CheapModelSelection | null) => void;
   setUncommittedModal: (state: { open: boolean; loopId: string | null; error: UncommittedChangesError | null }) => void;
   onRefresh: () => Promise<void>;
@@ -65,6 +76,11 @@ async function persistLoopPreferences(
   await Promise.all(operations);
 }
 
+function persistLocalLoopPreferences(request: CreateLoopRequest): void {
+  saveStoredLoopModelPreference(request.model);
+  saveStoredLoopCheapModelPreference(request.cheapModel);
+}
+
 export async function handleCreateLoopSubmit(
   props: SubmitHandlerProps,
   editLoop: Loop | null | undefined,
@@ -91,6 +107,7 @@ export async function handleCreateLoopSubmit(
 
         props.setLastModel(request.model);
         props.setLastCheapModel(request.cheapModel ?? null);
+        persistLocalLoopPreferences(request);
         try {
           await persistLoopPreferences(props.workspaces, request);
         } catch (error) {
@@ -168,6 +185,7 @@ export async function handleCreateLoopSubmit(
       props.setLastModel(request.model);
     }
     props.setLastCheapModel(request.cheapModel ?? null);
+    persistLocalLoopPreferences(request);
 
     try {
       await persistLoopPreferences(props.workspaces, request);

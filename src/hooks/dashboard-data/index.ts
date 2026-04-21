@@ -26,8 +26,8 @@ export interface UseDashboardDataResult {
   // Models
   models: import("../../types").ModelInfo[];
   modelsLoading: boolean;
-  lastModel: { providerID: string; modelID: string } | null;
-  setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  lastModel: import("../../types").ModelConfig | null;
+  setLastModel: (model: import("../../types").ModelConfig | null) => void;
   lastCheapModel: import("../../types").CheapModelSelection | null;
   setLastCheapModel: (selection: import("../../types").CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;

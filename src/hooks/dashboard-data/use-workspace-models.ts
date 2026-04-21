@@ -4,14 +4,15 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { createLogger } from "../../lib/logger";
-import type { CheapModelSelection, ModelInfo } from "../../types";
+import type { CheapModelSelection, ModelConfig, ModelInfo } from "../../types";
 import { appFetch } from "../../lib/public-path";
+import { ModelConfigSchema } from "../../types/schemas/model";
 
 export interface UseWorkspaceModelsResult {
   models: ModelInfo[];
   modelsLoading: boolean;
-  lastModel: { providerID: string; modelID: string } | null;
-  setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  lastModel: ModelConfig | null;
+  setLastModel: (model: ModelConfig | null) => void;
   lastCheapModel: CheapModelSelection | null;
   setLastCheapModel: (selection: CheapModelSelection | null) => void;
   modelsWorkspaceId: string | null;
@@ -20,11 +21,30 @@ export interface UseWorkspaceModelsResult {
   resetModels: () => void;
 }
 
+function normalizeLastModelPreference(value: unknown): ModelConfig | null {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const validation = ModelConfigSchema.safeParse({
+    providerID: candidate["providerID"],
+    modelID: candidate["modelID"],
+    variant: typeof candidate["variant"] === "string" ? candidate["variant"] : "",
+  });
+
+  if (!validation.success) {
+    return null;
+  }
+
+  return validation.data;
+}
+
 export function useWorkspaceModels(): UseWorkspaceModelsResult {
   const log = createLogger("useWorkspaceModels");
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [lastModel, setLastModel] = useState<{ providerID: string; modelID: string } | null>(null);
+  const [lastModel, setLastModel] = useState<ModelConfig | null>(null);
   const [lastCheapModel, setLastCheapModel] = useState<CheapModelSelection | null>(null);
   const [modelsWorkspaceId, setModelsWorkspaceId] = useState<string | null>(null);
 
@@ -42,7 +62,11 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
       try {
         const response = await appFetch("/api/preferences/last-model");
         if (response.ok) {
-          const data = await response.json();
+          const raw = await response.json() as unknown;
+          const data = normalizeLastModelPreference(raw);
+          if (raw !== null && data === null) {
+            log.warn("Failed to normalize last model preference response");
+          }
           setLastModel(data);
         }
       } catch (error) {
@@ -53,7 +77,7 @@ export function useWorkspaceModels(): UseWorkspaceModelsResult {
       try {
         const response = await appFetch("/api/preferences/last-cheap-model");
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as CheapModelSelection | null;
           setLastCheapModel(data);
         }
       } catch (error) {

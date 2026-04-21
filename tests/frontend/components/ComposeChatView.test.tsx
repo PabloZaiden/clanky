@@ -1,8 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 import { ComposeChatView } from "@/components/app-shell/compose-chat-view";
 import type { UseDashboardDataResult } from "@/hooks/useDashboardData";
+import type { Chat } from "@/types";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createBranchInfo, createModelInfo, createWorkspace } from "../helpers/factories";
+
+const CHAT_MODEL_STORAGE_KEY = "ralpher.chatModelPreference";
 
 function createDashboardData(
   overrides?: Partial<UseDashboardDataResult>,
@@ -28,6 +31,35 @@ function createDashboardData(
     killServer: mock(async () => false),
     handleWorkspaceChange: mock(() => {}),
     resetCreateModalState: mock(() => {}),
+    ...overrides,
+  };
+}
+
+function createChat(overrides?: Partial<Chat>): Chat {
+  return {
+    config: {
+      id: "chat-1",
+      name: "Repository pairing session",
+      workspaceId: "workspace-1",
+      directory: "/workspaces/ralpher",
+      model: {
+        providerID: "copilot",
+        modelID: "gpt-5.4",
+        variant: "",
+      },
+      useWorktree: true,
+      baseBranch: "main",
+      createdAt: "2026-04-21T00:00:00.000Z",
+      updatedAt: "2026-04-21T00:00:00.000Z",
+      mode: "chat",
+    },
+    state: {
+      id: "chat-1",
+      status: "idle",
+      messages: [],
+      logs: [],
+      toolCalls: [],
+    },
     ...overrides,
   };
 }
@@ -198,6 +230,173 @@ describe("ComposeChatView", () => {
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Create chat" })).toBeDisabled();
+    });
+  });
+
+  test("prefers the locally stored chat model over the dashboard fallback", async () => {
+    window.localStorage.setItem(
+      CHAT_MODEL_STORAGE_KEY,
+      JSON.stringify({
+        providerID: "copilot",
+        modelID: "gpt-5.4",
+        variant: "standard",
+      }),
+    );
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      directory: "/workspaces/ralpher",
+    });
+    const models = [
+      createModelInfo({
+        providerID: "copilot",
+        providerName: "Copilot",
+        modelID: "gpt-5.4",
+        modelName: "GPT-5.4",
+        connected: true,
+        variants: ["fast", "standard"],
+      }),
+      createModelInfo({
+        providerID: "openai",
+        providerName: "OpenAI",
+        modelID: "gpt-4o",
+        modelName: "GPT-4o",
+        connected: true,
+      }),
+    ];
+
+    const { getByLabelText } = renderWithUser(
+      <ComposeChatView
+        composeWorkspace={workspace}
+        workspaces={[workspace]}
+        workspacesLoading={false}
+        workspaceError={null}
+        dashboardData={createDashboardData({
+          models,
+          lastModel: { providerID: "openai", modelID: "gpt-4o", variant: "" },
+          handleWorkspaceChange: mock(() => {}),
+          resetCreateModalState: mock(() => {}),
+        })}
+        shellHeaderOffsetClassName=""
+        navigateWithinShell={mock(() => {})}
+        createChat={mock(async () => null)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect((getByLabelText("Model") as HTMLSelectElement).value).toBe(
+        "copilot:gpt-5.4:standard",
+      );
+    });
+  });
+
+  test("falls back to the dashboard last model when the stored chat model is unavailable", async () => {
+    window.localStorage.setItem(
+      CHAT_MODEL_STORAGE_KEY,
+      JSON.stringify({
+        providerID: "missing-provider",
+        modelID: "missing-model",
+        variant: "",
+      }),
+    );
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      directory: "/workspaces/ralpher",
+    });
+    const models = [
+      createModelInfo({
+        providerID: "copilot",
+        providerName: "Copilot",
+        modelID: "gpt-5.4",
+        modelName: "GPT-5.4",
+        connected: true,
+      }),
+    ];
+
+    const { getByLabelText } = renderWithUser(
+      <ComposeChatView
+        composeWorkspace={workspace}
+        workspaces={[workspace]}
+        workspacesLoading={false}
+        workspaceError={null}
+        dashboardData={createDashboardData({
+          models,
+          lastModel: { providerID: "copilot", modelID: "gpt-5.4", variant: "" },
+          handleWorkspaceChange: mock(() => {}),
+          resetCreateModalState: mock(() => {}),
+        })}
+        shellHeaderOffsetClassName=""
+        navigateWithinShell={mock(() => {})}
+        createChat={mock(async () => null)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect((getByLabelText("Model") as HTMLSelectElement).value).toBe(
+        "copilot:gpt-5.4:",
+      );
+    });
+  });
+
+  test("persists the selected chat model locally after a successful creation", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      directory: "/workspaces/ralpher",
+    });
+    const setLastModel = mock(() => {});
+    const createChatRequest = mock(async () => createChat());
+    const navigateWithinShell = mock(() => {});
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <ComposeChatView
+        composeWorkspace={workspace}
+        workspaces={[workspace]}
+        workspacesLoading={false}
+        workspaceError={null}
+        dashboardData={createDashboardData({
+          models: [
+            createModelInfo({
+              providerID: "copilot",
+              providerName: "Copilot",
+              modelID: "gpt-5.4",
+              modelName: "GPT-5.4",
+              connected: true,
+              variants: ["fast", "standard"],
+            }),
+          ],
+          branches: [createBranchInfo({ name: "main", current: true })],
+          defaultBranch: "main",
+          currentBranch: "main",
+          setLastModel,
+        })}
+        shellHeaderOffsetClassName=""
+        navigateWithinShell={navigateWithinShell}
+        createChat={createChatRequest}
+      />,
+    );
+
+    await user.type(getByLabelText("Name"), "Repository pairing session");
+    await user.selectOptions(getByLabelText("Model"), "copilot:gpt-5.4:standard");
+    await user.click(getByRole("button", { name: "Create chat" }));
+
+    await waitFor(() => {
+      expect(createChatRequest).toHaveBeenCalledTimes(1);
+    });
+
+    expect(window.localStorage.getItem(CHAT_MODEL_STORAGE_KEY)).toBe(
+      JSON.stringify({
+        providerID: "copilot",
+        modelID: "gpt-5.4",
+        variant: "standard",
+      }),
+    );
+    expect(setLastModel).toHaveBeenCalledWith({
+      providerID: "copilot",
+      modelID: "gpt-5.4",
+      variant: "standard",
+    });
+    expect(navigateWithinShell).toHaveBeenCalledWith({
+      view: "chat",
+      chatId: "chat-1",
     });
   });
 });

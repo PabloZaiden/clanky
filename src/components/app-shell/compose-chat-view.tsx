@@ -3,7 +3,16 @@ import type { Workspace } from "../../types";
 import type { CreateChatRequest } from "../../types/api";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { useToast } from "../../hooks";
-import { makeModelKey, ModelSelector, parseModelKey } from "../ModelSelector";
+import {
+  getStoredChatModelPreference,
+  saveStoredChatModelPreference,
+} from "../../lib/model-selection-preferences";
+import {
+  makeModelKey,
+  ModelSelector,
+  modelVariantExists,
+  parseModelKey,
+} from "../ModelSelector";
 import { BranchSelector } from "../create-loop/branch-selector";
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
@@ -11,17 +20,38 @@ import type { ShellRoute } from "./shell-types";
 
 function getPreferredModelKey(
   models: UseDashboardDataResult["models"],
-  lastModel: UseDashboardDataResult["lastModel"],
+  preferredModel: UseDashboardDataResult["lastModel"],
+  fallbackModel: UseDashboardDataResult["lastModel"],
 ): string {
-  const preferred = lastModel
-    ? models.find((model) => model.connected && model.providerID === lastModel.providerID && model.modelID === lastModel.modelID)
-    : null;
-  const fallback = preferred ?? models.find((model) => model.connected);
-  if (!fallback) {
+  for (const candidate of [preferredModel, fallbackModel]) {
+    if (!candidate) {
+      continue;
+    }
+    const variant = candidate.variant ?? "";
+    if (!modelVariantExists(models, candidate.providerID, candidate.modelID, variant)) {
+      continue;
+    }
+    const matchingModel = models.find(
+      (model) =>
+        model.connected
+        && model.providerID === candidate.providerID
+        && model.modelID === candidate.modelID,
+    );
+    if (!matchingModel) {
+      continue;
+    }
+    return makeModelKey(candidate.providerID, candidate.modelID, variant);
+  }
+
+  const firstConnected = models.find((model) => model.connected);
+  if (!firstConnected) {
     return "";
   }
-  const variant = fallback.variants?.[0] ?? "";
-  return makeModelKey(fallback.providerID, fallback.modelID, variant);
+  return makeModelKey(
+    firstConnected.providerID,
+    firstConnected.modelID,
+    firstConnected.variants?.[0] ?? "",
+  );
 }
 
 export function ComposeChatView({
@@ -56,6 +86,7 @@ export function ComposeChatView({
     resetCreateModalState,
     setLastModel,
   } = dashboardData;
+  const storedChatModel = useMemo(() => getStoredChatModelPreference(), []);
   const [name, setName] = useState("");
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(composeWorkspace?.id ?? "");
   const [selectedModel, setSelectedModel] = useState("");
@@ -91,8 +122,14 @@ export function ComposeChatView({
     if (selectedModel || models.length === 0) {
       return;
     }
-    setSelectedModel(getPreferredModelKey(models, lastModel));
-  }, [lastModel, models, selectedModel]);
+    setSelectedModel(
+      getPreferredModelKey(
+        models,
+        storedChatModel,
+        lastModel,
+      ),
+    );
+  }, [lastModel, models, selectedModel, storedChatModel]);
 
   async function handleSubmit(): Promise<void> {
     if (!selectedWorkspace) {
@@ -125,6 +162,12 @@ export function ComposeChatView({
       setLastModel({
         providerID: parsedModel.providerID,
         modelID: parsedModel.modelID,
+        variant: parsedModel.variant,
+      });
+      saveStoredChatModelPreference({
+        providerID: parsedModel.providerID,
+        modelID: parsedModel.modelID,
+        variant: parsedModel.variant,
       });
       navigateWithinShell({ view: "chat", chatId: chat.config.id });
     } finally {
