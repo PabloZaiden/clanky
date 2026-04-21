@@ -39,6 +39,9 @@ const RefreshGrantSchema = z.object({
   refresh_token: z.string().trim().min(1),
   client_id: z.string().trim().min(1).max(200).optional(),
 });
+const RefreshEndpointRequestSchema = RefreshGrantSchema.omit({
+  grant_type: true,
+});
 
 const DeviceGrantSchema = z.object({
   grant_type: z.literal("urn:ietf:params:oauth:grant-type:device_code"),
@@ -87,6 +90,22 @@ function tokenErrorResponse(error: unknown): Response {
   );
 }
 
+function tokenSuccessResponse(tokenSet: {
+  accessToken: string;
+  refreshToken: string;
+  tokenType: string;
+  expiresIn: number;
+  scope: string;
+}): Response {
+  return Response.json({
+    access_token: tokenSet.accessToken,
+    refresh_token: tokenSet.refreshToken,
+    token_type: tokenSet.tokenType,
+    expires_in: tokenSet.expiresIn,
+    scope: tokenSet.scope,
+  });
+}
+
 async function requirePasskeyApprovalAccess(req: Request): Promise<void> {
   if (await isPasskeyAuthRequired() && !await isPasskeySessionAuthenticated(req)) {
     throw new AuthError("authentication_required", "Passkey authentication is required", 401);
@@ -105,26 +124,14 @@ async function handleTokenExchange(req: Request): Promise<Response> {
         clientId: validation.data.client_id,
         refreshToken: validation.data.refresh_token,
       });
-      return Response.json({
-        access_token: tokenSet.accessToken,
-        refresh_token: tokenSet.refreshToken,
-        token_type: tokenSet.tokenType,
-        expires_in: tokenSet.expiresIn,
-        scope: tokenSet.scope,
-      });
+      return tokenSuccessResponse(tokenSet);
     }
 
     const tokenSet = await exchangeDeviceCode({
       clientId: validation.data.client_id,
       deviceCode: validation.data.device_code,
     });
-    return Response.json({
-      access_token: tokenSet.accessToken,
-      refresh_token: tokenSet.refreshToken,
-      token_type: tokenSet.tokenType,
-      expires_in: tokenSet.expiresIn,
-      scope: tokenSet.scope,
-    });
+    return tokenSuccessResponse(tokenSet);
   } catch (error) {
     return tokenErrorResponse(error);
   }
@@ -213,14 +220,20 @@ export const authRoutes = {
 
   "/api/auth/refresh": {
     async POST(req: Request): Promise<Response> {
-      return await handleTokenExchange(new Request(req.url, {
-        method: "POST",
-        headers: req.headers,
-        body: JSON.stringify({
-          ...(await req.json() as Record<string, unknown>),
-          grant_type: "refresh_token",
-        }),
-      }));
+      const validation = await parseAndValidate(RefreshEndpointRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const tokenSet = await exchangeRefreshToken({
+          clientId: validation.data.client_id,
+          refreshToken: validation.data.refresh_token,
+        });
+        return tokenSuccessResponse(tokenSet);
+      } catch (error) {
+        return tokenErrorResponse(error);
+      }
     },
   },
 

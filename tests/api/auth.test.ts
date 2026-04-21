@@ -183,4 +183,40 @@ describe("auth routes", () => {
       ],
     });
   });
+
+  test("returns structured invalid_json errors for /api/auth/refresh", async () => {
+    const response = await authRoutes["/api/auth/refresh"].POST(
+      new Request("http://example.test/api/auth/refresh", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: "{\"refresh_token\":",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "invalid_json",
+      message: "Request body must be valid JSON",
+    });
+  });
+
+  test("returns validation errors for /api/auth/refresh", async () => {
+    const response = await authRoutes["/api/auth/refresh"].POST(
+      new Request("http://example.test/api/auth/refresh", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual(expect.objectContaining({
+      error: "validation_error",
+      message: expect.stringContaining("refresh_token"),
+    }));
+  });
 });

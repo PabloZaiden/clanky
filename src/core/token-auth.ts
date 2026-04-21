@@ -11,8 +11,8 @@ import {
   type JWTPayload,
 } from "jose";
 import {
+  consumeApprovedDeviceAuthRequest,
   createDeviceAuthRequest,
-  createRefreshSession,
   getAuthInstanceId,
   getCanonicalIssuer,
   getDeviceAuthRequestByDeviceCodeHash,
@@ -21,15 +21,16 @@ import {
   getRefreshSessionByTokenHash,
   getStoredSigningKey,
   hashOpaqueToken,
-  listRefreshSessions,
-  markRefreshSessionRotated,
+  listLatestRefreshSessions,
   revokeRefreshFamily,
   revokeRefreshSession,
+  rotateRefreshSessionAtomically,
   saveStoredSigningKey,
   setAuthInstanceId,
   setCanonicalIssuer,
   touchRefreshSession,
   updateDeviceAuthRequest,
+  type CreateRefreshSessionInput,
   type DeviceAuthRequestRecord,
   type RefreshSessionRecord,
   type StoredSigningKey,
@@ -287,39 +288,38 @@ async function createRefreshSessionRecord(
   scope: string,
   familyId?: string,
   parentSessionId?: string,
-): Promise<{ session: RefreshSessionRecord; refreshToken: string; accessToken: string }> {
+): Promise<{ session: RefreshSessionRecord; createInput: CreateRefreshSessionInput; refreshToken: string }> {
   const refreshToken = generateOpaqueToken(32);
-  const session: RefreshSessionRecord = {
-    id: crypto.randomUUID(),
-    familyId: familyId ?? crypto.randomUUID(),
+  const sessionId = crypto.randomUUID();
+  const resolvedFamilyId = familyId ?? crypto.randomUUID();
+  const now = getNow().toISOString();
+  const refreshExpiresAt = addSeconds(getNow(), REFRESH_TOKEN_TTL_SECONDS).toISOString();
+  const createInput: CreateRefreshSessionInput = {
+    id: sessionId,
+    familyId: resolvedFamilyId,
     subject: AUTH_SUBJECT,
     clientId,
     scope,
     refreshTokenHash: hashOpaqueToken(refreshToken),
-    refreshExpiresAt: addSeconds(getNow(), REFRESH_TOKEN_TTL_SECONDS).toISOString(),
+    refreshExpiresAt,
     parentSessionId,
-    createdAt: "",
-    updatedAt: "",
   };
-  await createRefreshSession({
-    id: session.id,
-    familyId: session.familyId,
-    subject: session.subject,
-    clientId: session.clientId,
-    scope: session.scope,
-    refreshTokenHash: session.refreshTokenHash,
-    refreshExpiresAt: session.refreshExpiresAt,
-    parentSessionId: session.parentSessionId,
-  });
-  const storedSession = await getRefreshSessionById(session.id);
-  if (!storedSession) {
-    throw new Error("Refresh session could not be loaded after creation");
-  }
-  const accessToken = await issueAccessToken(storedSession, scope);
+  const session: RefreshSessionRecord = {
+    id: sessionId,
+    familyId: resolvedFamilyId,
+    subject: createInput.subject,
+    clientId: createInput.clientId,
+    scope: createInput.scope,
+    refreshTokenHash: createInput.refreshTokenHash,
+    refreshExpiresAt: createInput.refreshExpiresAt,
+    parentSessionId,
+    createdAt: now,
+    updatedAt: now,
+  };
   return {
-    session: storedSession,
+    session,
+    createInput,
     refreshToken,
-    accessToken,
   };
 }
 
@@ -483,14 +483,14 @@ export async function exchangeDeviceCode(input: {
   }
 
   const created = await createRefreshSessionRecord(request.clientId, request.scope);
-  await updateDeviceAuthRequest(request.id, {
-    status: "consumed",
-    sessionId: created.session.id,
-    subject: created.session.subject,
-  });
+  const accessToken = await issueAccessToken(created.session, request.scope);
+  const consumed = await consumeApprovedDeviceAuthRequest(request.id, created.createInput);
+  if (!consumed) {
+    throw new AuthError("invalid_grant", "Device code has already been used", 400);
+  }
 
   return {
-    accessToken: created.accessToken,
+    accessToken,
     refreshToken: created.refreshToken,
     tokenType: "Bearer",
     expiresIn: ACCESS_TOKEN_TTL_SECONDS,
@@ -523,10 +523,15 @@ export async function exchangeRefreshToken(input: {
   }
 
   const next = await createRefreshSessionRecord(session.clientId, session.scope, session.familyId, session.id);
-  await markRefreshSessionRotated(session.id, next.session.id);
+  const accessToken = await issueAccessToken(next.session, session.scope);
+  const rotated = await rotateRefreshSessionAtomically(session.id, next.createInput);
+  if (!rotated) {
+    await revokeRefreshFamily(session.familyId, "reuse_detected");
+    throw new AuthError("invalid_grant", "Refresh token reuse detected; token family has been revoked", 400);
+  }
 
   return {
-    accessToken: next.accessToken,
+    accessToken,
     refreshToken: next.refreshToken,
     tokenType: "Bearer",
     expiresIn: ACCESS_TOKEN_TTL_SECONDS,
@@ -549,16 +554,8 @@ export async function revokeAuthSession(input: { sessionId?: string; refreshToke
 }
 
 export async function listAuthSessions(): Promise<AuthSessionSummary[]> {
-  const sessions = await listRefreshSessions();
-  const latestByFamily = new Map<string, RefreshSessionRecord>();
-
-  for (const session of sessions) {
-    if (!latestByFamily.has(session.familyId)) {
-      latestByFamily.set(session.familyId, session);
-    }
-  }
-
-  return Array.from(latestByFamily.values()).map(createRefreshSessionSummary);
+  const sessions = await listLatestRefreshSessions();
+  return sessions.map(createRefreshSessionSummary);
 }
 
 export async function getDiscoveryDocument(req: Request): Promise<Record<string, unknown>> {

@@ -2,6 +2,7 @@
  * Persistence helpers for bearer-token and device authorization state.
  */
 
+import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
@@ -57,6 +58,11 @@ export interface RefreshSessionRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+export type CreateRefreshSessionInput = Omit<
+  RefreshSessionRecord,
+  "createdAt" | "updatedAt" | "lastUsedAt" | "revokedAt" | "revocationReason" | "replacedBySessionId"
+>;
 
 function getPreference(key: string): string | null {
   const db = getDatabase();
@@ -308,10 +314,14 @@ export async function updateDeviceAuthRequest(
 }
 
 export async function createRefreshSession(
-  input: Omit<RefreshSessionRecord, "createdAt" | "updatedAt" | "lastUsedAt" | "revokedAt" | "revocationReason" | "replacedBySessionId">,
+  input: CreateRefreshSessionInput,
 ): Promise<void> {
   const db = getDatabase();
   const now = new Date().toISOString();
+  insertRefreshSessionRow(db, input, now);
+}
+
+function insertRefreshSessionRow(db: Database, input: CreateRefreshSessionInput, now: string): void {
   db.run(
     `
       INSERT INTO auth_refresh_sessions (
@@ -347,7 +357,7 @@ export async function createRefreshSession(
       input.parentSessionId ?? null,
       now,
       now,
-    ],
+      ],
   );
 }
 
@@ -405,10 +415,32 @@ export async function getRefreshSessionByTokenHash(refreshTokenHash: string): Pr
   return row ? mapRefreshSession(row) : undefined;
 }
 
-export async function listRefreshSessions(): Promise<RefreshSessionRecord[]> {
+export async function listLatestRefreshSessions(): Promise<RefreshSessionRecord[]> {
   const db = getDatabase();
   const rows = db.query(
     `
+      WITH ranked_sessions AS (
+        SELECT
+          id,
+          family_id,
+          subject,
+          client_id,
+          scope,
+          refresh_token_hash,
+          refresh_expires_at,
+          last_used_at,
+          revoked_at,
+          revocation_reason,
+          replaced_by_session_id,
+          parent_session_id,
+          created_at,
+          updated_at,
+          ROW_NUMBER() OVER (
+            PARTITION BY family_id
+            ORDER BY created_at DESC, updated_at DESC, id DESC
+          ) AS family_rank
+        FROM auth_refresh_sessions
+      )
       SELECT
         id,
         family_id,
@@ -424,12 +456,43 @@ export async function listRefreshSessions(): Promise<RefreshSessionRecord[]> {
         parent_session_id,
         created_at,
         updated_at
-      FROM auth_refresh_sessions
-      ORDER BY created_at DESC
+      FROM ranked_sessions
+      WHERE family_rank = 1
+      ORDER BY created_at DESC, updated_at DESC, id DESC
     `,
   ).all() as Record<string, unknown>[];
 
   return rows.map(mapRefreshSession);
+}
+
+export async function consumeApprovedDeviceAuthRequest(
+  id: string,
+  session: CreateRefreshSessionInput,
+): Promise<boolean> {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+
+  return db.transaction(() => {
+    const result = db.run(
+      `
+        UPDATE auth_device_requests
+        SET
+          status = 'consumed',
+          subject = ?,
+          session_id = ?,
+          updated_at = ?
+        WHERE id = ?
+          AND status = 'approved'
+      `,
+      [session.subject, session.id, now, id],
+    );
+    if (result.changes === 0) {
+      return false;
+    }
+
+    insertRefreshSessionRow(db, session, now);
+    return true;
+  })();
 }
 
 export async function markRefreshSessionRotated(
@@ -451,6 +514,37 @@ export async function markRefreshSessionRotated(
     `,
     [now, now, replacedBySessionId, now, id],
   );
+}
+
+export async function rotateRefreshSessionAtomically(
+  id: string,
+  nextSession: CreateRefreshSessionInput,
+): Promise<boolean> {
+  const db = getDatabase();
+  const now = new Date().toISOString();
+
+  return db.transaction(() => {
+    const result = db.run(
+      `
+        UPDATE auth_refresh_sessions
+        SET
+          last_used_at = ?,
+          revoked_at = ?,
+          revocation_reason = 'rotated',
+          replaced_by_session_id = ?,
+          updated_at = ?
+        WHERE id = ?
+          AND revoked_at IS NULL
+      `,
+      [now, now, nextSession.id, now, id],
+    );
+    if (result.changes === 0) {
+      return false;
+    }
+
+    insertRefreshSessionRow(db, nextSession, now);
+    return true;
+  })();
 }
 
 export async function touchRefreshSession(id: string): Promise<void> {
