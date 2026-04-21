@@ -26,6 +26,8 @@ import {
 
 installImageAttachmentMocks();
 const api = createMockApi();
+const LOOP_MODEL_STORAGE_KEY = "ralpher.loopModelPreference";
+const LOOP_CHEAP_MODEL_STORAGE_KEY = "ralpher.loopCheapModelPreference";
 
 beforeEach(() => {
   api.reset();
@@ -258,12 +260,73 @@ describe("CreateLoopForm", () => {
 
     test("auto-selects lastModel when provided", async () => {
       const models = connectedModels();
-      const lastModel = { providerID: "openai", modelID: "gpt-4o" };
+      const lastModel = { providerID: "openai", modelID: "gpt-4o", variant: "" };
 
       const { getByLabelText } = renderWithUser(
         <CreateLoopForm {...defaultProps({ models, lastModel })} />
       );
       const select = getByLabelText("Model") as HTMLSelectElement;
+      await waitFor(() => {
+        expect(select.value).toBe("openai:gpt-4o:");
+      });
+    });
+
+    test("prefers the locally stored loop model over the server fallback", async () => {
+      window.localStorage.setItem(
+        LOOP_MODEL_STORAGE_KEY,
+        JSON.stringify({
+          providerID: "anthropic",
+          modelID: "claude-sonnet",
+          variant: "standard",
+        }),
+      );
+      const models = [
+        createModelInfo({
+          providerID: "anthropic",
+          modelID: "claude-sonnet",
+          modelName: "Claude Sonnet",
+          providerName: "Anthropic",
+          connected: true,
+          variants: ["fast", "standard"],
+        }),
+        createModelInfo({
+          providerID: "openai",
+          modelID: "gpt-4o",
+          modelName: "GPT-4o",
+          providerName: "OpenAI",
+          connected: true,
+        }),
+      ];
+
+      const { getByLabelText } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            models,
+            lastModel: { providerID: "openai", modelID: "gpt-4o", variant: "" },
+          })}
+        />,
+      );
+      const select = getByLabelText("Model") as HTMLSelectElement;
+
+      await waitFor(() => {
+        expect(select.value).toBe("anthropic:claude-sonnet:standard");
+      });
+    });
+
+    test("falls back to lastModel when the locally stored loop model is malformed", async () => {
+      window.localStorage.setItem(LOOP_MODEL_STORAGE_KEY, "{bad json");
+      const models = connectedModels();
+
+      const { getByLabelText } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            models,
+            lastModel: { providerID: "openai", modelID: "gpt-4o", variant: "" },
+          })}
+        />,
+      );
+      const select = getByLabelText("Model") as HTMLSelectElement;
+
       await waitFor(() => {
         expect(select.value).toBe("openai:gpt-4o:");
       });
@@ -357,6 +420,35 @@ describe("CreateLoopForm", () => {
 
       const optionTexts = Array.from(select.options).map((option) => option.text);
       expect(optionTexts).toContain("Same as loop model");
+    });
+
+    test("prefers the locally stored cheap helper model over the server fallback", async () => {
+      window.localStorage.setItem(
+        LOOP_CHEAP_MODEL_STORAGE_KEY,
+        JSON.stringify({
+          mode: "custom",
+          model: {
+            providerID: "openai",
+            modelID: "gpt-4o",
+            variant: "",
+          },
+        }),
+      );
+      const { getByLabelText, getByText, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            models: connectedModels(),
+            lastCheapModel: { mode: "same-as-loop" },
+          })}
+        />,
+      );
+
+      await user.click(getByText("Show advanced options"));
+
+      const select = getByLabelText("Cheap helper model") as HTMLSelectElement;
+      await waitFor(() => {
+        expect(select.value).toBe("openai:gpt-4o:");
+      });
     });
 
     test("falls back to same-as-loop when the remembered cheap model is unavailable", async () => {

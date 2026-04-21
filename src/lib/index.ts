@@ -27,3 +27,13 @@ export {
   type StoredSshServerCredential,
   type SshBrowserCredentialDependencies,
 } from "./ssh-browser-credentials";
+export {
+  getStoredChatModelPreference,
+  getStoredLoopCheapModelPreference,
+  getStoredLoopModelPreference,
+  saveStoredChatModelPreference,
+  saveStoredLoopCheapModelPreference,
+  saveStoredLoopModelPreference,
+  type ModelPreferenceStorageLike,
+  type ModelSelectionPreferenceDependencies,
+} from "./model-selection-preferences";

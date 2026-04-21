@@ -4,6 +4,10 @@ import { appFetch } from "../../lib/public-path";
 import { useDashboardData, useToast } from "../../hooks";
 import { createLogger } from "../../lib/logger";
 import {
+  saveStoredLoopCheapModelPreference,
+  saveStoredLoopModelPreference,
+} from "../../lib/model-selection-preferences";
+import {
   CreateLoopForm,
   getComposeDraftActionLabel,
   getComposeSubmitActionLabel,
@@ -127,6 +131,8 @@ export function DraftLoopComposer({
 
       setLastModel(request.model);
       setLastCheapModel(request.cheapModel ?? null);
+      saveStoredLoopModelPreference(request.model);
+      saveStoredLoopCheapModelPreference(request.cheapModel);
       try {
         await persistLoopPreferences(request);
       } catch (error) {

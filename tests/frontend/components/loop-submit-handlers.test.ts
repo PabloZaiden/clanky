@@ -111,5 +111,109 @@ describe("handleCreateLoopSubmit", () => {
     expect(fetchCalls).toContain("POST /api/loops/draft-1/draft/start");
     expect(onRefresh).toHaveBeenCalledTimes(2);
     expect(toast.error).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem("ralpher.loopModelPreference")).toBe(
+      JSON.stringify({
+        providerID: "anthropic",
+        modelID: "claude-sonnet-4-20250514",
+        variant: "",
+      }),
+    );
+    expect(window.localStorage.getItem("ralpher.loopCheapModelPreference")).toBe(
+      JSON.stringify({ mode: "same-as-loop" }),
+    );
+  });
+
+  test("persists local loop defaults after a successful create", async () => {
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      const path = new URL(requestUrl, window.location.origin).pathname;
+
+      if (method === "PUT" && path.startsWith("/api/preferences/")) {
+        return jsonResponse({ success: true });
+      }
+
+      throw new Error(`Unexpected request: ${method} ${path}`);
+    }) as typeof globalThis.fetch;
+    window.fetch = globalThis.fetch;
+
+    const result = await handleCreateLoopSubmit(
+      {
+        workspaces: [createWorkspace({ id: "ws-1", directory: "/workspaces/project-a" })],
+        setLastModel: mock(() => {}),
+        setLastCheapModel: mock(() => {}),
+        setUncommittedModal: mock(() => {}),
+        onRefresh: mock(async () => {}),
+        onCreateLoop: mock(async () => ({
+          loop: createLoopWithStatus("starting", {
+            config: {
+              id: "loop-1",
+              workspaceId: "ws-1",
+              directory: "/workspaces/project-a",
+            },
+          }),
+        })),
+      },
+      null,
+      {
+        name: "New Loop",
+        workspaceId: "ws-1",
+        prompt: "Ship the feature",
+        model: {
+          providerID: "openai",
+          modelID: "gpt-4o",
+          variant: "",
+        },
+        draft: false,
+        planMode: false,
+        useWorktree: true,
+        clearPlanningFolder: false,
+        attachments: [],
+        cheapModel: {
+          mode: "custom",
+          model: {
+            providerID: "anthropic",
+            modelID: "claude-haiku-4-5",
+            variant: "",
+          },
+        },
+        maxIterations: null,
+        maxConsecutiveErrors: DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
+        activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+        stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
+        git: {
+          branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,
+          commitScope: DEFAULT_LOOP_CONFIG.git.commitScope,
+        },
+        baseBranch: "main",
+        autoAcceptPlan: false,
+        fullyAutonomous: false,
+      },
+      { error: mock((_message: string) => {}) },
+    );
+
+    expect(result).toBe(true);
+    expect(window.localStorage.getItem("ralpher.loopModelPreference")).toBe(
+      JSON.stringify({
+        providerID: "openai",
+        modelID: "gpt-4o",
+        variant: "",
+      }),
+    );
+    expect(window.localStorage.getItem("ralpher.loopCheapModelPreference")).toBe(
+      JSON.stringify({
+        mode: "custom",
+        model: {
+          providerID: "anthropic",
+          modelID: "claude-haiku-4-5",
+          variant: "",
+        },
+      }),
+    );
   });
 });

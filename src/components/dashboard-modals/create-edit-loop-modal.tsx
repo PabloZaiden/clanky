@@ -9,6 +9,7 @@ import type {
   Loop,
   UncommittedChangesError,
   ModelInfo,
+  ModelConfig,
   BranchInfo,
   Workspace,
   CreateLoopRequest,
@@ -36,9 +37,9 @@ export interface CreateEditLoopModalProps {
 
   models: ModelInfo[];
   modelsLoading: boolean;
-  lastModel: { providerID: string; modelID: string } | null;
+  lastModel: ModelConfig | null;
   lastCheapModel: CheapModelSelection | null;
-  setLastModel: (model: { providerID: string; modelID: string } | null) => void;
+  setLastModel: (model: ModelConfig | null) => void;
   setLastCheapModel: (selection: CheapModelSelection | null) => void;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   planningWarning: string | null;
