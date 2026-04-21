@@ -2,7 +2,7 @@
  * Shared helpers for persistent SSH sessions backed by dtach.
  */
 
-import { DEFAULT_SSH_COLOR_TERM } from "./ssh-terminal-env";
+import { buildShellBootstrapCommand } from "./ssh-shell-bootstrap";
 
 const DTACH_INSTALL_HINT = [
   "dtach is not available on the remote host.",
@@ -47,9 +47,6 @@ function buildPersistentSessionShellCommand(session: { config: PersistentSshSess
   const sessionPidFile = quoteShell(buildPersistentSessionPidFilePath(session.config.id));
   const sessionMasterPidFile = quoteShell(buildPersistentSessionMasterPidFilePath(session.config.id));
   const sessionSocket = quoteShell(buildPersistentSessionSocketPath(session.config.remoteSessionName));
-  const changeDirectoryCommand = session.config.directory
-    ? `cd ${quoteShell(session.config.directory)} || exit 1;`
-    : "";
   return [
     `session_tty_file=${sessionTtyFile}`,
     `session_pid_file=${sessionPidFile}`,
@@ -64,11 +61,7 @@ function buildPersistentSessionShellCommand(session: { config: PersistentSshSess
     "printf '%s\\n' \"$$\" > \"$session_pid_file\";",
     "cleanup_session() { rm -f \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\" \"$session_socket\"; };",
     "trap cleanup_session EXIT HUP INT TERM;",
-    changeDirectoryCommand,
-    `COLORTERM=${quoteShell(DEFAULT_SSH_COLOR_TERM)};`,
-    "export COLORTERM;",
-    "shell=\"${SHELL:-/bin/sh}\";",
-    "\"$shell\" -i",
+    buildShellBootstrapCommand({ directory: session.config.directory }),
   ].filter((part) => part.length > 0).join(" ");
 }
 
