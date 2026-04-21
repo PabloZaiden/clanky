@@ -7,7 +7,7 @@
 
 import { chatManager } from "../core/chat-manager";
 import { createLogger } from "../core/logger";
-import { ChatBusyError, EmptyChatTranscriptError } from "../types/chat";
+import { ChatBusyError, EmptyChatTranscriptError, InvalidCurrentPlanError } from "../types/chat";
 import type { ChatConfig } from "../types/chat";
 import {
   CreateChatRequestSchema,
@@ -22,7 +22,11 @@ import { isModelEnabled } from "./models";
 const log = createLogger("api:chats");
 
 function createChatActionErrorResponse(error: unknown): Response | null {
-  if (error instanceof ChatBusyError || error instanceof EmptyChatTranscriptError) {
+  if (
+    error instanceof ChatBusyError
+    || error instanceof EmptyChatTranscriptError
+    || error instanceof InvalidCurrentPlanError
+  ) {
     return errorResponse(error.code, error.message, error.status);
   }
   return null;
@@ -282,6 +286,46 @@ export const chatsRoutes = {
         }
         const message = error instanceof Error ? error.message : String(error);
         log.error("Failed to spawn loop from chat", { chatId: req.params.id, error: message });
+        return errorResponse("spawn_failed", message, 500);
+      }
+    },
+  },
+
+  "/api/chats/:id/spawn-loop-from-current-plan": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const chat = await chatManager.getChat(req.params.id);
+      if (!chat) {
+        return errorResponse("not_found", "Chat not found", 404);
+      }
+
+      const workspace = await requireWorkspace(chat.config.workspaceId);
+      if (workspace instanceof Response) {
+        return workspace;
+      }
+
+      const modelValidation = await isModelEnabled(
+        workspace.id,
+        workspace.directory,
+        chat.config.model.providerID,
+        chat.config.model.modelID,
+      );
+      if (!modelValidation.enabled) {
+        return errorResponse(
+          modelValidation.errorCode ?? "model_not_enabled",
+          modelValidation.error ?? "The selected model is not available",
+        );
+      }
+
+      try {
+        const loop = await chatManager.spawnLoopFromCurrentPlan(req.params.id);
+        return Response.json(loop, { status: 201 });
+      } catch (error) {
+        const knownErrorResponse = createChatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        log.error("Failed to spawn loop from current plan", { chatId: req.params.id, error: message });
         return errorResponse("spawn_failed", message, 500);
       }
     },

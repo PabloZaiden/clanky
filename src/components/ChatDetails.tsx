@@ -67,6 +67,10 @@ async function parseError(response: Response, fallback: string): Promise<string>
   }
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function upsertById<T extends { id: string; timestamp?: string }>(items: T[], item: T): T[] {
   const next = items.filter((entry) => entry.id !== item.id);
   next.push(item);
@@ -120,6 +124,7 @@ export function ChatDetails({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSpawnPending, setIsSpawnPending] = useState(false);
+  const [isSpawnCurrentPlanPending, setIsSpawnCurrentPlanPending] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -423,7 +428,7 @@ export function ChatDetails({
   }
 
   const handleSpawnLoop = useCallback(async () => {
-    if (!chat || isActive || isSpawnPending) {
+    if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
       return;
     }
 
@@ -442,7 +447,29 @@ export function ChatDetails({
     } finally {
       setIsSpawnPending(false);
     }
-  }, [chat, chatId, isActive, isSpawnPending, onOpenLoop, toast]);
+  }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenLoop, toast]);
+
+  const handleSpawnLoopFromCurrentPlan = useCallback(async () => {
+    if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
+      return;
+    }
+
+    setIsSpawnCurrentPlanPending(true);
+    try {
+      const response = await appFetch(`/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to spawn loop from current plan"));
+      }
+      const loop = (await response.json()) as Loop;
+      onOpenLoop?.(loop.config.id);
+    } catch (spawnError) {
+      toast.error(getErrorMessage(spawnError));
+    } finally {
+      setIsSpawnCurrentPlanPending(false);
+    }
+  }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenLoop, toast]);
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     attachmentControlRef.current?.handlePaste(event);
@@ -477,7 +504,13 @@ export function ChatDetails({
         id: "spawn-loop",
         label: isSpawnPending ? "Spawning loop..." : "Spawn Loop",
         onClick: () => void handleSpawnLoop(),
-        disabled: isActive || isSpawnPending || chat.state.messages.length === 0,
+        disabled: isActive || isSpawnPending || isSpawnCurrentPlanPending || chat.state.messages.length === 0,
+      },
+      {
+        id: "spawn-loop-from-current-plan",
+        label: isSpawnCurrentPlanPending ? "Spawning loop from current plan..." : "Spawn loop from current plan",
+        onClick: () => void handleSpawnLoopFromCurrentPlan(),
+        disabled: isActive || isSpawnPending || isSpawnCurrentPlanPending || chat.state.messages.length === 0,
       },
       {
         id: "code-explorer",
@@ -497,7 +530,7 @@ export function ChatDetails({
         destructive: true,
       },
     ];
-  }, [chat, handleSpawnLoop, hasCodeExplorerAction, isActive, isSpawnPending, onOpenCodeExplorer]);
+  }, [chat, handleSpawnLoop, handleSpawnLoopFromCurrentPlan, hasCodeExplorerAction, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer]);
 
   const {
     composerRef,
