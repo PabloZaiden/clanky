@@ -65,30 +65,32 @@ async function authorizeRequest(req: Request): Promise<{
   const authorizationHeader = req.headers.get("authorization")?.trim();
   if (authorizationHeader) {
     const [scheme, token] = authorizationHeader.split(/\s+/, 2);
-    if (scheme?.toLowerCase() !== "bearer" || !token) {
-      return {
-        response: Response.json(
-          { error: "invalid_token", message: "Authorization header must use the Bearer scheme" },
-          { status: 401 },
-        ),
-      };
-    }
-
-    try {
-      const claims = await validateAccessToken(token);
-      return {
-        state: {
-          kind: "bearer",
-          claims,
-        },
-      };
-    } catch (error) {
-      if (error instanceof AuthError) {
+    if (scheme?.toLowerCase() === "bearer") {
+      if (!token) {
         return {
-          response: createInvalidBearerResponse(error),
+          response: Response.json(
+            { error: "invalid_token", message: "Authorization header must use the Bearer scheme" },
+            { status: 401 },
+          ),
         };
       }
-      throw error;
+
+      try {
+        const claims = await validateAccessToken(token);
+        return {
+          state: {
+            kind: "bearer",
+            claims,
+          },
+        };
+      } catch (error) {
+        if (error instanceof AuthError) {
+          return {
+            response: createInvalidBearerResponse(error),
+          };
+        }
+        throw error;
+      }
     }
   }
 

@@ -206,6 +206,44 @@ describe("Persistence", () => {
         "legacy_reset_ten",
         "2025-01-01T00:00:00.000Z",
       ]);
+      legacyDb.run(`
+        CREATE TABLE auth_device_requests (
+          id TEXT PRIMARY KEY,
+          client_id TEXT NOT NULL,
+          device_code_hash TEXT NOT NULL UNIQUE,
+          user_code TEXT NOT NULL UNIQUE,
+          scope TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run(`
+        CREATE UNIQUE INDEX idx_auth_device_requests_device_code_hash
+        ON auth_device_requests(device_code_hash)
+      `);
+      legacyDb.run(`
+        CREATE UNIQUE INDEX idx_auth_device_requests_user_code
+        ON auth_device_requests(user_code)
+      `);
+      legacyDb.run(`
+        CREATE TABLE auth_refresh_sessions (
+          id TEXT PRIMARY KEY,
+          family_id TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          client_id TEXT NOT NULL,
+          scope TEXT NOT NULL DEFAULT '',
+          refresh_token_hash TEXT NOT NULL UNIQUE,
+          refresh_expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+      legacyDb.run(`
+        CREATE UNIQUE INDEX idx_auth_refresh_sessions_token_hash
+        ON auth_refresh_sessions(refresh_token_hash)
+      `);
       legacyDb.close();
 
       const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
@@ -218,10 +256,21 @@ describe("Persistence", () => {
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_refresh_sessions'",
       ).get() as { name: string } | null;
       const refreshColumns = getDatabase().query("PRAGMA table_info(auth_refresh_sessions)").all() as Array<{ name: string }>;
+      const redundantIndexes = getDatabase().query(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'index'
+          AND name IN (
+            'idx_auth_device_requests_device_code_hash',
+            'idx_auth_device_requests_user_code',
+            'idx_auth_refresh_sessions_token_hash'
+          )
+      `).all() as Array<{ name: string }>;
 
       expect(deviceTable?.name).toBe("auth_device_requests");
       expect(refreshTable?.name).toBe("auth_refresh_sessions");
       expect(refreshColumns.some((column) => column.name === "scope")).toBe(true);
+      expect(redundantIndexes).toHaveLength(0);
     });
 
     test("initializeDatabase repairs workspaces when a legacy migration version collides", async () => {

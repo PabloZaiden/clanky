@@ -149,6 +149,24 @@ describe("migration infrastructure", () => {
       expect(getTableColumns(db, "auth_device_requests")).toContain("device_code_hash");
       expect(getTableColumns(db, "auth_refresh_sessions")).toContain("refresh_token_hash");
       expect(getTableColumns(db, "auth_refresh_sessions")).toContain("scope");
+
+      const authIndexes = db.query(`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'index'
+          AND tbl_name IN ('auth_device_requests', 'auth_refresh_sessions')
+        ORDER BY name
+      `).all() as Array<{ name: string }>;
+      const authIndexNames = authIndexes.map((index) => index.name);
+
+      expect(authIndexNames).not.toContain("idx_auth_device_requests_device_code_hash");
+      expect(authIndexNames).not.toContain("idx_auth_device_requests_user_code");
+      expect(authIndexNames).not.toContain("idx_auth_refresh_sessions_token_hash");
+      expect(authIndexNames).toEqual(expect.arrayContaining([
+        "idx_auth_device_requests_status_expires_at",
+        "idx_auth_refresh_sessions_family_id",
+        "idx_auth_refresh_sessions_subject_created_at",
+      ]));
     });
   });
 

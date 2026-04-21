@@ -52,12 +52,9 @@ const DeviceGrantSchema = z.object({
 
 const TokenRequestSchema = z.union([RefreshGrantSchema, DeviceGrantSchema]);
 
-const RevokeRequestSchema = z.object({
-  sessionId: z.string().trim().min(1).optional(),
-  refreshToken: z.string().trim().min(1).optional(),
-}).refine((value) => Boolean(value.sessionId || value.refreshToken), {
-  message: "sessionId or refreshToken is required",
-});
+const PublicRevokeRequestSchema = z.object({
+  refreshToken: z.string().trim().min(1),
+}).strict();
 
 const IssuerSettingsSchema = z.object({
   canonicalIssuer: z.string().trim().min(1).nullable(),
@@ -240,13 +237,13 @@ export const authRoutes = {
 
   "/api/auth/revoke": {
     async POST(req: Request): Promise<Response> {
-      const validation = await parseAndValidate(RevokeRequestSchema, req);
+      const validation = await parseAndValidate(PublicRevokeRequestSchema, req);
       if (!validation.success) {
         return validation.response;
       }
 
       try {
-        await revokeAuthSession(validation.data);
+        await revokeAuthSession({ refreshToken: validation.data.refreshToken });
         return successResponse();
       } catch (error) {
         return authErrorResponse(error);
@@ -266,8 +263,13 @@ export const authRoutes = {
 
   "/api/auth/sessions/:id": {
     async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+      const sessionId = req.params.id.trim();
+      if (!sessionId) {
+        return errorResponse("validation_error", "sessionId is required", 400);
+      }
+
       try {
-        await revokeAuthSession({ sessionId: req.params.id });
+        await revokeAuthSession({ sessionId });
         return successResponse();
       } catch (error) {
         return authErrorResponse(error);

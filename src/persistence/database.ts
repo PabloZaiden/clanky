@@ -533,12 +533,10 @@ function createTables(database: Database): void {
     `);
 
     database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_device_requests_device_code_hash
-      ON auth_device_requests(device_code_hash)
+      DROP INDEX IF EXISTS idx_auth_device_requests_device_code_hash
     `);
     database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_device_requests_user_code
-      ON auth_device_requests(user_code)
+      DROP INDEX IF EXISTS idx_auth_device_requests_user_code
     `);
     database.run(`
       CREATE INDEX IF NOT EXISTS idx_auth_device_requests_status_expires_at
@@ -546,8 +544,7 @@ function createTables(database: Database): void {
     `);
 
     database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_refresh_sessions_token_hash
-      ON auth_refresh_sessions(refresh_token_hash)
+      DROP INDEX IF EXISTS idx_auth_refresh_sessions_token_hash
     `);
     database.run(`
       CREATE INDEX IF NOT EXISTS idx_auth_refresh_sessions_family_id

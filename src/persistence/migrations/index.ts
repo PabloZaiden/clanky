@@ -329,20 +329,8 @@ export const migrations: Migration[] = [
         )
       `);
       db.run(`
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_device_requests_device_code_hash
-        ON auth_device_requests(device_code_hash)
-      `);
-      db.run(`
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_device_requests_user_code
-        ON auth_device_requests(user_code)
-      `);
-      db.run(`
         CREATE INDEX IF NOT EXISTS idx_auth_device_requests_status_expires_at
         ON auth_device_requests(status, expires_at)
-      `);
-      db.run(`
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_refresh_sessions_token_hash
-        ON auth_refresh_sessions(refresh_token_hash)
       `);
       db.run(`
         CREATE INDEX IF NOT EXISTS idx_auth_refresh_sessions_family_id

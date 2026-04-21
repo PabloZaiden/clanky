@@ -547,19 +547,25 @@ export async function rotateRefreshSessionAtomically(
   })();
 }
 
-export async function touchRefreshSession(id: string): Promise<void> {
+export async function touchRefreshSession(id: string, throttleMs = 0): Promise<boolean> {
   const db = getDatabase();
   const now = new Date().toISOString();
-  db.run(
+  const threshold = new Date(Date.now() - throttleMs).toISOString();
+  const result = db.run(
     `
       UPDATE auth_refresh_sessions
       SET
         last_used_at = ?,
         updated_at = ?
       WHERE id = ?
+        AND (
+          last_used_at IS NULL
+          OR last_used_at <= ?
+        )
     `,
-    [now, now, id],
+    [now, now, id, threshold],
   );
+  return result.changes > 0;
 }
 
 export async function revokeRefreshSession(

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { appFetch } from "../../lib/public-path";
+import { readApiError } from "../../lib/api-error";
 import { useToast } from "../../hooks";
 import { Button } from "../common";
 
@@ -18,15 +19,6 @@ interface AuthSessionSummary {
   revokedAt?: string;
   revocationReason?: string;
   active: boolean;
-}
-
-async function readApiError(response: Response): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message || data.error || `Request failed with status ${String(response.status)}`;
-  } catch {
-    return `Request failed with status ${String(response.status)}`;
-  }
 }
 
 function formatTimestamp(value?: string): string {

@@ -11,6 +11,8 @@ import {
   getPasskeyAuthVersion,
   savePasskey,
 } from "../../src/persistence/passkey-auth";
+import { getDatabase } from "../../src/persistence/database";
+import { listLatestRefreshSessions } from "../../src/persistence/auth";
 import { setupTestContext, teardownTestContext, type TestContext } from "../setup";
 
 function createSignedPasskeySessionCookie(
@@ -136,5 +138,84 @@ describe("application auth", () => {
 
     expect(response).toBeUndefined();
     expect(upgradeCalled).toBe(true);
+  });
+
+  test("ignores non-bearer authorization headers when a passkey session is valid", async () => {
+    const wrappedRoutes = wrapRoutesWithApplicationAuth({
+      "/api/protected": {
+        GET: async () => Response.json({ ok: true }),
+      },
+    });
+    const protectedRoute = wrappedRoutes["/api/protected"] as { GET: (req: Request) => Promise<Response> };
+
+    const secret = await getOrCreatePasskeyAuthSecret();
+    const version = await getPasskeyAuthVersion();
+    const cookie = createSignedPasskeySessionCookie({
+      nonce: "application-auth-basic-header-session",
+      version,
+      expiresAt: Date.now() + 60_000,
+    }, secret);
+
+    const response = await protectedRoute.GET(new Request("http://example.test/api/protected", {
+      headers: {
+        authorization: "Basic cHJveHktZm9yd2FyZGVkOmhlYWRlcg==",
+        cookie,
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
+  test("throttles refresh-session touches during repeated bearer validation", async () => {
+    const accessToken = await issueBearerToken();
+    const [session] = await listLatestRefreshSessions();
+    expect(session).toBeDefined();
+
+    const db = getDatabase();
+    const freshTimestamp = new Date().toISOString();
+    db.run(
+      "UPDATE auth_refresh_sessions SET last_used_at = ?, updated_at = ? WHERE id = ?",
+      [freshTimestamp, freshTimestamp, session!.id],
+    );
+
+    const wrappedRoutes = wrapRoutesWithApplicationAuth({
+      "/api/protected": {
+        GET: async () => Response.json({ ok: true }),
+      },
+    });
+    const protectedRoute = wrappedRoutes["/api/protected"] as { GET: (req: Request) => Promise<Response> };
+
+    const firstResponse = await protectedRoute.GET(new Request("http://example.test/api/protected", {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    }));
+    expect(firstResponse.status).toBe(200);
+
+    const untouchedRow = db.query(
+      "SELECT last_used_at, updated_at FROM auth_refresh_sessions WHERE id = ?",
+    ).get(session!.id) as { last_used_at: string; updated_at: string };
+    expect(untouchedRow.last_used_at).toBe(freshTimestamp);
+    expect(untouchedRow.updated_at).toBe(freshTimestamp);
+
+    const staleTimestamp = new Date(Date.now() - 120_000).toISOString();
+    db.run(
+      "UPDATE auth_refresh_sessions SET last_used_at = ?, updated_at = ? WHERE id = ?",
+      [staleTimestamp, staleTimestamp, session!.id],
+    );
+
+    const secondResponse = await protectedRoute.GET(new Request("http://example.test/api/protected", {
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    }));
+    expect(secondResponse.status).toBe(200);
+
+    const touchedRow = db.query(
+      "SELECT last_used_at, updated_at FROM auth_refresh_sessions WHERE id = ?",
+    ).get(session!.id) as { last_used_at: string; updated_at: string };
+    expect(touchedRow.last_used_at).not.toBe(staleTimestamp);
+    expect(touchedRow.updated_at).not.toBe(staleTimestamp);
   });
 });

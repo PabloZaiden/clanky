@@ -46,6 +46,7 @@ const AUTH_SUBJECT = "ralpher-user";
 const DEFAULT_CLIENT_ID = "ralpher-cli";
 const ACCESS_TOKEN_AUDIENCE = "ralpher-api";
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 10;
+const REFRESH_SESSION_TOUCH_THROTTLE_MS = 60 * 1000;
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 const DEVICE_CODE_TTL_SECONDS = 60 * 10;
 const DEVICE_POLL_INTERVAL_SECONDS = 5;
@@ -560,7 +561,7 @@ export async function listAuthSessions(): Promise<AuthSessionSummary[]> {
 
 export async function getDiscoveryDocument(req: Request): Promise<Record<string, unknown>> {
   const issuer = await getEffectiveIssuer();
-  const baseUrl = getRequestPublicBaseUrl(req);
+  const baseUrl = isHttpUrl(issuer) ? issuer : getRequestPublicBaseUrl(req);
   return {
     issuer,
     jwks_uri: `${baseUrl}/.well-known/jwks.json`,
@@ -625,7 +626,7 @@ export async function validateAccessToken(token: string): Promise<AccessTokenCla
     throw new AuthError("invalid_token", "Associated auth session is no longer active", 401);
   }
 
-  await touchRefreshSession(session.id);
+  await touchRefreshSession(session.id, REFRESH_SESSION_TOUCH_THROTTLE_MS);
 
   return {
     sub: payload.sub,

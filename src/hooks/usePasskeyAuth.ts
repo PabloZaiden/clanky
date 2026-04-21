@@ -1,6 +1,7 @@
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppConfig, PasskeyAuthStatusResponse } from "../types/api";
+import { readApiError } from "../lib/api-error";
 import { appFetch, PASSKEY_AUTH_REQUIRED_EVENT, setConfiguredPublicBasePath } from "../lib/public-path";
 import { useToast } from "./useToast";
 import { createLogger } from "../lib/logger";
@@ -13,11 +14,6 @@ const DEFAULT_PASSKEY_STATUS: PasskeyAuthStatusResponse = {
   passkeyRequired: false,
   authenticated: false,
 };
-
-interface ApiErrorResponse {
-  message?: string;
-  error?: string;
-}
 
 interface PasskeyActionResponse {
   success: boolean;
@@ -38,15 +34,6 @@ export interface UsePasskeyAuthResult {
   registerPasskey: (name?: string) => Promise<boolean>;
   logout: () => Promise<boolean>;
   removePasskey: () => Promise<boolean>;
-}
-
-async function readApiError(response: Response): Promise<string> {
-  try {
-    const data = (await response.json()) as ApiErrorResponse;
-    return data.message || data.error || `Request failed with status ${String(response.status)}`;
-  } catch {
-    return `Request failed with status ${String(response.status)}`;
-  }
 }
 
 function getPasskeyStatus(config: AppConfig): PasskeyAuthStatusResponse {
