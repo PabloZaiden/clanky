@@ -7,7 +7,7 @@
  */
 
 // Re-export all public types
-export type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
+export type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult, SeedPlanFilesOptions } from "./loop-types";
 export { getLoopWorkingDirectory } from "./loop-types";
 
 import type { LoopCtx } from "./context";
@@ -15,6 +15,7 @@ import type { Loop, LoopConfig, LoopState } from "../../types/loop";
 import type { LoopEvent } from "../../types/events";
 import type { ModelConfig } from "../../types/loop";
 import type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
+import type { SeedPlanFilesOptions } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedback";
@@ -25,6 +26,7 @@ import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
 import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
 import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
 import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
+import { seedPlanFilesImpl } from "./loop-seeded-plan";
 import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, manualCompleteLoopImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
 import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
@@ -96,6 +98,10 @@ export class LoopManager {
 
   async discardPlan(loopId: string): Promise<boolean> {
     return discardPlanImpl(this.ctx, loopId);
+  }
+
+  async seedPlanFiles(loopId: string, options: SeedPlanFilesOptions): Promise<Loop> {
+    return seedPlanFilesImpl(this.ctx, loopId, options);
   }
 
   async getLoop(loopId: string): Promise<Loop | null> {

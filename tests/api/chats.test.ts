@@ -4,13 +4,14 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { serve, type Server } from "bun";
-import { mkdtemp, rm } from "fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { loadChat, updateChatState } from "../../src/persistence/chats";
 import { backendManager } from "../../src/core/backend-manager";
+import { getPlanFilePath } from "../../src/lib/planning-files";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 
@@ -533,6 +534,161 @@ describe("Chats API Integration", () => {
     await expect(spawnResponse.json()).resolves.toMatchObject({
       error: "chat_busy",
       message: "Chat is busy",
+    });
+  });
+
+  test("spawns a loop from the chat's current plan", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Plan Source Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Turn this into a plan-ready loop.",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    const settledChat = await waitForChatIdle(chatId) as {
+      state: {
+        status: string;
+        worktree?: {
+          worktreePath?: string;
+        };
+      };
+    };
+    expect(settledChat.state.status).toBe("idle");
+    expect(settledChat.state.worktree?.worktreePath).toBeDefined();
+
+    const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
+    await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
+    await writeFile(getPlanFilePath(chatWorktreePath), "# Imported plan\n\n1. Do the seeded work.\n");
+
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+      method: "POST",
+    });
+
+    expect(spawnResponse.status).toBe(201);
+    const spawnedLoop = await spawnResponse.json();
+    expect(spawnedLoop.state.status).toBe("planning");
+    expect(spawnedLoop.state.planMode?.isPlanReady).toBe(true);
+    expect(spawnedLoop.state.planMode?.planContent).toContain("Imported plan");
+
+    const planResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/plan`);
+    expect(planResponse.status).toBe(200);
+    await expect(planResponse.json()).resolves.toMatchObject({
+      exists: true,
+      content: expect.stringContaining("Imported plan"),
+    });
+
+    const statusResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/status-file`);
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      exists: true,
+      content: expect.stringContaining("Imported plan ready"),
+    });
+  });
+
+  test("rejects spawning from current plan when no plan file exists", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Missing Plan Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Create a chat with no plan file.",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+    await waitForChatIdle(chatId);
+
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+      method: "POST",
+    });
+
+    expect(spawnResponse.status).toBe(400);
+    await expect(spawnResponse.json()).resolves.toMatchObject({
+      error: "invalid_current_plan",
+      message: "No Ralpher plan file was found in the current chat workspace.",
+    });
+  });
+
+  test("rejects spawning from current plan when the plan file is empty", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Empty Plan Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Create a chat with an empty plan file.",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    const settledChat = await waitForChatIdle(chatId) as {
+      state: {
+        worktree?: {
+          worktreePath?: string;
+        };
+      };
+    };
+    const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
+    await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
+    await writeFile(getPlanFilePath(chatWorktreePath), "\n<promise>PLAN_READY</promise>\n");
+
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+      method: "POST",
+    });
+
+    expect(spawnResponse.status).toBe(400);
+    await expect(spawnResponse.json()).resolves.toMatchObject({
+      error: "invalid_current_plan",
+      message: "The current Ralpher plan file is empty.",
     });
   });
 });
