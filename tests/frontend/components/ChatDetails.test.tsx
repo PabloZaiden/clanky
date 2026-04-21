@@ -289,6 +289,24 @@ describe("ChatDetails", () => {
     expect(modelCell).not.toContainElement(getByText("chat-image.png"));
   });
 
+  test("keeps the compact AI trigger in the chat composer on larger screens", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByRole, getByTestId } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Send" })).toBeTruthy();
+    });
+
+    const modelCell = getByTestId("chat-composer-model-cell");
+    const select = modelCell.querySelector("select");
+    const overlay = modelCell.querySelector("[aria-hidden='true']");
+
+    expect(select?.className).toContain("h-full w-full");
+    expect(select?.className).not.toContain("sm:w-40");
+    expect(overlay?.textContent).toBe("AI");
+  });
+
   test("clears stale attachment errors after a successful send", async () => {
     const initialChat = createChat();
     const updatedChat = createChat({

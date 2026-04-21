@@ -60,11 +60,13 @@ describe("LoopActionBar", () => {
     });
 
     test("renders a model selector", () => {
-      const { container } = renderWithUser(
+      const { container, getByRole } = renderWithUser(
         <LoopActionBar {...defaultProps()} />
       );
       const select = container.querySelector("select");
       expect(select).toBeInTheDocument();
+      expect(getByRole("combobox", { name: "Model" })).toBeInTheDocument();
+      expect(select?.getAttribute("aria-label")).toBe("Model");
     });
 
     test("renders the submit button with appropriate aria-label for planning mode", () => {
@@ -140,6 +142,20 @@ describe("LoopActionBar", () => {
       const select = container.querySelector("select") as HTMLSelectElement;
       const defaultOption = select.options[0];
       expect(defaultOption?.text).toBe("Claude Sonnet 4");
+    });
+
+    test("keeps the compact AI trigger in the composer on larger screens", () => {
+      const { getByTestId } = renderWithUser(
+        <LoopActionBar {...defaultProps()} />
+      );
+
+      const modelCell = getByTestId("loop-composer-model-cell");
+      const select = modelCell.querySelector("select");
+      const overlay = modelCell.querySelector("[aria-hidden='true']");
+
+      expect(select?.className).toContain("h-full w-full");
+      expect(select?.className).not.toContain("sm:w-40");
+      expect(overlay?.textContent).toBe("AI");
     });
 
     test("groups models by provider", () => {

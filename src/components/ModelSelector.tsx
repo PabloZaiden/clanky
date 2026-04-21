@@ -193,10 +193,12 @@ export interface ModelSelectorProps {
   className?: string;
   /** HTML id attribute. */
   id?: string;
-  /** Render a compact square trigger on mobile while keeping the full select on larger screens. */
-  compactMobile?: boolean;
-  /** Label shown inside the compact mobile trigger. */
-  compactMobileLabel?: string;
+  /** Accessible name applied directly to the select when no external label is used. */
+  ariaLabel?: string;
+  /** Render the selector as a compact square trigger across breakpoints. */
+  compact?: boolean;
+  /** Label shown inside the compact trigger. */
+  compactLabel?: string;
 }
 
 export function ModelSelector({
@@ -213,8 +215,9 @@ export function ModelSelector({
   emptyText = "Select a workspace to load models",
   className = "",
   id,
-  compactMobile = false,
-  compactMobileLabel = "AI",
+  ariaLabel,
+  compact = false,
+  compactLabel = "AI",
 }: ModelSelectorProps) {
   const { modelsByProvider, connectedProviders, disconnectedProviders } =
     groupModelsByProvider(models);
@@ -224,11 +227,12 @@ export function ModelSelector({
   const select = (
     <select
       id={id}
+      aria-label={ariaLabel}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={isSelectDisabled}
-      className={compactMobile
-        ? `peer absolute inset-0 h-full w-full opacity-0 sm:static sm:inset-auto sm:opacity-100 ${className}`
+      className={compact
+        ? `peer absolute inset-0 h-full w-full opacity-0 ${className}`
         : className}
     >
       {loading && <option value="">{loadingText}</option>}
@@ -285,18 +289,18 @@ export function ModelSelector({
     </select>
   );
 
-  if (!compactMobile) {
+  if (!compact) {
     return select;
   }
 
   return (
-    <div className="relative h-9 w-9 shrink-0 sm:h-auto sm:w-auto">
+    <div className="relative h-9 w-9 shrink-0">
       {select}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-gray-300 bg-white text-[11px] font-semibold text-gray-700 shadow-sm transition peer-disabled:border-gray-200 peer-disabled:bg-gray-100 peer-disabled:text-gray-400 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:peer-disabled:border-gray-700 dark:peer-disabled:bg-neutral-800 dark:peer-disabled:text-gray-500 peer-focus-visible:border-gray-500 peer-focus-visible:ring-2 peer-focus-visible:ring-gray-300 dark:peer-focus-visible:border-gray-500 dark:peer-focus-visible:ring-gray-500 sm:hidden"
+        className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-md border border-gray-300 bg-white text-[11px] font-semibold text-gray-700 shadow-sm transition peer-disabled:border-gray-200 peer-disabled:bg-gray-100 peer-disabled:text-gray-400 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:peer-disabled:border-gray-700 dark:peer-disabled:bg-neutral-800 dark:peer-disabled:text-gray-500 peer-focus-visible:border-gray-500 peer-focus-visible:ring-2 peer-focus-visible:ring-gray-300 dark:peer-focus-visible:border-gray-500 dark:peer-focus-visible:ring-gray-500"
       >
-        {compactMobileLabel}
+        {compactLabel}
       </div>
     </div>
   );
