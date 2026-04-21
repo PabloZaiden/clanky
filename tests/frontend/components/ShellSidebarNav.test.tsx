@@ -286,6 +286,75 @@ describe("ShellSidebarNav", () => {
     expect(standaloneSessionRow.firstElementChild?.tagName).toBe("BUTTON");
   });
 
+  test("keeps empty parent rows expandable when they expose nested action sections", () => {
+    const emptyServerId = "server-empty";
+    const emptyServerName = "Empty Server";
+    const serverNodes = buildServerSidebarNodes({
+      servers: [
+        createSshServer({
+          config: {
+            id: emptyServerId,
+            name: emptyServerName,
+            address: "empty.example.com",
+            username: "ubuntu",
+            repositoriesBasePath: null,
+            createdAt: "2026-04-16T09:00:00.000Z",
+            updatedAt: "2026-04-16T09:00:00.000Z",
+          },
+        }),
+      ],
+      sessionsByServerId: {},
+      workspaces: [],
+      workspaceSessions: [],
+    });
+    const { getAllByText, getByText, queryByRole } = renderWithUser(
+      <SidebarHarness serverNodes={serverNodes} />,
+    );
+
+    expect(getByText("Workspace 2")).toBeInTheDocument();
+    expect(queryByRole("button", { name: "Collapse Workspace 2" })).toBeInTheDocument();
+    expect(getAllByText("Loops")[1]!.closest("button")).toBeNull();
+    expect(getAllByText("Chats")[1]!.closest("button")).toBeNull();
+    expect(getAllByText("SSH sessions")[1]!.closest("button")).toBeNull();
+
+    expect(getByText(emptyServerName)).toBeInTheDocument();
+    expect(queryByRole("button", { name: `Collapse ${emptyServerName}` })).toBeInTheDocument();
+    expect(getByText("Sessions").closest("button")).toBeNull();
+  });
+
+  test("keeps action-only sections visible without rendering collapse arrows", () => {
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [
+        createWorkspace({
+          id: "workspace-actions",
+          name: "Action Workspace",
+          directory: "/workspaces/actions",
+        }),
+      ],
+      loops: [],
+      chats: [
+        createChat({
+          config: {
+            id: "chat-actions",
+            name: "Action Chat",
+            workspaceId: "workspace-actions",
+          },
+        }),
+      ],
+      sessions: [],
+    });
+    const { getAllByText, getByRole } = renderWithUser(
+      <SidebarHarness workspaceGroups={workspaceGroups} />,
+    );
+
+    const loopsHeading = getAllByText("Loops")[0]!;
+    expect(loopsHeading.closest("button")).toBeNull();
+    expect(getByRole("button", { name: "New Loops" })).toBeInTheDocument();
+
+    const chatsHeading = getAllByText("Chats")[0]!;
+    expect(chatsHeading.closest("button")).not.toBeNull();
+  });
+
   test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {
     const { getAllByText, queryAllByText } = renderWithUser(<SidebarHarness />);
 
