@@ -45,14 +45,16 @@ export async function recoverPlanningEngineImpl(ctx: LoopCtx, loopId: string): P
 
   ctx.engines.set(loopId, engine);
 
-  try {
-    await engine.reconnectSession();
-  } catch (error) {
-    ctx.engines.delete(loopId);
-    throw new Error(
-      `Failed to recover planning engine session for loop ${loopId}: ${String(error)}`,
-      { cause: error },
-    );
+  if (loop.state.session?.id) {
+    try {
+      await engine.reconnectSession();
+    } catch (error) {
+      ctx.engines.delete(loopId);
+      throw new Error(
+        `Failed to recover planning engine session for loop ${loopId}: ${String(error)}`,
+        { cause: error },
+      );
+    }
   }
 
   startStatePersistenceImpl(ctx, loopId);
