@@ -103,17 +103,23 @@ describe("buildPersistentSessionAttachCommand stale session cleanup", () => {
     expect(command).toContain("kill -9 \"$mpid\"");
   });
 
-  test("starts tmux inside the persistent shell when it is available", () => {
+  test("tries preferred and simpler tmux startup paths inside the persistent shell bootstrap", () => {
     const command = buildPersistentSessionAttachCommand(session);
+    const preferredTmuxIndex = command.indexOf("tmux new-session \\; set-option destroy-unattached on;");
+    const simplerTmuxIndex = command.indexOf("tmux new-session;");
+    const shellFallbackIndex = command.indexOf("exec \"$shell\" -i");
 
     expect(command).toContain("if command -v tmux >/dev/null 2>&1; then");
-    expect(command).toContain("exec tmux new-session \\; set-option destroy-unattached on;");
+    expect(preferredTmuxIndex).toBeGreaterThan(-1);
+    expect(simplerTmuxIndex).toBeGreaterThan(preferredTmuxIndex);
+    expect(shellFallbackIndex).toBeGreaterThan(simplerTmuxIndex);
   });
 
-  test("falls back to the interactive shell when tmux is unavailable", () => {
+  test("keeps the interactive shell fallback when tmux is unavailable or cannot start", () => {
     const command = buildPersistentSessionAttachCommand(session);
 
     expect(command).toContain("shell=\"${SHELL:-/bin/sh}\";");
-    expect(command).toContain("\"$shell\" -i");
+    expect(command).toContain("tmux_status=$?;");
+    expect(command).toContain("exec \"$shell\" -i");
   });
 });

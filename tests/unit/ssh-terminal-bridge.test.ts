@@ -204,7 +204,7 @@ describe("SshTerminalBridge", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  test("buildAttachCommand creates or reattaches a dtach-backed persistent session", () => {
+  test("buildAttachCommand keeps the dtach wrapper around the tmux-aware persistent shell bootstrap", () => {
     const command = buildAttachCommand(session);
 
     expect(command).toContain("session_socket='/tmp/ralpher-session-1.dtach.sock'");
@@ -215,7 +215,7 @@ describe("SshTerminalBridge", () => {
     expect(command).toContain("export COLORTERM;");
     expect(command).toContain("dtach -N \"$session_socket\" -Ez bash -lc");
     expect(command).toContain("dtach -a \"$session_socket\" -E -z -r winch");
-    expect(command).toContain("exec tmux new-session \\; set-option destroy-unattached on;");
+    expect(command).toContain("tmux new-session \\; set-option destroy-unattached on;");
   });
 
   test("buildAttachCommand omits the working directory for standalone sessions", () => {
@@ -230,20 +230,25 @@ describe("SshTerminalBridge", () => {
     expect(command).not.toContain("cd '");
   });
 
-  test("buildDirectShellCommand starts tmux when it is available", () => {
+  test("buildDirectShellCommand tries preferred and simpler tmux startup paths", () => {
     const command = buildDirectShellCommand({
       config: {
         id: "direct-session-1",
         directory: "/workspaces/example",
       },
     });
+    const preferredTmuxIndex = command.indexOf("tmux new-session \\; set-option destroy-unattached on;");
+    const simplerTmuxIndex = command.indexOf("tmux new-session;");
+    const shellFallbackIndex = command.indexOf("exec \"$shell\" -i");
 
     expect(command).toMatch(/cd .*\/workspaces\/example.*\|\| exit 1;/);
     expect(command).toContain("if command -v tmux >/dev/null 2>&1; then");
-    expect(command).toContain("exec tmux new-session \\; set-option destroy-unattached on;");
+    expect(preferredTmuxIndex).toBeGreaterThan(-1);
+    expect(simplerTmuxIndex).toBeGreaterThan(preferredTmuxIndex);
+    expect(shellFallbackIndex).toBeGreaterThan(simplerTmuxIndex);
   });
 
-  test("buildDirectShellCommand falls back to the interactive shell when tmux is unavailable", () => {
+  test("buildDirectShellCommand keeps the interactive shell fallback when tmux is unavailable or cannot start", () => {
     const command = buildDirectShellCommand({
       config: {
         id: "direct-session-2",
@@ -251,7 +256,8 @@ describe("SshTerminalBridge", () => {
     });
 
     expect(command).toContain("shell=\"${SHELL:-/bin/sh}\";");
-    expect(command).toContain("\"$shell\" -i");
+    expect(command).toContain("tmux_status=$?;");
+    expect(command).toContain("exec \"$shell\" -i");
   });
 
   test("uses a fallback TERM when the server environment does not define one", async () => {
