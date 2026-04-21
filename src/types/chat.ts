@@ -111,3 +111,13 @@ export class EmptyChatTranscriptError extends Error {
     this.name = "EmptyChatTranscriptError";
   }
 }
+
+export class InvalidCurrentPlanError extends Error {
+  readonly code = "invalid_current_plan";
+  readonly status = 400;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidCurrentPlanError";
+  }
+}

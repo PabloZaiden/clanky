@@ -11,6 +11,7 @@ import type { TestContext } from "../setup";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { backendManager } from "../../src/core/backend-manager";
+import { loadLoop } from "../../src/persistence/loops";
 import { updateWorkspace } from "../../src/persistence/workspaces";
 
 class SshReadyExecutor extends TestCommandExecutor {
@@ -1105,6 +1106,78 @@ describe("Plan Mode - Engine Recovery After Server Restart", () => {
 
     // Try to accept — loop is in 'idle' status, not 'planning'
     await expect(ctx.manager.acceptPlan(loopId)).rejects.toThrow("Loop plan mode is not running");
+  });
+});
+
+describe("Plan Mode - Seeded plan recovery", () => {
+  test("acceptPlan recovers a seeded plan loop without a prior planning session", async () => {
+    const ctx = await setupTestContext({
+      initGit: true,
+      mockResponses: ["<promise>COMPLETE</promise>"],
+    });
+
+    try {
+      await setupRemote(ctx);
+      const loop = await ctx.manager.createLoop({
+        ...testModelFields,
+        prompt: "Create a seeded plan",
+        name: "Seeded Plan Loop",
+        directory: ctx.workDir,
+        workspaceId: testWorkspaceId,
+        planMode: true,
+        autoAcceptPlan: false,
+      });
+
+      await ctx.manager.seedPlanFiles(loop.config.id, {
+        planContent: "# Imported plan\n\n1. Execute the imported work.\n",
+      });
+
+      const seededLoop = await loadLoop(loop.config.id);
+      expect(seededLoop?.state.session).toBeUndefined();
+      expect(seededLoop?.state.planMode?.isPlanReady).toBe(true);
+
+      ctx.manager.resetForTesting();
+
+      await ctx.manager.acceptPlan(loop.config.id);
+
+      const updated = await waitForLoopStatus(ctx.manager, loop.config.id, ["running", "completed", "max_iterations", "stopped"]);
+      expect(["running", "completed", "max_iterations", "stopped"]).toContain(updated.state.status);
+    } finally {
+      await teardownTestContext(ctx);
+    }
+  });
+
+  test("sendPlanFeedback recovers a seeded plan loop without a prior planning session", async () => {
+    const ctx = await setupTestContext({
+      initGit: true,
+      mockResponses: ["<promise>PLAN_READY</promise>"],
+    });
+
+    try {
+      const loop = await ctx.manager.createLoop({
+        ...testModelFields,
+        prompt: "Create a seeded plan",
+        name: "Seeded Feedback Loop",
+        directory: ctx.workDir,
+        workspaceId: testWorkspaceId,
+        planMode: true,
+        autoAcceptPlan: false,
+      });
+
+      await ctx.manager.seedPlanFiles(loop.config.id, {
+        planContent: "# Imported plan\n\n1. Initial step.\n",
+      });
+
+      ctx.manager.resetForTesting();
+
+      await ctx.manager.sendPlanFeedback(loop.config.id, "Add more detail to the imported plan");
+
+      const updated = await waitForPlanReady(ctx.manager, loop.config.id);
+      expect(updated.state.planMode?.isPlanReady).toBe(true);
+      expect(updated.state.planMode?.feedbackRounds).toBe(1);
+    } finally {
+      await teardownTestContext(ctx);
+    }
   });
 });
 

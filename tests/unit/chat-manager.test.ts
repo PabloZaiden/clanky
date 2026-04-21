@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { mkdir, writeFile } from "fs/promises";
+import { join } from "path";
 import { ChatManager } from "../../src/core/chat-manager";
 import { backendManager } from "../../src/core/backend-manager";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import { GitService } from "../../src/core/git-service";
 import { loopManager } from "../../src/core";
+import { getPlanFilePath, getStatusFilePath } from "../../src/lib/planning-files";
 import * as chatPersistence from "../../src/persistence/chats";
 import { loadChat } from "../../src/persistence/chats";
 import type { ChatEvent } from "../../src/types";
@@ -1678,6 +1681,48 @@ describe("ChatManager", () => {
     } finally {
       startPlanModeSpy.mockRestore();
     }
+  });
+
+  test("spawns a plan-ready loop from the chat's current plan worktree", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Chat response"],
+      initGit: true,
+    });
+
+    const manager = new ChatManager();
+    const currentBranch = await context.git.getCurrentBranch(context.workDir);
+    const chat = await manager.createChat({
+      name: "Spawn Current Plan Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      baseBranch: currentBranch,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Turn this chat into a seeded plan loop",
+    });
+    const settled = await waitForChat(
+      chat.config.id,
+      (current) => current.state.status === "idle" && Boolean(current.state.worktree?.worktreePath),
+    );
+
+    const chatWorktreePath = settled.state.worktree!.worktreePath!;
+    await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
+    await writeFile(getPlanFilePath(chatWorktreePath), "# Imported plan\n\n1. Do the seeded work.\n");
+
+    const spawned = await manager.spawnLoopFromCurrentPlan(chat.config.id);
+
+    expect(spawned.state.status).toBe("planning");
+    expect(spawned.state.planMode?.isPlanReady).toBe(true);
+    expect(spawned.state.planMode?.planContent).toContain("Imported plan");
+    expect(spawned.state.session).toBeUndefined();
+
+    const loopWorkDir = spawned.state.git?.worktreePath ?? spawned.config.directory;
+    expect(await Bun.file(getPlanFilePath(loopWorkDir)).text()).toContain("Imported plan");
+    expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toContain("Imported plan ready");
   });
 
   test("treats uninitialized database errors by error message instead of String(error)", async () => {
