@@ -398,6 +398,15 @@ describe("LogViewer", () => {
       expect(getByText("file contents here")).toBeInTheDocument();
     });
 
+    test("infers view from a legacy filePath payload", () => {
+      const { getByText } = renderToolCall({
+        name: "read",
+        input: { filePath: "/src/legacy-file.ts" },
+      });
+
+      expect(getByText("View /src/legacy-file.ts")).toBeInTheDocument();
+    });
+
     test("infers view from path plus view_range", () => {
       const { getByText } = renderToolCall({
         name: "read",
@@ -405,6 +414,15 @@ describe("LogViewer", () => {
       });
 
       expect(getByText("View /tmp/pr391.html:6260-6375")).toBeInTheDocument();
+    });
+
+    test("keeps inferring view for file-target payload variants with extra metadata", () => {
+      const { getByText } = renderToolCall({
+        name: "read",
+        input: { filePath: "/src/legacy-file.ts", encoding: "utf-8" },
+      });
+
+      expect(getByText("View /src/legacy-file.ts")).toBeInTheDocument();
     });
 
     test("infers glob from a pattern-only payload", () => {
@@ -1277,8 +1295,8 @@ describe("LogViewer", () => {
       const groups = container.querySelectorAll(".group");
       expect(groups.length).toBe(3);
 
-      // Verify order: FirstTool (01), Second entry (02), Third entry (03)
-      expect(groups[0]?.textContent).toContain("FirstTool");
+      // Verify order: tool summary (01), second entry (02), third entry (03)
+      expect(groups[0]?.textContent).toContain("View /src/test.ts");
       expect(groups[1]?.textContent).toContain("Second entry");
       expect(groups[2]?.textContent).toContain("Third entry");
     });

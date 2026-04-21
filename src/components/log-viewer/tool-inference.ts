@@ -59,6 +59,10 @@ function getPathField(input: Record<string, unknown>): string | undefined {
   return getStringField(input, "path");
 }
 
+function getFileTargetField(input: Record<string, unknown>): string | undefined {
+  return getStringField(input, "path") ?? getStringField(input, "filePath");
+}
+
 function isViewRange(value: unknown): value is [number, number] {
   return Array.isArray(value)
     && value.length === 2
@@ -148,16 +152,17 @@ export function inferToolKind(tool: ToolCallData): InferredToolKind {
     return "github_mcp";
   }
 
-  const path = getPathField(input);
-  if (path && isViewRange(input["view_range"])) {
+  const fileTarget = getFileTargetField(input);
+  if (fileTarget && isViewRange(input["view_range"])) {
     return "view";
   }
 
-  if (path && hasOnlyKeys(input, ["path"])) {
+  if (fileTarget && typeof input["pattern"] !== "string") {
     return "view";
   }
 
   if (typeof input["pattern"] === "string") {
+    const path = getPathField(input);
     const hasRgStyleKeys = RG_STYLE_KEYS.some((key) => key in input);
     if (hasRgStyleKeys) {
       return "rg";
@@ -176,7 +181,7 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind): stri
 
   switch (kind) {
     case "view": {
-      const path = input ? getPathField(input) : undefined;
+      const path = input ? getFileTargetField(input) : undefined;
       const range = input?.["view_range"];
       if (path && isViewRange(range)) {
         return `View ${path}:${range[0]}-${range[1]}`;
