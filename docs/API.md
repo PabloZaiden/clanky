@@ -14,17 +14,7 @@ The port can be configured via the `RALPHER_PORT` environment variable, and the 
 
 By default, the API does not require application-level credentials. In production deployments, Ralpher is still expected to run behind a reverse proxy that enforces authentication and authorization.
 
-Ralpher also supports optional built-in HTTP Basic auth. When `RALPHER_PASSWORD` is set to a non-empty value after trimming, every request requires Basic auth credentials. The username defaults to `ralpher` and can be overridden with `RALPHER_USERNAME`.
-
-Example:
-
-```http
-Authorization: Basic cmFscGhlcjpzZWNyZXQ=
-```
-
-This built-in auth applies to REST requests, websocket upgrade requests, and browser requests for the SPA.
-
-Ralpher also supports optional passkey authentication as an application-session layer. When a passkey is registered from the UI, protected API requests require the browser to hold a valid passkey session cookie. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass only the passkey requirement without affecting HTTP Basic auth.
+When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
 
 ## Response Format
 

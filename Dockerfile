@@ -46,8 +46,6 @@ RUN mkdir -p /app/data && chown -R ralpher:ralpher /app/data
 ENV NODE_ENV=production
 # Optional runtime controls:
 # - RALPHER_HOST limits which interfaces Bun listens on (default: 127.0.0.1; set to 0.0.0.0 for all interfaces)
-# - RALPHER_PASSWORD enables built-in HTTP Basic auth when non-empty after trimming
-# - RALPHER_USERNAME overrides the default Basic auth username ("ralpher")
 ENV RALPHER_PORT=8080
 # Override the default 127.0.0.1 so the container is reachable from outside
 ENV RALPHER_HOST=0.0.0.0

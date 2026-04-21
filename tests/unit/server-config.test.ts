@@ -113,16 +113,13 @@ describe("getServerStartupMessages", () => {
     delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
   });
 
-  test("describes default host binding and token-based application auth", () => {
+  test("describes default host binding", () => {
     const messages = getServerStartupMessages(getServerRuntimeConfig());
 
-    expect(messages).toHaveLength(2);
+    expect(messages).toHaveLength(1);
     expect(messages[0]).toContain("RALPHER_HOST");
     expect(messages[0]).toContain("127.0.0.1");
     expect(messages[0]).toContain("0.0.0.0");
-    expect(messages[1]).toContain("passkey sessions");
-    expect(messages[1]).toContain("bearer tokens");
-    expect(messages[1]).toContain("removed");
   });
 
   test("describes when same-origin protection is disabled", () => {
@@ -130,9 +127,9 @@ describe("getServerStartupMessages", () => {
 
     const messages = getServerStartupMessages(getServerRuntimeConfig());
 
-    expect(messages).toHaveLength(3);
-    expect(messages[2]).toContain("RALPHER_DISABLE_SAME_ORIGIN_CHECK");
-    expect(messages[2]).toContain("development");
-    expect(messages[2]).toContain("disabled");
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toContain("RALPHER_DISABLE_SAME_ORIGIN_CHECK");
+    expect(messages[1]).toContain("development");
+    expect(messages[1]).toContain("disabled");
   });
 });

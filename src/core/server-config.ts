@@ -82,10 +82,7 @@ export function getServerStartupMessages(config: ServerRuntimeConfig): string[] 
     ? `Listening on http://${config.host}:${String(config.port)} from RALPHER_HOST. Change RALPHER_HOST to choose which interfaces accept requests.`
     : `Listening on http://${config.host}:${String(config.port)} using the default host because RALPHER_HOST was not set. Set RALPHER_HOST to the interface you want to bind (e.g. RALPHER_HOST=0.0.0.0 to listen on all interfaces).`;
 
-  const messages = [
-    listenMessage,
-    "Application authentication uses passkey sessions and bearer tokens. Built-in HTTP Basic auth has been removed.",
-  ];
+  const messages = [listenMessage];
 
   if (config.sameOriginProtection.disabled) {
     messages.push(SAME_ORIGIN_DISABLED_MESSAGE);
