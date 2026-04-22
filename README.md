@@ -60,6 +60,16 @@ The installer downloads the correct release for Linux or macOS (`x64` or `arm64`
 
 You can also download binaries directly from the [Releases page](https://github.com/pablozaiden/ralpher/releases/latest).
 
+Once installed from a release binary, you can check for updates in place:
+
+```bash
+ralpher update --check
+ralpher update
+ralpher update --version v0.8.1
+```
+
+`ralpher update` is currently supported for the published Linux and macOS release binaries only. If you are running Ralpher from source with Bun, use the installer script or download a release binary instead of self-updating.
+
 ## Quick start
 
 ### Requirements
@@ -81,13 +91,22 @@ bun dev
 
 The UI is available at `http://localhost:3000` by default. Use `RALPHER_PORT` to change the port and `RALPHER_HOST` to change the bind address.
 
-### CLI auth
+### CLI commands
 
 The same binary now exposes an initial terminal client surface:
 
 ```bash
 # Check which version is installed
 ralpher version
+
+# Check whether a newer published binary is available
+ralpher update --check
+
+# Update the installed release binary in place
+ralpher update
+
+# Install a specific published release
+ralpher update --version v0.8.1
 
 # Start device authorization against a specific Ralpher server
 ralpher auth http://localhost:3000
@@ -105,7 +124,7 @@ ralpher api loops/my-loop --method GET
 ralpher schema auth/device
 ```
 
-`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status` and `ralpher api` requests reuse that same server automatically. `ralpher status` still accepts an optional positional base URL override if you need to revalidate against a different server. When `ralpher api <endpoint>` calls an endpoint, it now prints a single parseable JSON object with the HTTP status metadata under `status` and the parsed body, plain-text body, or `null` under `response`.
+`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher update --check` compares the installed version with the latest published GitHub Release, `ralpher update` replaces the current installed binary in place, and `ralpher update --version <tag>` installs a specific published release. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status` and `ralpher api` requests reuse that same server automatically. `ralpher status` still accepts an optional positional base URL override if you need to revalidate against a different server. When `ralpher api <endpoint>` calls an endpoint, it now prints a single parseable JSON object with the HTTP status metadata under `status` and the parsed body, plain-text body, or `null` under `response`.
 
 ### Create your first loop
 

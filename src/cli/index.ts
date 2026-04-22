@@ -8,6 +8,18 @@ export {
 } from "./runtime";
 
 export {
+  buildReleaseAssetName,
+  compareReleaseVersions,
+  normalizeReleaseTag,
+  normalizeReleaseVersion,
+  resolveReleasePlatform,
+  runUpdateCommand,
+  type CliUpdateDependencies,
+  type ReleasePlatform,
+  type UpdateCommandOptions,
+} from "./update";
+
+export {
   getAuthorizedHeaders,
   getTokenErrorMessage,
   getValidatedCredentials,

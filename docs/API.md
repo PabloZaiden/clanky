@@ -16,7 +16,7 @@ By default, the API does not require application-level credentials. In productio
 
 When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
 
-`ralpher auth` uses the device flow endpoints, `ralpher status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with those stored tokens, and `ralpher schema` exposes discoverability metadata for catalogued endpoints.
+`ralpher auth` uses the device flow endpoints, `ralpher status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with those stored tokens, `ralpher schema` exposes discoverability metadata for catalogued endpoints, and `ralpher update` checks or installs published release binaries from GitHub Releases.
 
 ## CLI discovery helpers
 
@@ -28,6 +28,12 @@ ralpher web
 
 # Print the installed CLI version
 ralpher version
+
+# Check whether a newer published binary is available
+ralpher update --check
+
+# Update the installed release binary in place
+ralpher update
 
 # Authenticate against a server
 ralpher auth http://localhost:3000
@@ -42,7 +48,7 @@ ralpher api loops/my-loop --method GET
 ralpher schema auth/device
 ```
 
-`ralpher help` includes the same version banner shown by `ralpher version`, which makes it easier to confirm the binary version while browsing the built-in command list. `ralpher api <endpoint>` now emits a single JSON envelope so scripts can always parse the output.
+`ralpher help` includes the same version banner shown by `ralpher version`, which makes it easier to confirm the binary version while browsing the built-in command list. `ralpher update` currently supports only the published Linux and macOS release binaries and should not be used from a Bun source checkout. `ralpher api <endpoint>` now emits a single JSON envelope so scripts can always parse the output.
 
 Example CLI output:
 
