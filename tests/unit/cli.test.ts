@@ -32,6 +32,30 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function textResponse(status: number, body: string, statusText?: string): Response {
+  return new Response(body, {
+    status,
+    statusText,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+    },
+  });
+}
+
+function emptyResponse(status: number, statusText?: string): Response {
+  return new Response(null, {
+    status,
+    statusText,
+  });
+}
+
+function apiCommandOutput(status: { code: number; text: string; ok: boolean }, response: unknown): string {
+  return JSON.stringify({
+    status,
+    response,
+  }, null, 2);
+}
+
 function createFetchMock(
   handler: (input: string | URL | Request, init?: RequestInit) => Promise<Response>,
 ): typeof fetch {
@@ -458,11 +482,116 @@ describe("ralpher cli", () => {
       },
     ]);
     expect(output).toEqual([
-      "Status: 200 OK",
-      JSON.stringify({
+      apiCommandOutput({
+        code: 200,
+        text: "OK",
+        ok: true,
+      }, {
         id: "test-loop",
         status: "running",
-      }, null, 2),
+      }),
+    ]);
+  });
+
+  test("api wraps plain-text responses in a JSON envelope", async () => {
+    const output: string[] = [];
+
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "active-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2027-04-21T18:00:00.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "health", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      fetchFn: createFetchMock(async () => textResponse(202, "accepted", "Accepted")),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([
+      apiCommandOutput({
+        code: 202,
+        text: "Accepted",
+        ok: true,
+      }, "accepted"),
+    ]);
+  });
+
+  test("api emits null for empty response bodies", async () => {
+    const output: string[] = [];
+
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "active-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2027-04-21T18:00:00.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "health", "--method", "DELETE"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      fetchFn: createFetchMock(async () => emptyResponse(204, "No Content")),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([
+      apiCommandOutput({
+        code: 204,
+        text: "No Content",
+        ok: true,
+      }, null),
+    ]);
+  });
+
+  test("api keeps non-zero exit codes for failed HTTP responses while emitting JSON", async () => {
+    const output: string[] = [];
+
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "active-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2027-04-21T18:00:00.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "loops/missing-loop", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      fetchFn: createFetchMock(async () => jsonResponse(404, {
+        error: "not_found",
+        message: "Loop not found",
+      })),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      apiCommandOutput({
+        code: 404,
+        text: "",
+        ok: false,
+      }, {
+        error: "not_found",
+        message: "Loop not found",
+      }),
     ]);
   });
 
