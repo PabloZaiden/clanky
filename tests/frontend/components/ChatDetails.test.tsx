@@ -267,11 +267,14 @@ describe("ChatDetails", () => {
     const messageInput = getByLabelText("Message");
     const attachmentButton = getByRole("button", { name: "Add image" });
     const modelSelector = getByRole("combobox");
+    const padding = getByTestId("chat-composer-padding");
     const layout = getByTestId("chat-composer-layout");
     const modelCell = getByTestId("chat-composer-model-cell");
     const mainRow = getByTestId("chat-composer-main-row");
     const attachmentCell = getByTestId("chat-composer-attachment-cell");
 
+    expect(padding).toHaveClass("p-3");
+    expect(padding).toContainElement(layout);
     expect(layout.firstElementChild).toBe(mainRow);
     expect(modelCell).toContainElement(modelSelector);
     expect(attachmentCell).toContainElement(attachmentButton);
