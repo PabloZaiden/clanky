@@ -592,106 +592,108 @@ export function ChatDetails({
     <form
       ref={composerFormRef}
       onSubmit={handleSubmit}
-      className="safe-area-bottom border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-neutral-900"
+      className="safe-area-bottom border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900"
     >
-      <label htmlFor="chat-model" className="sr-only">Model</label>
-      <label htmlFor="chat-message" className="sr-only">Message</label>
-      <div className="space-y-2" data-testid="chat-composer-layout">
-        <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
-          <div className="shrink-0" data-testid="chat-composer-model-cell">
-            <ModelSelector
-              id="chat-model"
-              value={selectedModel}
-              onChange={setSelectedModel}
-              models={models}
-              loading={modelsLoading}
+      <div className="p-3" data-testid="chat-composer-padding">
+        <label htmlFor="chat-model" className="sr-only">Model</label>
+        <label htmlFor="chat-message" className="sr-only">Message</label>
+        <div className="space-y-2" data-testid="chat-composer-layout">
+          <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
+            <div className="shrink-0" data-testid="chat-composer-model-cell">
+              <ModelSelector
+                id="chat-model"
+                value={selectedModel}
+                onChange={setSelectedModel}
+                models={models}
+                loading={modelsLoading}
+                disabled={isActive || isSubmitting}
+                showDisconnected
+                currentModelKey={currentModelKey}
+                placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
+                loadingText="Loading..."
+                emptyText="No models available"
+                compact
+                className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+              />
+            </div>
+            <textarea
+              ref={composerRef}
+              id="chat-message"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              onPaste={handlePaste}
               disabled={isActive || isSubmitting}
-              showDisconnected
-              currentModelKey={currentModelKey}
-              placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
-              loadingText="Loading..."
-              emptyText="No models available"
-              compact
-              className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+              rows={composerRows}
+              className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
             />
+            <div className="shrink-0" data-testid="chat-composer-attachment-cell">
+              <ImageAttachmentControl
+                ref={attachmentControlRef}
+                attachments={attachments}
+                onChange={setAttachments}
+                disabled={isActive || isSubmitting}
+                iconOnly
+                showPreviewList={false}
+                showErrorText={false}
+                onErrorChange={setAttachmentError}
+              />
+            </div>
+            {isActive ? (
+              <button
+                type="button"
+                onClick={() => void handleInterrupt()}
+                disabled={isSubmitting}
+                className={interruptButtonClassName}
+                aria-label="Interrupt"
+                title="Interrupt"
+              >
+                {isSubmitting ? (
+                  <span className="animate-spin text-sm">⏳</span>
+                ) : (
+                  <span className="text-lg leading-none">×</span>
+                )}
+              </button>
+            ) : (
+              <FocusPreservingButton
+                type="submit"
+                disabled={isSubmitting || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
+                className={sendButtonClassName}
+                aria-label="Send"
+                title="Send"
+              >
+                {isSubmitting ? (
+                  <span className="animate-spin text-sm">⏳</span>
+                ) : (
+                  <span className="text-lg leading-none">↑</span>
+                )}
+              </FocusPreservingButton>
+            )}
           </div>
-          <textarea
-            ref={composerRef}
-            id="chat-message"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            onPaste={handlePaste}
-            disabled={isActive || isSubmitting}
-            rows={composerRows}
-            className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
-          />
-          <div className="shrink-0" data-testid="chat-composer-attachment-cell">
-            <ImageAttachmentControl
-              ref={attachmentControlRef}
-              attachments={attachments}
-              onChange={setAttachments}
-              disabled={isActive || isSubmitting}
-              iconOnly
-              showPreviewList={false}
-              showErrorText={false}
-              onErrorChange={setAttachmentError}
-            />
-          </div>
-          {isActive ? (
-            <button
-              type="button"
-              onClick={() => void handleInterrupt()}
-              disabled={isSubmitting}
-              className={interruptButtonClassName}
-              aria-label="Interrupt"
-              title="Interrupt"
-            >
-              {isSubmitting ? (
-                <span className="animate-spin text-sm">⏳</span>
-              ) : (
-                <span className="text-lg leading-none">×</span>
-              )}
-            </button>
-          ) : (
-            <FocusPreservingButton
-              type="submit"
-              disabled={isSubmitting || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
-              className={sendButtonClassName}
-              aria-label="Send"
-              title="Send"
-            >
-              {isSubmitting ? (
-                <span className="animate-spin text-sm">⏳</span>
-              ) : (
-                <span className="text-lg leading-none">↑</span>
-              )}
-            </FocusPreservingButton>
+          {attachments.length > 0 && (
+            <div className="min-w-0" data-testid="chat-composer-attachments-row">
+              <ImageAttachmentPreviewList
+                attachments={attachments}
+                onRemoveAttachment={(attachmentId) => {
+                  setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
+                  setAttachmentError(null);
+                }}
+                disabled={isActive || isSubmitting}
+              />
+            </div>
           )}
         </div>
-        {attachments.length > 0 && (
-          <div className="min-w-0" data-testid="chat-composer-attachments-row">
-            <ImageAttachmentPreviewList
-              attachments={attachments}
-              onRemoveAttachment={(attachmentId) => {
-                setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
-                setAttachmentError(null);
-              }}
-              disabled={isActive || isSubmitting}
-            />
-          </div>
+        {attachmentError && (
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+            {attachmentError}
+          </p>
+        )}
+        {selectedModel && !selectedModelEnabled && (
+          <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+            The selected model's provider is not connected. Please select a different model.
+          </p>
         )}
       </div>
-      {attachmentError && (
-        <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-          {attachmentError}
-        </p>
-      )}
-      {selectedModel && !selectedModelEnabled && (
-        <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-          The selected model's provider is not connected. Please select a different model.
-        </p>
-      )}
     </form>
   );
 
