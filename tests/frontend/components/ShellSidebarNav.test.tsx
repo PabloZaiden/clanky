@@ -236,57 +236,6 @@ describe("ShellSidebarNav", () => {
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
   });
 
-  test("uses the same action-row padding for top-level and nested New buttons", () => {
-    const { getAllByRole, getByRole } = renderWithUser(<SidebarHarness />);
-
-    const topLevelButton = getByRole("button", { name: "New Workspaces" });
-    const nestedButton = getAllByRole("button", { name: "New Loops" })[0]!;
-
-    const topLevelRow = topLevelButton.parentElement?.parentElement;
-    const nestedRow = nestedButton.parentElement?.parentElement;
-
-    expect(topLevelRow).not.toBeNull();
-    expect(nestedRow).not.toBeNull();
-    expect(topLevelRow!).not.toHaveClass("px-1");
-    expect(nestedRow!).not.toHaveClass("px-1");
-    expect(topLevelRow!).toHaveClass("flex", "items-center", "justify-between", "gap-2");
-    expect(nestedRow!).toHaveClass("flex", "items-center", "gap-2");
-  });
-
-  test("uses compact indentation and gutter spacing for nested sidebar rows", () => {
-    const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
-
-    const workspaceRow = getTreeRowForText(getAllByText("Workspace 1")[0]!);
-    expect(workspaceRow.style.marginLeft).toBe("0.375rem");
-    expect(workspaceRow.firstElementChild).toHaveClass("w-3");
-    expect(getTreeToggleButton(getAllByText("Workspace 1")[0]!)).toHaveClass("-mx-1.5", "w-6");
-    expect(getByTextButton(getAllByText("Workspace 1")[0]!)).toHaveClass("pl-0", "pr-3");
-
-    const loopRow = getTreeRowForText(getAllByText("Feature Loop")[0]!);
-    expect(loopRow.style.marginLeft).toBe("1.125rem");
-    expect(loopRow.firstElementChild?.tagName).toBe("BUTTON");
-    expect(getByTextButton(getAllByText("Feature Loop")[0]!)).toHaveClass("pl-0", "pr-3");
-
-    const sessionRow = getTreeRowForText(getAllByText("Loop SSH Session")[0]!);
-    expect(sessionRow.style.marginLeft).toBe("1.125rem");
-    expect(sessionRow.firstElementChild?.tagName).toBe("BUTTON");
-    expect(getByTextButton(getAllByText("Loop SSH Session")[0]!)).toHaveClass("pl-0", "pr-3");
-
-    const chatRow = getTreeRowForText(getAllByText("Workspace Chat")[0]!);
-    expect(chatRow.style.marginLeft).toBe("1.125rem");
-    expect(chatRow.firstElementChild?.tagName).toBe("BUTTON");
-    expect(getByTextButton(getAllByText("Workspace Chat")[0]!)).toHaveClass("pl-0", "pr-3");
-
-    const serverRow = getTreeRowForText(getByText("Server 1"));
-    expect(serverRow.style.marginLeft).toBe("0.375rem");
-    expect(serverRow.firstElementChild).toHaveClass("w-3");
-    expect(getTreeToggleButton(getByText("Server 1"))).toHaveClass("-mx-1.5", "w-6");
-
-    const standaloneSessionRow = getTreeRowForText(getByText("Standalone Server Session"));
-    expect(standaloneSessionRow.style.marginLeft).toBe("1.125rem");
-    expect(standaloneSessionRow.firstElementChild?.tagName).toBe("BUTTON");
-  });
-
   test("keeps empty parent rows expandable when they expose nested action sections", () => {
     const emptyServerId = "server-empty";
     const emptyServerName = "Empty Server";
@@ -351,13 +300,8 @@ describe("ShellSidebarNav", () => {
     const loopsHeading = getAllByText("Loops")[0]!;
     expect(loopsHeading.closest("button")).toBeNull();
     expect(getByRole("button", { name: "New Loops" })).toBeInTheDocument();
-    const loopsSection = loopsHeading.closest(".space-y-1");
-    expect(loopsSection?.lastElementChild).not.toHaveAttribute("id");
-
     const chatsHeading = getAllByText("Chats")[0]!;
     expect(chatsHeading.closest("button")).not.toBeNull();
-    const chatsSection = chatsHeading.closest(".space-y-1");
-    expect(chatsSection?.lastElementChild).toHaveAttribute("id");
   });
 
   test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {
@@ -365,96 +309,6 @@ describe("ShellSidebarNav", () => {
 
     expect(getAllByText("Loop SSH Session")).toHaveLength(2);
     expect(queryAllByText("Expand Loop With SSH")).toHaveLength(0);
-  });
-
-  test("keeps compact row padding for inactive rows while adding a slight inset to active rows", () => {
-    const workspaceGroups = buildWorkspaceSidebarGroups({
-      workspaces: [
-        createWorkspace({
-          id: "workspace-1",
-          name: "Workspace 1",
-          directory: "/workspaces/workspace-1",
-          sshServerId: "server-1",
-        }),
-        createWorkspace({
-          id: "workspace-2",
-          name: "Workspace 2",
-          directory: "/workspaces/workspace-2",
-        }),
-      ],
-      loops: [
-        createLoop({
-          config: {
-            id: "loop-3",
-            name: "Completed Loop",
-            workspaceId: "workspace-1",
-          },
-          state: {
-            status: "completed",
-          },
-        }),
-        createLoop({
-          config: {
-            id: "loop-4",
-            name: "Merged Loop",
-            workspaceId: "workspace-1",
-          },
-          state: {
-            status: "merged",
-          },
-        }),
-      ],
-      chats: [
-        createChat({
-          config: {
-            id: "chat-1",
-            name: "Workspace Chat",
-            workspaceId: "workspace-1",
-          },
-        }),
-      ],
-      sessions: [
-        createSshSession({
-          config: {
-            id: "workspace-session-2",
-            name: "Workspace SSH",
-            workspaceId: "workspace-1",
-            createdAt: "2026-04-16T11:30:00.000Z",
-          },
-          state: {
-            status: "ready",
-          },
-        }),
-      ],
-    });
-    const { getAllByText, getByText } = renderWithUser(
-      <SidebarHarness
-        route={{ view: "workspace", workspaceId: "workspace-1" }}
-        workspaceGroups={workspaceGroups}
-      />,
-    );
-
-    const workspaceButton = getByTextButton(getAllByText("Workspace 1")[0]!);
-    expect(workspaceButton).toHaveClass("pl-2", "pr-3");
-    expect(workspaceButton).toHaveClass("border-gray-900", "bg-gray-900", "text-white");
-    expect(getByTextButton(getAllByText("/workspaces/workspace-1")[0]!)).toBe(workspaceButton);
-
-    const historyLoopButton = getByTextButton(getAllByText("Merged Loop")[0]!);
-    expect(historyLoopButton).toHaveClass("pl-0", "pr-3");
-
-    const standaloneServerButton = getByTextButton(getByText("Server 1"));
-    expect(standaloneServerButton).toHaveClass("pl-0", "pr-3");
-    expect(getByTextButton(getByText("ubuntu@server.example.com"))).toBe(standaloneServerButton);
-  });
-
-  test("applies the same active inset padding to selected standalone server rows", () => {
-    const { getByText } = renderWithUser(
-      <SidebarHarness route={{ view: "ssh-server", serverId: "server-1" }} />,
-    );
-
-    const standaloneServerButton = getByTextButton(getByText("Server 1"));
-    expect(standaloneServerButton).toHaveClass("pl-2", "pr-3");
-    expect(standaloneServerButton).toHaveClass("border-gray-900", "bg-gray-900");
   });
 
   test("does not render sidebar count pills for sections or server rows", () => {
@@ -793,21 +647,6 @@ describe("ShellSidebarNav", () => {
 
 function getByTextButton(node: HTMLElement): HTMLButtonElement {
   const button = node.closest("button");
-  expect(button).not.toBeNull();
-  return button as HTMLButtonElement;
-}
-
-function getTreeRowForText(node: HTMLElement): HTMLDivElement {
-  const row = getByTextButton(node).parentElement;
-  expect(row).not.toBeNull();
-  return row as HTMLDivElement;
-}
-
-function getTreeToggleButton(node: HTMLElement): HTMLButtonElement {
-  const row = getTreeRowForText(node);
-  const wrapper = row.firstElementChild;
-  expect(wrapper).not.toBeNull();
-  const button = wrapper?.querySelector("button");
   expect(button).not.toBeNull();
   return button as HTMLButtonElement;
 }

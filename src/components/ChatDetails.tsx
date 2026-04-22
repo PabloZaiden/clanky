@@ -116,6 +116,9 @@ export function ChatDetails({
 }) {
   const toast = useToast();
   const { enabled: markdownEnabled } = useMarkdownPreference();
+  const chatHeaderClassName = "border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-neutral-800 flex-shrink-0 safe-area-top";
+  const chatHeaderInnerClassName = "px-4 sm:px-6 lg:px-8 py-2";
+  const chatHeaderPrimaryRowClassName = [(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "flex min-h-14 items-center gap-2"].join(" ");
   const [chat, setChat] = useState<Chat | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -483,16 +486,6 @@ export function ChatDetails({
     }
   }
 
-  const transcriptDescription = useMemo(() => {
-    if (!chat) {
-      return "";
-    }
-    if (chat.state.worktree?.worktreePath) {
-      return `${chat.config.directory} · ${chat.state.worktree.worktreePath}`;
-    }
-    return chat.config.directory;
-  }, [chat]);
-
   const hasCodeExplorerAction = Boolean(onOpenCodeExplorer);
 
   const headerActionMenuItems = useMemo<ActionMenuItem[]>(() => {
@@ -549,17 +542,22 @@ export function ChatDetails({
       <div className="flex h-full min-h-0 flex-col">
         <header
           data-testid="chat-header"
-          className={`border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}
+          className={chatHeaderClassName}
         >
-          <div className="flex items-center gap-3">
-            {showBackButton && onBack && (
-              <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-                Back
-              </Button>
-            )}
-            <div>
-              <h1 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Not found</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "Chat not found"}</p>
+          <div className={chatHeaderInnerClassName}>
+            <div
+              data-testid="chat-header-primary-row"
+              className={chatHeaderPrimaryRowClassName}
+            >
+              {showBackButton && onBack && (
+                <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+                  ← Back
+                </Button>
+              )}
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Not found</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "Chat not found"}</p>
+              </div>
             </div>
           </div>
         </header>
@@ -722,60 +720,48 @@ export function ChatDetails({
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
       <header
         data-testid="chat-header"
-        className={`border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-neutral-900 ${headerOffsetClassName ?? ""}`}
+        className={chatHeaderClassName}
       >
-        <div
-          data-testid="chat-header-primary-row"
-          className="flex min-h-14 items-center gap-2"
-        >
-          {showBackButton && onBack && (
-            <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-              Back
-            </Button>
-          )}
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-gray-950 dark:text-gray-100" title={chat.config.name}>
-              {chat.config.name}
-            </h1>
-            <StatusBadge
-              variant={getChatStatusBadgeVariant(chat.state.status)}
-              className="shrink-0"
-            >
-              {getChatStatusLabel(chat.state.status)}
-            </StatusBadge>
-          </div>
-          <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
-            <div data-testid="chat-header-actions">
-              <ActionMenu
-                items={headerActionMenuItems}
-                ariaLabel="Chat actions"
-                disabled={isDeletePending}
-              />
+        <div className={chatHeaderInnerClassName}>
+          <div
+            data-testid="chat-header-primary-row"
+            className={chatHeaderPrimaryRowClassName}
+          >
+            {showBackButton && onBack && (
+              <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+                ← Back
+              </Button>
+            )}
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-gray-900 dark:text-gray-100" title={chat.config.name}>
+                {chat.config.name}
+              </h1>
+              <StatusBadge
+                variant={getChatStatusBadgeVariant(chat.state.status)}
+                size="sm"
+                className="shrink-0"
+              >
+                {getChatStatusLabel(chat.state.status)}
+              </StatusBadge>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+              <div data-testid="chat-header-actions">
+                <ActionMenu
+                  items={headerActionMenuItems}
+                  ariaLabel="Chat actions"
+                  disabled={isDeletePending}
+                />
+              </div>
             </div>
           </div>
         </div>
-        <div data-testid="chat-header-metadata" className="mt-1 hidden min-w-0 sm:block">
-          <p
-            className="truncate text-sm text-gray-500 dark:text-gray-400"
-            title={transcriptDescription}
-          >
-            {transcriptDescription}
-          </p>
-          {chat.state.worktree?.workingBranch && (
-            <p
-              className="mt-1 truncate text-xs font-mono text-gray-500 dark:text-gray-400"
-              title={chat.state.worktree.workingBranch}
-            >
-              {chat.state.worktree.workingBranch}
-            </p>
-          )}
-        </div>
-        {chat.state.error && (
-          <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-            {chat.state.error.message}
-          </p>
-        )}
       </header>
+
+      {chat.state.error && (
+        <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
+          {chat.state.error.message}
+        </div>
+      )}
 
       {conversation}
       {composer}

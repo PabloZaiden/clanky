@@ -136,59 +136,6 @@ describe("SshSessionDetails", () => {
     });
   });
 
-  test("wraps long session names and identifiers in the header and session info panel", async () => {
-    const longName = `SSH ${"very-long-session-name-".repeat(6)}`;
-    const longDirectory = `/workspaces/${"nested-ssh-directory-".repeat(6)}project`;
-    const longRemoteId = `ralpher-${"very-long-persistent-id-".repeat(5)}`;
-
-    api.get("/api/ssh-sessions/:id", (req) =>
-      createSshSession({
-        config: {
-          id: req.params["id"]!,
-          name: longName,
-          directory: longDirectory,
-          remoteSessionName: longRemoteId,
-        },
-        state: { status: "connected" },
-      }),
-    );
-
-    const { getByText, getAllByText, user } = renderWithUser(
-      <SshSessionDetails sshSessionId="ssh-wrap-1" onBack={() => {}} />,
-    );
-
-    await waitFor(() => {
-      expect(getByText(longName)).toBeTruthy();
-      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
-    });
-
-    const title = getByText(longName);
-    expect(title.className).toContain("break-words");
-    expect(title.className).toContain("[overflow-wrap:anywhere]");
-    expect(title.className.includes("truncate")).toBe(false);
-
-    await user.click(getByText("Session Info"));
-    await waitFor(() => {
-      expect(getByText(longDirectory)).toBeTruthy();
-    });
-
-    const directory = getByText(longDirectory);
-    expect(directory.className).toContain("break-words");
-    expect(directory.className).toContain("[overflow-wrap:anywhere]");
-
-    const remoteId = getAllByText((_content, element) =>
-      element?.textContent?.includes(longRemoteId) ?? false
-    ).find((element) =>
-      element instanceof HTMLElement && element.className.includes("break-words")
-    );
-    expect(remoteId).toBeTruthy();
-    if (!(remoteId instanceof HTMLElement)) {
-      throw new Error("Expected wrapped remote session identifier in SSH session details");
-    }
-    expect(remoteId.className).toContain("[overflow-wrap:anywhere]");
-    expect(remoteId.className.includes("truncate")).toBe(false);
-  });
-
   test("hides the back button when embedded in the shell", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Embedded Layout" } }),

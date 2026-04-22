@@ -294,6 +294,7 @@ test("hello world", () => {
 - A flaky test that fails intermittently **MUST** be fixed. A lot of times, flaky tests indicate deeper issues, race conditions, or bad mock implementations.
 - **Tests MUST be deterministic**: Tests should never have conditional expectations based on timing or race conditions. If a test sometimes expects one outcome and sometimes another, the test is flaky and must be fixed. Use polling helpers, explicit waits, or control execution flow to ensure deterministic behavior.
 - **Do not isolate one test file in `package.json` to work around Bun `mock.module()` leakage.** Fix the shared-suite problem instead: prefer explicit test seams such as injectable child components or lower-level dependency mocks that stay safe when the entire frontend suite runs in one process.
+- **Frontend UI tests must assert behavior, not structure.** Prefer user-visible outcomes, accessible queries, interactions, state transitions, API calls, and conditional rendering. Avoid assertions on CSS classes, exact spacing, responsive utility classes, DOM nesting, implementation-specific selectors, or other presentation details unless accessibility or behavior directly depends on them.
 
 ### Test Patterns
 

@@ -163,12 +163,6 @@ export function LoopDetails({
                 </StatusBadge>
               </div>
             </div>
-            <div
-              data-testid="loop-header-directory"
-              className={[(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "mt-1 hidden min-w-0 sm:block"].join(" ")}
-            >
-              <span className="block truncate text-xs text-gray-500 dark:text-gray-400 font-mono">{config.directory}</span>
-            </div>
           </div>
         </header>
       )}

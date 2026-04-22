@@ -1426,27 +1426,11 @@ describe("ChatDetails", () => {
 
     api.get("/api/chats/:id", () => longChat);
 
-    const { getByRole, getByTestId, getByText, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByText, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
-    const heading = await waitFor(() => getByText(longChat.config.name));
-    expect(heading.className).toContain("truncate");
-    const chatHeader = getByTestId("chat-header");
-    expect(chatHeader.classList.contains("py-2")).toBe(true);
-    expect(chatHeader.classList.contains("py-3")).toBe(false);
-    expect(getByTestId("chat-header-primary-row").className).toContain("min-h-14");
-
-    const transcriptMetadata = getByText(`${longChat.config.directory} · ${longChat.state.worktree?.worktreePath}`);
-    expect(getByTestId("chat-header-metadata").className).toContain("hidden");
-    expect(getByTestId("chat-header-metadata").className).toContain("sm:block");
-    expect(transcriptMetadata.className).toContain("truncate");
-
-    const branchMetadata = getByText(longChat.state.worktree?.workingBranch ?? "");
-    expect(branchMetadata.className).toContain("truncate");
-
-    const headerActionRow = getByTestId("chat-header-actions").parentElement;
+    await waitFor(() => getByText(longChat.config.name));
 
     expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
-    expect(headerActionRow?.className).toContain("justify-end");
     expect(queryByRole("button", { name: "Enter focus mode" })).toBeNull();
     expect(queryByRole("button", { name: /spawn loop/i })).toBeNull();
     expect(queryByRole("button", { name: "Delete chat" })).toBeNull();
