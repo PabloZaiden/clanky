@@ -12,14 +12,9 @@
 
 import type { HealthResponse } from "../types/api";
 import { createLogger } from "../core/logger";
+import { RALPHER_VERSION } from "../version";
 
 const log = createLogger("api:health");
-
-/**
- * Application version string read from package.json.
- */
-import packageJson from "../../package.json";
-const VERSION = packageJson.version;
 
 /**
  * Health check route handler.
@@ -41,7 +36,7 @@ export const healthRoutes = {
       log.trace("GET /api/health");
       const response: HealthResponse = {
         healthy: true,
-        version: VERSION,
+        version: RALPHER_VERSION,
       };
       return Response.json(response);
     },

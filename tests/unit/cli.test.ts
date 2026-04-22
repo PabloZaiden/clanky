@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { formatRalpherVersion } from "../../src/version";
 import {
   findApiEndpoint,
   loadStoredCliCredentials,
@@ -13,12 +14,14 @@ import {
 const CLI_USAGE = [
   "Usage:",
   "  ralpher web",
+  "  ralpher version",
   "  ralpher auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
   "  ralpher status [base-url]",
   "  ralpher api",
   "  ralpher api <endpoint> [--method <method>] [--payload <json>]",
   "  ralpher schema <endpoint>",
 ].join("\n");
+const CLI_HELP = [formatRalpherVersion(), "", CLI_USAGE].join("\n");
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -84,7 +87,31 @@ describe("ralpher cli", () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(output).toEqual([CLI_USAGE]);
+    expect(output).toEqual([CLI_HELP]);
+  });
+
+  test("prints the current version with the version command", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["version"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([formatRalpherVersion()]);
+  });
+
+  test("shows the current version in help output", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["help"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([CLI_HELP]);
   });
 
   test("auth requires the base URL as the first positional argument", async () => {

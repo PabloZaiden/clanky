@@ -1,4 +1,5 @@
 import { startServer } from "../server";
+import { formatRalpherVersion } from "../version";
 import {
   DEFAULT_CLIENT_ID,
   getAuthorizedHeaders,
@@ -22,12 +23,14 @@ import {
 const CLI_USAGE = [
   "Usage:",
   "  ralpher web",
+  "  ralpher version",
   "  ralpher auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
   "  ralpher status [base-url]",
   "  ralpher api",
   "  ralpher api <endpoint> [--method <method>] [--payload <json>]",
   "  ralpher schema <endpoint>",
 ].join("\n");
+const CLI_HELP = [formatRalpherVersion(), "", CLI_USAGE].join("\n");
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 
@@ -43,6 +46,9 @@ export type CliCommand =
   }
   | {
     action: "web";
+  }
+  | {
+    action: "version";
   }
   | ({
     action: "auth";
@@ -271,6 +277,14 @@ export function parseCliCommand(args: string[]): CliCommand {
     return { action };
   }
 
+  if (action === "version") {
+    const { positionals } = parseCommandArguments(restArgs, []);
+    if (positionals.length > 0) {
+      throw createUsageError(`Unexpected argument: ${positionals[0]}`);
+    }
+    return { action };
+  }
+
   if (action === "auth") {
     const { positionals, options } = parseCommandArguments(restArgs, ["--client-id", "--cookies"]);
     if (positionals.length === 0) {
@@ -365,11 +379,14 @@ export async function runCli(
     const command = parseCliCommand(args);
     switch (command.action) {
       case "help":
-        out(CLI_USAGE);
+        out(CLI_HELP);
         return command.exitCode;
       case "web":
         await startServerFn();
         return undefined;
+      case "version":
+        out(formatRalpherVersion());
+        return 0;
       case "auth":
         return await runAuthCommand(command, {
           fetchFn,

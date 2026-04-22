@@ -86,6 +86,9 @@ The UI is available at `http://localhost:3000` by default. Use `RALPHER_PORT` to
 The same binary now exposes an initial terminal client surface:
 
 ```bash
+# Check which version is installed
+ralpher version
+
 # Start device authorization against a specific Ralpher server
 ralpher auth http://localhost:3000
 
@@ -102,7 +105,7 @@ ralpher api loops/my-loop --method GET
 ralpher schema auth/device
 ```
 
-`ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status` and `ralpher api` requests reuse that same server automatically. `ralpher status` still accepts an optional positional base URL override if you need to revalidate against a different server.
+`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status` and `ralpher api` requests reuse that same server automatically. `ralpher status` still accepts an optional positional base URL override if you need to revalidate against a different server.
 
 ### Create your first loop
 
