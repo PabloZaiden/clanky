@@ -128,6 +128,7 @@ export function ActionsTab({
               {state.status === "pushed" && state.reviewMode?.addressable && (
                 <>
                   <button
+                    type="button"
                     onClick={onOpenPullRequest}
                     disabled={loadingPullRequestDestination || !pullRequestDestination?.enabled}
                     className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"

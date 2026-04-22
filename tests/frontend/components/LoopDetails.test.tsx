@@ -1040,13 +1040,18 @@ describe("actions tab content", () => {
     await waitFor(() => {
       expect(button.disabled).toBe(false);
     });
+    expect(button.type).toBe("button");
 
     await user.click(button);
 
     await waitFor(() => {
       expect(openCalls).toHaveLength(1);
     });
-    expect(openCalls[0]?.url).toBe("https://github.com/example/repo/pull/42");
+    expect(openCalls[0]).toEqual({
+      url: "https://github.com/example/repo/pull/42",
+      target: "_blank",
+      features: "noopener,noreferrer",
+    });
   });
 
   test("pushed loop opens automatic PR flow confirmation modal", async () => {
