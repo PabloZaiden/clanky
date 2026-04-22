@@ -139,7 +139,10 @@ export const ConversationViewer = memo(function ConversationViewer({
           )}
         </div>
         ) : (
-          <div className="mx-auto flex w-full max-w-4xl flex-col px-4 py-5 sm:px-6 sm:py-6">
+          <div
+            className="mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-5"
+            data-testid="conversation-transcript"
+          >
           {entries.map((entry, index) => {
             const spacingClass = index === 0
               ? ""

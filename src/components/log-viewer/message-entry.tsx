@@ -42,7 +42,7 @@ export function MessageEntry({
         </time>
       )}
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-        <div className="min-w-0 max-w-[min(85%,48rem)] space-y-2">
+        <div className="min-w-0 max-w-[min(88%,64rem)] space-y-2">
           {showRoleLabel && (
             <div className={`text-[11px] uppercase tracking-[0.2em] text-gray-500 ${isUser ? "text-right" : ""}`}>
             {roleLabel}
