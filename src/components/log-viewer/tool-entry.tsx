@@ -17,8 +17,16 @@ function RenderedContent({ output }: { output: unknown }) {
   const content = getTextFromOutput(output) ?? formatToolValue(output);
 
   return (
-    <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-words">
+    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/20 p-3 font-mono text-xs text-slate-100">
       {content}
+    </pre>
+  );
+}
+
+function ToolValueBlock({ value }: { value: unknown }) {
+  return (
+    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/20 p-3 font-mono text-xs text-slate-100">
+      {formatToolValue(value)}
     </pre>
   );
 }
@@ -31,7 +39,7 @@ export const ToolEntry = memo(function ToolEntry({
   toolPathDisplayRoot,
 }: ToolEntryProps) {
   const meta = getToolMeta(tool, { pathDisplayRoot: toolPathDisplayRoot });
-  const toolSummaryClassName = "text-[11px] italic leading-relaxed text-gray-400";
+  const toolSummaryClassName = "block text-sm leading-6 text-sky-300";
 
   const inputSummary = (
     <span className={toolSummaryClassName}>{meta.summary}</span>
@@ -39,64 +47,76 @@ export const ToolEntry = memo(function ToolEntry({
 
   const renderInputContent = useCallback(
     () => (
-      <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-words">
-        {formatToolValue(tool.input)}
-      </pre>
+      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4">
+        <div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">Input</div>
+          <ToolValueBlock value={tool.input} />
+        </div>
+      </div>
     ),
     [tool.input]
   );
 
   const renderOutputOnlyContent = useCallback(
     () => (
-      <>
-        <div className="text-gray-500 text-xs mt-1">{meta.outputLabel}</div>
+      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4">
+        <div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">{meta.outputLabel}</div>
         {meta.outputType === "text" ? (
           <RenderedContent output={tool.output} />
         ) : (
-          <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-words">
-            {formatToolValue(tool.output)}
-          </pre>
+            <ToolValueBlock value={tool.output} />
         )}
-      </>
+        </div>
+      </div>
     ),
     [tool.output, meta.outputLabel, meta.outputType]
   );
 
   const renderCombinedContent = useCallback(
     () => (
-      <>
-        <div className="text-gray-500 text-xs mt-1">Input</div>
-        <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-words">
-          {formatToolValue(tool.input)}
-        </pre>
-        <div className="text-gray-500 text-xs mt-2">{meta.outputLabel}</div>
-        {meta.outputType === "text" ? (
-          <RenderedContent output={tool.output} />
-        ) : (
-          <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto whitespace-pre-wrap break-words">
-            {formatToolValue(tool.output)}
-          </pre>
-        )}
-      </>
+      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4">
+        <div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">Input</div>
+          <ToolValueBlock value={tool.input} />
+        </div>
+        <div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">{meta.outputLabel}</div>
+          {meta.outputType === "text" ? (
+            <RenderedContent output={tool.output} />
+          ) : (
+            <ToolValueBlock value={tool.output} />
+          )}
+        </div>
+      </div>
     ),
     [tool.input, tool.output, meta.outputLabel, meta.outputType]
   );
 
   return (
-    <div className={`group py-1 ${spacingClass}`}>
+    <div className={`group ${spacingClass}`} data-entry-type="tool">
       {showTimestamp && (
-        <time className="text-gray-500 text-xs mb-0.5 block" dateTime={timestamp}>
+        <time className="mb-1 block text-[11px] text-gray-500" dateTime={timestamp}>
           {formatTime(timestamp)}
         </time>
       )}
-      <div className="min-w-0">
+      <div className="min-w-0 max-w-[min(92%,48rem)]">
         {tool.input != null ? (
           <LazyDetails
             summary={inputSummary}
             renderContent={tool.output != null ? renderCombinedContent : renderInputContent}
+            className="w-full"
+            triggerClassName="w-full text-left"
+            panelClassName="mt-3"
           />
         ) : tool.output != null ? (
-          <LazyDetails summary={inputSummary} renderContent={renderOutputOnlyContent} />
+          <LazyDetails
+            summary={inputSummary}
+            renderContent={renderOutputOnlyContent}
+            className="w-full"
+            triggerClassName="w-full text-left"
+            panelClassName="mt-3"
+          />
         ) : (
           <span className={toolSummaryClassName}>{meta.summary}</span>
         )}

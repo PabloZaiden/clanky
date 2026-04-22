@@ -124,7 +124,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     <div
       ref={containerRef}
       id={id}
-      className={`min-w-0 rounded-lg bg-neutral-900 text-xs text-gray-100 dark-scrollbar overflow-x-hidden overflow-y-auto sm:text-sm ${!maxHeight ? "flex-1 min-h-0" : ""}`}
+      className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto bg-[#171717] text-xs text-gray-100 sm:text-sm ${!maxHeight ? "flex-1 min-h-0" : ""}`}
       style={maxHeight ? { maxHeight } : undefined}
     >
       {isEmpty ? (
@@ -139,13 +139,13 @@ export const ConversationViewer = memo(function ConversationViewer({
           )}
         </div>
         ) : (
-          <div className="p-2 sm:p-4">
+          <div className="mx-auto flex w-full max-w-4xl flex-col px-4 py-5 sm:px-6 sm:py-6">
           {entries.map((entry, index) => {
             const spacingClass = index === 0
               ? ""
               : entry.showTimestamp || entry.showGroupHeader
-                ? "mt-1 sm:mt-2"
-                : "mt-0.5";
+                ? "mt-6 sm:mt-7"
+                : "mt-3 sm:mt-4";
             if (entry.type === "message") {
               return (
                 <MessageEntry
@@ -181,8 +181,8 @@ export const ConversationViewer = memo(function ConversationViewer({
               );
             }
           })}
-          {isActive && (
-            <div className="flex items-center gap-2 text-gray-500 text-xs py-2" data-testid="working-indicator">
+          {isActive && !isEmpty && (
+            <div className="mt-4 flex items-center gap-2 py-1 text-xs text-gray-500" data-testid="working-indicator">
               <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-blue-500 border-t-transparent" />
               <span>{activeStateMessage}</span>
             </div>

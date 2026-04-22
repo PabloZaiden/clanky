@@ -28,6 +28,7 @@ export const LogEntryItem = memo(function LogEntryItem({
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
   const isReasoning = isReasoningLogEntry(log);
+  const isResponse = logKind === "response";
   const responseContent = log.details?.["responseContent"];
   const hasResponseContent = typeof responseContent === "string" && responseContent.length > 0;
   const hasOtherDetails = details
@@ -52,35 +53,41 @@ export const LogEntryItem = memo(function LogEntryItem({
   // their rendered content is already self-explanatory.
   const hidesTypedStreamingLabel = logKind === "response" || logKind === "reasoning";
   const showMessageLabel = showGroupHeader && !hidesTypedStreamingLabel;
+  const textColorClassName = isReasoning
+    ? "text-gray-400"
+    : isResponse || log.level === "agent"
+      ? "text-white"
+      : getLogLevelColor(log.level);
 
   return (
-    <div className={`group ${isReasoning ? "opacity-60" : ""} ${spacingClass}`}>
+    <div className={`group ${spacingClass}`} data-log-kind={logKind ?? "default"}>
       {showTimestamp && (
-        <time className="text-gray-500 text-xs mb-0.5 block" dateTime={log.timestamp}>
+        <time className="mb-1 block text-[11px] text-gray-500" dateTime={log.timestamp}>
           {formatTime(log.timestamp)}
         </time>
       )}
-      <div className={`min-w-0 ${isReasoning ? "text-gray-400 italic" : getLogLevelColor(log.level)}`}>
+      <div className={`min-w-0 max-w-[min(92%,48rem)] ${textColorClassName}`}>
         {showMessageLabel && (
-          <span className="break-words">{log.message}</span>
+          <span className="break-words text-sm leading-7">{log.message}</span>
         )}
-        {/* Show responseContent as proper text */}
         {hasResponseContent && (
-          <div className={`mt-2 rounded bg-neutral-800 p-2 sm:p-3 ${isReasoning ? "italic" : ""}`}>
+          <div className={showMessageLabel ? "mt-2" : ""}>
             <StreamingTextContent
               content={responseContent as string}
               markdownEnabled={markdownEnabled}
-              markdownClassName="text-xs"
-              plainTextClassName={`text-xs leading-relaxed whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400 italic" : "text-gray-200"}`}
+              markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-400" : "text-white"}`}
+              plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400" : "text-white"}`}
               dimmed={isReasoning}
             />
           </div>
         )}
-        {/* Show other details as JSON */}
         {hasOtherDetails && (
           <LazyDetails
             summary="Details"
             renderContent={renderDetails}
+            className="mt-2"
+            triggerClassName="text-left text-xs text-gray-500 transition hover:text-gray-300"
+            panelClassName="mt-2"
           />
         )}
       </div>
