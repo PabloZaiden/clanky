@@ -813,6 +813,66 @@ describe("LogViewer", () => {
 
       expect(getAllByText("Unknown tool (stored as execute)")).toHaveLength(2);
     });
+
+    test("keeps consecutive tool rows compact when the displayed minute changes", () => {
+      const firstTool = createToolCallData({
+        id: "tool-spacing-minute-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-spacing-minute-b",
+        name: "read",
+        input: { path: "/src/second.ts" },
+        timestamp: NEXT_MINUTE_TIME,
+      });
+
+      const { container, getAllByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      const toolRows = Array.from(container.querySelectorAll("[data-entry-type='tool']")) as HTMLElement[];
+      expect(toolRows).toHaveLength(2);
+      expect(toolRows[0]?.className).not.toContain("mt-3");
+      expect(toolRows[1]?.className).toContain("mt-3");
+      expect(toolRows[1]?.className).toContain("sm:mt-4");
+      expect(toolRows[1]?.className).not.toContain("mt-6");
+      expect(toolRows[1]?.className).not.toContain("sm:mt-7");
+      expect(getAllByText(formatTime(SAME_MINUTE_TIME_A))).toHaveLength(1);
+      expect(getAllByText(formatTime(NEXT_MINUTE_TIME))).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(2);
+    });
+
+    test("keeps consecutive tool rows compact when the tool kind changes", () => {
+      const firstTool = createToolCallData({
+        id: "tool-spacing-group-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-spacing-group-b",
+        name: "rg",
+        input: { pattern: "DEFAULT_CLIENT_ID", path: "/src" },
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+
+      const { container, getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      const toolRows = Array.from(container.querySelectorAll("[data-entry-type='tool']")) as HTMLElement[];
+      expect(toolRows).toHaveLength(2);
+      expect(toolRows[1]?.className).toContain("mt-3");
+      expect(toolRows[1]?.className).toContain("sm:mt-4");
+      expect(toolRows[1]?.className).not.toContain("mt-6");
+      expect(toolRows[1]?.className).not.toContain("sm:mt-7");
+      expect(getByText("View /src/first.ts")).toBeInTheDocument();
+      expect(getByText("Find files matching 'DEFAULT_CLIENT_ID' in /src")).toBeInTheDocument();
+      expect(queryByText(formatTime(SAME_MINUTE_TIME_A))).toBeInTheDocument();
+      expect(container.querySelectorAll("time")).toHaveLength(1);
+    });
   });
 
   describe("log entry rendering", () => {

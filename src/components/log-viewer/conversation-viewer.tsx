@@ -2,6 +2,7 @@ import { useEffect, useRef, useMemo, memo } from "react";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
+  getEntrySpacingClass,
   isReasoningLogEntry,
   isResponseLogEntry,
 } from "./utils";
@@ -144,11 +145,7 @@ export const ConversationViewer = memo(function ConversationViewer({
             data-testid="conversation-transcript"
           >
           {entries.map((entry, index) => {
-            const spacingClass = index === 0
-              ? ""
-              : entry.showTimestamp || entry.showGroupHeader
-                ? "mt-6 sm:mt-7"
-                : "mt-3 sm:mt-4";
+            const spacingClass = getEntrySpacingClass(entry, entries[index - 1]);
             if (entry.type === "message") {
               return (
                 <MessageEntry
