@@ -22,6 +22,7 @@ interface LogTabProps {
   onEnterFocusMode: () => void;
   onExitFocusMode: () => void;
   applySafeAreaBottomToFocusBar?: boolean;
+  toolPathDisplayRoot?: string;
 }
 
 export function LogTab({
@@ -42,6 +43,7 @@ export function LogTab({
   onEnterFocusMode,
   onExitFocusMode,
   applySafeAreaBottomToFocusBar = false,
+  toolPathDisplayRoot,
 }: LogTabProps) {
   const logViewerId = "logs-viewer";
 
@@ -72,6 +74,7 @@ export function LogTab({
             autoScroll={autoScroll}
             markdownEnabled={markdownEnabled}
             isActive={isLogActive}
+            toolPathDisplayRoot={toolPathDisplayRoot}
           />
         </div>
       </div>
