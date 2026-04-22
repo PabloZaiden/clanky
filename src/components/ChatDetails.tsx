@@ -27,6 +27,7 @@ import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { useAvailableModels, useMarkdownPreference, useToast, useWebSocket } from "../hooks";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
+import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import type {
   Chat,
   ChatEvent,
@@ -391,7 +392,7 @@ export function ChatDetails({
       const response = await appFetch(`/api/chats/${chatId}/interrupt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ reason: DEFAULT_CHAT_INTERRUPT_REASON }),
       });
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to interrupt chat"));

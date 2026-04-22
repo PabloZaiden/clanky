@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { DEFAULT_CHAT_INTERRUPT_REASON } from "../chat";
 import { ModelConfigSchema } from "./model";
 import { LoopNameSchema, MessageImageAttachmentsSchema } from "./loop";
 
@@ -40,5 +41,5 @@ export const SendChatMessageRequestSchema = z.object({
 });
 
 export const InterruptChatRequestSchema = z.object({
-  reason: z.string().trim().min(1, "reason is required"),
+  reason: z.string().trim().min(1, "reason is required").default(DEFAULT_CHAT_INTERRUPT_REASON),
 });
