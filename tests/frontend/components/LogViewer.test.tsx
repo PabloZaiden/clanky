@@ -87,7 +87,14 @@ describe("LogViewer", () => {
       const { getByText } = renderWithUser(
         <LogViewer messages={[msg]} toolCalls={[]} />
       );
-      expect(getByText("Hello world")).toBeInTheDocument();
+      const messageText = getByText("Hello world");
+      expect(messageText).toBeInTheDocument();
+      const messageGroup = messageText.closest("[data-message-role='user']") as HTMLElement | null;
+      expect(messageGroup).not.toBeNull();
+      expect(messageGroup?.textContent).toContain("Hello world");
+      const bubble = messageGroup?.querySelector("[data-message-bubble='user']") as HTMLElement | null;
+      expect(bubble).not.toBeNull();
+      expect(bubble?.textContent).toContain("Hello world");
     });
 
     test("renders transient user image attachments", () => {
@@ -140,7 +147,11 @@ describe("LogViewer", () => {
       const { getByText } = renderWithUser(
         <ConversationViewer messages={[msg]} toolCalls={[]} showAssistantMessages={true} />
       );
-      expect(getByText("I can help with that")).toBeInTheDocument();
+      const assistantText = getByText("I can help with that");
+      expect(assistantText).toBeInTheDocument();
+      const messageGroup = assistantText.closest("[data-message-role='assistant']") as HTMLElement | null;
+      expect(messageGroup).not.toBeNull();
+      expect(messageGroup?.querySelector("[data-message-bubble]")).toBeNull();
     });
 
     test("shared conversation viewer can label message roles", () => {
@@ -652,19 +663,19 @@ describe("LogViewer", () => {
         output: { content: "file contents here" },
       });
       const summaryText = getByText("View /src/file.ts");
-      const details = summaryText.closest("details") as HTMLDetailsElement;
+      const disclosure = summaryText.closest("[data-open]") as HTMLElement | null;
 
       expect(queryByText("file contents here")).not.toBeInTheDocument();
       await user.click(summaryText);
       expect(getByText("file contents here")).toBeInTheDocument();
-      expect(details.getAttribute("data-open")).toBe("true");
+      expect(disclosure?.getAttribute("data-open")).toBe("true");
 
       await user.click(summaryText);
       expect(queryByText("file contents here")).toBeInTheDocument();
-      expect(details.getAttribute("data-open")).toBe("false");
+      expect(disclosure?.getAttribute("data-open")).toBe("false");
     });
 
-    test("styles tool summaries as visually de-emphasized entries", () => {
+    test("styles tool summaries as accent-colored transcript entries", () => {
       const { getByText } = renderToolCall({
         name: "execute",
         input: {},
@@ -673,10 +684,22 @@ describe("LogViewer", () => {
       const summaryText = getByText("Unknown tool (stored as execute)");
       const toolEntry = summaryText.closest(".group") as HTMLElement;
       expect(toolEntry).not.toBeNull();
-      expect(toolEntry.className).toContain("py-1");
-      expect(summaryText.className).toContain("text-[11px]");
-      expect(summaryText.className).toContain("italic");
-      expect(summaryText.className).toContain("text-gray-400");
+      expect(toolEntry.getAttribute("data-entry-type")).toBe("tool");
+      expect(summaryText.className).toContain("text-sm");
+      expect(summaryText.className).toContain("text-sky-300");
+    });
+
+    test("renders parsed tool input above the output panel", async () => {
+      const { getByText, user } = renderToolCall({
+        name: "execute",
+        input: { path: "/src/file.ts" },
+        output: { content: "file contents here" },
+      });
+
+      await user.click(getByText("View /src/file.ts"));
+      expect(getByText("Input")).toBeInTheDocument();
+      expect(getByText("Result")).toBeInTheDocument();
+      expect(getByText("file contents here")).toBeInTheDocument();
     });
 
     test("hides tool calls when showTools is false", () => {
@@ -829,12 +852,18 @@ describe("LogViewer", () => {
         level: "agent",
         details: { key: "value", count: 42 },
       });
-      const { container, getByText, user } = renderWithUser(
+      const { container, getByRole, user } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
       );
-      expect(getByText("Details")).toBeInTheDocument();
+      const detailsButton = getByRole("button", { name: "Details" });
+      expect(detailsButton).toBeInTheDocument();
+      const panelId = detailsButton.getAttribute("aria-controls");
+      expect(panelId).toBeTruthy();
+      const detailsPanel = panelId ? container.querySelector(`#${panelId}`) as HTMLElement | null : null;
+      expect(detailsPanel).not.toBeNull();
+      expect(detailsPanel?.getAttribute("aria-labelledby")).toBe(detailsButton.id);
       expect(container.querySelectorAll("pre")).toHaveLength(0);
-      await user.click(getByText("Details"));
+      await user.click(detailsButton);
       const detailsPre = Array.from(container.querySelectorAll("pre")).find(
         (element) => element.textContent?.includes("\"key\": \"value\"")
       );
@@ -1135,22 +1164,39 @@ describe("LogViewer", () => {
   });
 
   describe("reasoning styling", () => {
-    test("renders reasoning entries with italic and dimmed styling", () => {
+    test("renders reasoning entries as lighter plain transcript text without a boxed background", () => {
       const log = createLogEntry({
         level: "agent",
         message: "AI reasoning...",
         details: { logKind: "reasoning", responseContent: "thinking" },
       });
-      const { container } = renderWithUser(
+      const { container, getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} showReasoning={true} />
       );
-      const group = container.querySelector(".group");
+      const group = container.querySelector("[data-log-kind='reasoning']") as HTMLElement | null;
       expect(group).not.toBeNull();
-      // Should have opacity-60 on the group
-      expect(group?.className).toContain("opacity-60");
-      // The text container should have italic class
-      const textDiv = group?.querySelector(".italic");
-      expect(textDiv).not.toBeNull();
+      const reasoningBody = group?.querySelector("[data-log-tone='reasoning']") as HTMLElement | null;
+      expect(reasoningBody).not.toBeNull();
+      expect(reasoningBody?.querySelector("[data-dimmed='false']")).not.toBeNull();
+      expect(getByText("thinking")).toBeInTheDocument();
+      expect(group?.querySelector("pre")).toBeNull();
+    });
+
+    test("keeps markdown reasoning at the same non-dimmed level as plain reasoning", () => {
+      const log = createLogEntry({
+        level: "agent",
+        message: "AI reasoning...",
+        details: { logKind: "reasoning", responseContent: "**thinking**" },
+      });
+      const { container, getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[log]} showReasoning={true} markdownEnabled={true} />
+      );
+      const group = container.querySelector("[data-log-kind='reasoning']") as HTMLElement | null;
+      expect(group).not.toBeNull();
+      const reasoningBody = group?.querySelector("[data-log-tone='reasoning']") as HTMLElement | null;
+      expect(reasoningBody).not.toBeNull();
+      expect(reasoningBody?.querySelector("[data-dimmed='false']")).not.toBeNull();
+      expect(getByText("thinking")).toBeInTheDocument();
     });
 
     test("does not apply reasoning styling to response entries", () => {
@@ -1162,10 +1208,11 @@ describe("LogViewer", () => {
       const { container } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
       );
-      const group = container.querySelector(".group");
+      const group = container.querySelector("[data-log-kind='response']") as HTMLElement | null;
       expect(group).not.toBeNull();
-      // Should NOT have opacity-60
-      expect(group?.className).not.toContain("opacity-60");
+      const responseBody = group?.querySelector("[data-log-tone='agent']") as HTMLElement | null;
+      expect(responseBody).not.toBeNull();
+      expect(responseBody?.querySelector("[data-dimmed='false']")).not.toBeNull();
     });
   });
 

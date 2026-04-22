@@ -32,7 +32,7 @@ function getTimestampMinuteBucket(isoString: string): number {
 export function getLogLevelColor(level: LogLevel): string {
   switch (level) {
     case "agent":
-      return "text-purple-400";
+      return "text-white";
     case "debug":
       return "text-gray-500";
     case "info":

@@ -33,7 +33,7 @@ export function StreamingTextContent({
   }
 
   return (
-    <div className={plainTextClassName}>
+    <div className={plainTextClassName} data-dimmed={dimmed ? "true" : "false"}>
       {content}
     </div>
   );
