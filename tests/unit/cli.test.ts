@@ -82,22 +82,29 @@ describe("ralpher cli", () => {
 
     expect(exitCode).toBe(1);
     expect(output).toEqual([
-      "ERR:Error: Missing value for --base-url\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>]\n  ralpher cli status [--base-url <url>]",
+      "ERR:Error: Missing value for --base-url\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>] [--cookies <cookie-header>]\n  ralpher cli status [--base-url <url>]",
     ]);
   });
 
-  test("auth completes the device flow and stores credentials", async () => {
+  test("auth completes the device flow, stores cookies, and reuses them on requests", async () => {
     const output: string[] = [];
     const fetchCalls: Array<{
       url: string;
       method: string;
       body?: string;
       authorization?: string | null;
+      cookie?: string | null;
       origin?: string | null;
     }> = [];
     let tokenPollCount = 0;
 
-    const exitCode = await runCli(["auth", "--base-url", "http://example.test"], {
+    const exitCode = await runCli([
+      "auth",
+      "--base-url",
+      "http://example.test",
+      "--cookies",
+      "authentik_proxy=proxy-cookie-value; session_hint=browser;",
+    ], {
       out: (message: string) => output.push(message),
       err: (message: string) => output.push(`ERR:${message}`),
       sleep: async () => undefined,
@@ -112,6 +119,11 @@ describe("ralpher cli", () => {
             ? init.headers.get("authorization")
             : init?.headers && "authorization" in init.headers
               ? String(init.headers["authorization"])
+              : null,
+          cookie: init?.headers instanceof Headers
+            ? init.headers.get("cookie")
+            : init?.headers && "cookie" in init.headers
+              ? String(init.headers["cookie"])
               : null,
           origin: init?.headers instanceof Headers
             ? init.headers.get("origin")
@@ -169,6 +181,7 @@ describe("ralpher cli", () => {
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
       scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value; session_hint=browser",
       accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
       createdAt: "2026-04-21T17:15:00.000Z",
       updatedAt: "2026-04-21T17:15:00.000Z",
@@ -179,13 +192,65 @@ describe("ralpher cli", () => {
       "http://example.test/api/auth/token",
     ]);
     expect(fetchCalls.every((call) => call.origin === "http://example.test")).toBe(true);
+    expect(fetchCalls.every((call) => call.cookie === "authentik_proxy=proxy-cookie-value; session_hint=browser")).toBe(true);
     expect(await Bun.file(join(homeDir, ".ralpher", "cli-auth.json")).exists()).toBe(true);
     expect(await Bun.file(join(dataDir, "cli-auth.json")).exists()).toBe(false);
   });
 
+  test("auth rejects invalid cookie strings", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli([
+      "auth",
+      "--base-url",
+      "http://example.test",
+      "--cookies",
+      "definitely-not-a-cookie",
+    ], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      "ERR:Error: Invalid value for --cookies\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>] [--cookies <cookie-header>]\n  ralpher cli status [--base-url <url>]",
+    ]);
+  });
+
+  test("auth rejects partially invalid cookie strings", async () => {
+    const invalidCookieValues = [
+      "authentik_proxy=proxy-cookie-value; definitely-not-a-cookie",
+      "=proxy-cookie-value",
+    ];
+
+    for (const cookieValue of invalidCookieValues) {
+      const output: string[] = [];
+      const exitCode = await runCli([
+        "auth",
+        "--base-url",
+        "http://example.test",
+        "--cookies",
+        cookieValue,
+      ], {
+        out: (message: string) => output.push(message),
+        err: (message: string) => output.push(`ERR:${message}`),
+      });
+
+      expect(exitCode).toBe(1);
+      expect(output).toEqual([
+        "ERR:Error: Invalid value for --cookies\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>] [--cookies <cookie-header>]\n  ralpher cli status [--base-url <url>]",
+      ]);
+    }
+  });
+
   test("status refreshes expired credentials before probing auth status", async () => {
     const output: string[] = [];
-    const requests: Array<{ url: string; authorization?: string | null; origin?: string | null }> = [];
+    const requests: Array<{
+      url: string;
+      authorization?: string | null;
+      cookie?: string | null;
+      origin?: string | null;
+    }> = [];
 
     const expiredCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
@@ -194,6 +259,7 @@ describe("ralpher cli", () => {
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
       scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value; session_hint=browser",
       accessTokenExpiresAt: "2026-04-21T17:14:59.000Z",
       createdAt: "2026-04-21T17:00:00.000Z",
       updatedAt: "2026-04-21T17:00:00.000Z",
@@ -212,6 +278,11 @@ describe("ralpher cli", () => {
             ? init.headers.get("authorization")
             : init?.headers && "authorization" in init.headers
               ? String(init.headers["authorization"])
+              : null,
+          cookie: init?.headers instanceof Headers
+            ? init.headers.get("cookie")
+            : init?.headers && "cookie" in init.headers
+              ? String(init.headers["cookie"])
               : null,
           origin: init?.headers instanceof Headers
             ? init.headers.get("origin")
@@ -252,11 +323,13 @@ describe("ralpher cli", () => {
       {
         url: "http://example.test/api/auth/token",
         authorization: null,
+        cookie: "authentik_proxy=proxy-cookie-value; session_hint=browser",
         origin: "http://example.test",
       },
       {
         url: "http://example.test/api/auth/status",
         authorization: "Bearer fresh-access",
+        cookie: "authentik_proxy=proxy-cookie-value; session_hint=browser",
         origin: "http://example.test",
       },
     ]);
