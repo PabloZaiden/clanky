@@ -72,7 +72,7 @@ export const LogEntryItem = memo(function LogEntryItem({
         </time>
       )}
       <div
-        className={`min-w-0 max-w-[min(92%,48rem)] ${textColorClassName}`}
+        className={`min-w-0 max-w-[min(96%,72rem)] ${textColorClassName}`}
         data-log-tone={logTone}
       >
         {showMessageLabel && (
@@ -83,6 +83,7 @@ export const LogEntryItem = memo(function LogEntryItem({
             <StreamingTextContent
               content={responseContent as string}
               markdownEnabled={markdownEnabled}
+              dimmed={isReasoning}
               markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-400" : "text-white"}`}
               plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400" : "text-white"}`}
             />

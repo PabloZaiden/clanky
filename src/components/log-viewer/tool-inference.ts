@@ -30,6 +30,23 @@ export interface ToolMetaContext {
   pathDisplayRoot?: string;
 }
 
+export interface ToolDetailRow {
+  label: string;
+  value: string;
+}
+
+export type ToolDetailBlock =
+  | { type: "rows"; title?: string; rows: ToolDetailRow[] }
+  | { type: "text"; title?: string; content: string }
+  | { type: "code"; title?: string; content: string }
+  | { type: "list"; title?: string; items: string[] }
+  | { type: "json"; title?: string; value: unknown };
+
+export interface StructuredToolDetails {
+  inputBlocks: ToolDetailBlock[];
+  outputBlocks: ToolDetailBlock[];
+}
+
 const RG_STYLE_KEYS = [
   "output_mode",
   "glob",
@@ -54,6 +71,11 @@ function getStringField(input: Record<string, unknown>, key: string): string | u
 function getNumberField(input: Record<string, unknown>, key: string): number | undefined {
   const value = input[key];
   return typeof value === "number" ? value : undefined;
+}
+
+function getBooleanField(input: Record<string, unknown>, key: string): boolean | undefined {
+  const value = input[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function hasOnlyKeys(input: Record<string, unknown>, allowedKeys: string[]): boolean {
@@ -90,6 +112,48 @@ function getStoredName(tool: ToolCallData): string | undefined {
 
 function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+}
+
+function formatScalarValue(value: unknown): string | undefined {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return undefined;
+}
+
+function formatOptionalPath(path: string | undefined, context: ToolMetaContext): string | undefined {
+  return path ? formatToolPathForDisplay(path, context.pathDisplayRoot) : undefined;
+}
+
+function formatOptionalPaths(paths: string[] | undefined, context: ToolMetaContext): string | undefined {
+  if (!paths || paths.length === 0) {
+    return undefined;
+  }
+  return paths.map((path) => formatToolPathForDisplay(path, context.pathDisplayRoot)).join(", ");
+}
+
+function appendRow(rows: ToolDetailRow[], label: string, value: string | undefined): void {
+  if (!value) {
+    return;
+  }
+  rows.push({ label, value });
+}
+
+function splitNonEmptyLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function getStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    return undefined;
+  }
+  return value;
 }
 
 function parseApplyPatchFiles(input: string): string[] {
@@ -323,4 +387,229 @@ export function formatToolValue(value: unknown): string {
 
   const rendered = JSON.stringify(value, null, 2);
   return rendered ?? "undefined";
+}
+
+function buildViewDetails(input: Record<string, unknown>, tool: ToolCallData, context: ToolMetaContext): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  const path = formatOptionalPath(getFileTargetField(input), context);
+  const range = input["view_range"];
+  appendRow(rows, "Path", path);
+  if (isViewRange(range)) {
+    appendRow(rows, "Lines", `${range[0]}-${range[1]}`);
+  }
+  if (getBooleanField(input, "forceReadLargeFiles")) {
+    appendRow(rows, "Large file mode", "Enabled");
+  }
+
+  const textOutput = getTextFromOutput(tool.output);
+  const outputBlocks = textOutput
+    ? [{ type: "text", title: "Contents", content: textOutput } satisfies ToolDetailBlock]
+    : [];
+
+  return {
+    inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+    outputBlocks,
+  };
+}
+
+function buildGlobDetails(input: Record<string, unknown>, tool: ToolCallData, context: ToolMetaContext): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Pattern", getStringField(input, "pattern"));
+  appendRow(rows, "Path", formatOptionalPath(getPathField(input), context));
+  appendRow(rows, "Paths", formatOptionalPaths(getPathsField(input), context));
+
+  const arrayOutput = getStringArray(tool.output);
+  if (arrayOutput && arrayOutput.length > 0) {
+    return {
+      inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+      outputBlocks: [{ type: "list", title: "Matches", items: arrayOutput.map((entry) => formatToolPathForDisplay(entry, context.pathDisplayRoot)) }],
+    };
+  }
+
+  const textOutput = getTextFromOutput(tool.output);
+  const outputLines = textOutput ? splitNonEmptyLines(textOutput) : [];
+  return {
+    inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+    outputBlocks: outputLines.length > 1
+      ? [{ type: "list", title: "Matches", items: outputLines.map((entry) => formatToolPathForDisplay(entry, context.pathDisplayRoot)) }]
+      : textOutput
+        ? [{ type: "text", title: "Result", content: textOutput }]
+        : [],
+  };
+}
+
+function buildRgDetails(input: Record<string, unknown>, tool: ToolCallData, context: ToolMetaContext): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Pattern", getStringField(input, "pattern"));
+  appendRow(rows, "Path", formatOptionalPath(getPathField(input), context));
+  appendRow(rows, "Paths", formatOptionalPaths(getPathsField(input), context));
+  appendRow(rows, "Output mode", getStringField(input, "output_mode"));
+  appendRow(rows, "Glob", getStringField(input, "glob"));
+  appendRow(rows, "File type", getStringField(input, "type"));
+  appendRow(rows, "Head limit", formatScalarValue(input["head_limit"]));
+  appendRow(rows, "Line numbers", getBooleanField(input, "-n") ? "On" : undefined);
+  appendRow(rows, "Case insensitive", getBooleanField(input, "-i") ? "On" : undefined);
+  appendRow(rows, "Multiline", getBooleanField(input, "multiline") ? "On" : undefined);
+
+  const textOutput = getTextFromOutput(tool.output);
+  return {
+    inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+    outputBlocks: textOutput ? [{ type: "text", title: "Matches", content: textOutput }] : [],
+  };
+}
+
+function buildApplyPatchDetails(tool: ToolCallData): StructuredToolDetails {
+  if (typeof tool.input !== "string") {
+    return { inputBlocks: [], outputBlocks: [] };
+  }
+
+  const files = parseApplyPatchFiles(tool.input);
+  const rows: ToolDetailRow[] = [];
+  if (files.length === 1) {
+    appendRow(rows, "File", files[0]);
+  } else if (files.length > 1) {
+    appendRow(rows, "Files", files.join(", "));
+  }
+
+  return {
+    inputBlocks: [
+      ...(rows.length > 0 ? [{ type: "rows", rows } satisfies ToolDetailBlock] : []),
+      { type: "code", title: "Patch", content: tool.input },
+    ],
+    outputBlocks: getTextFromOutput(tool.output)
+      ? [{ type: "text", title: "Result", content: getTextFromOutput(tool.output)! }]
+      : [],
+  };
+}
+
+function buildBashDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Description", getStringField(input, "description"));
+  appendRow(rows, "Shell", getStringField(input, "shellId"));
+  appendRow(rows, "Mode", getStringField(input, "mode"));
+  appendRow(rows, "Initial wait", formatScalarValue(input["initial_wait"]));
+  appendRow(rows, "Detached", getBooleanField(input, "detach") ? "Yes" : undefined);
+
+  const command = getStringField(input, "command");
+  const outputText = getTextFromOutput(tool.output);
+  return {
+    inputBlocks: [
+      ...(rows.length > 0 ? [{ type: "rows", rows } satisfies ToolDetailBlock] : []),
+      ...(command ? [{ type: "code", title: "Command", content: command } satisfies ToolDetailBlock] : []),
+    ],
+    outputBlocks: outputText ? [{ type: "text", title: "Output", content: outputText }] : [],
+  };
+}
+
+function buildReadBashDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Shell", getStringField(input, "shellId"));
+  appendRow(rows, "Delay", formatScalarValue(input["delay"]));
+  return {
+    inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+    outputBlocks: getTextFromOutput(tool.output) ? [{ type: "text", title: "Output", content: getTextFromOutput(tool.output)! }] : [],
+  };
+}
+
+function buildWriteBashDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Shell", getStringField(input, "shellId"));
+  appendRow(rows, "Delay", formatScalarValue(input["delay"]));
+  const shellInput = getStringField(input, "input");
+  return {
+    inputBlocks: [
+      ...(rows.length > 0 ? [{ type: "rows", rows } satisfies ToolDetailBlock] : []),
+      ...(shellInput ? [{ type: "code", title: "Sent input", content: shellInput } satisfies ToolDetailBlock] : []),
+    ],
+    outputBlocks: getTextFromOutput(tool.output) ? [{ type: "text", title: "Output", content: getTextFromOutput(tool.output)! }] : [],
+  };
+}
+
+function buildSqlDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Description", getStringField(input, "description"));
+  const query = getStringField(input, "query");
+  const outputText = getTextFromOutput(tool.output);
+  return {
+    inputBlocks: [
+      ...(rows.length > 0 ? [{ type: "rows", rows } satisfies ToolDetailBlock] : []),
+      ...(query ? [{ type: "code", title: "Query", content: query } satisfies ToolDetailBlock] : []),
+    ],
+    outputBlocks: outputText ? [{ type: "text", title: "Result", content: outputText }] : [],
+  };
+}
+
+function buildGitHubMcpDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Owner", getStringField(input, "owner"));
+  appendRow(rows, "Repo", getStringField(input, "repo"));
+  appendRow(rows, "Method", getStringField(input, "method"));
+  appendRow(rows, "Pull request", formatScalarValue(input["pullNumber"]));
+  appendRow(rows, "Resource", formatScalarValue(input["resource_id"]));
+  appendRow(rows, "Page", formatScalarValue(input["page"]));
+  appendRow(rows, "Per page", formatScalarValue(input["perPage"] ?? input["per_page"]));
+
+  const outputText = getTextFromOutput(tool.output);
+  return {
+    inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+    outputBlocks: outputText ? [{ type: "text", title: "Result", content: outputText }] : [],
+  };
+}
+
+function buildWebFetchDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "URL", getStringField(input, "url"));
+  appendRow(rows, "Max length", formatScalarValue(input["max_length"]));
+  appendRow(rows, "Start index", formatScalarValue(input["start_index"]));
+  appendRow(rows, "Raw HTML", getBooleanField(input, "raw") ? "Yes" : undefined);
+  return {
+    inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+    outputBlocks: getTextFromOutput(tool.output) ? [{ type: "text", title: "Content", content: getTextFromOutput(tool.output)! }] : [],
+  };
+}
+
+function buildSkillDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Skill", getStringField(input, "skill"));
+  return {
+    inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+    outputBlocks: getTextFromOutput(tool.output) ? [{ type: "text", title: "Output", content: getTextFromOutput(tool.output)! }] : [],
+  };
+}
+
+export function getStructuredToolDetails(tool: ToolCallData, context: ToolMetaContext = {}): StructuredToolDetails | null {
+  const kind = inferToolKind(tool);
+
+  if (kind === "apply_patch") {
+    return buildApplyPatchDetails(tool);
+  }
+
+  if (!isRecord(tool.input)) {
+    return null;
+  }
+
+  switch (kind) {
+    case "view":
+      return buildViewDetails(tool.input, tool, context);
+    case "glob":
+      return buildGlobDetails(tool.input, tool, context);
+    case "rg":
+      return buildRgDetails(tool.input, tool, context);
+    case "bash":
+      return buildBashDetails(tool.input, tool);
+    case "read_bash":
+      return buildReadBashDetails(tool.input, tool);
+    case "write_bash":
+      return buildWriteBashDetails(tool.input, tool);
+    case "sql":
+      return buildSqlDetails(tool.input, tool);
+    case "github_mcp":
+      return buildGitHubMcpDetails(tool.input, tool);
+    case "web_fetch":
+      return buildWebFetchDetails(tool.input, tool);
+    case "skill":
+      return buildSkillDetails(tool.input, tool);
+    case "unknown":
+      return null;
+  }
 }

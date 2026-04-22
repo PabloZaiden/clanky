@@ -295,6 +295,25 @@ describe("LogViewer", () => {
       expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
 
+    test("uses the widened transcript shell and entry width caps", () => {
+      const userMessage = createMessageData({
+        role: "user",
+        content: "Needs more room",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const { container } = renderWithUser(
+        <ConversationViewer messages={[userMessage]} toolCalls={[]} showAssistantMessages={true} />
+      );
+
+      const transcriptShell = container.querySelector(".mx-auto") as HTMLElement | null;
+      expect(transcriptShell).not.toBeNull();
+      expect(transcriptShell?.className).toContain("max-w-7xl");
+
+      const messageWidth = container.querySelector("[data-message-role='user'] .min-w-0") as HTMLElement | null;
+      expect(messageWidth).not.toBeNull();
+      expect(messageWidth?.className).toContain("max-w-[min(88%,64rem)]");
+    });
+
     test("user messages are always shown regardless of filter settings", () => {
       const msgs: MessageData[] = [
         createMessageData({ role: "user", content: "User msg" }),
@@ -675,7 +694,7 @@ describe("LogViewer", () => {
       expect(disclosure?.getAttribute("data-open")).toBe("false");
     });
 
-    test("styles tool summaries as accent-colored transcript entries", () => {
+    test("styles tool summaries as neutral transcript entries", () => {
       const { getByText } = renderToolCall({
         name: "execute",
         input: {},
@@ -685,12 +704,13 @@ describe("LogViewer", () => {
       const toolEntry = summaryText.closest(".group") as HTMLElement;
       expect(toolEntry).not.toBeNull();
       expect(toolEntry.getAttribute("data-entry-type")).toBe("tool");
+      expect(summaryText.getAttribute("data-tool-summary")).toBe("true");
       expect(summaryText.className).toContain("text-sm");
-      expect(summaryText.className).toContain("text-sky-300");
+      expect(summaryText.className).toContain("text-gray-300");
     });
 
-    test("renders parsed tool input above the output panel", async () => {
-      const { getByText, user } = renderToolCall({
+    test("renders parsed view tool details with structured input and output sections", async () => {
+      const { container, getByText, user } = renderToolCall({
         name: "execute",
         input: { path: "/src/file.ts" },
         output: { content: "file contents here" },
@@ -699,7 +719,48 @@ describe("LogViewer", () => {
       await user.click(getByText("View /src/file.ts"));
       expect(getByText("Input")).toBeInTheDocument();
       expect(getByText("Result")).toBeInTheDocument();
+      expect(getByText("Path")).toBeInTheDocument();
+      expect(getByText("/src/file.ts")).toBeInTheDocument();
+      expect(getByText("Contents")).toBeInTheDocument();
       expect(getByText("file contents here")).toBeInTheDocument();
+      expect(container.querySelector("[data-tool-panel-tone='neutral']")).not.toBeNull();
+      expect(container.querySelector("[data-tool-block='rows']")).not.toBeNull();
+    });
+
+    test("renders glob output as a structured match list when possible", async () => {
+      const { container, getByText, user } = renderToolCall({
+        name: "read",
+        input: { pattern: "**/*.tsx", path: "/workspaces/demo/repo" },
+        output: "src/components/ChatDetails.tsx\nsrc/components/LogViewer.tsx\n",
+      });
+
+      await user.click(getByText("Find files matching '**/*.tsx' in /workspaces/demo/repo"));
+      expect(getByText("Matches")).toBeInTheDocument();
+      expect(getByText("src/components/ChatDetails.tsx")).toBeInTheDocument();
+      expect(getByText("src/components/LogViewer.tsx")).toBeInTheDocument();
+      expect(container.querySelector("[data-tool-block='list']")).not.toBeNull();
+    });
+
+    test("renders bash inputs with command details instead of raw JSON only", async () => {
+      const { container, getByText, user } = renderToolCall({
+        name: "execute",
+        input: {
+          command: "bun run build && bun run test",
+          description: "Run checks",
+          shellId: "shell-1",
+          mode: "sync",
+          initial_wait: 180,
+        },
+        output: { content: "All checks passed" },
+      });
+
+      await user.click(getByText("Run checks"));
+      expect(getByText("Description")).toBeInTheDocument();
+      expect(getByText("Shell")).toBeInTheDocument();
+      expect(getByText("Mode")).toBeInTheDocument();
+      expect(getByText("Initial wait")).toBeInTheDocument();
+      expect(container.textContent).toContain("bun run build && bun run test");
+      expect(getByText("All checks passed")).toBeInTheDocument();
     });
 
     test("hides tool calls when showTools is false", () => {
@@ -1164,7 +1225,7 @@ describe("LogViewer", () => {
   });
 
   describe("reasoning styling", () => {
-    test("renders reasoning entries as lighter plain transcript text without a boxed background", () => {
+    test("renders reasoning entries as muted plain transcript text without a boxed background", () => {
       const log = createLogEntry({
         level: "agent",
         message: "AI reasoning...",
@@ -1177,12 +1238,13 @@ describe("LogViewer", () => {
       expect(group).not.toBeNull();
       const reasoningBody = group?.querySelector("[data-log-tone='reasoning']") as HTMLElement | null;
       expect(reasoningBody).not.toBeNull();
-      expect(reasoningBody?.querySelector("[data-dimmed='false']")).not.toBeNull();
+      expect(reasoningBody?.className).toContain("text-gray-400");
+      expect(reasoningBody?.querySelector("[data-dimmed='true']")).not.toBeNull();
       expect(getByText("thinking")).toBeInTheDocument();
       expect(group?.querySelector("pre")).toBeNull();
     });
 
-    test("keeps markdown reasoning at the same non-dimmed level as plain reasoning", () => {
+    test("keeps markdown reasoning muted the same way as plain reasoning", () => {
       const log = createLogEntry({
         level: "agent",
         message: "AI reasoning...",
@@ -1195,7 +1257,8 @@ describe("LogViewer", () => {
       expect(group).not.toBeNull();
       const reasoningBody = group?.querySelector("[data-log-tone='reasoning']") as HTMLElement | null;
       expect(reasoningBody).not.toBeNull();
-      expect(reasoningBody?.querySelector("[data-dimmed='false']")).not.toBeNull();
+      expect(reasoningBody?.className).toContain("text-gray-400");
+      expect(reasoningBody?.querySelector("[data-dimmed='true']")).not.toBeNull();
       expect(getByText("thinking")).toBeInTheDocument();
     });
 
