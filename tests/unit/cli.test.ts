@@ -414,6 +414,39 @@ describe("ralpher cli", () => {
     expect(output).toContain("POST /api/provisioning-jobs - Start a remote provisioning job.");
   });
 
+  test("api rejects unknown endpoints before attempting any network request", async () => {
+    const output: string[] = [];
+    let fetchCalled = false;
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "expired-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2026-04-21T17:14:59.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "not-a-real-endpoint", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async () => {
+        fetchCalled = true;
+        throw new Error("fetch should not be called for unknown endpoints");
+      }),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(fetchCalled).toBe(false);
+    expect(output).toEqual([
+      "Unknown API endpoint: /api/not-a-real-endpoint",
+    ]);
+  });
+
   test("api sends authenticated requests to the stored server", async () => {
     const output: string[] = [];
     const requests: Array<{
@@ -591,6 +624,82 @@ describe("ralpher cli", () => {
       }, {
         error: "not_found",
         message: "Loop not found",
+      }),
+    ]);
+  });
+
+  test("api validates discoverable endpoints without query strings or fragments but preserves them in the request URL", async () => {
+    const output: string[] = [];
+    const requests: Array<{
+      url: string;
+      method: string;
+      authorization?: string | null;
+      cookie?: string | null;
+      origin?: string | null;
+    }> = [];
+
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "active-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2027-04-21T18:00:00.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "loops/test-loop?view=full#details", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          authorization: init?.headers instanceof Headers
+            ? init.headers.get("authorization")
+            : init?.headers && "authorization" in init.headers
+              ? String(init.headers["authorization"])
+              : null,
+          cookie: init?.headers instanceof Headers
+            ? init.headers.get("cookie")
+            : init?.headers && "cookie" in init.headers
+              ? String(init.headers["cookie"])
+              : null,
+          origin: init?.headers instanceof Headers
+            ? init.headers.get("origin")
+            : init?.headers && "origin" in init.headers
+              ? String(init.headers["origin"])
+              : null,
+        });
+        return jsonResponse(200, {
+          id: "test-loop",
+          status: "running",
+        });
+      }),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(requests).toEqual([
+      {
+        url: "http://example.test/api/loops/test-loop?view=full#details",
+        method: "GET",
+        authorization: "Bearer active-access",
+        cookie: "authentik_proxy=proxy-cookie-value",
+        origin: "http://example.test",
+      },
+    ]);
+    expect(output).toEqual([
+      apiCommandOutput({
+        code: 200,
+        text: "OK",
+        ok: true,
+      }, {
+        id: "test-loop",
+        status: "running",
       }),
     ]);
   });
