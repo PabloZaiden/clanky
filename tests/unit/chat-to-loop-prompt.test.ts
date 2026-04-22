@@ -29,7 +29,7 @@ describe("chat-to-loop-prompt", () => {
     expect(prompt).toContain("Infer the final goal from the entire conversation");
   });
 
-  test("keeps earlier transcript turns instead of truncating to the latest context", () => {
+  test("keeps earlier transcript turns when the full transcript fits the prompt budget", () => {
     const earliestMessage = "A".repeat(13_000);
     const prompt = buildSpawnLoopPrompt("Long conversation", [
       createMessage({ role: "user", content: earliestMessage }),
@@ -38,7 +38,58 @@ describe("chat-to-loop-prompt", () => {
     ]);
 
     expect(prompt).toContain(`User:\n${earliestMessage}`);
-    expect(prompt).not.toContain("earlier messages were omitted");
+    expect(prompt).not.toContain("Earlier message compacted");
+    expect(prompt).not.toContain("Earlier transcript summary:");
+  });
+
+  test("compacts older turns deterministically when the full transcript exceeds the prompt budget", () => {
+    const oversizedMessage = "A".repeat(40_000);
+    const prompt = buildSpawnLoopPrompt("Oversized conversation", [
+      createMessage({
+        role: "user",
+        content: oversizedMessage,
+        attachments: [{
+          id: "attachment-1",
+          data: "abc123",
+          filename: "screenshot.png",
+          mimeType: "image/png",
+          size: 6,
+        }],
+      }),
+      createMessage({ role: "assistant", content: "The socket handoff needs one guarded reconnect path." }),
+      createMessage({ role: "user", content: "Turn this into the final implementation plan." }),
+    ]);
+
+    expect(prompt).toContain("[Earlier message compacted to stay within the spawned loop prompt budget.]");
+    expect(prompt).toContain(`${"A".repeat(280)}...`);
+    expect(prompt).not.toContain(`User:\n${oversizedMessage}`);
+    expect(prompt).toContain("[1 image attachment referenced in the chat but not inlined here]");
+    expect(prompt).toContain("Turn this into the final implementation plan.");
+  });
+
+  test("summarizes the oldest compacted turns when compacted sections still exceed the prompt budget", () => {
+    const attachment = {
+      id: "attachment-1",
+      data: "abc123",
+      filename: "diagram.png",
+      mimeType: "image/png",
+      size: 6,
+    };
+    const transcript = Array.from({ length: 120 }, (_, index) => createMessage({
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: `Message ${index}: ${"B".repeat(400)}`,
+      attachments: index === 0 ? [attachment] : undefined,
+    }));
+    const prompt = buildSpawnLoopPrompt("Massive conversation", [
+      ...transcript,
+      createMessage({ role: "user", content: "Use the latest decision and write the implementation plan." }),
+    ]);
+
+    expect(prompt).toContain("Earlier transcript summary:");
+    expect(prompt).toContain("older messages summarized to keep the spawned loop prompt within size limits.");
+    expect(prompt).toContain("and 1 image attachment reference.");
+    expect(prompt).toContain("Use the latest decision and write the implementation plan.");
+    expect(prompt).not.toContain("Message 0:");
   });
 
   test("mentions image attachments without inlining them into the transcript", () => {
