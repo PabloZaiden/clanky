@@ -200,10 +200,10 @@ describe("Workspace Persistence", () => {
     });
   });
 
-  describe("getWorkspaceByDirectory", () => {
-    test("returns workspace when directory matches", async () => {
+  describe("listWorkspacesByDirectory", () => {
+    test("returns the matching workspace when directory matches", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const { createWorkspace, getWorkspaceByDirectory } = await import("../../src/persistence/workspaces");
+      const { createWorkspace, listWorkspacesByDirectory } = await import("../../src/persistence/workspaces");
 
       await ensureDataDirectories();
 
@@ -213,14 +213,14 @@ describe("Workspace Persistence", () => {
       });
       await createWorkspace(workspace);
 
-      const found = await getWorkspaceByDirectory("/home/user/projects/my-project");
-      expect(found).not.toBeNull();
-      expect(found!.name).toBe("My Project");
+      const found = await listWorkspacesByDirectory("/home/user/projects/my-project");
+      expect(found).toHaveLength(1);
+      expect(found[0]!.name).toBe("My Project");
     });
 
-    test("returns null when no workspace has the directory", async () => {
+    test("returns an empty array when no workspace has the directory", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const { createWorkspace, getWorkspaceByDirectory } = await import("../../src/persistence/workspaces");
+      const { createWorkspace, listWorkspacesByDirectory } = await import("../../src/persistence/workspaces");
 
       await ensureDataDirectories();
 
@@ -230,46 +230,13 @@ describe("Workspace Persistence", () => {
       });
       await createWorkspace(workspace);
 
-      const found = await getWorkspaceByDirectory("/home/user/different-project");
-      expect(found).toBeNull();
-    });
-
-    test("throws when multiple workspaces share the same directory", async () => {
-      const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const {
-        createWorkspace,
-        getWorkspaceByDirectory,
-      } = await import("../../src/persistence/workspaces");
-
-      await ensureDataDirectories();
-
-      const ws1 = createTestWorkspace({
-        name: "First Workspace",
-        directory: "/tmp/unique-dir",
-      });
-      await createWorkspace(ws1);
-
-      const ws2 = createTestWorkspace({
-        name: "Second Workspace",
-        directory: "/tmp/unique-dir",
-      });
-      ws2.serverSettings = createConnectServerSettings({
-        hostname: "other-host.example",
-      });
-      await createWorkspace(ws2);
-
-      await expect(getWorkspaceByDirectory("/tmp/unique-dir")).rejects.toThrow(
-        "Multiple workspaces found for directory: /tmp/unique-dir"
-      );
+      const found = await listWorkspacesByDirectory("/home/user/different-project");
+      expect(found).toEqual([]);
     });
 
     test("allows duplicate directories on different server targets", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const {
-        createWorkspace,
-        getWorkspaceByDirectoryAndServerSettings,
-        listWorkspacesByDirectory,
-      } = await import("../../src/persistence/workspaces");
+      const { createWorkspace, listWorkspacesByDirectory } = await import("../../src/persistence/workspaces");
 
       await ensureDataDirectories();
 
@@ -292,10 +259,7 @@ describe("Workspace Persistence", () => {
 
       const matches = await listWorkspacesByDirectory("/tmp/shared-dir");
       expect(matches).toHaveLength(2);
-
-      const exact = await getWorkspaceByDirectoryAndServerSettings("/tmp/shared-dir", sshSettings);
-      expect(exact).not.toBeNull();
-      expect(exact!.id).toBe(ws2.id);
+      expect(matches.some((workspace) => workspace.id === ws2.id)).toBe(true);
     });
 
     test("allows duplicate directories with same server fingerprint (identified by ID)", async () => {
@@ -596,9 +560,9 @@ describe("Workspace Persistence", () => {
       expect(workspaces[0]!.serverSettings).toEqual(customSettings);
     });
 
-    test("getWorkspaceByDirectory includes server settings", async () => {
+    test("listWorkspacesByDirectory includes server settings", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const { createWorkspace, getWorkspaceByDirectory } = await import("../../src/persistence/workspaces");
+      const { createWorkspace, listWorkspacesByDirectory } = await import("../../src/persistence/workspaces");
 
       await ensureDataDirectories();
 
@@ -614,14 +578,14 @@ describe("Workspace Persistence", () => {
       workspace.serverSettings = customSettings;
       await createWorkspace(workspace);
 
-      const found = await getWorkspaceByDirectory("/tmp/directory-settings");
-      expect(found).not.toBeNull();
-      expect(found!.serverSettings).toEqual(customSettings);
+      const found = await listWorkspacesByDirectory("/tmp/directory-settings");
+      expect(found).toHaveLength(1);
+      expect(found[0]!.serverSettings).toEqual(customSettings);
     });
 
     test("legacy experimental transports fall back to stdio", async () => {
       const { ensureDataDirectories, getDatabase } = await import("../../src/persistence/database");
-      const { getWorkspace, getWorkspaceByDirectory } = await import("../../src/persistence/workspaces");
+      const { getWorkspace, listWorkspacesByDirectory } = await import("../../src/persistence/workspaces");
 
       await ensureDataDirectories();
 
@@ -648,11 +612,12 @@ describe("Workspace Persistence", () => {
         ],
       );
 
-      const workspace = await getWorkspaceByDirectory("/tmp/legacy-transport");
-      expect(workspace).not.toBeNull();
-      expect(workspace!.serverSettings.agent.transport).toBe("stdio");
+      const workspaces = await listWorkspacesByDirectory("/tmp/legacy-transport");
+      expect(workspaces).toHaveLength(1);
+      const workspace = workspaces[0]!;
+      expect(workspace.serverSettings.agent.transport).toBe("stdio");
 
-      const loadedById = await getWorkspace(workspace!.id);
+      const loadedById = await getWorkspace(workspace.id);
       expect(loadedById).not.toBeNull();
       expect(loadedById!.serverSettings.agent.transport).toBe("stdio");
     });
@@ -873,7 +838,7 @@ describe("Workspace Persistence", () => {
 
     test("import preserves serverSettings including password", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const { importWorkspaces, getWorkspaceByDirectory } = await import("../../src/persistence/workspaces");
+      const { importWorkspaces, listWorkspacesByDirectory } = await import("../../src/persistence/workspaces");
 
       await ensureDataDirectories();
 
@@ -897,19 +862,20 @@ describe("Workspace Persistence", () => {
 
       await importWorkspaces(importData);
 
-      const workspace = await getWorkspaceByDirectory("/tmp/secure-ws");
-      expect(workspace).not.toBeNull();
-      expect(workspace!.name).toBe("Secure Workspace");
-      expect(workspace!.serverSettings).toEqual(settings);
-      expect(workspace!.serverSettings.agent.transport).toBe("ssh");
-      if (workspace!.serverSettings.agent.transport === "ssh") {
-        expect(workspace!.serverSettings.agent.password).toBe("super-secret");
+      const workspaces = await listWorkspacesByDirectory("/tmp/secure-ws");
+      expect(workspaces).toHaveLength(1);
+      const workspace = workspaces[0]!;
+      expect(workspace.name).toBe("Secure Workspace");
+      expect(workspace.serverSettings).toEqual(settings);
+      expect(workspace.serverSettings.agent.transport).toBe("ssh");
+      if (workspace.serverSettings.agent.transport === "ssh") {
+        expect(workspace.serverSettings.agent.password).toBe("super-secret");
       }
     });
 
     test("import trims whitespace from name and directory", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const { importWorkspaces, getWorkspaceByDirectory } = await import("../../src/persistence/workspaces");
+      const { importWorkspaces, listWorkspacesByDirectory } = await import("../../src/persistence/workspaces");
 
       await ensureDataDirectories();
 
@@ -934,10 +900,10 @@ describe("Workspace Persistence", () => {
       expect(result.details[0]!.directory).toBe("/tmp/padded-dir");
 
       // Workspace should be findable by trimmed directory
-      const ws = await getWorkspaceByDirectory("/tmp/padded-dir");
-      expect(ws).not.toBeNull();
-      expect(ws!.name).toBe("Padded Name");
-      expect(ws!.directory).toBe("/tmp/padded-dir");
+      const workspaces = await listWorkspacesByDirectory("/tmp/padded-dir");
+      expect(workspaces).toHaveLength(1);
+      expect(workspaces[0]!.name).toBe("Padded Name");
+      expect(workspaces[0]!.directory).toBe("/tmp/padded-dir");
     });
 
     test("import creates workspaces regardless of matching directories (even with whitespace)", async () => {
