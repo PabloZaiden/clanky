@@ -725,8 +725,11 @@ describe("LogViewer", () => {
       expect(getByText("file contents here")).toBeInTheDocument();
       const panel = container.querySelector("[data-tool-panel-tone='neutral']") as HTMLElement | null;
       expect(panel).not.toBeNull();
-      expect(panel?.className).toContain("border-sky-500/20");
-      expect(panel?.className).toContain("bg-[#101826]");
+      if (!panel) {
+        throw new Error("Expected tool detail panel to exist");
+      }
+      expect(panel.className).toContain("border-sky-500/20");
+      expect(panel.className).toContain("bg-[#101826]");
       expect(container.querySelector("[data-tool-block='rows']")).not.toBeNull();
     });
 

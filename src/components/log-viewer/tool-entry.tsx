@@ -18,6 +18,8 @@ interface ToolEntryProps {
   toolPathDisplayRoot?: string;
 }
 
+const toolPanelClassName = "space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4";
+
 /** Renders text-like output content while preserving embedded newlines and tabs. */
 function RenderedContent({ output }: { output: unknown }) {
   const content = getTextFromOutput(output) ?? formatToolValue(output);
@@ -149,7 +151,7 @@ export const ToolEntry = memo(function ToolEntry({
 
   const renderInputContent = useCallback(
     () => (
-      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4" data-tool-panel-tone="neutral">
+      <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
           <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">Input</div>
           {inputContent}
@@ -161,7 +163,7 @@ export const ToolEntry = memo(function ToolEntry({
 
   const renderOutputOnlyContent = useCallback(
     () => (
-      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4" data-tool-panel-tone="neutral">
+      <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
           <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">{meta.outputLabel}</div>
           {outputContent}
@@ -173,7 +175,7 @@ export const ToolEntry = memo(function ToolEntry({
 
   const renderCombinedContent = useCallback(
     () => (
-      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4" data-tool-panel-tone="neutral">
+      <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
           <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">Input</div>
           {inputContent}
