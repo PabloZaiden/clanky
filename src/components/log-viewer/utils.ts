@@ -94,3 +94,17 @@ export function annotateDisplayEntries(sorted: EntryBase[]): DisplayEntry[] {
     showGroupHeader: i === 0 || keys[i] !== keys[i - 1],
   }));
 }
+
+export function getEntrySpacingClass(entry: DisplayEntry, previousEntry?: DisplayEntry): string {
+  if (!previousEntry) {
+    return "";
+  }
+
+  if (previousEntry.type === "tool" && entry.type === "tool") {
+    return "mt-3 sm:mt-4";
+  }
+
+  return entry.showTimestamp || entry.showGroupHeader
+    ? "mt-6 sm:mt-7"
+    : "mt-3 sm:mt-4";
+}
