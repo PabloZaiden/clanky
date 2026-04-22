@@ -20,7 +20,6 @@ export {
 } from "./update";
 
 export {
-  DEFAULT_CLIENT_ID,
   getAuthorizedHeaders,
   getTokenErrorMessage,
   getValidatedCredentials,
