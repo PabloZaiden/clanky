@@ -402,6 +402,8 @@ export class ChatManager {
       baseBranch,
       useWorktree: chat.config.useWorktree,
       planMode: true,
+      autoAcceptPlan: false,
+      fullyAutonomous: false,
     });
 
     try {
@@ -459,6 +461,8 @@ export class ChatManager {
       baseBranch,
       useWorktree: working.chat.config.useWorktree,
       planMode: true,
+      autoAcceptPlan: false,
+      fullyAutonomous: false,
     });
 
     try {
