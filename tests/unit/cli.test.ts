@@ -499,6 +499,79 @@ describe("ralpher cli", () => {
     ]);
   });
 
+  test("api validates discoverable endpoints without query strings or fragments but preserves them in the request URL", async () => {
+    const output: string[] = [];
+    const requests: Array<{
+      url: string;
+      method: string;
+      authorization?: string | null;
+      cookie?: string | null;
+      origin?: string | null;
+    }> = [];
+
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "active-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2027-04-21T18:00:00.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "loops/test-loop?view=full#details", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          authorization: init?.headers instanceof Headers
+            ? init.headers.get("authorization")
+            : init?.headers && "authorization" in init.headers
+              ? String(init.headers["authorization"])
+              : null,
+          cookie: init?.headers instanceof Headers
+            ? init.headers.get("cookie")
+            : init?.headers && "cookie" in init.headers
+              ? String(init.headers["cookie"])
+              : null,
+          origin: init?.headers instanceof Headers
+            ? init.headers.get("origin")
+            : init?.headers && "origin" in init.headers
+              ? String(init.headers["origin"])
+              : null,
+        });
+        return jsonResponse(200, {
+          id: "test-loop",
+          status: "running",
+        });
+      }),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(requests).toEqual([
+      {
+        url: "http://example.test/api/loops/test-loop?view=full#details",
+        method: "GET",
+        authorization: "Bearer active-access",
+        cookie: "authentik_proxy=proxy-cookie-value",
+        origin: "http://example.test",
+      },
+    ]);
+    expect(output).toEqual([
+      "Status: 200 OK",
+      JSON.stringify({
+        id: "test-loop",
+        status: "running",
+      }, null, 2),
+    ]);
+  });
+
   test("api reports invalid JSON payloads as usage errors", async () => {
     const output: string[] = [];
     await saveStoredCliCredentials({

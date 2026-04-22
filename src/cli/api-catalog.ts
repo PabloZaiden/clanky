@@ -360,6 +360,19 @@ function normalizeEndpointPath(input: string): string {
   return `/api/${trimmed}`;
 }
 
+function stripEndpointSuffix(input: string): string {
+  const queryIndex = input.indexOf("?");
+  const fragmentIndex = input.indexOf("#");
+  let endIndex = input.length;
+  if (queryIndex >= 0) {
+    endIndex = queryIndex;
+  }
+  if (fragmentIndex >= 0 && fragmentIndex < endIndex) {
+    endIndex = fragmentIndex;
+  }
+  return input.slice(0, endIndex);
+}
+
 function matchesRoutePattern(routePath: string, endpointPath: string): boolean {
   const routePattern = routePath
     .split("/")
@@ -382,7 +395,7 @@ export function listApiEndpoints(): ApiEndpointCatalogEntry[] {
 }
 
 export function findApiEndpoint(input: string): ApiEndpointCatalogEntry | null {
-  const normalizedPath = normalizeEndpointPath(input);
+  const normalizedPath = normalizeEndpointPath(stripEndpointSuffix(input));
   const entries = getRouteEntries();
   return entries.find((entry) => entry.path === normalizedPath)
     ?? entries.find((entry) => matchesRoutePattern(entry.path, normalizedPath))
