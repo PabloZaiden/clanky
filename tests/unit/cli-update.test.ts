@@ -266,6 +266,49 @@ describe("ralpher cli update", () => {
     ]);
   });
 
+  test("reports temp directory permission failures clearly", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["update"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      fetchFn: createFetchMock(async (input: string | URL | Request) => {
+        if (String(input).includes("/releases/latest")) {
+          return jsonResponse(200, {
+            tag_name: "v1.2.4",
+            assets: [
+              {
+                name: "ralpher-v1.2.4-linux-x64",
+                browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
+              },
+            ],
+          });
+        }
+
+        return binaryResponse(200, "next-binary");
+      }),
+      updateDependencies: {
+        currentVersion: "1.2.3",
+        getPlatform: () => ({
+          platform: "linux",
+          arch: "x64",
+        }),
+        getExecutablePath: () => "/usr/local/bin/ralpher",
+        resolveRealPath: async (path: string) => path,
+        createTempDirectory: async () => {
+          const error = new Error("permission denied") as Error & { code?: string };
+          error.code = "EACCES";
+          throw error;
+        },
+      },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      "ERR:Error: Cannot update /usr/local/bin/ralpher: permission denied. Re-run with permission to modify the installed binary or use the installer script.",
+    ]);
+  });
+
   test("specific-version updates install the requested tag", async () => {
     const output: string[] = [];
     const requests: string[] = [];

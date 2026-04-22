@@ -286,11 +286,13 @@ async function replaceInstalledBinary(
   dependencies: CliUpdateDependencies,
 ): Promise<string> {
   const targetPath = await resolveInstalledBinaryPath(dependencies);
-  const tempDirectory = await dependencies.createTempDirectory(dirname(targetPath));
-  const tempPath = join(tempDirectory, asset.assetName);
+  let tempDirectory: string | undefined;
+  let tempPath: string | undefined;
   let tempCreated = false;
 
   try {
+    tempDirectory = await dependencies.createTempDirectory(dirname(targetPath));
+    tempPath = join(tempDirectory, asset.assetName);
     const response = await dependencies.fetchFn(asset.downloadUrl);
     if (!response.ok) {
       throw new Error(`Failed to download ${asset.assetName}: GitHub returned ${String(response.status)}.`);
@@ -308,10 +310,12 @@ async function replaceInstalledBinary(
   } catch (error) {
     throw toPermissionMessage(targetPath, error);
   } finally {
-    if (tempCreated) {
+    if (tempCreated && tempPath) {
       await dependencies.removeFile(tempPath);
     }
-    await dependencies.removeFile(tempDirectory);
+    if (tempDirectory) {
+      await dependencies.removeFile(tempDirectory);
+    }
   }
 }
 
