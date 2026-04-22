@@ -135,9 +135,10 @@ export async function startDraftLoop({
       }),
     });
 
-    if (response.status === 409) {
-      const error = await response.json() as Partial<UncommittedChangesError>;
-      if (error.error === "uncommitted_changes") {
+    if (!response.ok) {
+      const error = await response.json() as Partial<UncommittedChangesError> & { message?: string };
+
+      if (response.status === 409 && error.error === "uncommitted_changes") {
         return {
           status: "uncommitted_changes",
           error: {
@@ -147,10 +148,6 @@ export async function startDraftLoop({
           },
         };
       }
-    }
-
-    if (!response.ok) {
-      const error = await response.json() as { message?: string };
       return {
         status: "failed",
         message: error.message || "Failed to start loop",
