@@ -29,8 +29,6 @@ export interface UseWorkspacesResult {
   pullLatestChanges: (
     id: string,
   ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;
-  /** Get workspace by directory */
-  getWorkspaceByDirectory: (directory: string) => Promise<Workspace | null>;
   /** Fetch all workspace configs as JSON from the export API */
   exportConfig: () => Promise<WorkspaceExportData | null>;
   /** Import workspace configs from a JSON object */
@@ -201,26 +199,6 @@ export function useWorkspaces(): UseWorkspacesResult {
     }
   }, []);
 
-  // Get workspace by directory
-  const getWorkspaceByDirectory = useCallback(async (directory: string): Promise<Workspace | null> => {
-    try {
-      const response = await appFetch(`/api/workspaces/by-directory?directory=${encodeURIComponent(directory)}`);
-      if (!response.ok) {
-        if (response.status === 404 || response.status === 409) {
-          return null;
-        }
-        throw new Error(`Failed to get workspace: ${response.statusText}`);
-      }
-      return (await response.json()) as Workspace;
-    } catch (err) {
-      log.error("Failed to get workspace by directory", {
-        directory,
-        error: String(err),
-      });
-      return null;
-    }
-  }, []);
-
   // Export all workspace configs
   const exportConfig = useCallback(async (): Promise<WorkspaceExportData | null> => {
     try {
@@ -302,7 +280,6 @@ export function useWorkspaces(): UseWorkspacesResult {
     updateWorkspace,
     deleteWorkspace,
     pullLatestChanges,
-    getWorkspaceByDirectory,
     exportConfig,
     importConfig,
   };
