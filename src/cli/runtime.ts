@@ -172,13 +172,18 @@ async function runApiCommand(
     return 0;
   }
 
+  const endpointPath = normalizeApiEndpointPath(command.endpoint);
+  if (!findApiEndpoint(endpointPath)) {
+    out(`Unknown API endpoint: ${endpointPath}`);
+    return 1;
+  }
+
   let credentials = await getValidatedCredentials({}, dependencies);
   if (!credentials) {
     out("Not logged in.");
     return 1;
   }
 
-  const endpointPath = normalizeApiEndpointPath(command.endpoint);
   const requestHeaders = getAuthorizedHeaders(credentials);
   let requestBody: string | undefined;
   if (command.payload !== undefined) {

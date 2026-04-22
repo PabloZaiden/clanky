@@ -390,6 +390,39 @@ describe("ralpher cli", () => {
     expect(output).toContain("POST /api/provisioning-jobs - Start a remote provisioning job.");
   });
 
+  test("api rejects unknown endpoints before attempting any network request", async () => {
+    const output: string[] = [];
+    let fetchCalled = false;
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "expired-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2026-04-21T17:14:59.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "not-a-real-endpoint", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async () => {
+        fetchCalled = true;
+        throw new Error("fetch should not be called for unknown endpoints");
+      }),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(fetchCalled).toBe(false);
+    expect(output).toEqual([
+      "Unknown API endpoint: /api/not-a-real-endpoint",
+    ]);
+  });
+
   test("api sends authenticated requests to the stored server", async () => {
     const output: string[] = [];
     const requests: Array<{
