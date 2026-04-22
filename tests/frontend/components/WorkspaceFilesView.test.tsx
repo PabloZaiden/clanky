@@ -813,8 +813,6 @@ describe("WorkspaceFilesView", () => {
     await waitFor(() => {
       expect(getByRole("button", { name: longFileName })).toBeInTheDocument();
     });
-
-    expect(getByRole("button", { name: longFileName })).toBeInTheDocument();
   });
 
   test("toggles hidden files from the explorer toolbar", async () => {
