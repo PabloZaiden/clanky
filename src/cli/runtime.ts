@@ -1,5 +1,5 @@
 import { startServer } from "../server";
-import { formatRalpherVersion } from "../version";
+import { formatRalpherVersion, RALPHER_VERSION } from "../version";
 import {
   DEFAULT_CLIENT_ID,
   getAuthorizedHeaders,
@@ -19,11 +19,13 @@ import {
   listApiEndpoints,
   normalizeApiEndpointPath,
 } from "./api-catalog";
+import { runUpdateCommand, type CliUpdateDependencies, type UpdateCommandOptions } from "./update";
 
 const CLI_USAGE = [
   "Usage:",
   "  ralpher web",
   "  ralpher version",
+  "  ralpher update [--check] [--version <version>]",
   "  ralpher auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
   "  ralpher status [base-url]",
   "  ralpher api",
@@ -48,11 +50,14 @@ export type CliCommand =
     action: "web";
   }
   | {
-    action: "version";
-  }
+      action: "version";
+    }
   | ({
-    action: "auth";
-  } & AuthCommandOptions)
+      action: "update";
+    } & UpdateCommandOptions)
+  | ({
+      action: "auth";
+    } & AuthCommandOptions)
   | ({
     action: "status";
   } & StatusCommandOptions)
@@ -75,6 +80,7 @@ export interface CliRuntimeDependencies extends CliOutputDependencies {
   now?: () => Date;
   startServerFn?: typeof startServer;
   runCliFn?: typeof runCli;
+  updateDependencies?: Partial<CliUpdateDependencies>;
 }
 
 function createUsageError(message: string): Error {
@@ -95,9 +101,11 @@ function parseOptionValue(option: string, rawValue?: string): string {
 function parseCommandArguments(
   args: string[],
   allowedOptions: string[],
-): { positionals: string[]; options: Record<string, string> } {
+  allowedFlags: string[] = [],
+): { positionals: string[]; options: Record<string, string>; flags: Set<string> } {
   const positionals: string[] = [];
   const options: Record<string, string> = {};
+  const flags = new Set<string>();
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -111,6 +119,13 @@ function parseCommandArguments(
 
     const [rawName, inlineValue] = arg.split("=", 2);
     const name = rawName ?? arg;
+    if (allowedFlags.includes(name)) {
+      if (inlineValue !== undefined) {
+        throw createUsageError(`Option does not take a value: ${name}`);
+      }
+      flags.add(name);
+      continue;
+    }
     if (!allowedOptions.includes(name)) {
       throw createUsageError(`Unknown option: ${name}`);
     }
@@ -122,7 +137,7 @@ function parseCommandArguments(
     }
   }
 
-  return { positionals, options };
+  return { positionals, options, flags };
 }
 
 type ParsedApiResponse = {
@@ -303,6 +318,21 @@ export function parseCliCommand(args: string[]): CliCommand {
     return { action };
   }
 
+  if (action === "update") {
+    const { positionals, options, flags } = parseCommandArguments(restArgs, ["--version"], ["--check"]);
+    if (positionals.length > 0) {
+      throw createUsageError(`Unexpected argument: ${positionals[0]}`);
+    }
+    if (flags.has("--check") && options["--version"]) {
+      throw createUsageError("Cannot combine --check with --version");
+    }
+    return {
+      action,
+      checkOnly: flags.has("--check"),
+      version: options["--version"]?.trim(),
+    };
+  }
+
   if (action === "auth") {
     const { positionals, options } = parseCommandArguments(restArgs, ["--client-id", "--cookies"]);
     if (positionals.length === 0) {
@@ -405,6 +435,13 @@ export async function runCli(
       case "version":
         out(formatRalpherVersion());
         return 0;
+      case "update":
+        return await runUpdateCommand(command, {
+          fetchFn,
+          out,
+          currentVersion: RALPHER_VERSION,
+          ...dependencies.updateDependencies,
+        });
       case "auth":
         return await runAuthCommand(command, {
           fetchFn,

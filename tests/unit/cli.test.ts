@@ -15,6 +15,7 @@ const CLI_USAGE = [
   "Usage:",
   "  ralpher web",
   "  ralpher version",
+  "  ralpher update [--check] [--version <version>]",
   "  ralpher auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
   "  ralpher status [base-url]",
   "  ralpher api",
@@ -136,6 +137,34 @@ describe("ralpher cli", () => {
 
     expect(exitCode).toBe(0);
     expect(output).toEqual([CLI_HELP]);
+  });
+
+  test("update rejects combining --check with --version", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["update", "--check", "--version", "v1.2.4"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      `ERR:Error: Cannot combine --check with --version\n\n${CLI_USAGE}`,
+    ]);
+  });
+
+  test("update rejects boolean flags with inline values", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["update", "--check=true"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      `ERR:Error: Option does not take a value: --check\n\n${CLI_USAGE}`,
+    ]);
   });
 
   test("auth requires the base URL as the first positional argument", async () => {
