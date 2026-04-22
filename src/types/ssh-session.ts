@@ -9,9 +9,20 @@
 export type SshConnectionMode = "dtach" | "direct";
 
 export const DEFAULT_SSH_CONNECTION_MODE: SshConnectionMode = "dtach";
+export const DEFAULT_SSH_SESSION_USE_TMUX = true;
 
 export function normalizeSshConnectionMode(value: unknown): SshConnectionMode {
   return value === "direct" ? "direct" : "dtach";
+}
+
+export function normalizeSshSessionUseTmux(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  return DEFAULT_SSH_SESSION_USE_TMUX;
 }
 
 /**
@@ -44,6 +55,8 @@ export interface SshSessionBaseConfig {
   name: string;
   /** How this saved session connects to the remote host */
   connectionMode: SshConnectionMode;
+  /** Whether the remote shell bootstrap should try to open tmux first */
+  useTmux: boolean;
   /** Remote identifier used for persistent session sockets and direct-shell tty tracking */
   remoteSessionName: string;
   /** ISO 8601 timestamp of when the session was created */
@@ -68,6 +81,8 @@ export interface SshSessionConfig {
   directory: string;
   /** How this saved session connects to the remote host */
   connectionMode: SshSessionBaseConfig["connectionMode"];
+  /** Whether the remote shell bootstrap should try to open tmux first */
+  useTmux: SshSessionBaseConfig["useTmux"];
   /** Remote identifier used for persistent session sockets and direct-shell tty tracking */
   remoteSessionName: SshSessionBaseConfig["remoteSessionName"];
   /** ISO 8601 timestamp of when the session was created */

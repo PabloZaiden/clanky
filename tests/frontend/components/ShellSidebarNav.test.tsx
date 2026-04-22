@@ -68,12 +68,13 @@ function createStandaloneServerSession(overrides?: Partial<SshServerSession>): S
     config: {
       id: overrides?.config?.id ?? "server-session-1",
       name: overrides?.config?.name ?? "Standalone Server Session",
-      connectionMode: overrides?.config?.connectionMode ?? "dtach",
-      remoteSessionName: overrides?.config?.remoteSessionName ?? "server-session-1",
       sshServerId: overrides?.config?.sshServerId ?? "server-1",
+      ...overrides?.config,
+      connectionMode: overrides?.config?.connectionMode ?? "dtach",
+      useTmux: overrides?.config?.useTmux ?? true,
+      remoteSessionName: overrides?.config?.remoteSessionName ?? "server-session-1",
       createdAt: overrides?.config?.createdAt ?? "2026-04-16T12:00:00.000Z",
       updatedAt: overrides?.config?.updatedAt ?? "2026-04-16T12:00:00.000Z",
-      ...overrides?.config,
     },
     state: {
       status: overrides?.state?.status ?? "connected",

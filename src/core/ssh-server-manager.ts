@@ -4,6 +4,7 @@
 
 import {
   DEFAULT_SSH_CONNECTION_MODE,
+  DEFAULT_SSH_SESSION_USE_TMUX,
   type CreateSshServerRequest,
   type CreateSshServerSessionRequest,
   type CheckSshServerPrerequisitesRequest,
@@ -137,6 +138,7 @@ export class SshServerManager {
   async createSession(serverId: string, request: CreateSshServerSessionRequest): Promise<SshServerSession> {
     const server = await this.requireServerConfig(serverId);
     const connectionMode = this.getConnectionMode(request);
+    const useTmux = request.useTmux ?? DEFAULT_SSH_SESSION_USE_TMUX;
 
     const now = new Date().toISOString();
     const sessionCount = await countSshServerSessionsByServerId(serverId);
@@ -147,6 +149,7 @@ export class SshServerManager {
         sshServerId: serverId,
         name: request.name?.trim() || buildDefaultSshSessionName(server.name, sessionCount),
         connectionMode,
+        useTmux,
         remoteSessionName: buildRemoteSessionName(sessionId),
         createdAt: now,
         updatedAt: now,

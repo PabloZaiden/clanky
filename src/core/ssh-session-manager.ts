@@ -4,6 +4,7 @@
 
 import {
   DEFAULT_SSH_CONNECTION_MODE,
+  DEFAULT_SSH_SESSION_USE_TMUX,
   type CreateSshSessionRequest,
   type SshConnectionMode,
   type SshSession,
@@ -66,6 +67,7 @@ export class SshSessionManager {
   async createSession(request: CreateSshSessionRequest): Promise<SshSession> {
     const workspace = await requireSshWorkspace(request.workspaceId);
     const connectionMode = request.connectionMode ?? DEFAULT_SSH_CONNECTION_MODE;
+    const useTmux = request.useTmux ?? DEFAULT_SSH_SESSION_USE_TMUX;
     await touchWorkspace(workspace.id);
 
     const requestedName = request.name?.trim();
@@ -77,6 +79,7 @@ export class SshSessionManager {
       name: sessionName,
       directory: workspace.directory,
       connectionMode,
+      useTmux,
     });
   }
 
@@ -144,6 +147,7 @@ export class SshSessionManager {
       directory,
       loopId,
       connectionMode: DEFAULT_SSH_CONNECTION_MODE,
+      useTmux: DEFAULT_SSH_SESSION_USE_TMUX,
     });
   }
 
@@ -219,6 +223,7 @@ export class SshSessionManager {
     directory: string;
     loopId?: string;
     connectionMode: SshConnectionMode;
+    useTmux: boolean;
   }): Promise<SshSession> {
     const now = new Date().toISOString();
     const sessionId = crypto.randomUUID();
@@ -230,6 +235,7 @@ export class SshSessionManager {
         loopId: options.loopId,
         directory: options.directory,
         connectionMode: options.connectionMode,
+        useTmux: options.useTmux,
         remoteSessionName: buildRemoteSessionName(sessionId),
         createdAt: now,
         updatedAt: now,

@@ -29,6 +29,7 @@ function createTestSshServerSession(overrides?: Partial<SshServerSession["config
       sshServerId: overrides?.sshServerId ?? "ssh-server-1",
       name: overrides?.name ?? "Deploy shell",
       connectionMode: "dtach",
+      useTmux: overrides?.useTmux ?? true,
       remoteSessionName: overrides?.remoteSessionName ?? "ralpher-ssh-session-1",
       createdAt: overrides?.createdAt ?? now,
       updatedAt: overrides?.updatedAt ?? now,

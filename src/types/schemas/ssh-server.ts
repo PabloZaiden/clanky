@@ -44,6 +44,7 @@ export const CreateSshServerSessionRequestSchema = z.object({
   name: z.string().trim().min(1, "name is required"),
   credentialToken: SshCredentialTokenSchema.nullable(),
   connectionMode: SshConnectionModeSchema,
+  useTmux: z.boolean().optional(),
 });
 
 export const DeleteSshServerSessionRequestSchema = z.object({

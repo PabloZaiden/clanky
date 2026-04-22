@@ -78,6 +78,7 @@ function createSshServerSession(serverId: string, id = "standalone-1"): SshServe
       name: "Standalone Session",
       sshServerId: serverId,
       connectionMode: "dtach",
+      useTmux: true,
       remoteSessionName: `ralpher-${id}`,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",

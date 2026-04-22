@@ -18,13 +18,14 @@ afterEach(() => {
 });
 
 describe("createStandaloneSshSessionApi", () => {
-  test("trims the name and forwards the requested connection mode", async () => {
+  test("trims the name and forwards the requested connection mode and tmux preference", async () => {
     api.post("/api/ssh-servers/:id/sessions", (req) => {
       expect(req.params["id"]).toBe("server-1");
       expect(req.body).toEqual({
         name: "Deploy shell",
         credentialToken: null,
         connectionMode: "direct",
+        useTmux: false,
       });
       return {
         config: {
@@ -32,6 +33,7 @@ describe("createStandaloneSshSessionApi", () => {
           sshServerId: "server-1",
           name: "Deploy shell",
           connectionMode: "direct",
+          useTmux: false,
           remoteSessionName: "ralpher-standalone-1",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -46,9 +48,11 @@ describe("createStandaloneSshSessionApi", () => {
       serverId: "server-1",
       name: "  Deploy shell  ",
       connectionMode: "direct",
+      useTmux: false,
     });
 
     expect(session.config.connectionMode).toBe("direct");
+    expect(session.config.useTmux).toBe(false);
     expect(api.calls("/api/ssh-servers/:id/sessions", "POST")).toHaveLength(1);
   });
 });

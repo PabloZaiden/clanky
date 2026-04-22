@@ -249,11 +249,13 @@ describe("Standalone SSH servers API integration", () => {
         credentialToken: exchange.credentialToken,
         name: "Deploy shell",
         connectionMode: "dtach",
+        useTmux: false,
       }),
     });
     expect(createSessionResponse.status).toBe(201);
-    const session = await createSessionResponse.json() as { config: { id: string; name: string } };
+    const session = await createSessionResponse.json() as { config: { id: string; name: string; useTmux: boolean } };
     expect(session.config.name).toBe("Deploy shell");
+    expect(session.config.useTmux).toBe(false);
 
     const getSessionResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
     expect(getSessionResponse.ok).toBe(true);
@@ -283,10 +285,11 @@ describe("Standalone SSH servers API integration", () => {
     });
     expect(createSessionResponse.status).toBe(201);
     const session = await createSessionResponse.json() as {
-      config: { id: string; name: string; connectionMode: string };
+      config: { id: string; name: string; connectionMode: string; useTmux: boolean };
     };
     expect(session.config.name).toBe("Direct shell");
     expect(session.config.connectionMode).toBe("direct");
+    expect(session.config.useTmux).toBe(true);
   });
 
   test("deletes direct standalone SSH sessions", async () => {

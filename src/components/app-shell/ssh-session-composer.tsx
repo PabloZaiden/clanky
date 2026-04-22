@@ -35,6 +35,7 @@ export function SshSessionComposer({
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>(initialWorkspaceId ?? workspaces[0]?.id);
   const [selectedServerId, setSelectedServerId] = useState(initialServerId ?? servers[0]?.config.id ?? "");
   const [connectionMode, setConnectionMode] = useState<SshConnectionMode>("dtach");
+  const [useTmux, setUseTmux] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export function SshSessionComposer({
           workspaceId: selectedWorkspaceId,
           name: "SSH session",
           connectionMode,
+          useTmux,
         });
         onNavigate({ view: "ssh", sshSessionId: session.config.id });
         return;
@@ -75,6 +77,7 @@ export function SshSessionComposer({
       const session = await onCreateStandaloneSession(selectedServerId, {
         name: "SSH session",
         connectionMode,
+        useTmux,
       });
       onNavigate({ view: "ssh", sshSessionId: session.config.id });
     } catch (error) {
@@ -134,6 +137,26 @@ export function SshSessionComposer({
               Persistent SSH survives reconnects; direct SSH is better for one-off debugging sessions.
             </p>
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-neutral-950/50">
+          <label className="flex items-start gap-3" htmlFor="ssh-use-tmux">
+            <input
+              id="ssh-use-tmux"
+              type="checkbox"
+              checked={useTmux}
+              onChange={(event) => setUseTmux(event.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-100 dark:focus:ring-gray-600"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Start in tmux when available
+              </span>
+              <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                Disable this if you want the session to open a normal interactive shell without trying tmux first.
+              </span>
+            </span>
+          </label>
         </div>
 
         {targetType === "workspace" ? (
