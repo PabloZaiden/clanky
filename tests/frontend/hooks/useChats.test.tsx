@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useChats } from "@/hooks/useChats";
-import type { Chat } from "@/types";
+import { DEFAULT_CHAT_INTERRUPT_REASON, type Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 
@@ -136,5 +136,32 @@ describe("useChats", () => {
         timestamp: "2025-01-01T00:00:05.000Z",
       },
     ]);
+  });
+
+  test("sends the default interrupt reason when callers omit one", async () => {
+    const baseChat = createChat();
+    const interruptedChat = createChat({
+      state: {
+        ...baseChat.state,
+        status: "interrupting",
+      },
+    });
+
+    api.get("/api/chats", () => [baseChat]);
+    api.post("/api/chats/:id/interrupt", () => interruptedChat, 200);
+
+    const { result } = renderHook(() => useChats());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.interruptChat(CHAT_ID);
+    });
+
+    const interruptCalls = api.calls("/api/chats/:id/interrupt", "POST");
+    expect(interruptCalls).toHaveLength(1);
+    expect(interruptCalls[0]?.body).toEqual({ reason: DEFAULT_CHAT_INTERRUPT_REASON });
   });
 });

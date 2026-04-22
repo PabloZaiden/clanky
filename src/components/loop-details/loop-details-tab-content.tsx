@@ -73,6 +73,7 @@ export function LoopDetailsTabContent({
   applySafeAreaBottomToLogFocusBar = false,
 }: LoopDetailsTabContentProps) {
   const { config, state } = loop;
+  const toolPathDisplayRoot = state.git?.worktreePath ?? config.directory;
 
   return (
     <div
@@ -90,6 +91,7 @@ export function LoopDetailsTabContent({
           {...logDisplay}
           markdownEnabled={markdownEnabled}
           isLogActive={isLogActive}
+          toolPathDisplayRoot={toolPathDisplayRoot}
           isFocusMode={isLogFocusMode}
           onEnterFocusMode={onEnterLogFocusMode}
           onExitFocusMode={onExitLogFocusMode}

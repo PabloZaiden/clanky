@@ -9,6 +9,7 @@ interface ToolEntryProps {
   timestamp: string;
   showTimestamp: boolean;
   spacingClass: string;
+  toolPathDisplayRoot?: string;
 }
 
 /** Renders text-like output content while preserving embedded newlines and tabs. */
@@ -22,8 +23,14 @@ function RenderedContent({ output }: { output: unknown }) {
   );
 }
 
-export const ToolEntry = memo(function ToolEntry({ data: tool, timestamp, showTimestamp, spacingClass }: ToolEntryProps) {
-  const meta = getToolMeta(tool);
+export const ToolEntry = memo(function ToolEntry({
+  data: tool,
+  timestamp,
+  showTimestamp,
+  spacingClass,
+  toolPathDisplayRoot,
+}: ToolEntryProps) {
+  const meta = getToolMeta(tool, { pathDisplayRoot: toolPathDisplayRoot });
   const toolSummaryClassName = "text-[11px] italic leading-relaxed text-gray-400";
 
   const inputSummary = (

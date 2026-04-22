@@ -1,4 +1,5 @@
 import type { ToolCallData } from "../../types";
+import { formatToolPathForDisplay } from "./tool-paths";
 
 export type InferredToolKind =
   | "view"
@@ -23,6 +24,10 @@ export interface ToolMeta {
   outputLabel: string;
   /** Preferred output rendering mode. */
   outputType: "text" | "json";
+}
+
+export interface ToolMetaContext {
+  pathDisplayRoot?: string;
 }
 
 const RG_STYLE_KEYS = [
@@ -176,17 +181,18 @@ export function inferToolKind(tool: ToolCallData): InferredToolKind {
   return "unknown";
 }
 
-export function getToolSummary(tool: ToolCallData, kind: InferredToolKind): string {
+export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, context: ToolMetaContext = {}): string {
   const input = isRecord(tool.input) ? tool.input : undefined;
 
   switch (kind) {
     case "view": {
       const path = input ? getFileTargetField(input) : undefined;
+      const displayPath = path ? formatToolPathForDisplay(path, context.pathDisplayRoot) : undefined;
       const range = input?.["view_range"];
-      if (path && isViewRange(range)) {
-        return `View ${path}:${range[0]}-${range[1]}`;
+      if (displayPath && isViewRange(range)) {
+        return `View ${displayPath}:${range[0]}-${range[1]}`;
       }
-      return `View ${path ?? "file"}`;
+      return `View ${displayPath ?? "file"}`;
     }
     case "glob": {
       const pattern = input ? getStringField(input, "pattern") : undefined;
@@ -296,7 +302,7 @@ export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "
   }
 }
 
-export function getToolMeta(tool: ToolCallData): ToolMeta {
+export function getToolMeta(tool: ToolCallData, context: ToolMetaContext = {}): ToolMeta {
   const kind = inferToolKind(tool);
   const outputLabel = kind === "sql" ? "Done" : kind === "view" || kind === "glob" || kind === "rg" || kind === "apply_patch"
     ? "Result"
@@ -304,7 +310,7 @@ export function getToolMeta(tool: ToolCallData): ToolMeta {
 
   return {
     kind,
-    summary: getToolSummary(tool, kind),
+    summary: getToolSummary(tool, kind, context),
     outputLabel,
     outputType: getToolOutputType(tool, kind),
   };

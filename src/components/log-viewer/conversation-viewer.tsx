@@ -26,6 +26,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   showMessageRoles = false,
   emptyStateMessage = "No activity yet.",
   activeStateMessage = "Working...",
+  toolPathDisplayRoot,
 }: ConversationViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -164,6 +165,7 @@ export const ConversationViewer = memo(function ConversationViewer({
                   timestamp={entry.timestamp}
                   showTimestamp={entry.showTimestamp}
                   spacingClass={spacingClass}
+                  toolPathDisplayRoot={toolPathDisplayRoot}
                 />
               );
             } else {
