@@ -75,6 +75,7 @@ function createStandaloneSession(serverId: string): SshServerSession {
       sshServerId: serverId,
       name: "Deploy Shell",
       connectionMode: "dtach",
+      useTmux: true,
       remoteSessionName: "ralpher-standalone-1",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

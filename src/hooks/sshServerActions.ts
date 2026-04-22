@@ -120,6 +120,7 @@ export async function createStandaloneSshSessionApi(options: {
   serverId: string;
   name: string;
   connectionMode: SshConnectionMode;
+  useTmux?: boolean;
 }): Promise<SshServerSession> {
   return await apiCall<SshServerSession>(
     `/api/ssh-servers/${options.serverId}/sessions`,
@@ -130,6 +131,7 @@ export async function createStandaloneSshSessionApi(options: {
         name: options.name.trim(),
         credentialToken: null,
         connectionMode: options.connectionMode,
+        useTmux: options.useTmux,
       }),
     },
     "Create standalone SSH session",

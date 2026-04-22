@@ -246,6 +246,7 @@ describe("SshTerminalBridge integration", () => {
           workspaceId: workspace.id,
           directory: workspaceDir,
           connectionMode: "dtach",
+          useTmux: true,
           remoteSessionName: `ralpher-${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),

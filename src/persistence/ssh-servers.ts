@@ -4,6 +4,7 @@
 
 import {
   DEFAULT_SSH_CONNECTION_MODE,
+  normalizeSshSessionUseTmux,
   normalizeSshConnectionMode,
   type SshServer,
   type SshServerConfig,
@@ -33,6 +34,7 @@ const ALLOWED_SSH_SERVER_SESSION_COLUMNS = new Set([
   "ssh_server_id",
   "name",
   "connection_mode",
+  "use_tmux",
   "remote_session_name",
   "created_at",
   "updated_at",
@@ -81,6 +83,7 @@ function sshServerSessionToRow(session: SshServerSession): Record<string, unknow
     ssh_server_id: session.config.sshServerId,
     name: session.config.name,
     connection_mode: session.config.connectionMode,
+    use_tmux: session.config.useTmux ? 1 : 0,
     remote_session_name: session.config.remoteSessionName,
     created_at: session.config.createdAt,
     updated_at: session.config.updatedAt,
@@ -101,6 +104,7 @@ function rowToSshServerSession(row: Record<string, unknown>): SshServerSession {
         connectionMode: normalizeSshConnectionMode(
           (row["connection_mode"] as SshServerSession["config"]["connectionMode"] | null) ?? DEFAULT_SSH_CONNECTION_MODE,
         ),
+        useTmux: normalizeSshSessionUseTmux(row["use_tmux"]),
         remoteSessionName: row["remote_session_name"] as string,
         createdAt: row["created_at"] as string,
         updatedAt: row["updated_at"] as string,

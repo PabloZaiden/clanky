@@ -342,6 +342,25 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 11,
+    name: "add_ssh_session_use_tmux",
+    up: (db) => {
+      if (tableExists(db, "ssh_sessions")) {
+        const sshSessionColumns = getTableColumns(db, "ssh_sessions");
+        if (!sshSessionColumns.includes("use_tmux")) {
+          db.run("ALTER TABLE ssh_sessions ADD COLUMN use_tmux INTEGER NOT NULL DEFAULT 1");
+        }
+      }
+
+      if (tableExists(db, "ssh_server_sessions")) {
+        const sshServerSessionColumns = getTableColumns(db, "ssh_server_sessions");
+        if (!sshServerSessionColumns.includes("use_tmux")) {
+          db.run("ALTER TABLE ssh_server_sessions ADD COLUMN use_tmux INTEGER NOT NULL DEFAULT 1");
+        }
+      }
+    },
+  },
 ];
 
 /**

@@ -10,6 +10,7 @@ export const CreateSshSessionRequestSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
   name: z.string().trim().min(1, "name is required"),
   connectionMode: SshConnectionModeSchema,
+  useTmux: z.boolean().optional(),
 });
 
 export const UpdateSshSessionRequestSchema = z.object({

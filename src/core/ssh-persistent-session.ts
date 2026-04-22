@@ -16,6 +16,7 @@ export interface PersistentSshSessionConfigLike {
   id: string;
   remoteSessionName: string;
   directory?: string;
+  useTmux?: boolean;
 }
 
 function quoteShell(value: string): string {
@@ -61,7 +62,10 @@ function buildPersistentSessionShellCommand(session: { config: PersistentSshSess
     "printf '%s\\n' \"$$\" > \"$session_pid_file\";",
     "cleanup_session() { rm -f \"$session_tty_file\" \"$session_pid_file\" \"$session_master_pid_file\" \"$session_socket\"; };",
     "trap cleanup_session EXIT HUP INT TERM;",
-    buildShellBootstrapCommand({ directory: session.config.directory }),
+    buildShellBootstrapCommand({
+      directory: session.config.directory,
+      useTmux: session.config.useTmux,
+    }),
   ].filter((part) => part.length > 0).join(" ");
 }
 

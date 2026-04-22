@@ -20,7 +20,9 @@ function quoteShell(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
-export function buildAttachCommand(session: { config: { id: string; remoteSessionName: string; directory?: string } }): string {
+export function buildAttachCommand(session: {
+  config: { id: string; remoteSessionName: string; directory?: string; useTmux?: boolean };
+}): string {
   return buildPersistentSessionAttachCommand(session);
 }
 
@@ -28,7 +30,7 @@ export function buildDirectTtyFilePath(sessionId: string): string {
   return `/tmp/ralpher-terminal-${sessionId}.tty`;
 }
 
-export function buildDirectShellCommand(session: { config: { id: string; directory?: string } }): string {
+export function buildDirectShellCommand(session: { config: { id: string; directory?: string; useTmux?: boolean } }): string {
   const ttyFile = quoteShell(buildDirectTtyFilePath(session.config.id));
   return [
     `tty_file=${ttyFile}`,
@@ -39,13 +41,22 @@ export function buildDirectShellCommand(session: { config: { id: string; directo
     "fi;",
     "printf '%s\\n' \"$tty_path\" > \"$tty_file\";",
     "trap 'rm -f \"$tty_file\"' EXIT HUP INT TERM;",
-    buildShellBootstrapCommand({ directory: session.config.directory }),
+    buildShellBootstrapCommand({
+      directory: session.config.directory,
+      useTmux: session.config.useTmux,
+    }),
   ].filter((part) => part.length > 0).join(" ");
 }
 
 function buildSessionStartupCommand(
   session: {
-    config: { id: string; remoteSessionName: string; directory?: string; connectionMode: SshConnectionMode };
+    config: {
+      id: string;
+      remoteSessionName: string;
+      directory?: string;
+      connectionMode: SshConnectionMode;
+      useTmux?: boolean;
+    };
     state?: { runtimeConnectionMode?: SshConnectionMode };
   },
 ): string {

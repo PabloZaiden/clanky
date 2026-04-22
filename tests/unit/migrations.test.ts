@@ -168,6 +168,17 @@ describe("migration infrastructure", () => {
         "idx_auth_refresh_sessions_subject_created_at",
       ]));
     });
+
+    test("adds use_tmux columns to SSH session tables", () => {
+      db.run("CREATE TABLE ssh_sessions (id TEXT PRIMARY KEY)");
+      db.run("CREATE TABLE ssh_server_sessions (id TEXT PRIMARY KEY)");
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "ssh_sessions")).toContain("use_tmux");
+      expect(getTableColumns(db, "ssh_server_sessions")).toContain("use_tmux");
+    });
   });
 
   describe("getTableColumns", () => {

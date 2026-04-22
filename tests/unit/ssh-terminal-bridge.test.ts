@@ -127,6 +127,7 @@ function createTestSession(workspaceId: string, directory: string): SshSession {
       workspaceId,
       directory,
       connectionMode: "dtach",
+      useTmux: true,
       remoteSessionName: "ralpher-session-1",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -257,6 +258,19 @@ describe("SshTerminalBridge", () => {
 
     expect(command).toContain("shell=\"${SHELL:-/bin/sh}\";");
     expect(command).toContain("tmux_status=$?;");
+    expect(command).toContain("exec \"$shell\" -i");
+  });
+
+  test("buildDirectShellCommand skips tmux startup when the session disables it", () => {
+    const command = buildDirectShellCommand({
+      config: {
+        id: "direct-session-3",
+        useTmux: false,
+      },
+    });
+
+    expect(command).not.toContain("if command -v tmux >/dev/null 2>&1; then");
+    expect(command).not.toContain("tmux new-session");
     expect(command).toContain("exec \"$shell\" -i");
   });
 

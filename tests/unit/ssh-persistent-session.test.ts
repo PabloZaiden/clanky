@@ -122,4 +122,17 @@ describe("buildPersistentSessionAttachCommand stale session cleanup", () => {
     expect(command).toContain("tmux_status=$?;");
     expect(command).toContain("exec \"$shell\" -i");
   });
+
+  test("skips tmux startup entirely when the session disables it", () => {
+    const command = buildPersistentSessionAttachCommand({
+      config: {
+        ...session.config,
+        useTmux: false,
+      },
+    });
+
+    expect(command).not.toContain("if command -v tmux >/dev/null 2>&1; then");
+    expect(command).not.toContain("tmux new-session");
+    expect(command).toContain("exec \"$shell\" -i");
+  });
 });

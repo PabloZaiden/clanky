@@ -148,13 +148,15 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "My SSH Session",
-      connectionMode: "dtach",
+        connectionMode: "dtach",
+        useTmux: false,
       }),
     });
 
     expect(createResponse.status).toBe(201);
-    const created = await createResponse.json() as { config: { id: string; name: string } };
+    const created = await createResponse.json() as { config: { id: string; name: string; useTmux: boolean } };
     expect(created.config.name).toBe("My SSH Session");
+    expect(created.config.useTmux).toBe(false);
 
     const listResponse = await fetch(`${baseUrl}/api/ssh-sessions`);
     expect(listResponse.ok).toBe(true);
@@ -164,8 +166,9 @@ describe("SSH sessions API integration", () => {
 
     const getResponse = await fetch(`${baseUrl}/api/ssh-sessions/${created.config.id}`);
     expect(getResponse.ok).toBe(true);
-    const fetched = await getResponse.json() as { config: { remoteSessionName: string } };
+    const fetched = await getResponse.json() as { config: { remoteSessionName: string; useTmux: boolean } };
     expect(fetched.config.remoteSessionName).toContain("ralpher-");
+    expect(fetched.config.useTmux).toBe(false);
 
     const deleteResponse = await fetch(`${baseUrl}/api/ssh-sessions/${created.config.id}`, {
       method: "DELETE",
@@ -186,7 +189,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Original SSH Session",
-      connectionMode: "dtach",
+        connectionMode: "dtach",
       }),
     });
 
@@ -221,7 +224,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Original SSH Session",
-      connectionMode: "dtach",
+        connectionMode: "dtach",
       }),
     });
 
@@ -300,6 +303,24 @@ describe("SSH sessions API integration", () => {
     }
   });
 
+  test("defaults useTmux to true when omitted", async () => {
+    const workspace = await createWorkspace({ transport: "ssh" });
+
+    const response = await fetch(`${baseUrl}/api/ssh-sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: workspace.id,
+        name: "Default tmux session",
+        connectionMode: "dtach",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const session = await response.json() as { config: { useTmux: boolean } };
+    expect(session.config.useTmux).toBe(true);
+  });
+
   test("rejects session creation for non-ssh workspaces", async () => {
     const workspace = await createWorkspace({ transport: "stdio" });
 
@@ -309,7 +330,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Invalid Session",
-      connectionMode: "dtach",
+        connectionMode: "dtach",
       }),
     });
 
@@ -328,7 +349,7 @@ describe("SSH sessions API integration", () => {
       body: JSON.stringify({
         workspaceId: workspace.id,
         name: "Needs Persistent SSH",
-      connectionMode: "dtach",
+        connectionMode: "dtach",
       }),
     });
 
