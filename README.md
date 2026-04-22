@@ -98,14 +98,14 @@ ralpher status
 # List the discoverable REST endpoints
 ralpher api
 
-# Invoke an authenticated API request
+# Invoke an authenticated API request (prints one JSON object)
 ralpher api loops/my-loop --method GET
 
 # Inspect the expected schema for an endpoint
 ralpher schema auth/device
 ```
 
-`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status` and `ralpher api` requests reuse that same server automatically. `ralpher status` still accepts an optional positional base URL override if you need to revalidate against a different server.
+`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status` and `ralpher api` requests reuse that same server automatically. `ralpher status` still accepts an optional positional base URL override if you need to revalidate against a different server. When `ralpher api <endpoint>` calls an endpoint, it now prints a single parseable JSON object with the HTTP status metadata under `status` and the parsed body, plain-text body, or `null` under `response`.
 
 ### Create your first loop
 

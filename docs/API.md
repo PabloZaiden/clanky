@@ -35,14 +35,30 @@ ralpher auth http://localhost:3000
 # List discoverable endpoints
 ralpher api
 
-# Invoke an authenticated API request
+# Invoke an authenticated API request (prints one JSON object)
 ralpher api loops/my-loop --method GET
 
 # Inspect the schema metadata for an endpoint
 ralpher schema auth/device
 ```
 
-`ralpher help` includes the same version banner shown by `ralpher version`, which makes it easier to confirm the binary version while browsing the built-in command list.
+`ralpher help` includes the same version banner shown by `ralpher version`, which makes it easier to confirm the binary version while browsing the built-in command list. `ralpher api <endpoint>` now emits a single JSON envelope so scripts can always parse the output.
+
+Example CLI output:
+
+```json
+{
+  "status": {
+    "code": 200,
+    "text": "OK",
+    "ok": true
+  },
+  "response": {
+    "id": "my-loop",
+    "status": "running"
+  }
+}
+```
 
 ## Response Format
 
