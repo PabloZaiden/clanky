@@ -51,8 +51,8 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
           <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">{block.title}</div>
         )}
         <dl className="space-y-2">
-          {block.rows.map((row) => (
-            <div key={`${row.label}-${row.value}`} className="grid gap-1 sm:grid-cols-[9rem,minmax(0,1fr)] sm:gap-3">
+          {block.rows.map((row, index) => (
+            <div key={`${row.label}-${row.value}-${index}`} className="grid gap-1 sm:grid-cols-[9rem,minmax(0,1fr)] sm:gap-3">
               <dt className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{row.label}</dt>
               <dd className="min-w-0 break-words text-sm leading-6 text-gray-100">{row.value}</dd>
             </div>
@@ -69,8 +69,8 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
           <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">{block.title}</div>
         )}
         <ul className="space-y-1 rounded-xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-gray-100">
-          {block.items.map((item) => (
-            <li key={item} className="break-words">{item}</li>
+          {block.items.map((item, index) => (
+            <li key={`${item}-${index}`} className="break-words">{item}</li>
           ))}
         </ul>
       </div>

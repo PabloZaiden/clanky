@@ -5,7 +5,7 @@
  * in chronological order with auto-scroll behavior.
  */
 
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, spyOn } from "bun:test";
 import { ConversationViewer, LogViewer } from "@/components/LogViewer";
 import type { LogEntry, LogViewerProps } from "@/components/LogViewer";
 import { formatTime } from "@/components/log-viewer/utils";
@@ -301,12 +301,11 @@ describe("LogViewer", () => {
         content: "Needs more room",
         timestamp: SAME_MINUTE_TIME_A,
       });
-      const { container } = renderWithUser(
+      const { container, getByTestId } = renderWithUser(
         <ConversationViewer messages={[userMessage]} toolCalls={[]} showAssistantMessages={true} />
       );
 
-      const transcriptShell = container.querySelector(".mx-auto") as HTMLElement | null;
-      expect(transcriptShell).not.toBeNull();
+      const transcriptShell = getByTestId("conversation-transcript");
       expect(transcriptShell?.className).toContain("max-w-7xl");
 
       const messageWidth = container.querySelector("[data-message-role='user'] .min-w-0") as HTMLElement | null;
@@ -739,6 +738,29 @@ describe("LogViewer", () => {
       expect(getByText("src/components/ChatDetails.tsx")).toBeInTheDocument();
       expect(getByText("src/components/LogViewer.tsx")).toBeInTheDocument();
       expect(container.querySelector("[data-tool-block='list']")).not.toBeNull();
+    });
+
+    test("renders duplicate structured match entries without duplicate-key warnings", async () => {
+      const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+
+      try {
+        const { getAllByText, getByText, user } = renderToolCall({
+          name: "read",
+          input: { pattern: "**/*.tsx", path: "/workspaces/demo/repo" },
+          output: "src/components/LogViewer.tsx\nsrc/components/LogViewer.tsx\n",
+        });
+
+        await user.click(getByText("Find files matching '**/*.tsx' in /workspaces/demo/repo"));
+        expect(getAllByText("src/components/LogViewer.tsx")).toHaveLength(2);
+
+        const duplicateKeyWarning = errorSpy.mock.calls
+          .flat()
+          .map((value) => String(value))
+          .find((value) => value.includes("same key") || value.includes("unique \"key\""));
+        expect(duplicateKeyWarning).toBeUndefined();
+      } finally {
+        errorSpy.mockRestore();
+      }
     });
 
     test("renders bash inputs with command details instead of raw JSON only", async () => {
