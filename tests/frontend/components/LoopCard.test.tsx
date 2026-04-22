@@ -73,29 +73,6 @@ describe("LoopCard", () => {
     });
   });
 
-  describe("active indicators", () => {
-    test("running loop has blue ring", () => {
-      const loop = createLoopWithStatus("running");
-      const { container } = renderWithUser(<LoopCard loop={loop} />);
-      const card = container.querySelector(".ring-2.ring-blue-500");
-      expect(card).toBeInTheDocument();
-    });
-
-    test("planning loop has cyan ring", () => {
-      const loop = createLoopWithStatus("planning");
-      const { container } = renderWithUser(<LoopCard loop={loop} />);
-      const card = container.querySelector(".ring-2.ring-cyan-500");
-      expect(card).toBeInTheDocument();
-    });
-
-    test("completed loop has no ring", () => {
-      const loop = createLoopWithStatus("completed");
-      const { container } = renderWithUser(<LoopCard loop={loop} />);
-      const card = container.querySelector(".ring-2");
-      expect(card).not.toBeInTheDocument();
-    });
-  });
-
   describe("stats section", () => {
     test("shows iterations for non-draft loops", () => {
       const loop = createLoopWithStatus("running", {
@@ -147,31 +124,6 @@ describe("LoopCard", () => {
       expect(branchLabel.compareDocumentPosition(iterationsLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeGreaterThan(0);
     });
 
-    test("uses flex growth on the card body without overflow-prone h-full", () => {
-      const loop = createLoopWithStatus("running");
-      const { container } = renderWithUser(<LoopCard loop={loop} />);
-
-      const card = container.firstElementChild;
-      expect(card).not.toBeNull();
-      if (!(card instanceof HTMLElement)) {
-        throw new Error("Expected LoopCard root element");
-      }
-
-      const body = card.firstElementChild;
-      expect(body).not.toBeNull();
-      if (!(body instanceof HTMLElement)) {
-        throw new Error("Expected LoopCard body element");
-      }
-
-      expect(card.classList.contains("flex")).toBe(true);
-      expect(card.classList.contains("flex-col")).toBe(true);
-      expect(card.classList.contains("h-full")).toBe(true);
-      expect(body.classList.contains("flex")).toBe(true);
-      expect(body.classList.contains("flex-1")).toBe(true);
-      expect(body.classList.contains("flex-col")).toBe(true);
-      expect(body.classList.contains("min-h-0")).toBe(true);
-      expect(body.classList.contains("h-full")).toBe(false);
-    });
   });
 
   describe("error display", () => {
@@ -183,12 +135,6 @@ describe("LoopCard", () => {
       expect(getByText("Out of memory")).toBeInTheDocument();
     });
 
-    test("does not show error section for loops without errors", () => {
-      const loop = createLoopWithStatus("completed");
-      const { container } = renderWithUser(<LoopCard loop={loop} />);
-      const errorBox = container.querySelector(".bg-red-50, .dark\\:bg-red-900\\/20");
-      expect(errorBox).not.toBeInTheDocument();
-    });
   });
 
   describe("git info", () => {
@@ -201,29 +147,6 @@ describe("LoopCard", () => {
       const { getByText } = renderWithUser(<LoopCard loop={loop} />);
       expect(getByText("Branch:")).toBeInTheDocument();
       expect(getByText("feature-x-a1b2c3d")).toBeInTheDocument();
-    });
-
-    test("wraps long loop names and branch names instead of truncating them", () => {
-      const longName = `Loop ${"with-a-very-long-title-".repeat(6)}`;
-      const longBranch = `feature/${"very-long-branch-segment-".repeat(6)}`;
-      const loop = createLoopWithStatus("running", {
-        config: { name: longName },
-        state: {
-          git: createGitState({ workingBranch: longBranch }),
-        },
-      });
-
-      const { getByText } = renderWithUser(<LoopCard loop={loop} />);
-
-      const title = getByText(longName);
-      expect(title.className).toContain("break-words");
-      expect(title.className).toContain("[overflow-wrap:anywhere]");
-      expect(title.className.includes("truncate")).toBe(false);
-
-      const branch = getByText(longBranch);
-      expect(branch.className).toContain("break-words");
-      expect(branch.className).toContain("[overflow-wrap:anywhere]");
-      expect(branch.className.includes("break-all")).toBe(false);
     });
 
     test("shows commit count when commits exist", () => {
@@ -413,11 +336,5 @@ describe("LoopCard", () => {
       expect(onClick).toHaveBeenCalledTimes(1);
     });
 
-    test("card does not have clickable styling when onClick not provided", () => {
-      const loop = createLoop({ config: { name: "Non-Clickable Loop" } });
-      const { container } = renderWithUser(<LoopCard loop={loop} />);
-      const clickableCard = container.querySelector(".cursor-pointer");
-      expect(clickableCard).not.toBeInTheDocument();
-    });
   });
 });

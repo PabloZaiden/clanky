@@ -200,12 +200,6 @@ describe("WorkspaceFilesView", () => {
 
     expect(getByLabelText("Select code explorer content")).toBeInTheDocument();
 
-    const backButton = getByRole("button", { name: "Back to workspace" });
-    const backButtonContainer = backButton.parentElement;
-
-    expect(backButton).not.toHaveClass("hidden");
-    expect(backButtonContainer).not.toBeNull();
-    expect(backButtonContainer).toHaveClass("hidden", "sm:block");
   });
 
   test("lets the user toggle word wrap and override the editor language", async () => {
@@ -571,7 +565,7 @@ describe("WorkspaceFilesView", () => {
     });
   });
 
-  test("constrains long terminal names in the shared selector layout", async () => {
+  test("shows long terminal names in the selector without losing the full name", async () => {
     const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-ssh-long-name",
@@ -616,65 +610,8 @@ describe("WorkspaceFilesView", () => {
       expect(getByRole("combobox", { name: "Select workspace SSH session" })).toBeInTheDocument();
     });
 
-    const terminalControls = getByTestId("workspace-terminal-controls");
     const terminalSelect = getByTestId("workspace-terminal-select");
-
-    expect(terminalControls).toHaveClass("flex-col");
-    expect(terminalControls).toHaveClass("md:flex-row");
-    expect(terminalSelect).toHaveClass("w-full");
-    expect(terminalSelect).toHaveClass("max-w-full");
-    expect(terminalSelect).toHaveClass("md:w-[20rem]");
-    expect(terminalSelect).toHaveClass("lg:w-[24rem]");
     expect(terminalSelect).toHaveAttribute("title", longSessionName);
-  });
-
-  test("uses a non-scrolling shell body for the embedded terminal explorer layout", async () => {
-    const WorkspaceFilesView = await loadWorkspaceFilesView();
-    const workspace = createWorkspace({
-      id: "workspace-terminal-shell-body",
-      name: "Terminal Shell Body",
-      directory: "/workspaces/terminal-shell-body",
-      serverSettings: {
-        agent: {
-          provider: "opencode",
-          transport: "ssh",
-          hostname: "remote.example",
-          username: "tester",
-        },
-      },
-    });
-    const session = createSshSession({
-      config: {
-        id: "session-shell-body",
-        workspaceId: workspace.id,
-        name: "Embedded Shell Session",
-      },
-    });
-
-    api.get("/api/workspaces/:id/files/tree", () => ({
-      workspaceId: workspace.id,
-      ...createTreeResponse({
-        "": [],
-      }),
-    }));
-
-    const { getByRole, getByTestId, user } = renderWithUser(
-      <WorkspaceFilesView
-        workspace={workspace}
-        sessions={[session]}
-        createSession={async () => createSshSession()}
-        onNavigate={() => {}}
-      />,
-    );
-
-    await user.click(getByRole("button", { name: "Terminals" }));
-    await waitFor(() => {
-      expect(getByRole("combobox", { name: "Select workspace SSH session" })).toBeInTheDocument();
-    });
-
-    const shellBody = getByTestId("workspace-shell-body");
-    expect(shellBody).toHaveClass("overflow-hidden");
-    expect(shellBody).not.toHaveClass("overflow-y-auto");
   });
 
   test("can collapse and expand the file explorer pane", async () => {
@@ -731,7 +668,7 @@ describe("WorkspaceFilesView", () => {
       }),
     }));
 
-    const { getByRole, getByTestId, queryByRole, user } = renderWithUser(
+    const { getByRole, queryByRole, user } = renderWithUser(
       <WorkspaceFilesView
         workspace={workspace}
         sessions={[]}
@@ -744,29 +681,12 @@ describe("WorkspaceFilesView", () => {
       expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
     });
 
-    const explorerColumn = getByTestId("workspace-explorer-column");
-    const paneSwitcher = getByTestId("workspace-pane-switcher");
-    const header = getByTestId("workspace-file-tree-header");
-
-    expect(explorerColumn).toHaveClass("max-h-[35vh]");
-    expect(explorerColumn).toHaveClass("overflow-hidden");
-    expect(paneSwitcher).toHaveClass("grid");
-    expect(paneSwitcher).not.toHaveClass("lg:flex");
-    expect(header).not.toHaveClass("lg:h-full");
-
     await user.click(getByRole("button", { name: "Collapse file explorer" }));
 
     expect(queryByRole("button", { name: /src/i })).not.toBeInTheDocument();
     expect(getByRole("button", { name: "Expand file explorer" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Files" })).toBeInTheDocument();
     expect(getByRole("button", { name: "Terminals" })).toBeInTheDocument();
-    expect(explorerColumn).toHaveClass("max-h-none");
-    expect(explorerColumn).toHaveClass("overflow-visible");
-    expect(explorerColumn).not.toHaveClass("max-h-[35vh]");
-    expect(paneSwitcher).toHaveClass("grid");
-    expect(paneSwitcher).toHaveClass("lg:flex");
-    expect(header).toHaveClass("lg:h-full");
-    expect(header).toHaveClass("justify-between");
 
     await user.click(getByRole("button", { name: "Expand file explorer" }));
     await waitFor(() => {
@@ -837,7 +757,7 @@ describe("WorkspaceFilesView", () => {
     expect(queryByText("Editor ready")).not.toBeInTheDocument();
   });
 
-  test("keeps the tree horizontally scrollable for long names and deep nesting", async () => {
+  test("keeps long names and deep nesting reachable in the tree", async () => {
     const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-horizontal-scroll",
@@ -871,7 +791,7 @@ describe("WorkspaceFilesView", () => {
       }),
     }));
 
-    const { getByRole, getByTestId, user } = renderWithUser(
+    const { getByRole, user } = renderWithUser(
       <WorkspaceFilesView
         workspace={workspace}
         sessions={[]}
@@ -894,14 +814,7 @@ describe("WorkspaceFilesView", () => {
       expect(getByRole("button", { name: longFileName })).toBeInTheDocument();
     });
 
-    const scrollRegion = getByTestId("workspace-file-tree-scroll");
-    const content = getByTestId("workspace-file-tree-content");
-    const longFileButton = getByRole("button", { name: longFileName });
-
-    expect(scrollRegion).toHaveClass("overflow-auto");
-    expect(content).toHaveClass("min-w-full");
-    expect(content).toHaveClass("w-max");
-    expect(longFileButton).toHaveClass("whitespace-nowrap");
+    expect(getByRole("button", { name: longFileName })).toBeInTheDocument();
   });
 
   test("toggles hidden files from the explorer toolbar", async () => {

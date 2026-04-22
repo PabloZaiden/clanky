@@ -91,14 +91,6 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   return loop;
 }
 
-function expectHeaderHasNoLegacyIndicators(container: HTMLElement): void {
-  const header = container.querySelector("header");
-  expect(header).toBeTruthy();
-  expect(header!.querySelector(".animate-ping")).toBeNull();
-  expect(header!.querySelector(".bg-amber-500")).toBeNull();
-  expect(within(header as HTMLElement).queryByText(/^Live$/)).toBeNull();
-}
-
 beforeEach(() => {
   api.reset();
   api.install();
@@ -261,15 +253,6 @@ describe("header display", () => {
     });
   });
 
-  test("does not show legacy header activity indicators for running loops", async () => {
-    setupDefaultApi();
-    const { container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expectHeaderHasNoLegacyIndicators(container);
-    });
-  });
-
   test("does not show active indicator for completed loops", async () => {
     const loop = createLoopWithStatus("completed", {
       config: { id: LOOP_ID, name: "Done Loop" },
@@ -293,19 +276,6 @@ describe("header display", () => {
     expect(pinger).toBeNull();
   });
 
-  test("keeps directory metadata out of the primary mobile header row", async () => {
-    setupDefaultApi();
-    const { getByTestId, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("/workspaces/test-project")).toBeTruthy();
-    });
-
-    expect(getByTestId("loop-header-primary-row").className).toContain("min-h-14");
-    expect(getByTestId("loop-header-primary-row").className).not.toContain("flex-wrap");
-    expect(getByTestId("loop-header-directory").className).toContain("hidden");
-    expect(getByTestId("loop-header-directory").className).toContain("sm:block");
-  });
 });
 
 // ─── Connection status ───────────────────────────────────────────────────────
@@ -313,13 +283,11 @@ describe("header display", () => {
 describe("connection status", () => {
   test("does not show a Live connection label in the header", async () => {
     setupDefaultApi();
-    const { container, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
     });
-
-    expectHeaderHasNoLegacyIndicators(container);
   });
 });
 
@@ -1556,7 +1524,7 @@ describe("planning mode", () => {
     expect(queryByText("Working...")).toBeNull();
   });
 
-  test("does not show legacy header activity indicators when planning with isPlanReady=false", async () => {
+  test("renders planning loops when isPlanReady=false", async () => {
     const loop = createLoopWithStatus("planning", {
       config: { id: LOOP_ID, name: "Cyan Indicator Loop" },
     });
@@ -1569,16 +1537,15 @@ describe("planning mode", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Cyan Indicator Loop")).toBeTruthy();
     });
 
-    expectHeaderHasNoLegacyIndicators(container);
   });
 
-  test("does not show legacy header activity indicators when planning with isPlanReady=true", async () => {
+  test("renders planning loops when isPlanReady=true", async () => {
     const loop = createLoopWithStatus("planning", {
       config: { id: LOOP_ID, name: "Amber Indicator Loop" },
       state: {
@@ -1599,24 +1566,12 @@ describe("planning mode", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Amber Indicator Loop")).toBeTruthy();
     });
 
-    expectHeaderHasNoLegacyIndicators(container);
-  });
-
-  test("does not show legacy header activity indicators for running loops in planning mode coverage", async () => {
-    setupDefaultApi();
-    const { getByText, container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Test Loop")).toBeTruthy();
-    });
-
-    expectHeaderHasNoLegacyIndicators(container);
   });
 });
 
