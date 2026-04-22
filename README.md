@@ -73,7 +73,7 @@ You can also download binaries directly from the [Releases page](https://github.
 
 ```bash
 # Installed binary
-ralpher
+ralpher web
 
 # Development
 bun dev
@@ -86,14 +86,26 @@ The UI is available at `http://localhost:3000` by default. Use `RALPHER_PORT` to
 The same binary now exposes an initial terminal client surface:
 
 ```bash
+# Check which version is installed
+ralpher version
+
 # Start device authorization against a specific Ralpher server
-ralpher cli auth --base-url http://localhost:3000
+ralpher auth http://localhost:3000
 
 # Check whether stored CLI credentials are still valid
-ralpher cli status
+ralpher status
+
+# List the discoverable REST endpoints
+ralpher api
+
+# Invoke an authenticated API request
+ralpher api loops/my-loop --method GET
+
+# Inspect the expected schema for an endpoint
+ralpher schema auth/device
 ```
 
-`ralpher cli auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher cli status` requests reuse that same server unless you pass `--base-url <url>` to override it.
+`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status` and `ralpher api` requests reuse that same server automatically. `ralpher status` still accepts an optional positional base URL override if you need to revalidate against a different server.
 
 ### Create your first loop
 
@@ -132,7 +144,6 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 | `RALPHER_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
 | `RALPHER_PORT` | HTTP port | `3000` |
 | `RALPHER_DATA_DIR` | Data directory for SQLite persistence | `./data` |
-| `RALPHER_BASE_URL` | Optional default base URL used by `ralpher cli` commands when `--base-url` is omitted | unset |
 | `RALPHER_REMOTE_ONLY` | Disables local `stdio` transport | unset |
 | `RALPHER_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
 | `RALPHER_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
@@ -144,7 +155,7 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 - Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
-- `ralpher cli auth` stores bearer credentials in per-user CLI state under the home directory, and `ralpher cli status` validates them through `GET /api/auth/status`.
+- `ralpher auth` stores bearer credentials in per-user CLI state under the home directory, `ralpher status` validates them through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with the stored tokens, and `ralpher schema` exposes endpoint discoverability data from the built-in API catalog.
 - Ralpher exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `RALPHER_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
@@ -167,7 +178,7 @@ volumes:
   ralpher-data:
 ```
 
-The container listens on port `8080` by default. Local/native runs still default to port `3000` unless you override `RALPHER_PORT`.
+The container listens on port `8080` by default and still starts the web server automatically. Local/native runs use the explicit `ralpher web` command and default to port `3000` unless you override `RALPHER_PORT`.
 
 ## Documentation
 

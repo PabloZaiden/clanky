@@ -8,6 +8,22 @@
 
 // Model schemas
 export {
+  DeviceStartRequestSchema,
+  DeviceVerificationActionSchema,
+  RefreshGrantSchema,
+  RefreshEndpointRequestSchema,
+  DeviceGrantSchema,
+  TokenRequestSchema,
+  PublicRevokeRequestSchema,
+  IssuerSettingsSchema,
+} from "./auth";
+
+export {
+  CompletePasskeyRegistrationRequestSchema,
+  CompletePasskeyAuthenticationRequestSchema,
+} from "./passkey-auth";
+
+export {
   ModelConfigSchema,
   CheapModelSelectionSchema,
   type ModelConfig,
