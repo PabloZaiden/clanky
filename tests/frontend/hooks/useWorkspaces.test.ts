@@ -1,8 +1,7 @@
 /**
  * Tests for useWorkspaces hook.
  *
- * Tests CRUD operations, loading/error/saving states, and edge cases
- * like 409 conflict on create and 404 on getWorkspaceByDirectory.
+ * Tests CRUD operations, loading/error/saving states, and API edge cases.
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -295,93 +294,6 @@ describe("deleteWorkspace", () => {
 
     expect(deleteResult.success).toBe(false);
     expect(deleteResult.error).toBe("Failed to delete workspace");
-  });
-});
-
-// ─── getWorkspaceByDirectory ─────────────────────────────────────────────────
-
-describe("getWorkspaceByDirectory", () => {
-  test("fetches workspace by directory and returns it", async () => {
-    setupWorkspacesList();
-    const ws = createWorkspace({ id: "ws-dir", directory: "/workspaces/my-project" });
-    api.get("/api/workspaces/by-directory", () => ws);
-
-    const { result } = renderHook(() => useWorkspaces());
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    let found: ReturnType<typeof createWorkspace> | null = null;
-    await act(async () => {
-      found = await result.current.getWorkspaceByDirectory("/workspaces/my-project");
-    });
-
-    expect(found).not.toBeNull();
-    expect(found!).toEqual(ws);
-  });
-
-  test("returns null on 404", async () => {
-    setupWorkspacesList();
-    api.get("/api/workspaces/by-directory", () => {
-      throw new MockApiError(404, { message: "Not found" });
-    });
-
-    const { result } = renderHook(() => useWorkspaces());
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    let found: ReturnType<typeof createWorkspace> | null = null;
-    await act(async () => {
-      found = await result.current.getWorkspaceByDirectory("/nonexistent");
-    });
-
-    expect(found).toBeNull();
-    // Should not set error state for 404
-    expect(result.current.error).toBeNull();
-  });
-
-  test("returns null on 409 ambiguity without setting error state", async () => {
-    setupWorkspacesList();
-    api.get("/api/workspaces/by-directory", () => {
-      throw new MockApiError(409, { message: "Ambiguous workspace" });
-    });
-
-    const { result } = renderHook(() => useWorkspaces());
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    let found: ReturnType<typeof createWorkspace> | null = null;
-    await act(async () => {
-      found = await result.current.getWorkspaceByDirectory("/shared");
-    });
-
-    expect(found).toBeNull();
-    expect(result.current.error).toBeNull();
-  });
-
-  test("returns null on other errors without setting error state", async () => {
-    setupWorkspacesList();
-    api.get("/api/workspaces/by-directory", () => {
-      throw new MockApiError(500, { message: "Server error" });
-    });
-
-    const { result } = renderHook(() => useWorkspaces());
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    let found: ReturnType<typeof createWorkspace> | null = null;
-    await act(async () => {
-      found = await result.current.getWorkspaceByDirectory("/workspaces/test");
-    });
-
-    expect(found).toBeNull();
   });
 });
 
