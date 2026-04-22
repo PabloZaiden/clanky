@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { handleCreateLoopSubmit } from "@/components/dashboard-modals/loop-submit-handlers";
 import { createLoopWithStatus, createWorkspace } from "../helpers/factories";
 import { DEFAULT_LOOP_CONFIG } from "@/types/loop";
+import { waitFor } from "../helpers/render";
 
 const originalFetch = globalThis.fetch;
 
@@ -18,6 +19,125 @@ afterEach(() => {
 });
 
 describe("handleCreateLoopSubmit", () => {
+  test("returns immediately when starting an edited draft and shows async conflicts later", async () => {
+    const pendingDraftUpdate = { resolve: (_response: Response) => {} };
+    const pendingDraftStart = { resolve: (_response: Response) => {} };
+
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const requestUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      const path = new URL(requestUrl, window.location.origin).pathname;
+
+      if (method === "PUT" && path === "/api/loops/draft-1") {
+        return await new Promise<Response>((resolve) => {
+          pendingDraftUpdate.resolve = resolve;
+        });
+      }
+
+      if (method === "POST" && path === "/api/loops/draft-1/draft/start") {
+        return await new Promise<Response>((resolve) => {
+          pendingDraftStart.resolve = resolve;
+        });
+      }
+
+      if (method === "PUT" && path.startsWith("/api/preferences/")) {
+        return jsonResponse({ success: true });
+      }
+
+      throw new Error(`Unexpected request: ${method} ${path}`);
+    }) as typeof globalThis.fetch;
+    window.fetch = globalThis.fetch;
+
+    const setUncommittedModal = mock((_state: unknown) => {});
+    const onRefresh = mock(async () => {});
+    const toast = { error: mock((_message: string) => {}) };
+
+    const result = await handleCreateLoopSubmit(
+      {
+        workspaces: [createWorkspace({ id: "ws-1", directory: "/workspaces/project-a" })],
+        setLastModel: mock(() => {}),
+        setLastCheapModel: mock(() => {}),
+        setUncommittedModal,
+        onRefresh,
+        onCreateLoop: mock(async () => ({ loop: null })),
+      },
+      createLoopWithStatus("draft", {
+        config: {
+          id: "draft-1",
+          name: "Existing Draft",
+          workspaceId: "ws-1",
+          directory: "/workspaces/project-a",
+          prompt: "Ship the feature",
+          model: {
+            providerID: "anthropic",
+            modelID: "claude-sonnet-4-20250514",
+            variant: "",
+          },
+        },
+      }),
+      {
+        name: "Existing Draft",
+        workspaceId: "ws-1",
+        prompt: "Ship the feature",
+        model: {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-4-20250514",
+          variant: "",
+        },
+        draft: false,
+        planMode: false,
+        useWorktree: true,
+        clearPlanningFolder: false,
+        attachments: [],
+        cheapModel: { mode: "same-as-loop" },
+        maxIterations: null,
+        maxConsecutiveErrors: DEFAULT_LOOP_CONFIG.maxConsecutiveErrors,
+        activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
+        stopPattern: DEFAULT_LOOP_CONFIG.stopPattern,
+        git: {
+          branchPrefix: DEFAULT_LOOP_CONFIG.git.branchPrefix,
+          commitScope: DEFAULT_LOOP_CONFIG.git.commitScope,
+        },
+        baseBranch: "",
+        autoAcceptPlan: false,
+        fullyAutonomous: false,
+      },
+      toast,
+    );
+
+    expect(result).toBe(true);
+    expect(setUncommittedModal).not.toHaveBeenCalled();
+    pendingDraftUpdate.resolve(jsonResponse({ success: true }));
+    await waitFor(() => {
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    pendingDraftStart.resolve(jsonResponse({
+      error: "uncommitted_changes",
+      message: "Directory has uncommitted changes.",
+      changedFiles: ["src/main.ts"],
+    }, 409));
+
+    await waitFor(() => {
+      expect(setUncommittedModal).toHaveBeenCalledWith({
+        open: true,
+        loopId: "draft-1",
+        error: {
+          error: "uncommitted_changes",
+          message: "Directory has uncommitted changes.",
+          changedFiles: ["src/main.ts"],
+        },
+      });
+    });
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
   test("still starts an edited draft when saving preferences fails", async () => {
     const fetchCalls: string[] = [];
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
@@ -108,8 +228,10 @@ describe("handleCreateLoopSubmit", () => {
     );
 
     expect(result).toBe(true);
-    expect(fetchCalls).toContain("POST /api/loops/draft-1/draft/start");
-    expect(onRefresh).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(fetchCalls).toContain("POST /api/loops/draft-1/draft/start");
+      expect(onRefresh).toHaveBeenCalledTimes(2);
+    });
     expect(toast.error).not.toHaveBeenCalled();
     expect(window.localStorage.getItem("ralpher.loopModelPreference")).toBe(
       JSON.stringify({

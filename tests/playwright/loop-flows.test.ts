@@ -92,6 +92,12 @@ test("creates a draft loop, edits it, and starts it", async () => {
 
     await page.getByRole("button", { name: "Start" }).click();
 
+    await waitForCondition(
+      async () => new URL(page.url()).hash,
+      (value) => value === `#/workspace/${workspace.id}`,
+      "draft editor to exit",
+    );
+
     const status = await waitForCondition(
       async () => (await app.getLoop(draftLoopId)).state.status,
       (value) => value === "completed",
@@ -99,6 +105,8 @@ test("creates a draft loop, edits it, and starts it", async () => {
       30_000,
     );
     expect(status).toBe("completed");
+
+    await page.goto(`${app.baseUrl}/#/loop/${draftLoopId}`);
     await waitForVisible(page.locator("header").getByText("Completed"));
   });
 });

@@ -15,11 +15,11 @@ import type { CreateLoopFormSubmitRequest } from "../CreateLoopForm";
 import type { CreateLoopResult } from "../../hooks/useLoops";
 import { createLogger } from "../../lib/logger";
 import {
-  saveStoredLoopCheapModelPreference,
-  saveStoredLoopModelPreference,
-} from "../../lib/model-selection-preferences";
-import { appFetch } from "../../lib/public-path";
-import { toDraftLoopUpdateRequest } from "../../lib/loop-request";
+  persistDraftChanges,
+  persistLocalLoopPreferences,
+  persistLoopPreferences,
+  startDraftLoop,
+} from "../../lib/draft-loop-start";
 
 const log = createLogger("DashboardModals");
 
@@ -36,51 +36,6 @@ interface SubmitHandlerProps {
   onCreateLoop: (request: CreateLoopRequest) => Promise<CreateLoopResult>;
 }
 
-async function persistLoopPreferences(
-  workspaces: Workspace[],
-  request: CreateLoopRequest,
-): Promise<void> {
-  const operations: Promise<Response>[] = [];
-
-  operations.push(
-    appFetch("/api/preferences/last-model", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request.model),
-    }),
-  );
-
-  if (request.cheapModel) {
-    operations.push(
-      appFetch("/api/preferences/last-cheap-model", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request.cheapModel),
-      }),
-    );
-  }
-
-  if (request.workspaceId) {
-    const workspace = workspaces.find((item) => item.id === request.workspaceId);
-    if (workspace) {
-      operations.push(
-        appFetch("/api/preferences/last-directory", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ directory: workspace.directory }),
-        }),
-      );
-    }
-  }
-
-  await Promise.all(operations);
-}
-
-function persistLocalLoopPreferences(request: CreateLoopRequest): void {
-  saveStoredLoopModelPreference(request.model);
-  saveStoredLoopCheapModelPreference(request.cheapModel);
-}
-
 export async function handleCreateLoopSubmit(
   props: SubmitHandlerProps,
   editLoop: Loop | null | undefined,
@@ -90,81 +45,63 @@ export async function handleCreateLoopSubmit(
   const isEditing = !!editLoop;
 
   if (isEditing && editLoop) {
-    const persistDraftChanges = async (): Promise<boolean> => {
-      try {
-        const response = await appFetch(`/api/loops/${editLoop.config.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(toDraftLoopUpdateRequest(request)),
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          log.error("Failed to update draft:", error);
-          toast.error("Failed to update draft");
-          return false;
-        }
-
-        props.setLastModel(request.model);
-        props.setLastCheapModel(request.cheapModel ?? null);
-        persistLocalLoopPreferences(request);
-        try {
-          await persistLoopPreferences(props.workspaces, request);
-        } catch (error) {
-          log.error("Failed to persist loop preferences after draft update:", error);
-        }
-        await props.onRefresh();
-        return true;
-      } catch (error) {
-        log.error("Failed to update draft:", error);
-        toast.error("Failed to update draft");
-        return false;
-      }
-    };
-
     if (request.draft) {
-      return await persistDraftChanges();
+      return await persistDraftChanges({
+        loopId: editLoop.config.id,
+        request,
+        workspaces: props.workspaces,
+        setLastModel: props.setLastModel,
+        setLastCheapModel: props.setLastCheapModel,
+        onRefresh: props.onRefresh,
+        onUpdateError: (message) => {
+          log.error("Failed to update draft:", { loopId: editLoop.config.id, message });
+          toast.error(message);
+        },
+      });
     }
 
-    const persisted = await persistDraftChanges();
-    if (!persisted) {
-      return false;
-    }
+    void (async () => {
+      const persisted = await persistDraftChanges({
+        loopId: editLoop.config.id,
+        request,
+        workspaces: props.workspaces,
+        setLastModel: props.setLastModel,
+        setLastCheapModel: props.setLastCheapModel,
+        onRefresh: props.onRefresh,
+        onUpdateError: (message) => {
+          log.error("Failed to update draft:", { loopId: editLoop.config.id, message });
+          toast.error(message);
+        },
+      });
+      if (!persisted) {
+        return;
+      }
 
-    try {
-      const startResponse = await appFetch(`/api/loops/${editLoop.config.id}/draft/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          planMode: request.planMode ?? false,
-          attachments: request.attachments,
-        }),
+      const result = await startDraftLoop({
+        loopId: editLoop.config.id,
+        request,
+        onRefresh: props.onRefresh,
       });
 
-      if (!startResponse.ok) {
-        const error = await startResponse.json();
-
-        if (error.error === "uncommitted_changes") {
-          props.setUncommittedModal({
-            open: true,
-            loopId: editLoop.config.id,
-            error: error.message,
-          });
-          return true;
-        }
-
-        log.error("Failed to start draft:", error);
-        toast.error("Failed to start loop");
-        return false;
+      if (result.status === "uncommitted_changes") {
+        props.setUncommittedModal({
+          open: true,
+          loopId: editLoop.config.id,
+          error: result.error,
+        });
+        return;
       }
 
-      await props.onRefresh();
-      return true;
-    } catch (error) {
-      log.error("Failed to start draft:", error);
-      toast.error("Failed to start loop");
-      return false;
-    }
+      if (result.status === "failed") {
+        log.error("Failed to start draft:", {
+          loopId: editLoop.config.id,
+          message: result.message,
+        });
+        toast.error(result.message);
+      }
+    })();
+
+    return true;
   }
 
   const result = await props.onCreateLoop(request);
@@ -188,9 +125,12 @@ export async function handleCreateLoopSubmit(
     persistLocalLoopPreferences(request);
 
     try {
-      await persistLoopPreferences(props.workspaces, request);
-    } catch {
-      // Ignore errors saving preferences
+      await persistLoopPreferences({
+        workspaces: props.workspaces,
+        request,
+      });
+    } catch (error) {
+      log.error("Failed to persist loop preferences after create:", error);
     }
     return true;
   }
