@@ -9,6 +9,7 @@ import type {
   SendChatMessageRequest,
   UpdateChatRequest,
 } from "../types";
+import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import { useGlobalEvents } from "./useWebSocket";
 
@@ -195,7 +196,9 @@ export function useChats(): UseChatsResult {
       const response = await appFetch(`/api/chats/${id}/interrupt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request ?? {}),
+        body: JSON.stringify({
+          reason: request?.reason ?? DEFAULT_CHAT_INTERRUPT_REASON,
+        }),
       });
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to interrupt chat"));

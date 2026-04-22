@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { DEFAULT_CHAT_INTERRUPT_REASON } from "../../src/types/chat";
 import {
   CreateChatRequestSchema,
   InterruptChatRequestSchema,
@@ -72,11 +73,17 @@ describe("SendChatMessageRequestSchema", () => {
 });
 
 describe("InterruptChatRequestSchema", () => {
-  test("requires an explicit reason field and trims it", () => {
-    expect(InterruptChatRequestSchema.safeParse({}).success).toBe(false);
+  test("defaults a missing reason and trims explicit values", () => {
+    const defaulted = InterruptChatRequestSchema.safeParse({});
+    expect(defaulted.success).toBe(true);
+    if (!defaulted.success) {
+      return;
+    }
+    expect(defaulted.data.reason).toBe(DEFAULT_CHAT_INTERRUPT_REASON);
+
     expect(InterruptChatRequestSchema.safeParse({ reason: "   " }).success).toBe(false);
     const result = InterruptChatRequestSchema.safeParse({
-      reason: " user requested stop ",
+      reason: ` ${DEFAULT_CHAT_INTERRUPT_REASON} `,
     });
 
     expect(result.success).toBe(true);
@@ -84,6 +91,6 @@ describe("InterruptChatRequestSchema", () => {
       return;
     }
 
-    expect(result.data.reason).toBe("user requested stop");
+    expect(result.data.reason).toBe(DEFAULT_CHAT_INTERRUPT_REASON);
   });
 });

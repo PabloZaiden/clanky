@@ -43,6 +43,8 @@ export interface LogViewerProps {
   isActive?: boolean;
   /** ID for the root element (for accessibility) */
   id?: string;
+  /** Root directory used to display tool file paths relative to the active chat/loop context. */
+  toolPathDisplayRoot?: string;
 }
 
 export interface ConversationViewerProps extends LogViewerProps {
