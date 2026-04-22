@@ -456,6 +456,9 @@ describe("Chats API Integration", () => {
     expect(spawnedLoop.config.id).not.toBe(chatId);
     expect(spawnedLoop.config.workspaceId).toBe(testWorkspaceId);
     expect(spawnedLoop.config.planMode).toBe(true);
+    expect(spawnedLoop.config.autoAcceptPlan).toBe(false);
+    expect(spawnedLoop.config.fullyAutonomous).toBe(false);
+    expect(spawnedLoop.state.status).toBe("planning");
     expect(spawnedLoop.config.prompt).toContain("You are creating a new Ralph plan loop from an existing chat conversation.");
     expect(spawnedLoop.config.prompt).toContain("Chat title: Spawn Source Chat");
     expect(spawnedLoop.config.prompt).toContain("Only the user and assistant messages are included here; tool calls and hidden reasoning are intentionally excluded.");
@@ -590,6 +593,8 @@ describe("Chats API Integration", () => {
 
     expect(spawnResponse.status).toBe(201);
     const spawnedLoop = await spawnResponse.json();
+    expect(spawnedLoop.config.autoAcceptPlan).toBe(false);
+    expect(spawnedLoop.config.fullyAutonomous).toBe(false);
     expect(spawnedLoop.state.status).toBe("planning");
     expect(spawnedLoop.state.planMode?.isPlanReady).toBe(true);
     expect(spawnedLoop.state.planMode?.planContent).toBe("# Imported plan\n\n1. Do the seeded work.");

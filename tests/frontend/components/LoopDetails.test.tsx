@@ -1566,10 +1566,18 @@ describe("planning mode", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Amber Indicator Loop")).toBeTruthy();
+    });
+
+    await user.click(getByText("Actions"));
+
+    await waitFor(() => {
+      expect(getByText("Accept Plan & Start Loop")).toBeTruthy();
+      expect(getByText("Accept Plan & Open SSH")).toBeTruthy();
+      expect(getByText("Discard Plan")).toBeTruthy();
     });
 
   });
