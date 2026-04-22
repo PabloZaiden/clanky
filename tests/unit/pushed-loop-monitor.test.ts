@@ -325,7 +325,385 @@ describe("PushedLoopMonitor", () => {
       pullRequestNumber: 42,
       pullRequestUrl: "https://github.com/owner/repo/pull/42",
       mergedAt: undefined,
+      mergeStateStatus: undefined,
+      viewerCanUpdateBranch: undefined,
+      branchUpdate: undefined,
       lastError: undefined,
+    });
+  });
+
+  test("updates a behind PR branch through updateBranch and records the request", async () => {
+    const executor = new StubExecutor();
+    const storedLoop = createLoopWithStatus("pushed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          handledItems: [],
+        },
+      },
+    });
+
+    const pullRequest: AutomaticPrFlowPullRequest = {
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+      mergeStateStatus: "BEHIND",
+      viewerCanUpdateBranch: true,
+    };
+    let updateBranchCalls = 0;
+    let reviewCycleStarts = 0;
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      updateBranch: async () => {
+        updateBranchCalls += 1;
+        return {
+          success: true,
+          remoteBranch: "feature/automatic-pr-flow",
+          syncStatus: "clean",
+        };
+      },
+      isLoopRunning: () => false,
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:05:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => pullRequest,
+      fetchAutomaticPrFlowSnapshot: async () => ({
+        pullRequest,
+        reviewThreads: [],
+        reviewComments: [],
+        reviews: [],
+        actionableItems: [
+          {
+            id: "thread-1",
+            source: "review_thread",
+            body: "Please add another test.",
+          },
+        ],
+      }),
+      startAutomaticPrReviewCycle: async () => {
+        reviewCycleStarts += 1;
+        return { success: true, reviewCycle: 1 };
+      },
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(updateBranchCalls).toBe(1);
+    expect(reviewCycleStarts).toBe(0);
+    expect(storedLoop.state.pullRequestMonitoring).toEqual({
+      status: "open",
+      lastCheckedAt: expect.any(String),
+      pullRequestNumber: 42,
+      pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      mergedAt: undefined,
+      mergeStateStatus: "BEHIND",
+      viewerCanUpdateBranch: true,
+      branchUpdate: {
+        status: "requested",
+        lastDetectedAt: expect.any(String),
+        lastTriggeredAt: expect.any(String),
+      },
+      lastError: undefined,
+    });
+  });
+
+  test("does not retrigger a behind PR update while a recent request is still pending", async () => {
+    const executor = new StubExecutor();
+    const lastTriggeredAt = new Date().toISOString();
+    const storedLoop = createLoopWithStatus("pushed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        pullRequestMonitoring: {
+          status: "open",
+          lastCheckedAt: "2026-04-11T04:05:00.000Z",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/owner/repo/pull/42",
+          mergeStateStatus: "BEHIND",
+          viewerCanUpdateBranch: true,
+          branchUpdate: {
+            status: "requested",
+            lastDetectedAt: "2026-04-11T04:05:00.000Z",
+            lastTriggeredAt,
+          },
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          handledItems: [],
+        },
+      },
+    });
+
+    const pullRequest: AutomaticPrFlowPullRequest = {
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+      mergeStateStatus: "BEHIND",
+      viewerCanUpdateBranch: true,
+    };
+    let updateBranchCalls = 0;
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      updateBranch: async () => {
+        updateBranchCalls += 1;
+        return {
+          success: true,
+          remoteBranch: "feature/automatic-pr-flow",
+          syncStatus: "clean",
+        };
+      },
+      isLoopRunning: () => false,
+      probePullRequestMonitoring: async () => storedLoop.state.pullRequestMonitoring!,
+      ensureAutomaticPrFlowPullRequest: async () => pullRequest,
+      fetchAutomaticPrFlowSnapshot: async () => ({
+        pullRequest,
+        reviewThreads: [],
+        reviewComments: [],
+        reviews: [],
+        actionableItems: [],
+      }),
+      startAutomaticPrReviewCycle: async () => ({ success: true, reviewCycle: 1 }),
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(updateBranchCalls).toBe(0);
+    expect(storedLoop.state.pullRequestMonitoring?.branchUpdate).toEqual({
+      status: "requested",
+      lastDetectedAt: expect.any(String),
+      lastTriggeredAt,
+      lastError: undefined,
+    });
+  });
+
+  test("records conflicts when automatic branch updates enter conflict resolution", async () => {
+    const executor = new StubExecutor();
+    const storedLoop = createLoopWithStatus("pushed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          handledItems: [],
+        },
+      },
+    });
+
+    const pullRequest: AutomaticPrFlowPullRequest = {
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+      mergeStateStatus: "BEHIND",
+    };
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      updateBranch: async () => {
+        storedLoop.state = {
+          ...storedLoop.state,
+          status: "resolving_conflicts",
+        };
+        return {
+          success: true,
+          syncStatus: "conflicts_being_resolved",
+        };
+      },
+      isLoopRunning: () => false,
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:05:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => pullRequest,
+      fetchAutomaticPrFlowSnapshot: async () => ({
+        pullRequest,
+        reviewThreads: [],
+        reviewComments: [],
+        reviews: [],
+        actionableItems: [],
+      }),
+      startAutomaticPrReviewCycle: async () => ({ success: true, reviewCycle: 1 }),
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(storedLoop.state.status).toBe("resolving_conflicts");
+    expect(storedLoop.state.pullRequestMonitoring?.branchUpdate).toEqual({
+      status: "conflicts",
+      lastDetectedAt: expect.any(String),
+      lastTriggeredAt: expect.any(String),
+    });
+  });
+
+  test("records automatic branch update failures without stopping PR monitoring", async () => {
+    const executor = new StubExecutor();
+    const storedLoop = createLoopWithStatus("pushed", {
+      config: {
+        directory: "/tmp/repo",
+        workspaceId: "workspace-1",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "feature/automatic-pr-flow",
+          worktreePath: "/tmp/repo/.worktrees/feature-automatic-pr-flow",
+          commits: [],
+        },
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: ["feature/automatic-pr-flow"],
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          handledItems: [],
+        },
+      },
+    });
+
+    const pullRequest: AutomaticPrFlowPullRequest = {
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+      mergeStateStatus: "BEHIND",
+    };
+
+    const monitor = new PushedLoopMonitor({
+      listLoops: async () => [storedLoop],
+      loadLoop: async () => storedLoop,
+      updateLoopState: async (_loopId, state) => {
+        storedLoop.state = state;
+        return true;
+      },
+      getCommandExecutor: async () => executor,
+      createGitService: () => new StubGitService(),
+      markMerged: async () => ({ success: true }),
+      updateBranch: async () => ({
+        success: false,
+        error: "push denied",
+      }),
+      isLoopRunning: () => false,
+      probePullRequestMonitoring: async () => ({
+        status: "open",
+        lastCheckedAt: "2026-04-11T04:05:00.000Z",
+        pullRequestNumber: 42,
+        pullRequestUrl: "https://github.com/owner/repo/pull/42",
+      }),
+      ensureAutomaticPrFlowPullRequest: async () => pullRequest,
+      fetchAutomaticPrFlowSnapshot: async () => ({
+        pullRequest,
+        reviewThreads: [],
+        reviewComments: [],
+        reviews: [],
+        actionableItems: [],
+      }),
+      startAutomaticPrReviewCycle: async () => ({ success: true, reviewCycle: 1 }),
+      resolveAutomaticPrFlowReviewThread: async () => {},
+      intervalMs: 60_000,
+    });
+
+    await monitor.runNow();
+
+    expect(storedLoop.state.automaticPrFlow?.status).toBe("monitoring");
+    expect(storedLoop.state.pullRequestMonitoring?.lastError).toBe("push denied");
+    expect(storedLoop.state.pullRequestMonitoring?.branchUpdate).toEqual({
+      status: "failed",
+      lastDetectedAt: expect.any(String),
+      lastTriggeredAt: expect.any(String),
+      lastError: "push denied",
     });
   });
 

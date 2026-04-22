@@ -358,6 +358,27 @@ export interface GitCommit {
   filesChanged: number;
 }
 
+export type AutomaticPrFlowMergeStateStatus =
+  | "BEHIND"
+  | "BLOCKED"
+  | "CLEAN"
+  | "DIRTY"
+  | "DRAFT"
+  | "HAS_HOOKS"
+  | "UNKNOWN"
+  | "UNSTABLE";
+
+export interface PullRequestBranchUpdateState {
+  /** Current automatic branch-update state for a behind PR */
+  status: "required" | "requested" | "conflicts" | "failed";
+  /** ISO 8601 timestamp when the current behind/update state was last observed */
+  lastDetectedAt: string;
+  /** ISO 8601 timestamp when Ralph last triggered updateBranch() for this PR */
+  lastTriggeredAt?: string;
+  /** Last update-branch failure detail, when one exists */
+  lastError?: string;
+}
+
 /**
  * Persisted GitHub pull request monitoring state for pushed loops.
  */
@@ -372,6 +393,12 @@ export interface PullRequestMonitoringState {
   pullRequestUrl?: string;
   /** ISO 8601 timestamp when the PR was detected as merged */
   mergedAt?: string;
+  /** Latest GitHub merge-state classification when available */
+  mergeStateStatus?: AutomaticPrFlowMergeStateStatus;
+  /** Whether GitHub reported that the viewer can update the PR branch */
+  viewerCanUpdateBranch?: boolean;
+  /** Automatic branch-update tracking while the PR is behind base */
+  branchUpdate?: PullRequestBranchUpdateState;
   /** Last probe failure detail for diagnostics */
   lastError?: string;
 }

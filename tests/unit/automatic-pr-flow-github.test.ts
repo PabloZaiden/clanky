@@ -132,13 +132,14 @@ describe("automatic PR flow GitHub helpers", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
       success: true,
       stdout: JSON.stringify({
         number: 42,
         url: "https://github.com/owner/repo/pull/42",
         state: "OPEN",
         reviewDecision: "REVIEW_REQUIRED",
+        mergeStateStatus: "BEHIND",
       }),
       stderr: "",
       exitCode: 0,
@@ -151,6 +152,8 @@ describe("automatic PR flow GitHub helpers", () => {
       url: "https://github.com/owner/repo/pull/42",
       state: "OPEN",
       reviewDecision: "REVIEW_REQUIRED",
+      mergeStateStatus: "BEHIND",
+      viewerCanUpdateBranch: undefined,
       mergedAt: undefined,
     });
   });
@@ -181,7 +184,7 @@ describe("automatic PR flow GitHub helpers", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
       success: false,
       stdout: "",
       stderr: "no pull requests found for branch \"feature/automatic-pr-flow\"",
@@ -227,7 +230,7 @@ describe("automatic PR flow GitHub helpers", () => {
       },
     );
 
-    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
       success: true,
       stdout: JSON.stringify({
         number: 42,
@@ -315,7 +318,7 @@ describe("automatic PR flow GitHub helpers", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
       success: false,
       stdout: "",
       stderr: "no pull requests found for branch \"feature/automatic-pr-flow\"",
@@ -360,7 +363,7 @@ describe("automatic PR flow GitHub helpers", () => {
         exitCode: 0,
       },
     );
-    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
       success: true,
       stdout: JSON.stringify({
         number: 42,
@@ -414,7 +417,7 @@ describe("automatic PR flow GitHub helpers", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
       success: false,
       stdout: "",
       stderr: "no pull requests found for branch \"feature/automatic-pr-flow\"",
@@ -459,7 +462,7 @@ describe("automatic PR flow GitHub helpers", () => {
         exitCode: 0,
       },
     );
-    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision"], {
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
       success: true,
       stdout: JSON.stringify({
         number: 42,
@@ -498,7 +501,7 @@ describe("automatic PR flow GitHub helpers", () => {
         "api",
         "graphql",
         "-f",
-        "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number url state reviewDecision reviewThreads(first:100){nodes{id isResolved isOutdated isCollapsed comments(first:20){nodes{id body createdAt url author{login} path originalLine}}} } comments(first:100){nodes{id body createdAt url author{login}}} reviews(first:100){nodes{id body state submittedAt url author{login}}}}}}",
+        "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number url state reviewDecision mergeStateStatus viewerCanUpdateBranch reviewThreads(first:100){nodes{id isResolved isOutdated isCollapsed comments(first:20){nodes{id body createdAt url author{login} path originalLine}}} } comments(first:100){nodes{id body createdAt url author{login}}} reviews(first:100){nodes{id body state submittedAt url author{login}}}}}}",
         "-F",
         "owner=owner",
         "-F",
@@ -516,6 +519,8 @@ describe("automatic PR flow GitHub helpers", () => {
                 url: "https://github.com/owner/repo/pull/42",
                 state: "OPEN",
                 reviewDecision: "CHANGES_REQUESTED",
+                mergeStateStatus: "BEHIND",
+                viewerCanUpdateBranch: true,
                 reviewThreads: {
                   nodes: [
                     {
@@ -610,6 +615,15 @@ describe("automatic PR flow GitHub helpers", () => {
     ]);
     expect(snapshot.reviewComments).toHaveLength(1);
     expect(snapshot.reviews).toHaveLength(1);
+    expect(snapshot.pullRequest).toEqual({
+      number: 42,
+      url: "https://github.com/owner/repo/pull/42",
+      state: "OPEN",
+      reviewDecision: "CHANGES_REQUESTED",
+      mergeStateStatus: "BEHIND",
+      viewerCanUpdateBranch: true,
+      mergedAt: undefined,
+    });
     expect(snapshot.actionableItems.map((item) => item.id)).toEqual([
       "thread-1",
       "pr-comment-1",
