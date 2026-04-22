@@ -131,7 +131,7 @@ export const ToolEntry = memo(function ToolEntry({
     () => getStructuredToolDetails(tool, { pathDisplayRoot: toolPathDisplayRoot }),
     [tool, toolPathDisplayRoot]
   );
-  const toolSummaryClassName = "block text-sm leading-6 text-gray-300";
+  const toolSummaryClassName = "block text-sm leading-6 italic text-sky-300";
 
   const inputSummary = (
     <span className={toolSummaryClassName} data-tool-summary="true">{meta.summary}</span>
@@ -149,9 +149,9 @@ export const ToolEntry = memo(function ToolEntry({
 
   const renderInputContent = useCallback(
     () => (
-      <div className="space-y-3 rounded-2xl border border-white/10 bg-[#1d1d1d] p-3 sm:p-4" data-tool-panel-tone="neutral">
+      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4" data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-gray-500">Input</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">Input</div>
           {inputContent}
         </div>
       </div>
@@ -161,9 +161,9 @@ export const ToolEntry = memo(function ToolEntry({
 
   const renderOutputOnlyContent = useCallback(
     () => (
-      <div className="space-y-3 rounded-2xl border border-white/10 bg-[#1d1d1d] p-3 sm:p-4" data-tool-panel-tone="neutral">
+      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4" data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-gray-500">{meta.outputLabel}</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">{meta.outputLabel}</div>
           {outputContent}
         </div>
       </div>
@@ -173,13 +173,13 @@ export const ToolEntry = memo(function ToolEntry({
 
   const renderCombinedContent = useCallback(
     () => (
-      <div className="space-y-3 rounded-2xl border border-white/10 bg-[#1d1d1d] p-3 sm:p-4" data-tool-panel-tone="neutral">
+      <div className="space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4" data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-gray-500">Input</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">Input</div>
           {inputContent}
         </div>
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-gray-500">{meta.outputLabel}</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">{meta.outputLabel}</div>
           {outputContent}
         </div>
       </div>

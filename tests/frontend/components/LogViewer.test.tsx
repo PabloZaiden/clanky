@@ -693,7 +693,7 @@ describe("LogViewer", () => {
       expect(disclosure?.getAttribute("data-open")).toBe("false");
     });
 
-    test("styles tool summaries as neutral transcript entries", () => {
+    test("styles tool summaries as italic blue transcript entries", () => {
       const { getByText } = renderToolCall({
         name: "execute",
         input: {},
@@ -705,7 +705,8 @@ describe("LogViewer", () => {
       expect(toolEntry.getAttribute("data-entry-type")).toBe("tool");
       expect(summaryText.getAttribute("data-tool-summary")).toBe("true");
       expect(summaryText.className).toContain("text-sm");
-      expect(summaryText.className).toContain("text-gray-300");
+      expect(summaryText.className).toContain("italic");
+      expect(summaryText.className).toContain("text-sky-300");
     });
 
     test("renders parsed view tool details with structured input and output sections", async () => {
@@ -722,7 +723,10 @@ describe("LogViewer", () => {
       expect(getByText("/src/file.ts")).toBeInTheDocument();
       expect(getByText("Contents")).toBeInTheDocument();
       expect(getByText("file contents here")).toBeInTheDocument();
-      expect(container.querySelector("[data-tool-panel-tone='neutral']")).not.toBeNull();
+      const panel = container.querySelector("[data-tool-panel-tone='neutral']") as HTMLElement | null;
+      expect(panel).not.toBeNull();
+      expect(panel?.className).toContain("border-sky-500/20");
+      expect(panel?.className).toContain("bg-[#101826]");
       expect(container.querySelector("[data-tool-block='rows']")).not.toBeNull();
     });
 
