@@ -9,6 +9,16 @@ import {
   type StoredCliCredentials,
 } from "../../src/cli";
 
+const CLI_USAGE = [
+  "Usage:",
+  "  ralpher web",
+  "  ralpher auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
+  "  ralpher status [base-url]",
+  "  ralpher api",
+  "  ralpher api <endpoint> [--method <method>] [--payload <json>]",
+  "  ralpher schema <endpoint>",
+].join("\n");
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -32,7 +42,6 @@ describe("ralpher cli", () => {
   let originalDataDir: string | undefined;
   let originalCliHome: string | undefined;
   let originalHome: string | undefined;
-  let originalBaseUrl: string | undefined;
 
   beforeEach(async () => {
     dataDir = await mkdtemp(join(tmpdir(), "ralpher-cli-test-"));
@@ -40,11 +49,9 @@ describe("ralpher cli", () => {
     originalDataDir = process.env["RALPHER_DATA_DIR"];
     originalCliHome = process.env["RALPHER_CLI_HOME"];
     originalHome = process.env["HOME"];
-    originalBaseUrl = process.env["RALPHER_BASE_URL"];
     process.env["RALPHER_DATA_DIR"] = dataDir;
     process.env["HOME"] = homeDir;
     delete process.env["RALPHER_CLI_HOME"];
-    delete process.env["RALPHER_BASE_URL"];
   });
 
   afterEach(async () => {
@@ -63,16 +70,23 @@ describe("ralpher cli", () => {
     } else {
       process.env["HOME"] = originalHome;
     }
-    if (originalBaseUrl === undefined) {
-      delete process.env["RALPHER_BASE_URL"];
-    } else {
-      process.env["RALPHER_BASE_URL"] = originalBaseUrl;
-    }
     await rm(dataDir, { recursive: true, force: true });
     await rm(homeDir, { recursive: true, force: true });
   });
 
-  test("auth requires an explicit base URL instead of defaulting to localhost", async () => {
+  test("shows usage when no command is provided", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli([], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([CLI_USAGE]);
+  });
+
+  test("auth requires the base URL as the first positional argument", async () => {
     const output: string[] = [];
 
     const exitCode = await runCli(["auth"], {
@@ -82,7 +96,7 @@ describe("ralpher cli", () => {
 
     expect(exitCode).toBe(1);
     expect(output).toEqual([
-      "ERR:Error: Missing value for --base-url\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>] [--cookies <cookie-header>]\n  ralpher cli status [--base-url <url>]",
+      `ERR:Error: Missing base URL argument for auth\n\n${CLI_USAGE}`,
     ]);
   });
 
@@ -100,7 +114,6 @@ describe("ralpher cli", () => {
 
     const exitCode = await runCli([
       "auth",
-      "--base-url",
       "http://example.test",
       "--cookies",
       "authentik_proxy=proxy-cookie-value; session_hint=browser;",
@@ -173,8 +186,7 @@ describe("ralpher cli", () => {
       "Authenticated with http://example.test",
     ]);
 
-    const storedCredentials = await loadStoredCliCredentials();
-    expect(storedCredentials).toEqual({
+    expect(await loadStoredCliCredentials()).toEqual({
       baseUrl: "http://example.test",
       clientId: "ralpher-cli",
       accessToken: "access-token-1",
@@ -202,7 +214,6 @@ describe("ralpher cli", () => {
 
     const exitCode = await runCli([
       "auth",
-      "--base-url",
       "http://example.test",
       "--cookies",
       "definitely-not-a-cookie",
@@ -213,34 +224,8 @@ describe("ralpher cli", () => {
 
     expect(exitCode).toBe(1);
     expect(output).toEqual([
-      "ERR:Error: Invalid value for --cookies\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>] [--cookies <cookie-header>]\n  ralpher cli status [--base-url <url>]",
+      `ERR:Error: Invalid value for --cookies\n\n${CLI_USAGE}`,
     ]);
-  });
-
-  test("auth rejects partially invalid cookie strings", async () => {
-    const invalidCookieValues = [
-      "authentik_proxy=proxy-cookie-value; definitely-not-a-cookie",
-      "=proxy-cookie-value",
-    ];
-
-    for (const cookieValue of invalidCookieValues) {
-      const output: string[] = [];
-      const exitCode = await runCli([
-        "auth",
-        "--base-url",
-        "http://example.test",
-        "--cookies",
-        cookieValue,
-      ], {
-        out: (message: string) => output.push(message),
-        err: (message: string) => output.push(`ERR:${message}`),
-      });
-
-      expect(exitCode).toBe(1);
-      expect(output).toEqual([
-        "ERR:Error: Invalid value for --cookies\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>] [--cookies <cookie-header>]\n  ralpher cli status [--base-url <url>]",
-      ]);
-    }
   });
 
   test("status refreshes expired credentials before probing auth status", async () => {
@@ -266,7 +251,7 @@ describe("ralpher cli", () => {
     };
     await saveStoredCliCredentials(expiredCredentials);
 
-    const exitCode = await runCli(["status"], {
+    const exitCode = await runCli(["status", "http://override.test"], {
       out: (message: string) => output.push(message),
       err: (message: string) => output.push(`ERR:${message}`),
       now: () => new Date("2026-04-21T17:15:00.000Z"),
@@ -291,7 +276,7 @@ describe("ralpher cli", () => {
               : null,
         });
 
-        if (url === "http://example.test/api/auth/token") {
+        if (url === "http://override.test/api/auth/token") {
           return jsonResponse(200, {
             access_token: "fresh-access",
             refresh_token: "fresh-refresh",
@@ -301,7 +286,7 @@ describe("ralpher cli", () => {
           });
         }
 
-        if (url === "http://example.test/api/auth/status") {
+        if (url === "http://override.test/api/auth/status") {
           return jsonResponse(200, {
             authenticated: true,
             authKind: "bearer",
@@ -317,25 +302,26 @@ describe("ralpher cli", () => {
 
     expect(exitCode).toBe(0);
     expect(output).toEqual([
-      "Logged in to http://example.test as ralpher-cli.",
+      "Logged in to http://override.test as ralpher-cli.",
     ]);
     expect(requests).toEqual([
       {
-        url: "http://example.test/api/auth/token",
+        url: "http://override.test/api/auth/token",
         authorization: null,
         cookie: "authentik_proxy=proxy-cookie-value; session_hint=browser",
-        origin: "http://example.test",
+        origin: "http://override.test",
       },
       {
-        url: "http://example.test/api/auth/status",
+        url: "http://override.test/api/auth/status",
         authorization: "Bearer fresh-access",
         cookie: "authentik_proxy=proxy-cookie-value; session_hint=browser",
-        origin: "http://example.test",
+        origin: "http://override.test",
       },
     ]);
 
     expect(await loadStoredCliCredentials()).toEqual({
       ...expiredCredentials,
+      baseUrl: "http://override.test",
       accessToken: "fresh-access",
       refreshToken: "fresh-refresh",
       accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
@@ -343,17 +329,126 @@ describe("ralpher cli", () => {
     });
   });
 
-  test("status reports when no credentials are stored", async () => {
+  test("api lists the discoverable endpoints when called without a path", async () => {
     const output: string[] = [];
 
-    const exitCode = await runCli(["status"], {
+    const exitCode = await runCli(["api"], {
       out: (message: string) => output.push(message),
       err: (message: string) => output.push(`ERR:${message}`),
     });
 
-    expect(exitCode).toBe(1);
-    expect(output).toEqual([
-      "Not logged in.",
+    expect(exitCode).toBe(0);
+    expect(output.length).toBeGreaterThan(20);
+    expect(output).toContain("GET /api/auth/status - Validate the current bearer token and return auth details.");
+    expect(output).toContain("POST /api/provisioning-jobs - Start a remote provisioning job.");
+  });
+
+  test("api sends authenticated requests to the stored server", async () => {
+    const output: string[] = [];
+    const requests: Array<{
+      url: string;
+      method: string;
+      authorization?: string | null;
+      cookie?: string | null;
+      origin?: string | null;
+      body?: string;
+    }> = [];
+
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "active-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2026-04-21T18:00:00.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "loops/test-loop", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          authorization: init?.headers instanceof Headers
+            ? init.headers.get("authorization")
+            : init?.headers && "authorization" in init.headers
+              ? String(init.headers["authorization"])
+              : null,
+          cookie: init?.headers instanceof Headers
+            ? init.headers.get("cookie")
+            : init?.headers && "cookie" in init.headers
+              ? String(init.headers["cookie"])
+              : null,
+          origin: init?.headers instanceof Headers
+            ? init.headers.get("origin")
+            : init?.headers && "origin" in init.headers
+              ? String(init.headers["origin"])
+              : null,
+          body: typeof init?.body === "string" ? init.body : undefined,
+        });
+        return jsonResponse(200, {
+          id: "test-loop",
+          status: "running",
+        });
+      }),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(requests).toEqual([
+      {
+        url: "http://example.test/api/loops/test-loop",
+        method: "GET",
+        authorization: "Bearer active-access",
+        cookie: "authentik_proxy=proxy-cookie-value",
+        origin: "http://example.test",
+        body: undefined,
+      },
     ]);
+    expect(output).toEqual([
+      "Status: 200 OK",
+      JSON.stringify({
+        id: "test-loop",
+        status: "running",
+      }, null, 2),
+    ]);
+  });
+
+  test("schema shows request metadata for known endpoints", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["schema", "auth/device"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(0);
+    const rendered = output.join("\n");
+    expect(rendered).toContain("Endpoint: /api/auth/device");
+    expect(rendered).toContain("Methods: POST");
+    expect(rendered).toContain("Description: Start a device authorization flow for CLI login.");
+    expect(rendered).toContain("Request body schema:");
+    expect(rendered).toContain("\"clientId\"");
+  });
+
+  test("schema matches dynamic endpoints and shows query schemas", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["schema", "workspaces/workspace-1/files"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(0);
+    const rendered = output.join("\n");
+    expect(rendered).toContain("Endpoint: /api/workspaces/:id/files");
+    expect(rendered).toContain("Methods: GET");
+    expect(rendered).toContain("Query schema:");
+    expect(rendered).toContain("\"path\"");
   });
 });

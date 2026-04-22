@@ -2,8 +2,6 @@
  * Passkey authentication API routes.
  */
 
-import type { AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
-import { z } from "zod";
 import { createLogger } from "../core/logger";
 import {
   beginPasskeyAuthentication,
@@ -19,26 +17,15 @@ import {
   removeConfiguredPasskeys,
 } from "../core/passkey-auth";
 import { PASSKEY_AUTH_REQUIRED_HEADER } from "../lib/passkey-auth-http";
+import {
+  CompletePasskeyAuthenticationRequestSchema,
+  CompletePasskeyRegistrationRequestSchema,
+} from "../types/schemas";
 import type { PasskeyAuthStatusResponse } from "../types/api";
 import { errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 
 const log = createLogger("api:passkey-auth");
-
-const CompletePasskeyRegistrationRequestSchema = z.object({
-  name: z.string().trim().min(1).max(80).optional(),
-  response: z.custom<RegistrationResponseJSON>(
-    (value: unknown) => typeof value === "object" && value !== null,
-    "response is required",
-  ),
-});
-
-const CompletePasskeyAuthenticationRequestSchema = z.object({
-  response: z.custom<AuthenticationResponseJSON>(
-    (value: unknown) => typeof value === "object" && value !== null,
-    "response is required",
-  ),
-});
 
 async function requirePasskeyManagementAccess(req: Request): Promise<void> {
   if (await isPasskeyAuthRequired() && !await isPasskeySessionAuthenticated(req)) {

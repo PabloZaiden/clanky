@@ -66,4 +66,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Run the server
-CMD ["/app/ralpher"]
+CMD ["/app/ralpher", "web"]
