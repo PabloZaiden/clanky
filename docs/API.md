@@ -1594,29 +1594,6 @@ Only loops in archived states for the target workspace are processed. The respon
 | 404 | `workspace_not_found` | Workspace not found |
 | 500 | `purge_archived_failed` | Failed to purge archived loops for the workspace |
 
-#### GET /api/workspaces/by-directory
-
-Look up a workspace by its directory path.
-
-**Query Parameters**
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `directory` | Yes | Directory path to look up |
-| `workspaceId` | No | Workspace ID used to disambiguate identical directory paths across different server targets |
-
-**Response**
-
-Returns the workspace object.
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `missing_parameter` | directory query parameter is required |
-| 404 | `workspace_not_found` | No workspace found for this directory |
-| 409 | `ambiguous_workspace` | Multiple workspaces use this directory and `workspaceId` was not provided |
-
 #### GET /api/workspaces/export
 
 Export all workspace configurations as JSON for backup or migration.
