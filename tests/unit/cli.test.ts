@@ -6,6 +6,7 @@ import { formatRalpherVersion } from "../../src/version";
 import {
   findApiEndpoint,
   loadStoredCliCredentials,
+  parseCliCommand,
   runCli,
   saveStoredCliCredentials,
   type StoredCliCredentials,
@@ -152,6 +153,29 @@ describe("ralpher cli", () => {
     ]);
   });
 
+  test("auth defaults the client id to the target host name", () => {
+    expect(parseCliCommand(["auth", "https://example.test:9090/path"])).toEqual({
+      action: "auth",
+      baseUrl: "https://example.test:9090/path",
+      clientId: "example.test",
+      cookies: undefined,
+    });
+  });
+
+  test("auth preserves an explicit client id override", () => {
+    expect(parseCliCommand([
+      "auth",
+      "https://example.test",
+      "--client-id",
+      "custom-cli-id",
+    ])).toEqual({
+      action: "auth",
+      baseUrl: "https://example.test",
+      clientId: "custom-cli-id",
+      cookies: undefined,
+    });
+  });
+
   test("auth completes the device flow, stores cookies, and reuses them on requests", async () => {
     const output: string[] = [];
     const fetchCalls: Array<{
@@ -240,7 +264,7 @@ describe("ralpher cli", () => {
 
     expect(await loadStoredCliCredentials()).toEqual({
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "example.test",
       accessToken: "access-token-1",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -255,10 +279,113 @@ describe("ralpher cli", () => {
       "http://example.test/api/auth/token",
       "http://example.test/api/auth/token",
     ]);
+    expect(fetchCalls.map((call) => call.body)).toEqual([
+      JSON.stringify({
+        clientId: "example.test",
+        scope: "",
+      }),
+      JSON.stringify({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        device_code: "device-code-1",
+        client_id: "example.test",
+      }),
+      JSON.stringify({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        device_code: "device-code-1",
+        client_id: "example.test",
+      }),
+    ]);
     expect(fetchCalls.every((call) => call.origin === "http://example.test")).toBe(true);
     expect(fetchCalls.every((call) => call.cookie === "authentik_proxy=proxy-cookie-value; session_hint=browser")).toBe(true);
     expect(await Bun.file(join(homeDir, ".ralpher", "cli-auth.json")).exists()).toBe(true);
     expect(await Bun.file(join(dataDir, "cli-auth.json")).exists()).toBe(false);
+  });
+
+  test("auth uses an explicit client id for device flow requests and stored credentials", async () => {
+    const output: string[] = [];
+    const fetchCalls: Array<{
+      url: string;
+      body?: string;
+    }> = [];
+
+    const exitCode = await runCli([
+      "auth",
+      "http://example.test",
+      "--client-id",
+      "custom-cli-id",
+    ], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      sleep: async () => undefined,
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        fetchCalls.push({
+          url,
+          body: typeof init?.body === "string" ? init.body : undefined,
+        });
+
+        if (url === "http://example.test/api/auth/device") {
+          return jsonResponse(200, {
+            device_code: "device-code-2",
+            user_code: "WXYZ-1234",
+            verification_uri: "http://example.test/device",
+            verification_uri_complete: "http://example.test/device?user_code=WXYZ-1234",
+            expires_in: 600,
+            interval: 1,
+          });
+        }
+
+        if (url === "http://example.test/api/auth/token") {
+          return jsonResponse(200, {
+            access_token: "access-token-2",
+            refresh_token: "refresh-token-2",
+            token_type: "Bearer",
+            expires_in: 600,
+            scope: "",
+          });
+        }
+
+        throw new Error(`Unexpected fetch to ${url}`);
+      }),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([
+      "Open: http://example.test/device?user_code=WXYZ-1234",
+      "Code: WXYZ-1234",
+      "Waiting for approval...",
+      "Authenticated with http://example.test",
+    ]);
+    expect(fetchCalls).toEqual([
+      {
+        url: "http://example.test/api/auth/device",
+        body: JSON.stringify({
+          clientId: "custom-cli-id",
+          scope: "",
+        }),
+      },
+      {
+        url: "http://example.test/api/auth/token",
+        body: JSON.stringify({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: "device-code-2",
+          client_id: "custom-cli-id",
+        }),
+      },
+    ]);
+    expect(await loadStoredCliCredentials()).toEqual({
+      baseUrl: "http://example.test",
+      clientId: "custom-cli-id",
+      accessToken: "access-token-2",
+      refreshToken: "refresh-token-2",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "",
+      accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
+      createdAt: "2026-04-21T17:15:00.000Z",
+      updatedAt: "2026-04-21T17:15:00.000Z",
+    });
   });
 
   test("auth rejects invalid cookie strings", async () => {

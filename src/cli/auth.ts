@@ -38,8 +38,6 @@ const AuthStatusResponseSchema = z.object({
   scope: z.string().nullable(),
 });
 
-export const DEFAULT_CLIENT_ID = "ralpher-cli";
-
 export interface AuthCommandOptions {
   baseUrl: string;
   clientId: string;
