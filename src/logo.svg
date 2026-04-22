@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <title>Ralpher</title>
-  <!-- Yellow circular background (Simpsons yellow) -->
-  <circle cx="32" cy="32" r="30" fill="#FED90F"/>
-  <!-- Orange border -->
-  <circle cx="32" cy="32" r="30" fill="none" stroke="#F5A623" stroke-width="3"/>
-  <!-- Letter R -->
-  <text x="32" y="44" font-family="Arial Black, Arial, sans-serif" font-size="36" font-weight="bold" fill="#1a1a1a" text-anchor="middle">R</text>
-</svg>
