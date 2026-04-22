@@ -176,7 +176,11 @@ async function runApiCommand(
   const requestHeaders = getAuthorizedHeaders(credentials);
   let requestBody: string | undefined;
   if (command.payload !== undefined) {
-    requestBody = JSON.stringify(JSON.parse(command.payload) as unknown);
+    try {
+      requestBody = JSON.stringify(JSON.parse(command.payload) as unknown);
+    } catch {
+      throw createUsageError("Invalid JSON for --payload");
+    }
     requestHeaders.set("content-type", "application/json");
   }
   requestHeaders.set("accept", "application/json");

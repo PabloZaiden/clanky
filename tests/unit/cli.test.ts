@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
+  findApiEndpoint,
   loadStoredCliCredentials,
   runCli,
   saveStoredCliCredentials,
@@ -228,6 +229,25 @@ describe("ralpher cli", () => {
     ]);
   });
 
+  test("auth rejects cookie headers that mix valid and invalid pairs", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli([
+      "auth",
+      "http://example.test",
+      "--cookies",
+      "authentik_proxy=proxy-cookie-value; definitely-not-a-cookie",
+    ], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      `ERR:Error: Invalid value for --cookies\n\n${CLI_USAGE}`,
+    ]);
+  });
+
   test("status refreshes expired credentials before probing auth status", async () => {
     const output: string[] = [];
     const requests: Array<{
@@ -362,7 +382,7 @@ describe("ralpher cli", () => {
       tokenType: "Bearer",
       scope: "",
       cookies: "authentik_proxy=proxy-cookie-value",
-      accessTokenExpiresAt: "2026-04-21T18:00:00.000Z",
+      accessTokenExpiresAt: "2027-04-21T18:00:00.000Z",
       createdAt: "2026-04-21T17:00:00.000Z",
       updatedAt: "2026-04-21T17:00:00.000Z",
     });
@@ -419,6 +439,32 @@ describe("ralpher cli", () => {
     ]);
   });
 
+  test("api reports invalid JSON payloads as usage errors", async () => {
+    const output: string[] = [];
+    await saveStoredCliCredentials({
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "active-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2027-04-21T18:00:00.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    });
+
+    const exitCode = await runCli(["api", "loops/test-loop", "--method", "POST", "--payload", "{\"broken\""], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      `ERR:Error: Invalid JSON for --payload\n\n${CLI_USAGE}`,
+    ]);
+  });
+
   test("schema shows request metadata for known endpoints", async () => {
     const output: string[] = [];
 
@@ -450,5 +496,10 @@ describe("ralpher cli", () => {
     expect(rendered).toContain("Methods: GET");
     expect(rendered).toContain("Query schema:");
     expect(rendered).toContain("\"path\"");
+  });
+
+  test("api catalog escapes regex metacharacters in static route segments", () => {
+    expect(findApiEndpoint(".well-known/jwks.json")?.path).toBe("/.well-known/jwks.json");
+    expect(findApiEndpoint(".well-known/jwksXjson")).toBeNull();
   });
 });

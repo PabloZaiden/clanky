@@ -361,7 +361,18 @@ function normalizeEndpointPath(input: string): string {
 }
 
 function matchesRoutePattern(routePath: string, endpointPath: string): boolean {
-  const routePattern = routePath.replace(/:[^/]+/g, "[^/]+");
+  const routePattern = routePath
+    .split("/")
+    .map((segment) => {
+      if (!segment) {
+        return "";
+      }
+      if (segment.startsWith(":")) {
+        return "[^/]+";
+      }
+      return segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    })
+    .join("/");
   const matcher = new RegExp(`^${routePattern}$`);
   return matcher.test(endpointPath);
 }
