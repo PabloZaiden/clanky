@@ -103,7 +103,7 @@ describe("draft workflow scenario", () => {
     });
   });
 
-  test("starting a draft loop calls the draft/start API", async () => {
+  test("starting a draft loop exits the draft editor immediately", async () => {
     setupBaseApi();
     const draft = draftLoop();
     api.get("/api/loops", () => [draft]);
@@ -132,6 +132,10 @@ describe("draft workflow scenario", () => {
     });
 
     await user.click(getByRole("button", { name: "Start" }));
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/workspace/ws-1");
+    });
 
     await waitFor(() => {
       const calls = api.calls("/api/loops/:id/draft/start", "POST");
