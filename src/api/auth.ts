@@ -23,6 +23,7 @@ import { authorizeApplicationRequest } from "./application-auth";
 import { isPasskeyAuthRequired, isPasskeySessionAuthenticated } from "../core/passkey-auth";
 import { errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
+import { formatCookieHeader, parseCookieHeader } from "../lib/http-cookies";
 
 const log = createLogger("api:auth");
 
@@ -290,6 +291,16 @@ export const authRoutes = {
         subject: state.claims?.sub ?? null,
         clientId: state.claims?.clientId ?? null,
         scope: state.claims?.scope ?? null,
+      });
+    },
+  },
+
+  "/api/auth/cli-cookies": {
+    async GET(req: Request): Promise<Response> {
+      const cookies = parseCookieHeader(req.headers.get("cookie"))
+        .filter((cookie) => cookie.name !== "ralpher_passkey_session");
+      return Response.json({
+        cookies: formatCookieHeader(cookies) ?? "",
       });
     },
   },

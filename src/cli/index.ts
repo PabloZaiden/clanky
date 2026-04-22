@@ -6,6 +6,7 @@ import { mkdir } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
 import { z } from "zod";
+import { formatCookieHeader, parseCookieHeader } from "../lib/http-cookies";
 
 const DEFAULT_CLIENT_ID = "ralpher-cli";
 const DEFAULT_SCOPE = "";
@@ -14,7 +15,7 @@ const CLI_CREDENTIALS_FILE = "cli-auth.json";
 
 const CLI_USAGE = [
   "Usage:",
-  "  ralpher cli auth --base-url <url> [--client-id <client-id>]",
+  "  ralpher cli auth --base-url <url> [--client-id <client-id>] [--cookies <cookie-header>]",
   "  ralpher cli status [--base-url <url>]",
 ].join("\n");
 
@@ -55,6 +56,7 @@ const StoredCliCredentialsSchema = z.object({
   refreshToken: z.string().min(1),
   tokenType: z.literal("Bearer"),
   scope: z.string(),
+  cookies: z.string().default(""),
   accessTokenExpiresAt: z.string().datetime(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -67,6 +69,7 @@ export type CliCommand =
     action: "auth";
     baseUrl: string;
     clientId: string;
+    cookies?: string;
   }
   | {
     action: "status";
@@ -122,6 +125,20 @@ function parseOptionValue(option: string, rawValue?: string): string {
   return rawValue.trim();
 }
 
+function normalizeCookieOption(rawValue?: string): string | undefined {
+  const trimmed = rawValue?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const normalized = formatCookieHeader(parseCookieHeader(trimmed));
+  if (!normalized) {
+    throw new Error(`Invalid value for --cookies\n\n${CLI_USAGE}`);
+  }
+
+  return normalized;
+}
+
 function parseCliOptions(args: string[]): Record<string, string> {
   const options: Record<string, string> = {};
 
@@ -132,7 +149,7 @@ function parseCliOptions(args: string[]): Record<string, string> {
     }
 
     const [name, inlineValue] = arg.split("=", 2);
-    if (name !== "--base-url" && name !== "--client-id") {
+    if (name !== "--base-url" && name !== "--client-id" && name !== "--cookies") {
       throw new Error(`Unknown option: ${name}\n\n${CLI_USAGE}`);
     }
 
@@ -157,6 +174,7 @@ export function parseCliCommand(args: string[]): CliCommand {
       action,
       baseUrl: normalizeBaseUrl(options["--base-url"]),
       clientId: options["--client-id"]?.trim() || DEFAULT_CLIENT_ID,
+      cookies: normalizeCookieOption(options["--cookies"]),
     };
   }
   if (action === "status") {
@@ -219,6 +237,7 @@ function createStoredCredentials(
     refreshToken: tokenSet.refresh_token,
     tokenType: tokenSet.token_type,
     scope: tokenSet.scope || DEFAULT_SCOPE,
+    cookies: command.cookies ?? "",
     accessTokenExpiresAt: new Date(now.getTime() + tokenSet.expires_in * 1000).toISOString(),
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
@@ -256,12 +275,14 @@ async function runAuthCommand(
     now: () => Date;
   },
 ): Promise<number> {
+  const cookieHeader = command.cookies;
   const { response, body } = await requestJson(
     dependencies.fetchFn,
     `${command.baseUrl}/api/auth/device`,
     {
       method: "POST",
       headers: {
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -290,6 +311,7 @@ async function runAuthCommand(
       {
         method: "POST",
         headers: {
+          ...(cookieHeader ? { cookie: cookieHeader } : {}),
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -337,6 +359,7 @@ function createUpdatedStoredCredentials(
     refreshToken: tokenSet.refresh_token,
     tokenType: tokenSet.token_type,
     scope: tokenSet.scope,
+    cookies: existing.cookies,
     accessTokenExpiresAt: new Date(now.getTime() + tokenSet.expires_in * 1000).toISOString(),
     updatedAt: now.toISOString(),
   };
@@ -355,12 +378,14 @@ async function refreshStoredCredentials(
   baseUrlOverride?: string,
 ): Promise<StoredCliCredentials | null> {
   const baseUrl = baseUrlOverride ?? credentials.baseUrl;
+  const cookieHeader = credentials.cookies || undefined;
   const { response, body } = await requestJson(
     dependencies.fetchFn,
     `${baseUrl}/api/auth/token`,
     {
       method: "POST",
       headers: {
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
         "content-type": "application/json",
       },
       body: JSON.stringify({
@@ -415,12 +440,14 @@ async function probeAuthStatus(
     fetchFn: typeof fetch;
   },
 ): Promise<{ response: Response; body: unknown }> {
+  const cookieHeader = credentials.cookies || undefined;
   return await requestJson(
     dependencies.fetchFn,
     `${credentials.baseUrl}/api/auth/status`,
     {
       headers: {
         authorization: `${credentials.tokenType} ${credentials.accessToken}`,
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
       },
     },
   );

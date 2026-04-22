@@ -88,6 +88,9 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
     effectiveIssuer: "urn:ralpher:instance:test",
   })),
   defaultRoute("/api/auth/sessions", () => []),
+  defaultRoute("/api/auth/cli-cookies", () => ({
+    cookies: "",
+  })),
 ];
 
 export function resolveDefaultApiRoute(

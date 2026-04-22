@@ -314,7 +314,6 @@ function createTables(database: Database): void {
         updated_at TEXT NOT NULL
       )
     `);
-
     // Refresh sessions - stores revocable rotating refresh-token chains.
     // Keep this in the base schema so startup repairs legacy databases whose
     // schema_migrations versions may already include later auth migration IDs.

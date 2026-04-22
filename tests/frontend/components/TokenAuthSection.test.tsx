@@ -78,4 +78,28 @@ describe("TokenAuthSection", () => {
 
     expect(getByText("No active CLI sessions.")).toBeTruthy();
   });
+
+  test("shows the CLI cookie string in a popup", async () => {
+    api.get("/api/auth/issuer", () => ({
+      canonicalIssuer: null,
+      effectiveIssuer: "urn:ralpher:instance:test",
+    }));
+    api.get("/api/auth/sessions", () => []);
+    api.get("/api/auth/cli-cookies", () => ({
+      cookies: "authentik_proxy=proxy-cookie-value; locale=es",
+    }));
+
+    const { user, getByDisplayValue, getByRole } = renderWithUser(<TokenAuthSection />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Show CLI cookie string" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Show CLI cookie string" }));
+
+    await waitFor(() => {
+      expect(getByRole("dialog", { name: "CLI cookie string" })).toBeTruthy();
+      expect(getByDisplayValue("authentik_proxy=proxy-cookie-value; locale=es")).toBeTruthy();
+    });
+  });
 });
