@@ -332,36 +332,6 @@ describe("auth routes", () => {
     expect(unauthenticatedResponse.status).toBe(401);
   });
 
-  test("returns CLI cookies without the passkey session cookie", async () => {
-    const secret = await getOrCreatePasskeyAuthSecret();
-    const version = await getPasskeyAuthVersion();
-    const passkeyCookie = createSignedPasskeySessionCookie({
-      nonce: "auth-cookie-export-session",
-      version,
-      expiresAt: Date.now() + 60_000,
-    }, secret);
-
-    const wrappedRoutes = wrapRoutesWithApplicationAuth({
-      "/api/auth/cli-cookies": authRoutes["/api/auth/cli-cookies"],
-    });
-    const protectedCliCookiesRoute = wrappedRoutes["/api/auth/cli-cookies"] as {
-      GET: (req: Request) => Promise<Response>;
-    };
-
-    const response = await protectedCliCookiesRoute.GET(
-      new Request("http://example.test/api/auth/cli-cookies", {
-        headers: {
-          cookie: `${passkeyCookie}; authentik_proxy=proxy-cookie-value; locale=es`,
-        },
-      }),
-    );
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      cookies: "authentik_proxy=proxy-cookie-value; locale=es",
-    });
-  });
-
   test("only allows public revocation by refresh token", async () => {
     const startResponse = await authRoutes["/api/auth/device"].POST(
       new Request("http://example.test/api/auth/device", {

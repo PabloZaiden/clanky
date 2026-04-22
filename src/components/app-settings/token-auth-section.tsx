@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { appFetch } from "../../lib/public-path";
 import { readApiError } from "../../lib/api-error";
 import { useToast } from "../../hooks";
-import { Button, ConfirmModal, Modal } from "../common";
+import { Button, ConfirmModal } from "../common";
 
 interface IssuerSettingsResponse {
   canonicalIssuer: string | null;
@@ -33,12 +33,9 @@ export function TokenAuthSection() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [savingIssuer, setSavingIssuer] = useState(false);
-  const [loadingCliCookies, setLoadingCliCookies] = useState(false);
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
   const [pendingRevokeSession, setPendingRevokeSession] = useState<AuthSessionSummary | null>(null);
   const [canonicalIssuer, setCanonicalIssuer] = useState("");
-  const [cliCookieString, setCliCookieString] = useState("");
-  const [showCliCookieModal, setShowCliCookieModal] = useState(false);
   const [effectiveIssuer, setEffectiveIssuer] = useState("");
   const [sessions, setSessions] = useState<AuthSessionSummary[]>([]);
   const activeSessions = useMemo(() => sessions.filter((session) => session.active), [sessions]);
@@ -118,23 +115,6 @@ export function TokenAuthSection() {
     }
   }, [loadState, toast]);
 
-  const showCliCookies = useCallback(async () => {
-    setLoadingCliCookies(true);
-    try {
-      const response = await appFetch("/api/auth/cli-cookies");
-      if (!response.ok) {
-        throw new Error(await readApiError(response));
-      }
-      const body = await response.json() as { cookies: string };
-      setCliCookieString(body.cookies);
-      setShowCliCookieModal(true);
-    } catch (error) {
-      toast.error(String(error));
-    } finally {
-      setLoadingCliCookies(false);
-    }
-  }, [toast]);
-
   function handleCloseRevokeConfirm(): void {
     if (!revokingSessionId) {
       setPendingRevokeSession(null);
@@ -190,19 +170,6 @@ export function TokenAuthSection() {
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Sessions created through the device flow can be revoked here without waiting for refresh-token expiry.
             </p>
-            <div className="mt-3">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                loading={loadingCliCookies}
-                onClick={() => {
-                  void showCliCookies();
-                }}
-              >
-                Show CLI cookie string
-              </Button>
-            </div>
           </div>
 
           <div className="space-y-3">
@@ -262,38 +229,6 @@ export function TokenAuthSection() {
         loading={pendingRevokeSession !== null && revokingSessionId === pendingRevokeSession.id}
         variant="danger"
       />
-      <Modal
-        isOpen={showCliCookieModal}
-        onClose={() => setShowCliCookieModal(false)}
-        title="CLI cookie string"
-        description="Pass this value to `ralpher cli auth --cookies` when the CLI needs to authenticate through the same proxy context as your browser."
-        size="lg"
-        footer={(
-          <Button
-            type="button"
-            onClick={() => setShowCliCookieModal(false)}
-          >
-            Close
-          </Button>
-        )}
-      >
-        <div className="space-y-3">
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            This includes every browser cookie currently sent to Ralpher except <code>ralpher_passkey_session</code>.
-          </p>
-          <textarea
-            readOnly
-            value={cliCookieString}
-            rows={4}
-            className="block w-full rounded-md border-gray-300 bg-white px-3 py-2 font-mono text-sm text-gray-900 shadow-sm dark:border-gray-600 dark:bg-neutral-900 dark:text-gray-100"
-          />
-          {!cliCookieString ? (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              No additional browser cookies are currently being sent to Ralpher.
-            </p>
-          ) : null}
-        </div>
-      </Modal>
     </div>
   );
 }
