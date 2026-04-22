@@ -33,6 +33,11 @@ import {
 } from "./constraint-helpers";
 
 const log = createLogger("core:port-forward-manager");
+const DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call initializeDatabase() first.";
+
+function isDatabaseNotInitializedError(error: unknown): boolean {
+  return error instanceof Error && error.message === DATABASE_NOT_INITIALIZED_MESSAGE;
+}
 
 export class PortForwardManager {
   private readonly runtimeHandles = new Map<string, RuntimeHandle>();
@@ -221,7 +226,15 @@ export class PortForwardManager {
     code: number | null,
     signal: NodeJS.Signals | null,
   ): Promise<void> {
-    const forward = await getPortForward(portForwardId);
+    let forward: PortForward | null;
+    try {
+      forward = await getPortForward(portForwardId);
+    } catch (error) {
+      if (isDatabaseNotInitializedError(error)) {
+        return;
+      }
+      throw error;
+    }
     if (!forward || deleting || !RESERVED_STATUSES.has(forward.state.status)) {
       return;
     }

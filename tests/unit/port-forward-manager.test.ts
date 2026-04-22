@@ -160,4 +160,45 @@ describe("PortForwardManager", () => {
       }),
     ).rejects.toThrow("Port 3000 is already being forwarded for this workspace");
   });
+
+  test("ignores unexpected exit callbacks after the database is closed", async () => {
+    const loop = await manager.createLoop({
+      ...modelFields,
+      directory: workDir,
+      prompt: "Create a forwarded port",
+      name: "Test Loop",
+      workspaceId,
+      planMode: false,
+      useWorktree: true,
+    });
+    const forward: PortForward = {
+      config: {
+        id: "closed-db-forward",
+        loopId: loop.config.id,
+        workspaceId,
+        remoteHost: "localhost",
+        remotePort: 3000,
+        localPort: 41001,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      state: {
+        status: "active",
+      },
+    };
+    await savePortForward(forward);
+
+    closeDatabase();
+
+    const handleUnexpectedExit = Reflect.get(portForwardManager, "handleUnexpectedExit") as (
+      portForwardId: string,
+      deleting: boolean,
+      code: number | null,
+      signal: NodeJS.Signals | null,
+    ) => Promise<void>;
+
+    await expect(
+      handleUnexpectedExit.call(portForwardManager, forward.config.id, false, 1, null),
+    ).resolves.toBeUndefined();
+  });
 });
