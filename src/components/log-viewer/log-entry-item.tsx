@@ -58,6 +58,11 @@ export const LogEntryItem = memo(function LogEntryItem({
     : isResponse || log.level === "agent"
       ? "text-white"
       : getLogLevelColor(log.level);
+  const logTone = isReasoning
+    ? "reasoning"
+    : isResponse || log.level === "agent"
+      ? "agent"
+      : log.level;
 
   return (
     <div className={`group ${spacingClass}`} data-log-kind={logKind ?? "default"}>
@@ -66,7 +71,10 @@ export const LogEntryItem = memo(function LogEntryItem({
           {formatTime(log.timestamp)}
         </time>
       )}
-      <div className={`min-w-0 max-w-[min(92%,48rem)] ${textColorClassName}`}>
+      <div
+        className={`min-w-0 max-w-[min(92%,48rem)] ${textColorClassName}`}
+        data-log-tone={logTone}
+      >
         {showMessageLabel && (
           <span className="break-words text-sm leading-7">{log.message}</span>
         )}
@@ -77,7 +85,6 @@ export const LogEntryItem = memo(function LogEntryItem({
               markdownEnabled={markdownEnabled}
               markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-400" : "text-white"}`}
               plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400" : "text-white"}`}
-              dimmed={isReasoning}
             />
           </div>
         )}

@@ -92,9 +92,9 @@ describe("LogViewer", () => {
       const messageGroup = messageText.closest("[data-message-role='user']") as HTMLElement | null;
       expect(messageGroup).not.toBeNull();
       expect(messageGroup?.textContent).toContain("Hello world");
-      const bubble = messageText.closest(".rounded-\\[1\\.35rem\\]") as HTMLElement | null;
+      const bubble = messageGroup?.querySelector("[data-message-bubble='user']") as HTMLElement | null;
       expect(bubble).not.toBeNull();
-      expect(bubble?.className).toContain("bg-[#2b2b2b]");
+      expect(bubble?.textContent).toContain("Hello world");
     });
 
     test("renders transient user image attachments", () => {
@@ -144,14 +144,14 @@ describe("LogViewer", () => {
 
     test("shared conversation viewer can render assistant messages", () => {
       const msg = createMessageData({ role: "assistant", content: "I can help with that" });
-      const { getByText, container } = renderWithUser(
+      const { getByText } = renderWithUser(
         <ConversationViewer messages={[msg]} toolCalls={[]} showAssistantMessages={true} />
       );
       const assistantText = getByText("I can help with that");
       expect(assistantText).toBeInTheDocument();
       const messageGroup = assistantText.closest("[data-message-role='assistant']") as HTMLElement | null;
       expect(messageGroup).not.toBeNull();
-      expect(container.querySelector(".rounded-\\[1\\.35rem\\]")).toBeNull();
+      expect(messageGroup?.querySelector("[data-message-bubble]")).toBeNull();
     });
 
     test("shared conversation viewer can label message roles", () => {
@@ -852,12 +852,18 @@ describe("LogViewer", () => {
         level: "agent",
         details: { key: "value", count: 42 },
       });
-      const { container, getByText, user } = renderWithUser(
+      const { container, getByRole, user } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
       );
-      expect(getByText("Details")).toBeInTheDocument();
+      const detailsButton = getByRole("button", { name: "Details" });
+      expect(detailsButton).toBeInTheDocument();
+      const panelId = detailsButton.getAttribute("aria-controls");
+      expect(panelId).toBeTruthy();
+      const detailsPanel = panelId ? container.querySelector(`#${panelId}`) as HTMLElement | null : null;
+      expect(detailsPanel).not.toBeNull();
+      expect(detailsPanel?.getAttribute("aria-labelledby")).toBe(detailsButton.id);
       expect(container.querySelectorAll("pre")).toHaveLength(0);
-      await user.click(getByText("Details"));
+      await user.click(detailsButton);
       const detailsPre = Array.from(container.querySelectorAll("pre")).find(
         (element) => element.textContent?.includes("\"key\": \"value\"")
       );
@@ -1167,12 +1173,30 @@ describe("LogViewer", () => {
       const { container, getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} showReasoning={true} />
       );
-      const group = container.querySelector(".group");
+      const group = container.querySelector("[data-log-kind='reasoning']") as HTMLElement | null;
       expect(group).not.toBeNull();
-      expect(group?.getAttribute("data-log-kind")).toBe("reasoning");
-      const reasoningText = getByText("thinking");
-      expect(reasoningText.className).toContain("text-gray-400");
-      expect(container.querySelector(".rounded.bg-neutral-800")).toBeNull();
+      const reasoningBody = group?.querySelector("[data-log-tone='reasoning']") as HTMLElement | null;
+      expect(reasoningBody).not.toBeNull();
+      expect(reasoningBody?.querySelector("[data-dimmed='false']")).not.toBeNull();
+      expect(getByText("thinking")).toBeInTheDocument();
+      expect(group?.querySelector("pre")).toBeNull();
+    });
+
+    test("keeps markdown reasoning at the same non-dimmed level as plain reasoning", () => {
+      const log = createLogEntry({
+        level: "agent",
+        message: "AI reasoning...",
+        details: { logKind: "reasoning", responseContent: "**thinking**" },
+      });
+      const { container, getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[log]} showReasoning={true} markdownEnabled={true} />
+      );
+      const group = container.querySelector("[data-log-kind='reasoning']") as HTMLElement | null;
+      expect(group).not.toBeNull();
+      const reasoningBody = group?.querySelector("[data-log-tone='reasoning']") as HTMLElement | null;
+      expect(reasoningBody).not.toBeNull();
+      expect(reasoningBody?.querySelector("[data-dimmed='false']")).not.toBeNull();
+      expect(getByText("thinking")).toBeInTheDocument();
     });
 
     test("does not apply reasoning styling to response entries", () => {
@@ -1184,10 +1208,11 @@ describe("LogViewer", () => {
       const { container } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
       );
-      const group = container.querySelector(".group");
+      const group = container.querySelector("[data-log-kind='response']") as HTMLElement | null;
       expect(group).not.toBeNull();
-      // Should NOT have opacity-60
-      expect(group?.className).not.toContain("opacity-60");
+      const responseBody = group?.querySelector("[data-log-tone='agent']") as HTMLElement | null;
+      expect(responseBody).not.toBeNull();
+      expect(responseBody?.querySelector("[data-dimmed='false']")).not.toBeNull();
     });
   });
 

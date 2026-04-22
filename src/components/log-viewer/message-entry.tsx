@@ -49,7 +49,10 @@ export function MessageEntry({
             </div>
           )}
           {isUser ? (
-            <div className="rounded-[1.35rem] bg-[#2b2b2b] px-4 py-3 text-sm leading-7 text-white shadow-sm">
+            <div
+              className="rounded-[1.35rem] bg-[#2b2b2b] px-4 py-3 text-sm leading-7 text-white shadow-sm"
+              data-message-bubble="user"
+            >
               <StreamingTextContent
                 content={msg.content}
                 markdownEnabled={false}

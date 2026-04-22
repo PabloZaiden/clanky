@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { memo, useState } from "react";
+import { memo, useId, useState } from "react";
 
 interface LazyDetailsProps {
   /** Summary content shown in the collapsed header (accepts ReactNode for rich content). */
@@ -25,6 +25,9 @@ export const LazyDetails = memo(function LazyDetails({
 }: LazyDetailsProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [hasOpened, setHasOpened] = useState(defaultOpen);
+  const reactId = useId();
+  const triggerId = `lazy-details-trigger-${reactId}`;
+  const panelId = `lazy-details-panel-${reactId}`;
 
   return (
     <div
@@ -32,8 +35,10 @@ export const LazyDetails = memo(function LazyDetails({
       data-open={isOpen ? "true" : "false"}
     >
       <button
+        id={triggerId}
         type="button"
         aria-expanded={isOpen}
+        aria-controls={panelId}
         className={triggerClassName ?? "cursor-pointer text-gray-500 hover:text-gray-400 text-xs"}
         onClick={() => {
           const nextOpen = !isOpen;
@@ -45,11 +50,15 @@ export const LazyDetails = memo(function LazyDetails({
       >
         {summary}
       </button>
-      {hasOpened ? (
-        <div className={`${panelClassName ?? "mt-1"} ${isOpen ? "" : "hidden"}`.trim()}>
-          {renderContent()}
-        </div>
-      ) : null}
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={triggerId}
+        hidden={!isOpen}
+        className={panelClassName ?? "mt-1"}
+      >
+        {hasOpened ? renderContent() : null}
+      </div>
     </div>
   );
 });
