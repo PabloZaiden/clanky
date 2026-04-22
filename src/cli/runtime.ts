@@ -125,16 +125,34 @@ function parseCommandArguments(
   return { positionals, options };
 }
 
-function formatApiResponseBody(body: unknown): string {
-  if (typeof body === "string") {
-    return body;
-  }
-  return JSON.stringify(body, null, 2);
+type ParsedApiResponse = {
+  body?: unknown;
+  text?: string;
+};
+
+type ApiCommandOutput = {
+  status: {
+    code: number;
+    text: string;
+    ok: boolean;
+  };
+  response: unknown;
+};
+
+function getResponseStatusText(response: Response): string {
+  return response.statusText || (response.ok ? "OK" : "");
 }
 
-function getResponseStatusLabel(response: Response): string {
-  const statusText = response.statusText || (response.ok ? "OK" : "");
-  return `Status: ${response.status} ${statusText}`.trimEnd();
+function formatApiCommandOutput(response: Response, parsed: ParsedApiResponse): string {
+  const output: ApiCommandOutput = {
+    status: {
+      code: response.status,
+      text: getResponseStatusText(response),
+      ok: response.ok,
+    },
+    response: parsed.body ?? parsed.text ?? null,
+  };
+  return JSON.stringify(output, null, 2);
 }
 
 function printApiEndpoints(out: (message: string) => void): void {
@@ -145,7 +163,7 @@ function printApiEndpoints(out: (message: string) => void): void {
   }
 }
 
-async function readApiResponse(response: Response): Promise<{ body?: unknown; text?: string }> {
+async function readApiResponse(response: Response): Promise<ParsedApiResponse> {
   const rawBody = await response.text();
   if (!rawBody) {
     return {};
@@ -214,12 +232,7 @@ async function runApiCommand(
   }
 
   const parsed = await readApiResponse(response);
-  out(getResponseStatusLabel(response));
-  if (parsed.body !== undefined) {
-    out(formatApiResponseBody(parsed.body));
-  } else if (parsed.text !== undefined) {
-    out(parsed.text);
-  }
+  out(formatApiCommandOutput(response, parsed));
   return response.ok ? 0 : 1;
 }
 
