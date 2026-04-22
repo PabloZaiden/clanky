@@ -1835,11 +1835,41 @@ describe("log tab", () => {
     const { getByLabelText, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByText("View /workspaces/test-project/README.md")).toBeTruthy();
+      expect(getByText("View README.md")).toBeTruthy();
     });
 
     const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
     expect(showToolsCheckbox.checked).toBe(true);
+  });
+
+  test("uses the loop worktree root when shortening tool paths", async () => {
+    setupDefaultApi({
+      config: {
+        directory: "/workspaces/test-project",
+      },
+      state: {
+        git: {
+          originalBranch: "main",
+          workingBranch: "test-loop",
+          worktreePath: "/workspaces/test-project/.ralph-worktrees/test-loop",
+          commits: [],
+        },
+        toolCalls: [createPersistedToolCall({
+          name: "read",
+          input: {
+            path: "/workspaces/test-project/.ralph-worktrees/test-loop/src/persistence/auth.ts",
+            view_range: [20, 330],
+          },
+          status: "completed",
+        })],
+      },
+    });
+    const { getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("View src/persistence/auth.ts:20-330")).toBeTruthy();
+    });
+    expect(queryByText("View .ralph-worktrees/test-loop/src/persistence/auth.ts:20-330")).toBeNull();
   });
 
   test("shows autoscroll toggle", async () => {

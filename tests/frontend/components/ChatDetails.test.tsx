@@ -1226,14 +1226,44 @@ describe("ChatDetails", () => {
 
     await waitFor(() => {
       expect(getByText("Alpha before tool")).toBeTruthy();
-      expect(getByText("View /workspace/repo/README.md")).toBeTruthy();
+      expect(getByText("View README.md")).toBeTruthy();
       expect(getByText("Beta after tool")).toBeTruthy();
     });
 
     const transcript = container.querySelector("#chat-transcript");
     const text = transcript?.textContent ?? "";
-    expect(text.indexOf("Alpha before tool")).toBeLessThan(text.indexOf("View /workspace/repo/README.md"));
-    expect(text.indexOf("View /workspace/repo/README.md")).toBeLessThan(text.indexOf("Beta after tool"));
+    expect(text.indexOf("Alpha before tool")).toBeLessThan(text.indexOf("View README.md"));
+    expect(text.indexOf("View README.md")).toBeLessThan(text.indexOf("Beta after tool"));
+  });
+
+  test("prefers the active chat worktree root when rendering tool paths", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "idle",
+        worktree: {
+          originalBranch: "main",
+          workingBranch: "chat-worktree",
+          worktreePath: "/workspace/repo/.ralph-worktrees/chat-worktree",
+        },
+        logs: [],
+        toolCalls: [{
+          id: "tool-1",
+          name: "read",
+          input: { path: "/workspace/repo/.ralph-worktrees/chat-worktree/src/persistence/auth.ts", view_range: [20, 330] },
+          status: "completed",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        }],
+        messages: [],
+      },
+    }));
+
+    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("View src/persistence/auth.ts:20-330")).toBeTruthy();
+    });
+    expect(queryByText("View .ralph-worktrees/chat-worktree/src/persistence/auth.ts:20-330")).toBeNull();
   });
 
   test("preserves newer local state when chat.updated carries a stale snapshot", async () => {

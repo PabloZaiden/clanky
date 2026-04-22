@@ -7,7 +7,7 @@
 
 import { test, expect, describe } from "bun:test";
 import { ConversationViewer, LogViewer } from "@/components/LogViewer";
-import type { LogEntry } from "@/components/LogViewer";
+import type { LogEntry, LogViewerProps } from "@/components/LogViewer";
 import { formatTime } from "@/components/log-viewer/utils";
 import { renderWithUser } from "../helpers/render";
 import {
@@ -377,11 +377,19 @@ describe("LogViewer", () => {
 
   describe("tool call rendering", () => {
     function renderToolCall(overrides?: Partial<ReturnType<typeof createToolCallData>>) {
+      return renderToolCallWithViewerProps(overrides);
+    }
+
+    function renderToolCallWithViewerProps(
+      overrides?: Partial<ReturnType<typeof createToolCallData>>,
+      viewerProps?: Partial<LogViewerProps>,
+    ) {
       return renderWithUser(
         <LogViewer
           messages={[]}
           toolCalls={[createToolCallData(overrides)]}
           showTools={true}
+          {...viewerProps}
         />
       );
     }
@@ -423,6 +431,34 @@ describe("LogViewer", () => {
       });
 
       expect(getByText("View /src/legacy-file.ts")).toBeInTheDocument();
+    });
+
+    test("renders view paths relative to the active display root", () => {
+      const { getByText } = renderToolCallWithViewerProps(
+        {
+          name: "read",
+          input: { path: "/workspaces/demo/repo/src/file.ts" },
+        },
+        {
+          toolPathDisplayRoot: "/workspaces/demo/repo",
+        }
+      );
+
+      expect(getByText("View src/file.ts")).toBeInTheDocument();
+    });
+
+    test("keeps absolute view paths when they are outside the active display root", () => {
+      const { getByText } = renderToolCallWithViewerProps(
+        {
+          name: "read",
+          input: { path: "/tmp/pr391.html", "view_range": [6260, 6375] },
+        },
+        {
+          toolPathDisplayRoot: "/workspaces/demo/repo",
+        }
+      );
+
+      expect(getByText("View /tmp/pr391.html:6260-6375")).toBeInTheDocument();
     });
 
     test("infers glob from a pattern-only payload", () => {
