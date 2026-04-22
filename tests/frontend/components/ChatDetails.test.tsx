@@ -273,7 +273,7 @@ describe("ChatDetails", () => {
     const mainRow = getByTestId("chat-composer-main-row");
     const attachmentCell = getByTestId("chat-composer-attachment-cell");
 
-    expect(padding.className).toContain("p-3");
+    expect(padding).toHaveClass("p-3");
     expect(padding).toContainElement(layout);
     expect(layout.firstElementChild).toBe(mainRow);
     expect(modelCell).toContainElement(modelSelector);
