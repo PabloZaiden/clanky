@@ -693,11 +693,14 @@ describe("ralpher cli", () => {
       },
     ]);
     expect(output).toEqual([
-      "Status: 200 OK",
-      JSON.stringify({
+      apiCommandOutput({
+        code: 200,
+        text: "OK",
+        ok: true,
+      }, {
         id: "test-loop",
         status: "running",
-      }, null, 2),
+      }),
     ]);
   });
 
