@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { Chat } from "@/types";
+import { DEFAULT_CHAT_INTERRUPT_REASON, type Chat } from "@/types";
 import { ChatDetails } from "@/components/ChatDetails";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
@@ -232,7 +232,9 @@ describe("ChatDetails", () => {
       expect(getByRole("button", { name: "Send" })).toBeTruthy();
     });
 
-    expect(api.calls("/api/chats/:id/interrupt", "POST")).toHaveLength(1);
+    const interruptCalls = api.calls("/api/chats/:id/interrupt", "POST");
+    expect(interruptCalls).toHaveLength(1);
+    expect(interruptCalls[0]?.body).toEqual({ reason: DEFAULT_CHAT_INTERRUPT_REASON });
   });
 
   test("prevents the send button from taking focus on press", async () => {

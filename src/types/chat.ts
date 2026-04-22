@@ -73,6 +73,8 @@ export interface Chat {
   state: ChatState;
 }
 
+export const DEFAULT_CHAT_INTERRUPT_REASON = "user requested stop";
+
 export const DEFAULT_CHAT_CONFIG = {
   useWorktree: true,
   mode: "chat" as const,
