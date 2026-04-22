@@ -8,7 +8,6 @@ export {
 } from "./runtime";
 
 export {
-  DEFAULT_CLIENT_ID,
   getAuthorizedHeaders,
   getTokenErrorMessage,
   getValidatedCredentials,

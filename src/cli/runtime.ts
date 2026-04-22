@@ -1,7 +1,6 @@
 import { startServer } from "../server";
 import { formatRalpherVersion } from "../version";
 import {
-  DEFAULT_CLIENT_ID,
   getAuthorizedHeaders,
   getValidatedCredentials,
   normalizeBaseUrlValue,
@@ -90,6 +89,10 @@ function parseOptionValue(option: string, rawValue?: string): string {
     throw createUsageError(`Missing value for ${option}`);
   }
   return rawValue.trim();
+}
+
+function getDefaultClientId(baseUrl: string): string {
+  return new URL(baseUrl).hostname;
 }
 
 function parseCommandArguments(
@@ -322,7 +325,7 @@ export function parseCliCommand(args: string[]): CliCommand {
     return {
       action,
       baseUrl,
-      clientId: options["--client-id"]?.trim() || DEFAULT_CLIENT_ID,
+      clientId: options["--client-id"]?.trim() || getDefaultClientId(baseUrl),
       cookies,
     };
   }
