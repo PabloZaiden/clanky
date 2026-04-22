@@ -217,6 +217,32 @@ describe("ralpher cli", () => {
     ]);
   });
 
+  test("auth rejects partially invalid cookie strings", async () => {
+    const invalidCookieValues = [
+      "authentik_proxy=proxy-cookie-value; definitely-not-a-cookie",
+      "=proxy-cookie-value",
+    ];
+
+    for (const cookieValue of invalidCookieValues) {
+      const output: string[] = [];
+      const exitCode = await runCli([
+        "auth",
+        "--base-url",
+        "http://example.test",
+        "--cookies",
+        cookieValue,
+      ], {
+        out: (message: string) => output.push(message),
+        err: (message: string) => output.push(`ERR:${message}`),
+      });
+
+      expect(exitCode).toBe(1);
+      expect(output).toEqual([
+        "ERR:Error: Invalid value for --cookies\n\nUsage:\n  ralpher cli auth --base-url <url> [--client-id <client-id>] [--cookies <cookie-header>]\n  ralpher cli status [--base-url <url>]",
+      ]);
+    }
+  });
+
   test("status refreshes expired credentials before probing auth status", async () => {
     const output: string[] = [];
     const requests: Array<{

@@ -131,8 +131,9 @@ function normalizeCookieOption(rawValue?: string): string | undefined {
     return undefined;
   }
 
-  const normalized = formatCookieHeader(parseCookieHeader(trimmed));
-  if (!normalized) {
+  const parsed = parseCookieHeader(trimmed);
+  const normalized = formatCookieHeader(parsed.cookies);
+  if (!parsed.valid || !normalized) {
     throw new Error(`Invalid value for --cookies\n\n${CLI_USAGE}`);
   }
 
