@@ -456,7 +456,9 @@ describe("Chats API Integration", () => {
     expect(spawnedLoop.config.id).not.toBe(chatId);
     expect(spawnedLoop.config.workspaceId).toBe(testWorkspaceId);
     expect(spawnedLoop.config.planMode).toBe(true);
+    expect(spawnedLoop.config.prompt).toContain("You are creating a new Ralph plan loop from an existing chat conversation.");
     expect(spawnedLoop.config.prompt).toContain("Chat title: Spawn Source Chat");
+    expect(spawnedLoop.config.prompt).toContain("Only the user and assistant messages are included here; tool calls and hidden reasoning are intentionally excluded.");
     expect(spawnedLoop.config.prompt).toContain("Turn this debugging conversation into a loop plan.");
     expect(spawnedLoop.config.prompt).toContain("Hello from chat API");
 
