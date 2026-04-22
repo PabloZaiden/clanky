@@ -1678,6 +1678,9 @@ describe("ChatManager", () => {
         modelID: "test-model-2",
         variant: "",
       });
+      expect(spawned.config.autoAcceptPlan).toBe(false);
+      expect(spawned.config.fullyAutonomous).toBe(false);
+      expect(spawned.state.status).toBe("planning");
     } finally {
       startPlanModeSpy.mockRestore();
     }
@@ -1715,6 +1718,8 @@ describe("ChatManager", () => {
 
     const spawned = await manager.spawnLoopFromCurrentPlan(chat.config.id);
 
+    expect(spawned.config.autoAcceptPlan).toBe(false);
+    expect(spawned.config.fullyAutonomous).toBe(false);
     expect(spawned.state.status).toBe("planning");
     expect(spawned.state.planMode?.isPlanReady).toBe(true);
     expect(spawned.state.planMode?.planContent).toContain("Imported plan");
