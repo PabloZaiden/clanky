@@ -45,6 +45,24 @@ async function waitForChat(
   throw new Error(`Timed out waiting for chat condition. Last state: ${JSON.stringify(lastChat?.state)}`);
 }
 
+async function waitForValue<T>(
+  getValue: () => T | undefined,
+  timeoutMs = 5000,
+  description = "value",
+): Promise<T> {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const value = getValue();
+    if (value !== undefined) {
+      return value;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error(`Timed out waiting for ${description}`);
+}
+
 class InterruptRaceBackend implements Backend {
   readonly name = "acp";
 
@@ -1271,25 +1289,25 @@ describe("ChatManager", () => {
       message: "Stream the reply",
     });
 
-    const streaming = await waitForChat(chat.config.id, (current) =>
-      current.state.status === "streaming"
-      && current.state.messages.some((message) => message.role === "assistant" && message.content === "Hello"),
+    const firstPartialAssistantPersist = await waitForValue(
+      () => updateChatStateSpy.mock.calls
+        .map(([, state]) => state)
+        .find((state) =>
+          state.status === "streaming"
+          && state.messages.some((message) => message.role === "assistant" && message.content === "Hello"),
+        ),
+      5000,
+      "the first partially persisted assistant message",
     );
 
     expect(
-      streaming.state.logs.some((log) =>
+      firstPartialAssistantPersist.logs.some((log) =>
         log.details?.["logKind"] === "reasoning"
         && log.details?.["responseContent"] === "Working through the transcript shape."),
     ).toBe(true);
-    const streamingAssistant = streaming.state.messages.find((message) =>
+    const streamingAssistant = firstPartialAssistantPersist.messages.find((message) =>
       message.role === "assistant" && message.content === "Hello");
     expect(streamingAssistant?.timestamp).toBeDefined();
-
-    const firstPartialAssistantPersist = updateChatStateSpy.mock.calls
-      .map(([, state]) => state)
-      .find((state) =>
-        state.messages.some((message) => message.role === "assistant" && message.content === "Hello"),
-      );
     expect(
       firstPartialAssistantPersist?.logs.some((log) =>
         log.details?.["logKind"] === "response"
