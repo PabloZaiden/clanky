@@ -1050,6 +1050,88 @@ describe("LogViewer", () => {
       expect(getByText("Details")).toBeInTheDocument();
     });
 
+    test("hides a finalized PLAN_READY marker and shows a plan-ready indicator", () => {
+      const log = createLogEntry({
+        level: "agent",
+        details: { logKind: "response", responseContent: "Plan created\n<promise>PLAN_READY</promise>" },
+        finalizedResponse: {
+          content: "Plan created",
+          indicator: {
+            marker: "PLAN_READY",
+            kind: "plan_ready",
+            label: "Plan ready",
+          },
+        },
+      });
+      const { getByText, queryByText, container } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
+      );
+
+      expect(getByText("Plan created")).toBeInTheDocument();
+      expect(getByText("Plan ready")).toBeInTheDocument();
+      expect(queryByText("<promise>PLAN_READY</promise>")).not.toBeInTheDocument();
+      expect(container.querySelector("[data-response-outcome='plan_ready']")).not.toBeNull();
+    });
+
+    test("renders a completion indicator when the final marker is the only response content", () => {
+      const log = createLogEntry({
+        level: "agent",
+        details: { logKind: "response", responseContent: "<promise>COMPLETE</promise>" },
+        finalizedResponse: {
+          content: "",
+          indicator: {
+            marker: "COMPLETE",
+            kind: "complete",
+            label: "Completed",
+          },
+        },
+      });
+      const { getByText, queryByText, container } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
+      );
+
+      expect(getByText("Completed")).toBeInTheDocument();
+      expect(queryByText("<promise>COMPLETE</promise>")).not.toBeInTheDocument();
+      expect(container.querySelector("[data-response-outcome='complete']")).not.toBeNull();
+    });
+
+    test("leaves marker-like text visible when no finalized marker was detected", () => {
+      const log = createLogEntry({
+        level: "agent",
+        details: {
+          logKind: "response",
+          responseContent: "Keep <promise>PLAN_READY</promise> in the middle of the note",
+        },
+      });
+      const rendered = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
+      );
+
+      expect(rendered.container.textContent).toContain("Keep <promise>PLAN_READY</promise> in the middle of the note");
+      expect(rendered.queryByText("Plan ready")).not.toBeInTheDocument();
+    });
+
+    test("renders a humanized indicator for unknown promise markers", () => {
+      const log = createLogEntry({
+        level: "agent",
+        details: { logKind: "response", responseContent: "Handing off\n<promise>WAITING_REVIEW</promise>" },
+        finalizedResponse: {
+          content: "Handing off",
+          indicator: {
+            marker: "WAITING_REVIEW",
+            kind: "custom",
+            label: "Waiting Review",
+          },
+        },
+      });
+      const { getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
+      );
+
+      expect(getByText("Handing off")).toBeInTheDocument();
+      expect(getByText("Waiting Review")).toBeInTheDocument();
+    });
+
     test("renders a newly visible streamed response row as static content", async () => {
       const firstResponse = createLogEntry({
         id: "response-log-enter-a",

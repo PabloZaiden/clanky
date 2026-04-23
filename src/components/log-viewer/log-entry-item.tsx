@@ -1,4 +1,5 @@
 import { memo, useCallback } from "react";
+import { Badge } from "../common/Badge";
 import { LazyDetails } from "./lazy-details";
 import { StreamingTextContent } from "./streaming-text-content";
 import type { LogEntry } from "./types";
@@ -18,6 +19,17 @@ function getOtherDetails(details: Record<string, unknown>): Record<string, unkno
   );
 }
 
+function getFinalizedResponseBadgeVariant(log: LogEntry): "completed" | "plan_ready" | "default" {
+  switch (log.finalizedResponse?.indicator.kind) {
+    case "complete":
+      return "completed";
+    case "plan_ready":
+      return "plan_ready";
+    default:
+      return "default";
+  }
+}
+
 export const LogEntryItem = memo(function LogEntryItem({
   data: log,
   showTimestamp,
@@ -29,8 +41,9 @@ export const LogEntryItem = memo(function LogEntryItem({
   const logKind = log.details?.["logKind"] as string | undefined;
   const isReasoning = isReasoningLogEntry(log);
   const isResponse = logKind === "response";
-  const responseContent = log.details?.["responseContent"];
+  const responseContent = log.finalizedResponse?.content ?? log.details?.["responseContent"];
   const hasResponseContent = typeof responseContent === "string" && responseContent.length > 0;
+  const finalizedResponseIndicator = log.finalizedResponse?.indicator;
   const hasOtherDetails = details
     ? Object.keys(details).some((key) => key !== "responseContent" && key !== "logKind")
     : false;
@@ -45,7 +58,7 @@ export const LogEntryItem = memo(function LogEntryItem({
 
   // Don't render response/reasoning entries with no displayable content
   const isResponseOrReasoning = logKind === "response" || logKind === "reasoning";
-  if (isResponseOrReasoning && !hasResponseContent && !hasOtherDetails) {
+  if (isResponseOrReasoning && !hasResponseContent && !hasOtherDetails && !finalizedResponseIndicator) {
     return null;
   }
 
@@ -87,6 +100,17 @@ export const LogEntryItem = memo(function LogEntryItem({
               markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-400" : "text-white"}`}
               plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400" : "text-white"}`}
             />
+          </div>
+        )}
+        {finalizedResponseIndicator && (
+          <div
+            className={hasResponseContent ? "mt-3" : showMessageLabel ? "mt-2" : ""}
+            data-response-outcome={finalizedResponseIndicator.kind}
+            data-promise-marker={finalizedResponseIndicator.marker}
+          >
+            <Badge variant={getFinalizedResponseBadgeVariant(log)} size="sm">
+              {finalizedResponseIndicator.label}
+            </Badge>
           </div>
         )}
         {hasOtherDetails && (
