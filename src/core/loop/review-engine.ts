@@ -147,7 +147,7 @@ ${comments}
 ---
 
 Instructions:
-- Read AGENTS.md and .ralph-planning/status.md to understand what was previously done
+- Read .ralph-planning/status.md to understand what was previously done
 - **FIRST**: Immediately add each reviewer comment as a pending task in .ralph-planning/status.md before starting to address any of them. This ensures the feedback is tracked and preserved even if the conversation context is compacted.
 - Make targeted changes to address each reviewer comment
 - **IMPORTANT — Incremental progress tracking**: After addressing each individual reviewer comment, immediately update .ralph-planning/status.md to mark it as resolved and note what was changed. Do not batch updates — persist progress after each comment so it is preserved if the iteration is interrupted.

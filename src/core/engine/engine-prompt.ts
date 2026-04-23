@@ -159,13 +159,13 @@ function buildExecutionPrompt(ctx: PromptBuildContext, model: ModelConfig | unde
 
   const text = `- Original Goal: ${ctx.config.prompt}
 ${userMessageSection}${errorContext}
-- Read AGENTS.md, read the document in the \`./.ralph-planning\` folder, pick up the most important task to continue with, and make sure you make a plan with coding tasks that includes updating the docs with your progress and what the next steps to work on are, at the end. Don't ask for confirmation and start working on it right away.
+- Read the documents in the \`./.ralph-planning\` folder, pick up the most important task to continue with, and make sure you make a plan with coding tasks that includes updating the docs with your progress and what the next steps to work on are, at the end. Don't ask for confirmation and start working on it right away.
 
 - If the \`./.ralph-planning\` folder does not exist or is empty, create it and add a file called \`plan.md\` where you outline your plan to achieve the goal, and a \`status.md\` file to track progress.
 
 - If the user added a new message above, prioritize addressing it. It may change or add to the plan. If it contradicts something in the original goal or plan, follow the user's latest message.
 
-- Make sure that the implementations and fixes you make don't contradict the core design principles outlined in AGENTS.md and the planning document.
+- Make sure that the implementations and fixes you make don't contradict the planning document, the existing codebase behavior, or established project conventions.
 
 - Add tasks to the plan to achieve the goal.
 
