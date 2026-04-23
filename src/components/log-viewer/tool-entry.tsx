@@ -47,6 +47,22 @@ function ToolValueBlock({ value }: { value: unknown }) {
   );
 }
 
+function hasMeaningfulToolValue(value: unknown): boolean {
+  if (value == null) {
+    return false;
+  }
+  if (typeof value === "string") {
+    return value.length > 0;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (typeof value === "object") {
+    return Object.keys(value).length > 0;
+  }
+  return true;
+}
+
 function ApplyPatchBlockView({ block }: { block: Extract<ToolDetailBlock, { type: "patch" }> }) {
   return (
     <div className="space-y-2" data-tool-block="patch">
@@ -182,18 +198,32 @@ export const ToolEntry = memo(function ToolEntry({
     () => getStructuredToolDetails(tool, { pathDisplayRoot: toolPathDisplayRoot }),
     [tool, toolPathDisplayRoot]
   );
+  const normalizedOutputBlocks = useMemo(() => {
+    if (!structuredDetails || structuredDetails.outputBlocks.length !== 1) {
+      return structuredDetails?.outputBlocks ?? [];
+    }
+
+    const [block] = structuredDetails.outputBlocks;
+    if (!block?.title || block.title.toLowerCase() !== meta.outputLabel.toLowerCase()) {
+      return structuredDetails.outputBlocks;
+    }
+
+    return [{ ...block, title: undefined } satisfies ToolDetailBlock];
+  }, [structuredDetails, meta.outputLabel]);
   const toolSummaryClassName = "block text-sm leading-6 italic text-sky-300";
 
   const inputSummary = (
     <span className={toolSummaryClassName} data-tool-summary="true">{meta.summary}</span>
   );
+  const hasMeaningfulInput = hasMeaningfulToolValue(tool.input);
+  const hasOutput = hasMeaningfulToolValue(tool.output);
 
   const inputContent = structuredDetails && structuredDetails.inputBlocks.length > 0
     ? <ToolDetailSection blocks={structuredDetails.inputBlocks} />
     : <ToolValueBlock value={tool.input} />;
 
-  const outputContent = structuredDetails && structuredDetails.outputBlocks.length > 0
-    ? <ToolDetailSection blocks={structuredDetails.outputBlocks} />
+  const outputContent = normalizedOutputBlocks.length > 0
+    ? <ToolDetailSection blocks={normalizedOutputBlocks} />
     : meta.outputType === "text"
       ? <RenderedContent output={tool.output} />
       : <ToolValueBlock value={tool.output} />;
@@ -246,15 +276,15 @@ export const ToolEntry = memo(function ToolEntry({
         </time>
       )}
       <div className="min-w-0 max-w-[min(96%,72rem)]">
-        {tool.input != null ? (
+        {hasMeaningfulInput ? (
           <LazyDetails
             summary={inputSummary}
-            renderContent={tool.output != null ? renderCombinedContent : renderInputContent}
+            renderContent={hasOutput ? renderCombinedContent : renderInputContent}
             className="w-full"
             triggerClassName="w-full text-left"
             panelClassName="mt-3"
           />
-        ) : tool.output != null ? (
+        ) : hasOutput ? (
           <LazyDetails
             summary={inputSummary}
             renderContent={renderOutputOnlyContent}

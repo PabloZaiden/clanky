@@ -165,6 +165,7 @@ describe("AcpBackend ACP parsing", () => {
     expect(events[1]).toEqual({
       type: "tool.complete",
       toolName: "execute",
+      input: undefined,
       output: { content: "/tmp" },
     });
     expect(backend.toolCallNames.has("call-1")).toBe(false);
@@ -220,11 +221,65 @@ describe("AcpBackend ACP parsing", () => {
     expect(events[1]).toEqual({
       type: "tool.complete",
       toolName: "read",
+      input: undefined,
       output: {
         message: "file not found",
         status: "failed",
         error: "file not found",
       },
+    });
+  });
+
+  test("prefers completed rawInput from tool_call_update", () => {
+    const backend = getBackend();
+    const sessionId = "session-completed-input";
+    const events: Array<Record<string, unknown>> = [];
+
+    backend.sessionSubscribers.set(
+      sessionId,
+      new Set([
+        (event: unknown) => {
+          events.push(event as Record<string, unknown>);
+        },
+      ]),
+    );
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "call-read-1",
+          kind: "read",
+          rawInput: {},
+        },
+      },
+    });
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-read-1",
+          status: "completed",
+          kind: "read",
+          rawInput: { filePath: "/tmp/file.txt", offset: 1, limit: 20 },
+          rawOutput: { output: "file contents" },
+        },
+      },
+    });
+
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual({
+      type: "tool.complete",
+      toolName: "read",
+      input: { filePath: "/tmp/file.txt", offset: 1, limit: 20 },
+      output: { output: "file contents" },
     });
   });
 

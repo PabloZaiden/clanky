@@ -991,6 +991,147 @@ class ToolAtTurnEndBackend implements Backend {
   }
 }
 
+class ToolCompletedInputBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `tool-completed-input-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "Read complete",
+      parts: [{ type: "text", text: "Read complete" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, _prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.start",
+        toolName: "read",
+        input: {},
+      });
+    }, 0);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.complete",
+        toolName: "read",
+        input: { filePath: "/workspace/repo/README.md", offset: 1, limit: 40 },
+        output: { content: "README contents" },
+      });
+    }, 10);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.complete",
+        content: "Read complete",
+      });
+      subscription.end();
+    }, 20);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://tool-completed-input-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 class IdleStatusInterruptBackend implements Backend {
   readonly name = "acp";
 
@@ -1459,6 +1600,37 @@ describe("ChatManager", () => {
     expect(responseLogs.map((log) => log.details?.["responseContent"])).toEqual([
       "Alpha before tool",
     ]);
+  });
+
+  test("replaces placeholder tool input with completed tool input", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new ToolCompletedInputBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Completed Input Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Read the file",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+
+    expect(completed.state.toolCalls).toHaveLength(1);
+    expect(completed.state.toolCalls[0]).toMatchObject({
+      name: "read",
+      status: "completed",
+      input: { filePath: "/workspace/repo/README.md", offset: 1, limit: 40 },
+      output: { content: "README contents" },
+    });
   });
 
   test("emits chat.status events for starting, streaming, and idle transitions", async () => {

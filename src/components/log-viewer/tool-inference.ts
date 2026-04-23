@@ -12,6 +12,7 @@ export type InferredToolKind =
   | "sql"
   | "github_mcp"
   | "web_fetch"
+  | "todo"
   | "skill"
   | "unknown";
 
@@ -120,6 +121,47 @@ function getStoredName(tool: ToolCallData): string | undefined {
   return name.length > 0 ? name : undefined;
 }
 
+function isEmptyRecord(value: unknown): value is Record<string, never> {
+  return isRecord(value) && Object.keys(value).length === 0;
+}
+
+function getStoredNameKind(tool: ToolCallData): InferredToolKind | undefined {
+  const name = getStoredName(tool)?.toLowerCase();
+  if (!name) {
+    return undefined;
+  }
+
+  if (name === "read") {
+    return "view";
+  }
+
+  if (name === "execute") {
+    return "bash";
+  }
+
+  if (name === "fetch" || name === "webfetch") {
+    return "web_fetch";
+  }
+
+  if (name === "todowrite") {
+    return "todo";
+  }
+
+  if (name === "context7_resolve_library_id" || name === "context7_get_library_docs") {
+    return "rg";
+  }
+
+  if (name === "search") {
+    const textOutput = getTextFromOutput(tool.output);
+    if (textOutput?.startsWith("Found ")) {
+      return "rg";
+    }
+    return "glob";
+  }
+
+  return undefined;
+}
+
 function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
@@ -157,6 +199,12 @@ function splitNonEmptyLines(text: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+}
+
+function extractTaggedBlock(text: string, tag: string): string | undefined {
+  const match = text.match(new RegExp(`<${tag}>([\\s\\S]*?)<\/${tag}>`, "m"));
+  const value = match?.[1];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function normalizePatchLines(text: string): string[] {
@@ -340,7 +388,12 @@ export function getTextFromOutput(output: unknown): string | undefined {
   }
 
   const detailedContent = output["detailedContent"];
-  return typeof detailedContent === "string" ? detailedContent : undefined;
+  if (typeof detailedContent === "string") {
+    return detailedContent;
+  }
+
+  const rawOutput = output["output"];
+  return typeof rawOutput === "string" ? rawOutput : undefined;
 }
 
 export function inferToolKind(tool: ToolCallData): InferredToolKind {
@@ -351,7 +404,19 @@ export function inferToolKind(tool: ToolCallData): InferredToolKind {
   }
 
   if (!isRecord(input)) {
-    return "unknown";
+    return getStoredNameKind(tool) ?? "unknown";
+  }
+
+  if (isEmptyRecord(input)) {
+    return getStoredNameKind(tool) ?? "unknown";
+  }
+
+  if (Array.isArray(input["todos"])) {
+    return "todo";
+  }
+
+  if (typeof input["patchText"] === "string" && input["patchText"].startsWith("*** Begin Patch")) {
+    return "apply_patch";
   }
 
   const shellId = getStringField(input, "shellId");
@@ -425,8 +490,9 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, conte
     case "glob": {
       const pattern = input ? getStringField(input, "pattern") : undefined;
       const path = input ? getPathField(input) : undefined;
+      const displayPath = formatOptionalPath(path, context);
       if (path && pattern) {
-        return `Find files matching '${pattern}' in ${path}`;
+        return `Find files matching '${pattern}' in ${displayPath ?? path}`;
       }
       return `Find files matching '${pattern ?? ""}'`;
     }
@@ -434,8 +500,9 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, conte
       const pattern = input ? getStringField(input, "pattern") : undefined;
       const path = input ? getPathField(input) : undefined;
       const paths = input ? getPathsField(input) : undefined;
+      const displayPath = formatOptionalPath(path, context);
       if (path && pattern) {
-        return `Search for '${pattern}' in ${path}`;
+        return `Search for '${pattern}' in ${displayPath ?? path}`;
       }
       if (paths && pattern) {
         return `Search for '${pattern}' in ${paths.length} paths`;
@@ -492,6 +559,13 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, conte
       const url = input ? getStringField(input, "url") : undefined;
       return `Fetch ${url ?? "URL"}`;
     }
+    case "todo": {
+      const todos = input?.["todos"];
+      if (Array.isArray(todos)) {
+        return `Update todo list (${todos.length})`;
+      }
+      return "Update todo list";
+    }
     case "skill": {
       const skill = input ? getStringField(input, "skill") : undefined;
       return `Load skill ${skill ?? "unknown"}`;
@@ -521,6 +595,7 @@ export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "
     case "read_bash":
     case "write_bash":
     case "web_fetch":
+    case "todo":
     case "skill":
       return "text";
     case "sql":
@@ -566,13 +641,27 @@ function buildViewDetails(input: Record<string, unknown>, tool: ToolCallData, co
   }
 
   const textOutput = getTextFromOutput(tool.output);
+  const contentOutput = textOutput ? extractTaggedBlock(textOutput, "content") ?? textOutput : undefined;
   const outputBlocks = textOutput
-    ? [{ type: "text", title: "Contents", content: textOutput } satisfies ToolDetailBlock]
+    ? [{ type: "text", title: "Contents", content: contentOutput! } satisfies ToolDetailBlock]
     : [];
 
   return {
     inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
     outputBlocks,
+  };
+}
+
+function buildFallbackViewDetails(tool: ToolCallData, context: ToolMetaContext): StructuredToolDetails {
+  const outputText = getTextFromOutput(tool.output);
+  const path = outputText ? extractTaggedBlock(outputText, "path") : undefined;
+  const contentOutput = outputText ? extractTaggedBlock(outputText, "content") ?? outputText : undefined;
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Path", formatOptionalPath(path, context));
+
+  return {
+    inputBlocks: rows.length > 0 ? [{ type: "rows", rows }] : [],
+    outputBlocks: contentOutput ? [{ type: "text", title: "Contents", content: contentOutput }] : [],
   };
 }
 
@@ -622,12 +711,46 @@ function buildRgDetails(input: Record<string, unknown>, tool: ToolCallData, cont
   };
 }
 
+function buildFallbackSearchDetails(tool: ToolCallData, context: ToolMetaContext): StructuredToolDetails {
+  const outputText = getTextFromOutput(tool.output);
+  const outputRecord = isRecord(tool.output) ? tool.output : undefined;
+  const metadata = outputRecord && isRecord(outputRecord["metadata"]) ? outputRecord["metadata"] : undefined;
+  const matches = Array.isArray(metadata?.["matches"]) ? metadata["matches"] : undefined;
+
+  if (matches && matches.every((match) => isRecord(match))) {
+    const items = matches
+      .map((match) => {
+        const file = typeof match["file"] === "string" ? formatToolPathForDisplay(match["file"], context.pathDisplayRoot) : undefined;
+        const line = typeof match["line"] === "number" ? String(match["line"]) : undefined;
+        const text = typeof match["text"] === "string" ? match["text"].trim() : undefined;
+        return [file, line ? `:${line}` : undefined, text ? ` ${text}` : undefined].filter(Boolean).join("");
+      })
+      .filter((item) => item.length > 0);
+
+    return {
+      inputBlocks: [],
+      outputBlocks: items.length > 0 ? [{ type: "list", title: "Matches", items }] : outputText ? [{ type: "text", title: "Matches", content: outputText }] : [],
+    };
+  }
+
+  return {
+    inputBlocks: [],
+    outputBlocks: outputText ? [{ type: "text", title: "Matches", content: outputText }] : [],
+  };
+}
+
 function buildApplyPatchDetails(tool: ToolCallData): StructuredToolDetails {
-  if (typeof tool.input !== "string") {
+  const patchText = typeof tool.input === "string"
+    ? tool.input
+    : isRecord(tool.input) && typeof tool.input["patchText"] === "string"
+      ? tool.input["patchText"]
+      : undefined;
+
+  if (!patchText) {
     return { inputBlocks: [], outputBlocks: [] };
   }
 
-  const { sections, fileLabels } = parseApplyPatchDetails(tool.input);
+  const { sections, fileLabels } = parseApplyPatchDetails(patchText);
   const rows: ToolDetailRow[] = [];
   if (fileLabels.length === 1) {
     appendRow(rows, "File", fileLabels[0]);
@@ -640,7 +763,7 @@ function buildApplyPatchDetails(tool: ToolCallData): StructuredToolDetails {
       ...(rows.length > 0 ? [{ type: "rows", rows } satisfies ToolDetailBlock] : []),
       sections.length > 0
         ? { type: "patch", title: "Patch", files: sections }
-        : { type: "code", title: "Patch", content: tool.input },
+        : { type: "code", title: "Patch", content: patchText },
     ],
     outputBlocks: getTextFromOutput(tool.output)
       ? [{ type: "text", title: "Result", content: getTextFromOutput(tool.output)! }]
@@ -743,6 +866,26 @@ function buildSkillDetails(input: Record<string, unknown>, tool: ToolCallData): 
   };
 }
 
+function buildTodoDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const todos = Array.isArray(input["todos"]) ? input["todos"] : [];
+  const todoItems = todos
+    .filter((todo) => isRecord(todo))
+    .map((todo) => {
+      const content = typeof todo["content"] === "string" ? todo["content"] : "";
+      const status = typeof todo["status"] === "string" ? todo["status"] : undefined;
+      const priority = typeof todo["priority"] === "string" ? todo["priority"] : undefined;
+      const suffix = [status, priority].filter(Boolean).join(" / ");
+      return suffix ? `${content} (${suffix})` : content;
+    })
+    .filter((item) => item.length > 0);
+
+  const outputText = getTextFromOutput(tool.output);
+  return {
+    inputBlocks: todoItems.length > 0 ? [{ type: "list", title: "Todos", items: todoItems }] : [],
+    outputBlocks: outputText ? [{ type: "text", title: "Output", content: outputText }] : [],
+  };
+}
+
 export function getStructuredToolDetails(tool: ToolCallData, context: ToolMetaContext = {}): StructuredToolDetails | null {
   const kind = inferToolKind(tool);
 
@@ -750,8 +893,16 @@ export function getStructuredToolDetails(tool: ToolCallData, context: ToolMetaCo
     return buildApplyPatchDetails(tool);
   }
 
-  if (!isRecord(tool.input)) {
-    return null;
+  if (!isRecord(tool.input) || isEmptyRecord(tool.input)) {
+    switch (kind) {
+      case "view":
+        return buildFallbackViewDetails(tool, context);
+      case "glob":
+      case "rg":
+        return buildFallbackSearchDetails(tool, context);
+      default:
+        return null;
+    }
   }
 
   switch (kind) {
@@ -773,6 +924,8 @@ export function getStructuredToolDetails(tool: ToolCallData, context: ToolMetaCo
       return buildGitHubMcpDetails(tool.input, tool);
     case "web_fetch":
       return buildWebFetchDetails(tool.input, tool);
+    case "todo":
+      return buildTodoDetails(tool.input, tool);
     case "skill":
       return buildSkillDetails(tool.input, tool);
     case "unknown":
