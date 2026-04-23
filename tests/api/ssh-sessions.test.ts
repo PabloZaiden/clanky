@@ -303,7 +303,7 @@ describe("SSH sessions API integration", () => {
     }
   });
 
-  test("defaults useTmux to true when omitted", async () => {
+  test("defaults useTmux to false when omitted", async () => {
     const workspace = await createWorkspace({ transport: "ssh" });
 
     const response = await fetch(`${baseUrl}/api/ssh-sessions`, {
@@ -318,7 +318,7 @@ describe("SSH sessions API integration", () => {
 
     expect(response.status).toBe(201);
     const session = await response.json() as { config: { useTmux: boolean } };
-    expect(session.config.useTmux).toBe(true);
+    expect(session.config.useTmux).toBe(false);
   });
 
   test("rejects session creation for non-ssh workspaces", async () => {
