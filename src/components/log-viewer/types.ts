@@ -1,4 +1,5 @@
 import type { MessageData, ToolCallData, LogLevel } from "../../types";
+import type { PromiseMarkerOutcomeKind } from "../../utils/promise-markers";
 
 /**
  * Application log entry for display in the UI.
@@ -12,8 +13,26 @@ export interface LogEntry {
   message: string;
   /** Optional additional details */
   details?: Record<string, unknown>;
+  /** Optional finalized-response metadata derived once the assistant message completes. */
+  finalizedResponse?: FinalizedResponseLogData;
   /** ISO timestamp */
   timestamp: string;
+}
+
+export interface FinalizedResponseIndicator {
+  /** Raw promise marker value that was detected. */
+  marker: string;
+  /** Normalized semantic kind for UI styling. */
+  kind: PromiseMarkerOutcomeKind;
+  /** Human-readable label for the UI indicator. */
+  label: string;
+}
+
+export interface FinalizedResponseLogData {
+  /** Response content with the trailing promise marker removed. */
+  content: string;
+  /** UI indicator metadata for the detected marker. */
+  indicator: FinalizedResponseIndicator;
 }
 
 export interface LogViewerProps {

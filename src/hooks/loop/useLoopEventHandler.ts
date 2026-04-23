@@ -8,6 +8,7 @@ import type { LoopEvent, MessageData, ToolCallData } from "../../types";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "../../lib/logger";
 import { MAX_FRONTEND_LOGS, MAX_FRONTEND_MESSAGES, MAX_FRONTEND_TOOL_CALLS } from "./useLoopData";
+import { finalizeLatestResponseLog } from "./response-log-normalization";
 
 const log = createLogger("useLoop");
 
@@ -50,12 +51,14 @@ export function createLoopEventHandler(params: LoopEventHandlerParams) {
         setLogs((prev) => {
           const existingIndex = prev.findIndex((logEntry) => logEntry.id === event.id);
           if (existingIndex >= 0) {
+            const existingLog = prev[existingIndex];
             const updated = [...prev];
             updated[existingIndex] = {
               id: event.id,
               level: event.level,
               message: event.message,
               details: event.details,
+              finalizedResponse: existingLog?.finalizedResponse,
               timestamp: event.timestamp,
             };
             return updated;
@@ -86,6 +89,9 @@ export function createLoopEventHandler(params: LoopEventHandlerParams) {
       case "loop.message":
         // Clear progress content when message is complete
         setProgressContent("");
+        if (event.message.role === "assistant") {
+          setLogs((prev) => finalizeLatestResponseLog(prev, event.message.content));
+        }
         setMessages((prev) => {
           const newMessages = [...prev, event.message];
           if (newMessages.length > MAX_FRONTEND_MESSAGES) {
