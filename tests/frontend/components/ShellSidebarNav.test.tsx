@@ -6,7 +6,7 @@ import type { SshServer, SshServerSession } from "@/types/ssh-server";
 import { ShellSidebarNav } from "@/components/app-shell/shell-sidebar-nav";
 import { buildServerSidebarNodes, buildWorkspaceSidebarGroups, type ShellRoute } from "@/components/app-shell/shell-types";
 import { createLoop, createSshSession, createWorkspace } from "../helpers/factories";
-import { renderWithUser } from "../helpers/render";
+import { renderWithUser, waitFor } from "../helpers/render";
 
 function createChat(overrides?: {
   config?: Partial<Chat["config"]>;
@@ -720,14 +720,14 @@ describe("ShellSidebarNav", () => {
         }),
       ],
     });
-    const { container, getByLabelText, user } = renderWithUser(
+    const { getAllByRole, getByLabelText, user } = renderWithUser(
       <SidebarHarness workspaceGroups={workspaceGroups} serverNodes={serverNodes} />,
     );
     const searchInput = getByLabelText("Search sidebar");
 
     await user.type(searchInput, "shared");
 
-    const searchSectionTitles = Array.from(container.querySelectorAll("h2")).map((node) => node.textContent?.trim());
+    const searchSectionTitles = getAllByRole("heading", { level: 2 }).map((node) => node.textContent?.trim());
     expect(searchSectionTitles).toEqual([
       "Workspaces",
       "Loops",
@@ -738,19 +738,22 @@ describe("ShellSidebarNav", () => {
   });
 
   test("omits empty filtered sections and restores the default tree when the query is cleared", async () => {
-    const { container, getByLabelText, getByText, user } = renderWithUser(<SidebarHarness />);
-    const searchInput = getByLabelText("Search sidebar");
+    const { getAllByRole, getByLabelText, getByText, user } = renderWithUser(<SidebarHarness />);
+    const searchInput = getByLabelText("Search sidebar") as HTMLInputElement;
 
     await user.type(searchInput, "feature");
 
-    const filteredSectionTitles = Array.from(container.querySelectorAll("h2")).map((node) => node.textContent?.trim());
+    const filteredSectionTitles = getAllByRole("heading", { level: 2 }).map((node) => node.textContent?.trim());
     expect(filteredSectionTitles).toEqual(["Loops"]);
     expect(getByText("Feature Loop")).toBeInTheDocument();
 
-    await user.type(searchInput, "{backspace}{backspace}{backspace}{backspace}{backspace}{backspace}{backspace}");
+    await user.keyboard("{Backspace}".repeat(searchInput.value.length));
 
-    expect(getByText("Active")).toBeInTheDocument();
-    expect(getByText("Inactive")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(searchInput).toHaveValue("");
+      expect(getByText("Active")).toBeInTheDocument();
+      expect(getByText("Inactive")).toBeInTheDocument();
+    });
   });
 
   test("supports in-app navigation and modified-click new-tab navigation", () => {
