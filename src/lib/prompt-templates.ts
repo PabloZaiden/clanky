@@ -73,7 +73,7 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
 - Prioritize actionable findings over style nitpicks
 - Use severity levels consistently: Critical (data loss, security), Major (correctness, maintainability), Minor (style, convention), Suggestion (improvements)
 - Cross-reference findings across documents where they overlap
-- Consider the project's own AGENTS.md conventions when evaluating code`,
+- Consider the project's existing conventions and architecture when evaluating code`,
     defaults: {
       planMode: true,
     },
@@ -94,7 +94,7 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
 **Rules:**
 - Fix the code, not the review — do not modify files in \`code_review/\`
 - Ensure each fix doesn't break existing tests — run the test suite after each batch of related fixes
-- Follow the coding conventions in AGENTS.md
+- Follow the project's existing coding conventions
 - If a fix requires a larger refactor, note it in the plan but implement it incrementally
 - Track which issues you've fixed in your status updates`,
     defaults: {
@@ -121,7 +121,7 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
 - Always fix code to match test expectations, unless the test is clearly wrong
 - Never delete or skip tests to make the suite pass
 - Run the full suite (not individual tests) for final verification
-- Follow the coding conventions in AGENTS.md`,
+- Follow the project's existing coding conventions`,
     defaults: {
       planMode: false,
     },
@@ -135,7 +135,7 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
 
 Read \`.ralph-planning/plan.md\` for the full plan and \`.ralph-planning/status.md\` for current progress. Pick up the next pending task and continue implementation.
 
-Follow the standard workflow from AGENTS.md — update status after each completed task.`,
+Follow the standard workflow in the planning files — update status after each completed task.`,
     defaults: {
       planMode: false,
     },
@@ -188,7 +188,7 @@ After making fixes, re-read the updated documentation to confirm:
 - Preserve the existing documentation style and tone
 - Do not rewrite documentation that is already correct
 - Do not add excessive documentation — keep it concise and useful
-- Follow the project's AGENTS.md conventions if present
+- Follow the project's existing conventions if they are evident in the codebase and documentation
 - Run the project's build command after all changes to verify nothing is broken`,
     defaults: {
       planMode: true,
