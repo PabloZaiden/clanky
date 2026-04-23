@@ -51,12 +51,14 @@ export function createLoopEventHandler(params: LoopEventHandlerParams) {
         setLogs((prev) => {
           const existingIndex = prev.findIndex((logEntry) => logEntry.id === event.id);
           if (existingIndex >= 0) {
+            const existingLog = prev[existingIndex];
             const updated = [...prev];
             updated[existingIndex] = {
               id: event.id,
               level: event.level,
               message: event.message,
               details: event.details,
+              finalizedResponse: existingLog?.finalizedResponse,
               timestamp: event.timestamp,
             };
             return updated;

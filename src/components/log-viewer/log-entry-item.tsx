@@ -1,5 +1,6 @@
 import { memo, useCallback } from "react";
 import { Badge } from "../common/Badge";
+import type { BadgeVariant } from "../common/Badge";
 import { LazyDetails } from "./lazy-details";
 import { StreamingTextContent } from "./streaming-text-content";
 import type { LogEntry } from "./types";
@@ -19,7 +20,7 @@ function getOtherDetails(details: Record<string, unknown>): Record<string, unkno
   );
 }
 
-function getFinalizedResponseBadgeVariant(log: LogEntry): "completed" | "plan_ready" | "default" {
+function getFinalizedResponseBadgeVariant(log: LogEntry): BadgeVariant {
   switch (log.finalizedResponse?.indicator.kind) {
     case "complete":
       return "completed";

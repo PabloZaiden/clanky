@@ -288,6 +288,81 @@ describe("WebSocket event: loop.message", () => {
       },
     });
   });
+
+  test("preserves finalized response metadata when a later log update replaces the same response entry", async () => {
+    setupLoop();
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.log",
+        loopId: LOOP_ID,
+        id: "response-log-1",
+        level: "agent",
+        message: "AI generating response...",
+        details: {
+          logKind: "response",
+          responseContent: "Plan created\n<promise>PLAN_READY</promise>",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(1);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.message",
+        loopId: LOOP_ID,
+        iteration: 1,
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: "Plan created\n<promise>PLAN_READY</promise>",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]?.finalizedResponse?.indicator.kind).toBe("plan_ready");
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.log",
+        loopId: LOOP_ID,
+        id: "response-log-1",
+        level: "agent",
+        message: "AI response finished",
+        details: {
+          logKind: "response",
+          responseContent: "Plan created\n<promise>PLAN_READY</promise>",
+          metadata: "kept",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]?.message).toBe("AI response finished");
+    });
+
+    expect(result.current.logs[0]?.finalizedResponse).toEqual({
+      content: "Plan created",
+      indicator: {
+        marker: "PLAN_READY",
+        kind: "plan_ready",
+        label: "Plan ready",
+      },
+    });
+  });
 });
 
 // ─── WebSocket events: tool calls ────────────────────────────────────────────
