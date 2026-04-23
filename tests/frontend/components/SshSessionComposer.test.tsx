@@ -45,7 +45,7 @@ describe("SshSessionComposer", () => {
       />,
     );
 
-    await user.click(getByRole("checkbox"));
+    expect(getByRole("checkbox", { name: /Start in tmux when available/i })).not.toBeChecked();
     await user.click(getByRole("button", { name: "Create SSH Session" }));
 
     await waitFor(() => {
@@ -93,7 +93,7 @@ describe("SshSessionComposer", () => {
       />,
     );
 
-    await user.click(getByRole("checkbox"));
+    expect(getByRole("checkbox", { name: /Start in tmux when available/i })).not.toBeChecked();
     await user.selectOptions(getByLabelText("Target type"), "server");
     await user.click(getByRole("button", { name: "Create SSH Session" }));
 

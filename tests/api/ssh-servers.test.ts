@@ -289,7 +289,7 @@ describe("Standalone SSH servers API integration", () => {
     };
     expect(session.config.name).toBe("Direct shell");
     expect(session.config.connectionMode).toBe("direct");
-    expect(session.config.useTmux).toBe(true);
+    expect(session.config.useTmux).toBe(false);
   });
 
   test("deletes direct standalone SSH sessions", async () => {

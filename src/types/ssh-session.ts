@@ -9,7 +9,7 @@
 export type SshConnectionMode = "dtach" | "direct";
 
 export const DEFAULT_SSH_CONNECTION_MODE: SshConnectionMode = "dtach";
-export const DEFAULT_SSH_SESSION_USE_TMUX = true;
+export const DEFAULT_SSH_SESSION_USE_TMUX = false;
 
 export function normalizeSshConnectionMode(value: unknown): SshConnectionMode {
   return value === "direct" ? "direct" : "dtach";
