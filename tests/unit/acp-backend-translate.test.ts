@@ -292,6 +292,7 @@ describe("translateEvent: message.part.updated (tool)", () => {
     expect(result).toEqual({
       type: "tool.complete",
       toolName: "read_file",
+      input: undefined,
       output: "file contents here",
     });
     expect(ctx.toolPartStatus.get("tool-part-1")).toBe("completed");
@@ -1595,7 +1596,7 @@ describe("translateEvent: full message flow", () => {
       },
       ctx
     );
-    expect(toolComplete).toEqual({ type: "tool.complete", toolName: "bash", output: "file1.txt\nfile2.txt" });
+    expect(toolComplete).toEqual({ type: "tool.complete", toolName: "bash", input: undefined, output: "file1.txt\nfile2.txt" });
 
     // 5. Duplicate message.updated should be filtered
     const dupMsg = backend.translateEvent(

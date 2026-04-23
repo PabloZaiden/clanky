@@ -204,7 +204,7 @@ export type AgentEvent =
   | { type: "message.complete"; content: string }
   | { type: "reasoning.delta"; content: string }
   | { type: "tool.start"; toolName: string; input: unknown }
-  | { type: "tool.complete"; toolName: string; output: unknown }
+  | { type: "tool.complete"; toolName: string; input?: unknown; output: unknown }
   | { type: "error"; message: string }
   | { type: "permission.asked"; requestId: string; sessionId: string; permission: string; patterns: string[] }
   | { type: "question.asked"; requestId: string; sessionId: string; questions: QuestionInfo[] }

@@ -861,10 +861,12 @@ export class ChatManager {
             resetActiveStreamBlock();
             const toolName = event.toolName;
             const existing = [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
+            const completedInput = event.input ?? existing?.input ?? toolInputs.get(toolName);
+            toolInputs.set(toolName, completedInput);
             chat = await this.upsertToolCall(chat, {
               id: existing?.id ?? `chat-tool-${crypto.randomUUID()}`,
               name: toolName,
-              input: existing?.input ?? toolInputs.get(toolName),
+              input: completedInput,
               output: event.output,
               status: "completed",
               timestamp: now,

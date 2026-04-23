@@ -407,6 +407,14 @@ export class AcpBackend implements Backend {
   }
 
   private handleRpcMessage(message: JsonRpcMessage): void {
+    log.trace("[AcpBackend] Received RPC message", {
+      method: message.method,
+      id: message.id,
+      params: message.params,
+      result: message.result,
+      error: message.error,
+    });
+
     const method = message.method;
     if (method && isRecord(message.params)) {
       if (method === "session/update") {
@@ -549,6 +557,14 @@ export class AcpBackend implements Backend {
     const updateType = getString(updateObj["sessionUpdate"]) ?? getString(updateObj["type"]);
     const content = isRecord(updateObj["content"]) ? updateObj["content"] : {};
 
+    log.trace("[AcpBackend] Raw session/update", {
+      sessionId,
+      updateType,
+      params,
+      updateObj,
+      content,
+    });
+
     if (!sessionId || !updateType) {
       return;
     }
@@ -642,6 +658,15 @@ export class AcpBackend implements Backend {
       if (toolCallId) {
         this.toolCallNames.set(toolCallId, toolName);
       }
+      log.trace("[AcpBackend] Handling tool_call update", {
+        sessionId,
+        toolCallId,
+        toolName,
+        contentInput: content["input"],
+        updateInput: updateObj["input"],
+        rawInput: updateObj["rawInput"],
+        fullUpdate: updateObj,
+      });
       this.emitSessionEvent(sessionId, {
         type: "tool.start",
         toolName,
@@ -672,6 +697,17 @@ export class AcpBackend implements Backend {
         updateObj["state"],
       );
 
+      log.trace("[AcpBackend] Handling tool_call_update", {
+        sessionId,
+        toolCallId,
+        toolName,
+        status,
+        contentOutput: content["output"],
+        updateOutput: updateObj["output"],
+        rawOutput: updateObj["rawOutput"],
+        fullUpdate: updateObj,
+      });
+
       if (
         status === "completed"
         || status === "success"
@@ -681,6 +717,7 @@ export class AcpBackend implements Backend {
         || status === "canceled"
       ) {
         const rawOutput = isRecord(updateObj["rawOutput"]) ? updateObj["rawOutput"] : {};
+        const completedInput = updateObj["input"] ?? updateObj["rawInput"] ?? content["input"];
         const errorMessage = firstString(content["error"], updateObj["error"], rawOutput["message"]);
         const baseOutput = content["output"] ?? updateObj["output"] ?? updateObj["rawOutput"] ?? content["content"] ?? updateObj["content"];
         const isFailure = status === "failed" || status === "error";
@@ -701,6 +738,7 @@ export class AcpBackend implements Backend {
         this.emitSessionEvent(sessionId, {
           type: "tool.complete",
           toolName,
+          input: completedInput,
           output,
         });
         if (toolCallId) {
@@ -776,6 +814,12 @@ export class AcpBackend implements Backend {
       throw new Error("ACP process stdin is not writable");
     }
 
+    log.trace("[AcpBackend] Writing RPC message", {
+      id: message.id,
+      method: message.method,
+      params: message.params,
+    });
+
     process.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
@@ -803,7 +847,14 @@ export class AcpBackend implements Backend {
       }, timeoutMs);
 
       this.pendingRequests.set(id, {
-        resolve: (value: unknown) => resolve(value as T),
+        resolve: (value: unknown) => {
+          log.trace("[AcpBackend] RPC request resolved", {
+            id,
+            method,
+            result: value,
+          });
+          resolve(value as T);
+        },
         reject,
         timeout,
       });
@@ -1203,6 +1254,10 @@ export class AcpBackend implements Backend {
     const toolParts: AgentPart[] = [];
 
     const capture: SessionSubscriber = (event) => {
+      log.trace("[AcpBackend] sendPrompt subscriber event", {
+        sessionId,
+        event,
+      });
       if (event.type === "message.delta") {
         chunks.push(event.content);
       } else if (event.type === "tool.start") {
@@ -1232,6 +1287,10 @@ export class AcpBackend implements Backend {
       );
 
       if (isRecord(result)) {
+        log.trace("[AcpBackend] sendPrompt raw result", {
+          sessionId,
+          result,
+        });
         const content = getString(result["content"]);
         if (content) {
           responseContent = content;
@@ -1254,6 +1313,10 @@ export class AcpBackend implements Backend {
       });
     }
     for (const part of toolParts) {
+      log.trace("[AcpBackend] sendPrompt rebuilding tool part", {
+        sessionId,
+        part,
+      });
       if (part.type === "tool_call") {
         mappedParts.push({
           type: "tool",
@@ -1617,6 +1680,10 @@ export class AcpBackend implements Backend {
     let fullContent = "";
 
     for (const part of response.parts) {
+      log.trace("[AcpBackend] mapResponse inspecting part", {
+        messageId: response.info.id,
+        part,
+      });
       if (part.type === "text") {
         parts.push({
           type: "text",
@@ -1746,6 +1813,14 @@ export class AcpBackend implements Backend {
           const partId = part.id;
           const lastStatus = toolPartStatus.get(partId);
 
+          log.trace(`[AcpBackend:${subId}] translateEvent: message.part.updated - tool part`, {
+            partId,
+            tool: part.tool,
+            status: state.status,
+            input: state.input,
+            output: state.output,
+          });
+
           // Only emit if status changed from what we last emitted
           if (state.status === "running") {
             if (lastStatus === "running") {
@@ -1767,6 +1842,7 @@ export class AcpBackend implements Backend {
             return {
               type: "tool.complete",
               toolName: part.tool,
+              input: state.input,
               output: state.output,
             };
           } else if (state.status === "error") {

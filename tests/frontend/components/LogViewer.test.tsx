@@ -667,13 +667,22 @@ describe("LogViewer", () => {
       expect(getByText("Load skill playwright-cli")).toBeInTheDocument();
     });
 
-    test("falls back to an unknown summary for empty payloads", () => {
+    test("falls back to a bash summary for empty execute payloads", () => {
       const { getByText } = renderToolCall({
         name: "execute",
         input: {},
       });
 
-      expect(getByText("Unknown tool (stored as execute)")).toBeInTheDocument();
+      expect(getByText("Run command")).toBeInTheDocument();
+    });
+
+    test("falls back to an unknown summary for truly unknown empty payloads", () => {
+      const { getByText } = renderToolCall({
+        name: "mystery-tool",
+        input: {},
+      });
+
+      expect(getByText("Unknown tool (stored as mystery-tool)")).toBeInTheDocument();
     });
 
     test("misleading stored names do not override read_bash inference", () => {
@@ -733,13 +742,13 @@ describe("LogViewer", () => {
       expect(disclosure?.getAttribute("data-open")).toBe("false");
     });
 
-    test("styles tool summaries as italic blue transcript entries", () => {
+    test("styles expandable tool summaries as italic blue transcript entries", () => {
       const { getByText } = renderToolCall({
         name: "execute",
-        input: {},
+        input: { command: "pwd" },
       });
 
-      const summaryText = getByText("Unknown tool (stored as execute)");
+      const summaryText = getByText("pwd");
       const toolEntry = summaryText.closest(".group") as HTMLElement;
       expect(toolEntry).not.toBeNull();
       expect(toolEntry.getAttribute("data-entry-type")).toBe("tool");
@@ -844,7 +853,7 @@ describe("LogViewer", () => {
       expect(queryByText("View /src/file.ts")).not.toBeInTheDocument();
     });
 
-    test("always renders summary lines for consecutive unknown pending tools", () => {
+    test("always renders summary lines for consecutive pending execute tools", () => {
       const firstTool = createToolCallData({
         name: "execute",
         input: {},
@@ -861,7 +870,7 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
       );
 
-      expect(getAllByText("Unknown tool (stored as execute)")).toHaveLength(2);
+      expect(getAllByText("Run command")).toHaveLength(2);
     });
 
     test("keeps consecutive tool rows compact when the displayed minute changes", () => {
@@ -1497,6 +1506,43 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[tool]} />
       );
       expect(getByText("View /src/file.ts")).toBeInTheDocument();
+    });
+
+    test("renders todowrite-style OpenCode tools with a non-generic summary", () => {
+      const tool = createToolCallData({
+        name: "todowrite",
+        input: {
+          todos: [
+            { content: "Task one", status: "pending", priority: "high" },
+          ],
+        },
+        output: { output: "[]" },
+        status: "completed",
+      });
+      const { getByText, queryByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} />
+      );
+      expect(getByText("Update todo list (1)")).toBeInTheDocument();
+      expect(queryByText(/Unknown tool/)).not.toBeInTheDocument();
+    });
+
+    test("renders apply_patch details for OpenCode tools stored as other with patchText", async () => {
+      const tool = createToolCallData({
+        name: "other",
+        input: {
+          patchText: "*** Begin Patch\n*** Add File: foo.txt\n+hello\n*** End Patch",
+        },
+        output: { output: "Success" },
+        status: "completed",
+      });
+      const { getByText, findAllByText, user } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} />
+      );
+
+      const summary = getByText("Apply patch");
+      await user.click(summary);
+
+      expect(await findAllByText("foo.txt")).toHaveLength(2);
     });
 
     test("hides tool call entries when showTools=false", () => {

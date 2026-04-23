@@ -167,11 +167,15 @@ function handleToolStart(event: AgentEvent & { type: "tool.start" }, ctx: Iterat
 
 async function handleToolComplete(event: AgentEvent & { type: "tool.complete" }, ctx: IterationContext, toolCtx: ToolProcessingContext): Promise<void> {
   const toolInfo = ctx.toolCalls.get(event.toolName);
+  const completedInput = event.input ?? toolInfo?.input;
+  if (toolInfo) {
+    ctx.toolCalls.set(event.toolName, { ...toolInfo, input: completedInput });
+  }
   const timestamp = createTimestamp();
   const toolCompleteData: ToolCallData = {
     id: toolInfo?.id ?? `tool-${ctx.iteration}-${event.toolName}`,
     name: event.toolName,
-    input: toolInfo?.input,
+    input: completedInput,
     output: event.output,
     status: "completed",
     timestamp,
