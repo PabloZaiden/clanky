@@ -3,7 +3,7 @@
  */
 
 import type { CommandExecutor } from "./command-executor";
-import type { Loop } from "../types/loop";
+import type { AutomaticPrFlowMergeStateStatus, Loop } from "../types/loop";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
 import { backendManager } from "./backend-manager";
 import { getDiff, getDiffSummary } from "./git/git-diff";
@@ -31,6 +31,7 @@ interface PullRequestView {
   state?: unknown;
   mergedAt?: unknown;
   reviewDecision?: unknown;
+  mergeStateStatus?: unknown;
 }
 
 interface RepositoryCoordinates {
@@ -88,6 +89,8 @@ interface PullRequestDetailsQueryResponse {
         url?: unknown;
         state?: unknown;
         reviewDecision?: unknown;
+        mergeStateStatus?: unknown;
+        viewerCanUpdateBranch?: unknown;
         reviewThreads?: { nodes?: GraphQlThreadNode[] | null } | null;
         comments?: { nodes?: GraphQlIssueCommentNode[] | null } | null;
         reviews?: { nodes?: GraphQlReviewNode[] | null } | null;
@@ -101,6 +104,8 @@ export interface AutomaticPrFlowPullRequest {
   url: string;
   state: "OPEN" | "CLOSED" | "MERGED";
   reviewDecision?: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED";
+  mergeStateStatus?: AutomaticPrFlowMergeStateStatus;
+  viewerCanUpdateBranch?: boolean;
   mergedAt?: string;
 }
 
@@ -193,6 +198,30 @@ function normalizeReviewDecision(
   return undefined;
 }
 
+function normalizeMergeStateStatus(
+  rawMergeStateStatus: unknown,
+): AutomaticPrFlowPullRequest["mergeStateStatus"] | undefined {
+  if (typeof rawMergeStateStatus !== "string") {
+    return undefined;
+  }
+
+  const upperStatus = rawMergeStateStatus.toUpperCase();
+  if (
+    upperStatus === "BEHIND"
+    || upperStatus === "BLOCKED"
+    || upperStatus === "CLEAN"
+    || upperStatus === "DIRTY"
+    || upperStatus === "DRAFT"
+    || upperStatus === "HAS_HOOKS"
+    || upperStatus === "UNKNOWN"
+    || upperStatus === "UNSTABLE"
+  ) {
+    return upperStatus;
+  }
+
+  return undefined;
+}
+
 function parseRepositoryCoordinates(remoteUrl: string): RepositoryCoordinates | null {
   const repositoryUrl = normalizeGitHubRepositoryUrl(remoteUrl);
   if (!repositoryUrl) {
@@ -214,6 +243,10 @@ function toStringValue(value: unknown): string | undefined {
 
 function toNumberValue(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function toBooleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function isNoPullRequestError(stderr: string): boolean {
@@ -336,6 +369,7 @@ function parseExistingPullRequest(pullRequestView: PullRequestView): AutomaticPr
     state,
     mergedAt: toStringValue(pullRequestView.mergedAt),
     reviewDecision: normalizeReviewDecision(pullRequestView.reviewDecision),
+    mergeStateStatus: normalizeMergeStateStatus(pullRequestView.mergeStateStatus),
   };
 }
 
@@ -346,7 +380,7 @@ async function getExistingPullRequest(
 ): Promise<AutomaticPrFlowPullRequest | null> {
   const result = await executor.exec(
     "gh",
-    ["pr", "view", workingBranch, "--json", "number,url,state,mergedAt,reviewDecision"],
+    ["pr", "view", workingBranch, "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"],
     { cwd: directory, timeout: 10000 },
   );
   if (!result.success) {
@@ -533,7 +567,7 @@ export async function fetchAutomaticPrFlowSnapshot(
       "api",
       "graphql",
       "-f",
-      "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number url state reviewDecision reviewThreads(first:100){nodes{id isResolved isOutdated isCollapsed comments(first:20){nodes{id body createdAt url author{login} path originalLine}}} } comments(first:100){nodes{id body createdAt url author{login}}} reviews(first:100){nodes{id body state submittedAt url author{login}}}}}}",
+      "query=query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){number url state reviewDecision mergeStateStatus viewerCanUpdateBranch reviewThreads(first:100){nodes{id isResolved isOutdated isCollapsed comments(first:20){nodes{id body createdAt url author{login} path originalLine}}} } comments(first:100){nodes{id body createdAt url author{login}}} reviews(first:100){nodes{id body state submittedAt url author{login}}}}}}",
       "-F",
       `owner=${coordinates.owner}`,
       "-F",
@@ -575,6 +609,8 @@ export async function fetchAutomaticPrFlowSnapshot(
       url: pullRequest.url,
       state: normalizePullRequestState(responsePullRequest.state) ?? pullRequest.state,
       reviewDecision: normalizeReviewDecision(responsePullRequest.reviewDecision) ?? pullRequest.reviewDecision,
+      mergeStateStatus: normalizeMergeStateStatus(responsePullRequest.mergeStateStatus) ?? pullRequest.mergeStateStatus,
+      viewerCanUpdateBranch: toBooleanValue(responsePullRequest.viewerCanUpdateBranch) ?? pullRequest.viewerCanUpdateBranch,
       mergedAt: pullRequest.mergedAt,
     },
     reviewThreads,

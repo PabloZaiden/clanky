@@ -73,6 +73,7 @@ export interface PushedLoopMonitorDependencies {
   createGitService: (executor: CommandExecutor) => PullRequestNavigationGitService;
   markMerged: (loopId: string) => Promise<{ success: boolean; error?: string }>;
   pushLoop: (loopId: string) => Promise<PushLoopResult>;
+  updateBranch: (loopId: string) => Promise<PushLoopResult>;
   isLoopRunning: (loopId: string) => boolean;
   probePullRequestMonitoring: (
     loop: Loop,
@@ -129,6 +130,7 @@ export class PushedLoopMonitor {
       createGitService: (executor: CommandExecutor) => GitService.withExecutor(executor),
       markMerged: (loopId: string) => loopManager.markMerged(loopId),
       pushLoop: (loopId: string) => loopManager.pushLoop(loopId),
+      updateBranch: (loopId: string) => loopManager.updateBranch(loopId),
       isLoopRunning: (loopId: string) => loopManager.isRunning(loopId),
       probePullRequestMonitoring,
       ensureAutomaticPrFlowPullRequest,
@@ -338,6 +340,60 @@ export class PushedLoopMonitor {
     }
 
     const snapshot = await this.deps.fetchAutomaticPrFlowSnapshot(pullRequest, workingDirectory, executor, git);
+    const monitoringState = this.mergeMonitoringStateFromSnapshot(loop.state.pullRequestMonitoring, snapshot, now);
+    if (this.shouldTriggerAutomaticBranchUpdate(loop, monitoringState, now)) {
+      const requestedMonitoringState = {
+        ...monitoringState,
+        branchUpdate: {
+          status: "requested" as const,
+          lastDetectedAt: now,
+          lastTriggeredAt: now,
+        },
+      };
+      const updateResult = await this.deps.updateBranch(loop.config.id);
+      if (!updateResult.success) {
+        return {
+          automaticPrFlowState: {
+            ...baseState,
+            status: "monitoring",
+          },
+          monitoringState: {
+            ...requestedMonitoringState,
+            lastError: updateResult.error ?? "Automatic PR branch update failed.",
+            branchUpdate: {
+              ...requestedMonitoringState.branchUpdate,
+              status: "failed",
+              lastError: updateResult.error ?? "Automatic PR branch update failed.",
+            },
+          },
+        };
+      }
+
+      if (updateResult.syncStatus === "conflicts_being_resolved") {
+        return {
+          automaticPrFlowState: {
+            ...baseState,
+            status: "monitoring",
+          },
+          monitoringState: {
+            ...requestedMonitoringState,
+            branchUpdate: {
+              ...requestedMonitoringState.branchUpdate,
+              status: "conflicts",
+            },
+          },
+        };
+      }
+
+      return {
+        automaticPrFlowState: {
+          ...baseState,
+          status: "monitoring",
+        },
+        monitoringState: requestedMonitoringState,
+      };
+    }
+
     const pendingFeedbackItems = snapshot.actionableItems.filter(
       (item) => !handledItems.some((handledItem) => handledItem.id === item.id),
     );
@@ -367,7 +423,7 @@ export class PushedLoopMonitor {
             status: "monitoring",
             handledItems: nextHandledItems,
           },
-          monitoringState: this.mergeMonitoringStateFromSnapshot(loop.state.pullRequestMonitoring, snapshot, now),
+          monitoringState,
         };
       }
 
@@ -398,7 +454,7 @@ export class PushedLoopMonitor {
             reviewCycle: result.reviewCycle,
           },
         },
-        monitoringState: this.mergeMonitoringStateFromSnapshot(loop.state.pullRequestMonitoring, snapshot, now),
+        monitoringState,
       };
     }
 
@@ -407,7 +463,7 @@ export class PushedLoopMonitor {
         ...baseState,
         status: "monitoring",
       },
-      monitoringState: this.mergeMonitoringStateFromSnapshot(loop.state.pullRequestMonitoring, snapshot, now),
+      monitoringState,
     };
   }
 
@@ -468,14 +524,75 @@ export class PushedLoopMonitor {
         ? "closed"
         : "open";
 
+    const branchUpdate = this.isAutomaticBranchUpdateRequired(nextStatus, pullRequest.mergeStateStatus, pullRequest.viewerCanUpdateBranch)
+      ? {
+          status: currentState?.branchUpdate?.status ?? "required",
+          lastDetectedAt: now,
+          lastTriggeredAt: currentState?.branchUpdate?.lastTriggeredAt,
+          lastError: currentState?.branchUpdate?.lastError,
+        }
+      : undefined;
+
     return {
       status: nextStatus,
       lastCheckedAt: now,
       pullRequestNumber: pullRequest.number,
       pullRequestUrl: pullRequest.url,
       mergedAt: pullRequest.state === "MERGED" ? (pullRequest.mergedAt ?? currentState?.mergedAt ?? now) : undefined,
+      mergeStateStatus: pullRequest.mergeStateStatus,
+      viewerCanUpdateBranch: pullRequest.viewerCanUpdateBranch,
+      branchUpdate,
       lastError: undefined,
     };
+  }
+
+  private isAutomaticBranchUpdateRequired(
+    monitoringStatus: NonNullable<Loop["state"]["pullRequestMonitoring"]>["status"],
+    mergeStateStatus: Loop["state"]["pullRequestMonitoring"] extends infer _T ? AutomaticPrFlowPullRequest["mergeStateStatus"] : never,
+    viewerCanUpdateBranch: boolean | undefined,
+  ): boolean {
+    return monitoringStatus === "open"
+      && mergeStateStatus === "BEHIND"
+      && viewerCanUpdateBranch === true;
+  }
+
+  private shouldTriggerAutomaticBranchUpdate(
+    loop: Loop,
+    monitoringState: NonNullable<Loop["state"]["pullRequestMonitoring"]>,
+    now: string,
+  ): boolean {
+    if (loop.state.status !== "pushed") {
+      return false;
+    }
+
+    if (!this.isAutomaticBranchUpdateRequired(
+      monitoringState.status,
+      monitoringState.mergeStateStatus,
+      monitoringState.viewerCanUpdateBranch,
+    )) {
+      return false;
+    }
+
+    if (this.deps.isLoopRunning(loop.config.id)) {
+      return false;
+    }
+
+    const branchUpdate = monitoringState.branchUpdate;
+    if (!branchUpdate?.lastTriggeredAt || branchUpdate.status === "required") {
+      return true;
+    }
+
+    if (branchUpdate.status === "failed" || branchUpdate.status === "conflicts") {
+      return false;
+    }
+
+    const lastTriggeredAt = Date.parse(branchUpdate.lastTriggeredAt);
+    const currentTime = Date.parse(now);
+    if (!Number.isFinite(lastTriggeredAt) || !Number.isFinite(currentTime)) {
+      return true;
+    }
+
+    return currentTime - lastTriggeredAt >= this.deps.intervalMs;
   }
 
   private buildAutomaticPrFlowErrorState(
@@ -514,7 +631,9 @@ export class PushedLoopMonitor {
 
     const hasActiveAutomaticBatch = automaticPrFlowState?.activeBatch !== undefined
       || latestLoop.state.automaticPrFlow?.activeBatch !== undefined;
-    if (latestLoop.state.status !== "pushed" && !hasActiveAutomaticBatch) {
+    const hasTrackedBranchUpdate = monitoringState?.branchUpdate !== undefined
+      || latestLoop.state.pullRequestMonitoring?.branchUpdate !== undefined;
+    if (latestLoop.state.status !== "pushed" && !hasActiveAutomaticBatch && !hasTrackedBranchUpdate) {
       return;
     }
 
