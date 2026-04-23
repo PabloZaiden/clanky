@@ -6,7 +6,7 @@ import type { SshServer, SshServerSession } from "@/types/ssh-server";
 import { ShellSidebarNav } from "@/components/app-shell/shell-sidebar-nav";
 import { buildServerSidebarNodes, buildWorkspaceSidebarGroups, type ShellRoute } from "@/components/app-shell/shell-types";
 import { createLoop, createSshSession, createWorkspace } from "../helpers/factories";
-import { renderWithUser } from "../helpers/render";
+import { renderWithUser, waitFor } from "../helpers/render";
 
 function createChat(overrides?: {
   config?: Partial<Chat["config"]>;
@@ -614,6 +614,146 @@ describe("ShellSidebarNav", () => {
 
     expect(queryByText("Active")).not.toBeInTheDocument();
     expect(queryByText("Inactive")).not.toBeInTheDocument();
+  });
+
+  test("trims the search input and matches workspace section results without a submit step", async () => {
+    const { getAllByText, getByLabelText, getByText, queryByRole, user } = renderWithUser(<SidebarHarness />);
+    const searchInput = getByLabelText("Search sidebar");
+
+    await user.type(searchInput, "  worksp  ");
+
+    expect(getAllByText("Workspace 1").length).toBeGreaterThan(0);
+    expect(getByText("Workspace 2")).toBeInTheDocument();
+    expect(getByText("Feature Loop")).toBeInTheDocument();
+    expect(getAllByText("Workspace Chat").length).toBeGreaterThan(0);
+    expect(queryByRole("button", { name: "New Workspaces" })).not.toBeInTheDocument();
+  });
+
+  test("orders filtered result sections by type", async () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-shared",
+        name: "Shared Workspace",
+        directory: "/workspaces/shared",
+        sshServerId: "server-shared",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-shared",
+            name: "Shared Loop",
+            workspaceId: "workspace-shared",
+          },
+          state: {
+            status: "running",
+          },
+        }),
+      ],
+      chats: [
+        createChat({
+          config: {
+            id: "chat-shared",
+            name: "Shared Chat",
+            workspaceId: "workspace-shared",
+          },
+        }),
+      ],
+      sessions: [
+        createSshSession({
+          config: {
+            id: "workspace-session-shared",
+            name: "Shared Workspace Session",
+            workspaceId: "workspace-shared",
+            createdAt: "2026-04-16T11:00:00.000Z",
+          },
+          state: {
+            status: "connected",
+          },
+        }),
+      ],
+    });
+    const serverNodes = buildServerSidebarNodes({
+      servers: [
+        createSshServer({
+          config: {
+            id: "server-shared",
+            name: "Shared Server",
+            address: "shared.example.com",
+            username: "ubuntu",
+            repositoriesBasePath: null,
+            createdAt: "2026-04-16T09:00:00.000Z",
+            updatedAt: "2026-04-16T09:00:00.000Z",
+          },
+        }),
+      ],
+      sessionsByServerId: {
+        "server-shared": [
+          createStandaloneServerSession({
+            config: {
+              id: "server-session-shared",
+              name: "Shared Server Session",
+              sshServerId: "server-shared",
+              connectionMode: "dtach",
+              useTmux: true,
+              remoteSessionName: "server-session-shared",
+              createdAt: "2026-04-16T12:00:00.000Z",
+              updatedAt: "2026-04-16T12:00:00.000Z",
+            },
+          }),
+        ],
+      },
+      workspaces,
+      workspaceSessions: [
+        createSshSession({
+          config: {
+            id: "workspace-session-shared",
+            name: "Shared Workspace Session",
+            workspaceId: "workspace-shared",
+            createdAt: "2026-04-16T11:00:00.000Z",
+          },
+          state: {
+            status: "connected",
+          },
+        }),
+      ],
+    });
+    const { getAllByRole, getByLabelText, user } = renderWithUser(
+      <SidebarHarness workspaceGroups={workspaceGroups} serverNodes={serverNodes} />,
+    );
+    const searchInput = getByLabelText("Search sidebar");
+
+    await user.type(searchInput, "shared");
+
+    const searchSectionTitles = getAllByRole("heading", { level: 2 }).map((node) => node.textContent?.trim());
+    expect(searchSectionTitles).toEqual([
+      "Workspaces",
+      "Loops",
+      "Chats",
+      "SSH sessions",
+      "SSH servers",
+    ]);
+  });
+
+  test("omits empty filtered sections and restores the default tree when the query is cleared", async () => {
+    const { getAllByRole, getByLabelText, getByText, user } = renderWithUser(<SidebarHarness />);
+    const searchInput = getByLabelText("Search sidebar") as HTMLInputElement;
+
+    await user.type(searchInput, "feature");
+
+    const filteredSectionTitles = getAllByRole("heading", { level: 2 }).map((node) => node.textContent?.trim());
+    expect(filteredSectionTitles).toEqual(["Loops"]);
+    expect(getByText("Feature Loop")).toBeInTheDocument();
+
+    await user.keyboard("{Backspace}".repeat(searchInput.value.length));
+
+    await waitFor(() => {
+      expect(searchInput).toHaveValue("");
+      expect(getByText("Active")).toBeInTheDocument();
+      expect(getByText("Inactive")).toBeInTheDocument();
+    });
   });
 
   test("supports in-app navigation and modified-click new-tab navigation", () => {
