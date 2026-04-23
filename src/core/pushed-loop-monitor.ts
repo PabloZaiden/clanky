@@ -524,7 +524,7 @@ export class PushedLoopMonitor {
         ? "closed"
         : "open";
 
-    const branchUpdate = nextStatus === "open" && pullRequest.mergeStateStatus === "BEHIND"
+    const branchUpdate = this.isAutomaticBranchUpdateRequired(nextStatus, pullRequest.mergeStateStatus, pullRequest.viewerCanUpdateBranch)
       ? {
           status: currentState?.branchUpdate?.status ?? "required",
           lastDetectedAt: now,
@@ -546,6 +546,16 @@ export class PushedLoopMonitor {
     };
   }
 
+  private isAutomaticBranchUpdateRequired(
+    monitoringStatus: NonNullable<Loop["state"]["pullRequestMonitoring"]>["status"],
+    mergeStateStatus: Loop["state"]["pullRequestMonitoring"] extends infer _T ? AutomaticPrFlowPullRequest["mergeStateStatus"] : never,
+    viewerCanUpdateBranch: boolean | undefined,
+  ): boolean {
+    return monitoringStatus === "open"
+      && mergeStateStatus === "BEHIND"
+      && viewerCanUpdateBranch === true;
+  }
+
   private shouldTriggerAutomaticBranchUpdate(
     loop: Loop,
     monitoringState: NonNullable<Loop["state"]["pullRequestMonitoring"]>,
@@ -555,7 +565,11 @@ export class PushedLoopMonitor {
       return false;
     }
 
-    if (monitoringState.status !== "open" || monitoringState.mergeStateStatus !== "BEHIND") {
+    if (!this.isAutomaticBranchUpdateRequired(
+      monitoringState.status,
+      monitoringState.mergeStateStatus,
+      monitoringState.viewerCanUpdateBranch,
+    )) {
       return false;
     }
 
@@ -564,8 +578,12 @@ export class PushedLoopMonitor {
     }
 
     const branchUpdate = monitoringState.branchUpdate;
-    if (!branchUpdate?.lastTriggeredAt || branchUpdate.status !== "requested") {
+    if (!branchUpdate?.lastTriggeredAt || branchUpdate.status === "required") {
       return true;
+    }
+
+    if (branchUpdate.status === "failed" || branchUpdate.status === "conflicts") {
+      return false;
     }
 
     const lastTriggeredAt = Date.parse(branchUpdate.lastTriggeredAt);
