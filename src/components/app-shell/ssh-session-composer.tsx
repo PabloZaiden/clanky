@@ -35,7 +35,7 @@ export function SshSessionComposer({
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>(initialWorkspaceId ?? workspaces[0]?.id);
   const [selectedServerId, setSelectedServerId] = useState(initialServerId ?? servers[0]?.config.id ?? "");
   const [connectionMode, setConnectionMode] = useState<SshConnectionMode>("dtach");
-  const [useTmux, setUseTmux] = useState(true);
+  const [useTmux, setUseTmux] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
