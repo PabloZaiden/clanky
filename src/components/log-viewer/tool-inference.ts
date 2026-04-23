@@ -1,4 +1,4 @@
-import type { ToolCallData } from "../../types";
+import type { FileDiff, ToolCallData } from "../../types";
 import { formatToolPathForDisplay } from "./tool-paths";
 
 export type InferredToolKind =
@@ -35,10 +35,20 @@ export interface ToolDetailRow {
   value: string;
 }
 
+export interface ApplyPatchFileSection {
+  path: string;
+  oldPath?: string;
+  status: FileDiff["status"];
+  additions: number;
+  deletions: number;
+  patch?: string;
+}
+
 export type ToolDetailBlock =
   | { type: "rows"; title?: string; rows: ToolDetailRow[] }
   | { type: "text"; title?: string; content: string }
   | { type: "code"; title?: string; content: string }
+  | { type: "patch"; title?: string; files: ApplyPatchFileSection[] }
   | { type: "list"; title?: string; items: string[] }
   | { type: "json"; title?: string; value: unknown };
 
@@ -149,6 +159,10 @@ function splitNonEmptyLines(text: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+function normalizePatchLines(text: string): string[] {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+}
+
 function getStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
     return undefined;
@@ -156,10 +170,103 @@ function getStringArray(value: unknown): string[] | undefined {
   return value;
 }
 
+function countPatchLines(lines: string[]): Pick<FileDiff, "additions" | "deletions"> {
+  return lines.reduce(
+    (counts, line) => {
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        counts.additions += 1;
+      } else if (line.startsWith("-") && !line.startsWith("---")) {
+        counts.deletions += 1;
+      }
+      return counts;
+    },
+    { additions: 0, deletions: 0 }
+  );
+}
+
+function formatApplyPatchFileLabel(file: ApplyPatchFileSection): string {
+  return file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
+}
+
 function parseApplyPatchFiles(input: string): string[] {
+  const sections = parseApplyPatchSections(input);
+  if (sections.length > 0) {
+    return Array.from(new Set(sections.map((section) => formatApplyPatchFileLabel(section))));
+  }
+
   const matches = input.matchAll(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/gm);
   const files = Array.from(matches, (match) => match[1]?.trim()).filter((file): file is string => Boolean(file));
   return Array.from(new Set(files));
+}
+
+export function parseApplyPatchSections(input: string): ApplyPatchFileSection[] {
+  const lines = normalizePatchLines(input);
+  const sections: ApplyPatchFileSection[] = [];
+  let current:
+    | {
+        sourcePath: string;
+        moveTo?: string;
+        status: Exclude<FileDiff["status"], "renamed">;
+        lines: string[];
+      }
+    | undefined;
+
+  function flushCurrent(): void {
+    if (!current) {
+      return;
+    }
+
+    const counts = countPatchLines(current.lines);
+    sections.push({
+      path: current.moveTo ?? current.sourcePath,
+      oldPath: current.moveTo ? current.sourcePath : undefined,
+      status: current.moveTo ? "renamed" : current.status,
+      additions: counts.additions,
+      deletions: counts.deletions,
+      patch: current.lines.length > 0 ? current.lines.join("\n") : undefined,
+    });
+    current = undefined;
+  }
+
+  for (const line of lines) {
+    if (line === "*** Begin Patch" || line === "*** End Patch") {
+      continue;
+    }
+
+    const fileMatch = line.match(/^\*\*\* (Update|Add|Delete) File: (.+)$/);
+    if (fileMatch) {
+      flushCurrent();
+      const operation = fileMatch[1];
+      const sourcePath = fileMatch[2]?.trim();
+      if (!sourcePath) {
+        continue;
+      }
+      current = {
+        sourcePath,
+        status: operation === "Add" ? "added" : operation === "Delete" ? "deleted" : "modified",
+        lines: [],
+      };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const moveMatch = line.match(/^\*\*\* Move to: (.+)$/);
+    if (moveMatch) {
+      const moveTo = moveMatch[1]?.trim();
+      if (moveTo) {
+        current.moveTo = moveTo;
+      }
+      continue;
+    }
+
+    current.lines.push(line);
+  }
+
+  flushCurrent();
+  return sections;
 }
 
 export function getTextFromOutput(output: unknown): string | undefined {
@@ -463,7 +570,10 @@ function buildApplyPatchDetails(tool: ToolCallData): StructuredToolDetails {
     return { inputBlocks: [], outputBlocks: [] };
   }
 
-  const files = parseApplyPatchFiles(tool.input);
+  const sections = parseApplyPatchSections(tool.input);
+  const files = sections.length > 0
+    ? sections.map((section) => formatApplyPatchFileLabel(section))
+    : parseApplyPatchFiles(tool.input);
   const rows: ToolDetailRow[] = [];
   if (files.length === 1) {
     appendRow(rows, "File", files[0]);
@@ -474,7 +584,9 @@ function buildApplyPatchDetails(tool: ToolCallData): StructuredToolDetails {
   return {
     inputBlocks: [
       ...(rows.length > 0 ? [{ type: "rows", rows } satisfies ToolDetailBlock] : []),
-      { type: "code", title: "Patch", content: tool.input },
+      sections.length > 0
+        ? { type: "patch", title: "Patch", files: sections }
+        : { type: "code", title: "Patch", content: tool.input },
     ],
     outputBlocks: getTextFromOutput(tool.output)
       ? [{ type: "text", title: "Result", content: getTextFromOutput(tool.output)! }]

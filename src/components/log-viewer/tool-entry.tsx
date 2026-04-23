@@ -1,5 +1,7 @@
 import { memo, useCallback, useMemo } from "react";
 import type { ToolCallData } from "../../types";
+import { getDiffFileStatusPresentation } from "../common/diff-file-status";
+import { DiffPatchViewer } from "../loop-details/diff-patch-viewer";
 import { LazyDetails } from "./lazy-details";
 import { formatTime } from "./utils";
 import {
@@ -42,6 +44,49 @@ function ToolValueBlock({ value }: { value: unknown }) {
     >
       {formatToolValue(value)}
     </pre>
+  );
+}
+
+function ApplyPatchBlockView({ block }: { block: Extract<ToolDetailBlock, { type: "patch" }> }) {
+  return (
+    <div className="space-y-2" data-tool-block="patch">
+      {block.title && (
+        <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">{block.title}</div>
+      )}
+      <div className="space-y-2">
+        {block.files.map((file, index) => {
+          const statusPresentation = getDiffFileStatusPresentation(file.status);
+
+          return (
+            <div
+              key={`${file.oldPath ?? file.path}-${file.path}-${index}`}
+              className="overflow-hidden rounded bg-gray-50 text-xs sm:text-sm dark:bg-neutral-900"
+              data-tool-patch-file="true"
+              data-tool-patch-status={file.status}
+            >
+              <div className="flex items-center gap-2 p-2 text-left sm:gap-3">
+                <span className={`font-medium ${statusPresentation.className}`}>{statusPresentation.symbol}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-gray-900 dark:text-gray-100">
+                  {file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}
+                </span>
+                <span className="whitespace-nowrap text-gray-500 dark:text-gray-400">
+                  <span className="text-green-600 dark:text-green-400">+{file.additions}</span>
+                  {" "}
+                  <span className="text-red-600 dark:text-red-400">-{file.deletions}</span>
+                </span>
+              </div>
+              {file.patch ? (
+                <DiffPatchViewer patch={file.patch} />
+              ) : (
+                <div className="rounded-b bg-neutral-950 px-3 py-2 font-mono text-xs text-gray-400">
+                  {file.status === "deleted" ? "File deleted by patch." : "No diff hunks in patch."}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -99,6 +144,10 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
         <RenderedContent output={block.content} />
       </div>
     );
+  }
+
+  if (block.type === "patch") {
+    return <ApplyPatchBlockView block={block} />;
   }
 
   return (

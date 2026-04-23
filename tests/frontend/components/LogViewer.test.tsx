@@ -512,7 +512,7 @@ describe("LogViewer", () => {
       expect(getByText("Search for 'API_TOKEN_SCOPE' in /workspaces/demo/repo")).toBeInTheDocument();
     });
 
-    test("infers apply_patch from raw patch-string input and preserves the raw patch in details", async () => {
+    test("renders apply_patch details with a diff-style patch block", async () => {
       const patch = [
         "*** Begin Patch",
         "*** Update File: src/example.ts",
@@ -528,8 +528,58 @@ describe("LogViewer", () => {
 
       expect(queryByText("-const before = true;")).not.toBeInTheDocument();
       await user.click(getByText("Patch src/example.ts"));
+      const patchBlock = container.querySelector("[data-tool-block='patch']") as HTMLElement | null;
+      expect(patchBlock).not.toBeNull();
+      expect(container.querySelector("[data-tool-block='code']")).toBeNull();
       expect(container.textContent).toContain("-const before = true;");
       expect(container.textContent).toContain("+const after = true;");
+    });
+
+    test("groups apply_patch detail sections by file and handles move plus delete metadata", async () => {
+      const patch = [
+        "*** Begin Patch",
+        "*** Update File: src/old-name.ts",
+        "*** Move to: src/new-name.ts",
+        "@@",
+        "-oldValue();",
+        "+newValue();",
+        "*** Delete File: src/removed.ts",
+        "*** End Patch",
+      ].join("\n");
+      const { container, getByText, user } = renderToolCall({
+        name: "edit",
+        input: patch,
+      });
+
+      await user.click(getByText("Patch 2 files"));
+      expect(getByText("src/old-name.ts → src/new-name.ts")).toBeInTheDocument();
+      expect(getByText("src/removed.ts")).toBeInTheDocument();
+      expect(container.textContent).toContain("File deleted by patch.");
+
+      const movedFile = container.querySelector("[data-tool-patch-status='renamed']") as HTMLElement | null;
+      const deletedFile = container.querySelector("[data-tool-patch-status='deleted']") as HTMLElement | null;
+      expect(movedFile).not.toBeNull();
+      expect(deletedFile).not.toBeNull();
+    });
+
+    test("falls back to a raw code block when apply_patch input cannot be parsed into file sections", async () => {
+      const patch = [
+        "*** Begin Patch",
+        "@@",
+        "-const before = true;",
+        "+const after = true;",
+        "*** End Patch",
+      ].join("\n");
+      const { container, getByText, user } = renderToolCall({
+        name: "edit",
+        input: patch,
+      });
+
+      await user.click(getByText("Apply patch"));
+      const codeBlock = container.querySelector("[data-tool-block='code']") as HTMLElement | null;
+      expect(codeBlock).not.toBeNull();
+      expect(container.querySelector("[data-tool-block='patch']")).toBeNull();
+      expect(container.textContent).toContain("*** Begin Patch");
     });
 
     test("infers bash from command payloads and prefers description in the summary", () => {
