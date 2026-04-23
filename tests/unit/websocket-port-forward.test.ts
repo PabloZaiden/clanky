@@ -17,6 +17,36 @@ function createTerminalSocket(data: WebSocketData): ServerWebSocket<WebSocketDat
 }
 
 describe("websocketHandlers port-forward mode", () => {
+  test("forwards binary messages to an open upstream proxy as Uint8Array data", () => {
+    const close = mock(() => {});
+    const send = mock(() => {});
+    const proxySocket = {
+      readyState: WebSocket.OPEN,
+      send,
+    } as unknown as WebSocket;
+    const ws = {
+      data: {
+        portForwardMode: true,
+        portForwardId: "forward-open",
+        proxySocket,
+      } as WebSocketData,
+      close,
+    } as unknown as ServerWebSocket<WebSocketData>;
+
+    websocketHandlers.message(ws, Buffer.from([1, 2, 3]));
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+
+    const firstCall = send.mock.calls[0] as unknown[] | undefined;
+    const payload = firstCall?.[0];
+    expect(payload).toBeInstanceOf(Uint8Array);
+    if (!(payload instanceof Uint8Array)) {
+      throw new Error("Expected upstream proxy payload to be a Uint8Array");
+    }
+    expect(Array.from(payload)).toEqual([1, 2, 3]);
+  });
+
   test("silently drops messages when the upstream proxy is still connecting", () => {
     const close = mock(() => {});
     const send = mock(() => {});
