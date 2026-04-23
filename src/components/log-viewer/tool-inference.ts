@@ -184,24 +184,70 @@ function countPatchLines(lines: string[]): Pick<FileDiff, "additions" | "deletio
   );
 }
 
-function formatApplyPatchFileLabel(file: ApplyPatchFileSection): string {
-  return file.oldPath ? `${file.oldPath} → ${file.path}` : file.path;
+function formatApplyPatchPathLabel(path: string, oldPath?: string): string {
+  return oldPath ? `${oldPath} → ${path}` : path;
+}
+
+function dedupeApplyPatchFileLabels(labels: string[]): string[] {
+  return Array.from(new Set(labels));
 }
 
 function parseApplyPatchFiles(input: string): string[] {
-  const sections = parseApplyPatchSections(input);
-  if (sections.length > 0) {
-    return Array.from(new Set(sections.map((section) => formatApplyPatchFileLabel(section))));
+  const lines = normalizePatchLines(input);
+  const files: string[] = [];
+  let currentSourcePath: string | undefined;
+  let currentMoveTo: string | undefined;
+
+  function flushCurrent(): void {
+    if (!currentSourcePath) {
+      return;
+    }
+    files.push(formatApplyPatchPathLabel(currentMoveTo ?? currentSourcePath, currentMoveTo ? currentSourcePath : undefined));
+    currentSourcePath = undefined;
+    currentMoveTo = undefined;
   }
 
-  const matches = input.matchAll(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/gm);
-  const files = Array.from(matches, (match) => match[1]?.trim()).filter((file): file is string => Boolean(file));
-  return Array.from(new Set(files));
+  for (const line of lines) {
+    if (line === "*** Begin Patch" || line === "*** End Patch") {
+      continue;
+    }
+
+    const fileMatch = line.match(/^\*\*\* (Update|Add|Delete) File: (.+)$/);
+    if (fileMatch) {
+      flushCurrent();
+      const sourcePath = fileMatch[2]?.trim();
+      if (sourcePath) {
+        currentSourcePath = sourcePath;
+      }
+      continue;
+    }
+
+    if (!currentSourcePath) {
+      continue;
+    }
+
+    const moveMatch = line.match(/^\*\*\* Move to: (.+)$/);
+    if (moveMatch) {
+      const moveTo = moveMatch[1]?.trim();
+      if (moveTo) {
+        currentMoveTo = moveTo;
+      }
+    }
+  }
+
+  flushCurrent();
+  return dedupeApplyPatchFileLabels(files);
 }
 
-export function parseApplyPatchSections(input: string): ApplyPatchFileSection[] {
+interface ParsedApplyPatchDetails {
+  sections: ApplyPatchFileSection[];
+  fileLabels: string[];
+}
+
+function parseApplyPatchDetails(input: string): ParsedApplyPatchDetails {
   const lines = normalizePatchLines(input);
   const sections: ApplyPatchFileSection[] = [];
+  const fileLabels: string[] = [];
   let current:
     | {
         sourcePath: string;
@@ -216,10 +262,14 @@ export function parseApplyPatchSections(input: string): ApplyPatchFileSection[] 
       return;
     }
 
+    const path = current.moveTo ?? current.sourcePath;
+    const oldPath = current.moveTo ? current.sourcePath : undefined;
+    fileLabels.push(formatApplyPatchPathLabel(path, oldPath));
+
     const counts = countPatchLines(current.lines);
     sections.push({
-      path: current.moveTo ?? current.sourcePath,
-      oldPath: current.moveTo ? current.sourcePath : undefined,
+      path,
+      oldPath,
       status: current.moveTo ? "renamed" : current.status,
       additions: counts.additions,
       deletions: counts.deletions,
@@ -266,7 +316,14 @@ export function parseApplyPatchSections(input: string): ApplyPatchFileSection[] 
   }
 
   flushCurrent();
-  return sections;
+  return {
+    sections,
+    fileLabels: dedupeApplyPatchFileLabels(fileLabels),
+  };
+}
+
+export function parseApplyPatchSections(input: string): ApplyPatchFileSection[] {
+  return parseApplyPatchDetails(input).sections;
 }
 
 export function getTextFromOutput(output: unknown): string | undefined {
@@ -570,15 +627,12 @@ function buildApplyPatchDetails(tool: ToolCallData): StructuredToolDetails {
     return { inputBlocks: [], outputBlocks: [] };
   }
 
-  const sections = parseApplyPatchSections(tool.input);
-  const files = sections.length > 0
-    ? sections.map((section) => formatApplyPatchFileLabel(section))
-    : parseApplyPatchFiles(tool.input);
+  const { sections, fileLabels } = parseApplyPatchDetails(tool.input);
   const rows: ToolDetailRow[] = [];
-  if (files.length === 1) {
-    appendRow(rows, "File", files[0]);
-  } else if (files.length > 1) {
-    appendRow(rows, "Files", files.join(", "));
+  if (fileLabels.length === 1) {
+    appendRow(rows, "File", fileLabels[0]);
+  } else if (fileLabels.length > 1) {
+    appendRow(rows, "Files", fileLabels.join(", "));
   }
 
   return {
