@@ -1,4 +1,4 @@
-import type { ToolCallData } from "../../types";
+import type { FileDiff, ToolCallData } from "../../types";
 import { formatToolPathForDisplay } from "./tool-paths";
 
 export type InferredToolKind =
@@ -35,10 +35,20 @@ export interface ToolDetailRow {
   value: string;
 }
 
+export interface ApplyPatchFileSection {
+  path: string;
+  oldPath?: string;
+  status: FileDiff["status"];
+  additions: number;
+  deletions: number;
+  patch?: string;
+}
+
 export type ToolDetailBlock =
   | { type: "rows"; title?: string; rows: ToolDetailRow[] }
   | { type: "text"; title?: string; content: string }
   | { type: "code"; title?: string; content: string }
+  | { type: "patch"; title?: string; files: ApplyPatchFileSection[] }
   | { type: "list"; title?: string; items: string[] }
   | { type: "json"; title?: string; value: unknown };
 
@@ -149,6 +159,10 @@ function splitNonEmptyLines(text: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+function normalizePatchLines(text: string): string[] {
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+}
+
 function getStringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
     return undefined;
@@ -156,10 +170,160 @@ function getStringArray(value: unknown): string[] | undefined {
   return value;
 }
 
+function countPatchLines(lines: string[]): Pick<FileDiff, "additions" | "deletions"> {
+  return lines.reduce(
+    (counts, line) => {
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        counts.additions += 1;
+      } else if (line.startsWith("-") && !line.startsWith("---")) {
+        counts.deletions += 1;
+      }
+      return counts;
+    },
+    { additions: 0, deletions: 0 }
+  );
+}
+
+function formatApplyPatchPathLabel(path: string, oldPath?: string): string {
+  return oldPath ? `${oldPath} → ${path}` : path;
+}
+
+function dedupeApplyPatchFileLabels(labels: string[]): string[] {
+  return Array.from(new Set(labels));
+}
+
 function parseApplyPatchFiles(input: string): string[] {
-  const matches = input.matchAll(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/gm);
-  const files = Array.from(matches, (match) => match[1]?.trim()).filter((file): file is string => Boolean(file));
-  return Array.from(new Set(files));
+  const lines = normalizePatchLines(input);
+  const files: string[] = [];
+  let currentSourcePath: string | undefined;
+  let currentMoveTo: string | undefined;
+
+  function flushCurrent(): void {
+    if (!currentSourcePath) {
+      return;
+    }
+    files.push(formatApplyPatchPathLabel(currentMoveTo ?? currentSourcePath, currentMoveTo ? currentSourcePath : undefined));
+    currentSourcePath = undefined;
+    currentMoveTo = undefined;
+  }
+
+  for (const line of lines) {
+    if (line === "*** Begin Patch" || line === "*** End Patch") {
+      continue;
+    }
+
+    const fileMatch = line.match(/^\*\*\* (Update|Add|Delete) File: (.+)$/);
+    if (fileMatch) {
+      flushCurrent();
+      const sourcePath = fileMatch[2]?.trim();
+      if (sourcePath) {
+        currentSourcePath = sourcePath;
+      }
+      continue;
+    }
+
+    if (!currentSourcePath) {
+      continue;
+    }
+
+    const moveMatch = line.match(/^\*\*\* Move to: (.+)$/);
+    if (moveMatch) {
+      const moveTo = moveMatch[1]?.trim();
+      if (moveTo) {
+        currentMoveTo = moveTo;
+      }
+    }
+  }
+
+  flushCurrent();
+  return dedupeApplyPatchFileLabels(files);
+}
+
+interface ParsedApplyPatchDetails {
+  sections: ApplyPatchFileSection[];
+  fileLabels: string[];
+}
+
+function parseApplyPatchDetails(input: string): ParsedApplyPatchDetails {
+  const lines = normalizePatchLines(input);
+  const sections: ApplyPatchFileSection[] = [];
+  const fileLabels: string[] = [];
+  let current:
+    | {
+        sourcePath: string;
+        moveTo?: string;
+        status: Exclude<FileDiff["status"], "renamed">;
+        lines: string[];
+      }
+    | undefined;
+
+  function flushCurrent(): void {
+    if (!current) {
+      return;
+    }
+
+    const path = current.moveTo ?? current.sourcePath;
+    const oldPath = current.moveTo ? current.sourcePath : undefined;
+    fileLabels.push(formatApplyPatchPathLabel(path, oldPath));
+
+    const counts = countPatchLines(current.lines);
+    sections.push({
+      path,
+      oldPath,
+      status: current.moveTo ? "renamed" : current.status,
+      additions: counts.additions,
+      deletions: counts.deletions,
+      patch: current.lines.length > 0 ? current.lines.join("\n") : undefined,
+    });
+    current = undefined;
+  }
+
+  for (const line of lines) {
+    if (line === "*** Begin Patch" || line === "*** End Patch") {
+      continue;
+    }
+
+    const fileMatch = line.match(/^\*\*\* (Update|Add|Delete) File: (.+)$/);
+    if (fileMatch) {
+      flushCurrent();
+      const operation = fileMatch[1];
+      const sourcePath = fileMatch[2]?.trim();
+      if (!sourcePath) {
+        continue;
+      }
+      current = {
+        sourcePath,
+        status: operation === "Add" ? "added" : operation === "Delete" ? "deleted" : "modified",
+        lines: [],
+      };
+      continue;
+    }
+
+    if (!current) {
+      continue;
+    }
+
+    const moveMatch = line.match(/^\*\*\* Move to: (.+)$/);
+    if (moveMatch) {
+      const moveTo = moveMatch[1]?.trim();
+      if (moveTo) {
+        current.moveTo = moveTo;
+      }
+      continue;
+    }
+
+    current.lines.push(line);
+  }
+
+  flushCurrent();
+  return {
+    sections,
+    fileLabels: dedupeApplyPatchFileLabels(fileLabels),
+  };
+}
+
+export function parseApplyPatchSections(input: string): ApplyPatchFileSection[] {
+  return parseApplyPatchDetails(input).sections;
 }
 
 export function getTextFromOutput(output: unknown): string | undefined {
@@ -463,18 +627,20 @@ function buildApplyPatchDetails(tool: ToolCallData): StructuredToolDetails {
     return { inputBlocks: [], outputBlocks: [] };
   }
 
-  const files = parseApplyPatchFiles(tool.input);
+  const { sections, fileLabels } = parseApplyPatchDetails(tool.input);
   const rows: ToolDetailRow[] = [];
-  if (files.length === 1) {
-    appendRow(rows, "File", files[0]);
-  } else if (files.length > 1) {
-    appendRow(rows, "Files", files.join(", "));
+  if (fileLabels.length === 1) {
+    appendRow(rows, "File", fileLabels[0]);
+  } else if (fileLabels.length > 1) {
+    appendRow(rows, "Files", fileLabels.join(", "));
   }
 
   return {
     inputBlocks: [
       ...(rows.length > 0 ? [{ type: "rows", rows } satisfies ToolDetailBlock] : []),
-      { type: "code", title: "Patch", content: tool.input },
+      sections.length > 0
+        ? { type: "patch", title: "Patch", files: sections }
+        : { type: "code", title: "Patch", content: tool.input },
     ],
     outputBlocks: getTextFromOutput(tool.output)
       ? [{ type: "text", title: "Result", content: getTextFromOutput(tool.output)! }]

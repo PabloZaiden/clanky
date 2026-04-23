@@ -1,4 +1,5 @@
 import type { FileDiff } from "../../types";
+import { getDiffFileStatusPresentation } from "../common/diff-file-status";
 import { DiffPatchViewer } from "./diff-patch-viewer";
 import { loopDetailsTabContentClassName, loopDetailsTabScrollContainerClassName } from "./tab-layout";
 
@@ -22,6 +23,7 @@ export function DiffTab({ diffContent, loadingContent, expandedFiles, onExpanded
             {diffContent.map((file) => {
               const isExpanded = expandedFiles.has(file.path);
               const hasPatch = !!file.patch;
+              const statusPresentation = getDiffFileStatusPresentation(file.status);
 
               return (
                 <div
@@ -51,20 +53,9 @@ export function DiffTab({ diffContent, loadingContent, expandedFiles, onExpanded
                       </span>
                     )}
                     <span
-                      className={`font-medium flex-shrink-0 ${
-                        file.status === "added"
-                          ? "text-green-600 dark:text-green-400"
-                          : file.status === "deleted"
-                          ? "text-red-600 dark:text-red-400"
-                          : file.status === "renamed"
-                          ? "text-gray-600 dark:text-gray-300"
-                          : "text-yellow-600 dark:text-yellow-400"
-                      }`}
+                      className={`font-medium flex-shrink-0 ${statusPresentation.className}`}
                     >
-                      {file.status === "added" && "+"}
-                      {file.status === "deleted" && "-"}
-                      {file.status === "renamed" && "→"}
-                      {file.status === "modified" && "~"}
+                      {statusPresentation.symbol}
                     </span>
                     <span className="font-mono text-gray-900 dark:text-gray-100 flex-1 truncate min-w-0">
                       {file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}

@@ -1,5 +1,5 @@
 /**
- * Renders diff patch content with syntax highlighting for additions/deletions.
+ * Renders git-style diffs and apply_patch hunk content with lightweight line highlighting.
  */
 
 export function DiffPatchViewer({ patch }: { patch: string }) {
@@ -16,6 +16,8 @@ export function DiffPatchViewer({ patch }: { patch: string }) {
           className = "text-red-400 bg-red-950/50";
         } else if (line.startsWith("@@")) {
           className = "text-gray-300";
+        } else if (line.startsWith("*** ")) {
+          className = "text-sky-300";
         } else if (line.startsWith("diff --git") || line.startsWith("index ") || line.startsWith("---") || line.startsWith("+++")) {
           className = "text-gray-500";
         }
