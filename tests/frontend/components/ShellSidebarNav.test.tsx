@@ -616,6 +616,143 @@ describe("ShellSidebarNav", () => {
     expect(queryByText("Inactive")).not.toBeInTheDocument();
   });
 
+  test("trims the search input and matches workspace section results without a submit step", async () => {
+    const { getAllByText, getByLabelText, getByText, queryByRole, user } = renderWithUser(<SidebarHarness />);
+    const searchInput = getByLabelText("Search sidebar");
+
+    await user.type(searchInput, "  worksp  ");
+
+    expect(getAllByText("Workspace 1").length).toBeGreaterThan(0);
+    expect(getByText("Workspace 2")).toBeInTheDocument();
+    expect(getByText("Feature Loop")).toBeInTheDocument();
+    expect(getAllByText("Workspace Chat").length).toBeGreaterThan(0);
+    expect(queryByRole("button", { name: "New Workspaces" })).not.toBeInTheDocument();
+  });
+
+  test("orders filtered result sections by type", async () => {
+    const workspaces = [
+      createWorkspace({
+        id: "workspace-shared",
+        name: "Shared Workspace",
+        directory: "/workspaces/shared",
+        sshServerId: "server-shared",
+      }),
+    ];
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces,
+      loops: [
+        createLoop({
+          config: {
+            id: "loop-shared",
+            name: "Shared Loop",
+            workspaceId: "workspace-shared",
+          },
+          state: {
+            status: "running",
+          },
+        }),
+      ],
+      chats: [
+        createChat({
+          config: {
+            id: "chat-shared",
+            name: "Shared Chat",
+            workspaceId: "workspace-shared",
+          },
+        }),
+      ],
+      sessions: [
+        createSshSession({
+          config: {
+            id: "workspace-session-shared",
+            name: "Shared Workspace Session",
+            workspaceId: "workspace-shared",
+            createdAt: "2026-04-16T11:00:00.000Z",
+          },
+          state: {
+            status: "connected",
+          },
+        }),
+      ],
+    });
+    const serverNodes = buildServerSidebarNodes({
+      servers: [
+        createSshServer({
+          config: {
+            id: "server-shared",
+            name: "Shared Server",
+            address: "shared.example.com",
+            username: "ubuntu",
+            repositoriesBasePath: null,
+            createdAt: "2026-04-16T09:00:00.000Z",
+            updatedAt: "2026-04-16T09:00:00.000Z",
+          },
+        }),
+      ],
+      sessionsByServerId: {
+        "server-shared": [
+          createStandaloneServerSession({
+            config: {
+              id: "server-session-shared",
+              name: "Shared Server Session",
+              sshServerId: "server-shared",
+              connectionMode: "dtach",
+              useTmux: true,
+              remoteSessionName: "server-session-shared",
+              createdAt: "2026-04-16T12:00:00.000Z",
+              updatedAt: "2026-04-16T12:00:00.000Z",
+            },
+          }),
+        ],
+      },
+      workspaces,
+      workspaceSessions: [
+        createSshSession({
+          config: {
+            id: "workspace-session-shared",
+            name: "Shared Workspace Session",
+            workspaceId: "workspace-shared",
+            createdAt: "2026-04-16T11:00:00.000Z",
+          },
+          state: {
+            status: "connected",
+          },
+        }),
+      ],
+    });
+    const { container, getByLabelText, user } = renderWithUser(
+      <SidebarHarness workspaceGroups={workspaceGroups} serverNodes={serverNodes} />,
+    );
+    const searchInput = getByLabelText("Search sidebar");
+
+    await user.type(searchInput, "shared");
+
+    const searchSectionTitles = Array.from(container.querySelectorAll("h2")).map((node) => node.textContent?.trim());
+    expect(searchSectionTitles).toEqual([
+      "Workspaces",
+      "Loops",
+      "Chats",
+      "SSH sessions",
+      "SSH servers",
+    ]);
+  });
+
+  test("omits empty filtered sections and restores the default tree when the query is cleared", async () => {
+    const { container, getByLabelText, getByText, user } = renderWithUser(<SidebarHarness />);
+    const searchInput = getByLabelText("Search sidebar");
+
+    await user.type(searchInput, "feature");
+
+    const filteredSectionTitles = Array.from(container.querySelectorAll("h2")).map((node) => node.textContent?.trim());
+    expect(filteredSectionTitles).toEqual(["Loops"]);
+    expect(getByText("Feature Loop")).toBeInTheDocument();
+
+    await user.type(searchInput, "{backspace}{backspace}{backspace}{backspace}{backspace}{backspace}{backspace}");
+
+    expect(getByText("Active")).toBeInTheDocument();
+    expect(getByText("Inactive")).toBeInTheDocument();
+  });
+
   test("supports in-app navigation and modified-click new-tab navigation", () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
     const openSpy = mock(() => null);
