@@ -124,6 +124,39 @@ describe("initial fetch", () => {
       attachments: [attachment],
     });
   });
+
+  test("hydrates finalized response markers for persisted response logs", async () => {
+    setupLoop(createLoop({
+      config: { id: LOOP_ID },
+      state: {
+        id: LOOP_ID,
+        logs: [{
+          id: "log-response-1",
+          level: "agent",
+          message: "AI generating response...",
+          details: {
+            logKind: "response",
+            responseContent: "Done\n<promise>COMPLETE</promise>",
+          },
+          timestamp: new Date().toISOString(),
+        }],
+      },
+    }));
+
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+
+    await waitForLoad(result);
+
+    expect(result.current.logs).toHaveLength(1);
+    expect(result.current.logs[0]?.finalizedResponse).toEqual({
+      content: "Done",
+      indicator: {
+        marker: "COMPLETE",
+        kind: "complete",
+        label: "Completed",
+      },
+    });
+  });
 });
 
 // ─── WebSocket events: messages ──────────────────────────────────────────────
@@ -198,6 +231,136 @@ describe("WebSocket event: loop.message", () => {
 
     await waitFor(() => {
       expect(result.current.progressContent).toBe("");
+    });
+  });
+
+  test("finalizes the latest response log when an assistant message completes", async () => {
+    setupLoop();
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.log",
+        loopId: LOOP_ID,
+        id: "response-log-1",
+        level: "agent",
+        message: "AI generating response...",
+        details: {
+          logKind: "response",
+          responseContent: "Plan created\n<promise>PLAN_READY</promise>",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(1);
+    });
+    expect(result.current.logs[0]?.finalizedResponse).toBeUndefined();
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.message",
+        loopId: LOOP_ID,
+        iteration: 1,
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: "Plan created\n<promise>PLAN_READY</promise>",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]?.finalizedResponse?.indicator.kind).toBe("plan_ready");
+    });
+    expect(result.current.logs[0]?.finalizedResponse).toEqual({
+      content: "Plan created",
+      indicator: {
+        marker: "PLAN_READY",
+        kind: "plan_ready",
+        label: "Plan ready",
+      },
+    });
+  });
+
+  test("preserves finalized response metadata when a later log update replaces the same response entry", async () => {
+    setupLoop();
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.log",
+        loopId: LOOP_ID,
+        id: "response-log-1",
+        level: "agent",
+        message: "AI generating response...",
+        details: {
+          logKind: "response",
+          responseContent: "Plan created\n<promise>PLAN_READY</promise>",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(1);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.message",
+        loopId: LOOP_ID,
+        iteration: 1,
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: "Plan created\n<promise>PLAN_READY</promise>",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]?.finalizedResponse?.indicator.kind).toBe("plan_ready");
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.log",
+        loopId: LOOP_ID,
+        id: "response-log-1",
+        level: "agent",
+        message: "AI response finished",
+        details: {
+          logKind: "response",
+          responseContent: "Plan created\n<promise>PLAN_READY</promise>",
+          metadata: "kept",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]?.message).toBe("AI response finished");
+    });
+
+    expect(result.current.logs[0]?.finalizedResponse).toEqual({
+      content: "Plan created",
+      indicator: {
+        marker: "PLAN_READY",
+        kind: "plan_ready",
+        label: "Plan ready",
+      },
     });
   });
 });

@@ -9,6 +9,7 @@ import type { Loop, MessageData, ToolCallData } from "../../types";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
+import { normalizeHydratedLoopLogs } from "./response-log-normalization";
 
 const log = createLogger("useLoop");
 
@@ -123,13 +124,15 @@ export function useLoopData(
         if (data.state.logs && data.state.logs.length > 0) {
           const latestLogs = data.state.logs.slice(-1000);
           setLogs(
-            latestLogs.map((logEntry) => ({
-              id: logEntry.id,
-              level: logEntry.level,
-              message: logEntry.message,
-              details: logEntry.details,
-              timestamp: logEntry.timestamp,
-            })),
+            normalizeHydratedLoopLogs(
+              latestLogs.map((logEntry) => ({
+                id: logEntry.id,
+                level: logEntry.level,
+                message: logEntry.message,
+                details: logEntry.details,
+                timestamp: logEntry.timestamp,
+              })),
+            ),
           );
         }
 
