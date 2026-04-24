@@ -566,8 +566,9 @@ describe("ralpher cli", () => {
 
     expect(exitCode).toBe(0);
     expect(output.length).toBeGreaterThan(20);
-    expect(output).toContain("GET /api/auth/status - Validate the current bearer token and return auth details.");
-    expect(output).toContain("POST /api/provisioning-jobs - Start a remote provisioning job.");
+    expect(output).toContain("GET auth/status - Validate the current bearer token and return auth details.");
+    expect(output).toContain("POST provisioning-jobs - Start a remote provisioning job.");
+    expect(output.some((line) => line.includes(".well-known"))).toBe(false);
   });
 
   test("api rejects unknown endpoints before attempting any network request", async () => {
@@ -919,8 +920,9 @@ describe("ralpher cli", () => {
     expect(rendered).toContain("\"path\"");
   });
 
-  test("api catalog escapes regex metacharacters in static route segments", () => {
-    expect(findApiEndpoint(".well-known/jwks.json")?.path).toBe("/.well-known/jwks.json");
-    expect(findApiEndpoint(".well-known/jwksXjson")).toBeNull();
+  test("api catalog only resolves discoverable /api endpoints", () => {
+    expect(findApiEndpoint("auth/status")?.path).toBe("/api/auth/status");
+    expect(findApiEndpoint("/api/auth/status")?.path).toBe("/api/auth/status");
+    expect(findApiEndpoint(".well-known/jwks.json")).toBeNull();
   });
 });

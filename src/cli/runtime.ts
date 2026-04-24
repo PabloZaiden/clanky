@@ -177,7 +177,7 @@ function printApiEndpoints(out: (message: string) => void): void {
   const entries = listApiEndpoints();
   for (const entry of entries) {
     const description = entry.description ? ` - ${entry.description}` : "";
-    out(`${entry.methods.join(", ")} ${entry.path}${description}`);
+    out(`${entry.methods.join(", ")} ${entry.cliPath}${description}`);
   }
 }
 

@@ -59,6 +59,7 @@ type RouteHandler = ((...args: never[]) => unknown) | Record<string, unknown>;
 
 export interface ApiEndpointCatalogEntry {
   path: string;
+  cliPath: string;
   methods: HttpMethod[];
   description?: string;
   requestSchema?: z.ZodTypeAny;
@@ -333,6 +334,7 @@ function getRouteEntries(): ApiEndpointCatalogEntry[] {
       const override = endpointOverrides[path] ?? {};
       return {
         path,
+        cliPath: path.startsWith("/api/") ? path.slice("/api/".length) : path,
         methods: getRouteMethods(handler as RouteHandler),
         description: override.description,
         requestSchema: override.requestSchema,
@@ -348,10 +350,10 @@ function normalizeEndpointPath(input: string): string {
     throw new Error("API endpoint is required");
   }
 
-  if (trimmed.startsWith("/api/") || trimmed.startsWith("/.well-known/")) {
+  if (trimmed.startsWith("/api/")) {
     return trimmed;
   }
-  if (trimmed.startsWith("api/") || trimmed.startsWith(".well-known/")) {
+  if (trimmed.startsWith("api/")) {
     return `/${trimmed}`;
   }
   if (trimmed.startsWith("/")) {
@@ -391,12 +393,12 @@ function matchesRoutePattern(routePath: string, endpointPath: string): boolean {
 }
 
 export function listApiEndpoints(): ApiEndpointCatalogEntry[] {
-  return getRouteEntries();
+  return getRouteEntries().filter((entry) => entry.path.startsWith("/api/"));
 }
 
 export function findApiEndpoint(input: string): ApiEndpointCatalogEntry | null {
   const normalizedPath = normalizeEndpointPath(stripEndpointSuffix(input));
-  const entries = getRouteEntries();
+  const entries = listApiEndpoints();
   return entries.find((entry) => entry.path === normalizedPath)
     ?? entries.find((entry) => matchesRoutePattern(entry.path, normalizedPath))
     ?? null;
