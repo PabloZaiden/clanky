@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useId, useMemo, useState } from "react";
 import type { DisplayEntry, ToolGroupEntryBase } from "./types";
 import { annotateDisplayEntries, formatTime, getEntrySpacingClass } from "./utils";
 import { ToolEntry } from "./tool-entry";
@@ -18,6 +18,8 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
   toolPathDisplayRoot,
 }: ToolGroupEntryProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const panelId = useId();
+  const labelId = useId();
   const groupedToolEntries = useMemo(
     () => annotateDisplayEntries(
       entry.tools.map((tool) => ({
@@ -41,6 +43,8 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           type="button"
           className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm text-sky-100 transition hover:bg-white/5"
           aria-expanded={isExpanded}
+          aria-controls={panelId}
+          id={labelId}
           onClick={() => setIsExpanded((current) => !current)}
           data-tool-group-toggle="true"
         >
@@ -49,13 +53,20 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
             {isExpanded ? "Collapse" : "Expand"}
           </span>
         </button>
-        <div hidden={!isExpanded} className="border-t border-white/8 px-3 py-3 sm:px-4" data-tool-group-panel="true">
+        <div
+          hidden={!isExpanded}
+          id={panelId}
+          role="region"
+          aria-labelledby={labelId}
+          className="border-t border-white/8 px-3 py-3 sm:px-4"
+          data-tool-group-panel="true"
+        >
           {groupedToolEntries.map((groupedTool, index) => (
             <ToolEntry
               key={`tool-${groupedTool.data.id}`}
               data={groupedTool.data}
               timestamp={groupedTool.timestamp}
-              showTimestamp={entry.showTimestamp ? index !== 0 && groupedTool.showTimestamp : groupedTool.showTimestamp}
+              showTimestamp={index !== 0 && groupedTool.showTimestamp}
               spacingClass={getEntrySpacingClass(groupedTool, groupedToolEntries[index - 1])}
               toolPathDisplayRoot={toolPathDisplayRoot}
               fullWidth

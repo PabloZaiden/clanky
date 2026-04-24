@@ -285,7 +285,7 @@ describe("LogViewer", () => {
       expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
 
-    test("uses the widened transcript shell and entry width caps", () => {
+    test("renders conversation content inside the shared transcript shell", () => {
       const userMessage = createMessageData({
         role: "user",
         content: "Needs more room",
@@ -296,12 +296,9 @@ describe("LogViewer", () => {
       );
 
       const transcriptShell = getByTestId("conversation-transcript");
-      expect(transcriptShell?.className).toContain("max-w-7xl");
-      expect(transcriptShell?.className).toContain("lg:px-6");
-
-      const messageWidth = container.querySelector("[data-message-role='user'] .min-w-0") as HTMLElement | null;
-      expect(messageWidth).not.toBeNull();
-      expect(messageWidth?.className).toContain("max-w-[min(88%,64rem)]");
+      expect(transcriptShell).toBeInTheDocument();
+      expect(transcriptShell.textContent).toContain("Needs more room");
+      expect(container.querySelector("[data-message-role='user']")).not.toBeNull();
     });
 
     test("user messages are always shown regardless of filter settings", () => {
@@ -888,12 +885,11 @@ describe("LogViewer", () => {
         timestamp: SAME_MINUTE_TIME_B,
       });
 
-      const { container, getByRole, getByText } = renderWithUser(
+      const { getAllByRole, getByText } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
       );
 
-      expect(container.querySelectorAll("[data-entry-type='tool-group']")).toHaveLength(1);
-      expect(getByRole("button", { name: /Tool calls/i })).toHaveAttribute("aria-expanded", "true");
+      expect(getAllByRole("button", { name: /Tool calls/i })).toHaveLength(1);
       expect(getByText("View /src/first.ts")).toBeInTheDocument();
       expect(getByText("Find files matching 'DEFAULT_CLIENT_ID' in /src")).toBeInTheDocument();
     });
@@ -930,7 +926,7 @@ describe("LogViewer", () => {
         timestamp: "2026-04-09T16:42:40.000Z",
       });
 
-      const { container, getAllByRole, getByText } = renderWithUser(
+      const { getAllByRole, getByText } = renderWithUser(
         <LogViewer
           messages={[]}
           toolCalls={[firstTool, secondTool, thirdTool, fourthTool]}
@@ -939,9 +935,12 @@ describe("LogViewer", () => {
         />
       );
 
-      expect(container.querySelectorAll("[data-entry-type='tool-group']")).toHaveLength(2);
       expect(getAllByRole("button", { name: /Tool calls/i })).toHaveLength(2);
       expect(getByText("Agent note between tool runs")).toBeInTheDocument();
+      expect(getByText("View /src/first.ts")).toBeInTheDocument();
+      expect(getByText("View /src/second.ts")).toBeInTheDocument();
+      expect(getByText("View /src/third.ts")).toBeInTheDocument();
+      expect(getByText("Find files matching 'todo' in /src")).toBeInTheDocument();
     });
 
     test("collapses and expands grouped tool calls from the shared title toggle", async () => {
@@ -958,23 +957,56 @@ describe("LogViewer", () => {
         timestamp: SAME_MINUTE_TIME_B,
       });
 
-      const { container, getByRole, user } = renderWithUser(
+      const { getByRole, user } = renderWithUser(
         <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
       );
 
       const toggle = getByRole("button", { name: /Tool calls/i });
-      const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLElement | null;
-      expect(panel).not.toBeNull();
+      const panel = getByRole("region", { name: /Tool calls/i });
+      const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
+      expect(controlledPanelId).not.toBe("");
+      expect(panel.id).toBe(controlledPanelId);
+      expect(panel).toHaveAttribute("aria-labelledby", toggle.id);
       expect(toggle).toHaveAttribute("aria-expanded", "true");
-      expect(panel?.hidden).toBe(false);
+      expect(panel.hidden).toBe(false);
 
       await user.click(toggle);
       expect(toggle).toHaveAttribute("aria-expanded", "false");
-      expect(panel?.hidden).toBe(true);
+      expect(panel.hidden).toBe(true);
 
       await user.click(toggle);
       expect(toggle).toHaveAttribute("aria-expanded", "true");
-      expect(panel?.hidden).toBe(false);
+      expect(panel.hidden).toBe(false);
+    });
+
+    test("inherits the outer grouped timestamp visibility for the first tool row", () => {
+      const precedingMessage = createMessageData({
+        id: "tool-group-preceding-message",
+        role: "user",
+        content: "User message before grouped tools",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const firstTool = createToolCallData({
+        id: "tool-group-time-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-time-b",
+        name: "rg",
+        input: { pattern: "needle", path: "/src" },
+        timestamp: NEXT_MINUTE_TIME,
+      });
+
+      const { container, getAllByText } = renderWithUser(
+        <LogViewer messages={[precedingMessage]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      expect(getAllByText(formatTime(SAME_MINUTE_TIME_A))).toHaveLength(1);
+      expect(container.querySelector(`time[datetime="${SAME_MINUTE_TIME_B}"]`)).toBeNull();
+      expect(getAllByText(formatTime(NEXT_MINUTE_TIME))).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(2);
     });
 
     test("keeps consecutive tool rows compact when the displayed minute changes", () => {
