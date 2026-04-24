@@ -571,6 +571,7 @@ export function ChatDetails({
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
+  const activeDraftHintId = "chat-message-active-draft-hint";
   const conversation = (
     <ConversationViewer
       id="chat-transcript"
@@ -623,7 +624,8 @@ export function ChatDetails({
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={handleComposerKeyDown}
               onPaste={handlePaste}
-              disabled={isActive || isSubmitting}
+              disabled={isSubmitting}
+              aria-describedby={isActive ? activeDraftHintId : undefined}
               rows={composerRows}
               className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
             />
@@ -686,6 +688,11 @@ export function ChatDetails({
         {attachmentError && (
           <p className="mt-2 text-xs text-red-600 dark:text-red-400">
             {attachmentError}
+          </p>
+        )}
+        {isActive && (
+          <p id={activeDraftHintId} className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            You can draft the next message while the AI is working. Send becomes available again when it finishes.
           </p>
         )}
         {selectedModel && !selectedModelEnabled && (
