@@ -12,7 +12,8 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 - After checking the document, update what the next steps to work on are, and what's important to know about it to be able to continue working on it later.
 - Make sure that the goals you are trying to achieve are written down, in a way that you can properly verify them later.
 - When you need to fix a bug, first make sure you can reproduce it locally unless the user is explicit that reproduction is not needed. Trying to fix a bug before reproducing it can make things worse.
-- When you need to see how something works in the UI, use Playwright.
+- When you need to see how something works or looks in the UI, use Playwright for manual browser validation during development.
+- Do not add Playwright tests to this repository; prefer lower-level automated tests and keep Playwright as a development tool rather than a committed test layer.
 - Don't say something is done until you have verified that all the goals are met.
 - The general loop then is:
 
