@@ -164,6 +164,36 @@ export async function getAllLoopsImpl(ctx: LoopCtx): Promise<Loop[]> {
   });
 }
 
+const ACTIVE_PLANNING_MUTABLE_CONFIG_KEYS = new Set<keyof Partial<Omit<LoopConfig, "id" | "createdAt">>>([
+  "autoAcceptPlan",
+  "fullyAutonomous",
+]);
+
+function createLoopUpdateError(
+  message: string,
+  code: string,
+  status = 409,
+): Error & { code: string; status: number } {
+  const error = new Error(message) as Error & { code: string; status: number };
+  error.code = code;
+  error.status = status;
+  return error;
+}
+
+function getDefinedUpdateKeys(
+  updates: Partial<Omit<LoopConfig, "id" | "createdAt">>,
+): Array<keyof Partial<Omit<LoopConfig, "id" | "createdAt">>> {
+  return Object.entries(updates)
+    .filter(([, value]) => value !== undefined)
+    .map(([key]) => key as keyof Partial<Omit<LoopConfig, "id" | "createdAt">>);
+}
+
+function syncActivePlanningConfig(engine: { config: LoopConfig }, updatedConfig: LoopConfig): void {
+  engine.config.autoAcceptPlan = updatedConfig.autoAcceptPlan;
+  engine.config.fullyAutonomous = updatedConfig.fullyAutonomous;
+  engine.config.updatedAt = updatedConfig.updatedAt;
+}
+
 export async function updateLoopImpl(
   ctx: LoopCtx,
   loopId: string,
@@ -184,21 +214,25 @@ export async function updateLoopImpl(
   const engine = ctx.engines.get(loopId);
   if (engine) {
     const status = engine.state.status;
-    if (status === "running" || status === "starting") {
-      throw new Error("Cannot update a running loop. Stop it first.");
+    if (status === "planning") {
+      const disallowedPlanningKeys = getDefinedUpdateKeys(updates).filter(
+        (key) => !ACTIVE_PLANNING_MUTABLE_CONFIG_KEYS.has(key),
+      );
+      if (disallowedPlanningKeys.length > 0) {
+        throw createLoopUpdateError(
+          "Only auto-accept plan and fully autonomous loop can be changed while plan mode is running.",
+          "PLANNING_UPDATE_RESTRICTED",
+        );
+      }
+    } else if (status === "starting" || status === "running" || status === "waiting") {
+      throw createLoopUpdateError("Cannot update an active loop. Stop it first.", "ACTIVE_LOOP_UPDATE_RESTRICTED");
     }
   }
 
-  const pendingGitState = ctx.engines.get(loopId)?.state.git;
+  const pendingGitState = engine?.state.git;
   if (updates.baseBranch !== undefined && (loop.state.git?.originalBranch || pendingGitState?.originalBranch)) {
     log.warn(`Rejected baseBranch update for loop ${loopId} after git setup`);
-    const error = new Error("Base branch cannot be updated after git setup.") as Error & {
-      code: string;
-      status: number;
-    };
-    error.code = "BASE_BRANCH_IMMUTABLE";
-    error.status = 409;
-    throw error;
+    throw createLoopUpdateError("Base branch cannot be updated after git setup.", "BASE_BRANCH_IMMUTABLE");
   }
 
   if (
@@ -207,13 +241,7 @@ export async function updateLoopImpl(
     (loop.state.git?.originalBranch || pendingGitState?.originalBranch)
   ) {
     log.warn(`Rejected useWorktree update for loop ${loopId} after git setup`);
-    const error = new Error("Use Worktree cannot be updated after git setup.") as Error & {
-      code: string;
-      status: number;
-    };
-    error.code = "USE_WORKTREE_IMMUTABLE";
-    error.status = 409;
-    throw error;
+    throw createLoopUpdateError("Use Worktree cannot be updated after git setup.", "USE_WORKTREE_IMMUTABLE");
   }
 
   if (updates.baseBranch !== undefined && loop.state.status === "draft") {
@@ -241,8 +269,11 @@ export async function updateLoopImpl(
     updatedConfig.autoAcceptPlan = true;
   }
 
-  const updatedLoop: Loop = { config: updatedConfig, state: loop.state };
+  const updatedLoop: Loop = { config: updatedConfig, state: engine?.state ?? loop.state };
   await saveLoop(updatedLoop);
+  if (engine) {
+    syncActivePlanningConfig(engine, updatedConfig);
+  }
 
   return updatedLoop;
 }

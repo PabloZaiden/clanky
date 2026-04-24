@@ -84,6 +84,7 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   api.post("/api/loops/:id/follow-up", () => ({ success: true }));
   api.delete("/api/loops/:id/pending", () => ({ success: true }));
   api.put("/api/loops/:id", () => loop);
+  api.patch("/api/loops/:id", () => loop);
   api.post("/api/loops/:id/plan/feedback", () => ({ success: true }));
   api.post("/api/loops/:id/plan/accept", () => ({ success: true, mode: "start_loop" }), 200);
   api.post("/api/loops/:id/plan/discard", () => ({ success: true }));
@@ -715,6 +716,77 @@ describe("actions tab content", () => {
 
       await waitFor(() => {
         expect(getByText("Purge Loop")).toBeTruthy();
+      });
+    });
+
+    test("planning loops can update auto-accept and fully autonomous settings from the info tab", async () => {
+      let loop = createLoopWithStatus("planning", {
+        config: {
+          id: LOOP_ID,
+          name: "Planning Loop",
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+        },
+        state: {
+          planMode: {
+            active: true,
+            feedbackRounds: 0,
+            planningFolderCleared: false,
+            isPlanReady: false,
+          },
+        },
+      });
+      api.get("/api/loops/:id", () => loop);
+      api.get("/api/loops/:id/diff", () => []);
+      api.get("/api/loops/:id/plan", () => ({ exists: true, content: "# Plan" }));
+      api.get("/api/loops/:id/status-file", () => ({ exists: true, content: "- Task A" }));
+      api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+      api.get("/api/models", () => []);
+      api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+      api.get("/api/preferences/log-level", () => ({ level: "info" }));
+      api.patch("/api/loops/:id", (req) => {
+        expect(req.body).toEqual({ autoAcceptPlan: true, fullyAutonomous: true });
+        loop = {
+          ...loop,
+          config: {
+            ...loop.config,
+            autoAcceptPlan: true,
+            fullyAutonomous: true,
+          },
+        };
+        return loop;
+      });
+
+      const { getAllByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+      await waitFor(() => {
+        expect(getByText("Planning Loop")).toBeTruthy();
+      });
+
+      await user.click(getByText("Info"));
+
+      await waitFor(() => {
+        expect(getByText("Plan automation")).toBeTruthy();
+      });
+
+      const planningCheckboxes = getAllByRole("checkbox") as HTMLInputElement[];
+      expect(planningCheckboxes).toHaveLength(2);
+      const autoAcceptCheckbox = planningCheckboxes[0]!;
+      const fullyAutonomousCheckbox = planningCheckboxes[1]!;
+
+      expect(autoAcceptCheckbox.checked).toBe(false);
+      expect(fullyAutonomousCheckbox.checked).toBe(false);
+
+      await user.click(fullyAutonomousCheckbox);
+
+      await waitFor(() => {
+        const updatedPlanningCheckboxes = getAllByRole("checkbox") as HTMLInputElement[];
+        expect(updatedPlanningCheckboxes).toHaveLength(2);
+        const updatedAutoAcceptCheckbox = updatedPlanningCheckboxes[0]!;
+        const updatedFullyAutonomousCheckbox = updatedPlanningCheckboxes[1]!;
+        expect(api.calls("/api/loops/:id", "PATCH")).toHaveLength(1);
+        expect(updatedAutoAcceptCheckbox.checked).toBe(true);
+        expect(updatedFullyAutonomousCheckbox.checked).toBe(true);
       });
     });
   });

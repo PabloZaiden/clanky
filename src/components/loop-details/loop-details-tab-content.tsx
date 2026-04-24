@@ -116,6 +116,8 @@ export function LoopDetailsTabContent({
           onCopyForwardUrl={portForward.handleCopyForwardUrl}
           onDeleteForward={portForward.handleDeleteForward}
           loopId={loopId}
+          planningSettingsSubmitting={actions.planningSettingsSubmitting}
+          onUpdatePlanningSettings={actions.handleUpdatePlanningSettings}
         />
       )}
       {activeTab === "prompt" && (

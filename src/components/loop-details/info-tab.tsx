@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import type { Loop } from "../../types/loop";
 import type { PortForward } from "../../types";
+import type { UpdateLoopRequest } from "../../types";
 import type { EntityLabels } from "../../utils";
 import { formatDateTime, formatModelDisplay } from "./types";
 import { appAbsoluteUrl } from "../../lib/public-path";
@@ -23,6 +25,10 @@ interface InfoTabProps {
   onCopyForwardUrl: (id: string) => void;
   onDeleteForward: (id: string) => void;
   loopId: string;
+  planningSettingsSubmitting: boolean;
+  onUpdatePlanningSettings: (
+    request: Pick<UpdateLoopRequest, "autoAcceptPlan" | "fullyAutonomous">,
+  ) => Promise<boolean>;
 }
 
 export function InfoTab({
@@ -42,8 +48,39 @@ export function InfoTab({
   onCopyForwardUrl,
   onDeleteForward,
   loopId,
+  planningSettingsSubmitting,
+  onUpdatePlanningSettings,
 }: InfoTabProps) {
   const { config, state } = loop;
+  const canEditPlanningSettings = state.status === "planning" && config.planMode;
+  const [autoAcceptPlan, setAutoAcceptPlan] = useState(config.autoAcceptPlan === true);
+  const [fullyAutonomous, setFullyAutonomous] = useState(config.fullyAutonomous === true);
+
+  useEffect(() => {
+    setAutoAcceptPlan(config.autoAcceptPlan === true);
+    setFullyAutonomous(config.fullyAutonomous === true);
+  }, [config.autoAcceptPlan, config.fullyAutonomous]);
+
+  async function updatePlanningSettings(nextAutoAcceptPlan: boolean, nextFullyAutonomous: boolean): Promise<void> {
+    setAutoAcceptPlan(nextAutoAcceptPlan);
+    setFullyAutonomous(nextFullyAutonomous);
+    const success = await onUpdatePlanningSettings({
+      autoAcceptPlan: nextAutoAcceptPlan,
+      fullyAutonomous: nextFullyAutonomous,
+    });
+    if (!success) {
+      setAutoAcceptPlan(config.autoAcceptPlan === true);
+      setFullyAutonomous(config.fullyAutonomous === true);
+    }
+  }
+
+  function handleAutoAcceptPlanChange(checked: boolean): void {
+    void updatePlanningSettings(checked, fullyAutonomous);
+  }
+
+  function handleFullyAutonomousChange(checked: boolean): void {
+    void updatePlanningSettings(checked ? true : autoAcceptPlan, checked);
+  }
 
   return (
     <div className={loopDetailsTabScrollContainerClassName}>
@@ -111,6 +148,60 @@ export function InfoTab({
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-4">
+          {canEditPlanningSettings && (
+            <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Plan automation</div>
+                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Update how this active planning loop proceeds after the plan is ready.
+                  </div>
+                </div>
+                {planningSettingsSubmitting && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Updating...</span>
+                )}
+              </div>
+              <div className="mt-3 space-y-3">
+                <label className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={autoAcceptPlan}
+                    onChange={(e) => handleAutoAcceptPlanChange(e.target.checked)}
+                    disabled={planningSettingsSubmitting || fullyAutonomous}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+                  />
+                  <div className="flex-1">
+                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Auto-accept plan
+                    </span>
+                    {fullyAutonomous && (
+                      <span className="block text-xs text-gray-500 dark:text-gray-400">
+                        Required for fully autonomous loops.
+                      </span>
+                    )}
+                  </div>
+                </label>
+                <label className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={fullyAutonomous}
+                    onChange={(e) => handleFullyAutonomousChange(e.target.checked)}
+                    disabled={planningSettingsSubmitting}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+                  />
+                  <div className="flex-1">
+                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Fully autonomous loop
+                    </span>
+                    <span className="block text-xs text-gray-500 dark:text-gray-400">
+                      After the plan is accepted, keep going automatically: execute, push, and start the automatic PR flow.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={onOpenLoopFiles}
             className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left"

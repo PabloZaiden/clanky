@@ -587,6 +587,84 @@ describe("Loops CRUD API Integration", () => {
       expect(body.config.fullyAutonomous).toBe(false);
     });
 
+    test("allows updating planning automation flags while plan mode is actively running", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Plan something carefully",
+          name: "Planning Loop",
+          draft: false,
+          planMode: true,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const createBody = await createResponse.json();
+      const loopId = createBody.config.id;
+      expect(createBody.state.status).toBe("planning");
+
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullyAutonomous: true,
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.config.fullyAutonomous).toBe(true);
+      expect(body.config.autoAcceptPlan).toBe(true);
+
+      const getResponse = await fetch(`${baseUrl}/api/loops/${loopId}`);
+      expect(getResponse.status).toBe(200);
+      const updatedLoop = await getResponse.json();
+      expect(updatedLoop.config.fullyAutonomous).toBe(true);
+      expect(updatedLoop.config.autoAcceptPlan).toBe(true);
+    });
+
+    test("rejects unrelated updates while plan mode is actively running", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Plan something carefully",
+          name: "Planning Loop",
+          draft: false,
+          planMode: true,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+          model: testModel,
+          useWorktree: true,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const createBody = await createResponse.json();
+      const loopId = createBody.config.id;
+      expect(createBody.state.status).toBe("planning");
+
+      const response = await fetch(`${baseUrl}/api/loops/${loopId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "Updated planning prompt",
+        }),
+      });
+
+      expect(response.status).toBe(409);
+      const body = await response.json();
+      expect(body.error).toBe("planning_update_restricted");
+      expect(body.message).toContain("Only auto-accept plan and fully autonomous loop can be changed");
+    });
+
     test("updates a loop to use an unlimited activity timeout", async () => {
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
