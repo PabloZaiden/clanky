@@ -336,6 +336,233 @@ describe("AcpBackend", () => {
     ).toBe("medium");
   });
 
+  test("getModels ignores incomplete Copilot cache seeded by createSession", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "copilot";
+      directory: string;
+      sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+    };
+
+    const calls: string[] = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "copilot";
+    internal.directory = "/tmp/copilot-create-first";
+    internal.sendRpcRequest = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+      calls.push(method);
+      if (method === "session/new" && calls.filter((call) => call === "session/new").length === 1) {
+        return {
+          sessionId: "seed-session",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "auto",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/new") {
+        return {
+          sessionId: "discovery-session",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "auto",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/set_config_option" && params["configId"] === "model" && params["value"] === "gpt-5.4") {
+        return {
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-5.4",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: "medium",
+              category: "thought_level",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/delete") {
+        return {};
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    await backend.createSession({ directory: "/tmp/copilot-create-first", title: "Seed cache" });
+    const models = await backend.getModels("/tmp/copilot-create-first");
+
+    expect(models.map((model) => ({
+      modelID: model.modelID,
+      variants: model.variants,
+    }))).toEqual([
+      { modelID: "auto", variants: [""] },
+      { modelID: "gpt-5.4", variants: ["medium", "low", "high"] },
+    ]);
+    expect(calls).toEqual([
+      "session/new",
+      "session/new",
+      "session/set_config_option",
+      "session/delete",
+    ]);
+  });
+
+  test("hydrated Copilot sessions do not downgrade a fully discovered model cache", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "copilot";
+      directory: string;
+      sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+    };
+
+    const calls: string[] = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "copilot";
+    internal.directory = "/tmp/copilot-hydrate-after-discovery";
+    internal.sendRpcRequest = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+      calls.push(method);
+      if (method === "session/new") {
+        return {
+          sessionId: "discovery-session",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "auto",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/set_config_option" && params["configId"] === "model" && params["value"] === "gpt-5.4") {
+        return {
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-5.4",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: "medium",
+              category: "thought_level",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/delete") {
+        return {};
+      }
+      if (method === "session/list") {
+        return {
+          sessions: [
+            {
+              sessionId: "resume-me",
+              title: "Resume me",
+              cwd: "/tmp/copilot-hydrate-after-discovery",
+            },
+          ],
+        };
+      }
+      if (method === "session/load") {
+        return {
+          sessionId: "resume-me",
+          title: "Loaded session",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-5.4",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    const discoveredModels = await backend.getModels("/tmp/copilot-hydrate-after-discovery");
+    await backend.getSession("resume-me");
+    const cachedModels = await backend.getModels("/tmp/copilot-hydrate-after-discovery");
+
+    expect(discoveredModels).toEqual(cachedModels);
+    expect(cachedModels.map((model) => ({
+      modelID: model.modelID,
+      variants: model.variants,
+    }))).toEqual([
+      { modelID: "auto", variants: [""] },
+      { modelID: "gpt-5.4", variants: ["medium", "low", "high"] },
+    ]);
+    expect(calls).toEqual([
+      "session/new",
+      "session/set_config_option",
+      "session/delete",
+      "session/list",
+      "session/load",
+    ]);
+  });
+
   test("sendPrompt applies Copilot reasoning effort from model variant", async () => {
     const internal = backend as unknown as {
       connected: boolean;
