@@ -9,7 +9,13 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { createLoop, createLoopWithStatus, createPersistedMessage } from "../helpers/factories";
+import {
+  createLoop,
+  createLoopLogEntry,
+  createLoopWithStatus,
+  createPersistedMessage,
+  createPersistedToolCall,
+} from "../helpers/factories";
 import { useLoop } from "@/hooks/useLoop";
 import type { Loop } from "@/types/loop";
 
@@ -1133,6 +1139,137 @@ describe("connectionStatus", () => {
     await waitFor(() => {
       expect(result.current.connectionStatus).toBe("open");
     });
+  });
+
+  test("re-syncs loop detail state after websocket reconnect", async () => {
+    const initialLoop = createLoop({
+      config: { id: LOOP_ID },
+      state: {
+        id: LOOP_ID,
+        status: "running",
+        messages: [
+          createPersistedMessage({
+            id: "msg-1",
+            role: "assistant",
+            content: "Initial response",
+          }),
+        ],
+        logs: [
+          createLoopLogEntry({
+            id: "log-1",
+            message: "Initial log",
+          }),
+        ],
+        toolCalls: [
+          createPersistedToolCall({
+            id: "tool-1",
+            name: "Read",
+            status: "running",
+          }),
+        ],
+      },
+    });
+    const recoveredLoop = createLoop({
+      config: { id: LOOP_ID },
+      state: {
+        id: LOOP_ID,
+        status: "completed",
+        messages: [
+          createPersistedMessage({
+            id: "msg-1",
+            role: "assistant",
+            content: "Initial response",
+          }),
+          createPersistedMessage({
+            id: "msg-2",
+            role: "assistant",
+            content: "Recovered response",
+          }),
+        ],
+        logs: [
+          createLoopLogEntry({
+            id: "log-1",
+            message: "Initial log",
+          }),
+          createLoopLogEntry({
+            id: "log-2",
+            message: "Recovered log",
+          }),
+        ],
+        toolCalls: [
+          createPersistedToolCall({
+            id: "tool-1",
+            name: "Read",
+            status: "completed",
+          }),
+          createPersistedToolCall({
+            id: "tool-2",
+            name: "Write",
+            status: "completed",
+          }),
+        ],
+      },
+    });
+
+    let callCount = 0;
+    api.get("/api/loops/:id", () => {
+      callCount++;
+      return callCount === 1 ? initialLoop : recoveredLoop;
+    });
+
+    const { result } = renderHook(() => useLoop(LOOP_ID));
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    expect(result.current.loop?.state.status).toBe("running");
+    expect(result.current.messages.map((message) => message.content)).toEqual(["Initial response"]);
+    expect(result.current.logs.map((entry) => entry.message)).toEqual(["Initial log"]);
+    expect(result.current.toolCalls.map((tool) => tool.id)).toEqual(["tool-1"]);
+    expect(callCount).toBe(1);
+
+    act(() => {
+      ws.sendEvent({
+        type: "loop.progress",
+        loopId: LOOP_ID,
+        iteration: 1,
+        content: "Partial response",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.progressContent).toBe("Partial response");
+    });
+
+    const connectionsForLoop = ws.connections().filter((connection) => connection.queryParams["loopId"] === LOOP_ID);
+    const initialConnection = connectionsForLoop[0]!;
+    await act(async () => {
+      initialConnection.instance.close(1006, "network lost");
+    });
+
+    await waitFor(() => {
+      const recoveredConnections = ws.connections().filter((connection) => connection.queryParams["loopId"] === LOOP_ID);
+      expect(recoveredConnections.length).toBeGreaterThan(1);
+    }, { timeout: 3000 });
+    await waitFor(() => {
+      expect(result.current.loop?.state.status).toBe("completed");
+    });
+
+    expect(result.current.messages.map((message) => message.content)).toEqual([
+      "Initial response",
+      "Recovered response",
+    ]);
+    expect(result.current.logs.map((entry) => entry.message)).toEqual([
+      "Initial log",
+      "Recovered log",
+    ]);
+    expect(result.current.toolCalls.map((tool) => tool.id)).toEqual([
+      "tool-1",
+      "tool-2",
+    ]);
+    expect(result.current.progressContent).toBe("");
+    expect(callCount).toBe(2);
   });
 });
 

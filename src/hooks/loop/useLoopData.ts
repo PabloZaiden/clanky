@@ -36,7 +36,7 @@ export interface UseLoopDataResult {
   setLogs: Dispatch<SetStateAction<LogEntry[]>>;
   gitChangeCounter: number;
   setGitChangeCounter: Dispatch<SetStateAction<number>>;
-  refresh: () => Promise<void>;
+  refresh: (options?: { hydrateFromSnapshot?: boolean }) => Promise<void>;
   abortControllerRef: React.MutableRefObject<AbortController | null>;
   initialLoadDoneRef: React.MutableRefObject<boolean>;
   refreshRequestIdRef: React.MutableRefObject<number>;
@@ -59,7 +59,7 @@ export function useLoopData(
   const initialLoadDoneRef = useRef(false);
   const refreshRequestIdRef = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options?: { hydrateFromSnapshot?: boolean }) => {
     const requestLoopId = loopId;
     const requestId = refreshRequestIdRef.current + 1;
     refreshRequestIdRef.current = requestId;
@@ -113,56 +113,51 @@ export function useLoopData(
       setLoop(data);
       log.debug("Loop data refreshed", { loopId: requestLoopId, status: data.state.status });
 
-      // Hydrate persisted data only on the first successful load.
+      // Hydrate persisted data on the first successful load and on explicit reconnect recovery.
       // Using a ref avoids adding state array lengths to the dependency array,
       // which would cause a refresh cascade: event adds item → length changes →
       // refresh recreated → useEffect fires → full API refetch.
-      if (!initialLoadDoneRef.current) {
+      if (!initialLoadDoneRef.current || options?.hydrateFromSnapshot) {
         initialLoadDoneRef.current = true;
 
-        // Load persisted logs from loop state (latest 1000 to keep UI responsive)
-        if (data.state.logs && data.state.logs.length > 0) {
-          const latestLogs = data.state.logs.slice(-1000);
-          setLogs(
-            normalizeHydratedLoopLogs(
-              latestLogs.map((logEntry) => ({
-                id: logEntry.id,
-                level: logEntry.level,
-                message: logEntry.message,
-                details: logEntry.details,
-                timestamp: logEntry.timestamp,
-              })),
-            ),
-          );
-        }
-
-        // Load persisted messages from loop state (latest 1000)
-        if (data.state.messages && data.state.messages.length > 0) {
-          const latestMessages = data.state.messages.slice(-1000);
-          setMessages(
-            latestMessages.map((msg) => ({
-              id: msg.id,
-              role: msg.role,
-              content: msg.content,
-              attachments: msg.attachments,
-              timestamp: msg.timestamp,
+        const latestLogs = data.state.logs?.slice(-1000) ?? [];
+        setLogs(
+          normalizeHydratedLoopLogs(
+            latestLogs.map((logEntry) => ({
+              id: logEntry.id,
+              level: logEntry.level,
+              message: logEntry.message,
+              details: logEntry.details,
+              timestamp: logEntry.timestamp,
             })),
-          );
-        }
+          ),
+        );
 
-        // Load persisted tool calls from loop state (latest 1000)
-        if (data.state.toolCalls && data.state.toolCalls.length > 0) {
-          const latestToolCalls = data.state.toolCalls.slice(-1000);
-          setToolCalls(
-            latestToolCalls.map((tc) => ({
-              id: tc.id,
-              name: tc.name,
-              input: tc.input,
-              output: tc.output,
-              status: tc.status,
-              timestamp: tc.timestamp,
-            })),
-          );
+        const latestMessages = data.state.messages?.slice(-1000) ?? [];
+        setMessages(
+          latestMessages.map((msg) => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            attachments: msg.attachments,
+            timestamp: msg.timestamp,
+          })),
+        );
+
+        const latestToolCalls = data.state.toolCalls?.slice(-1000) ?? [];
+        setToolCalls(
+          latestToolCalls.map((tc) => ({
+            id: tc.id,
+            name: tc.name,
+            input: tc.input,
+            output: tc.output,
+            status: tc.status,
+            timestamp: tc.timestamp,
+          })),
+        );
+
+        if (options?.hydrateFromSnapshot) {
+          setProgressContent("");
         }
       }
     } catch (err) {
