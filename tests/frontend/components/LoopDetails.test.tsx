@@ -17,6 +17,7 @@ import {
   createPersistedToolCall,
 } from "../helpers/factories";
 import { LoopDetails } from "@/components/LoopDetails";
+import { loopDetailsTabPaddingClassName } from "@/components/loop-details/tab-layout";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -1916,29 +1917,27 @@ describe("log tab", () => {
     });
   });
 
-  test("uses the loop panel as the primary log surface instead of an inset shell", async () => {
+  test("renders the log transcript directly on the loop log panel surface", async () => {
     setupDefaultApi({
       state: {
         messages: [createPersistedMessage({ role: "user", content: "Use the whole panel" })],
       },
     });
-    const { container, getByTestId, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByTestId, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Use the whole panel")).toBeTruthy();
     });
 
     const logPanel = getByTestId("loop-log-panel");
-    expect(logPanel.className).toContain("bg-[#171717]");
+    expect(within(logPanel).getByText("Use the whole panel")).toBeTruthy();
 
-    const logViewer = container.querySelector("#logs-viewer") as HTMLElement | null;
+    const logViewer = logPanel.querySelector("#logs-viewer") as HTMLElement | null;
     expect(logViewer).not.toBeNull();
-    expect(logViewer?.className).toContain("bg-transparent");
 
     const transcriptShell = getByTestId("conversation-transcript");
-    expect(transcriptShell.className).toContain("w-full");
-    expect(transcriptShell.className).not.toContain("max-w-7xl");
-    expect(transcriptShell.className).not.toContain("mx-auto");
+    expect(logViewer).toContainElement(transcriptShell);
+    expect(transcriptShell.className).toContain(loopDetailsTabPaddingClassName);
   });
 
   test("enters log focus mode while keeping the message composer available", async () => {
