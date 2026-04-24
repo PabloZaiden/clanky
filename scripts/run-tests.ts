@@ -169,9 +169,9 @@ const suiteDefinitions: SuiteDefinition[] = [
   },
 ];
 
-function buildEnv(): Record<string, string> {
+export function buildEnv(sourceEnv: Record<string, string | undefined> = process.env): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(sourceEnv)) {
     if (value !== undefined) {
       env[key] = value;
     }
@@ -199,17 +199,9 @@ function formatDuration(elapsedMs: number): string {
   return `${(elapsedMs / 1000).toFixed(1)}s`;
 }
 
-function summarizeOutput(output: string): string {
-  const lines = output
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0);
-
-  if (lines.length === 0) {
-    return "(no output)";
-  }
-
-  return lines.slice(-4).join("\n");
+function formatFullOutput(output: string): string {
+  const trimmed = output.trim();
+  return trimmed.length > 0 ? trimmed : "(no output)";
 }
 
 async function readStream(stream: ReadableStream<Uint8Array> | null): Promise<string> {
@@ -227,6 +219,79 @@ async function listTestFiles(pattern: string): Promise<string[]> {
 
 function getFileWeight(path: string): number {
   return measuredFileWeights[path] ?? 1;
+}
+
+export function shouldRetryFailedBuckets(env: Record<string, string>): boolean {
+  if (env["RALPHER_TEST_RETRY_FAILED_BUCKETS"] === "0") {
+    return false;
+  }
+  if (env["RALPHER_TEST_RETRY_FAILED_BUCKETS"] === "1") {
+    return true;
+  }
+  return env["CI"] === "true";
+}
+
+export function withMaxConcurrency(args: string[], concurrency: number): string[] {
+  const maxConcurrencyIndex = args.indexOf("--max-concurrency");
+  if (maxConcurrencyIndex === -1 || args[maxConcurrencyIndex + 1] === undefined) {
+    return [...args];
+  }
+
+  const nextArgs = [...args];
+  nextArgs[maxConcurrencyIndex + 1] = String(concurrency);
+  return nextArgs;
+}
+
+export function createRetryBucket(bucket: TestBucket): TestBucket {
+  return {
+    ...bucket,
+    args: withMaxConcurrency(bucket.args, 1),
+  };
+}
+
+export function formatBucketHeader(initialResult: TestResult, retryResult?: TestResult): string {
+  if (initialResult.exitCode === 0) {
+    return `== ${initialResult.bucket.label} PASS (${formatDuration(initialResult.elapsedMs)}) ==`;
+  }
+  if (retryResult === undefined) {
+    return `== ${initialResult.bucket.label} FAIL (${formatDuration(initialResult.elapsedMs)}) ==`;
+  }
+  if (retryResult.exitCode === 0) {
+    return [
+      `== ${initialResult.bucket.label} PASS after retry `,
+      `(${formatDuration(retryResult.elapsedMs)} retry, ${formatDuration(initialResult.elapsedMs)} initial fail) ==`,
+    ].join("");
+  }
+  return [
+    `== ${initialResult.bucket.label} FAIL after retry `,
+    `(${formatDuration(retryResult.elapsedMs)} retry, ${formatDuration(initialResult.elapsedMs)} initial fail) ==`,
+  ].join("");
+}
+
+export function formatBucketOutput(initialResult: TestResult, retryResult?: TestResult): string | null {
+  if (initialResult.exitCode === 0) {
+    return null;
+  }
+  if (retryResult !== undefined && retryResult.exitCode === 0) {
+    return null;
+  }
+  if (retryResult === undefined) {
+    return formatFullOutput(initialResult.output);
+  }
+
+  const initialOutput = formatFullOutput(initialResult.output);
+  const retryOutput = formatFullOutput(retryResult.output);
+  if (retryOutput === initialOutput) {
+    return retryOutput;
+  }
+
+  return [
+    "Initial attempt output:",
+    initialOutput,
+    "",
+    "Retry output:",
+    retryOutput,
+  ].join("\n");
 }
 
 function shardFiles(files: string[], shardCount: number): ShardAssignment[] {
@@ -340,39 +405,62 @@ async function runBuckets(
   return results;
 }
 
-const mode = assertValidMode(process.argv[2]);
-const env = buildEnv();
-const startedAt = Date.now();
-const buckets = await buildBuckets(mode);
-const maxWorkers = Math.max(
-  1,
-  Number.parseInt(process.env["RALPHER_TEST_MAX_WORKERS"] ?? "", 10)
-    || Math.min(10, buckets.length),
-);
+export async function runTestBuckets(
+  modeArg: string | undefined,
+  sourceEnv: Record<string, string | undefined> = process.env,
+): Promise<number> {
+  const mode = assertValidMode(modeArg);
+  const env = buildEnv(sourceEnv);
+  const startedAt = Date.now();
+  const buckets = await buildBuckets(mode);
+  const maxWorkers = Math.max(
+    1,
+    Number.parseInt(env["RALPHER_TEST_MAX_WORKERS"] ?? "", 10)
+      || Math.min(10, buckets.length),
+  );
 
-console.log(`Running ${buckets.length} test bucket(s) in parallel...`);
-console.log(`Using up to ${maxWorkers} worker process(es).`);
-for (const bucket of buckets) {
-  console.log(`- ${bucket.label} (weight ${bucket.weight})`);
-}
-console.log("");
+  console.log(`Running ${buckets.length} test bucket(s) in parallel...`);
+  console.log(`Using up to ${maxWorkers} worker process(es).`);
+  for (const bucket of buckets) {
+    console.log(`- ${bucket.label} (weight ${bucket.weight})`);
+  }
+  console.log("");
 
-const results = await runBuckets(buckets, env, maxWorkers);
-let failed = false;
+  const initialResults = await runBuckets(buckets, env, maxWorkers);
+  const failedResults = initialResults.filter((result) => result.exitCode !== 0);
+  const retryResults = new Map<string, TestResult>();
 
-for (const result of results) {
-  const status = result.exitCode === 0 ? "PASS" : "FAIL";
-  if (result.exitCode !== 0) {
-    failed = true;
+  if (failedResults.length > 0 && shouldRetryFailedBuckets(env)) {
+    console.log(
+      `Retrying ${failedResults.length} failed bucket(s) serially with --max-concurrency 1 for transient CI failures...`,
+    );
+    console.log("");
+    for (const failedResult of failedResults) {
+      const retryResult = await runBucket(createRetryBucket(failedResult.bucket), env);
+      retryResults.set(failedResult.bucket.id, retryResult);
+    }
   }
 
-  console.log(`== ${result.bucket.label} ${status} (${formatDuration(result.elapsedMs)}) ==`);
-  console.log(result.exitCode === 0 ? summarizeOutput(result.output) : result.output.trim());
-  console.log("");
+  let failed = false;
+  for (const result of initialResults) {
+    const retryResult = retryResults.get(result.bucket.id);
+    const finalExitCode = retryResult?.exitCode ?? result.exitCode;
+    if (finalExitCode !== 0) {
+      failed = true;
+    }
+
+    console.log(formatBucketHeader(result, retryResult));
+    const output = formatBucketOutput(result, retryResult);
+    if (output !== null) {
+      console.log(output);
+    }
+    console.log("");
+  }
+
+  console.log(`Parallel test run completed in ${formatDuration(Date.now() - startedAt)}.`);
+  return failed ? 1 : 0;
 }
 
-console.log(`Parallel test run completed in ${formatDuration(Date.now() - startedAt)}.`);
-
-if (failed) {
-  process.exit(1);
+if (import.meta.main) {
+  process.exit(await runTestBuckets(process.argv[2]));
 }
