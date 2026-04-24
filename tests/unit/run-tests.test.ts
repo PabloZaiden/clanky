@@ -4,6 +4,7 @@ import {
   createRetryBucket,
   formatBucketHeader,
   formatBucketOutput,
+  runTestBuckets,
   shouldRetryFailedBuckets,
   withMaxConcurrency,
 } from "../../scripts/run-tests";
@@ -97,5 +98,111 @@ describe("run-tests helpers", () => {
       "Retry output:",
       "retry error",
     ].join("\n"));
+
+    expect(formatBucketOutput(failedResult, {
+      ...failedRetryResult,
+      output: "error: timed out",
+    })).toBe([
+      "Initial attempt output:",
+      "error: timed out",
+      "",
+      "Retry output (matched initial attempt):",
+      "error: timed out",
+    ].join("\n"));
+  });
+
+  test("runTestBuckets succeeds when a failed bucket passes on retry", async () => {
+    const logs: string[] = [];
+    const seenArgs: string[][] = [];
+    const bucket = {
+      id: "unit-1",
+      label: "tests/unit shard 1",
+      args: ["test", "--timeout", "30000", "--max-concurrency", "2", "tests/unit/a.test.ts"],
+      weight: 10,
+    };
+    let runCount = 0;
+
+    const exitCode = await runTestBuckets("all", { CI: "true" }, {
+      buildBuckets: async () => [bucket],
+      runBucket: async (nextBucket) => {
+        seenArgs.push(nextBucket.args);
+        runCount += 1;
+        if (runCount === 1) {
+          return {
+            bucket: nextBucket,
+            exitCode: 1,
+            output: "error: timed out",
+            elapsedMs: 47_000,
+          };
+        }
+        return {
+          bucket: nextBucket,
+          exitCode: 0,
+          output: "",
+          elapsedMs: 9_100,
+        };
+      },
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(seenArgs).toEqual([
+      ["test", "--timeout", "30000", "--max-concurrency", "2", "tests/unit/a.test.ts"],
+      ["test", "--timeout", "30000", "--max-concurrency", "1", "tests/unit/a.test.ts"],
+    ]);
+    expect(logs).toContain("== tests/unit shard 1 PASS after retry (9.1s retry, 47.0s initial fail) ==");
+    expect(logs.some((line) =>
+      line.startsWith("Test run completed in ") && line.includes("after retrying 1 failed bucket(s).")
+    )).toBe(true);
+  });
+
+  test("runTestBuckets fails when a retried bucket still fails", async () => {
+    const logs: string[] = [];
+    const bucket = {
+      id: "unit-1",
+      label: "tests/unit shard 1",
+      args: ["test", "--timeout", "30000", "--max-concurrency", "2", "tests/unit/a.test.ts"],
+      weight: 10,
+    };
+    let runCount = 0;
+
+    const exitCode = await runTestBuckets("all", { CI: "true" }, {
+      buildBuckets: async () => [bucket],
+      runBucket: async (nextBucket) => {
+        runCount += 1;
+        if (runCount === 1) {
+          return {
+            bucket: nextBucket,
+            exitCode: 1,
+            output: "error: timed out",
+            elapsedMs: 47_000,
+          };
+        }
+        return {
+          bucket: nextBucket,
+          exitCode: 1,
+          output: "retry error",
+          elapsedMs: 8_200,
+        };
+      },
+      log: (message) => {
+        logs.push(message);
+      },
+    });
+
+    expect(exitCode).toBe(1);
+    expect(logs).toContain("== tests/unit shard 1 FAIL after retry (8.2s retry, 47.0s initial fail) ==");
+    expect(logs).toContain([
+      "Initial attempt output:",
+      "error: timed out",
+      "",
+      "Retry output:",
+      "retry error",
+    ].join("\n"));
+    expect(logs.some((line) =>
+      line.startsWith("Test run completed in ") && line.includes("after retrying 1 failed bucket(s).")
+    )).toBe(true);
   });
 });

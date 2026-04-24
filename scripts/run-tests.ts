@@ -27,6 +27,12 @@ interface ShardAssignment {
   weight: number;
 }
 
+interface RunTestBucketsDependencies {
+  buildBuckets: (mode: "all" | "backend" | "frontend") => Promise<TestBucket[]>;
+  runBucket: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult>;
+  log: (message: string) => void;
+}
+
 const rootDir = `${import.meta.dir}/..`;
 
 const measuredFileWeights: Record<string, number> = {
@@ -281,17 +287,20 @@ export function formatBucketOutput(initialResult: TestResult, retryResult?: Test
 
   const initialOutput = formatFullOutput(initialResult.output);
   const retryOutput = formatFullOutput(retryResult.output);
-  if (retryOutput === initialOutput) {
-    return retryOutput;
-  }
-
   return [
     "Initial attempt output:",
     initialOutput,
     "",
-    "Retry output:",
+    retryOutput === initialOutput ? "Retry output (matched initial attempt):" : "Retry output:",
     retryOutput,
   ].join("\n");
+}
+
+function formatCompletionSummary(elapsedMs: number, retriedBucketCount: number): string {
+  const retrySuffix = retriedBucketCount > 0
+    ? ` after retrying ${retriedBucketCount} failed bucket(s)`
+    : "";
+  return `Test run completed in ${formatDuration(elapsedMs)}${retrySuffix}.`;
 }
 
 function shardFiles(files: string[], shardCount: number): ShardAssignment[] {
@@ -408,35 +417,41 @@ async function runBuckets(
 export async function runTestBuckets(
   modeArg: string | undefined,
   sourceEnv: Record<string, string | undefined> = process.env,
+  dependencies: Partial<RunTestBucketsDependencies> = {},
 ): Promise<number> {
   const mode = assertValidMode(modeArg);
   const env = buildEnv(sourceEnv);
   const startedAt = Date.now();
-  const buckets = await buildBuckets(mode);
+  const buildBucketsImpl = dependencies.buildBuckets ?? buildBuckets;
+  const runBucketImpl = dependencies.runBucket ?? runBucket;
+  const log = dependencies.log ?? ((message: string) => console.log(message));
+  const buckets = await buildBucketsImpl(mode);
   const maxWorkers = Math.max(
     1,
     Number.parseInt(env["RALPHER_TEST_MAX_WORKERS"] ?? "", 10)
       || Math.min(10, buckets.length),
   );
 
-  console.log(`Running ${buckets.length} test bucket(s) in parallel...`);
-  console.log(`Using up to ${maxWorkers} worker process(es).`);
+  log(`Running ${buckets.length} test bucket(s) in parallel...`);
+  log(`Using up to ${maxWorkers} worker process(es).`);
   for (const bucket of buckets) {
-    console.log(`- ${bucket.label} (weight ${bucket.weight})`);
+    log(`- ${bucket.label} (weight ${bucket.weight})`);
   }
-  console.log("");
+  log("");
 
-  const initialResults = await runBuckets(buckets, env, maxWorkers);
+  const initialResults = dependencies.buildBuckets === undefined && dependencies.runBucket === undefined
+    ? await runBuckets(buckets, env, maxWorkers)
+    : await Promise.all(buckets.map(async (bucket) => await runBucketImpl(bucket, env)));
   const failedResults = initialResults.filter((result) => result.exitCode !== 0);
   const retryResults = new Map<string, TestResult>();
 
   if (failedResults.length > 0 && shouldRetryFailedBuckets(env)) {
-    console.log(
+    log(
       `Retrying ${failedResults.length} failed bucket(s) serially with --max-concurrency 1 for transient CI failures...`,
     );
-    console.log("");
+    log("");
     for (const failedResult of failedResults) {
-      const retryResult = await runBucket(createRetryBucket(failedResult.bucket), env);
+      const retryResult = await runBucketImpl(createRetryBucket(failedResult.bucket), env);
       retryResults.set(failedResult.bucket.id, retryResult);
     }
   }
@@ -449,15 +464,15 @@ export async function runTestBuckets(
       failed = true;
     }
 
-    console.log(formatBucketHeader(result, retryResult));
+    log(formatBucketHeader(result, retryResult));
     const output = formatBucketOutput(result, retryResult);
     if (output !== null) {
-      console.log(output);
+      log(output);
     }
-    console.log("");
+    log("");
   }
 
-  console.log(`Parallel test run completed in ${formatDuration(Date.now() - startedAt)}.`);
+  log(formatCompletionSummary(Date.now() - startedAt, retryResults.size));
   return failed ? 1 : 0;
 }
 
