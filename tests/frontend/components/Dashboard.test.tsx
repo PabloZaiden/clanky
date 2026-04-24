@@ -11,6 +11,7 @@ import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor } from "../helpers/render";
 import { createLoopWithStatus, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
 import { Dashboard } from "@/components/Dashboard";
+import { ThemePreferenceProvider } from "@/hooks";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -925,7 +926,11 @@ describe("rename loop modal", () => {
 
 describe("app settings modal", () => {
   test("opens app settings modal when settings button is clicked", async () => {
-    const { getByTitle, getByText, user } = renderWithUser(<Dashboard />);
+    const { getByTitle, getByText, user } = renderWithUser(
+      <ThemePreferenceProvider>
+        <Dashboard />
+      </ThemePreferenceProvider>,
+    );
 
     await waitFor(() => {
       expect(getByTitle("App Settings")).toBeTruthy();
@@ -939,7 +944,11 @@ describe("app settings modal", () => {
   });
 
   test("renders the log level dropdown with padded select styling", async () => {
-    const { getByLabelText, getByTitle, user } = renderWithUser(<Dashboard />);
+    const { getByLabelText, getByTitle, user } = renderWithUser(
+      <ThemePreferenceProvider>
+        <Dashboard />
+      </ThemePreferenceProvider>,
+    );
 
     await waitFor(() => {
       expect(getByTitle("App Settings")).toBeTruthy();

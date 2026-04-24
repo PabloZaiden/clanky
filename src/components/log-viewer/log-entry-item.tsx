@@ -50,7 +50,7 @@ export const LogEntryItem = memo(function LogEntryItem({
     : false;
   const renderDetails = useCallback(
     () => (
-      <pre className="mt-1 rounded bg-neutral-800 p-2 font-mono text-xs overflow-x-auto">
+      <pre className="mt-1 overflow-x-auto rounded bg-gray-100 p-2 font-mono text-xs text-gray-900 dark:bg-neutral-800 dark:text-gray-100">
         {JSON.stringify(getOtherDetails(details!), null, 2)}
       </pre>
     ),
@@ -68,9 +68,9 @@ export const LogEntryItem = memo(function LogEntryItem({
   const hidesTypedStreamingLabel = logKind === "response" || logKind === "reasoning";
   const showMessageLabel = showGroupHeader && !hidesTypedStreamingLabel;
   const textColorClassName = isReasoning
-    ? "text-gray-400"
+    ? "text-gray-500 dark:text-gray-400"
     : isResponse || log.level === "agent"
-      ? "text-white"
+      ? "text-gray-900 dark:text-white"
       : getLogLevelColor(log.level);
   const logTone = isReasoning
     ? "reasoning"
@@ -98,8 +98,8 @@ export const LogEntryItem = memo(function LogEntryItem({
               content={responseContent as string}
               markdownEnabled={markdownEnabled}
               dimmed={isReasoning}
-              markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-400" : "text-white"}`}
-              plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-400" : "text-white"}`}
+              markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
+              plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
             />
           </div>
         )}
@@ -119,7 +119,7 @@ export const LogEntryItem = memo(function LogEntryItem({
             summary="Details"
             renderContent={renderDetails}
             className="mt-2"
-            triggerClassName="text-left text-xs text-gray-500 transition hover:text-gray-300"
+            triggerClassName="text-left text-xs text-gray-500 transition hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             panelClassName="mt-2"
           />
         )}

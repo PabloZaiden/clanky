@@ -21,7 +21,7 @@ interface ToolEntryProps {
   fullWidth?: boolean;
 }
 
-const toolPanelClassName = "space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4";
+const toolPanelClassName = "space-y-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-gray-900 sm:p-4 dark:border-sky-500/20 dark:bg-[#101826] dark:text-gray-100";
 
 /** Renders text-like output content while preserving embedded newlines and tabs. */
 function RenderedContent({ output }: { output: unknown }) {
@@ -29,7 +29,7 @@ function RenderedContent({ output }: { output: unknown }) {
 
   return (
     <pre
-      className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/20 p-3 font-mono text-xs text-gray-100"
+      className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-sky-100 bg-white p-3 font-mono text-xs text-gray-900 dark:border-white/10 dark:bg-black/20 dark:text-gray-100"
       data-tool-value-block="true"
     >
       {content}
@@ -40,7 +40,7 @@ function RenderedContent({ output }: { output: unknown }) {
 function ToolValueBlock({ value }: { value: unknown }) {
   return (
     <pre
-      className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-white/10 bg-black/20 p-3 font-mono text-xs text-gray-100"
+      className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-sky-100 bg-white p-3 font-mono text-xs text-gray-900 dark:border-white/10 dark:bg-black/20 dark:text-gray-100"
       data-tool-value-block="true"
     >
       {formatToolValue(value)}
@@ -95,7 +95,7 @@ function ApplyPatchBlockView({ block }: { block: Extract<ToolDetailBlock, { type
               {file.patch ? (
                 <DiffPatchViewer patch={file.patch} />
               ) : (
-                <div className="rounded-b bg-neutral-950 px-3 py-2 font-mono text-xs text-gray-400">
+                <div className="rounded-b bg-gray-100 px-3 py-2 font-mono text-xs text-gray-600 dark:bg-neutral-950 dark:text-gray-400">
                   {file.status === "deleted" ? "File deleted by patch." : "No diff hunks in patch."}
                 </div>
               )}
@@ -118,7 +118,7 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
           {block.rows.map((row, index) => (
             <div key={`${row.label}-${row.value}-${index}`} className="grid gap-1 sm:grid-cols-[9rem,minmax(0,1fr)] sm:gap-3">
               <dt className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{row.label}</dt>
-              <dd className="min-w-0 break-words text-sm leading-6 text-gray-100">{row.value}</dd>
+              <dd className="min-w-0 break-words text-sm leading-6 text-gray-900 dark:text-gray-100">{row.value}</dd>
             </div>
           ))}
         </dl>
@@ -132,7 +132,7 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
         {block.title && (
           <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">{block.title}</div>
         )}
-        <ul className="space-y-1 rounded-xl border border-white/10 bg-black/20 p-3 text-sm leading-6 text-gray-100">
+        <ul className="space-y-1 rounded-xl border border-sky-100 bg-white p-3 text-sm leading-6 text-gray-900 dark:border-white/10 dark:bg-black/20 dark:text-gray-100">
           {block.items.map((item, index) => (
             <li key={`${item}-${index}`} className="break-words">{item}</li>
           ))}
@@ -212,7 +212,7 @@ export const ToolEntry = memo(function ToolEntry({
 
     return [{ ...block, title: undefined } satisfies ToolDetailBlock];
   }, [structuredDetails, meta.outputLabel]);
-  const toolSummaryClassName = "block text-sm leading-6 italic text-sky-300";
+  const toolSummaryClassName = "block text-sm leading-6 italic text-sky-700 dark:text-sky-300";
 
   const inputSummary = (
     <span className={toolSummaryClassName} data-tool-summary="true">{meta.summary}</span>
@@ -234,7 +234,7 @@ export const ToolEntry = memo(function ToolEntry({
     () => (
       <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">Input</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">Input</div>
           {inputContent}
         </div>
       </div>
@@ -246,7 +246,7 @@ export const ToolEntry = memo(function ToolEntry({
     () => (
       <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">{meta.outputLabel}</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">{meta.outputLabel}</div>
           {outputContent}
         </div>
       </div>
@@ -258,11 +258,11 @@ export const ToolEntry = memo(function ToolEntry({
     () => (
       <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">Input</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">Input</div>
           {inputContent}
         </div>
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-200/60">{meta.outputLabel}</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">{meta.outputLabel}</div>
           {outputContent}
         </div>
       </div>

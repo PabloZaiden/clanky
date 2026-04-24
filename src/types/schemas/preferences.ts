@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { THEME_PREFERENCES } from "../preferences";
 import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
 
 /**
@@ -56,4 +57,13 @@ export const SetLogLevelRequestSchema = z.object({
  */
 export const SetDashboardViewModeRequestSchema = z.object({
   mode: z.enum(["rows", "cards"], { error: "mode must be 'rows' or 'cards'" }),
+});
+
+/**
+ * Schema for setting theme preference - PUT /api/preferences/theme
+ */
+export const SetThemePreferenceRequestSchema = z.object({
+  theme: z.enum(THEME_PREFERENCES, {
+    error: "theme must be 'light', 'dark', or 'system'",
+  }),
 });

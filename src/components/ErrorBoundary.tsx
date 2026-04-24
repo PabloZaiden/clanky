@@ -44,29 +44,29 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   override render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-neutral-950 flex items-center justify-center p-8">
-          <div className="max-w-lg w-full bg-neutral-900 border border-red-800 rounded-lg p-6 text-center">
-            <h1 className="text-xl font-semibold text-red-400 mb-4">
+        <div className="flex min-h-screen items-center justify-center bg-gray-100 p-8 dark:bg-neutral-950">
+          <div className="w-full max-w-lg rounded-lg border border-red-200 bg-white p-6 text-center shadow-sm dark:border-red-800 dark:bg-neutral-900">
+            <h1 className="mb-4 text-xl font-semibold text-red-600 dark:text-red-400">
               Something went wrong
             </h1>
-            <p className="text-gray-400 mb-4 text-sm">
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
               An unexpected error occurred in the application.
             </p>
             {this.state.error && (
-              <pre className="bg-neutral-950 border border-gray-800 rounded p-3 mb-4 text-left text-xs text-red-300 overflow-auto max-h-40">
+              <pre className="mb-4 max-h-40 overflow-auto rounded border border-red-100 bg-red-50 p-3 text-left text-xs text-red-700 dark:border-gray-800 dark:bg-neutral-950 dark:text-red-300">
                 {this.state.error.message}
               </pre>
             )}
-            <div className="flex gap-3 justify-center">
+            <div className="flex justify-center gap-3">
               <button
                 onClick={this.handleReset}
-                className="px-4 py-2 bg-neutral-800 text-gray-200 rounded hover:bg-neutral-700 text-sm"
+                className="rounded bg-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-300 dark:bg-neutral-800 dark:text-gray-200 dark:hover:bg-neutral-700"
               >
                 Try Again
               </button>
               <button
                 onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-blue-700 text-white rounded hover:bg-blue-600 text-sm"
+                className="rounded bg-blue-700 px-4 py-2 text-sm text-white hover:bg-blue-600"
               >
                 Reload Page
               </button>

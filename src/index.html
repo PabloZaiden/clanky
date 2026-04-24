@@ -11,6 +11,38 @@
     <meta name="apple-mobile-web-app-title" content="Ralpher" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#242424" />
+    <script>
+      (() => {
+        const storageKey = "ralpher.themePreference";
+        const darkClass = "dark";
+        const defaultPreference = "system";
+        const root = document.documentElement;
+        const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+        let preference = defaultPreference;
+
+        try {
+          const storedPreference = window.localStorage.getItem(storageKey);
+          if (storedPreference === "light" || storedPreference === "dark" || storedPreference === "system") {
+            preference = storedPreference;
+          }
+        } catch {}
+
+        const systemPrefersDark = typeof window.matchMedia === "function"
+          && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const resolvedTheme = preference === "system"
+          ? (systemPrefersDark ? "dark" : "light")
+          : preference;
+
+        root.classList.toggle(darkClass, resolvedTheme === "dark");
+        root.style.colorScheme = resolvedTheme;
+        root.dataset.themePreference = preference;
+        root.dataset.themeResolved = resolvedTheme;
+
+        if (metaThemeColor instanceof HTMLMetaElement) {
+          metaThemeColor.content = resolvedTheme === "dark" ? "#171717" : "#f3f4f6";
+        }
+      })();
+    </script>
     <title>Ralpher</title>
   </head>
   <body>

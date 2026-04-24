@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { fireEvent } from "@testing-library/react";
 import { App } from "@/App";
+import { PASSKEY_AUTH_REQUIRED_EVENT } from "@/lib/public-path";
 import type { Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
@@ -10,6 +11,14 @@ import { expectHamburgerIcon } from "../helpers/icon-assertions";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
+
+function resetDocumentTheme() {
+  localStorage.clear();
+  document.documentElement.classList.remove("dark");
+  document.documentElement.style.colorScheme = "";
+  delete document.documentElement.dataset["themePreference"];
+  delete document.documentElement.dataset["themeResolved"];
+}
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -174,6 +183,7 @@ beforeEach(() => {
   api.install();
   ws.reset();
   ws.install();
+  resetDocumentTheme();
   window.location.hash = "";
   setupDefaultApi();
 });
@@ -181,10 +191,44 @@ beforeEach(() => {
 afterEach(() => {
   api.uninstall();
   ws.uninstall();
+  resetDocumentTheme();
   window.location.hash = "";
 });
 
 describe("App shell", () => {
+  test("loads the persisted theme after passkey auth becomes available", async () => {
+    let authenticated = false;
+    api.get("/api/config", () => ({
+      remoteOnly: false,
+      passkeyAuth: {
+        passkeyConfigured: true,
+        passkeyDisabled: false,
+        passkeyRequired: true,
+        authenticated,
+      },
+      publicBasePath: null,
+    }));
+    api.get("/api/preferences/theme", () => ({ theme: "dark" }));
+
+    const { getByRole } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Unlock Ralpher" })).toBeTruthy();
+      expect(api.calls("/api/preferences/theme", "GET")).toHaveLength(0);
+    });
+
+    authenticated = true;
+    await act(() => {
+      window.dispatchEvent(new Event(PASSKEY_AUTH_REQUIRED_EVENT));
+    });
+
+    await waitFor(() => {
+      expect(api.calls("/api/preferences/theme", "GET")).toHaveLength(1);
+      expect(document.documentElement.dataset["themePreference"]).toBe("dark");
+      expect(document.documentElement.classList.contains("dark")).toBe(true);
+    });
+  });
+
   test("renders the shell overview by default", async () => {
     const { getByRole, getByText, queryByText } = renderWithUser(<App />);
 

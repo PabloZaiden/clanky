@@ -50,7 +50,7 @@ export function MessageEntry({
           )}
           {isUser ? (
             <div
-              className="rounded-[1.35rem] bg-[#2b2b2b] px-4 py-3 text-sm leading-7 text-white shadow-sm"
+              className="rounded-[1.35rem] bg-gray-900 px-4 py-3 text-sm leading-7 text-white shadow-sm dark:bg-neutral-700 dark:text-gray-50"
               data-message-bubble="user"
             >
               <StreamingTextContent
@@ -63,14 +63,14 @@ export function MessageEntry({
             <StreamingTextContent
               content={msg.content}
               markdownEnabled={true}
-              markdownClassName="text-sm leading-7 text-white"
-              plainTextClassName="text-sm leading-7 whitespace-pre-wrap break-words text-white"
+              markdownClassName="text-sm leading-7 text-gray-900 dark:text-white"
+              plainTextClassName="text-sm leading-7 whitespace-pre-wrap break-words text-gray-900 dark:text-white"
             />
           ) : (
             <StreamingTextContent
               content={msg.content}
               markdownEnabled={false}
-              plainTextClassName="whitespace-pre-wrap break-words text-sm leading-7 text-white"
+              plainTextClassName="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
             />
           )}
           {msg.attachments && msg.attachments.length > 0 && (
@@ -80,7 +80,7 @@ export function MessageEntry({
                   key={attachment.id}
                   type="button"
                   onClick={() => setSelectedAttachment(attachment)}
-                  className="rounded-xl border border-white/10 bg-black/20 p-1 text-left hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                  className="rounded-xl border border-gray-200 bg-white/80 p-1 text-left hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 dark:border-white/10 dark:bg-black/20 dark:hover:border-white/20"
                   aria-label={`View ${attachment.filename}`}
                 >
                   <img

@@ -38,10 +38,10 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           {formatTime(entry.timestamp)}
         </time>
       )}
-      <div className="overflow-hidden rounded-2xl border border-sky-500/25 bg-[#0e1522] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="overflow-hidden rounded-2xl border border-sky-200 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] dark:border-sky-500/25 dark:bg-[#0e1522]">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm text-sky-100 transition hover:bg-white/5"
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm text-sky-950 transition hover:bg-sky-100/80 dark:text-sky-100 dark:hover:bg-white/5"
           aria-expanded={isExpanded}
           aria-controls={panelId}
           id={labelId}
@@ -58,7 +58,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           id={panelId}
           role="region"
           aria-labelledby={labelId}
-          className="border-t border-white/8 px-3 py-3 sm:px-4"
+          className="border-t border-sky-200 px-3 py-3 sm:px-4 dark:border-white/8"
           data-tool-group-panel="true"
         >
           {groupedToolEntries.map((groupedTool, index) => (

@@ -124,14 +124,14 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
   const isEmpty = entries.length === 0;
-  const resolvedSurfaceClassName = surfaceClassName ?? "bg-[#171717]";
+  const resolvedSurfaceClassName = surfaceClassName ?? "bg-gray-50 dark:bg-[#171717]";
   const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
 
   return (
     <div
       ref={containerRef}
       id={id}
-      className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto text-xs text-gray-100 sm:text-sm ${resolvedSurfaceClassName} ${!maxHeight ? "flex-1 min-h-0" : ""}`}
+      className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto text-xs text-gray-700 dark:text-gray-100 sm:text-sm ${resolvedSurfaceClassName} ${!maxHeight ? "flex-1 min-h-0" : ""}`}
       style={maxHeight ? { maxHeight } : undefined}
     >
       {isEmpty ? (

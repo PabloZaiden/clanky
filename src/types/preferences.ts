@@ -12,3 +12,28 @@
  * Dashboard view mode: either a list of rows or a grid of cards.
  */
 export type DashboardViewMode = "rows" | "cards";
+
+/**
+ * Default theme preference when none is stored.
+ */
+export const DEFAULT_THEME_PREFERENCE = "system";
+
+/**
+ * Supported user-selectable theme modes.
+ */
+export const THEME_PREFERENCES = ["light", "dark", "system"] as const;
+
+/**
+ * Theme preference selected by the user.
+ */
+export type ThemePreference = typeof THEME_PREFERENCES[number];
+
+/**
+ * Concrete theme applied to the document after resolving `system`.
+ */
+export const RESOLVED_THEMES = ["light", "dark"] as const;
+
+/**
+ * Actual theme rendered by the UI.
+ */
+export type ResolvedTheme = typeof RESOLVED_THEMES[number];

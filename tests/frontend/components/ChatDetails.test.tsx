@@ -157,6 +157,21 @@ describe("ChatDetails", () => {
     });
   });
 
+  test("uses the light-mode transcript surface for chat conversations by default", async () => {
+    api.get("/api/chats/:id", () => createChat());
+
+    const { getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Repo pairing")).toBeTruthy();
+    });
+
+    const transcript = document.getElementById("chat-transcript");
+    expect(transcript).not.toBeNull();
+    expect(transcript?.className).toContain("bg-gray-50");
+    expect(transcript?.className).toContain("text-gray-700");
+  });
+
   test("opens a larger preview for attachment thumbnails in the transcript", async () => {
     api.get("/api/chats/:id", () => createChat({
       state: {
