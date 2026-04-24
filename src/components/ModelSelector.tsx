@@ -70,12 +70,12 @@ export function getPreferredModelVariant(
     return null;
   }
   if (!model.variants || model.variants.length === 0) {
-    return variant === "" ? "" : null;
+    return "";
   }
   if (model.variants.includes(variant)) {
     return variant;
   }
-  return null;
+  return model.variants[0] ?? null;
 }
 
 // ─── Model grouping/sorting ──────────────────────────────────────────────────

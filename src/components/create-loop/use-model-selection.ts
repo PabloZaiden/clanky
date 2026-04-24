@@ -10,7 +10,6 @@ import {
 import {
   isModelEnabled,
   makeModelKey,
-  modelVariantExists,
   getPreferredModelVariant,
   parseModelKey,
 } from "../ModelSelector";
@@ -42,16 +41,9 @@ function isCheapModelSelectionAvailable(
   if (variant === null) {
     return false;
   }
-  return (
-    modelVariantExists(
-      availableModels,
-      selection.model.providerID,
-      selection.model.modelID,
-      variant,
-    ) && isModelEnabled(
-      availableModels,
-      makeModelKey(selection.model.providerID, selection.model.modelID, variant),
-    )
+  return isModelEnabled(
+    availableModels,
+    makeModelKey(selection.model.providerID, selection.model.modelID, variant),
   );
 }
 

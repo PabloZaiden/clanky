@@ -1074,8 +1074,8 @@ export class AcpBackend implements Backend {
 
       this.rememberCopilotDefaultReasoningEffort(directory, modelID, configOptions);
       discovered.push({
-        providerID: inferProviderID(modelID),
-        providerName: inferProviderID(modelID),
+        providerID: "copilot",
+        providerName: "Copilot",
         modelID,
         modelName: option.name,
         connected: true,
