@@ -1395,11 +1395,11 @@ describe("ChatDetails", () => {
 
     await waitFor(() => {
       expect(getByText("Alpha before tool")).toBeTruthy();
-      expect(getByRole("button", { name: /Tool calls.*1 tool call/i })).toBeTruthy();
+      expect(getByRole("button", { name: /^1 tool call$/i })).toBeTruthy();
       expect(getByText("Beta after tool")).toBeTruthy();
     });
 
-    const toggle = getByRole("button", { name: /Tool calls.*1 tool call/i });
+    const toggle = getByRole("button", { name: /^1 tool call$/i });
     const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
     const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
     expect(toggle).toHaveAttribute("aria-expanded", "false");

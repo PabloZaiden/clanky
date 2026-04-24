@@ -48,7 +48,7 @@ export function LogTab({
   const logViewerId = "logs-viewer";
 
   return (
-    <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-[#171717]" data-testid="loop-log-panel">
+    <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-gray-50 dark:bg-[#171717]" data-testid="loop-log-panel">
       <div className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden">
         <LogViewer
           id={logViewerId}
