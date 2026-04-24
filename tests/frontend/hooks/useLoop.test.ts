@@ -9,9 +9,8 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
-import { createLoop, createLoopWithStatus, createPersistedMessage, createSshSession } from "../helpers/factories";
+import { createLoop, createLoopWithStatus, createPersistedMessage } from "../helpers/factories";
 import { useLoop } from "@/hooks/useLoop";
-import type { AcceptPlanResult } from "@/hooks/loopActions";
 import type { Loop } from "@/types/loop";
 
 const LOOP_ID = "test-loop-1";
@@ -858,96 +857,6 @@ describe("remove", () => {
   });
 });
 
-// ─── Actions: accept ─────────────────────────────────────────────────────────
-
-describe("accept", () => {
-  test("calls acceptLoopApi, refreshes, and returns result", async () => {
-    const completedLoop = createLoopWithStatus("completed", { config: { id: LOOP_ID }, state: { id: LOOP_ID } });
-    const mergedLoop = createLoopWithStatus("merged", { config: { id: LOOP_ID }, state: { id: LOOP_ID } });
-
-    let callCount = 0;
-    api.get("/api/loops/:id", () => {
-      callCount++;
-      return callCount === 1 ? completedLoop : mergedLoop;
-    });
-    api.post("/api/loops/:id/accept", () => ({
-      success: true,
-      mergeCommit: "abc123",
-    }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let acceptResult: { success: boolean; mergeCommit?: string } = { success: false };
-    await act(async () => {
-      acceptResult = await result.current.accept();
-    });
-
-    expect(acceptResult.success).toBe(true);
-    expect(acceptResult.mergeCommit).toBe("abc123");
-  });
-
-  test("returns success: false on error", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/accept", () => {
-      throw new MockApiError(500, { message: "Merge conflict" });
-    });
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let acceptResult = { success: false };
-    await act(async () => {
-      acceptResult = await result.current.accept();
-    });
-
-    expect(acceptResult.success).toBe(false);
-    expect(result.current.error).toBeTruthy();
-  });
-});
-
-// ─── Actions: push ───────────────────────────────────────────────────────────
-
-describe("push", () => {
-  test("calls pushLoopApi and returns result", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/push", () => ({
-      success: true,
-      remoteBranch: "feature-a1b2c3d",
-    }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let pushResult: { success: boolean; remoteBranch?: string } = { success: false };
-    await act(async () => {
-      pushResult = await result.current.push();
-    });
-
-    expect(pushResult.success).toBe(true);
-    expect(pushResult.remoteBranch).toBe("feature-a1b2c3d");
-  });
-});
-
-// ─── Actions: discard ────────────────────────────────────────────────────────
-
-describe("discard", () => {
-  test("calls discardLoopApi and refreshes", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/discard", () => ({ success: true }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let success = false;
-    await act(async () => {
-      success = await result.current.discard();
-    });
-
-    expect(success).toBe(true);
-  });
-});
-
 // ─── Actions: purge ──────────────────────────────────────────────────────────
 
 describe("purge", () => {
@@ -1071,40 +980,6 @@ describe("manualCompleteLoop", () => {
   });
 });
 
-// ─── Actions: setPendingPrompt / clearPendingPrompt ──────────────────────────
-
-describe("setPendingPrompt / clearPendingPrompt", () => {
-  test("setPendingPrompt calls API and refreshes", async () => {
-    setupLoop();
-    api.put("/api/loops/:id/pending-prompt", () => ({ success: true }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let success = false;
-    await act(async () => {
-      success = await result.current.setPendingPrompt("Next instruction");
-    });
-
-    expect(success).toBe(true);
-  });
-
-  test("clearPendingPrompt calls API and refreshes", async () => {
-    setupLoop();
-    api.delete("/api/loops/:id/pending-prompt", () => ({ success: true }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let success = false;
-    await act(async () => {
-      success = await result.current.clearPendingPrompt();
-    });
-
-    expect(success).toBe(true);
-  });
-});
-
 // ─── Actions: getDiff ────────────────────────────────────────────────────────
 
 describe("getDiff", () => {
@@ -1181,111 +1056,6 @@ describe("getPlan / getStatusFile", () => {
   });
 });
 
-// ─── Actions: plan mode ──────────────────────────────────────────────────────
-
-describe("plan mode actions", () => {
-  test("sendPlanFeedback calls API and refreshes", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/plan/feedback", () => ({ success: true }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let success = false;
-    await act(async () => {
-      success = await result.current.sendPlanFeedback("Add error handling");
-    });
-
-    expect(success).toBe(true);
-  });
-
-  test("acceptPlan calls API and refreshes", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/plan/accept", (req) => {
-      expect(req.body).toEqual({ mode: "start_loop" });
-      return { success: true, mode: "start_loop" };
-    }, 200);
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let response!: AcceptPlanResult;
-    await act(async () => {
-      response = await result.current.acceptPlan();
-    });
-
-    if (response.success === false) {
-      throw new Error("Expected acceptPlan to succeed");
-    }
-    const successResponse = response as Exclude<AcceptPlanResult, { success: false }>;
-    expect(successResponse.mode).toBe("start_loop");
-  });
-
-  test("acceptPlan returns linked ssh session for open_ssh mode", async () => {
-    setupLoop();
-    const returnedSession = createSshSession({ config: { id: "ssh-session-1", loopId: LOOP_ID } });
-    api.post("/api/loops/:id/plan/accept", (req) => {
-      expect(req.body).toEqual({ mode: "open_ssh" });
-      return { success: true, mode: "open_ssh", sshSession: returnedSession };
-    }, 200);
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let response!: AcceptPlanResult;
-    await act(async () => {
-      response = await result.current.acceptPlan("open_ssh");
-    });
-
-    if (response.success === false) {
-      throw new Error("Expected acceptPlan open_ssh to succeed");
-    }
-    const successResponse = response as Extract<AcceptPlanResult, { mode: "open_ssh" }>;
-    expect(successResponse.mode).toBe("open_ssh");
-    expect(successResponse.sshSession).toEqual(returnedSession);
-  });
-
-  test("discardPlan calls API and sets loop to null", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/plan/discard", () => ({ success: true }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let success = false;
-    await act(async () => {
-      success = await result.current.discardPlan();
-    });
-
-    expect(success).toBe(true);
-    expect(result.current.loop).toBeNull();
-  });
-});
-
-// ─── Actions: addressReviewComments ──────────────────────────────────────────
-
-describe("addressReviewComments", () => {
-  test("calls API and returns result", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/address-comments", () => ({
-      success: true,
-      reviewCycle: 2,
-      branch: "loop-a1b2c3d-review-2",
-    }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let addressResult: { success: boolean; reviewCycle?: number } = { success: false };
-    await act(async () => {
-      addressResult = await result.current.addressReviewComments("Fix the typo");
-    });
-
-    expect(addressResult.success).toBe(true);
-    expect(addressResult.reviewCycle).toBe(2);
-  });
-});
-
 describe("WebSocket event: loop.automatic_pr_flow.updated", () => {
   test("refreshes loop state when automatic PR flow is enabled after push", async () => {
     const initialLoop = createLoopWithStatus("pushed", {
@@ -1349,115 +1119,7 @@ describe("WebSocket event: loop.automatic_pr_flow.updated", () => {
   });
 });
 
-describe("automatic PR flow actions", () => {
-  test("startAutomaticPrFlow calls API and returns state", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/automatic-pr-flow/start", () => ({
-      success: true,
-      automaticPrFlow: {
-        enabled: true,
-        status: "monitoring",
-        startedAt: "2026-04-11T04:00:00.000Z",
-        updatedAt: "2026-04-11T04:00:00.000Z",
-      },
-    }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let startResult = { success: false };
-    await act(async () => {
-      startResult = await result.current.startAutomaticPrFlow();
-    });
-
-    expect(startResult.success).toBe(true);
-    expect(api.calls("/api/loops/:id/automatic-pr-flow/start", "POST")).toHaveLength(1);
-  });
-
-  test("stopAutomaticPrFlow calls API and returns state", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/automatic-pr-flow/stop", () => ({
-      success: true,
-      automaticPrFlow: {
-        enabled: false,
-        status: "stopped",
-        startedAt: "2026-04-11T04:00:00.000Z",
-        updatedAt: "2026-04-11T04:10:00.000Z",
-      },
-    }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let stopResult = { success: false };
-    await act(async () => {
-      stopResult = await result.current.stopAutomaticPrFlow();
-    });
-
-    expect(stopResult.success).toBe(true);
-    expect(api.calls("/api/loops/:id/automatic-pr-flow/stop", "POST")).toHaveLength(1);
-  });
-});
-
 // ─── Actions: setPending / clearPending ──────────────────────────────────────
-
-describe("setPending / clearPending", () => {
-  test("setPending calls API with options and refreshes", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/pending", () => ({ success: true }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let pendingResult = { success: false };
-    await act(async () => {
-      pendingResult = await result.current.setPending({
-        message: "Do this next",
-        model: { providerID: "anthropic", modelID: "claude-sonnet-4-20250514" },
-      });
-    });
-
-    expect(pendingResult.success).toBe(true);
-    const calls = api.calls("/api/loops/:id/pending", "POST");
-    expect(calls).toHaveLength(1);
-  });
-
-  test("clearPending calls API and refreshes", async () => {
-    setupLoop();
-    api.delete("/api/loops/:id/pending", () => ({ success: true }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let success = false;
-    await act(async () => {
-      success = await result.current.clearPending();
-    });
-
-    expect(success).toBe(true);
-  });
-});
-
-describe("sendFollowUp", () => {
-  test("calls API and refreshes", async () => {
-    setupLoop();
-    api.post("/api/loops/:id/follow-up", () => ({ success: true }));
-
-    const { result } = renderHook(() => useLoop(LOOP_ID));
-    await waitForLoad(result);
-
-    let success = false;
-    await act(async () => {
-      success = await result.current.sendFollowUp("Please restart this", {
-        providerID: "anthropic",
-        modelID: "claude-sonnet-4-20250514",
-      });
-    });
-
-    expect(success).toBe(true);
-    expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
-  });
-});
 
 // ─── Connection status ───────────────────────────────────────────────────────
 

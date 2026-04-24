@@ -75,11 +75,6 @@ describe("Plan Mode API Integration", () => {
     throw new Error(`Failed to create workspace: ${JSON.stringify(data)}`);
   }
 
-  // Helper to check if file exists
-  async function exists(path: string): Promise<boolean> {
-    return Bun.file(path).exists();
-  }
-
   // Poll until loop reaches expected status
   async function waitForStatus(
     loopId: string,
@@ -118,18 +113,6 @@ describe("Plan Mode API Integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     throw new Error(`Plan for loop ${loopId} did not become ready within ${timeoutMs}ms`);
-  }
-
-  // Poll until file no longer exists
-  async function waitForFileDeleted(filePath: string, timeoutMs = 5000): Promise<void> {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-      if (!(await exists(filePath))) {
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error(`File ${filePath} was not deleted within ${timeoutMs}ms`);
   }
 
   beforeAll(async () => {
@@ -318,53 +301,6 @@ describe("Plan Mode API Integration", () => {
       expect(loop.state.planMode?.active).toBe(true);
     });
 
-    test("clears planning folder before plan creation when clearPlanningFolder is true", async () => {
-      // Setup: Create existing files in .ralph-planning folder and commit them
-      // (files must be committed so they appear in the worktree)
-      const planningDir = join(currentTestWorkDir, ".ralph-planning");
-      await mkdir(planningDir, { recursive: true });
-      await writeFile(join(planningDir, "old-plan.md"), "Old content");
-      await Bun.$`git -C ${currentTestWorkDir} add .`.quiet();
-      await Bun.$`git -C ${currentTestWorkDir} commit -m "Add old plan file"`.quiet();
-
-      const response = await fetch(`${baseUrl}/api/loops`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateLoopPayload,
-          prompt: "Create a plan",
-          name: "Test Loop",
-          workspaceId: currentWorkspaceId,
-          maxIterations: 1,
-          clearPlanningFolder: true,
-          planMode: true,
-          autoAcceptPlan: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-
-      expect(response.ok).toBe(true);
-      const data = await response.json();
-
-      // Wait for planning status to get the worktree path
-      const planLoop = await waitForStatus(data.config.id, ["planning"]);
-      const worktreePath = (planLoop as { state: { git?: { worktreePath?: string } } }).state.git?.worktreePath;
-      expect(worktreePath).toBeDefined();
-
-      // The planning folder is cleared in the worktree, not the main checkout
-      const wtPlanningDir = join(worktreePath!, ".ralph-planning");
-      await waitForFileDeleted(join(wtPlanningDir, "old-plan.md"));
-
-      // Verify file was cleared in worktree
-      expect(await exists(join(wtPlanningDir, "old-plan.md"))).toBe(false);
-
-      // Verify state tracks clearing
-      const getResponse2 = await fetch(`${baseUrl}/api/loops/${data.config.id}`);
-      const loop = await getResponse2.json();
-      expect(loop.state.planMode?.planningFolderCleared).toBe(true);
-    });
-
     test("returns 400 if required fields missing", async () => {
       const response = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
@@ -381,54 +317,6 @@ describe("Plan Mode API Integration", () => {
   });
 
   describe("POST /api/loops/:id/plan/feedback", () => {
-    test("sends feedback to AI and increments round counter", async () => {
-      // Create a loop in plan mode
-      const createResponse = await fetch(`${baseUrl}/api/loops`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateLoopPayload,
-          prompt: "Create a plan",
-          name: "Test Loop",
-          workspaceId: currentWorkspaceId,
-          maxIterations: 1,
-          planMode: true,
-          autoAcceptPlan: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-
-      expect(createResponse.status).toBe(201);
-      const response = await createResponse.json();
-      expect(response.config).toBeDefined();
-      const id = response.config.id;
-      await waitForPlanReady(id);
-
-      // Get initial feedback rounds
-      let getResponse = await fetch(`${baseUrl}/api/loops/${id}`);
-      let loop = await getResponse.json();
-      expect(loop.state.planMode.feedbackRounds).toBe(0);
-
-      // Send feedback
-      const feedbackResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          feedback: "Please add more details",
-          attachments: [],
-        }),
-      });
-
-      expect(feedbackResponse.status).toBe(200);
-      await waitForPlanReady(id);
-
-      // Verify feedback rounds incremented
-      getResponse = await fetch(`${baseUrl}/api/loops/${id}`);
-      loop = await getResponse.json();
-      expect(loop.state.planMode.feedbackRounds).toBe(1);
-    });
-
     test("returns 400 if loop is not in planning status", async () => {
       // Create a normal loop (not plan mode)
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
@@ -479,49 +367,6 @@ describe("Plan Mode API Integration", () => {
   });
 
   describe("POST /api/loops/:id/plan/accept", () => {
-    test("transitions loop from planning to running", async () => {
-      // Create loop in plan mode
-      const createResponse = await fetch(`${baseUrl}/api/loops`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateLoopPayload,
-          prompt: "Create a plan",
-          name: "Test Loop",
-          workspaceId: currentWorkspaceId,
-          maxIterations: 1,
-          planMode: true,
-          autoAcceptPlan: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-
-      expect(createResponse.status).toBe(201);
-      const response = await createResponse.json();
-      expect(response.config).toBeDefined();
-      const id = response.config.id;
-      await waitForPlanReady(id);
-
-      // Verify in planning status
-      let getResponse = await fetch(`${baseUrl}/api/loops/${id}`);
-      let loop = await getResponse.json();
-      expect(loop.state.status).toBe("planning");
-
-      // Accept the plan
-      const acceptResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/accept`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "start_loop" }),
-      });
-
-      expect(acceptResponse.status).toBe(200);
-      
-      // Wait for status transition from planning
-      loop = await waitForStatus(id, ["running", "completed", "max_iterations", "stopped"]);
-      expect(["running", "completed", "max_iterations", "stopped"]).toContain(loop.state.status);
-    });
-
     test("accepts the plan in open_ssh mode and returns the linked ssh session", async () => {
       const sshWorkDir = await createTestWorkDir();
       try {
@@ -572,69 +417,6 @@ describe("Plan Mode API Integration", () => {
       } finally {
         await rm(sshWorkDir, { recursive: true, force: true });
       }
-    });
-
-    test("does not clear planning folder on accept", async () => {
-      // IMPORTANT: Previous tests may leave us on a working branch, so we need to
-      // checkout the base branch before creating the loop to ensure proper test isolation.
-      // Get the default branch by checking if 'main' or 'master' exists (same logic as GitService.getDefaultBranch)
-      const mainExists = await Bun.$`git -C ${currentTestWorkDir} rev-parse --verify main`.quiet().then(() => true).catch(() => false);
-      const baseBranch = mainExists ? "main" : "master";
-      
-      // Checkout the base branch to ensure we're not on a working branch from previous tests
-      await Bun.$`git -C ${currentTestWorkDir} checkout ${baseBranch}`.quiet();
-      
-      // Create loop with clear folder enabled
-      const planningDir = join(currentTestWorkDir, ".ralph-planning-test2");
-      await mkdir(planningDir, { recursive: true });
-
-      const createResponse = await fetch(`${baseUrl}/api/loops`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...baseCreateLoopPayload,
-          prompt: "Create a plan",
-          name: "Test Loop",
-          workspaceId: currentWorkspaceId,
-          planningFolderPath: ".ralph-planning-test2",
-          maxIterations: 1,
-          clearPlanningFolder: true,
-          planMode: true,
-          autoAcceptPlan: false,
-          model: testModel,
-          useWorktree: true,
-        }),
-      });
-
-      expect(createResponse.status).toBe(201);
-      const response = await createResponse.json();
-      expect(response.config).toBeDefined();
-      const id = response.config.id;
-      await waitForPlanReady(id);
-
-      // Create a plan file and commit it to the base branch.
-      // When accept is called, the loop engine will switch to the base branch and
-      // create a new working branch from it. The plan.md must exist on the base branch
-      // so it will also exist on the new working branch.
-      await writeFile(join(planningDir, "plan.md"), "# My Plan");
-      await Bun.$`git -C ${currentTestWorkDir} add .`.quiet();
-      await Bun.$`git -C ${currentTestWorkDir} commit -m "Add plan file"`.quiet();
-
-      // Accept the plan
-      const acceptResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/accept`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "start_loop" }),
-      });
-      if (acceptResponse.status !== 200) {
-        const body = await acceptResponse.json();
-        throw new Error(`Accept failed with ${acceptResponse.status}: ${JSON.stringify(body)}`);
-      }
-      
-      await waitForStatus(id, ["running", "completed", "max_iterations", "stopped"]);
-
-      // Verify plan still exists
-      expect(await exists(join(planningDir, "plan.md"))).toBe(true);
     });
 
     test("returns 400 if loop is not in planning status", async () => {

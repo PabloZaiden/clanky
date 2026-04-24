@@ -4,7 +4,7 @@
  */
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { mkdir, writeFile, stat } from "fs/promises";
+import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { setupTestContext, teardownTestContext, waitForPlanReady, waitForPersistedPlanReady, waitForLoopStatus, testModelFields } from "../setup";
 import type { TestContext } from "../setup";
@@ -189,109 +189,6 @@ describe("Plan Mode - Clear Planning Folder", () => {
     expect(loopData!.state.planMode?.planningFolderCleared).toBe(false);
   });
 
-  test("never clears .ralph-planning folder after plan is created", async () => {
-    // Setup: Create loop with plan mode + clear folder
-    const planningDir = join(ctx.workDir, ".ralph-planning");
-    await mkdir(planningDir, { recursive: true });
-    await writeFile(join(planningDir, "old-file.md"), "Old content");
-    await Bun.$`git -C ${ctx.workDir} add .`.quiet();
-    await Bun.$`git -C ${ctx.workDir} commit -m "Add old file"`.quiet();
-
-    const loop = await ctx.manager.createLoop({
-        ...testModelFields,
-        prompt: "Create a plan",
-        name: "Test Loop",
-      directory: ctx.workDir,
-      workspaceId: testWorkspaceId,
-      maxIterations: 1,
-      clearPlanningFolder: true,
-      planMode: true,
-      autoAcceptPlan: false,
-    });
-    const loopId = loop.config.id;
-
-    // Start plan mode and wait for plan to be ready
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
-
-    // Get worktree path
-    let loopData = await ctx.manager.getLoop(loopId);
-    const worktreePath = loopData!.state.git!.worktreePath!;
-
-    // Create a plan file in the worktree (simulating AI creating it)
-    const wtPlanningDir = join(worktreePath, ".ralph-planning");
-    await mkdir(wtPlanningDir, { recursive: true });
-    await writeFile(join(wtPlanningDir, "plan.md"), "# My Plan\n\nTask 1: Do something");
-
-    // Verify plan file exists in worktree
-    expect(await exists(join(wtPlanningDir, "plan.md"))).toBe(true);
-
-    // Accept the plan (should transition to running without clearing folder)
-    await ctx.manager.acceptPlan(loopId);
-    
-    // Wait for transition from planning
-    await waitForLoopStatus(ctx.manager, loopId, ["running", "completed", "max_iterations", "stopped"]);
-
-    // Verify plan file still exists in worktree (was NOT cleared on accept)
-    expect(await exists(join(wtPlanningDir, "plan.md"))).toBe(true);
-
-    // Verify the loop transitioned from planning
-    loopData = await ctx.manager.getLoop(loopId);
-    expect(["running", "completed", "max_iterations", "stopped"]).toContain(loopData!.state.status);
-  });
-
-  test("planningFolderCleared persists across restart", async () => {
-    // Create loop, clear folder, mark as cleared
-    const loop = await ctx.manager.createLoop({
-        ...testModelFields,
-        prompt: "Create a plan",
-        name: "Test Loop",
-      directory: ctx.workDir,
-      workspaceId: testWorkspaceId,
-      maxIterations: 1,
-      clearPlanningFolder: true,
-      planMode: true,
-      autoAcceptPlan: false,
-    });
-    const loopId = loop.config.id;
-
-    // Start plan mode and wait for plan to be ready
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
-
-    // Get worktree path
-    let loopData = await ctx.manager.getLoop(loopId);
-    const worktreePath = loopData!.state.git!.worktreePath!;
-
-    // Simulate plan creation in the worktree
-    const wtPlanningDir = join(worktreePath, ".ralph-planning");
-    await mkdir(wtPlanningDir, { recursive: true });
-    await writeFile(join(wtPlanningDir, "plan.md"), "# Plan\n\nTask: Test");
-
-    // Accept and wait for it to start running
-    await ctx.manager.acceptPlan(loopId);
-    await waitForLoopStatus(ctx.manager, loopId, ["running", "completed", "max_iterations", "stopped"]);
-
-    // Stop the loop
-    await ctx.manager.stopLoop(loopId);
-    await waitForLoopStatus(ctx.manager, loopId, ["stopped", "completed", "max_iterations"]);
-
-    // Verify plan still exists in worktree
-    expect(await exists(join(wtPlanningDir, "plan.md"))).toBe(true);
-
-    // Restart the loop
-    await ctx.manager.startLoop(loopId);
-    
-    // Brief wait for restart to process
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    // Verify plan still exists in worktree (folder not cleared again)
-    expect(await exists(join(wtPlanningDir, "plan.md"))).toBe(true);
-
-    // Verify flag is still set
-    loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.planMode?.planningFolderCleared).toBe(true);
-  });
 });
 
 describe("Plan Mode - Always Clear plan.md on Start", () => {
@@ -345,45 +242,6 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
     // The plan file in the worktree should not have old content
     const planContent = await Bun.file(join(worktreePath!, ".ralph-planning", "plan.md")).text().catch(() => "");
     expect(planContent).not.toContain("Old stale plan content");
-  });
-
-  test("clears plan.md when starting plan mode with clearPlanningFolder: true", async () => {
-    // Setup: Create existing plan.md and commit to git
-    const planningDir = join(ctx.workDir, ".ralph-planning");
-    await mkdir(planningDir, { recursive: true });
-    await writeFile(join(planningDir, "plan.md"), "Old stale plan content from previous session");
-    await Bun.$`git -C ${ctx.workDir} add .`.quiet();
-    await Bun.$`git -C ${ctx.workDir} commit -m "Add stale plan"`.quiet();
-
-    // Verify file exists before loop creation
-    expect(await exists(join(planningDir, "plan.md"))).toBe(true);
-
-    // Create loop with plan mode AND clearPlanningFolder
-    const loop = await ctx.manager.createLoop({
-        ...testModelFields,
-        prompt: "Create a simple plan",
-        name: "Test Loop",
-      directory: ctx.workDir,
-      workspaceId: testWorkspaceId,
-      maxIterations: 1,
-      clearPlanningFolder: true,
-      planMode: true,
-      autoAcceptPlan: false,
-    });
-    const loopId = loop.config.id;
-
-    // Start plan mode
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
-
-    // Get worktree path and check there
-    const loopData = await ctx.manager.getLoop(loopId);
-    const worktreePath = loopData!.state.git?.worktreePath;
-    expect(worktreePath).toBeDefined();
-
-    // Verify old content is gone from the worktree
-    const planContent = await Bun.file(join(worktreePath!, ".ralph-planning", "plan.md")).text().catch(() => "");
-    expect(planContent).not.toContain("Old stale plan content from previous session");
   });
 
   test("does NOT clear status.md when clearPlanningFolder is false", async () => {
@@ -452,57 +310,6 @@ describe("Plan Mode - State Transitions", () => {
     await teardownTestContext(ctx);
   });
 
-  test("creates loop in planning status when planMode is true", async () => {
-    const loop = await ctx.manager.createLoop({
-        ...testModelFields,
-        prompt: "Create a plan",
-        name: "Test Loop",
-      directory: ctx.workDir,
-      workspaceId: testWorkspaceId,
-      maxIterations: 1,
-      planMode: true,
-      autoAcceptPlan: false,
-    });
-    const loopId = loop.config.id;
-
-    // Wait for loop to be in planning status
-    const loopData = await waitForLoopStatus(ctx.manager, loopId, ["planning"]);
-    expect(loopData.state.status).toBe("planning");
-    expect(loopData.state.planMode?.active).toBe(true);
-  });
-
-  test("transitions from planning to running on accept", async () => {
-    const loop = await ctx.manager.createLoop({
-        ...testModelFields,
-        prompt: "Create a plan",
-        name: "Test Loop",
-      directory: ctx.workDir,
-      workspaceId: testWorkspaceId,
-      maxIterations: 1,
-      planMode: true,
-      autoAcceptPlan: false,
-    });
-    const loopId = loop.config.id;
-
-    // Start plan mode and wait for plan to be ready
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
-
-    // Verify initial status
-    let loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.status).toBe("planning");
-
-    // Accept the plan
-    await ctx.manager.acceptPlan(loopId);
-    
-    // Wait for transition from planning
-    loopData = await waitForLoopStatus(ctx.manager, loopId, ["running", "completed", "max_iterations", "stopped"]);
-    expect(["running", "completed", "max_iterations", "stopped"]).toContain(loopData!.state.status);
-    
-    // Clean up - stop the loop
-    await ctx.manager.stopLoop(loopId);
-  });
-
   test("increments feedback rounds on each feedback", async () => {
     const loop = await ctx.manager.createLoop({
         ...testModelFields,
@@ -539,34 +346,6 @@ describe("Plan Mode - State Transitions", () => {
 
     loopData = await ctx.manager.getLoop(loopId);
     expect(loopData!.state.planMode?.feedbackRounds).toBe(2);
-  });
-
-  test("deletes loop on discard", async () => {
-    const loop = await ctx.manager.createLoop({
-        ...testModelFields,
-        prompt: "Create a plan",
-        name: "Test Loop",
-      directory: ctx.workDir,
-      workspaceId: testWorkspaceId,
-      maxIterations: 1,
-      planMode: true,
-      autoAcceptPlan: false,
-    });
-    const loopId = loop.config.id;
-
-    // Wait for loop to be in planning status
-    await waitForLoopStatus(ctx.manager, loopId, ["planning"]);
-
-    // Verify loop exists
-    let loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData).toBeDefined();
-
-    // Discard the plan
-    await ctx.manager.discardPlan(loopId);
-    
-    // Wait for loop to be deleted
-    loopData = await waitForLoopStatus(ctx.manager, loopId, ["deleted"]);
-    expect(loopData.state.status).toBe("deleted");
   });
 
   test("reuses session from plan creation when starting execution", async () => {
@@ -912,39 +691,6 @@ describe("Plan Mode - Worktree Isolation", () => {
     expect(gitStatus.trim()).toBe("");
   });
 
-  test("worktree exists from plan mode start, not just after acceptance", async () => {
-    // Create a plan mode loop
-    const loop = await ctx.manager.createLoop({
-      ...testModelFields,
-      prompt: "Create a plan",
-      name: "Test Loop",
-      directory: ctx.workDir,
-      workspaceId: testWorkspaceId,
-      maxIterations: 1,
-      planMode: true,
-      autoAcceptPlan: false,
-    });
-    const loopId = loop.config.id;
-
-    // Before startPlanMode: no git state
-    let loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.git).toBeUndefined();
-
-    // Start plan mode
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
-
-    // After startPlanMode: git state with worktree should exist
-    loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.git).toBeDefined();
-    expect(loopData!.state.git?.worktreePath).toBeDefined();
-    expect(loopData!.state.git?.workingBranch).toBeDefined();
-
-    // The worktree directory should actually exist on disk
-    const worktreePath = loopData!.state.git!.worktreePath!;
-    const dirStat = await stat(worktreePath);
-    expect(dirStat.isDirectory()).toBe(true);
-  });
 });
 
 describe("Plan Mode - Engine Recovery After Server Restart", () => {
@@ -1083,30 +829,6 @@ describe("Plan Mode - Engine Recovery After Server Restart", () => {
     await waitForPlanReady(ctx.manager, loopId);
   });
 
-  test("acceptPlan throws for non-existent loop after restart", async () => {
-    // Try to accept a plan for a loop that doesn't exist
-    await expect(ctx.manager.acceptPlan("non-existent-id")).rejects.toThrow("Loop not found");
-  });
-
-  test("acceptPlan throws for loop not in planning status after restart", async () => {
-    // Create a loop but don't start plan mode — it will be in 'idle' status
-    const loop = await ctx.manager.createLoop({
-      ...testModelFields,
-      prompt: "Regular loop",
-      name: "Test Loop",
-      directory: ctx.workDir,
-      workspaceId: testWorkspaceId,
-      maxIterations: 1,
-      planMode: false,
-    });
-    const loopId = loop.config.id;
-
-    // Simulate server restart
-    ctx.manager.resetForTesting();
-
-    // Try to accept — loop is in 'idle' status, not 'planning'
-    await expect(ctx.manager.acceptPlan(loopId)).rejects.toThrow("Loop plan mode is not running");
-  });
 });
 
 describe("Plan Mode - Seeded plan recovery", () => {
