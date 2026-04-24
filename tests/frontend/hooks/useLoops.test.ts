@@ -291,6 +291,43 @@ describe("WebSocket events", () => {
       expect(result.current.loops[0]!.state.automaticPrFlow?.enabled).toBe(true);
     });
   });
+
+  test("re-syncs the loop list after websocket reconnect", async () => {
+    const initialLoop = createLoop({ config: { id: "loop-1" }, state: { id: "loop-1", status: "running" } });
+    const recoveredLoop = createLoop({ config: { id: "loop-1" }, state: { id: "loop-1", status: "completed" } });
+
+    let callCount = 0;
+    api.get("/api/loops", () => {
+      callCount++;
+      return callCount === 1 ? [initialLoop] : [recoveredLoop];
+    });
+
+    const { result } = renderHook(() => useLoops());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    await waitFor(() => {
+      expect(ws.connections().length).toBeGreaterThan(0);
+    });
+
+    expect(result.current.loops[0]!.state.status).toBe("running");
+    expect(callCount).toBe(1);
+
+    const initialConnection = ws.connections()[0]!;
+    await act(async () => {
+      initialConnection.instance.close(1006, "network lost");
+    });
+
+    await waitFor(() => {
+      expect(ws.connections().length).toBeGreaterThan(1);
+    }, { timeout: 3000 });
+    await waitFor(() => {
+      expect(result.current.loops[0]!.state.status).toBe("completed");
+    });
+
+    expect(callCount).toBe(2);
+  });
 });
 
 // ─── createLoop ──────────────────────────────────────────────────────────────
