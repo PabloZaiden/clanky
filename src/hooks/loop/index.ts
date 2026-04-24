@@ -179,6 +179,7 @@ export function useLoop(loopId: string): UseLoopResult {
   // Read-only file/diff queries
   const fileQueries = useLoopFileQueries({
     loopId,
+    loop,
     isActiveLoop,
     ignoreStaleLoopAction,
     ignoreStaleLoopError,

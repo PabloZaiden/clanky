@@ -1521,6 +1521,71 @@ describe("planning mode", () => {
     });
   });
 
+  test("keeps the waiting state without a shared error banner when planning files hit transient no_worktree", async () => {
+    const loop = createLoopWithStatus("planning", {
+      config: { id: LOOP_ID, name: "Startup Planning Loop" },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => {
+      throw new MockApiError(400, {
+        error: "no_worktree",
+        message: "Loop is configured to use a worktree, but no worktree path is available.",
+      });
+    });
+    api.get("/api/loops/:id/status-file", () => {
+      throw new MockApiError(400, {
+        error: "no_worktree",
+        message: "Loop is configured to use a worktree, but no worktree path is available.",
+      });
+    });
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const { getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Startup Planning Loop")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(getByText("Waiting for AI to generate plan...")).toBeTruthy();
+    });
+
+    expect(queryByText(/Failed to get plan/)).toBeNull();
+  });
+
+  test("still shows the shared error banner for real plan fetch failures", async () => {
+    const loop = createLoopWithStatus("planning", {
+      config: { id: LOOP_ID, name: "Broken Planning Loop" },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => {
+      throw new MockApiError(500, {
+        error: "internal_error",
+        message: "Unexpected failure while loading plan",
+      });
+    });
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Broken Planning Loop")).toBeTruthy();
+    });
+
+    await waitFor(() => {
+      expect(getByText(/Failed to get plan/)).toBeTruthy();
+    });
+  });
+
   test("shows Plan Ready badge when plan is ready for review", async () => {
     const loop = createLoopWithStatus("planning", {
       config: { id: LOOP_ID, name: "Plan Ready Loop" },
