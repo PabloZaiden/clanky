@@ -153,7 +153,7 @@ describe("initial fetch", () => {
       indicator: {
         marker: "COMPLETE",
         kind: "complete",
-        label: "Completed",
+        label: "COMPLETED",
       },
     });
   });
@@ -284,7 +284,7 @@ describe("WebSocket event: loop.message", () => {
       indicator: {
         marker: "PLAN_READY",
         kind: "plan_ready",
-        label: "Plan ready",
+        label: "PLAN READY",
       },
     });
   });
@@ -359,7 +359,7 @@ describe("WebSocket event: loop.message", () => {
       indicator: {
         marker: "PLAN_READY",
         kind: "plan_ready",
-        label: "Plan ready",
+        label: "PLAN READY",
       },
     });
   });

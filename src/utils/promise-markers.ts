@@ -33,9 +33,9 @@ function getPromiseMarkerOutcomeKind(marker: string): PromiseMarkerOutcomeKind {
 function getPromiseMarkerLabel(marker: string, kind: PromiseMarkerOutcomeKind): string {
   switch (kind) {
     case "plan_ready":
-      return "Plan ready";
+      return "PLAN READY";
     case "complete":
-      return "Completed";
+      return "COMPLETED";
     case "custom":
       return humanizePromiseMarker(marker);
   }
