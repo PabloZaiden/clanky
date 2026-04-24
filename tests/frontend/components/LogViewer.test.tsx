@@ -1118,7 +1118,7 @@ describe("LogViewer", () => {
           indicator: {
             marker: "PLAN_READY",
             kind: "plan_ready",
-            label: "Plan ready",
+            label: "PLAN READY",
           },
         },
       });
@@ -1127,7 +1127,7 @@ describe("LogViewer", () => {
       );
 
       expect(getByText("Plan created")).toBeInTheDocument();
-      expect(getByText("Plan ready")).toBeInTheDocument();
+      expect(getByText("PLAN READY")).toBeInTheDocument();
       expect(queryByText("<promise>PLAN_READY</promise>")).not.toBeInTheDocument();
       expect(container.querySelector("[data-response-outcome='plan_ready']")).not.toBeNull();
     });
@@ -1141,7 +1141,7 @@ describe("LogViewer", () => {
           indicator: {
             marker: "COMPLETE",
             kind: "complete",
-            label: "Completed",
+            label: "COMPLETED",
           },
         },
       });
@@ -1149,7 +1149,7 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[]} logs={[log]} />
       );
 
-      expect(getByText("Completed")).toBeInTheDocument();
+      expect(getByText("COMPLETED")).toBeInTheDocument();
       expect(queryByText("<promise>COMPLETE</promise>")).not.toBeInTheDocument();
       expect(container.querySelector("[data-response-outcome='complete']")).not.toBeNull();
     });
