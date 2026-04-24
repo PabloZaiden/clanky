@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 import { ConversationViewer } from "./LogViewer";
 import {
   ImageAttachmentControl,
@@ -532,6 +532,7 @@ export function ChatDetails({
     composerMinHeightClass,
     composerPaddingClass,
   } = useComposerSizing(message);
+  const composerInstanceId = useId();
 
   if (loading) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;
@@ -571,7 +572,9 @@ export function ChatDetails({
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
-  const activeDraftHintId = "chat-message-active-draft-hint";
+  const modelSelectId = `${composerInstanceId}-chat-model`;
+  const messageInputId = `${composerInstanceId}-chat-message`;
+  const activeDraftHintId = `${composerInstanceId}-chat-message-active-draft-hint`;
   const conversation = (
     <ConversationViewer
       id="chat-transcript"
@@ -596,13 +599,13 @@ export function ChatDetails({
       className="safe-area-bottom border-t border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900"
     >
       <div className="p-3" data-testid="chat-composer-padding">
-        <label htmlFor="chat-model" className="sr-only">Model</label>
-        <label htmlFor="chat-message" className="sr-only">Message</label>
+        <label htmlFor={modelSelectId} className="sr-only">Model</label>
+        <label htmlFor={messageInputId} className="sr-only">Message</label>
         <div className="space-y-2" data-testid="chat-composer-layout">
           <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
             <div className="shrink-0" data-testid="chat-composer-model-cell">
               <ModelSelector
-                id="chat-model"
+                id={modelSelectId}
                 value={selectedModel}
                 onChange={setSelectedModel}
                 models={models}
@@ -619,7 +622,7 @@ export function ChatDetails({
             </div>
             <textarea
               ref={composerRef}
-              id="chat-message"
+              id={messageInputId}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={handleComposerKeyDown}

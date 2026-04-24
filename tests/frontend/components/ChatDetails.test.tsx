@@ -263,6 +263,51 @@ describe("ChatDetails", () => {
     expect(composer.value).toBe("Queued follow-up");
   });
 
+  test("uses unique composer ids when multiple active chats are mounted", async () => {
+    api.get("/api/chats/:id", (req) => {
+      const chatId = req.params["id"] ?? "missing-chat-id";
+      const baseChat = createChat();
+
+      return createChat({
+        config: {
+          ...baseChat.config,
+          id: chatId,
+          name: `Chat ${chatId}`,
+        },
+        state: {
+          ...baseChat.state,
+          id: chatId,
+          status: "streaming",
+          session: { id: `session-${chatId}` },
+          messages: [],
+          logs: [],
+          toolCalls: [],
+        },
+      });
+    });
+
+    const { getAllByLabelText } = renderWithUser(
+      <>
+        <ChatDetails chatId="chat-1" />
+        <ChatDetails chatId="chat-2" />
+      </>,
+    );
+
+    const composers = await waitFor(() => getAllByLabelText("Message")) as HTMLTextAreaElement[];
+
+    expect(composers).toHaveLength(2);
+
+    const composerIds = composers.map((composer) => composer.id);
+    expect(new Set(composerIds).size).toBe(2);
+
+    const hintIds = composers.map((composer) => composer.getAttribute("aria-describedby"));
+    expect(new Set(hintIds).size).toBe(2);
+    hintIds.forEach((hintId) => {
+      expect(hintId).toBeTruthy();
+      expect(document.getElementById(hintId!)).toBeTruthy();
+    });
+  });
+
   test("prevents the send button from taking focus on press", async () => {
     api.get("/api/chats/:id", () => createChat());
 
