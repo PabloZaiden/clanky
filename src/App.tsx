@@ -168,6 +168,8 @@ function isDeviceApprovalRoute(pathname: string): boolean {
 export function App() {
   const [route, setRoute] = useState<ShellRoute>(parseHash);
   const passkeyAuth = usePasskeyAuth();
+  const canLoadThemePreference = !passkeyAuth.loading
+    && (!passkeyAuth.status.passkeyRequired || passkeyAuth.status.authenticated);
   const deviceApprovalRoute = isDeviceApprovalRoute(window.location.pathname)
     ? {
         userCode: new URLSearchParams(window.location.search).get("user_code")?.trim() || undefined,
@@ -208,7 +210,7 @@ export function App() {
 
   return (
     <LogLevelInitializer>
-      <ThemePreferenceProvider>
+      <ThemePreferenceProvider canLoadPreference={canLoadThemePreference}>
         {content}
       </ThemePreferenceProvider>
     </LogLevelInitializer>

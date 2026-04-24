@@ -39,7 +39,13 @@ function getInitialThemePreference(): ThemePreference {
   return getStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
 }
 
-export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
+export function ThemePreferenceProvider({
+  children,
+  canLoadPreference = true,
+}: {
+  children: ReactNode;
+  canLoadPreference?: boolean;
+}) {
   const log = createLogger("useThemePreference");
   const [theme, setThemeState] = useState<ThemePreference>(getInitialThemePreference);
   const [systemPrefersDark, setSystemPrefersDark] = useState(getSystemPrefersDark);
@@ -95,8 +101,13 @@ export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!canLoadPreference) {
+      setLoading(false);
+      return;
+    }
+
     void fetchPreference();
-  }, [fetchPreference]);
+  }, [canLoadPreference, fetchPreference]);
 
   useEffect(() => {
     setSystemPrefersDark(getSystemPrefersDark());

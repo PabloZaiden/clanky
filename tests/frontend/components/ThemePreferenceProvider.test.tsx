@@ -117,4 +117,33 @@ describe("ThemePreferenceProvider", () => {
       window.matchMedia = originalMatchMedia;
     }
   });
+
+  test("waits to load the persisted preference until loading is enabled", async () => {
+    api.get("/api/preferences/theme", () => ({ theme: "dark" }));
+
+    const { getByTestId, rerender } = renderWithUser(
+      <ThemePreferenceProvider canLoadPreference={false}>
+        <ThemeProbe />
+      </ThemePreferenceProvider>,
+    );
+
+    await waitFor(() => {
+      expect(getByTestId("theme-preference")).toHaveTextContent("system");
+      expect(api.calls("/api/preferences/theme", "GET")).toHaveLength(0);
+      expect(document.documentElement.dataset["themePreference"]).toBe("system");
+    });
+
+    rerender(
+      <ThemePreferenceProvider canLoadPreference>
+        <ThemeProbe />
+      </ThemePreferenceProvider>,
+    );
+
+    await waitFor(() => {
+      expect(api.calls("/api/preferences/theme", "GET")).toHaveLength(1);
+      expect(getByTestId("theme-preference")).toHaveTextContent("dark");
+      expect(getByTestId("resolved-theme")).toHaveTextContent("dark");
+      expect(document.documentElement.classList.contains("dark")).toBe(true);
+    });
+  });
 });
