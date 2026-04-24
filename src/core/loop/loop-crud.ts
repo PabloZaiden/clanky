@@ -1,5 +1,10 @@
 import type { LoopCtx } from "./context";
-import type { Loop, LoopConfig, LoopState, LoopStatus } from "../../types/loop";
+import {
+  POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES,
+  type Loop,
+  type LoopConfig,
+  type LoopState,
+} from "../../types/loop";
 import type { CreateLoopOptions } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
 import { createTimestamp } from "../../types/events";
@@ -174,13 +179,6 @@ const POST_APPROVAL_MUTABLE_CONFIG_KEYS = new Set<keyof Partial<Omit<LoopConfig,
   "fullyAutonomous",
 ]);
 
-const POST_APPROVAL_FULLY_AUTONOMOUS_MUTABLE_STATUSES = new Set<LoopStatus>([
-  "starting",
-  "running",
-  "waiting",
-  "completed",
-]);
-
 function createLoopUpdateError(
   message: string,
   code: string,
@@ -212,7 +210,7 @@ function isPostApprovalFullyAutonomousMutable(
 ): boolean {
   return config.planMode
     && state.planMode?.active === false
-    && POST_APPROVAL_FULLY_AUTONOMOUS_MUTABLE_STATUSES.has(state.status);
+    && POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES.has(state.status);
 }
 
 function assertAllowedPlanModeUpdateKeys(
@@ -244,7 +242,7 @@ function assertAllowedPlanModeUpdateKeys(
     );
     if (disallowedPostApprovalKeys.length > 0) {
       throw createLoopUpdateError(
-        "Only fully autonomous loop can be changed after plan approval while execution is still in progress.",
+        "After plan approval, only the fully autonomous setting can be changed while execution is still in progress.",
         "PLAN_EXECUTION_UPDATE_RESTRICTED",
       );
     }

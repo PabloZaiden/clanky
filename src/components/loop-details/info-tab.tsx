@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Loop } from "../../types/loop";
+import { POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES, type Loop } from "../../types/loop";
 import type { PortForward } from "../../types";
 import type { UpdateLoopRequest } from "../../types";
 import type { EntityLabels } from "../../utils";
@@ -7,13 +7,6 @@ import { formatDateTime, formatModelDisplay } from "./types";
 import { appAbsoluteUrl } from "../../lib/public-path";
 import { Button, getPortForwardStatusBadgeVariant, getPortForwardStatusLabel, StatusBadge } from "../common";
 import { loopDetailsTabContentFullWidthClassName, loopDetailsTabScrollContainerClassName } from "./tab-layout";
-
-const POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES = new Set([
-  "starting",
-  "running",
-  "waiting",
-  "completed",
-]);
 
 interface InfoTabProps {
   loop: Loop;

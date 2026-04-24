@@ -832,7 +832,7 @@ describe("Loops CRUD API Integration", () => {
       expect(response.status).toBe(409);
       const body = await response.json();
       expect(body.error).toBe("plan_execution_update_restricted");
-      expect(body.message).toContain("Only fully autonomous loop can be changed after plan approval");
+      expect(body.message).toContain("After plan approval, only the fully autonomous setting can be changed");
     });
 
     test("rejects unrelated updates while plan mode is actively running", async () => {
