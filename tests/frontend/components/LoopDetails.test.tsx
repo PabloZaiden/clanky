@@ -13,9 +13,11 @@ import {
   createLoopWithStatus,
   createFileDiff,
   createSshSession,
+  createPersistedMessage,
   createPersistedToolCall,
 } from "../helpers/factories";
 import { LoopDetails } from "@/components/LoopDetails";
+import { loopDetailsTabPaddingClassName } from "@/components/loop-details/tab-layout";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -1978,6 +1980,29 @@ describe("log tab", () => {
     await waitFor(() => {
       expect(getByText("Autoscroll")).toBeTruthy();
     });
+  });
+
+  test("renders the log transcript directly on the loop log panel surface", async () => {
+    setupDefaultApi({
+      state: {
+        messages: [createPersistedMessage({ role: "user", content: "Use the whole panel" })],
+      },
+    });
+    const { getByTestId, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Use the whole panel")).toBeTruthy();
+    });
+
+    const logPanel = getByTestId("loop-log-panel");
+    expect(within(logPanel).getByText("Use the whole panel")).toBeTruthy();
+
+    const logViewer = logPanel.querySelector("#logs-viewer") as HTMLElement | null;
+    expect(logViewer).not.toBeNull();
+
+    const transcriptShell = getByTestId("conversation-transcript");
+    expect(logViewer).toContainElement(transcriptShell);
+    expect(transcriptShell.className).toContain(loopDetailsTabPaddingClassName);
   });
 
   test("enters log focus mode while keeping the message composer available", async () => {

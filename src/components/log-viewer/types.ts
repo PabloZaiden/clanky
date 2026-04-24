@@ -64,6 +64,10 @@ export interface LogViewerProps {
   id?: string;
   /** Root directory used to display tool file paths relative to the active chat/loop context. */
   toolPathDisplayRoot?: string;
+  /** Optional surface class override for the scroll container that owns the transcript background. */
+  surfaceClassName?: string;
+  /** Optional class override for the inner transcript wrapper. */
+  transcriptClassName?: string;
 }
 
 export interface ConversationViewerProps extends LogViewerProps {

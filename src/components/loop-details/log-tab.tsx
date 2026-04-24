@@ -48,35 +48,27 @@ export function LogTab({
   const logViewerId = "logs-viewer";
 
   return (
-    <div
-      className={
-        isFocusMode
-          ? "flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden bg-[#171717]"
-          : "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden"
-      }
-    >
-      <div
-        className={
-          isFocusMode
-            ? "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden px-3 pt-3"
-            : `flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden ${loopDetailsTabPaddingClassName}`
-        }
-      >
-        <div className="flex min-w-0 min-h-0 flex-1 flex-col">
-          <LogViewer
-            id={logViewerId}
-            messages={messages}
-            toolCalls={toolCalls}
-            logs={logs}
-            showSystemInfo={showSystemInfo}
-            showReasoning={showReasoning}
-            showTools={showTools}
-            autoScroll={autoScroll}
-            markdownEnabled={markdownEnabled}
-            isActive={isLogActive}
-            toolPathDisplayRoot={toolPathDisplayRoot}
-          />
-        </div>
+    <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-[#171717]" data-testid="loop-log-panel">
+      <div className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden">
+        <LogViewer
+          id={logViewerId}
+          messages={messages}
+          toolCalls={toolCalls}
+          logs={logs}
+          showSystemInfo={showSystemInfo}
+          showReasoning={showReasoning}
+          showTools={showTools}
+          autoScroll={autoScroll}
+          markdownEnabled={markdownEnabled}
+          isActive={isLogActive}
+          toolPathDisplayRoot={toolPathDisplayRoot}
+          surfaceClassName="bg-transparent"
+          transcriptClassName={
+            isFocusMode
+              ? "flex w-full flex-col px-3 pt-3 pb-5 sm:px-4 sm:pt-4 sm:pb-6 lg:px-5"
+              : `flex w-full flex-col ${loopDetailsTabPaddingClassName}`
+          }
+        />
       </div>
 
       {isFocusMode ? (

@@ -28,6 +28,8 @@ export const ConversationViewer = memo(function ConversationViewer({
   emptyStateMessage = "No activity yet.",
   activeStateMessage = "Working...",
   toolPathDisplayRoot,
+  surfaceClassName,
+  transcriptClassName,
 }: ConversationViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -120,12 +122,14 @@ export const ConversationViewer = memo(function ConversationViewer({
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
   const isEmpty = entries.length === 0;
+  const resolvedSurfaceClassName = surfaceClassName ?? "bg-[#171717]";
+  const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-5";
 
   return (
     <div
       ref={containerRef}
       id={id}
-      className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto bg-[#171717] text-xs text-gray-100 sm:text-sm ${!maxHeight ? "flex-1 min-h-0" : ""}`}
+      className={`dark-scrollbar min-w-0 overflow-x-hidden overflow-y-auto text-xs text-gray-100 sm:text-sm ${resolvedSurfaceClassName} ${!maxHeight ? "flex-1 min-h-0" : ""}`}
       style={maxHeight ? { maxHeight } : undefined}
     >
       {isEmpty ? (
@@ -139,11 +143,8 @@ export const ConversationViewer = memo(function ConversationViewer({
             emptyStateMessage
           )}
         </div>
-        ) : (
-          <div
-            className="mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-5"
-            data-testid="conversation-transcript"
-          >
+      ) : (
+        <div className={resolvedTranscriptClassName} data-testid="conversation-transcript">
           {entries.map((entry, index) => {
             const spacingClass = getEntrySpacingClass(entry, entries[index - 1]);
             if (entry.type === "message") {
