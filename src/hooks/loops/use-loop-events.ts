@@ -4,6 +4,7 @@
 
 import type { Loop, LoopEvent } from "../../types";
 import { useGlobalEvents } from "../useWebSocket";
+import { useRefreshOnReconnect } from "../useRefreshOnReconnect";
 
 interface UseLoopEventsOptions {
   refresh: () => Promise<void>;
@@ -45,7 +46,12 @@ export function useLoopEvents({ refresh, refreshLoop, setLoops }: UseLoopEventsO
     }
   }
 
-  useGlobalEvents<LoopEvent>({
+  const { status } = useGlobalEvents<LoopEvent>({
     onEvent: handleEvent,
+  });
+
+  useRefreshOnReconnect({
+    status,
+    onReconnect: refresh,
   });
 }

@@ -29,6 +29,7 @@ import { useLoopData } from "./useLoopData";
 import { createLoopEventHandler } from "./useLoopEventHandler";
 import { useLoopActions } from "./useLoopActions";
 import { useLoopFileQueries } from "./useLoopFileQueries";
+import { useRefreshOnReconnect } from "../useRefreshOnReconnect";
 
 const log = createLogger("useLoop");
 
@@ -226,6 +227,12 @@ export function useLoop(loopId: string): UseLoopResult {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useRefreshOnReconnect({
+    status: connectionStatus,
+    resetKey: loopId,
+    onReconnect: () => refresh({ hydrateFromSnapshot: true }),
+  });
 
   // Cleanup: Release memory and cancel in-flight requests when component unmounts
   // Critical for preventing memory leaks when closing LoopDetails
