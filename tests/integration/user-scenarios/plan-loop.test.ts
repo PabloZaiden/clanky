@@ -340,6 +340,70 @@ describe("Plan + Loop User Scenarios", () => {
         backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
       }
     });
+
+    test("manually accepted plans can enable fully autonomous mode afterward", async () => {
+      const ghExecutor = new GitHubMockExecutor();
+      backendManager.setExecutorFactoryForTesting(() => ghExecutor);
+
+      try {
+        ctx.mockBackend.reset(
+          createPlanModeMockResponses({
+            planIterations: 1,
+            executionResponses: ["Done! <promise>COMPLETE</promise>"],
+          })
+        );
+
+        const { status, body } = await createLoopViaAPI(ctx.baseUrl, {
+          directory: ctx.workDir,
+          prompt: "Create a plan, let me approve it, then continue autonomously",
+          planMode: true,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+        });
+
+        expect(status).toBe(201);
+        const loop = body as Loop;
+        expect(loop.config.fullyAutonomous).toBe(false);
+
+        await waitForPlanReady(ctx.baseUrl, loop.config.id);
+
+        const accepted = await acceptPlanViaAPI(ctx.baseUrl, loop.config.id);
+        expect(accepted.status).toBe(200);
+
+        const updateResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fullyAutonomous: true }),
+        });
+        expect(updateResponse.status).toBe(200);
+        const updatedLoop = await updateResponse.json() as Loop;
+        expect(updatedLoop.config.fullyAutonomous).toBe(true);
+        expect(updatedLoop.state.fullyAutonomousPending).toBe(true);
+
+        const pushedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "pushed");
+        const fullyAutonomousLoop = await waitForLoopCondition(
+          ctx.baseUrl,
+          loop.config.id,
+          (latestLoop) => (
+            latestLoop.state.status === "pushed"
+            && latestLoop.state.fullyAutonomousPending !== true
+            && latestLoop.state.automaticPrFlow?.enabled === true
+          ),
+          "delayed fully autonomous post-push state",
+        );
+
+        expect(fullyAutonomousLoop.state.fullyAutonomousPending).not.toBe(true);
+        expect(fullyAutonomousLoop.state.automaticPrFlow?.enabled).toBe(true);
+        expect(fullyAutonomousLoop.state.automaticPrFlow?.pullRequestNumber).toBe(123);
+
+        const pushRef = await Bun.$`git -C ${ctx.remoteDir!} show-ref --verify refs/heads/${pushedLoop.state.git!.workingBranch}`.nothrow();
+        expect(pushRef.exitCode).toBe(0);
+
+        await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
+      } finally {
+        backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+      }
+    });
   });
 
   describe("Plan Close Variant A: Discard Plan", () => {
