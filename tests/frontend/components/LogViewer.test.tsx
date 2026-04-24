@@ -965,10 +965,10 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[tool]} showTools={true} />
       );
 
-      const toggle = getByRole("button", { name: /Tool calls/i });
+      const toggle = getByRole("button", { name: /Tool calls.*1 tool call/i });
       const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
 
-      expect(getAllByRole("button", { name: /Tool calls/i })).toHaveLength(1);
+      expect(getAllByRole("button", { name: /Tool calls.*1 tool call/i })).toHaveLength(1);
       expect(toggle).toHaveAttribute("aria-expanded", "false");
       expect(panel).not.toBeNull();
       expect(panel?.hidden).toBe(true);
@@ -998,10 +998,10 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
       );
 
-      const toggle = getByRole("button", { name: /Tool calls/i });
+      const toggle = getByRole("button", { name: /Tool calls.*2 tool calls/i });
       const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
 
-      expect(getAllByRole("button", { name: /Tool calls/i })).toHaveLength(1);
+      expect(getAllByRole("button", { name: /Tool calls.*2 tool calls/i })).toHaveLength(1);
       expect(toggle).toHaveAttribute("aria-expanded", "false");
       expect(panel?.hidden).toBe(true);
 
@@ -1053,7 +1053,7 @@ describe("LogViewer", () => {
         />
       );
 
-      const toggles = getAllByRole("button", { name: /Tool calls/i });
+      const toggles = getAllByRole("button", { name: /Tool calls.*2 tool calls/i });
       const panels = Array.from(container.querySelectorAll("[data-tool-group-panel='true']")) as HTMLDivElement[];
 
       expect(toggles).toHaveLength(2);
@@ -1088,7 +1088,7 @@ describe("LogViewer", () => {
         <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
       );
 
-      const toggle = getByRole("button", { name: /Tool calls/i });
+      const toggle = getByRole("button", { name: /Tool calls.*2 tool calls/i });
       const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
       const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
       expect(controlledPanelId).not.toBe("");

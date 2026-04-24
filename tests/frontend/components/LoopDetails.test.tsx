@@ -2000,11 +2000,11 @@ describe("log tab", () => {
     const { container, getByLabelText, getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: /Tool calls/i })).toBeTruthy();
+      expect(getByRole("button", { name: /Tool calls.*1 tool call/i })).toBeTruthy();
     });
 
     const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
-    const toggle = getByRole("button", { name: /Tool calls/i });
+    const toggle = getByRole("button", { name: /Tool calls.*1 tool call/i });
     const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
     const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
     expect(showToolsCheckbox.checked).toBe(true);
