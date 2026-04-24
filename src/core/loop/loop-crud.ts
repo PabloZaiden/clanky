@@ -11,7 +11,7 @@ import { GitService } from "../git-service";
 import { log } from "../logger";
 import { generateLoopName } from "../../utils/name-generator";
 import { normalizeCommitScope } from "../../utils/commit-scope";
-import { assertValidTransition } from "../loop-state-machine";
+import { assertValidTransition, isActiveStatus } from "../loop-state-machine";
 import { normalizeBranchPrefix } from "../branch-name";
 import { resolvePullRequestDestination } from "../pull-request-navigation";
 import { resolveEffectiveCheapModel } from "../cheap-model";
@@ -212,6 +212,7 @@ export async function updateLoopImpl(
   }
 
   const engine = ctx.engines.get(loopId);
+  const currentConfig = engine?.config ?? loop.config;
   if (engine) {
     const status = engine.state.status;
     if (status === "planning") {
@@ -224,7 +225,7 @@ export async function updateLoopImpl(
           "PLANNING_UPDATE_RESTRICTED",
         );
       }
-    } else if (status === "starting" || status === "running" || status === "waiting") {
+    } else if (status === "waiting" || isActiveStatus(status)) {
       throw createLoopUpdateError("Cannot update an active loop. Stop it first.", "ACTIVE_LOOP_UPDATE_RESTRICTED");
     }
   }
@@ -237,7 +238,7 @@ export async function updateLoopImpl(
 
   if (
     updates.useWorktree !== undefined &&
-    updates.useWorktree !== loop.config.useWorktree &&
+    updates.useWorktree !== currentConfig.useWorktree &&
     (loop.state.git?.originalBranch || pendingGitState?.originalBranch)
   ) {
     log.warn(`Rejected useWorktree update for loop ${loopId} after git setup`);
@@ -249,16 +250,16 @@ export async function updateLoopImpl(
   }
 
   const updatedConfig: LoopConfig = {
-    ...loop.config,
+    ...currentConfig,
     ...updates,
-    cheapModel: updates.cheapModel ?? loop.config.cheapModel ?? DEFAULT_LOOP_CONFIG.cheapModel,
+    cheapModel: updates.cheapModel ?? currentConfig.cheapModel ?? DEFAULT_LOOP_CONFIG.cheapModel,
     git: updates.git
       ? {
-          ...loop.config.git,
+          ...currentConfig.git,
           ...updates.git,
-          branchPrefix: normalizeBranchPrefix(updates.git.branchPrefix ?? loop.config.git.branchPrefix),
+          branchPrefix: normalizeBranchPrefix(updates.git.branchPrefix ?? currentConfig.git.branchPrefix),
         }
-      : loop.config.git,
+      : currentConfig.git,
     updatedAt: createTimestamp(),
   };
 

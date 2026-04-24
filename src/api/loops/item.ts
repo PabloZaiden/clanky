@@ -126,16 +126,16 @@ export const loopsItemRoutes = {
     /**
      * PATCH /api/loops/:id - Update a loop's configuration.
      *
-      * Updates the specified fields of a loop's configuration. Active execution
-      * loops must be stopped first, except active planning loops may update only
-      * autoAcceptPlan and fullyAutonomous. Partial updates are supported.
-      *
-      * Updatable fields: name, directory, prompt, model, maxIterations,
-      * maxConsecutiveErrors, activityTimeoutSeconds, stopPattern, baseBranch,
-      * clearPlanningFolder, planMode, git, autoAcceptPlan, fullyAutonomous
-      *
-      * @returns Updated Loop object or 404 if not found
-      */
+     * Updates the specified fields of a loop's configuration. Active execution
+     * loops must be stopped first, except active planning loops may update only
+     * autoAcceptPlan and fullyAutonomous. Partial updates are supported.
+     *
+     * Updatable fields: name, directory, prompt, model, maxIterations,
+     * maxConsecutiveErrors, activityTimeoutSeconds, stopPattern, baseBranch,
+     * clearPlanningFolder, planMode, git, autoAcceptPlan, fullyAutonomous
+     *
+     * @returns Updated Loop object or 404 if not found
+     */
     async PATCH(req: Request & { params: { id: string } }): Promise<Response> {
       log.debug("PATCH /api/loops/:id", { loopId: req.params.id });
       const loop = await loopManager.getLoop(req.params.id);

@@ -757,7 +757,7 @@ describe("actions tab content", () => {
         return loop;
       });
 
-      const { getAllByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+      const { getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
       await waitFor(() => {
         expect(getByText("Planning Loop")).toBeTruthy();
@@ -769,10 +769,8 @@ describe("actions tab content", () => {
         expect(getByText("Plan automation")).toBeTruthy();
       });
 
-      const planningCheckboxes = getAllByRole("checkbox") as HTMLInputElement[];
-      expect(planningCheckboxes).toHaveLength(2);
-      const autoAcceptCheckbox = planningCheckboxes[0]!;
-      const fullyAutonomousCheckbox = planningCheckboxes[1]!;
+      const autoAcceptCheckbox = getByRole("checkbox", { name: /Auto-accept plan/i }) as HTMLInputElement;
+      const fullyAutonomousCheckbox = getByRole("checkbox", { name: /Fully autonomous loop/i }) as HTMLInputElement;
 
       expect(autoAcceptCheckbox.checked).toBe(false);
       expect(fullyAutonomousCheckbox.checked).toBe(false);
@@ -780,13 +778,9 @@ describe("actions tab content", () => {
       await user.click(fullyAutonomousCheckbox);
 
       await waitFor(() => {
-        const updatedPlanningCheckboxes = getAllByRole("checkbox") as HTMLInputElement[];
-        expect(updatedPlanningCheckboxes).toHaveLength(2);
-        const updatedAutoAcceptCheckbox = updatedPlanningCheckboxes[0]!;
-        const updatedFullyAutonomousCheckbox = updatedPlanningCheckboxes[1]!;
         expect(api.calls("/api/loops/:id", "PATCH")).toHaveLength(1);
-        expect(updatedAutoAcceptCheckbox.checked).toBe(true);
-        expect(updatedFullyAutonomousCheckbox.checked).toBe(true);
+        expect(autoAcceptCheckbox.checked).toBe(true);
+        expect(fullyAutonomousCheckbox.checked).toBe(true);
       });
     });
   });
