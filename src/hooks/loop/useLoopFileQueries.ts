@@ -5,7 +5,7 @@
 
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { FileDiff, FileContentResponse, PullRequestDestinationResponse } from "../../types";
+import type { FileDiff, FileContentResponse, PullRequestDestinationResponse, Loop } from "../../types";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
 
@@ -13,6 +13,7 @@ const log = createLogger("useLoop");
 
 export interface UseLoopFileQueriesParams {
   loopId: string;
+  loop: Loop | null;
   isActiveLoop: (expectedLoopId: string) => boolean;
   ignoreStaleLoopAction: <T>(actionName: string, expectedLoopId: string, fallback: T) => T | null;
   ignoreStaleLoopError: <T>(
@@ -24,6 +25,23 @@ export interface UseLoopFileQueriesParams {
   setError: Dispatch<SetStateAction<string | null>>;
 }
 
+interface ApiErrorBody {
+  error?: string;
+}
+
+function shouldSuppressTransientPlanFetchError(
+  loop: Loop | null,
+  response: Response,
+  errorBody: ApiErrorBody | null,
+): boolean {
+  return (
+    loop?.state.status === "planning"
+    && loop.state.planMode?.isPlanReady !== true
+    && response.status === 400
+    && errorBody?.error === "no_worktree"
+  );
+}
+
 export interface UseLoopFileQueriesResult {
   getDiff: () => Promise<FileDiff[]>;
   getPlan: () => Promise<FileContentResponse>;
@@ -32,7 +50,7 @@ export interface UseLoopFileQueriesResult {
 }
 
 export function useLoopFileQueries(params: UseLoopFileQueriesParams): UseLoopFileQueriesResult {
-  const { loopId, isActiveLoop, ignoreStaleLoopAction, ignoreStaleLoopError, setError } = params;
+  const { loopId, loop, isActiveLoop, ignoreStaleLoopAction, ignoreStaleLoopError, setError } = params;
 
   const getDiff = useCallback(async (): Promise<FileDiff[]> => {
     const actionLoopId = loopId;
@@ -80,6 +98,20 @@ export function useLoopFileQueries(params: UseLoopFileQueriesParams): UseLoopFil
     try {
       const response = await appFetch(`/api/loops/${actionLoopId}/plan`);
       if (!response.ok) {
+        let errorBody: ApiErrorBody | null = null;
+        try {
+          errorBody = (await response.json()) as ApiErrorBody;
+        } catch {
+          errorBody = null;
+        }
+        if (shouldSuppressTransientPlanFetchError(loop, response, errorBody)) {
+          log.debug("Suppressing transient plan fetch error during planning startup", {
+            loopId: actionLoopId,
+            status: response.status,
+            error: errorBody?.error,
+          });
+          return { content: "", exists: false };
+        }
         throw new Error(`Failed to get plan: ${response.statusText}`);
       }
       const result = (await response.json()) as FileContentResponse;
@@ -101,7 +133,7 @@ export function useLoopFileQueries(params: UseLoopFileQueriesParams): UseLoopFil
       setError(String(err));
       return { content: "", exists: false };
     }
-  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, setError]);
+  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loop, loopId, setError]);
 
   const getStatusFile = useCallback(async (): Promise<FileContentResponse> => {
     const actionLoopId = loopId;
