@@ -237,6 +237,77 @@ describe("ChatDetails", () => {
     expect(interruptCalls[0]?.body).toEqual({ reason: DEFAULT_CHAT_INTERRUPT_REASON });
   });
 
+  test("keeps the draft textarea editable while the chat is streaming", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        session: { id: "session-1" },
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { getByLabelText, getByRole, getByText, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
+
+    expect(composer.disabled).toBe(false);
+    expect(getByRole("button", { name: "Interrupt" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Send" })).toBeNull();
+    expect(getByText("You can draft the next message while the AI is working. Send becomes available again when it finishes.")).toBeTruthy();
+
+    await user.type(composer, "Queued follow-up");
+
+    expect(composer.value).toBe("Queued follow-up");
+  });
+
+  test("uses unique composer ids when multiple active chats are mounted", async () => {
+    api.get("/api/chats/:id", (req) => {
+      const chatId = req.params["id"] ?? "missing-chat-id";
+      const baseChat = createChat();
+
+      return createChat({
+        config: {
+          ...baseChat.config,
+          id: chatId,
+          name: `Chat ${chatId}`,
+        },
+        state: {
+          ...baseChat.state,
+          id: chatId,
+          status: "streaming",
+          session: { id: `session-${chatId}` },
+          messages: [],
+          logs: [],
+          toolCalls: [],
+        },
+      });
+    });
+
+    const { getAllByLabelText } = renderWithUser(
+      <>
+        <ChatDetails chatId="chat-1" />
+        <ChatDetails chatId="chat-2" />
+      </>,
+    );
+
+    const composers = await waitFor(() => getAllByLabelText("Message")) as HTMLTextAreaElement[];
+
+    expect(composers).toHaveLength(2);
+
+    const composerIds = composers.map((composer) => composer.id);
+    expect(new Set(composerIds).size).toBe(2);
+
+    const hintIds = composers.map((composer) => composer.getAttribute("aria-describedby"));
+    expect(new Set(hintIds).size).toBe(2);
+    hintIds.forEach((hintId) => {
+      expect(hintId).toBeTruthy();
+      expect(document.getElementById(hintId!)).toBeTruthy();
+    });
+  });
+
   test("prevents the send button from taking focus on press", async () => {
     api.get("/api/chats/:id", () => createChat());
 
@@ -754,6 +825,86 @@ describe("ChatDetails", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("preserves a draft typed during streaming and sends it once the chat becomes idle", async () => {
+    const activeChat = createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        session: { id: "session-1" },
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    });
+    const sentChat = createChat({
+      state: {
+        ...activeChat.state,
+        status: "streaming",
+        messages: [
+          {
+            id: "user-queued",
+            role: "user",
+            content: "Queued follow-up",
+            timestamp: "2025-01-01T00:00:06.000Z",
+          },
+        ],
+      },
+    });
+
+    api.get("/api/chats/:id", () => activeChat);
+    api.post("/api/chats/:id/messages", () => sentChat, 200);
+
+    const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
+    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+
+    expect(connection).toBeTruthy();
+
+    await user.type(composer, "Queued follow-up");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(0);
+    expect(composer.value).toBe("Queued follow-up");
+    expect(queryByRole("button", { name: "Send" })).toBeNull();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.message",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:05.000Z",
+        message: {
+          id: "assistant-queued",
+          role: "assistant",
+          content: "Still working",
+          timestamp: "2025-01-01T00:00:05.000Z",
+        },
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.interrupted",
+        chatId: CHAT_ID,
+        timestamp: "2025-01-01T00:00:05.500Z",
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Send" })).toBeTruthy();
+    });
+
+    expect((getByLabelText("Message") as HTMLTextAreaElement).value).toBe("Queued follow-up");
+
+    await user.click(getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(1);
+    });
+
+    expect(api.calls("/api/chats/:id/messages", "POST")[0]?.body).toMatchObject({
+      message: "Queued follow-up",
+      attachments: [],
     });
   });
 
