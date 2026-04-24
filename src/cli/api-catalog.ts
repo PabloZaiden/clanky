@@ -59,14 +59,14 @@ type RouteHandler = ((...args: never[]) => unknown) | Record<string, unknown>;
 
 export interface ApiEndpointCatalogEntry {
   path: string;
-  cliPath: string;
+  cliPath?: string;
   methods: HttpMethod[];
   description?: string;
   requestSchema?: z.ZodTypeAny;
   querySchema?: z.ZodTypeAny;
 }
 
-type ApiEndpointOverride = Omit<Partial<ApiEndpointCatalogEntry>, "path" | "methods">;
+type ApiEndpointOverride = Pick<ApiEndpointCatalogEntry, "description" | "requestSchema" | "querySchema">;
 
 const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/health": {
@@ -334,7 +334,7 @@ function getRouteEntries(): ApiEndpointCatalogEntry[] {
       const override = endpointOverrides[path] ?? {};
       return {
         path,
-        cliPath: path.startsWith("/api/") ? path.slice("/api/".length) : path,
+        cliPath: getCliEndpointPath(path),
         methods: getRouteMethods(handler as RouteHandler),
         description: override.description,
         requestSchema: override.requestSchema,
@@ -342,6 +342,10 @@ function getRouteEntries(): ApiEndpointCatalogEntry[] {
       };
     })
     .sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function getCliEndpointPath(path: string): string {
+  return path.startsWith("/api/") ? path.slice("/api/".length) : path;
 }
 
 function normalizeEndpointPath(input: string): string {
