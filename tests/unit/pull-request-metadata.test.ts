@@ -60,6 +60,26 @@ describe("pull request metadata helpers", () => {
     expect(metadata.body).toContain("## Branches");
   });
 
+  test("buildFallbackPullRequestMetadata strips banned branding and automation wording while keeping fallback sections useful", () => {
+    const metadata = buildFallbackPullRequestMetadata({
+      ...metadataInput,
+      commitMessages: [
+        "feat(pr): improve Ralpher pull request summary generation",
+        "test(pr): remove generated automatically AutoPR wording from metadata",
+      ],
+    });
+
+    expect(metadata.title).toBe("Improve pull request summary generation and remove wording from metadata");
+    expect(metadata.title).not.toMatch(/ralpher|autopr|generated automatically/i);
+    expect(metadata.body).toContain("## Summary");
+    expect(metadata.body).toContain("- Improve pull request summary generation");
+    expect(metadata.body).toContain("- Remove wording from metadata");
+    expect(metadata.body).toContain("## Changes");
+    expect(metadata.body).toContain("## Files");
+    expect(metadata.body).toContain("## Branches");
+    expect(metadata.body).not.toMatch(/ralpher|autopr|generated automatically/i);
+  });
+
   test("generatePullRequestMetadata parses strict JSON responses", async () => {
     const metadata = await generatePullRequestMetadata({
       metadata: metadataInput,

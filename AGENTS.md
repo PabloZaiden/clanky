@@ -454,6 +454,10 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 - **Avoid name collisions** — if two modules export types with the same name but different meanings, rename one to be specific (e.g., `ConnectionStatus` → `WebSocketConnectionStatus`).
 - **Keep barrel exports complete and clean** — when adding new modules, add them to the barrel (`index.ts`). When removing modules, clean up their re-exports.
 
+### Test Signal
+
+- **Do not keep removal-only regression tests.** If a test mainly checks that an old label, workflow, or behavior is "not there anymore," remove or replace it with coverage that proves the current supported behavior works. Keep absence-focused assertions only when the absence itself is part of the product contract, such as security, validation, or explicit UX requirements.
+
 ## Common Patterns
 
 ### Adding a New API Endpoint
