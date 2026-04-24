@@ -31,6 +31,10 @@ async function persistAutomationFailure(ctx: LoopCtx, loop: Loop, error: string)
   emitAutomaticPrFlowUpdatedEvent(ctx.emitter, loop.config.id, loop.state.automaticPrFlow);
 }
 
+function isConcurrentCompletionNoop(error: string | undefined): boolean {
+  return error === "Operation already in progress";
+}
+
 export async function finalizeFullyAutonomousPushImpl(ctx: LoopCtx, loopId: string): Promise<void> {
   const loop = await loadLoop(loopId);
   if (!loop || loop.state.fullyAutonomousPending !== true) {
@@ -83,6 +87,9 @@ export async function handleFullyAutonomousCompletionImpl(ctx: LoopCtx, loopId: 
 
   const result = await ctx.pushLoop(loopId);
   if (!result.success) {
+    if (isConcurrentCompletionNoop(result.error)) {
+      return;
+    }
     const latestLoop = await loadLoop(loopId);
     if (latestLoop) {
       await persistAutomationFailure(

@@ -302,6 +302,13 @@ export type LoopStatus =
   | "pushed"              // Branch pushed to remote (final state, can receive reviews)
   | "deleted";            // Marked for deletion (final state, awaiting purge)
 
+export const POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
+  "starting",
+  "running",
+  "waiting",
+  "completed",
+]);
+
 /**
  * Backend session information.
  * Tracks the connection to the agent backend.

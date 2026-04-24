@@ -785,6 +785,70 @@ describe("actions tab content", () => {
         expect(fullyAutonomousCheckbox.checked).toBe(true);
       });
     });
+
+    test("approved plan loops can still enable fully autonomous mode from the info tab", async () => {
+      let loop = createLoopWithStatus("running", {
+        config: {
+          id: LOOP_ID,
+          name: "Accepted Plan Loop",
+          planMode: true,
+          autoAcceptPlan: false,
+          fullyAutonomous: false,
+        },
+        state: {
+          planMode: {
+            active: false,
+            feedbackRounds: 0,
+            planningFolderCleared: false,
+            isPlanReady: true,
+          },
+        },
+      });
+      api.get("/api/loops/:id", () => loop);
+      api.get("/api/loops/:id/diff", () => []);
+      api.get("/api/loops/:id/plan", () => ({ exists: true, content: "# Plan" }));
+      api.get("/api/loops/:id/status-file", () => ({ exists: true, content: "- Task A" }));
+      api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+      api.get("/api/models", () => []);
+      api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+      api.get("/api/preferences/log-level", () => ({ level: "info" }));
+      api.patch("/api/loops/:id", (req) => {
+        expect(req.body).toEqual({ fullyAutonomous: true });
+        loop = {
+          ...loop,
+          config: {
+            ...loop.config,
+            autoAcceptPlan: true,
+            fullyAutonomous: true,
+          },
+        };
+        return loop;
+      });
+
+      const { getByRole, getByText, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+      await waitFor(() => {
+        expect(getByText("Accepted Plan Loop")).toBeTruthy();
+      });
+
+      await user.click(getByText("Info"));
+
+      await waitFor(() => {
+        expect(getByText("Plan automation")).toBeTruthy();
+      });
+
+      expect(queryByRole("checkbox", { name: /Auto-accept plan/i })).toBeNull();
+
+      const fullyAutonomousCheckbox = getByRole("checkbox", { name: /Fully autonomous loop/i }) as HTMLInputElement;
+      expect(fullyAutonomousCheckbox.checked).toBe(false);
+
+      await user.click(fullyAutonomousCheckbox);
+
+      await waitFor(() => {
+        expect(api.calls("/api/loops/:id", "PATCH")).toHaveLength(1);
+        expect(fullyAutonomousCheckbox.checked).toBe(true);
+      });
+    });
   });
 
   test("completed loop shows accept and delete actions", async () => {
