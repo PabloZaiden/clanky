@@ -41,5 +41,5 @@ export function useRefreshOnReconnect({
     if (status === "error" && hasOpenedRef.current) {
       reconnectPendingRef.current = true;
     }
-  }, [enabled, onReconnect, status]);
+  }, [enabled, onReconnect, resetKey, status]);
 }
