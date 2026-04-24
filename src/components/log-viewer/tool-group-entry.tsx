@@ -20,6 +20,8 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
   const [isExpanded, setIsExpanded] = useState(false);
   const panelId = useId();
   const labelId = useId();
+  const toolCount = entry.tools.length;
+  const toolCallCountLabel = `${toolCount} tool call${toolCount === 1 ? "" : "s"}`;
   const groupedToolEntries = useMemo(
     () => annotateDisplayEntries(
       entry.tools.map((tool) => ({
@@ -49,8 +51,8 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           data-tool-group-toggle="true"
         >
           <span className="font-medium">Tool calls</span>
-          <span className="text-xs uppercase tracking-[0.18em] text-sky-200/70">
-            {isExpanded ? "Collapse" : "Expand"}
+          <span className="text-xs text-sky-700 dark:text-sky-200/70">
+            {toolCallCountLabel}
           </span>
         </button>
         <div
