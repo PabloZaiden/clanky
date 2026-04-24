@@ -1180,7 +1180,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
@@ -1229,8 +1229,14 @@ describe("ChatDetails", () => {
 
     await waitFor(() => {
       expect(getByText("Alpha before tool")).toBeTruthy();
-      expect(getByText("View README.md")).toBeTruthy();
+      expect(getByRole("button", { name: /Tool calls/i })).toBeTruthy();
       expect(getByText("Beta after tool")).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: /Tool calls/i }));
+
+    await waitFor(() => {
+      expect(getByText("View README.md")).toBeTruthy();
     });
 
     const transcript = container.querySelector("#chat-transcript");
