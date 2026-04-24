@@ -45,6 +45,11 @@ import { sanitizeSpawnArgsForLogging, getProcessExitHint, inferProviderID } from
 const ACP_PROCESS_EXIT_WAIT_MS = 1_000;
 const ACP_PROCESS_FORCE_KILL_WAIT_MS = 250;
 
+type CachedModels = {
+  models: ModelInfo[];
+  complete: boolean;
+};
+
 /**
  * ACP backend implementation.
  * Supports stdio ACP mode and translates ACP stream updates into AgentEvents.
@@ -88,7 +93,7 @@ export class AcpBackend implements Backend {
 
   /** Cache sessions and model discovery results */
   private sessionCache = new Map<string, AgentSession>();
-  private modelCache = new Map<string, ModelInfo[]>();
+  private modelCache = new Map<string, CachedModels>();
   private copilotDefaultReasoningEfforts = new Map<string, Map<string, string>>();
 
   /** Track active permission requests that expect a JSON-RPC response */
@@ -1048,6 +1053,29 @@ export class AcpBackend implements Backend {
     }
   }
 
+  private getCachedModels(directory: string): CachedModels | undefined {
+    return this.modelCache.get(directory);
+  }
+
+  private hasCachedModels(directory: string): boolean {
+    return !!this.getCachedModels(directory);
+  }
+
+  private shouldTreatCachedModelsAsComplete(): boolean {
+    return this.provider !== "copilot";
+  }
+
+  private setCachedModels(directory: string, models: ModelInfo[], complete: boolean): void {
+    if (models.length === 0) {
+      return;
+    }
+    const existing = this.getCachedModels(directory);
+    if (existing?.complete && !complete) {
+      return;
+    }
+    this.modelCache.set(directory, { models, complete });
+  }
+
   private async discoverCopilotModelVariants(
     directory: string,
     sessionId: string,
@@ -1211,7 +1239,11 @@ export class AcpBackend implements Backend {
       // Extract model info from config options
       const configModels = this.parseModelsFromConfigOptions(configOptions);
       if (configModels.length > 0) {
-        this.modelCache.set(options.directory, configModels);
+        this.setCachedModels(
+          options.directory,
+          configModels,
+          this.shouldTreatCachedModelsAsComplete(),
+        );
       }
 
       // Extract current model from config options
@@ -1236,10 +1268,14 @@ export class AcpBackend implements Backend {
     this.sessionCache.set(id, session);
 
     // Fallback: parse models from legacy fields if none from config options
-    if (!this.modelCache.has(options.directory)) {
+    if (!this.hasCachedModels(options.directory)) {
       const models = this.parseModelsFromSessionResult(result);
       if (models.length > 0) {
-        this.modelCache.set(options.directory, models);
+        this.setCachedModels(
+          options.directory,
+          models,
+          this.shouldTreatCachedModelsAsComplete(),
+        );
       }
     }
 
@@ -1614,9 +1650,9 @@ export class AcpBackend implements Backend {
    * Get available models for a directory.
    */
   async getModels(directory: string): Promise<ModelInfo[]> {
-    const cached = this.modelCache.get(directory);
-    if (cached) {
-      return cached;
+    const cached = this.getCachedModels(directory);
+    if (cached && (this.provider !== "copilot" || cached.complete)) {
+      return cached.models;
     }
 
     const result = await this.sendRpcRequest<unknown>("session/new", {
@@ -1631,21 +1667,30 @@ export class AcpBackend implements Backend {
       if (this.provider === "copilot" && sessionId && configOptions.length > 0) {
         const copilotModels = await this.discoverCopilotModelVariants(directory, sessionId, configOptions);
         if (copilotModels.length > 0) {
-          this.modelCache.set(directory, copilotModels);
+          this.setCachedModels(directory, copilotModels, true);
           return copilotModels;
         }
       }
       const configModels = this.parseModelsFromConfigOptions(configOptions);
       if (configModels.length > 0) {
-        this.modelCache.set(directory, configModels);
+        this.setCachedModels(
+          directory,
+          configModels,
+          this.shouldTreatCachedModelsAsComplete(),
+        );
         return configModels;
       }
 
       const models = this.parseModelsFromSessionResult(result);
       if (models.length > 0) {
-        this.modelCache.set(directory, models);
+        this.setCachedModels(
+          directory,
+          models,
+          this.shouldTreatCachedModelsAsComplete(),
+        );
+        return models;
       }
-      return models;
+      return cached?.models ?? [];
     } finally {
       if (sessionId) {
         await this.cleanupDiscoverySession(sessionId);
@@ -1824,7 +1869,11 @@ export class AcpBackend implements Backend {
       }
       const configModels = this.parseModelsFromConfigOptions(configOptions);
       if (configModels.length > 0) {
-        this.modelCache.set(this.directory, configModels);
+        this.setCachedModels(
+          this.directory,
+          configModels,
+          this.shouldTreatCachedModelsAsComplete(),
+        );
       }
     }
     if (!session.model && isRecord(result)) {
@@ -1833,10 +1882,14 @@ export class AcpBackend implements Backend {
         session.model = responseModel;
       }
     }
-    if (!this.modelCache.has(this.directory)) {
+    if (!this.hasCachedModels(this.directory)) {
       const models = this.parseModelsFromSessionResult(result);
       if (models.length > 0) {
-        this.modelCache.set(this.directory, models);
+        this.setCachedModels(
+          this.directory,
+          models,
+          this.shouldTreatCachedModelsAsComplete(),
+        );
       }
     }
     return session;
