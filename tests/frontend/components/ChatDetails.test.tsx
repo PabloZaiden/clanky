@@ -1180,7 +1180,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
@@ -1229,8 +1229,23 @@ describe("ChatDetails", () => {
 
     await waitFor(() => {
       expect(getByText("Alpha before tool")).toBeTruthy();
-      expect(getByText("View README.md")).toBeTruthy();
+      expect(getByRole("button", { name: /Tool calls/i })).toBeTruthy();
       expect(getByText("Beta after tool")).toBeTruthy();
+    });
+
+    const toggle = getByRole("button", { name: /Tool calls/i });
+    const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
+    const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(controlledPanelId).not.toBe("");
+    expect(panel?.id).toBe(controlledPanelId);
+    expect(panel?.hidden).toBe(true);
+
+    await user.click(toggle);
+
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(panel?.hidden).toBe(false);
     });
 
     const transcript = container.querySelector("#chat-transcript");

@@ -1991,20 +1991,34 @@ describe("log tab", () => {
     });
   });
 
-  test("enables show tools by default and renders tool entries", async () => {
+  test("enables show tools by default and renders a collapsed tool-call container", async () => {
     setupDefaultApi({
       state: {
         toolCalls: [createPersistedToolCall({ name: "read", input: { path: "/workspaces/test-project/README.md" }, status: "completed" })],
       },
     });
-    const { getByLabelText, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { container, getByLabelText, getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByText("View README.md")).toBeTruthy();
+      expect(getByRole("button", { name: /Tool calls/i })).toBeTruthy();
     });
 
     const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
+    const toggle = getByRole("button", { name: /Tool calls/i });
+    const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
+    const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
     expect(showToolsCheckbox.checked).toBe(true);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(controlledPanelId).not.toBe("");
+    expect(panel?.id).toBe(controlledPanelId);
+    expect(panel?.hidden).toBe(true);
+
+    await user.click(toggle);
+
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(panel?.hidden).toBe(false);
+    });
   });
 
   test("uses the loop worktree root when shortening tool paths", async () => {

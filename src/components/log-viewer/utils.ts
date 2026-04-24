@@ -99,11 +99,7 @@ export function groupConsecutiveToolEntries(sorted: EntryBase[]): GroupedEntryBa
       cursor += 1;
     }
 
-    if (consecutiveTools.length === 1) {
-      groupedEntries.push(entry);
-    } else {
-      groupedEntries.push(createToolGroupEntry(consecutiveTools));
-    }
+    groupedEntries.push(createToolGroupEntry(consecutiveTools));
     index = cursor - 1;
   }
 

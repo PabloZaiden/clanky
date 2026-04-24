@@ -17,7 +17,7 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
   spacingClass,
   toolPathDisplayRoot,
 }: ToolGroupEntryProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const panelId = useId();
   const labelId = useId();
   const groupedToolEntries = useMemo(
