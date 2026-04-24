@@ -1457,7 +1457,7 @@ describe("planning mode", () => {
     });
   });
 
-  test("keeps the waiting state without a shared error banner when plan fetch hits transient no_worktree", async () => {
+  test("keeps the waiting state without a shared error banner when planning files hit transient no_worktree", async () => {
     const loop = createLoopWithStatus("planning", {
       config: { id: LOOP_ID, name: "Startup Planning Loop" },
     });
@@ -1469,7 +1469,12 @@ describe("planning mode", () => {
         message: "Loop is configured to use a worktree, but no worktree path is available.",
       });
     });
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => {
+      throw new MockApiError(400, {
+        error: "no_worktree",
+        message: "Loop is configured to use a worktree, but no worktree path is available.",
+      });
+    });
     api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
     api.get("/api/models", () => []);
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
