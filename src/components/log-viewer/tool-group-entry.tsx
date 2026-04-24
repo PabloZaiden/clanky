@@ -43,17 +43,14 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
       <div className="overflow-hidden rounded-2xl border border-sky-200 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] dark:border-sky-500/25 dark:bg-[#0e1522]">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm text-sky-950 transition hover:bg-sky-100/80 dark:text-sky-100 dark:hover:bg-white/5"
+          className="flex w-full items-center px-4 py-3 text-left text-sm text-sky-950 transition hover:bg-sky-100/80 dark:text-sky-100 dark:hover:bg-white/5"
           aria-expanded={isExpanded}
           aria-controls={panelId}
           id={labelId}
           onClick={() => setIsExpanded((current) => !current)}
           data-tool-group-toggle="true"
         >
-          <span className="font-medium">Tool calls</span>
-          <span className="text-xs text-sky-700 dark:text-sky-200/70">
-            {toolCallCountLabel}
-          </span>
+          <span className="font-medium">{toolCallCountLabel}</span>
         </button>
         <div
           hidden={!isExpanded}

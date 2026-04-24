@@ -2000,11 +2000,11 @@ describe("log tab", () => {
     const { container, getByLabelText, getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: /Tool calls.*1 tool call/i })).toBeTruthy();
+      expect(getByRole("button", { name: /^1 tool call$/i })).toBeTruthy();
     });
 
     const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
-    const toggle = getByRole("button", { name: /Tool calls.*1 tool call/i });
+    const toggle = getByRole("button", { name: /^1 tool call$/i });
     const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
     const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
     expect(showToolsCheckbox.checked).toBe(true);
@@ -2074,6 +2074,8 @@ describe("log tab", () => {
 
     const logPanel = getByTestId("loop-log-panel");
     expect(within(logPanel).getByText("Use the whole panel")).toBeTruthy();
+    expect(logPanel.className).toContain("bg-gray-50");
+    expect(logPanel.className).toContain("dark:bg-[#171717]");
 
     const logViewer = logPanel.querySelector("#logs-viewer") as HTMLElement | null;
     expect(logViewer).not.toBeNull();
