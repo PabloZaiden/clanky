@@ -297,6 +297,7 @@ describe("LogViewer", () => {
 
       const transcriptShell = getByTestId("conversation-transcript");
       expect(transcriptShell?.className).toContain("max-w-7xl");
+      expect(transcriptShell?.className).toContain("lg:px-6");
 
       const messageWidth = container.querySelector("[data-message-role='user'] .min-w-0") as HTMLElement | null;
       expect(messageWidth).not.toBeNull();
@@ -871,6 +872,109 @@ describe("LogViewer", () => {
       );
 
       expect(getAllByText("Run command")).toHaveLength(2);
+    });
+
+    test("groups consecutive tool calls into a single collapsible box", () => {
+      const firstTool = createToolCallData({
+        id: "tool-group-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-b",
+        name: "rg",
+        input: { pattern: "DEFAULT_CLIENT_ID", path: "/src" },
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+
+      const { container, getByRole, getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      expect(container.querySelectorAll("[data-entry-type='tool-group']")).toHaveLength(1);
+      expect(getByRole("button", { name: /Tool calls/i })).toHaveAttribute("aria-expanded", "true");
+      expect(getByText("View /src/first.ts")).toBeInTheDocument();
+      expect(getByText("Find files matching 'DEFAULT_CLIENT_ID' in /src")).toBeInTheDocument();
+    });
+
+    test("splits tool groups when a non-tool entry interrupts the run", () => {
+      const firstTool = createToolCallData({
+        id: "tool-group-split-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: "2026-04-09T16:42:01.000Z",
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-split-b",
+        name: "write",
+        input: { filePath: "/src/second.ts" },
+        timestamp: "2026-04-09T16:42:10.000Z",
+      });
+      const interruptingLog = createLogEntry({
+        id: "tool-group-break",
+        level: "agent",
+        message: "Agent note between tool runs",
+        timestamp: "2026-04-09T16:42:20.000Z",
+      });
+      const thirdTool = createToolCallData({
+        id: "tool-group-split-c",
+        name: "read",
+        input: { path: "/src/third.ts" },
+        timestamp: "2026-04-09T16:42:30.000Z",
+      });
+      const fourthTool = createToolCallData({
+        id: "tool-group-split-d",
+        name: "rg",
+        input: { pattern: "todo", path: "/src" },
+        timestamp: "2026-04-09T16:42:40.000Z",
+      });
+
+      const { container, getAllByRole, getByText } = renderWithUser(
+        <LogViewer
+          messages={[]}
+          toolCalls={[firstTool, secondTool, thirdTool, fourthTool]}
+          logs={[interruptingLog]}
+          showTools={true}
+        />
+      );
+
+      expect(container.querySelectorAll("[data-entry-type='tool-group']")).toHaveLength(2);
+      expect(getAllByRole("button", { name: /Tool calls/i })).toHaveLength(2);
+      expect(getByText("Agent note between tool runs")).toBeInTheDocument();
+    });
+
+    test("collapses and expands grouped tool calls from the shared title toggle", async () => {
+      const firstTool = createToolCallData({
+        id: "tool-group-collapse-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-collapse-b",
+        name: "write",
+        input: { filePath: "/src/second.ts" },
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+
+      const { container, getByRole, user } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      const toggle = getByRole("button", { name: /Tool calls/i });
+      const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLElement | null;
+      expect(panel).not.toBeNull();
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(panel?.hidden).toBe(false);
+
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(panel?.hidden).toBe(true);
+
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(panel?.hidden).toBe(false);
     });
 
     test("keeps consecutive tool rows compact when the displayed minute changes", () => {

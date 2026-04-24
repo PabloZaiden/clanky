@@ -18,6 +18,7 @@ interface ToolEntryProps {
   showTimestamp: boolean;
   spacingClass: string;
   toolPathDisplayRoot?: string;
+  fullWidth?: boolean;
 }
 
 const toolPanelClassName = "space-y-3 rounded-2xl border border-sky-500/20 bg-[#101826] p-3 sm:p-4";
@@ -192,6 +193,7 @@ export const ToolEntry = memo(function ToolEntry({
   showTimestamp,
   spacingClass,
   toolPathDisplayRoot,
+  fullWidth = false,
 }: ToolEntryProps) {
   const meta = getToolMeta(tool, { pathDisplayRoot: toolPathDisplayRoot });
   const structuredDetails = useMemo(
@@ -275,7 +277,7 @@ export const ToolEntry = memo(function ToolEntry({
           {formatTime(timestamp)}
         </time>
       )}
-      <div className="min-w-0 max-w-[min(96%,72rem)]">
+      <div className={fullWidth ? "min-w-0 w-full" : "min-w-0 max-w-[min(96%,72rem)]"}>
         {hasMeaningfulInput ? (
           <LazyDetails
             summary={inputSummary}
