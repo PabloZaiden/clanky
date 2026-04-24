@@ -3,11 +3,13 @@ import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
   getEntrySpacingClass,
+  groupConsecutiveToolEntries,
   isReasoningLogEntry,
   isResponseLogEntry,
 } from "./utils";
 import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
+import { ToolGroupEntry } from "./tool-group-entry";
 import { LogEntryItem } from "./log-entry-item";
 
 export const ConversationViewer = memo(function ConversationViewer({
@@ -118,12 +120,12 @@ export const ConversationViewer = memo(function ConversationViewer({
     });
 
     result.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return annotateDisplayEntries(result);
+    return annotateDisplayEntries(groupConsecutiveToolEntries(result));
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
   const isEmpty = entries.length === 0;
   const resolvedSurfaceClassName = surfaceClassName ?? "bg-[#171717]";
-  const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-5";
+  const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
 
   return (
     <div
@@ -165,6 +167,15 @@ export const ConversationViewer = memo(function ConversationViewer({
                   data={entry.data}
                   timestamp={entry.timestamp}
                   showTimestamp={entry.showTimestamp}
+                  spacingClass={spacingClass}
+                  toolPathDisplayRoot={toolPathDisplayRoot}
+                />
+              );
+            } else if (entry.type === "tool-group") {
+              return (
+                <ToolGroupEntry
+                  key={`tool-group-${entry.id}`}
+                  entry={entry}
                   spacingClass={spacingClass}
                   toolPathDisplayRoot={toolPathDisplayRoot}
                 />

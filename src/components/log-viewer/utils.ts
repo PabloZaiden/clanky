@@ -1,8 +1,10 @@
 import type { LogLevel } from "../../types";
 import type {
   EntryBase,
+  GroupedEntryBase,
   DisplayEntry,
   LogEntry,
+  ToolGroupEntryBase,
 } from "./types";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
@@ -55,15 +57,57 @@ export function getLogLevelColor(level: LogLevel): string {
  * - Tool calls group by tool name: "tool|Write", "tool|Read"
  * - Log entries group by level + message: "log|agent|AI generating response..."
  */
-export function getEntryGroupKey(entry: EntryBase): string {
+export function getEntryGroupKey(entry: GroupedEntryBase): string {
   switch (entry.type) {
     case "message":
       return `message|${entry.data.role}`;
     case "tool":
       return `tool|${entry.data.name}`;
+    case "tool-group":
+      return "tool-group";
     case "log":
       return `log|${entry.data.level}|${entry.data.message}`;
   }
+}
+
+function createToolGroupEntry(tools: ToolGroupEntryBase["tools"]): ToolGroupEntryBase {
+  const firstTool = tools[0]!;
+  const lastTool = tools[tools.length - 1]!;
+  return {
+    type: "tool-group",
+    id: firstTool.id,
+    tools,
+    timestamp: firstTool.timestamp,
+    lastTimestamp: lastTool.timestamp,
+  };
+}
+
+export function groupConsecutiveToolEntries(sorted: EntryBase[]): GroupedEntryBase[] {
+  const groupedEntries: GroupedEntryBase[] = [];
+
+  for (let index = 0; index < sorted.length; index += 1) {
+    const entry = sorted[index]!;
+    if (entry.type !== "tool") {
+      groupedEntries.push(entry);
+      continue;
+    }
+
+    const consecutiveTools = [entry.data];
+    let cursor = index + 1;
+    while (cursor < sorted.length && sorted[cursor]?.type === "tool") {
+      consecutiveTools.push((sorted[cursor] as Extract<EntryBase, { type: "tool" }>).data);
+      cursor += 1;
+    }
+
+    if (consecutiveTools.length === 1) {
+      groupedEntries.push(entry);
+    } else {
+      groupedEntries.push(createToolGroupEntry(consecutiveTools));
+    }
+    index = cursor - 1;
+  }
+
+  return groupedEntries;
 }
 
 export function isReasoningLogEntry(logEntry: LogEntry): boolean {
@@ -82,7 +126,7 @@ export function isResponseLogEntry(logEntry: LogEntry): boolean {
  * Group headers remain driven by entry grouping so spacing and labels
  * still reflect structural changes within the transcript.
  */
-export function annotateDisplayEntries(sorted: EntryBase[]): DisplayEntry[] {
+export function annotateDisplayEntries(sorted: GroupedEntryBase[]): DisplayEntry[] {
   const keys = sorted.map(getEntryGroupKey);
   const minuteBuckets = sorted.map((entry) =>
     getTimestampMinuteBucket(entry.timestamp),

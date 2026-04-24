@@ -91,10 +91,24 @@ export type EntryBase =
   | { type: "tool"; data: ToolCallData; timestamp: string }
   | { type: "log"; data: LogEntry; timestamp: string };
 
+export interface ToolGroupEntryBase {
+  type: "tool-group";
+  /** Stable identity for a consecutive run of tool calls. */
+  id: string;
+  /** Tool calls contained in this consecutive run. */
+  tools: ToolCallData[];
+  /** Timestamp of the first tool call in the run. */
+  timestamp: string;
+  /** Timestamp of the last tool call in the run. */
+  lastTimestamp: string;
+}
+
+export type GroupedEntryBase = EntryBase | ToolGroupEntryBase;
+
 /**
  * Display entry with derived metadata for rendering grouped rows.
  */
-export type DisplayEntry = EntryBase & {
+export type DisplayEntry = GroupedEntryBase & {
   /** Whether this entry should render its visible timestamp. */
   showTimestamp: boolean;
   /** Whether this entry starts a new grouped row for spacing and labels. */

@@ -285,19 +285,20 @@ describe("LogViewer", () => {
       expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
 
-    test("keeps the default entry width caps when transcript overrides are omitted", () => {
+    test("renders conversation content inside the shared transcript shell when transcript overrides are omitted", () => {
       const userMessage = createMessageData({
         role: "user",
         content: "Needs more room",
         timestamp: SAME_MINUTE_TIME_A,
       });
-      const { container } = renderWithUser(
+      const rendered = renderWithUser(
         <ConversationViewer messages={[userMessage]} toolCalls={[]} showAssistantMessages={true} />
       );
 
-      const messageWidth = container.querySelector("[data-message-role='user'] .min-w-0") as HTMLElement | null;
-      expect(messageWidth).not.toBeNull();
-      expect(messageWidth?.className).toContain("max-w-[min(88%,64rem)]");
+      const transcriptShell = rendered.getByTestId("conversation-transcript");
+      expect(transcriptShell).toBeInTheDocument();
+      expect(transcriptShell.textContent).toContain("Needs more room");
+      expect(rendered.container.querySelector("[data-message-role='user']")).not.toBeNull();
     });
 
     test("applies caller-provided surface and transcript overrides and falls back when omitted", () => {
@@ -907,6 +908,144 @@ describe("LogViewer", () => {
       );
 
       expect(getAllByText("Run command")).toHaveLength(2);
+    });
+
+    test("groups consecutive tool calls into a single collapsible box", () => {
+      const firstTool = createToolCallData({
+        id: "tool-group-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-b",
+        name: "rg",
+        input: { pattern: "DEFAULT_CLIENT_ID", path: "/src" },
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+
+      const { getAllByRole, getByText } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      expect(getAllByRole("button", { name: /Tool calls/i })).toHaveLength(1);
+      expect(getByText("View /src/first.ts")).toBeInTheDocument();
+      expect(getByText("Find files matching 'DEFAULT_CLIENT_ID' in /src")).toBeInTheDocument();
+    });
+
+    test("splits tool groups when a non-tool entry interrupts the run", () => {
+      const firstTool = createToolCallData({
+        id: "tool-group-split-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: "2026-04-09T16:42:01.000Z",
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-split-b",
+        name: "write",
+        input: { filePath: "/src/second.ts" },
+        timestamp: "2026-04-09T16:42:10.000Z",
+      });
+      const interruptingLog = createLogEntry({
+        id: "tool-group-break",
+        level: "agent",
+        message: "Agent note between tool runs",
+        timestamp: "2026-04-09T16:42:20.000Z",
+      });
+      const thirdTool = createToolCallData({
+        id: "tool-group-split-c",
+        name: "read",
+        input: { path: "/src/third.ts" },
+        timestamp: "2026-04-09T16:42:30.000Z",
+      });
+      const fourthTool = createToolCallData({
+        id: "tool-group-split-d",
+        name: "rg",
+        input: { pattern: "todo", path: "/src" },
+        timestamp: "2026-04-09T16:42:40.000Z",
+      });
+
+      const { getAllByRole, getByText } = renderWithUser(
+        <LogViewer
+          messages={[]}
+          toolCalls={[firstTool, secondTool, thirdTool, fourthTool]}
+          logs={[interruptingLog]}
+          showTools={true}
+        />
+      );
+
+      expect(getAllByRole("button", { name: /Tool calls/i })).toHaveLength(2);
+      expect(getByText("Agent note between tool runs")).toBeInTheDocument();
+      expect(getByText("View /src/first.ts")).toBeInTheDocument();
+      expect(getByText("View /src/second.ts")).toBeInTheDocument();
+      expect(getByText("View /src/third.ts")).toBeInTheDocument();
+      expect(getByText("Find files matching 'todo' in /src")).toBeInTheDocument();
+    });
+
+    test("collapses and expands grouped tool calls from the shared title toggle", async () => {
+      const firstTool = createToolCallData({
+        id: "tool-group-collapse-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-collapse-b",
+        name: "write",
+        input: { filePath: "/src/second.ts" },
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+
+      const { getByRole, user } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      const toggle = getByRole("button", { name: /Tool calls/i });
+      const panel = getByRole("region", { name: /Tool calls/i });
+      const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
+      expect(controlledPanelId).not.toBe("");
+      expect(panel.id).toBe(controlledPanelId);
+      expect(panel).toHaveAttribute("aria-labelledby", toggle.id);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(panel.hidden).toBe(false);
+
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(panel.hidden).toBe(true);
+
+      await user.click(toggle);
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(panel.hidden).toBe(false);
+    });
+
+    test("inherits the outer grouped timestamp visibility for the first tool row", () => {
+      const precedingMessage = createMessageData({
+        id: "tool-group-preceding-message",
+        role: "user",
+        content: "User message before grouped tools",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const firstTool = createToolCallData({
+        id: "tool-group-time-a",
+        name: "read",
+        input: { path: "/src/first.ts" },
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-time-b",
+        name: "rg",
+        input: { pattern: "needle", path: "/src" },
+        timestamp: NEXT_MINUTE_TIME,
+      });
+
+      const { container, getAllByText } = renderWithUser(
+        <LogViewer messages={[precedingMessage]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      expect(getAllByText(formatTime(SAME_MINUTE_TIME_A))).toHaveLength(1);
+      expect(container.querySelector(`time[datetime="${SAME_MINUTE_TIME_B}"]`)).toBeNull();
+      expect(getAllByText(formatTime(NEXT_MINUTE_TIME))).toHaveLength(1);
+      expect(container.querySelectorAll("time")).toHaveLength(2);
     });
 
     test("keeps consecutive tool rows compact when the displayed minute changes", () => {
