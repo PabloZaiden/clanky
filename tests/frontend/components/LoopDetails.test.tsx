@@ -13,6 +13,7 @@ import {
   createLoopWithStatus,
   createFileDiff,
   createSshSession,
+  createPersistedMessage,
   createPersistedToolCall,
 } from "../helpers/factories";
 import { LoopDetails } from "@/components/LoopDetails";
@@ -1913,6 +1914,31 @@ describe("log tab", () => {
     await waitFor(() => {
       expect(getByText("Autoscroll")).toBeTruthy();
     });
+  });
+
+  test("uses the loop panel as the primary log surface instead of an inset shell", async () => {
+    setupDefaultApi({
+      state: {
+        messages: [createPersistedMessage({ role: "user", content: "Use the whole panel" })],
+      },
+    });
+    const { container, getByTestId, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Use the whole panel")).toBeTruthy();
+    });
+
+    const logPanel = getByTestId("loop-log-panel");
+    expect(logPanel.className).toContain("bg-[#171717]");
+
+    const logViewer = container.querySelector("#logs-viewer") as HTMLElement | null;
+    expect(logViewer).not.toBeNull();
+    expect(logViewer?.className).toContain("bg-transparent");
+
+    const transcriptShell = getByTestId("conversation-transcript");
+    expect(transcriptShell.className).toContain("w-full");
+    expect(transcriptShell.className).not.toContain("max-w-7xl");
+    expect(transcriptShell.className).not.toContain("mx-auto");
   });
 
   test("enters log focus mode while keeping the message composer available", async () => {

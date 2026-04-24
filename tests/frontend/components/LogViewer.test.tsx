@@ -303,6 +303,33 @@ describe("LogViewer", () => {
       expect(messageWidth?.className).toContain("max-w-[min(88%,64rem)]");
     });
 
+    test("allows callers to render the transcript on a parent-owned surface", () => {
+      const userMessage = createMessageData({
+        role: "user",
+        content: "Use the whole panel",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const { getByTestId } = renderWithUser(
+        <ConversationViewer
+          id="custom-conversation"
+          messages={[userMessage]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+          surfaceClassName="bg-transparent"
+          transcriptClassName="flex w-full flex-col px-3 py-5"
+        />
+      );
+
+      const transcriptRoot = document.getElementById("custom-conversation");
+      expect(transcriptRoot).not.toBeNull();
+      expect(transcriptRoot?.className).toContain("bg-transparent");
+
+      const transcriptShell = getByTestId("conversation-transcript");
+      expect(transcriptShell.className).toContain("w-full");
+      expect(transcriptShell.className).not.toContain("max-w-7xl");
+      expect(transcriptShell.className).not.toContain("mx-auto");
+    });
+
     test("user messages are always shown regardless of filter settings", () => {
       const msgs: MessageData[] = [
         createMessageData({ role: "user", content: "User msg" }),
