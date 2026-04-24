@@ -1385,7 +1385,12 @@ export class AcpBackend implements Backend {
           cwd: sessionDirectory,
           mcpServers: [],
         });
-        const hydratedSession = this.hydrateSessionFromResult(sessionId, loaded, listedSession.title);
+        const hydratedSession = this.hydrateSessionFromResult(
+          sessionId,
+          loaded,
+          sessionDirectory,
+          listedSession.title,
+        );
         this.sessionCache.set(hydratedSession.id, hydratedSession);
         return hydratedSession;
       } catch (error) {
@@ -1853,7 +1858,13 @@ export class AcpBackend implements Backend {
     };
   }
 
-  private hydrateSessionFromResult(sessionId: string, result: unknown, fallbackTitle?: string): AgentSession {
+  private hydrateSessionFromResult(
+    sessionId: string,
+    result: unknown,
+    directory: string,
+    fallbackTitle?: string,
+  ): AgentSession {
+    const sessionDirectory = isRecord(result) ? getString(result["cwd"]) ?? directory : directory;
     const session = this.mapSession({
       id: sessionId,
       title: isRecord(result) ? getString(result["title"]) ?? fallbackTitle : fallbackTitle,
@@ -1865,12 +1876,12 @@ export class AcpBackend implements Backend {
       const modelOption = configOptions.find((option) => option.category === "model" || option.id === "model");
       if (modelOption) {
         session.model = modelOption.currentValue;
-        this.rememberCopilotDefaultReasoningEffort(this.directory, modelOption.currentValue, configOptions);
+        this.rememberCopilotDefaultReasoningEffort(sessionDirectory, modelOption.currentValue, configOptions);
       }
       const configModels = this.parseModelsFromConfigOptions(configOptions);
       if (configModels.length > 0) {
         this.setCachedModels(
-          this.directory,
+          sessionDirectory,
           configModels,
           this.shouldTreatCachedModelsAsComplete(),
         );
@@ -1882,11 +1893,11 @@ export class AcpBackend implements Backend {
         session.model = responseModel;
       }
     }
-    if (!this.hasCachedModels(this.directory)) {
+    if (!this.hasCachedModels(sessionDirectory)) {
       const models = this.parseModelsFromSessionResult(result);
       if (models.length > 0) {
         this.setCachedModels(
-          this.directory,
+          sessionDirectory,
           models,
           this.shouldTreatCachedModelsAsComplete(),
         );

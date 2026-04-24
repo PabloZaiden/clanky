@@ -138,6 +138,88 @@ describe("AcpBackend", () => {
     });
   });
 
+  test("getSession keys Copilot hydrated cache metadata by the loaded session directory", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "copilot";
+      directory: string;
+      sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+      modelCache: Map<string, { models: Array<{ modelID: string; name?: string; variants: string[] }>; complete: boolean }>;
+      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+    };
+
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "copilot";
+    internal.directory = "/tmp/backend-directory";
+    internal.sendRpcRequest = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+      if (method === "session/list") {
+        return {
+          sessions: [
+            {
+              sessionId: "resume-me",
+              title: "Resume me",
+              cwd: "/tmp/loaded-session-directory",
+            },
+          ],
+        };
+      }
+      if (method === "session/load") {
+        expect(params).toEqual({
+          sessionId: "resume-me",
+          cwd: "/tmp/loaded-session-directory",
+          mcpServers: [],
+        });
+        return {
+          sessionId: "resume-me",
+          title: "Loaded session",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-5.4",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: "medium",
+              category: "thought_level",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    await backend.getSession("resume-me");
+
+    expect(internal.modelCache.get("/tmp/loaded-session-directory")).toMatchObject({
+      models: [
+        { modelID: "auto", variants: [""] },
+        { modelID: "gpt-5.4", variants: [""] },
+      ],
+      complete: false,
+    });
+    expect(internal.modelCache.has("/tmp/backend-directory")).toBe(false);
+    expect(
+      internal.copilotDefaultReasoningEfforts.get("/tmp/loaded-session-directory")?.get("gpt-5.4"),
+    ).toBe("medium");
+    expect(internal.copilotDefaultReasoningEfforts.has("/tmp/backend-directory")).toBe(false);
+  });
+
   test("getSession returns null when session/load says the listed session is not found", async () => {
     const internal = backend as unknown as {
       connected: boolean;
