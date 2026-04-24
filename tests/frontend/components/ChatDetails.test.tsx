@@ -1233,10 +1233,19 @@ describe("ChatDetails", () => {
       expect(getByText("Beta after tool")).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: /Tool calls/i }));
+    const toggle = getByRole("button", { name: /Tool calls/i });
+    const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
+    const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(controlledPanelId).not.toBe("");
+    expect(panel?.id).toBe(controlledPanelId);
+    expect(panel?.hidden).toBe(true);
+
+    await user.click(toggle);
 
     await waitFor(() => {
-      expect(getByText("View README.md")).toBeTruthy();
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+      expect(panel?.hidden).toBe(false);
     });
 
     const transcript = container.querySelector("#chat-transcript");

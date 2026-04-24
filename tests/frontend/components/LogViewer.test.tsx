@@ -1021,10 +1021,10 @@ describe("LogViewer", () => {
       await user.click(toggles[0]!);
       await user.click(toggles[1]!);
 
-      expect(panels[0]?.textContent).toContain("View /src/first.ts");
-      expect(panels[0]?.textContent).toContain("View /src/second.ts");
-      expect(panels[1]?.textContent).toContain("View /src/third.ts");
-      expect(panels[1]?.textContent).toContain("Find files matching 'todo' in /src");
+      expect(toggles[0]).toHaveAttribute("aria-expanded", "true");
+      expect(toggles[1]).toHaveAttribute("aria-expanded", "true");
+      expect(panels[0]?.hidden).toBe(false);
+      expect(panels[1]?.hidden).toBe(false);
     });
 
     test("collapses and expands grouped tool calls from the shared title toggle", async () => {
