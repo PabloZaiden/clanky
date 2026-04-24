@@ -11,6 +11,7 @@ import {
   StopPatternDetector,
   type LoopBackend,
 } from "../../src/core/loop-engine";
+import { handleModelChange } from "../../src/core/engine/engine-session";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import type { Loop, LoopConfig, LoopState } from "../../src/types/loop";
 import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
@@ -245,6 +246,57 @@ describe("StopPatternDetector", () => {
 
     expect(engine.state.status).toBe("idle");
     expect(engine.config.id).toBe("test-loop-123");
+  });
+
+  test("handleModelChange keeps variant-only changes instead of discarding them", async () => {
+    const setConfigCalls: Array<{ sessionId: string; configId: string; value: string }> = [];
+    const updates: Array<Partial<LoopState>> = [];
+    const logs: Array<Record<string, unknown>> = [];
+    const config = createTestLoop({
+      model: { providerID: "copilot", modelID: "gpt-5.4", variant: "" },
+    }).config;
+    const state = {
+      pendingModel: { providerID: "copilot", modelID: "gpt-5.4", variant: "high" },
+    } as LoopState;
+
+    await handleModelChange({
+      backend: {
+        setConfigOption: async (sessionId: string, configId: string, value: string) => {
+          setConfigCalls.push({ sessionId, configId, value });
+          return [];
+        },
+        setSessionModel: async () => {},
+      } as unknown as LoopBackend,
+      config,
+      state,
+      workingDirectory: testDir,
+      emitLog: (_level, message, details) => {
+        logs.push({ message, details });
+        return "log-id";
+      },
+      updateState: (update) => {
+        updates.push(update);
+      },
+      getSessionId: () => "session-variant-change",
+      setSessionId: () => {},
+    });
+
+    expect(config.model).toEqual({
+      providerID: "copilot",
+      modelID: "gpt-5.4",
+      variant: "high",
+    });
+    expect(setConfigCalls).toEqual([
+      {
+        sessionId: "session-variant-change",
+        configId: "model",
+        value: "gpt-5.4",
+      },
+    ]);
+    expect(updates).toEqual([{ pendingModel: undefined }]);
+    expect(logs[0]).toMatchObject({
+      message: "Model change detected — setting via config option",
+    });
   });
 
   test("uses the repository directory as workingDirectory when worktrees are disabled", () => {

@@ -188,16 +188,23 @@ export async function handleModelChange(ctx: SessionOperationContext): Promise<v
     return;
   }
 
-  const currentModelID = ctx.config.model?.modelID;
+  const currentModel = ctx.config.model;
+  const currentModelID = currentModel?.modelID;
   const newModelID = pendingModel.modelID;
-  if (currentModelID === newModelID) {
+  const currentVariant = currentModel?.variant ?? "";
+  const newVariant = pendingModel.variant ?? "";
+  if (
+    currentModel?.providerID === pendingModel.providerID
+    && currentModelID === newModelID
+    && currentVariant === newVariant
+  ) {
     ctx.updateState({ pendingModel: undefined });
     return;
   }
 
   ctx.emitLog("info", "Model change detected — setting via config option", {
-    previousModel: currentModelID ?? "default",
-    newModel: newModelID,
+    previousModel: currentModelID ? `${currentModelID}${currentVariant ? ` (${currentVariant})` : ""}` : "default",
+    newModel: `${newModelID}${newVariant ? ` (${newVariant})` : ""}`,
   });
 
   ctx.config.model = pendingModel;
