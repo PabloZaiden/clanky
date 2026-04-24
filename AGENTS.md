@@ -295,6 +295,7 @@ test("hello world", () => {
 - **Tests MUST be deterministic**: Tests should never have conditional expectations based on timing or race conditions. If a test sometimes expects one outcome and sometimes another, the test is flaky and must be fixed. Use polling helpers, explicit waits, or control execution flow to ensure deterministic behavior.
 - **Do not isolate one test file in `package.json` to work around Bun `mock.module()` leakage.** Fix the shared-suite problem instead: prefer explicit test seams such as injectable child components or lower-level dependency mocks that stay safe when the entire frontend suite runs in one process.
 - **Frontend UI tests must assert behavior, not structure.** Prefer user-visible outcomes, accessible queries, interactions, state transitions, API calls, and conditional rendering. Avoid assertions on CSS classes, exact spacing, responsive utility classes, DOM nesting, implementation-specific selectors, or other presentation details unless accessibility or behavior directly depends on them.
+- **Prefer tests that prove the current intended behavior works.** Do not add or keep tests whose main value is only to confirm that a removed or superseded behavior/UI is gone. Keep negative assertions only when the absence itself is part of the current supported contract (for example security, validation, or explicit product requirements).
 
 ### Test Patterns
 

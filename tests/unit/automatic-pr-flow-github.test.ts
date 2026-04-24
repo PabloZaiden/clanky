@@ -384,7 +384,7 @@ describe("automatic PR flow GitHub helpers", () => {
     });
   });
 
-  test("falls back to deterministic non-branded metadata when AI output is unusable", async () => {
+  test("falls back to deterministic metadata when AI output is unusable", async () => {
     const loop = createPushedLoop();
     loop.state.git!.commits = [
       {
@@ -481,8 +481,7 @@ describe("automatic PR flow GitHub helpers", () => {
     expect(createCall).toBeDefined();
     const createArgs = createCall?.args.join("\n") ?? "";
     expect(createArgs).toContain("Generate PR metadata from actual changes and cover PR metadata fallback behavior");
-    expect(createArgs).not.toContain("Ralpher");
-    expect(createArgs).not.toContain("AutoPR");
+    expect(createArgs).toContain("## Files");
   });
 
   test("normalizes review threads, PR comments, and reviews into actionable feedback", async () => {

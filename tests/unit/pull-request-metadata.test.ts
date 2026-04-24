@@ -50,33 +50,14 @@ class StaticResponseBackend implements PullRequestMetadataBackendInterface {
 }
 
 describe("pull request metadata helpers", () => {
-  test("buildFallbackPullRequestMetadata summarizes commits and files without branding", () => {
+  test("buildFallbackPullRequestMetadata summarizes commits and files in a neutral fallback format", () => {
     const metadata = buildFallbackPullRequestMetadata(metadataInput);
 
     expect(metadata.title).toBe("Generate PR metadata from actual changes and cover PR metadata fallback behavior");
     expect(metadata.body).toContain("## Summary");
+    expect(metadata.body).toContain("## Changes");
     expect(metadata.body).toContain("src/core/automatic-pr-flow-github.ts");
-    expect(metadata.body).not.toContain("Ralpher");
-    expect(metadata.body).not.toContain("AutoPR");
-  });
-
-  test("buildFallbackPullRequestMetadata strips banned phrases without throwing", () => {
-    const metadata = buildFallbackPullRequestMetadata({
-      ...metadataInput,
-      loopName: "AutoPR",
-      baseBranch: "main",
-      workingBranch: "feature/generated-automatically",
-      commitMessages: [
-        "feat(pr): remove AutoPR branding",
-        "docs(pr): explain generated automatically output",
-      ],
-      changedFiles: [],
-    });
-
-    expect(metadata.title).toBe("Remove branding and explain output");
-    expect(metadata.body).toContain("## Summary");
-    expect(metadata.body).not.toContain("AutoPR");
-    expect(metadata.body).not.toContain("generated automatically");
+    expect(metadata.body).toContain("## Branches");
   });
 
   test("generatePullRequestMetadata parses strict JSON responses", async () => {
