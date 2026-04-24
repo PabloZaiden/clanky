@@ -39,7 +39,7 @@ export const LazyDetails = memo(function LazyDetails({
         type="button"
         aria-expanded={isOpen}
         aria-controls={panelId}
-        className={triggerClassName ?? "cursor-pointer text-gray-500 hover:text-gray-400 text-xs"}
+        className={triggerClassName ?? "cursor-pointer text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"}
         onClick={() => {
           const nextOpen = !isOpen;
           setIsOpen(nextOpen);

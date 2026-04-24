@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import type { ComponentProps } from "react";
 import { renderWithUser, waitFor } from "../helpers/render";
 import { createMockApi, MockApiError } from "../helpers/mock-api";
+import { ThemePreferenceProvider } from "@/hooks";
 import { storeSshServerPassword } from "@/lib/ssh-browser-credentials";
 import type { SshServer } from "@/types";
 
@@ -68,6 +70,18 @@ function createTreeResponse(entriesByDirectory: Record<string, Array<{
   return { entriesByDirectory };
 }
 
+async function loadServerFilesView() {
+  const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+
+  return function ServerFilesViewWithTheme(props: ComponentProps<typeof ServerFilesView>) {
+    return (
+      <ThemePreferenceProvider>
+        <ServerFilesView {...props} />
+      </ThemePreferenceProvider>
+    );
+  };
+}
+
 describe("ServerFilesView", () => {
   beforeEach(() => {
     api.reset();
@@ -82,7 +96,7 @@ describe("ServerFilesView", () => {
   });
 
   test("resets the SSH-backed explorer root from the shared root picker dialog", async () => {
-    const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+    const ServerFilesView = await loadServerFilesView();
     const onNavigate = mock((_route: unknown) => {});
     const server = createServer();
 
@@ -142,7 +156,7 @@ describe("ServerFilesView", () => {
   });
 
   test("asks for the SSH password before starting the server code explorer when none is saved", async () => {
-    const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+    const ServerFilesView = await loadServerFilesView();
     const server = createServer();
 
     api.get("/api/ssh-servers/:id/public-key", () => ({
@@ -189,7 +203,7 @@ describe("ServerFilesView", () => {
   });
 
   test("keeps the SSH password modal open while the password submission is still running", async () => {
-    const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+    const ServerFilesView = await loadServerFilesView();
     const onNavigate = mock((_route: unknown) => {});
     const server = createServer();
     let resolveCredentialExchange = () => {};
@@ -257,7 +271,7 @@ describe("ServerFilesView", () => {
   });
 
   test("shows the full-tree loading error without falling back to lazy-loading", async () => {
-    const { ServerFilesView } = await import("@/components/app-shell/server-files-view");
+    const ServerFilesView = await loadServerFilesView();
     const server = createServer();
 
     api.get("/api/ssh-servers/:id/public-key", () => ({

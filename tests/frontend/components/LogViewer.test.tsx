@@ -340,6 +340,49 @@ describe("LogViewer", () => {
       expect(rendered.getByTestId("conversation-transcript").className).not.toContain("transcript-override-marker");
     });
 
+    test("defaults the shared transcript shell to a light surface with dark text", () => {
+      const assistantMessage = createMessageData({
+        role: "assistant",
+        content: "Readable in light mode",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+
+      renderWithUser(
+        <ConversationViewer
+          id="light-mode-conversation"
+          messages={[assistantMessage]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+        />
+      );
+
+      const transcriptRoot = document.getElementById("light-mode-conversation");
+      expect(transcriptRoot).not.toBeNull();
+      expect(transcriptRoot?.className).toContain("bg-gray-50");
+      expect(transcriptRoot?.className).toContain("text-gray-700");
+    });
+
+    test("renders tool groups with light-mode friendly chrome by default", () => {
+      const toolCall = createToolCallData({
+        id: "tool-1",
+        name: "Read",
+        input: { filePath: "/src/index.ts" },
+        output: "const value = 1;",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+
+      const rendered = renderWithUser(
+        <ConversationViewer messages={[]} toolCalls={[toolCall]} showAssistantMessages={true} />
+      );
+
+      const toolGroupPanel = rendered.container.querySelector("[data-entry-type='tool-group'] > div") as HTMLElement | null;
+      const toolGroupToggle = rendered.container.querySelector("[data-tool-group-toggle='true']") as HTMLButtonElement | null;
+      expect(toolGroupPanel).not.toBeNull();
+      expect(toolGroupToggle).not.toBeNull();
+      expect(toolGroupPanel?.className).toContain("bg-sky-50");
+      expect(toolGroupToggle?.className).toContain("text-sky-950");
+    });
+
     test("user messages are always shown regardless of filter settings", () => {
       const msgs: MessageData[] = [
         createMessageData({ role: "user", content: "User msg" }),

@@ -37,6 +37,7 @@ import {
   SetLastModelRequestSchema,
   SetLogLevelRequestSchema,
   SetMarkdownRenderingRequestSchema,
+  SetThemePreferenceRequestSchema,
   SetPendingRequestSchema,
   SshCredentialExchangeRequestSchema,
   StartDraftRequestSchema,
@@ -251,6 +252,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/preferences/dashboard-view-mode": {
     description: "Persist the preferred dashboard layout.",
     requestSchema: SetDashboardViewModeRequestSchema,
+  },
+  "/api/preferences/theme": {
+    description: "Persist the preferred application theme.",
+    requestSchema: SetThemePreferenceRequestSchema,
   },
   "/api/ssh-servers": {
     description: "List or create standalone SSH servers.",

@@ -13,7 +13,12 @@
 
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
-import type { DashboardViewMode } from "../types/preferences";
+import {
+  DEFAULT_THEME_PREFERENCE,
+  THEME_PREFERENCES,
+  type DashboardViewMode,
+  type ThemePreference,
+} from "../types/preferences";
 import { CheapModelSelectionSchema } from "../types/schemas/model";
 import type { CheapModelSelection } from "../types";
 
@@ -28,6 +33,7 @@ export type { DashboardViewMode } from "../types/preferences";
  * Valid dashboard view mode values for validation.
  */
 const VALID_VIEW_MODES: DashboardViewMode[] = ["rows", "cards"];
+const VALID_THEME_PREFERENCES: ThemePreference[] = [...THEME_PREFERENCES];
 
 /**
  * Default dashboard view mode when no preference is set.
@@ -72,6 +78,8 @@ export interface UserPreferences {
   logLevel?: LogLevelName;
   /** Dashboard view mode (defaults to "rows") */
   dashboardViewMode?: DashboardViewMode;
+  /** Visual theme preference (defaults to "system") */
+  themePreference?: ThemePreference;
 }
 
 /**
@@ -307,4 +315,43 @@ export async function setDashboardViewMode(mode: DashboardViewMode): Promise<voi
     throw new Error(`Invalid dashboard view mode: ${mode}. Valid modes are: ${VALID_VIEW_MODES.join(", ")}`);
   }
   setPreference("dashboardViewMode", mode);
+}
+
+/**
+ * Get the visual theme preference.
+ * Defaults to "system" if not set.
+ */
+export async function getThemePreference(): Promise<ThemePreference> {
+  log.debug("Getting theme preference");
+  const value = getPreference("themePreference");
+  if (value === null) {
+    log.trace("Theme preference not set, using default", { default: DEFAULT_THEME_PREFERENCE });
+    return DEFAULT_THEME_PREFERENCE;
+  }
+  if (VALID_THEME_PREFERENCES.includes(value as ThemePreference)) {
+    log.trace("Theme preference", { theme: value });
+    return value as ThemePreference;
+  }
+  log.warn("Invalid theme preference, using default", {
+    storedValue: value,
+    default: DEFAULT_THEME_PREFERENCE,
+  });
+  return DEFAULT_THEME_PREFERENCE;
+}
+
+/**
+ * Set the visual theme preference.
+ */
+export async function setThemePreference(theme: ThemePreference): Promise<void> {
+  log.debug("Setting theme preference", { theme });
+  if (!VALID_THEME_PREFERENCES.includes(theme)) {
+    log.error("Invalid theme preference provided", {
+      theme,
+      validThemes: VALID_THEME_PREFERENCES,
+    });
+    throw new Error(
+      `Invalid theme preference: ${theme}. Valid themes are: ${VALID_THEME_PREFERENCES.join(", ")}`,
+    );
+  }
+  setPreference("themePreference", theme);
 }

@@ -3,21 +3,25 @@ import type { ComponentProps } from "react";
 import { createMockApi } from "../helpers/mock-api";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createSshSession, createWorkspace } from "../helpers/factories";
+import { ThemePreferenceProvider } from "@/hooks";
 
 mock.module("@monaco-editor/react", () => ({
   default: ({
     value,
     onChange,
     language,
+    theme,
     options,
   }: {
     value?: string;
     onChange?: (value: string) => void;
     language?: string;
+    theme?: string;
     options?: { wordWrap?: string };
   }) => (
     <div>
       <div data-testid="monaco-language">{language ?? ""}</div>
+      <div data-testid="monaco-theme">{theme ?? ""}</div>
       <div data-testid="monaco-word-wrap">{options?.wordWrap ?? ""}</div>
       <textarea
         aria-label="Monaco editor"
@@ -51,7 +55,11 @@ async function loadWorkspaceFilesView() {
   return function WorkspaceFilesViewWithStub(
     props: Omit<ComponentProps<typeof WorkspaceFilesView>, "sshSessionDetailsComponent">,
   ) {
-    return <WorkspaceFilesView {...props} sshSessionDetailsComponent={EmbeddedSshSessionStub} />;
+    return (
+      <ThemePreferenceProvider>
+        <WorkspaceFilesView {...props} sshSessionDetailsComponent={EmbeddedSshSessionStub} />
+      </ThemePreferenceProvider>
+    );
   };
 }
 
@@ -270,6 +278,65 @@ describe("WorkspaceFilesView", () => {
     await waitFor(() => {
       expect(getByRole("button", { name: "Enable word wrap" })).toHaveAttribute("aria-pressed", "false");
       expect(getByTestId("monaco-word-wrap")).toHaveTextContent("off");
+    });
+  });
+
+  test("uses the light Monaco theme when the app theme resolves to light", async () => {
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
+    const workspace = createWorkspace({
+      id: "workspace-light-theme",
+      name: "Light Theme Workspace",
+      directory: "/workspaces/light-theme",
+    });
+
+    api.get("/api/preferences/theme", () => ({ theme: "light" }));
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry()],
+        src: [createFileEntry({
+          name: "index.ts",
+          path: "src/index.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        })],
+      }),
+    }));
+
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "100:20",
+      }),
+      content: "export const value = 1;\n",
+    }));
+
+    const { getByRole, getByTestId, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /src/i }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: /index.ts/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /index.ts/i }));
+    await waitFor(() => {
+      expect(getByTestId("monaco-theme")).toHaveTextContent("vs");
     });
   });
 

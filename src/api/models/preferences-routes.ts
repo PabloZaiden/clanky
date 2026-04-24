@@ -7,6 +7,7 @@
  * - GET/PUT /api/preferences/file-explorer-full-tree
  * - GET/PUT /api/preferences/log-level
  * - GET/PUT /api/preferences/dashboard-view-mode
+ * - GET/PUT /api/preferences/theme
  *
  * @module api/models/preferences-routes
  */
@@ -27,6 +28,8 @@ import {
   DEFAULT_LOG_LEVEL,
   getDashboardViewMode,
   setDashboardViewMode,
+  getThemePreference,
+  setThemePreference,
 } from "../../persistence/preferences";
 import {
   createLogger,
@@ -45,6 +48,7 @@ import {
   SetFileExplorerFullTreeRequestSchema,
   SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
+  SetThemePreferenceRequestSchema,
 } from "../../types/schemas";
 
 const log = createLogger("api:preferences");
@@ -319,6 +323,41 @@ export const preferencesRoutes = {
         return Response.json({ success: true, mode: result.data.mode });
       } catch (error) {
         logPreferenceSaveFailure("dashboard-view-mode", error);
+        return errorResponse("save_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/preferences/theme": {
+    /**
+     * GET /api/preferences/theme - Get theme preference.
+     *
+     * @returns Object with theme property
+     */
+    async GET(): Promise<Response> {
+      const theme = await getThemePreference();
+      return Response.json({ theme });
+    },
+
+    /**
+     * PUT /api/preferences/theme - Set theme preference.
+     *
+     * Request Body:
+     * - theme (required): "light", "dark", or "system"
+     *
+     * @returns Success response
+     */
+    async PUT(req: Request): Promise<Response> {
+      const result = await parseAndValidate(SetThemePreferenceRequestSchema, req);
+      if (!result.success) {
+        return result.response;
+      }
+
+      try {
+        await setThemePreference(result.data.theme);
+        return Response.json({ success: true, theme: result.data.theme });
+      } catch (error) {
+        logPreferenceSaveFailure("theme", error);
         return errorResponse("save_failed", String(error), 500);
       }
     },

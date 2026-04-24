@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import { createMockApi } from "../helpers/mock-api";
 import { renderWithUser, waitFor } from "../helpers/render";
 import { createLoopWithStatus, createSshSession, createWorkspace } from "../helpers/factories";
+import { ThemePreferenceProvider } from "@/hooks";
 
 mock.module("@monaco-editor/react", () => ({
   default: ({
@@ -43,7 +44,11 @@ async function loadLoopFilesView() {
   return function LoopFilesViewWithStub(
     props: Omit<ComponentProps<typeof LoopFilesView>, "sshSessionDetailsComponent">,
   ) {
-    return <LoopFilesView {...props} sshSessionDetailsComponent={EmbeddedSshSessionStub} />;
+    return (
+      <ThemePreferenceProvider>
+        <LoopFilesView {...props} sshSessionDetailsComponent={EmbeddedSshSessionStub} />
+      </ThemePreferenceProvider>
+    );
   };
 }
 

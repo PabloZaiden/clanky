@@ -13,6 +13,11 @@ export { useLoopPortForwards, type UseLoopPortForwardsResult } from "./useLoopPo
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useMarkdownPreference, type UseMarkdownPreferenceResult } from "./useMarkdownPreference";
 export {
+  ThemePreferenceProvider,
+  useThemePreference,
+  type UseThemePreferenceResult,
+} from "./useThemePreference";
+export {
   useFileExplorerFullTreePreference,
   type UseFileExplorerFullTreePreferenceResult,
 } from "./useFileExplorerFullTreePreference";

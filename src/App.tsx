@@ -2,13 +2,13 @@
  * Main application entry with shell-first hash routing.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { DeviceApprovalScreen } from "./components/DeviceApprovalScreen";
 import { PasskeyAuthScreen } from "./components/PasskeyAuthScreen";
 import { getHashForShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
-import { usePasskeyAuth } from "./hooks";
+import { ThemePreferenceProvider, usePasskeyAuth } from "./hooks";
 import "./index.css";
 
 const LOOP_FILES_HASH_PREFIX = "/loop-files/";
@@ -183,40 +183,34 @@ export function App() {
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
 
+  let content: ReactNode;
+
   if (passkeyAuth.loading) {
-    return (
-      <LogLevelInitializer>
-        <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 text-sm text-gray-500 dark:bg-neutral-950 dark:text-gray-400">
-          Loading…
-        </div>
-      </LogLevelInitializer>
+    content = (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 text-sm text-gray-500 dark:bg-neutral-950 dark:text-gray-400">
+        Loading…
+      </div>
     );
-  }
-
-  if (passkeyAuth.status.passkeyRequired && !passkeyAuth.status.authenticated) {
-    return (
-      <LogLevelInitializer>
-        <PasskeyAuthScreen
-          loading={passkeyAuth.refreshing}
-          authenticating={passkeyAuth.authenticating}
-          error={passkeyAuth.error}
-          onAuthenticate={passkeyAuth.loginWithPasskey}
-        />
-      </LogLevelInitializer>
+  } else if (passkeyAuth.status.passkeyRequired && !passkeyAuth.status.authenticated) {
+    content = (
+      <PasskeyAuthScreen
+        loading={passkeyAuth.refreshing}
+        authenticating={passkeyAuth.authenticating}
+        error={passkeyAuth.error}
+        onAuthenticate={passkeyAuth.loginWithPasskey}
+      />
     );
-  }
-
-  if (deviceApprovalRoute) {
-    return (
-      <LogLevelInitializer>
-        <DeviceApprovalScreen userCode={deviceApprovalRoute.userCode} />
-      </LogLevelInitializer>
-    );
+  } else if (deviceApprovalRoute) {
+    content = <DeviceApprovalScreen userCode={deviceApprovalRoute.userCode} />;
+  } else {
+    content = <AppShell route={route} onNavigate={navigateTo} passkeyAuth={passkeyAuth} />;
   }
 
   return (
     <LogLevelInitializer>
-      <AppShell route={route} onNavigate={navigateTo} passkeyAuth={passkeyAuth} />
+      <ThemePreferenceProvider>
+        {content}
+      </ThemePreferenceProvider>
     </LogLevelInitializer>
   );
 }

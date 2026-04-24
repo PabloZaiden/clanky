@@ -86,6 +86,7 @@ export {
   SetFileExplorerFullTreeRequestSchema,
   SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
+  SetThemePreferenceRequestSchema,
 } from "./preferences";
 
 // SSH session schemas

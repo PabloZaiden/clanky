@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @font-face {
   font-family: "Ralpher Terminal Nerd Font";
@@ -11,7 +12,7 @@
 
 @layer base {
   :root {
-    @apply text-[rgba(255,255,255,0.87)] bg-[#242424] font-sans;
+    @apply bg-gray-100 text-gray-900 font-sans;
 
     /* Safe area insets as CSS variables */
     --safe-area-inset-top: env(safe-area-inset-top, 0px);
@@ -38,8 +39,16 @@
   }
 
   body {
-    @apply h-full m-0 overflow-hidden;
+    @apply h-full m-0 overflow-hidden bg-gray-100 text-gray-900;
     overscroll-behavior: none; /* Prevent overscroll/bounce effects */
+  }
+
+  html.dark {
+    @apply bg-[#242424] text-[rgba(255,255,255,0.87)];
+  }
+
+  html.dark body {
+    @apply bg-neutral-950 text-gray-100;
   }
 
   #root {
@@ -83,7 +92,7 @@
   /* Custom scrollbar for dark backgrounds */
   .dark-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    scrollbar-color: rgba(107, 114, 128, 0.45) transparent;
   }
 
   .dark-scrollbar::-webkit-scrollbar {
@@ -96,16 +105,28 @@
   }
 
   .dark-scrollbar::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(107, 114, 128, 0.45);
     border-radius: 4px;
   }
 
   .dark-scrollbar::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: rgba(107, 114, 128, 0.6);
   }
 
   .dark-scrollbar::-webkit-scrollbar-corner {
     background: transparent;
+  }
+
+  .dark .dark-scrollbar {
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  .dark .dark-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .dark .dark-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
   }
 }
 

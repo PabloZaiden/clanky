@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import MonacoEditor from "@monaco-editor/react";
 import { Button, RefreshIcon, WrapTextIcon } from "../common";
+import { useThemePreference } from "../../hooks";
 
 const EDITOR_LANGUAGE_OPTIONS = [
   { id: "plaintext", label: "Plain Text" },
@@ -61,6 +62,7 @@ export function WorkspaceEditorPanel({
   onRefresh,
   onSave,
 }: WorkspaceEditorPanelProps) {
+  const { resolvedTheme } = useThemePreference();
   const [wordWrapEnabled, setWordWrapEnabled] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState<EditorLanguageSelection>("auto");
   const displayPath = pendingFilePath ?? filePath;
@@ -152,7 +154,7 @@ export function WorkspaceEditorPanel({
         ) : filePath ? (
           <MonacoEditor
             height="100%"
-            theme="vs-dark"
+            theme={resolvedTheme === "dark" ? "vs-dark" : "vs"}
             language={editorLanguage}
             value={value}
             onChange={(nextValue: string | undefined) => onChange(nextValue ?? "")}

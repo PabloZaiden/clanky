@@ -37,3 +37,19 @@ export {
   type ModelPreferenceStorageLike,
   type ModelSelectionPreferenceDependencies,
 } from "./model-selection-preferences";
+export {
+  applyThemeSnapshotToDocument,
+  DEFAULT_THEME_PREFERENCE,
+  getStoredThemePreference,
+  getSystemPrefersDark,
+  getThemeSnapshot,
+  isResolvedTheme,
+  isThemePreference,
+  resolveThemePreference,
+  saveStoredThemePreference,
+  THEME_DARK_CLASS,
+  THEME_MEDIA_QUERY,
+  THEME_STORAGE_KEY,
+  type ThemeStorageLike,
+  type ThemeSnapshot,
+} from "./theme";
