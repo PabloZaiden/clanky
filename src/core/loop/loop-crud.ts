@@ -1,5 +1,5 @@
 import type { LoopCtx } from "./context";
-import type { Loop, LoopConfig, LoopState } from "../../types/loop";
+import type { Loop, LoopConfig, LoopState, LoopStatus } from "../../types/loop";
 import type { CreateLoopOptions } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
 import { createTimestamp } from "../../types/events";
@@ -16,6 +16,7 @@ import { normalizeBranchPrefix } from "../branch-name";
 import { resolvePullRequestDestination } from "../pull-request-navigation";
 import { resolveEffectiveCheapModel } from "../cheap-model";
 import { getLoopWorkingDirectory, type GenerateLoopTitleOptions } from "./loop-types";
+import { handleFullyAutonomousCompletionImpl } from "./loop-fully-autonomous";
 
 export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): Promise<Loop> {
   const id = crypto.randomUUID();
@@ -169,6 +170,17 @@ const ACTIVE_PLANNING_MUTABLE_CONFIG_KEYS = new Set<keyof Partial<Omit<LoopConfi
   "fullyAutonomous",
 ]);
 
+const POST_APPROVAL_MUTABLE_CONFIG_KEYS = new Set<keyof Partial<Omit<LoopConfig, "id" | "createdAt">>>([
+  "fullyAutonomous",
+]);
+
+const POST_APPROVAL_FULLY_AUTONOMOUS_MUTABLE_STATUSES = new Set<LoopStatus>([
+  "starting",
+  "running",
+  "waiting",
+  "completed",
+]);
+
 function createLoopUpdateError(
   message: string,
   code: string,
@@ -194,6 +206,65 @@ function syncActivePlanningConfig(engine: { config: LoopConfig }, updatedConfig:
   engine.config.updatedAt = updatedConfig.updatedAt;
 }
 
+function isPostApprovalFullyAutonomousMutable(
+  config: LoopConfig,
+  state: LoopState,
+): boolean {
+  return config.planMode
+    && state.planMode?.active === false
+    && POST_APPROVAL_FULLY_AUTONOMOUS_MUTABLE_STATUSES.has(state.status);
+}
+
+function assertAllowedPlanModeUpdateKeys(
+  config: LoopConfig,
+  state: LoopState,
+  updates: Partial<Omit<LoopConfig, "id" | "createdAt">>,
+): void {
+  const definedKeys = getDefinedUpdateKeys(updates);
+  if (definedKeys.length === 0) {
+    return;
+  }
+
+  if (state.status === "planning") {
+    const disallowedPlanningKeys = definedKeys.filter(
+      (key) => !ACTIVE_PLANNING_MUTABLE_CONFIG_KEYS.has(key),
+    );
+    if (disallowedPlanningKeys.length > 0) {
+      throw createLoopUpdateError(
+        "Only auto-accept plan and fully autonomous loop can be changed while plan mode is running.",
+        "PLANNING_UPDATE_RESTRICTED",
+      );
+    }
+    return;
+  }
+
+  if (isPostApprovalFullyAutonomousMutable(config, state)) {
+    const disallowedPostApprovalKeys = definedKeys.filter(
+      (key) => !POST_APPROVAL_MUTABLE_CONFIG_KEYS.has(key),
+    );
+    if (disallowedPostApprovalKeys.length > 0) {
+      throw createLoopUpdateError(
+        "Only fully autonomous loop can be changed after plan approval while execution is still in progress.",
+        "PLAN_EXECUTION_UPDATE_RESTRICTED",
+      );
+    }
+  }
+}
+
+function syncPostApprovalFullyAutonomousPending(
+  config: LoopConfig,
+  state: LoopState,
+): boolean {
+  if (!isPostApprovalFullyAutonomousMutable(config, state)) {
+    return false;
+  }
+
+  const nextPending = config.fullyAutonomous === true;
+  const changed = state.fullyAutonomousPending !== nextPending;
+  state.fullyAutonomousPending = nextPending;
+  return changed && nextPending && state.status === "completed";
+}
+
 export async function updateLoopImpl(
   ctx: LoopCtx,
   loopId: string,
@@ -213,19 +284,17 @@ export async function updateLoopImpl(
 
   const engine = ctx.engines.get(loopId);
   const currentConfig = engine?.config ?? loop.config;
+  const currentState = engine?.state ?? loop.state;
+
+  assertAllowedPlanModeUpdateKeys(currentConfig, currentState, updates);
+
   if (engine) {
     const status = engine.state.status;
-    if (status === "planning") {
-      const disallowedPlanningKeys = getDefinedUpdateKeys(updates).filter(
-        (key) => !ACTIVE_PLANNING_MUTABLE_CONFIG_KEYS.has(key),
-      );
-      if (disallowedPlanningKeys.length > 0) {
-        throw createLoopUpdateError(
-          "Only auto-accept plan and fully autonomous loop can be changed while plan mode is running.",
-          "PLANNING_UPDATE_RESTRICTED",
-        );
-      }
-    } else if (status === "waiting" || isActiveStatus(status)) {
+    if (
+      status !== "planning"
+      && !isPostApprovalFullyAutonomousMutable(currentConfig, engine.state)
+      && (status === "waiting" || isActiveStatus(status))
+    ) {
       throw createLoopUpdateError("Cannot update an active loop. Stop it first.", "ACTIVE_LOOP_UPDATE_RESTRICTED");
     }
   }
@@ -270,10 +339,15 @@ export async function updateLoopImpl(
     updatedConfig.autoAcceptPlan = true;
   }
 
-  const updatedLoop: Loop = { config: updatedConfig, state: engine?.state ?? loop.state };
+  const shouldTriggerCompletedAutonomy = syncPostApprovalFullyAutonomousPending(updatedConfig, currentState);
+
+  const updatedLoop: Loop = { config: updatedConfig, state: currentState };
   await saveLoop(updatedLoop);
   if (engine) {
     syncActivePlanningConfig(engine, updatedConfig);
+  }
+  if (shouldTriggerCompletedAutonomy) {
+    await handleFullyAutonomousCompletionImpl(ctx, loopId);
   }
 
   return updatedLoop;

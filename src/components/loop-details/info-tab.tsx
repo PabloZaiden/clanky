@@ -8,6 +8,13 @@ import { appAbsoluteUrl } from "../../lib/public-path";
 import { Button, getPortForwardStatusBadgeVariant, getPortForwardStatusLabel, StatusBadge } from "../common";
 import { loopDetailsTabContentFullWidthClassName, loopDetailsTabScrollContainerClassName } from "./tab-layout";
 
+const POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES = new Set([
+  "starting",
+  "running",
+  "waiting",
+  "completed",
+]);
+
 interface InfoTabProps {
   loop: Loop;
   labels: EntityLabels;
@@ -52,7 +59,11 @@ export function InfoTab({
   onUpdatePlanningSettings,
 }: InfoTabProps) {
   const { config, state } = loop;
-  const canEditPlanningSettings = state.status === "planning" && config.planMode;
+  const canEditAutoAcceptPlan = state.status === "planning" && config.planMode;
+  const canEditFullyAutonomous = config.planMode && (
+    canEditAutoAcceptPlan
+    || (state.planMode?.active === false && POST_APPROVAL_FULLY_AUTONOMOUS_EDITABLE_STATUSES.has(state.status))
+  );
   const [autoAcceptPlan, setAutoAcceptPlan] = useState(config.autoAcceptPlan === true);
   const [fullyAutonomous, setFullyAutonomous] = useState(config.fullyAutonomous === true);
 
@@ -61,13 +72,14 @@ export function InfoTab({
     setFullyAutonomous(config.fullyAutonomous === true);
   }, [config.autoAcceptPlan, config.fullyAutonomous]);
 
-  async function updatePlanningSettings(nextAutoAcceptPlan: boolean, nextFullyAutonomous: boolean): Promise<void> {
+  async function updatePlanningSettings(
+    request: Pick<UpdateLoopRequest, "autoAcceptPlan" | "fullyAutonomous">,
+  ): Promise<void> {
+    const nextAutoAcceptPlan = request.autoAcceptPlan ?? autoAcceptPlan;
+    const nextFullyAutonomous = request.fullyAutonomous ?? fullyAutonomous;
     setAutoAcceptPlan(nextAutoAcceptPlan);
     setFullyAutonomous(nextFullyAutonomous);
-    const success = await onUpdatePlanningSettings({
-      autoAcceptPlan: nextAutoAcceptPlan,
-      fullyAutonomous: nextFullyAutonomous,
-    });
+    const success = await onUpdatePlanningSettings(request);
     if (!success) {
       setAutoAcceptPlan(config.autoAcceptPlan === true);
       setFullyAutonomous(config.fullyAutonomous === true);
@@ -75,11 +87,19 @@ export function InfoTab({
   }
 
   function handleAutoAcceptPlanChange(checked: boolean): void {
-    void updatePlanningSettings(checked, fullyAutonomous);
+    void updatePlanningSettings({ autoAcceptPlan: checked });
   }
 
   function handleFullyAutonomousChange(checked: boolean): void {
-    void updatePlanningSettings(checked ? true : autoAcceptPlan, checked);
+    if (canEditAutoAcceptPlan) {
+      void updatePlanningSettings({
+        autoAcceptPlan: checked ? true : autoAcceptPlan,
+        fullyAutonomous: checked,
+      });
+      return;
+    }
+
+    void updatePlanningSettings({ fullyAutonomous: checked });
   }
 
   return (
@@ -148,13 +168,15 @@ export function InfoTab({
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-4">
-          {canEditPlanningSettings && (
+          {(canEditAutoAcceptPlan || canEditFullyAutonomous) && (
             <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium text-gray-900 dark:text-gray-100">Plan automation</div>
                   <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Update how this active planning loop proceeds after the plan is ready.
+                    {canEditAutoAcceptPlan
+                      ? "Update how this active planning loop proceeds after the plan is ready."
+                      : "The plan is already accepted. You can still decide whether the remaining execution should continue into automatic push and PR handling."}
                   </div>
                 </div>
                 {planningSettingsSubmitting && (
@@ -162,31 +184,33 @@ export function InfoTab({
                 )}
               </div>
               <div className="mt-3 space-y-3">
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={autoAcceptPlan}
-                    onChange={(e) => handleAutoAcceptPlanChange(e.target.checked)}
-                    disabled={planningSettingsSubmitting || fullyAutonomous}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-                  />
-                  <div className="flex-1">
-                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Auto-accept plan
-                    </span>
-                    {fullyAutonomous && (
-                      <span className="block text-xs text-gray-500 dark:text-gray-400">
-                        Required for fully autonomous loops.
+                {canEditAutoAcceptPlan && (
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={autoAcceptPlan}
+                      onChange={(e) => handleAutoAcceptPlanChange(e.target.checked)}
+                      disabled={planningSettingsSubmitting || fullyAutonomous}
+                      className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+                    />
+                    <div className="flex-1">
+                      <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Auto-accept plan
                       </span>
-                    )}
-                  </div>
-                </label>
+                      {fullyAutonomous && (
+                        <span className="block text-xs text-gray-500 dark:text-gray-400">
+                          Required for fully autonomous loops.
+                        </span>
+                      )}
+                    </div>
+                  </label>
+                )}
                 <label className="flex items-start gap-3">
                   <input
                     type="checkbox"
                     checked={fullyAutonomous}
                     onChange={(e) => handleFullyAutonomousChange(e.target.checked)}
-                    disabled={planningSettingsSubmitting}
+                    disabled={planningSettingsSubmitting || !canEditFullyAutonomous}
                     className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
                   />
                   <div className="flex-1">
@@ -194,7 +218,9 @@ export function InfoTab({
                       Fully autonomous loop
                     </span>
                     <span className="block text-xs text-gray-500 dark:text-gray-400">
-                      After the plan is accepted, keep going automatically: execute, push, and start the automatic PR flow.
+                      {canEditAutoAcceptPlan
+                        ? "After the plan is accepted, keep going automatically: execute, push, and start the automatic PR flow."
+                        : "Apply automatic push and PR handling to the rest of this already-approved plan execution."}
                     </span>
                   </div>
                 </label>

@@ -98,6 +98,9 @@ async function applyLoopUpdates(
       if (code === "PLANNING_UPDATE_RESTRICTED") {
         return errorResponse("planning_update_restricted", errorMessage, status ?? 409);
       }
+      if (code === "PLAN_EXECUTION_UPDATE_RESTRICTED") {
+        return errorResponse("plan_execution_update_restricted", errorMessage, status ?? 409);
+      }
     }
     log.error("Failed to update loop", { loopId, error: errorMessage });
     return errorResponse("update_failed", errorMessage, 500);
