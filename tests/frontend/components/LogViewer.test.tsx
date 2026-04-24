@@ -285,22 +285,58 @@ describe("LogViewer", () => {
       expect(rendered.container.querySelector("[data-stream-suffix]")).toBeNull();
     });
 
-    test("uses the widened transcript shell and entry width caps", () => {
+    test("keeps the default entry width caps when transcript overrides are omitted", () => {
       const userMessage = createMessageData({
         role: "user",
         content: "Needs more room",
         timestamp: SAME_MINUTE_TIME_A,
       });
-      const { container, getByTestId } = renderWithUser(
+      const { container } = renderWithUser(
         <ConversationViewer messages={[userMessage]} toolCalls={[]} showAssistantMessages={true} />
       );
-
-      const transcriptShell = getByTestId("conversation-transcript");
-      expect(transcriptShell?.className).toContain("max-w-7xl");
 
       const messageWidth = container.querySelector("[data-message-role='user'] .min-w-0") as HTMLElement | null;
       expect(messageWidth).not.toBeNull();
       expect(messageWidth?.className).toContain("max-w-[min(88%,64rem)]");
+    });
+
+    test("applies caller-provided surface and transcript overrides and falls back when omitted", () => {
+      const userMessage = createMessageData({
+        role: "user",
+        content: "Use the whole panel",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const rendered = renderWithUser(
+        <ConversationViewer
+          id="custom-conversation"
+          messages={[userMessage]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+          surfaceClassName="surface-override-marker"
+          transcriptClassName="transcript-override-marker"
+        />
+      );
+
+      const transcriptRoot = document.getElementById("custom-conversation");
+      expect(transcriptRoot).not.toBeNull();
+      expect(transcriptRoot?.className).toContain("surface-override-marker");
+
+      const transcriptShell = rendered.getByTestId("conversation-transcript");
+      expect(transcriptShell.className).toContain("transcript-override-marker");
+
+      rendered.rerender(
+        <ConversationViewer
+          id="custom-conversation"
+          messages={[userMessage]}
+          toolCalls={[]}
+          showAssistantMessages={true}
+        />
+      );
+
+      const fallbackRoot = document.getElementById("custom-conversation");
+      expect(fallbackRoot).not.toBeNull();
+      expect(fallbackRoot?.className).not.toContain("surface-override-marker");
+      expect(rendered.getByTestId("conversation-transcript").className).not.toContain("transcript-override-marker");
     });
 
     test("user messages are always shown regardless of filter settings", () => {
