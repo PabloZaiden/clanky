@@ -10,7 +10,7 @@ import {
 import {
   isModelEnabled,
   makeModelKey,
-  modelVariantExists,
+  getPreferredModelVariant,
   parseModelKey,
 } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
@@ -32,17 +32,18 @@ function isCheapModelSelectionAvailable(
     return true;
   }
 
-  const variant = selection.model.variant ?? "";
-  return (
-    modelVariantExists(
-      availableModels,
-      selection.model.providerID,
-      selection.model.modelID,
-      variant,
-    ) && isModelEnabled(
-      availableModels,
-      makeModelKey(selection.model.providerID, selection.model.modelID, variant),
-    )
+  const variant = getPreferredModelVariant(
+    availableModels,
+    selection.model.providerID,
+    selection.model.modelID,
+    selection.model.variant ?? "",
+  );
+  if (variant === null) {
+    return false;
+  }
+  return isModelEnabled(
+    availableModels,
+    makeModelKey(selection.model.providerID, selection.model.modelID, variant),
   );
 }
 
@@ -132,15 +133,13 @@ export function useModelSelection({
     if (selectedModel) return;
 
     if (initialLoopData?.model && models && models.length > 0) {
-      const variant = initialLoopData.model.variant ?? "";
-      if (
-        modelVariantExists(
-          models,
-          initialLoopData.model.providerID,
-          initialLoopData.model.modelID,
-          variant,
-        )
-      ) {
+      const variant = getPreferredModelVariant(
+        models,
+        initialLoopData.model.providerID,
+        initialLoopData.model.modelID,
+        initialLoopData.model.variant ?? "",
+      );
+      if (variant !== null) {
         const modelKey = makeModelKey(
           initialLoopData.model.providerID,
           initialLoopData.model.modelID,
@@ -154,15 +153,13 @@ export function useModelSelection({
 
     const fallbackModel = storedLoopModel ?? lastModel;
     if (fallbackModel && models && models.length > 0) {
-      const variant = fallbackModel.variant ?? "";
-      if (
-        modelVariantExists(
-          models,
-          fallbackModel.providerID,
-          fallbackModel.modelID,
-          variant,
-        )
-      ) {
+      const variant = getPreferredModelVariant(
+        models,
+        fallbackModel.providerID,
+        fallbackModel.modelID,
+        fallbackModel.variant ?? "",
+      );
+      if (variant !== null) {
         const modelKey = makeModelKey(
           fallbackModel.providerID,
           fallbackModel.modelID,

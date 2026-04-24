@@ -6,6 +6,7 @@
 import { isRemoteOnlyMode } from "../../core/config";
 import { log } from "../../core/logger";
 import type { ModelInfo } from "../../types/api";
+import type { AgentProvider } from "../../types/settings";
 
 import type {
   BackendConnectionConfig,
@@ -54,6 +55,7 @@ export class AcpBackend implements Backend {
   private process: Bun.Subprocess | null = null;
   private connected = false;
   private directory = "";
+  private provider: AgentProvider | null = null;
   private connectionInfo: ConnectionInfo | null = null;
 
   /** Track active subscriptions for reset functionality */
@@ -87,6 +89,7 @@ export class AcpBackend implements Backend {
   /** Cache sessions and model discovery results */
   private sessionCache = new Map<string, AgentSession>();
   private modelCache = new Map<string, ModelInfo[]>();
+  private copilotDefaultReasoningEfforts = new Map<string, Map<string, string>>();
 
   /** Track active permission requests that expect a JSON-RPC response */
   private pendingPermissionRequests = new Map<string, PendingPermissionRequest>();
@@ -108,6 +111,7 @@ export class AcpBackend implements Backend {
     }
 
     this.directory = config.directory;
+    this.provider = config.provider ?? "opencode";
     log.debug("[AcpBackend] connect requested", {
       transport: config.transport,
       provider: config.provider,
@@ -131,6 +135,7 @@ export class AcpBackend implements Backend {
     } catch (error) {
       this.connected = false;
       this.process = null;
+      this.provider = null;
       throw error;
     }
   }
@@ -217,12 +222,14 @@ export class AcpBackend implements Backend {
     this.sessionLastReasoningChunkSignature.clear();
     this.sessionCache.clear();
     this.modelCache.clear();
+    this.copilotDefaultReasoningEfforts.clear();
     this.pendingPermissionRequests.clear();
     this.toolCallNames.clear();
     this.recentProcessLines = [];
 
     this.connected = false;
     this.directory = "";
+    this.provider = null;
     this.connectionInfo = null;
 
     await this.terminateProcess(process);
@@ -968,12 +975,123 @@ export class AcpBackend implements Backend {
     return parsed;
   }
 
+  private getModelConfigOption(configOptions: ConfigOption[]): ConfigOption | undefined {
+    return configOptions.find((option) => option.category === "model" || option.id === "model");
+  }
+
+  private getReasoningEffortConfigOption(configOptions: ConfigOption[]): ConfigOption | undefined {
+    return configOptions.find((option) =>
+      option.id === "reasoning_effort"
+      || option.category === "thought_level"
+      || option.category === "reasoning_effort"
+      || option.category === "effort"
+    );
+  }
+
+  private rememberCopilotDefaultReasoningEffort(
+    directory: string,
+    modelID: string | undefined,
+    configOptions: ConfigOption[],
+  ): void {
+    if (this.provider !== "copilot" || !modelID) {
+      return;
+    }
+    const reasoningOption = this.getReasoningEffortConfigOption(configOptions);
+    if (!reasoningOption?.currentValue) {
+      return;
+    }
+    const existing = this.copilotDefaultReasoningEfforts.get(directory) ?? new Map<string, string>();
+    existing.set(modelID, reasoningOption.currentValue);
+    this.copilotDefaultReasoningEfforts.set(directory, existing);
+  }
+
+  private getCopilotDefaultReasoningEffort(directory: string, modelID: string): string | undefined {
+    return this.copilotDefaultReasoningEfforts.get(directory)?.get(modelID);
+  }
+
+  private buildCopilotVariants(configOptions: ConfigOption[]): string[] {
+    const reasoningOption = this.getReasoningEffortConfigOption(configOptions);
+    if (!reasoningOption) {
+      return [""];
+    }
+
+    const values = reasoningOption.options
+      .map((option) => option.value)
+      .filter((value) => value.length > 0);
+    if (values.length === 0) {
+      return [""];
+    }
+
+    const variants: string[] = [];
+    if (reasoningOption.currentValue && values.includes(reasoningOption.currentValue)) {
+      variants.push(reasoningOption.currentValue);
+    }
+    for (const value of values) {
+      if (!variants.includes(value)) {
+        variants.push(value);
+      }
+    }
+    return variants;
+  }
+
+  private async cleanupDiscoverySession(sessionId: string): Promise<void> {
+    try {
+      await this.sendRpcRequest("session/delete", { sessionId }, 5_000);
+    } catch (error) {
+      const message = String(error);
+      if (!message.includes("Method not found") && !message.includes("-32601")) {
+        log.debug("[AcpBackend] Failed to delete temporary discovery session", {
+          sessionId,
+          error: message,
+        });
+      }
+    }
+  }
+
+  private async discoverCopilotModelVariants(
+    directory: string,
+    sessionId: string,
+    initialConfigOptions: ConfigOption[],
+  ): Promise<ModelInfo[]> {
+    const modelOption = this.getModelConfigOption(initialConfigOptions);
+    if (!modelOption) {
+      return [];
+    }
+
+    let configOptions = initialConfigOptions;
+    const discovered: ModelInfo[] = [];
+
+    for (const option of modelOption.options) {
+      const modelID = option.value;
+      if (!modelID) {
+        continue;
+      }
+
+      const currentModelOption = this.getModelConfigOption(configOptions);
+      if (currentModelOption?.currentValue !== modelID) {
+        configOptions = await this.setConfigOption(sessionId, currentModelOption?.id ?? "model", modelID);
+      }
+
+      this.rememberCopilotDefaultReasoningEffort(directory, modelID, configOptions);
+      discovered.push({
+        providerID: "copilot",
+        providerName: "Copilot",
+        modelID,
+        modelName: option.name,
+        connected: true,
+        variants: this.buildCopilotVariants(configOptions),
+      });
+    }
+
+    return discovered;
+  }
+
   /**
    * Extract model info from configOptions (category "model").
    * This provides model discovery via the ACP session-config-options spec.
    */
   private parseModelsFromConfigOptions(configOptions: ConfigOption[]): ModelInfo[] {
-    const modelOption = configOptions.find((opt) => opt.category === "model" || opt.id === "model");
+    const modelOption = this.getModelConfigOption(configOptions);
     if (!modelOption) {
       return [];
     }
@@ -1017,6 +1135,37 @@ export class AcpBackend implements Backend {
       prompt: this.buildPromptParts(prompt),
       ...(modelID ? { model: modelID } : {}),
     };
+  }
+
+  private async configureCopilotPromptSession(
+    sessionId: string,
+    model: PromptInput["model"] | undefined,
+  ): Promise<void> {
+    if (this.provider !== "copilot" || !model || model.providerID !== "copilot") {
+      return;
+    }
+
+    let configOptions = this.sessionCache.get(sessionId)?.configOptions ?? [];
+    const modelOption = this.getModelConfigOption(configOptions);
+    if (modelOption && modelOption.currentValue !== model.modelID) {
+      configOptions = await this.setConfigOption(sessionId, modelOption.id, model.modelID);
+      this.rememberCopilotDefaultReasoningEffort(this.directory, model.modelID, configOptions);
+    }
+
+    const reasoningOption = this.getReasoningEffortConfigOption(configOptions);
+    if (!reasoningOption) {
+      return;
+    }
+
+    const desiredEffort = model.variant && model.variant.length > 0
+      ? model.variant
+      : this.getCopilotDefaultReasoningEffort(this.directory, model.modelID) ?? reasoningOption.currentValue;
+
+    if (!desiredEffort || reasoningOption.currentValue === desiredEffort) {
+      return;
+    }
+
+    await this.setConfigOption(sessionId, reasoningOption.id, desiredEffort);
   }
 
   /**
@@ -1069,6 +1218,7 @@ export class AcpBackend implements Backend {
       const modelOption = configOptions.find((o) => o.category === "model" || o.id === "model");
       if (modelOption) {
         session.model = modelOption.currentValue;
+        this.rememberCopilotDefaultReasoningEffort(options.directory, modelOption.currentValue, configOptions);
       }
     }
 
@@ -1126,6 +1276,9 @@ export class AcpBackend implements Backend {
       const modelOption = configOptions.find((o) => o.category === "model" || o.id === "model");
       if (modelOption) {
         cached.model = modelOption.currentValue;
+        if (configId === "model") {
+          this.rememberCopilotDefaultReasoningEffort(this.directory, modelOption.currentValue, configOptions);
+        }
       }
     }
 
@@ -1244,6 +1397,7 @@ export class AcpBackend implements Backend {
    */
   async sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse> {
     this.ensureConnected();
+    await this.configureCopilotPromptSession(sessionId, prompt.model);
     log.debug("[AcpBackend] Sending synchronous prompt", {
       sessionId,
       parts: prompt.parts.length,
@@ -1358,6 +1512,7 @@ export class AcpBackend implements Backend {
    */
   async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
     this.ensureConnected();
+    await this.configureCopilotPromptSession(sessionId, prompt.model);
     this.sessionMessageStarted.set(sessionId, false);
     const sequence = (this.sessionPromptSequences.get(sessionId) ?? 0) + 1;
     this.sessionPromptSequences.set(sessionId, sequence);
@@ -1468,20 +1623,34 @@ export class AcpBackend implements Backend {
       cwd: directory,
       mcpServers: [],
     });
+    const sessionId = isRecord(result) ? getString(result["sessionId"]) : undefined;
 
-    // Try config options first, then fall back to legacy fields
-    const configOptions = this.parseConfigOptions(result);
-    const configModels = this.parseModelsFromConfigOptions(configOptions);
-    if (configModels.length > 0) {
-      this.modelCache.set(directory, configModels);
-      return configModels;
-    }
+    try {
+      // Try config options first, then fall back to legacy fields
+      const configOptions = this.parseConfigOptions(result);
+      if (this.provider === "copilot" && sessionId && configOptions.length > 0) {
+        const copilotModels = await this.discoverCopilotModelVariants(directory, sessionId, configOptions);
+        if (copilotModels.length > 0) {
+          this.modelCache.set(directory, copilotModels);
+          return copilotModels;
+        }
+      }
+      const configModels = this.parseModelsFromConfigOptions(configOptions);
+      if (configModels.length > 0) {
+        this.modelCache.set(directory, configModels);
+        return configModels;
+      }
 
-    const models = this.parseModelsFromSessionResult(result);
-    if (models.length > 0) {
-      this.modelCache.set(directory, models);
+      const models = this.parseModelsFromSessionResult(result);
+      if (models.length > 0) {
+        this.modelCache.set(directory, models);
+      }
+      return models;
+    } finally {
+      if (sessionId) {
+        await this.cleanupDiscoverySession(sessionId);
+      }
     }
-    return models;
   }
 
   /**
@@ -1651,6 +1820,7 @@ export class AcpBackend implements Backend {
       const modelOption = configOptions.find((option) => option.category === "model" || option.id === "model");
       if (modelOption) {
         session.model = modelOption.currentValue;
+        this.rememberCopilotDefaultReasoningEffort(this.directory, modelOption.currentValue, configOptions);
       }
       const configModels = this.parseModelsFromConfigOptions(configOptions);
       if (configModels.length > 0) {

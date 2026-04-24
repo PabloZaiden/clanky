@@ -59,6 +59,25 @@ export function modelVariantExists(
   return model.variants.includes(variant);
 }
 
+export function getPreferredModelVariant(
+  models: ModelInfo[],
+  providerID: string,
+  modelID: string,
+  variant: string,
+): string | null {
+  const model = models.find((entry) => entry.providerID === providerID && entry.modelID === modelID);
+  if (!model) {
+    return null;
+  }
+  if (!model.variants || model.variants.length === 0) {
+    return "";
+  }
+  if (model.variants.includes(variant)) {
+    return variant;
+  }
+  return model.variants[0] ?? null;
+}
+
 // ─── Model grouping/sorting ──────────────────────────────────────────────────
 
 interface GroupedModels {
@@ -133,14 +152,7 @@ export function renderModelOptions(
       ? model.variants
       : [""]; // No variants = single option with empty variant
 
-  // Sort variants: empty string first, then alphabetically
-  const sortedVariants = [...variants].sort((a, b) => {
-    if (a === "") return -1;
-    if (b === "") return 1;
-    return a.localeCompare(b);
-  });
-
-  return sortedVariants.map((variant) => {
+  return variants.map((variant) => {
     const optionValue = makeModelKey(model.providerID, model.modelID, variant);
     const displayName = variant
       ? `${model.modelName} (${variant})`

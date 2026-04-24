@@ -232,6 +232,330 @@ describe("AcpBackend", () => {
 
     await expect(backend.abortSession("test-session")).rejects.toThrow("transport disconnected");
   });
+
+  test("getModels discovers Copilot reasoning-effort variants per model", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "copilot";
+      directory: string;
+      sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+    };
+
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "copilot";
+    internal.directory = "/tmp/copilot-models";
+    internal.sendRpcRequest = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+      if (method === "session/new") {
+        return {
+          sessionId: "discovery-session",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "auto",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+                { value: "gpt-4.1", name: "GPT-4.1" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/set_config_option" && params["configId"] === "model" && params["value"] === "gpt-5.4") {
+        return {
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-5.4",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+                { value: "gpt-4.1", name: "GPT-4.1" },
+              ],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: "medium",
+              category: "thought_level",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/set_config_option" && params["configId"] === "model" && params["value"] === "gpt-4.1") {
+        return {
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-4.1",
+              category: "model",
+              options: [
+                { value: "auto", name: "Auto" },
+                { value: "gpt-5.4", name: "GPT-5.4" },
+                { value: "gpt-4.1", name: "GPT-4.1" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/delete") {
+        return {};
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    const models = await backend.getModels("/tmp/copilot-models");
+
+    expect(models.map((model) => ({
+      modelID: model.modelID,
+      variants: model.variants,
+    }))).toEqual([
+      { modelID: "auto", variants: [""] },
+      { modelID: "gpt-5.4", variants: ["medium", "low", "high"] },
+      { modelID: "gpt-4.1", variants: [""] },
+    ]);
+    expect(
+      internal.copilotDefaultReasoningEfforts.get("/tmp/copilot-models")?.get("gpt-5.4"),
+    ).toBe("medium");
+  });
+
+  test("sendPrompt applies Copilot reasoning effort from model variant", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "copilot";
+      directory: string;
+      sessionCache: Map<string, {
+        id: string;
+        createdAt: string;
+        model?: string;
+        configOptions?: Array<Record<string, unknown>>;
+      }>;
+      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+      sendRpcRequest: (method: string, params: Record<string, unknown>, timeoutMs?: number) => Promise<unknown>;
+    };
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "copilot";
+    internal.directory = "/tmp/copilot-prompt";
+    internal.sessionCache.set("session-1", {
+      id: "session-1",
+      createdAt: new Date().toISOString(),
+      model: "gpt-5.4",
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          type: "select",
+          currentValue: "gpt-5.4",
+          category: "model",
+          options: [{ value: "gpt-5.4", name: "GPT-5.4" }],
+        },
+        {
+          id: "reasoning_effort",
+          name: "Reasoning Effort",
+          type: "select",
+          currentValue: "medium",
+          category: "thought_level",
+          options: [
+            { value: "low", name: "low" },
+            { value: "medium", name: "medium" },
+            { value: "high", name: "high" },
+          ],
+        },
+      ],
+    });
+    internal.copilotDefaultReasoningEfforts.set("/tmp/copilot-prompt", new Map([["gpt-5.4", "medium"]]));
+    internal.sendRpcRequest = async (
+      method: string,
+      params: Record<string, unknown>,
+    ): Promise<unknown> => {
+      calls.push({ method, params });
+      if (method === "session/set_config_option") {
+        return {
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-5.4",
+              category: "model",
+              options: [{ value: "gpt-5.4", name: "GPT-5.4" }],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: params["value"],
+              category: "thought_level",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/prompt") {
+        return { content: "OK" };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    const response = await backend.sendPrompt("session-1", {
+      parts: [{ type: "text", text: "test" }],
+      model: {
+        providerID: "copilot",
+        modelID: "gpt-5.4",
+        variant: "high",
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        method: "session/set_config_option",
+        params: {
+          sessionId: "session-1",
+          configId: "reasoning_effort",
+          value: "high",
+        },
+      },
+      {
+        method: "session/prompt",
+        params: {
+          sessionId: "session-1",
+          prompt: [{ type: "text", text: "test" }],
+          model: "gpt-5.4",
+        },
+      },
+    ]);
+    expect(response.content).toBe("OK");
+  });
+
+  test("sendPrompt resets Copilot effort to cached default for the base variant", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "copilot";
+      directory: string;
+      sessionCache: Map<string, {
+        id: string;
+        createdAt: string;
+        model?: string;
+        configOptions?: Array<Record<string, unknown>>;
+      }>;
+      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+      sendRpcRequest: (method: string, params: Record<string, unknown>, timeoutMs?: number) => Promise<unknown>;
+    };
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "copilot";
+    internal.directory = "/tmp/copilot-reset";
+    internal.sessionCache.set("session-2", {
+      id: "session-2",
+      createdAt: new Date().toISOString(),
+      model: "gpt-5.4",
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          type: "select",
+          currentValue: "gpt-5.4",
+          category: "model",
+          options: [{ value: "gpt-5.4", name: "GPT-5.4" }],
+        },
+        {
+          id: "reasoning_effort",
+          name: "Reasoning Effort",
+          type: "select",
+          currentValue: "high",
+          category: "thought_level",
+          options: [
+            { value: "low", name: "low" },
+            { value: "medium", name: "medium" },
+            { value: "high", name: "high" },
+          ],
+        },
+      ],
+    });
+    internal.copilotDefaultReasoningEfforts.set("/tmp/copilot-reset", new Map([["gpt-5.4", "medium"]]));
+    internal.sendRpcRequest = async (
+      method: string,
+      params: Record<string, unknown>,
+    ): Promise<unknown> => {
+      calls.push({ method, params });
+      if (method === "session/set_config_option") {
+        return {
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "gpt-5.4",
+              category: "model",
+              options: [{ value: "gpt-5.4", name: "GPT-5.4" }],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: params["value"],
+              category: "thought_level",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/prompt") {
+        return { content: "OK" };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    await backend.sendPrompt("session-2", {
+      parts: [{ type: "text", text: "test" }],
+      model: {
+        providerID: "copilot",
+        modelID: "gpt-5.4",
+        variant: "",
+      },
+    });
+
+    expect(calls[0]).toEqual({
+      method: "session/set_config_option",
+      params: {
+        sessionId: "session-2",
+        configId: "reasoning_effort",
+        value: "medium",
+      },
+    });
+  });
 });
 
 describe("sanitizeSpawnArgsForLogging", () => {
