@@ -92,6 +92,12 @@ async function applyLoopUpdates(
       if (code === "USE_WORKTREE_IMMUTABLE") {
         return errorResponse("use_worktree_immutable", errorMessage, status ?? 409);
       }
+      if (code === "ACTIVE_LOOP_UPDATE_RESTRICTED") {
+        return errorResponse("active_loop_update_restricted", errorMessage, status ?? 409);
+      }
+      if (code === "PLANNING_UPDATE_RESTRICTED") {
+        return errorResponse("planning_update_restricted", errorMessage, status ?? 409);
+      }
     }
     log.error("Failed to update loop", { loopId, error: errorMessage });
     return errorResponse("update_failed", errorMessage, 500);
@@ -120,12 +126,13 @@ export const loopsItemRoutes = {
     /**
      * PATCH /api/loops/:id - Update a loop's configuration.
      *
-     * Updates the specified fields of a loop's configuration. Cannot be used
-     * on running or starting loops — stop the loop first. Partial updates are supported.
+     * Updates the specified fields of a loop's configuration. Active execution
+     * loops must be stopped first, except active planning loops may update only
+     * autoAcceptPlan and fullyAutonomous. Partial updates are supported.
      *
      * Updatable fields: name, directory, prompt, model, maxIterations,
      * maxConsecutiveErrors, activityTimeoutSeconds, stopPattern, baseBranch,
-     * clearPlanningFolder, planMode, git
+     * clearPlanningFolder, planMode, git, autoAcceptPlan, fullyAutonomous
      *
      * @returns Updated Loop object or 404 if not found
      */

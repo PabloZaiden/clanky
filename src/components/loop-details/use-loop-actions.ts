@@ -3,7 +3,7 @@
  */
 
 import { useState } from "react";
-import type { SshSession, PullRequestDestinationResponse } from "../../types";
+import type { SshSession, PullRequestDestinationResponse, UpdateLoopRequest } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { ToastContextValue } from "../../hooks/useToast";
 import type {
@@ -32,7 +32,7 @@ interface UseLoopActionsOptions {
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
-  update: (request: { name?: string }) => Promise<boolean>;
+  update: (request: UpdateLoopRequest) => Promise<boolean>;
   fetchReviewComments: () => Promise<void>;
 }
 
@@ -52,6 +52,7 @@ export interface UseLoopActionsResult {
   planActionSubmitting: boolean;
   automaticPrFlowSubmitting: boolean;
   sshConnecting: boolean;
+  planningSettingsSubmitting: boolean;
 
   // Modal open/close setters
   setDeleteModal: (open: boolean) => void;
@@ -83,6 +84,7 @@ export interface UseLoopActionsResult {
   handleConnectViaSsh: () => Promise<void>;
   handleOpenLoopFiles: () => void;
   handleRename: (newName: string) => Promise<void>;
+  handleUpdatePlanningSettings: (request: Pick<UpdateLoopRequest, "autoAcceptPlan" | "fullyAutonomous">) => Promise<boolean>;
 }
 
 export function useLoopActions({
@@ -120,6 +122,7 @@ export function useLoopActions({
   const [stopAutomaticPrFlowModal, setStopAutomaticPrFlowModal] = useState(false);
   const [automaticPrFlowSubmitting, setAutomaticPrFlowSubmitting] = useState(false);
   const [sshConnecting, setSshConnecting] = useState(false);
+  const [planningSettingsSubmitting, setPlanningSettingsSubmitting] = useState(false);
 
   function navigateToSshSession(sshSessionId: string) {
     if (onSelectSshSession) {
@@ -273,6 +276,17 @@ export function useLoopActions({
     await update({ name: newName });
   }
 
+  async function handleUpdatePlanningSettings(
+    request: Pick<UpdateLoopRequest, "autoAcceptPlan" | "fullyAutonomous">,
+  ): Promise<boolean> {
+    setPlanningSettingsSubmitting(true);
+    try {
+      return await update(request);
+    } finally {
+      setPlanningSettingsSubmitting(false);
+    }
+  }
+
   return {
     deleteModal,
     acceptModal,
@@ -288,6 +302,7 @@ export function useLoopActions({
     planActionSubmitting,
     automaticPrFlowSubmitting,
     sshConnecting,
+    planningSettingsSubmitting,
     setDeleteModal,
     setAcceptModal,
     setPurgeModal,
@@ -315,5 +330,6 @@ export function useLoopActions({
     handleConnectViaSsh,
     handleOpenLoopFiles,
     handleRename,
+    handleUpdatePlanningSettings,
   };
 }
