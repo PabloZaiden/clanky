@@ -59,13 +59,14 @@ type RouteHandler = ((...args: never[]) => unknown) | Record<string, unknown>;
 
 export interface ApiEndpointCatalogEntry {
   path: string;
+  cliPath?: string;
   methods: HttpMethod[];
   description?: string;
   requestSchema?: z.ZodTypeAny;
   querySchema?: z.ZodTypeAny;
 }
 
-type ApiEndpointOverride = Omit<Partial<ApiEndpointCatalogEntry>, "path" | "methods">;
+type ApiEndpointOverride = Pick<ApiEndpointCatalogEntry, "description" | "requestSchema" | "querySchema">;
 
 const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/health": {
@@ -333,6 +334,7 @@ function getRouteEntries(): ApiEndpointCatalogEntry[] {
       const override = endpointOverrides[path] ?? {};
       return {
         path,
+        cliPath: getCliEndpointPath(path),
         methods: getRouteMethods(handler as RouteHandler),
         description: override.description,
         requestSchema: override.requestSchema,
@@ -342,16 +344,20 @@ function getRouteEntries(): ApiEndpointCatalogEntry[] {
     .sort((left, right) => left.path.localeCompare(right.path));
 }
 
+function getCliEndpointPath(path: string): string {
+  return path.startsWith("/api/") ? path.slice("/api/".length) : path;
+}
+
 function normalizeEndpointPath(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) {
     throw new Error("API endpoint is required");
   }
 
-  if (trimmed.startsWith("/api/") || trimmed.startsWith("/.well-known/")) {
+  if (trimmed.startsWith("/api/")) {
     return trimmed;
   }
-  if (trimmed.startsWith("api/") || trimmed.startsWith(".well-known/")) {
+  if (trimmed.startsWith("api/")) {
     return `/${trimmed}`;
   }
   if (trimmed.startsWith("/")) {
@@ -391,12 +397,12 @@ function matchesRoutePattern(routePath: string, endpointPath: string): boolean {
 }
 
 export function listApiEndpoints(): ApiEndpointCatalogEntry[] {
-  return getRouteEntries();
+  return getRouteEntries().filter((entry) => entry.path.startsWith("/api/"));
 }
 
 export function findApiEndpoint(input: string): ApiEndpointCatalogEntry | null {
   const normalizedPath = normalizeEndpointPath(stripEndpointSuffix(input));
-  const entries = getRouteEntries();
+  const entries = listApiEndpoints();
   return entries.find((entry) => entry.path === normalizedPath)
     ?? entries.find((entry) => matchesRoutePattern(entry.path, normalizedPath))
     ?? null;

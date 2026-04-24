@@ -177,7 +177,8 @@ function printApiEndpoints(out: (message: string) => void): void {
   const entries = listApiEndpoints();
   for (const entry of entries) {
     const description = entry.description ? ` - ${entry.description}` : "";
-    out(`${entry.methods.join(", ")} ${entry.path}${description}`);
+    const cliPath = entry.cliPath ?? entry.path.replace(/^\/api\//, "");
+    out(`${entry.methods.join(", ")} ${cliPath}${description}`);
   }
 }
 
