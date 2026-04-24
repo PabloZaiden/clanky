@@ -20,7 +20,8 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
   const [isExpanded, setIsExpanded] = useState(false);
   const panelId = useId();
   const labelId = useId();
-  const toolCallCountLabel = `${entry.tools.length} tool call${entry.tools.length === 1 ? "" : "s"}`;
+  const toolCount = entry.tools.length;
+  const toolCallCountLabel = `${toolCount} tool call${toolCount === 1 ? "" : "s"}`;
   const groupedToolEntries = useMemo(
     () => annotateDisplayEntries(
       entry.tools.map((tool) => ({
