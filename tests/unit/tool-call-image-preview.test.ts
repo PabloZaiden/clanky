@@ -9,7 +9,6 @@ import {
 } from "../../src/core/tool-call-image-preview";
 import {
   MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
-  TOOL_CALL_IMAGE_PREVIEW_MAX_BYTES,
 } from "../../src/types/message-attachments";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
@@ -88,13 +87,13 @@ describe("tool-call-image-preview", () => {
     expect(firstPreview?.id).not.toBe(differentToolPreview?.id);
   });
 
-  test("uses a stricter persisted size budget for tool previews", async () => {
+  test("rejects previews larger than the shared message image size limit", async () => {
     const directory = await mkdtemp(join(tmpdir(), "tool-preview-"));
     tempDirs.push(directory);
     const imagePath = join(directory, "large-screen.png");
     const oversizedPng = Buffer.concat([
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-      Buffer.alloc(TOOL_CALL_IMAGE_PREVIEW_MAX_BYTES),
+      Buffer.alloc(MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES),
     ]);
     await writeFile(imagePath, oversizedPng);
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
@@ -106,7 +105,6 @@ describe("tool-call-image-preview", () => {
       toolCallId: "tool-1",
     });
 
-    expect(TOOL_CALL_IMAGE_PREVIEW_MAX_BYTES).toBeLessThan(MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES);
     expect(preview).toBeNull();
   });
 

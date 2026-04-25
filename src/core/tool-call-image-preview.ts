@@ -5,7 +5,7 @@ import { quoteShell } from "./remote-executor/utils";
 import type { ToolCallExtra } from "../types/tool-call";
 import {
   MESSAGE_IMAGE_ALLOWED_MIME_TYPES,
-  TOOL_CALL_IMAGE_PREVIEW_MAX_BYTES,
+  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
   type MessageImageAttachment,
 } from "../types/message-attachments";
 
@@ -183,7 +183,7 @@ export async function resolveToolCallImagePreview(
       "  exit 0",
       "fi",
       "size=$(wc -c < \"$path\" | tr -d '[:space:]')",
-      `if [ \"$size\" -gt ${TOOL_CALL_IMAGE_PREVIEW_MAX_BYTES} ]; then`,
+      `if [ \"$size\" -gt ${MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES} ]; then`,
       "  printf '%s\\n' '__TOO_LARGE__'",
       "  printf '%s\\n' \"$size\"",
       "  exit 0",
@@ -208,7 +208,7 @@ export async function resolveToolCallImagePreview(
   }
 
   const size = Number.parseInt(sizeLine ?? "", 10);
-  if (!Number.isFinite(size) || size <= 0 || size > TOOL_CALL_IMAGE_PREVIEW_MAX_BYTES) {
+  if (!Number.isFinite(size) || size <= 0 || size > MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES) {
     return null;
   }
 
