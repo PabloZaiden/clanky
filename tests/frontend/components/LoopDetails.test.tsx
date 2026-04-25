@@ -1970,24 +1970,55 @@ describe("error display", () => {
 describe("log tab", () => {
   test("shows the log tab without a collapsible Logs section", async () => {
     setupDefaultApi();
-    const { getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByLabelText, getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Log")).toBeTruthy();
-      expect(getByText("Show system info")).toBeTruthy();
+      expect(getByLabelText("Show system info")).toBeTruthy();
     });
     expect(queryByText("Logs")).toBeNull();
     expect(queryByText("TODOs")).toBeNull();
   });
 
-  test("shows log filter checkboxes", async () => {
+  test("uses accessible log footer controls with the intended defaults and shortened labels", async () => {
     setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByLabelText, getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByText("Show system info")).toBeTruthy();
-      expect(getByText("Show reasoning")).toBeTruthy();
-      expect(getByText("Show tools")).toBeTruthy();
+      expect(getByLabelText("Show system info")).toBeTruthy();
+      expect(getByLabelText("Show reasoning")).toBeTruthy();
+      expect(getByLabelText("Show tools")).toBeTruthy();
+      expect(getByLabelText("Autoscroll")).toBeTruthy();
+      expect(getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
+    });
+
+    const showSystemInfoCheckbox = getByLabelText("Show system info") as HTMLInputElement;
+    const showReasoningCheckbox = getByLabelText("Show reasoning") as HTMLInputElement;
+    const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
+    const autoScrollCheckbox = getByLabelText("Autoscroll") as HTMLInputElement;
+    const enterFocusModeButton = getByRole("button", { name: "Enter focus mode" });
+
+    expect(showSystemInfoCheckbox.checked).toBe(false);
+    expect(showReasoningCheckbox.checked).toBe(true);
+    expect(showToolsCheckbox.checked).toBe(true);
+    expect(autoScrollCheckbox.checked).toBe(true);
+
+    await user.click(getByText("System"));
+    expect(showSystemInfoCheckbox.checked).toBe(true);
+
+    await user.click(getByText("Reasoning"));
+    expect(showReasoningCheckbox.checked).toBe(false);
+
+    await user.click(getByText("Show tools"));
+    expect(showToolsCheckbox.checked).toBe(false);
+
+    await user.click(getByText("Auto"));
+    expect(autoScrollCheckbox.checked).toBe(false);
+
+    await user.click(within(enterFocusModeButton).getByText("Focus"));
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Exit focus mode" })).toBeInTheDocument();
     });
   });
 
