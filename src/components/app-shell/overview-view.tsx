@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import type { SshServer, SshServerSession } from "../../types";
 import type { useLoopGrouping, useLoops } from "../../hooks";
-import { getLoopStatusLabel, getRecentActivityTimestamp, shouldShowInRecentActivity } from "../../utils";
-import { getStatusBadgeVariant, StatusBadge } from "../common";
+import { getLoopStatusPill, getRecentActivityTimestamp, shouldShowInRecentActivity } from "../../utils";
+import { StatusBadge } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
@@ -59,7 +59,7 @@ export function OverviewView({
             ) : (
               recentLoops.map((loop) => {
                 const route: ShellRoute = { view: "loop", loopId: loop.config.id };
-                const label = getLoopStatusLabel(loop);
+                const statusPill = getLoopStatusPill(loop);
                 return (
                   <button
                     key={loop.config.id}
@@ -75,8 +75,8 @@ export function OverviewView({
                         {loop.config.directory}
                       </span>
                     </span>
-                    <StatusBadge variant={getStatusBadgeVariant(loop.state.status)} className="shrink-0">
-                      {label}
+                    <StatusBadge variant={statusPill.variant} className="shrink-0">
+                      {statusPill.label}
                     </StatusBadge>
                   </button>
                 );

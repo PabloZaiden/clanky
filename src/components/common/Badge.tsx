@@ -3,7 +3,8 @@
  */
 
 import type { HTMLAttributes } from "react";
-import type { ChatStatus, PortForwardStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
+import type { ChatStatus, LoopStatus, PortForwardStatus, ProvisioningJobStatus, SshSessionStatus } from "../../types";
+import { getLoopStatusPillFromState } from "../../utils";
 
 export type BadgeVariant = 
   | "default" 
@@ -106,12 +107,19 @@ export function getStatusBadgeVariant(status: string): BadgeVariant {
   }
 }
 
-export function getLoopStatusBadgeVariant(status: string, isPlanReady = false): BadgeVariant {
-  if (status === "planning" && isPlanReady) {
-    return "plan_ready";
-  }
-
-  return getStatusBadgeVariant(status);
+export function getLoopStatusBadgeVariant(status: LoopStatus, isPlanReady = false): BadgeVariant {
+  return getLoopStatusPillFromState({
+    status,
+    syncState: undefined,
+    planMode: status === "planning"
+      ? {
+          active: true,
+          feedbackRounds: 0,
+          planningFolderCleared: false,
+          isPlanReady,
+        }
+      : undefined,
+  }).variant;
 }
 
 export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {
