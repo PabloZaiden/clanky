@@ -140,6 +140,75 @@ describe("ChatDetails", () => {
     });
   });
 
+  test("replaces the transcript when the selected chat changes to an older chat", async () => {
+    const baseChat = createChat();
+    const newerChat = createChat({
+      config: {
+        ...baseChat.config,
+        id: "chat-1",
+        name: "Recent pairing",
+        updatedAt: "2025-01-01T00:00:05.000Z",
+      },
+      state: {
+        id: "chat-1",
+        status: "idle",
+        lastActivityAt: "2025-01-01T00:00:05.000Z",
+        messages: [
+          {
+            id: "assistant-recent",
+            role: "assistant",
+            content: "Recent transcript content",
+            timestamp: "2025-01-01T00:00:05.000Z",
+          },
+        ],
+        logs: [],
+        toolCalls: [],
+      },
+    });
+    const olderChat = createChat({
+      config: {
+        ...baseChat.config,
+        id: "chat-2",
+        name: "Older pairing",
+        updatedAt: "2025-01-01T00:00:01.000Z",
+      },
+      state: {
+        id: "chat-2",
+        status: "idle",
+        lastActivityAt: "2025-01-01T00:00:01.000Z",
+        messages: [
+          {
+            id: "assistant-older",
+            role: "assistant",
+            content: "Older transcript content",
+            timestamp: "2025-01-01T00:00:01.000Z",
+          },
+        ],
+        logs: [],
+        toolCalls: [],
+      },
+    });
+
+    api.get("/api/chats/:id", ({ params }) => {
+      return params["id"] === "chat-1" ? newerChat : olderChat;
+    });
+
+    const { getByText, queryByText, rerender } = renderWithUser(<ChatDetails chatId="chat-1" />);
+
+    await waitFor(() => {
+      expect(getByText("Recent pairing")).toBeInTheDocument();
+    });
+    expect(getByText("Recent transcript content")).toBeInTheDocument();
+
+    rerender(<ChatDetails chatId="chat-2" />);
+
+    await waitFor(() => {
+      expect(getByText("Older pairing")).toBeInTheDocument();
+    });
+    expect(getByText("Older transcript content")).toBeInTheDocument();
+    expect(queryByText("Recent transcript content")).not.toBeInTheDocument();
+  });
+
   test("opens a larger preview for attachment thumbnails in the transcript", async () => {
     api.get("/api/chats/:id", () => createChat({
       state: {
