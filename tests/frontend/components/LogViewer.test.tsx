@@ -1048,6 +1048,49 @@ describe("LogViewer", () => {
       expect(panel?.textContent).toContain("Find files matching 'DEFAULT_CLIENT_ID' in /src");
     });
 
+    test("updates an expanded grouped tool entry when output arrives later for the same tool id", async () => {
+      const firstTool = createToolCallData({
+        id: "tool-group-live-a",
+        name: "view",
+        input: { path: "/src/first.ts" },
+        status: "running",
+        timestamp: SAME_MINUTE_TIME_A,
+      });
+      const secondTool = createToolCallData({
+        id: "tool-group-live-b",
+        name: "view",
+        input: { path: "/src/second.ts" },
+        status: "running",
+        timestamp: SAME_MINUTE_TIME_B,
+      });
+
+      const rendered = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[firstTool, secondTool]} showTools={true} />
+      );
+
+      await rendered.user.click(rendered.getByRole("button", { name: /^2 tool calls$/i }));
+      await rendered.user.click(rendered.getByRole("button", { name: "View /src/first.ts" }));
+
+      expect(rendered.queryByText("contents from first.ts")).not.toBeInTheDocument();
+
+      rendered.rerender(
+        <LogViewer
+          messages={[]}
+          toolCalls={[
+            {
+              ...firstTool,
+              status: "completed",
+              output: { content: "contents from first.ts" },
+            },
+            secondTool,
+          ]}
+          showTools={true}
+        />
+      );
+
+      expect(rendered.getByText("contents from first.ts")).toBeInTheDocument();
+    });
+
     test("splits tool groups when a non-tool entry interrupts the run", async () => {
       const firstTool = createToolCallData({
         id: "tool-group-split-a",

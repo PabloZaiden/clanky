@@ -1242,6 +1242,26 @@ describe("connectionStatus", () => {
       expect(result.current.progressContent).toBe("Partial response");
     });
 
+    act(() => {
+      ws.sendEvent({
+        type: "loop.tool_call",
+        loopId: LOOP_ID,
+        iteration: 1,
+        tool: {
+          id: "tool-stale",
+          name: "Search",
+          input: { query: "stale local tool call" },
+          status: "running",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.toolCalls.some((tool) => tool.id === "tool-stale")).toBe(true);
+    });
+
     const connectionsForLoop = ws.connections().filter((connection) => connection.queryParams["loopId"] === LOOP_ID);
     const initialConnection = connectionsForLoop[0]!;
     await act(async () => {
@@ -1265,6 +1285,10 @@ describe("connectionStatus", () => {
       "Recovered log",
     ]);
     expect(result.current.toolCalls.map((tool) => tool.id)).toEqual([
+      "tool-1",
+      "tool-2",
+    ]);
+    expect(result.current.loop?.state.toolCalls.map((tool) => tool.id)).toEqual([
       "tool-1",
       "tool-2",
     ]);

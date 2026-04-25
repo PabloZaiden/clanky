@@ -9,6 +9,7 @@ import type { Loop, MessageData, ToolCallData } from "../../types";
 import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "../../lib/logger";
 import { appFetch } from "../../lib/public-path";
+import { reconcileToolCallRecords } from "../../types/tool-call";
 import { normalizeHydratedLoopLogs } from "./response-log-normalization";
 
 const log = createLogger("useLoop");
@@ -110,7 +111,16 @@ export function useLoopData(
       ) {
         return;
       }
-      setLoop(data);
+      setLoop((current) => current ? {
+        ...data,
+        state: {
+          ...data.state,
+          toolCalls: reconcileToolCallRecords(
+            (current.state.toolCalls as ToolCallData[] | undefined) ?? [],
+            (data.state.toolCalls as ToolCallData[] | undefined) ?? [],
+          ),
+        },
+      } : data);
       log.debug("Loop data refreshed", { loopId: requestLoopId, status: data.state.status });
 
       // Hydrate persisted data on the first successful load and on explicit reconnect recovery.
@@ -145,7 +155,8 @@ export function useLoopData(
         );
 
         const latestToolCalls = data.state.toolCalls?.slice(-1000) ?? [];
-        setToolCalls(
+        setToolCalls((current) => reconcileToolCallRecords(
+          current,
           latestToolCalls.map((tc) => ({
             id: tc.id,
             name: tc.name,
@@ -155,7 +166,7 @@ export function useLoopData(
             timestamp: tc.timestamp,
             extras: tc.extras,
           })),
-        );
+        ));
 
         if (options?.hydrateFromSnapshot) {
           setProgressContent("");
