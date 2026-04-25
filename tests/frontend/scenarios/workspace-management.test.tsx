@@ -355,7 +355,7 @@ describe("workspace management scenario", () => {
         createdAt: new Date().toISOString(),
       },
     }]);
-    api.post("/api/provisioning-jobs", () => ({
+    const startedSnapshot = {
       job: {
         config: {
           id: "job-1",
@@ -373,7 +373,9 @@ describe("workspace management scenario", () => {
         },
       },
       logs: [],
-    }));
+    };
+    api.post("/api/provisioning-jobs", () => startedSnapshot);
+    api.get("/api/provisioning-jobs/:id", () => startedSnapshot);
 
     const { getByRole, queryByLabelText, user } = renderWithUser(<App />);
 
@@ -418,6 +420,8 @@ describe("workspace management scenario", () => {
     await waitFor(() => {
       expect(api.calls("/api/provisioning-jobs", "POST")).toHaveLength(1);
       expect(getByRole("heading", { name: "Create a workspace" })).toBeTruthy();
+      expect(getByRole("button", { name: "Cancel Job" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Provisioning log" })).toBeTruthy();
     });
   });
 
