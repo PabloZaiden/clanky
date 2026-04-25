@@ -66,6 +66,7 @@ export function Badge({
 }: BadgeProps) {
   return (
     <span
+      data-badge-variant={variant}
       className={`inline-flex items-center font-medium rounded-full ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...props}
     >
@@ -104,14 +105,6 @@ export function getStatusBadgeVariant(status: string): BadgeVariant {
     default:
       return "default";
   }
-}
-
-export function getLoopStatusBadgeVariant(status: string, isPlanReady = false): BadgeVariant {
-  if (status === "planning" && isPlanReady) {
-    return "plan_ready";
-  }
-
-  return getStatusBadgeVariant(status);
 }
 
 export function getChatStatusBadgeVariant(status: ChatStatus): BadgeVariant {

@@ -13,7 +13,6 @@ export { Card, type CardProps } from "./Card";
 export {
   Badge,
   getChatStatusBadgeVariant,
-  getLoopStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
   getPortForwardStatusBadgeVariant,

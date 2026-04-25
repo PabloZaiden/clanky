@@ -7,6 +7,8 @@ import {
   canSendTerminalFollowUp,
   getRecentActivityTimestamp,
   getLoopStatusLabel,
+  getLoopStatusPill,
+  getLoopStatusPillFromState,
   getPlanningStatusLabel,
   getStatusLabel,
   isArchivedLoop,
@@ -36,6 +38,12 @@ const ALL_STATUSES: LoopStatus[] = [
   "pushed",
   "deleted",
 ];
+const TEST_BASE_BRANCH = "default-base-branch";
+const CONFLICT_SYNC_STATE = {
+  status: "conflicts" as const,
+  baseBranch: TEST_BASE_BRANCH,
+  autoPushOnComplete: false,
+};
 
 function createTestLoop(
   status: LoopStatus,
@@ -101,13 +109,13 @@ describe("getStatusLabel", () => {
 
   test("overrides active sync-conflict statuses to resolving conflicts", () => {
     for (const status of ["starting", "running", "waiting"] satisfies LoopStatus[]) {
-      expect(getStatusLabel(status, { status: "conflicts" })).toBe("Resolving Conflicts");
+      expect(getStatusLabel(status, CONFLICT_SYNC_STATE)).toBe("Resolving Conflicts");
     }
   });
 
   test("keeps non-active statuses and unknown values unchanged", () => {
     for (const status of ALL_STATUSES.filter((status) => !["starting", "running", "waiting"].includes(status))) {
-      expect(getStatusLabel(status, { status: "conflicts" })).toBe(getStatusLabel(status));
+      expect(getStatusLabel(status, CONFLICT_SYNC_STATE)).toBe(getStatusLabel(status));
     }
     expect(getStatusLabel("unknown_status" as LoopStatus)).toBe("unknown_status");
   });
@@ -192,6 +200,32 @@ describe("planning helpers", () => {
     expect(getLoopStatusLabel(createTestLoop("planning", false))).toBe("Planning");
     expect(getLoopStatusLabel(createTestLoop("planning", true))).toBe("Plan Ready");
     expect(getLoopStatusLabel(createTestLoop("running"))).toBe("Running");
+  });
+
+  test("builds pill descriptors from a single shared mapping", () => {
+    expect(getLoopStatusPill(createTestLoop("planning", false))).toEqual({
+      key: "planning",
+      label: "Planning",
+      variant: "planning",
+    });
+    expect(getLoopStatusPill(createTestLoop("planning", true))).toEqual({
+      key: "plan_ready",
+      label: "Plan Ready",
+      variant: "plan_ready",
+    });
+    expect(getLoopStatusPillFromState({
+      status: "running",
+      syncState: {
+        status: "conflicts",
+        baseBranch: TEST_BASE_BRANCH,
+        autoPushOnComplete: false,
+      },
+      planMode: undefined,
+    })).toEqual({
+      key: "resolving_conflicts",
+      label: "Resolving Conflicts",
+      variant: "running",
+    });
   });
 
   test("marks only ready planning loops as plan ready", () => {

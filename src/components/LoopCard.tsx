@@ -3,11 +3,9 @@
  */
 
 import type { LoopSummaryProps } from "../types";
-import { Badge, getStatusBadgeVariant, Card, EditIcon, StatusBadge } from "./common";
-import type { BadgeVariant } from "./common";
+import { Badge, Card, EditIcon, StatusBadge } from "./common";
 import {
-  getStatusLabel,
-  getPlanningStatusLabel,
+  getLoopStatusPill,
   isLoopPlanReady,
   isLoopActive,
   formatRelativeTime,
@@ -25,14 +23,7 @@ export function LoopCard({
   const isPlanReady = isLoopPlanReady(loop);
   const isDraft = state.status === "draft";
   const isAddressable = state.reviewMode?.addressable === true;
-
-  // Determine badge variant and label for planning sub-states
-  const badgeVariant: BadgeVariant = isPlanning
-    ? (isPlanReady ? "plan_ready" : "planning")
-    : getStatusBadgeVariant(state.status);
-  const badgeLabel = isPlanning
-    ? getPlanningStatusLabel(isPlanReady)
-    : getStatusLabel(state.status, state.syncState);
+  const statusPill = getLoopStatusPill(loop);
 
   // Card ring color: amber for plan-ready, cyan for planning-in-progress
   const planningRingClass = isPlanReady
@@ -94,8 +85,8 @@ export function LoopCard({
             )}
           </div>
           <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
-            <StatusBadge variant={badgeVariant}>
-              {badgeLabel}
+            <StatusBadge variant={statusPill.variant}>
+              {statusPill.label}
             </StatusBadge>
             {isAddressable && (
               <Badge variant="info">

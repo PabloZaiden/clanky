@@ -20,9 +20,14 @@ export {
   getRecentActivityTimestamp,
   getPlanningStatusLabel,
   getLoopStatusLabel,
+  getLoopStatusPill,
+  getLoopStatusPillFromState,
   isLoopPlanReady,
   getEntityLabel,
   type EntityLabels,
+  type LoopStatusPill,
+  type LoopStatusPillKey,
+  type LoopStatusPillVariant,
 } from "./loop-status";
 
 export { sanitizeBranchName } from "./sanitize-branch-name";
