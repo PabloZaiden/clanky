@@ -264,14 +264,14 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByLabelText, getByRole, getByText, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, queryByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
 
     expect(composer.disabled).toBe(false);
     expect(getByRole("button", { name: "Interrupt" })).toBeTruthy();
     expect(queryByRole("button", { name: "Send" })).toBeNull();
-    expect(getByText("You can draft the next message while the AI is working. Send becomes available again when it finishes.")).toBeTruthy();
+    expect(queryByText("You can draft the next message while the AI is working. Send becomes available again when it finishes.")).toBeNull();
 
     await user.type(composer, "Queued follow-up");
 
@@ -315,12 +315,6 @@ describe("ChatDetails", () => {
     const composerIds = composers.map((composer) => composer.id);
     expect(new Set(composerIds).size).toBe(2);
 
-    const hintIds = composers.map((composer) => composer.getAttribute("aria-describedby"));
-    expect(new Set(hintIds).size).toBe(2);
-    hintIds.forEach((hintId) => {
-      expect(hintId).toBeTruthy();
-      expect(document.getElementById(hintId!)).toBeTruthy();
-    });
   });
 
   test("prevents the send button from taking focus on press", async () => {
