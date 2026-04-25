@@ -36,6 +36,7 @@ function setupBaseApi() {
   api.get("/api/models", () => [createModelInfo({ connected: true })]);
   api.get("/api/ssh-sessions", () => []);
   api.get("/api/ssh-servers", () => []);
+  api.get("/api/ssh-servers/:id/sessions", () => []);
   api.get("/api/workspaces/:id/server-settings/status", () => ({
     connected: false,
     provider: "opencode",
@@ -329,6 +330,98 @@ describe("workspace management scenario", () => {
     await waitFor(() => {
       expect(window.location.hash).toBe("#/");
       expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+    });
+  });
+
+  test("shell composer keeps create controls working when switching to automatic mode", async () => {
+    setupBaseApi();
+    api.get("/api/loops", () => []);
+    api.get("/api/workspaces", () => []);
+    api.get("/api/ssh-servers", () => [{
+      config: {
+        id: "server-1",
+        name: "Build Box",
+        address: "10.0.0.5",
+        username: "vscode",
+        repositoriesBasePath: "/srv/workspaces",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      publicKey: {
+        algorithm: "RSA-OAEP-256",
+        publicKey: "public-key",
+        fingerprint: "fingerprint",
+        version: 1,
+        createdAt: new Date().toISOString(),
+      },
+    }]);
+    const startedSnapshot = {
+      job: {
+        config: {
+          id: "job-1",
+          name: "Provisioned Workspace",
+          sshServerId: "server-1",
+          repoUrl: "git@github.com:owner/repo.git",
+          basePath: "/srv/workspaces",
+          provider: "copilot",
+          createdAt: new Date().toISOString(),
+        },
+        state: {
+          status: "running",
+          currentStep: "clone_repo",
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      logs: [],
+    };
+    api.post("/api/provisioning-jobs", () => startedSnapshot);
+    api.get("/api/provisioning-jobs/:id", () => startedSnapshot);
+
+    const { getByRole, queryByLabelText, user } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+    });
+
+    const workspacesNewButton = getSectionActionButton("Workspaces");
+    expect(workspacesNewButton).toBeTruthy();
+    await user.click(workspacesNewButton!);
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Create a workspace" })).toBeTruthy();
+      expect(getByRole("button", { name: "Create Workspace" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+
+    await waitFor(() => {
+      expect(queryByLabelText("Directory *")).toBeNull();
+      expect(getByRole("button", { name: "Start Provisioning" })).toBeTruthy();
+    });
+
+    const nameInput = document.querySelector("#workspace-name") as HTMLInputElement | null;
+    const serverSelect = document.querySelector("#automatic-ssh-server") as HTMLSelectElement | null;
+    const repoInput = document.querySelector("#automatic-repo-url") as HTMLInputElement | null;
+
+    expect(nameInput).toBeTruthy();
+    expect(serverSelect).toBeTruthy();
+    expect(repoInput).toBeTruthy();
+
+    await user.type(nameInput!, "Provisioned Workspace");
+    await user.selectOptions(serverSelect!, "server-1");
+    await user.type(repoInput!, "git@github.com:owner/repo.git");
+
+    const basePathInput = document.querySelector("#automatic-base-path") as HTMLInputElement | null;
+    expect(basePathInput).toBeTruthy();
+    expect(basePathInput?.value).toBe("/srv/workspaces");
+
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/provisioning-jobs", "POST")).toHaveLength(1);
+      expect(getByRole("heading", { name: "Create a workspace" })).toBeTruthy();
+      expect(getByRole("button", { name: "Cancel Job" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Provisioning log" })).toBeTruthy();
     });
   });
 
