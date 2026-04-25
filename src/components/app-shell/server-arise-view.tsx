@@ -37,6 +37,7 @@ export function ServerAriseView({
       repoUrl: "",
       basePath: server.config.repositoriesBasePath ?? "",
       devcontainerSubpath: null,
+      devboxTemplate: null,
       provider: "copilot",
       password,
       mode: "arise",

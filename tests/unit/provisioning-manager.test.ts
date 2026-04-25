@@ -185,6 +185,39 @@ describe("ProvisioningManager", () => {
     ]);
   });
 
+  test("provisions a workspace with a devbox template override", async () => {
+    const server = await sshServerManager.createServer({
+      name: "Template Test",
+      address: "10.0.0.16",
+      username: "remote-user",
+      repositoriesBasePath: null,
+    });
+    const executor = new ProvisioningTestExecutor();
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+    const manager = new ProvisioningManager(5_000, 500);
+    const started = await manager.startJob({
+      name: "Template Workspace",
+      sshServerId: server.config.id,
+      repoUrl: "git@github.com:octocat/example.git",
+      basePath: "/workspaces",
+      devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
+      devboxTemplate: "python",
+      provider: "copilot",
+    });
+
+    const snapshot = await waitForProvisioningStatus(manager, started.job.config.id, ["completed"]);
+    expect(snapshot.job.state.status).toBe("completed");
+    expect(started.job.config.devboxTemplate).toBe("python");
+
+    const devboxUpCall = executor.calls.find((call) => call.command === "devbox" && call.args[0] === "up");
+    expect(devboxUpCall?.args).toEqual([
+      "up",
+      "--template",
+      "python",
+    ]);
+  });
+
   test("rebuilds an existing devbox workspace without cloning", async () => {
     const server = await sshServerManager.createServer({
       name: "Rebuild Host",

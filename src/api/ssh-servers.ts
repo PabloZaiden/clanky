@@ -12,6 +12,7 @@ import {
   CheckSshServerPrerequisitesRequestSchema,
   CreateSshServerRequestSchema,
   CreateSshServerSessionRequestSchema,
+  GetDevboxTemplatesRequestSchema,
   DeleteSshServerSessionRequestSchema,
   SshCredentialExchangeRequestSchema,
   UpdateSshServerRequestSchema,
@@ -200,6 +201,25 @@ export const sshServersRoutes = {
         return Response.json(await sshServerManager.checkPrerequisites(req.params.id, validation.data));
       } catch (error) {
         log.error("Failed to check standalone SSH server prerequisites", {
+          serverId: req.params.id,
+          error: String(error),
+        });
+        return mapSshServerError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/devbox/templates": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(GetDevboxTemplatesRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        return Response.json(await sshServerManager.listDevboxTemplates(req.params.id, validation.data));
+      } catch (error) {
+        log.error("Failed to list standalone SSH server devbox templates", {
           serverId: req.params.id,
           error: String(error),
         });

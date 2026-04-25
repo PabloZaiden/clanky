@@ -30,6 +30,10 @@ export interface UseWorkspaceCreateResult {
   setAutomaticBasePath: (path: string) => void;
   automaticDevcontainerSubpath: string;
   setAutomaticDevcontainerSubpath: (subpath: string) => void;
+  automaticDevboxTemplate: string;
+  setAutomaticDevboxTemplate: (template: string) => void;
+  automaticAdvancedOpen: boolean;
+  setAutomaticAdvancedOpen: (open: boolean) => void;
   automaticProvider: AgentProvider;
   setAutomaticProvider: (provider: AgentProvider) => void;
   automaticPassword: string;
@@ -71,6 +75,8 @@ export function useWorkspaceCreate({
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
   const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
+  const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
+  const [automaticAdvancedOpen, setAutomaticAdvancedOpen] = useState(false);
   const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>("copilot");
   const [automaticPassword, setAutomaticPassword] = useState("");
   const lastProvisioningRefreshIdRef = useRef<string | null>(null);
@@ -109,6 +115,8 @@ export function useWorkspaceCreate({
     setAutomaticRepoUrl("");
     setAutomaticBasePath("/workspaces");
     setAutomaticDevcontainerSubpath("");
+    setAutomaticDevboxTemplate("");
+    setAutomaticAdvancedOpen(false);
     setAutomaticProvider("copilot");
     setAutomaticPassword("");
   }, [provisioning.activeJobId, provisioning.snapshot?.job.state.status, route, servers]);
@@ -169,6 +177,8 @@ export function useWorkspaceCreate({
     setAutomaticRepoUrl(config.repoUrl);
     setAutomaticBasePath(config.basePath);
     setAutomaticDevcontainerSubpath(config.devcontainerSubpath ?? "");
+    setAutomaticDevboxTemplate(config.devboxTemplate ?? "");
+    setAutomaticAdvancedOpen(Boolean(config.devboxTemplate ?? config.devcontainerSubpath));
     setAutomaticProvider(config.provider);
     setAutomaticPassword("");
     provisioning.clearActiveJob();
@@ -194,7 +204,10 @@ export function useWorkspaceCreate({
           sshServerId: automaticServerId,
           repoUrl: automaticRepoUrl.trim(),
           basePath: automaticBasePath.trim(),
-          devcontainerSubpath: automaticDevcontainerSubpath.trim() || null,
+          devcontainerSubpath: automaticDevboxTemplate.trim()
+            ? null
+            : automaticDevcontainerSubpath.trim() || null,
+          devboxTemplate: automaticDevboxTemplate.trim() || null,
           provider: automaticProvider,
           password: automaticPassword,
           mode: "provision",
@@ -254,6 +267,10 @@ export function useWorkspaceCreate({
     setAutomaticBasePath,
     automaticDevcontainerSubpath,
     setAutomaticDevcontainerSubpath,
+    automaticDevboxTemplate,
+    setAutomaticDevboxTemplate,
+    automaticAdvancedOpen,
+    setAutomaticAdvancedOpen,
     automaticProvider,
     setAutomaticProvider,
     automaticPassword,

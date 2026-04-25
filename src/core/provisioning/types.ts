@@ -6,6 +6,7 @@ export interface StartProvisioningJobOptions {
   repoUrl: string;
   basePath: string;
   devcontainerSubpath?: string;
+  devboxTemplate?: string;
   provider: AgentProvider;
   mode?: ProvisioningJobMode;
   password?: string;

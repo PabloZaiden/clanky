@@ -53,6 +53,7 @@ export function RebuildWorkspaceView({
       repoUrl: workspace.repoUrl ?? "",
       basePath: workspace.basePath ?? "",
       devcontainerSubpath: workspace.devcontainerSubpath ?? null,
+      devboxTemplate: null,
       provider: workspace.provider ?? "copilot",
       password,
       mode,

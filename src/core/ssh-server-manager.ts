@@ -8,6 +8,8 @@ import {
   type CreateSshServerRequest,
   type CreateSshServerSessionRequest,
   type CheckSshServerPrerequisitesRequest,
+  type DevboxTemplateSummary,
+  type GetDevboxTemplatesRequest,
   type DeleteSshServerSessionRequest,
   type SshConnectionMode,
   type SshServer,
@@ -41,6 +43,7 @@ import type { SshConnectionTarget } from "./ssh-connection-target";
 import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
 import { checkSshServerPrerequisites } from "./ssh-server-prerequisites";
+import { parseDevboxTemplatesOutput } from "./ssh-server-devbox-templates";
 
 type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;
 
@@ -133,6 +136,23 @@ export class SshServerManager {
       ? sshCredentialManager.getPasswordForToken(server.id, credentialToken)
       : undefined;
     return await checkSshServerPrerequisites(server, this.buildExecutor(server, password ?? ""));
+  }
+
+  async listDevboxTemplates(
+    serverId: string,
+    request: GetDevboxTemplatesRequest = { credentialToken: null },
+  ): Promise<DevboxTemplateSummary[]> {
+    const server = await this.requireServerConfig(serverId);
+    const credentialToken = request.credentialToken?.trim();
+    const password = credentialToken
+      ? sshCredentialManager.getPasswordForToken(server.id, credentialToken)
+      : undefined;
+    const executor = this.buildExecutor(server, password ?? "");
+    const result = await executor.exec("devbox", ["templates"], { cwd: "/" });
+    if (!result.success) {
+      throw new Error(result.stderr.trim() || result.stdout.trim() || "Failed to list devbox templates");
+    }
+    return parseDevboxTemplatesOutput(result.stdout);
   }
 
   async createSession(serverId: string, request: CreateSshServerSessionRequest): Promise<SshServerSession> {

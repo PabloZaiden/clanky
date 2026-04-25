@@ -9,6 +9,7 @@ import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials"
 import type { AgentProvider, ServerSettings, SshServer } from "../../types";
 import type { CreateWorkspaceRequest } from "../../types/workspace";
 import { appFetch } from "../../lib/public-path";
+import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { useProvisioningJob } from "../../hooks/useProvisioningJob";
 import { getCreateWorkspaceDefaultServerSettings } from "../../types/settings";
 import { ModeTabs } from "./mode-tabs";
@@ -62,6 +63,7 @@ export function CreateWorkspaceModal({
     automaticRepoUrl: string;
     automaticBasePath: string;
     automaticDevcontainerSubpath: string;
+    automaticDevboxTemplate: string;
     automaticProvider: AgentProvider;
   } | null>(null);
 
@@ -73,6 +75,8 @@ export function CreateWorkspaceModal({
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
   const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
+  const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
+  const [automaticAdvancedOpen, setAutomaticAdvancedOpen] = useState(false);
   const [automaticProvider, setAutomaticProvider] = useState<AgentProvider>("copilot");
   const [automaticPassword, setAutomaticPassword] = useState("");
 
@@ -109,6 +113,8 @@ export function CreateWorkspaceModal({
     setAutomaticRepoUrl("");
     setAutomaticBasePath("/workspaces");
     setAutomaticDevcontainerSubpath("");
+    setAutomaticDevboxTemplate("");
+    setAutomaticAdvancedOpen(false);
     setAutomaticProvider("copilot");
     setAutomaticPassword("");
     setServerSettings(defaultServerSettings);
@@ -145,6 +151,7 @@ export function CreateWorkspaceModal({
         automaticRepoUrl: automaticRepoUrl.trim(),
         automaticBasePath: automaticBasePath.trim(),
         automaticDevcontainerSubpath: automaticDevcontainerSubpath.trim(),
+        automaticDevboxTemplate: automaticDevboxTemplate.trim(),
         automaticProvider,
       };
       const snapshot = await provisioning.startJob({
@@ -152,7 +159,10 @@ export function CreateWorkspaceModal({
         sshServerId: automaticServerId,
         repoUrl: automaticRepoUrl.trim(),
         basePath: automaticBasePath.trim(),
-        devcontainerSubpath: automaticDevcontainerSubpath.trim() || null,
+        devcontainerSubpath: automaticDevboxTemplate.trim()
+          ? null
+          : automaticDevcontainerSubpath.trim() || null,
+        devboxTemplate: automaticDevboxTemplate.trim() || null,
         provider: automaticProvider,
         password: automaticPassword,
         mode: "provision",
@@ -219,6 +229,15 @@ export function CreateWorkspaceModal({
   const selectedServerHasStoredCredential = automaticServerId
     ? getStoredSshServerCredential(automaticServerId) !== null
     : false;
+  const {
+    templates,
+    templatesLoading,
+    templatesError,
+    refreshTemplates,
+  } = useDevboxTemplates({
+    serverId: automaticServerId,
+    password: automaticPassword,
+  });
   const isAutomaticValid = isNameValid
     && automaticServerId.trim().length > 0
     && automaticRepoUrl.trim().length > 0
@@ -243,6 +262,7 @@ export function CreateWorkspaceModal({
       automaticRepoUrl: config.repoUrl,
       automaticBasePath: config.basePath,
       automaticDevcontainerSubpath: config.devcontainerSubpath ?? "",
+      automaticDevboxTemplate: config.devboxTemplate ?? "",
       automaticProvider: config.provider,
     } : (refMatchesActiveJob ? saved : null);
 
@@ -253,6 +273,8 @@ export function CreateWorkspaceModal({
       setAutomaticRepoUrl(values.automaticRepoUrl);
       setAutomaticBasePath(values.automaticBasePath);
       setAutomaticDevcontainerSubpath(values.automaticDevcontainerSubpath);
+      setAutomaticDevboxTemplate(values.automaticDevboxTemplate);
+      setAutomaticAdvancedOpen(Boolean(values.automaticDevboxTemplate || values.automaticDevcontainerSubpath));
       setAutomaticProvider(values.automaticProvider);
       setAutomaticPassword("");
     }
@@ -323,19 +345,34 @@ export function CreateWorkspaceModal({
           ) : (
             <AutomaticWorkspaceForm
               serverId={automaticServerId}
-              onServerIdChange={setAutomaticServerId}
+              onServerIdChange={(serverId) => {
+                setAutomaticServerId(serverId);
+                setAutomaticDevboxTemplate("");
+                const selectedServer = registeredSshServers.find((server) => server.config.id === serverId);
+                if (selectedServer?.config.repositoriesBasePath) {
+                  setAutomaticBasePath(selectedServer.config.repositoriesBasePath);
+                }
+              }}
               repoUrl={automaticRepoUrl}
               onRepoUrlChange={setAutomaticRepoUrl}
               basePath={automaticBasePath}
               onBasePathChange={setAutomaticBasePath}
               devcontainerSubpath={automaticDevcontainerSubpath}
               onDevcontainerSubpathChange={setAutomaticDevcontainerSubpath}
+              devboxTemplate={automaticDevboxTemplate}
+              onDevboxTemplateChange={setAutomaticDevboxTemplate}
               provider={automaticProvider}
               onProviderChange={setAutomaticProvider}
               password={automaticPassword}
               onPasswordChange={setAutomaticPassword}
               registeredSshServers={registeredSshServers}
               selectedServerHasStoredCredential={selectedServerHasStoredCredential}
+              templates={templates}
+              templatesLoading={templatesLoading}
+              templatesError={templatesError}
+              onRetryTemplates={() => { void refreshTemplates(automaticPassword); }}
+              advancedOpen={automaticAdvancedOpen}
+              onAdvancedOpenChange={setAutomaticAdvancedOpen}
             />
           )}
 

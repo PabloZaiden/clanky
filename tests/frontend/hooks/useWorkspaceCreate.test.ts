@@ -7,7 +7,8 @@
  */
 
 import { describe, test, expect, mock } from "bun:test";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import type { FormEvent } from "react";
 import { useWorkspaceCreate } from "@/components/app-shell/use-workspace-create";
 import type { UseProvisioningJobResult } from "@/hooks/useProvisioningJob";
 import type { ShellRoute } from "@/components/app-shell/shell-types";
@@ -37,6 +38,7 @@ function createMockProvisioning(overrides?: Partial<UseProvisioningJobResult>): 
 function createMockSnapshot(
   status: ProvisioningJobStatus,
   jobId = "job-1",
+  configOverrides?: Partial<ProvisioningJobSnapshot["job"]["config"]>,
 ): ProvisioningJobSnapshot {
   return {
     job: {
@@ -48,6 +50,7 @@ function createMockSnapshot(
         basePath: "/workspaces",
         provider: "copilot",
         createdAt: new Date().toISOString(),
+        ...configOverrides,
       },
       state: {
         status,
@@ -234,6 +237,93 @@ describe("useWorkspaceCreate", () => {
       // Let effects settle before asserting the negative
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(clearActiveJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("automatic workspace advanced options", () => {
+    test("submits devbox template and clears devcontainer subpath", async () => {
+      const startJob = mock(() => Promise.resolve(createMockSnapshot("running")));
+      const { result } = renderUseWorkspaceCreate({
+        route: composeWorkspaceRoute,
+        servers: [{
+          config: {
+            id: "server-1",
+            name: "Server",
+            address: "example.com",
+            username: "alice",
+            repositoriesBasePath: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          publicKey: {
+            algorithm: "RSA-OAEP-256",
+            publicKey: "public-key",
+            fingerprint: "fingerprint",
+            version: 1,
+            createdAt: new Date().toISOString(),
+          },
+        }],
+        provisioning: {
+          startJob,
+        },
+      });
+
+      await waitFor(() => {
+        expect(result.current.automaticServerId).toBe("server-1");
+      });
+
+      act(() => {
+        result.current.setWorkspaceCreateMode("automatic");
+        result.current.setWorkspaceName("Template Workspace");
+        result.current.setAutomaticRepoUrl("git@github.com:test/repo.git");
+        result.current.setAutomaticBasePath("/workspaces");
+        result.current.setAutomaticDevcontainerSubpath(".devcontainer/backend/devcontainer.json");
+        result.current.setAutomaticDevboxTemplate("python");
+      });
+
+      act(() => {
+        result.current.handleCreateWorkspace({
+          preventDefault() {},
+        } as FormEvent<HTMLFormElement>);
+      });
+
+      await waitFor(() => {
+        expect(startJob).toHaveBeenCalledWith(expect.objectContaining({
+          name: "Template Workspace",
+          sshServerId: "server-1",
+          repoUrl: "git@github.com:test/repo.git",
+          basePath: "/workspaces",
+          devcontainerSubpath: null,
+          devboxTemplate: "python",
+          provider: "copilot",
+          mode: "provision",
+        }));
+      });
+    });
+
+    test("restores selected devbox template when returning from provisioning", async () => {
+      const clearActiveJob = mock(() => {});
+      const { result } = renderUseWorkspaceCreate({
+        route: homeRoute,
+        provisioning: {
+          activeJobId: "job-template",
+          snapshot: createMockSnapshot("failed", "job-template", {
+            name: "Template Workspace",
+            devboxTemplate: "python",
+          }),
+          clearActiveJob,
+        },
+      });
+
+      act(() => {
+        result.current.handleBackToAutomaticWorkspaceForm();
+      });
+
+      expect(result.current.workspaceName).toBe("Template Workspace");
+      expect(result.current.automaticDevboxTemplate).toBe("python");
+      expect(result.current.automaticDevcontainerSubpath).toBe("");
+      expect(result.current.automaticAdvancedOpen).toBe(true);
+      expect(clearActiveJob).toHaveBeenCalled();
     });
   });
 });

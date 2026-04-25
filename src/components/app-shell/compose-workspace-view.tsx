@@ -1,6 +1,7 @@
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
+import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { ServerSettingsForm } from "../ServerSettingsForm";
 import type { ServerSettings } from "../../types/settings";
@@ -53,6 +54,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     setAutomaticBasePath,
     automaticDevcontainerSubpath,
     setAutomaticDevcontainerSubpath,
+    automaticDevboxTemplate,
+    setAutomaticDevboxTemplate,
+    automaticAdvancedOpen,
+    setAutomaticAdvancedOpen,
     automaticProvider,
     setAutomaticProvider,
     automaticPassword,
@@ -71,6 +76,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const selectedServerHasStoredCredential = automaticServerId
     ? getStoredSshServerCredential(automaticServerId) !== null
     : false;
+  const {
+    templates,
+    templatesLoading,
+    templatesError,
+    refreshTemplates,
+  } = useDevboxTemplates({
+    serverId: automaticServerId,
+    password: automaticPassword,
+  });
   const automaticFormValid =
     workspaceName.trim().length > 0 &&
     automaticServerId.trim().length > 0 &&
@@ -88,6 +102,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       : workspaceCreateSubmitting || workspacesSaving;
   const createActionDisabled =
     workspaceCreateMode === "automatic" ? !automaticFormValid : !manualFormValid;
+  const advancedSummary = automaticDevboxTemplate
+    ? `Template: ${automaticDevboxTemplate}`
+    : automaticDevcontainerSubpath
+      ? "Devcontainer variant configured"
+      : "Optional template and repo devcontainer overrides";
 
   const createModeControls = (
     <>
@@ -265,6 +284,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   onChange={(event) => {
                     const newServerId = event.target.value;
                     setAutomaticServerId(newServerId);
+                    setAutomaticDevboxTemplate("");
                     const selectedServer = servers.find((s) => s.config.id === newServerId);
                     if (selectedServer?.config.repositoriesBasePath) {
                       setAutomaticBasePath(selectedServer.config.repositoriesBasePath);
@@ -349,6 +369,78 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   inputProps={PASSWORD_INPUT_PROPS}
                 />
               )}
+
+              <div className="rounded-2xl border border-gray-200 bg-white/70 dark:border-gray-800 dark:bg-neutral-900/70">
+                <button
+                  type="button"
+                  onClick={() => setAutomaticAdvancedOpen(!automaticAdvancedOpen)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Advanced options</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{advancedSummary}</p>
+                  </div>
+                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                    {automaticAdvancedOpen ? "Hide" : "Show"}
+                  </span>
+                </button>
+
+                {automaticAdvancedOpen && (
+                  <div className="space-y-4 border-t border-gray-200 px-4 py-4 dark:border-gray-800">
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                        <label
+                          htmlFor="automatic-devbox-template"
+                          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          Devbox template
+                        </label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => { void refreshTemplates(automaticPassword); }}
+                        >
+                          Refresh templates
+                        </Button>
+                      </div>
+                      <select
+                        id="automatic-devbox-template"
+                        value={automaticDevboxTemplate}
+                        onChange={(event) => setAutomaticDevboxTemplate(event.target.value)}
+                        disabled={!automaticServerId || templatesLoading}
+                        className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700 dark:disabled:bg-neutral-900"
+                      >
+                        <option value="">Use repository devcontainer (default)</option>
+                        {templatesLoading && <option value="" disabled>Loading templates...</option>}
+                        {!templatesLoading && templates.map((template) => (
+                          <option key={template.name} value={template.name}>
+                            {template.name} - {template.runtimeVersion}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        Optional. Choose a built-in devbox template instead of the repository devcontainer definition for this provisioning run.
+                      </p>
+                      {templatesError && (
+                        <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
+                      )}
+                    </div>
+
+                    <InlineField
+                      id="automatic-devcontainer-subpath"
+                      label="Devcontainer variant"
+                      value={automaticDevcontainerSubpath}
+                      onChange={setAutomaticDevcontainerSubpath}
+                      placeholder="backend"
+                      disabled={automaticDevboxTemplate.length > 0}
+                      help={automaticDevboxTemplate
+                        ? "Disabled while a devbox template is selected. Clear the template to use the repository devcontainer definition instead."
+                        : "Optional. Use when the repository contains multiple devcontainer definitions and devbox needs a specific one."}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

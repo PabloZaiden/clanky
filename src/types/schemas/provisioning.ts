@@ -12,6 +12,7 @@ export const CreateProvisioningJobRequestSchema = z.object({
   repoUrl: z.string().trim(),
   basePath: z.string().trim(),
   devcontainerSubpath: z.string().trim().nullable(),
+  devboxTemplate: z.string().trim().nullish(),
   provider: AgentProviderSchema,
   credentialToken: SshCredentialTokenSchema.nullable(),
   mode: ProvisioningJobModeSchema,

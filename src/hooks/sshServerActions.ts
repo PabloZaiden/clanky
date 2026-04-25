@@ -1,6 +1,8 @@
 import type {
   CheckSshServerPrerequisitesRequest,
   CreateSshServerRequest,
+  DevboxTemplateSummary,
+  GetDevboxTemplatesRequest,
   ListSshServersResponse,
   SshServer,
   SshConnectionMode,
@@ -181,5 +183,24 @@ export async function checkSshServerPrerequisitesApi(options: {
       body: JSON.stringify(request),
     },
     "Check SSH server prerequisites",
+  );
+}
+
+export async function listDevboxTemplatesApi(options: {
+  serverId: string;
+  password?: string;
+}): Promise<DevboxTemplateSummary[]> {
+  const credentialToken = await resolveOptionalCredentialToken(options.serverId, options.password);
+  const request: GetDevboxTemplatesRequest = {
+    credentialToken: credentialToken ?? null,
+  };
+  return await apiCall<DevboxTemplateSummary[]>(
+    `/api/ssh-servers/${options.serverId}/devbox/templates`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    "List devbox templates",
   );
 }

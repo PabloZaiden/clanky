@@ -3,7 +3,7 @@
  */
 
 import { PASSWORD_INPUT_PROPS } from "../common";
-import type { AgentProvider, SshServer } from "../../types";
+import type { AgentProvider, DevboxTemplateSummary, SshServer } from "../../types";
 
 interface AutomaticWorkspaceFormProps {
   serverId: string;
@@ -14,12 +14,20 @@ interface AutomaticWorkspaceFormProps {
   onBasePathChange: (path: string) => void;
   devcontainerSubpath: string;
   onDevcontainerSubpathChange: (subpath: string) => void;
+  devboxTemplate: string;
+  onDevboxTemplateChange: (template: string) => void;
   provider: AgentProvider;
   onProviderChange: (provider: AgentProvider) => void;
   password: string;
   onPasswordChange: (password: string) => void;
   registeredSshServers: SshServer[];
   selectedServerHasStoredCredential: boolean;
+  templates: DevboxTemplateSummary[];
+  templatesLoading: boolean;
+  templatesError: string | null;
+  onRetryTemplates: () => void;
+  advancedOpen: boolean;
+  onAdvancedOpenChange: (open: boolean) => void;
 }
 
 export function AutomaticWorkspaceForm({
@@ -31,13 +39,27 @@ export function AutomaticWorkspaceForm({
   onBasePathChange,
   devcontainerSubpath,
   onDevcontainerSubpathChange,
+  devboxTemplate,
+  onDevboxTemplateChange,
   provider,
   onProviderChange,
   password,
   onPasswordChange,
   registeredSshServers,
   selectedServerHasStoredCredential,
+  templates,
+  templatesLoading,
+  templatesError,
+  onRetryTemplates,
+  advancedOpen,
+  onAdvancedOpenChange,
 }: AutomaticWorkspaceFormProps) {
+  const advancedSummary = devboxTemplate
+    ? `Template: ${devboxTemplate}`
+    : devcontainerSubpath
+      ? "Devcontainer variant configured"
+      : "Optional template and repo devcontainer overrides";
+
   return (
     <>
       <div>
@@ -105,26 +127,6 @@ export function AutomaticWorkspaceForm({
 
       <div>
         <label
-          htmlFor="automatic-devcontainer-subpath"
-          className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-        >
-          Devcontainer Variant
-        </label>
-        <input
-          type="text"
-          id="automatic-devcontainer-subpath"
-          value={devcontainerSubpath}
-          onChange={(e) => onDevcontainerSubpathChange(e.target.value)}
-          placeholder="backend"
-          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 font-mono"
-        />
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Optional. Only set this when the repository exposes multiple devcontainer definitions and devbox needs a specific one.
-        </p>
-      </div>
-
-      <div>
-        <label
           htmlFor="automatic-provider"
           className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
         >
@@ -163,6 +165,88 @@ export function AutomaticWorkspaceForm({
           </p>
         </div>
       )}
+
+      <div className="rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-800">
+        <button
+          type="button"
+          onClick={() => onAdvancedOpenChange(!advancedOpen)}
+          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
+        >
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Advanced options</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{advancedSummary}</p>
+          </div>
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+            {advancedOpen ? "Hide" : "Show"}
+          </span>
+        </button>
+
+        {advancedOpen && (
+          <div className="space-y-4 border-t border-gray-300 px-3 py-3 dark:border-gray-600">
+            <div>
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label
+                  htmlFor="automatic-devbox-template"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  Devbox Template
+                </label>
+                <button
+                  type="button"
+                  onClick={onRetryTemplates}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+                >
+                  Refresh templates
+                </button>
+              </div>
+              <select
+                id="automatic-devbox-template"
+                value={devboxTemplate}
+                onChange={(e) => onDevboxTemplateChange(e.target.value)}
+                disabled={!serverId || templatesLoading}
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900"
+              >
+                <option value="">Use repository devcontainer (default)</option>
+                {templatesLoading && <option value="" disabled>Loading templates...</option>}
+                {!templatesLoading && templates.map((template) => (
+                  <option key={template.name} value={template.name}>
+                    {template.name} - {template.runtimeVersion}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Optional. Choose a built-in devbox template instead of the repository devcontainer definition for this provisioning run.
+              </p>
+              {templatesError && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
+              )}
+            </div>
+
+            <div>
+              <label
+                htmlFor="automatic-devcontainer-subpath"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
+                Devcontainer Variant
+              </label>
+              <input
+                type="text"
+                id="automatic-devcontainer-subpath"
+                value={devcontainerSubpath}
+                onChange={(e) => onDevcontainerSubpathChange(e.target.value)}
+                placeholder="backend"
+                disabled={devboxTemplate.length > 0}
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900 font-mono"
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {devboxTemplate
+                  ? "Disabled while a devbox template is selected. Clear the template to use the repository devcontainer definition instead."
+                  : "Optional. Only set this when the repository exposes multiple devcontainer definitions and devbox needs a specific one."}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }
