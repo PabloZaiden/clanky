@@ -145,8 +145,9 @@ function handleToolStart(event: AgentEvent & { type: "tool.start" }, ctx: Iterat
   ctx.currentResponseLogContent = "";
   ctx.currentReasoningLogId = null;
   ctx.currentReasoningLogContent = "";
-  const toolId = `tool-${ctx.iteration}-${event.toolName}-${ctx.toolCallCount}`;
-  ctx.toolCalls.set(event.toolName, { id: toolId, name: event.toolName, input: event.input });
+  const toolId = event.toolCallId ?? `tool-${ctx.iteration}-${event.toolName}-${ctx.toolCallCount}`;
+  const toolKey = event.toolCallId ?? event.toolName;
+  ctx.toolCalls.set(toolKey, { id: toolId, name: event.toolName, input: event.input });
   ctx.toolCallCount++;
   const timestamp = createTimestamp();
   const toolCallData: ToolCallData = {
@@ -167,14 +168,15 @@ function handleToolStart(event: AgentEvent & { type: "tool.start" }, ctx: Iterat
 }
 
 async function handleToolComplete(event: AgentEvent & { type: "tool.complete" }, ctx: IterationContext, toolCtx: ToolProcessingContext): Promise<void> {
-  const toolInfo = ctx.toolCalls.get(event.toolName);
+  const toolKey = event.toolCallId ?? event.toolName;
+  const toolInfo = ctx.toolCalls.get(toolKey);
   const completedInput = event.input ?? toolInfo?.input;
   if (toolInfo) {
-    ctx.toolCalls.set(event.toolName, { ...toolInfo, input: completedInput });
+    ctx.toolCalls.set(toolKey, { ...toolInfo, input: completedInput });
   }
   const timestamp = createTimestamp();
   const toolCompleteData: ToolCallData = {
-    id: toolInfo?.id ?? `tool-${ctx.iteration}-${event.toolName}`,
+    id: event.toolCallId ?? toolInfo?.id ?? `tool-${ctx.iteration}-${event.toolName}`,
     name: event.toolName,
     input: completedInput,
     output: event.output,

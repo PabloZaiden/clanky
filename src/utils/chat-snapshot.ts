@@ -1,4 +1,5 @@
 import type { Chat } from "../types";
+import { mergeToolCallRecords } from "../types/tool-call";
 
 function toTimestamp(value?: string): number | null {
   if (!value) {
@@ -28,5 +29,15 @@ export function mergeChatSnapshot(current: Chat, incoming: Chat): Chat {
     };
   }
 
-  return incoming;
+  return {
+    ...incoming,
+    config: {
+      ...current.config,
+      ...incoming.config,
+    },
+    state: {
+      ...incoming.state,
+      toolCalls: mergeToolCallRecords(current.state.toolCalls, incoming.state.toolCalls),
+    },
+  };
 }

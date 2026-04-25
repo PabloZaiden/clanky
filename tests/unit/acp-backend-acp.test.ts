@@ -159,11 +159,13 @@ describe("AcpBackend ACP parsing", () => {
     expect(events).toHaveLength(2);
     expect(events[0]).toEqual({
       type: "tool.start",
+      toolCallId: "call-1",
       toolName: "execute",
       input: { command: "pwd" },
     });
     expect(events[1]).toEqual({
       type: "tool.complete",
+      toolCallId: "call-1",
       toolName: "execute",
       input: undefined,
       output: { content: "/tmp" },
@@ -216,10 +218,12 @@ describe("AcpBackend ACP parsing", () => {
     expect(events).toHaveLength(2);
     expect(events[0]).toMatchObject({
       type: "tool.start",
+      toolCallId: "call-fail-1",
       toolName: "read",
     });
     expect(events[1]).toEqual({
       type: "tool.complete",
+      toolCallId: "call-fail-1",
       toolName: "read",
       input: undefined,
       output: {
@@ -277,6 +281,7 @@ describe("AcpBackend ACP parsing", () => {
     expect(events).toHaveLength(2);
     expect(events[1]).toEqual({
       type: "tool.complete",
+      toolCallId: "call-read-1",
       toolName: "read",
       input: { filePath: "/tmp/file.txt", offset: 1, limit: 20 },
       output: { output: "file contents" },

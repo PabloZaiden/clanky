@@ -1132,6 +1132,178 @@ class ToolCompletedInputBackend implements Backend {
   }
 }
 
+class RepeatedToolNameBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `repeated-tool-name-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "Done",
+      parts: [{ type: "text", text: "Done" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, _prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "message.start",
+        messageId: "assistant-repeated-tool-name",
+      });
+    }, 0);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.start",
+        toolCallId: "tool-view-a",
+        toolName: "view",
+        input: { path: "/workspace/repo/a.ts", view_range: [1, 20] },
+      });
+    }, 10);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.start",
+        toolCallId: "tool-view-b",
+        toolName: "view",
+        input: { path: "/workspace/repo/b.ts", view_range: [1, 20] },
+      });
+    }, 20);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.complete",
+        toolCallId: "tool-view-a",
+        toolName: "view",
+        input: { path: "/workspace/repo/a.ts", view_range: [1, 20] },
+        output: { content: "contents from a.ts" },
+      });
+    }, 30);
+    setTimeout(() => {
+      subscription.push({
+        type: "tool.complete",
+        toolCallId: "tool-view-b",
+        toolName: "view",
+        input: { path: "/workspace/repo/b.ts", view_range: [1, 20] },
+        output: { content: "contents from b.ts" },
+      });
+    }, 40);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.delta",
+        content: "Done",
+      });
+    }, 50);
+    setTimeout(() => {
+      subscription.push({
+        type: "message.complete",
+        content: "Done",
+      });
+      subscription.end();
+    }, 60);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://repeated-tool-name-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 class IdleStatusInterruptBackend implements Backend {
   readonly name = "acp";
 
@@ -1631,6 +1803,52 @@ describe("ChatManager", () => {
       input: { filePath: "/workspace/repo/README.md", offset: 1, limit: 40 },
       output: { content: "README contents" },
     });
+  });
+
+  test("keeps repeated same-name tool calls attached to their own outputs", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new RepeatedToolNameBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Repeated Tool Name Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Inspect both files",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle" && current.state.toolCalls.length === 2,
+    );
+
+    const summarizedToolCalls = completed.state.toolCalls
+      .map((toolCall) => ({
+        path: (toolCall.input as { path?: string }).path,
+        status: toolCall.status,
+        output: (toolCall.output as { content?: string } | undefined)?.content,
+      }))
+      .sort((left, right) => String(left.path).localeCompare(String(right.path)));
+
+    expect(summarizedToolCalls).toEqual([
+      {
+        path: "/workspace/repo/a.ts",
+        status: "completed",
+        output: "contents from a.ts",
+      },
+      {
+        path: "/workspace/repo/b.ts",
+        status: "completed",
+        output: "contents from b.ts",
+      },
+    ]);
   });
 
   test("emits chat.status events for starting, streaming, and idle transitions", async () => {

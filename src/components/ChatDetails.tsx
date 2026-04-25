@@ -28,7 +28,7 @@ import { appFetch } from "../lib/public-path";
 import { useAvailableModels, useMarkdownPreference, useToast, useWebSocket } from "../hooks";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
-import { upsertToolCallExtra } from "../types/tool-call";
+import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
 import type {
   Chat,
   ChatEvent,
@@ -155,7 +155,7 @@ export function ChatDetails({
         throw new Error(await parseError(response, "Failed to fetch chat"));
       }
       const data = (await response.json()) as Chat;
-      setChat(data);
+      setChat((current) => current ? mergeChatSnapshot(current, data) : data);
     } catch (refreshError) {
       setError(String(refreshError));
     } finally {
@@ -201,7 +201,13 @@ export function ChatDetails({
             state: {
               ...current.state,
               lastActivityAt: event.timestamp,
-              toolCalls: upsertById(current.state.toolCalls as ToolCallData[], event.tool),
+              toolCalls: upsertById(
+                current.state.toolCalls as ToolCallData[],
+                mergeToolCallRecord(
+                  (current.state.toolCalls as ToolCallData[]).find((toolCall) => toolCall.id === event.tool.id),
+                  event.tool,
+                ),
+              ),
             },
           };
         case "chat.tool_call.extra":

@@ -681,6 +681,7 @@ export class AcpBackend implements Backend {
       });
       this.emitSessionEvent(sessionId, {
         type: "tool.start",
+        toolCallId,
         toolName,
         input: content["input"] ?? updateObj["input"] ?? updateObj["rawInput"] ?? {},
       });
@@ -749,6 +750,7 @@ export class AcpBackend implements Backend {
 
         this.emitSessionEvent(sessionId, {
           type: "tool.complete",
+          toolCallId,
           toolName,
           input: completedInput,
           output,
@@ -2064,6 +2066,7 @@ export class AcpBackend implements Backend {
             toolPartStatus.set(partId, "running");
             return {
               type: "tool.start",
+              toolCallId: partId,
               toolName: part.tool,
               input: state.input,
             };
@@ -2075,6 +2078,7 @@ export class AcpBackend implements Backend {
             toolPartStatus.set(partId, "completed");
             return {
               type: "tool.complete",
+              toolCallId: partId,
               toolName: part.tool,
               input: state.input,
               output: state.output,

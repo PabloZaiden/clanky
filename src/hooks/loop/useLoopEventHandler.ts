@@ -9,7 +9,7 @@ import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "../../lib/logger";
 import { MAX_FRONTEND_LOGS, MAX_FRONTEND_MESSAGES, MAX_FRONTEND_TOOL_CALLS } from "./useLoopData";
 import { finalizeLatestResponseLog } from "./response-log-normalization";
-import { upsertToolCallExtra } from "../../types/tool-call";
+import { mergeToolCallRecord, upsertToolCallExtra } from "../../types/tool-call";
 
 const log = createLogger("useLoop");
 
@@ -108,7 +108,7 @@ export function createLoopEventHandler(params: LoopEventHandlerParams) {
           const index = prev.findIndex((tc) => tc.id === event.tool.id);
           if (index >= 0) {
             const newToolCalls = [...prev];
-            newToolCalls[index] = event.tool;
+            newToolCalls[index] = mergeToolCallRecord(newToolCalls[index], event.tool);
             return newToolCalls;
           }
           const newToolCalls = [...prev, event.tool];

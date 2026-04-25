@@ -2686,6 +2686,62 @@ describe("StopPatternDetector", () => {
       expect(contents).toContain("After tool");
     });
 
+    test("keeps repeated same-name tool calls attached to their own outputs", async () => {
+      const loop = createTestLoop({ maxIterations: 1 });
+      const backend = createEventSequenceBackend((push, end) => {
+        push({ type: "message.start", messageId: "msg-1" });
+        push({ type: "tool.start", toolCallId: "tool-view-a", toolName: "view", input: { path: "/workspace/repo/a.ts", view_range: [1, 20] } });
+        push({ type: "tool.start", toolCallId: "tool-view-b", toolName: "view", input: { path: "/workspace/repo/b.ts", view_range: [1, 20] } });
+        push({
+          type: "tool.complete",
+          toolCallId: "tool-view-a",
+          toolName: "view",
+          input: { path: "/workspace/repo/a.ts", view_range: [1, 20] },
+          output: { content: "contents from a.ts" },
+        });
+        push({
+          type: "tool.complete",
+          toolCallId: "tool-view-b",
+          toolName: "view",
+          input: { path: "/workspace/repo/b.ts", view_range: [1, 20] },
+          output: { content: "contents from b.ts" },
+        });
+        push({ type: "message.delta", content: "<promise>COMPLETE</promise>" });
+        push({ type: "message.complete", content: "<promise>COMPLETE</promise>" });
+        end();
+      });
+
+      const engine = new LoopEngine({
+        loop,
+        backend,
+        gitService,
+        eventEmitter: emitter,
+      });
+
+      await engine.start();
+
+      const summarizedToolCalls = engine.state.toolCalls
+        .map((toolCall) => ({
+          path: (toolCall.input as { path?: string }).path,
+          status: toolCall.status,
+          output: (toolCall.output as { content?: string } | undefined)?.content,
+        }))
+        .sort((left, right) => String(left.path).localeCompare(String(right.path)));
+
+      expect(summarizedToolCalls).toEqual([
+        {
+          path: "/workspace/repo/a.ts",
+          status: "completed",
+          output: "contents from a.ts",
+        },
+        {
+          path: "/workspace/repo/b.ts",
+          status: "completed",
+          output: "contents from b.ts",
+        },
+      ]);
+    });
+
     test("message.start resets reasoning tracking for next message", async () => {
       const loop = createTestLoop({ maxIterations: 1 });
       const backend = createEventSequenceBackend((push, end) => {

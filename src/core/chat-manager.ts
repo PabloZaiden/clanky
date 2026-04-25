@@ -742,10 +742,10 @@ export class ChatManager {
     let currentResponseTimestamp: string | null = null;
     let totalResponseLength = 0;
     let responseSegmentCount = 0;
-    let currentReasoningLogId: string | null = null;
-    let currentReasoningLogContent = "";
-    let currentStreamBlockKind: "response" | "reasoning" | null = null;
-    const toolInputs = new Map<string, unknown>();
+      let currentReasoningLogId: string | null = null;
+      let currentReasoningLogContent = "";
+      let currentStreamBlockKind: "response" | "reasoning" | null = null;
+      const toolInputs = new Map<string, unknown>();
     const resetActiveStreamBlock = (): void => {
       currentResponseMessageId = null;
       currentResponseContent = "";
@@ -844,8 +844,9 @@ export class ChatManager {
               break;
             }
             resetActiveStreamBlock();
-            const toolId = `chat-tool-${crypto.randomUUID()}`;
-            toolInputs.set(event.toolName, event.input);
+            const toolId = event.toolCallId ?? `chat-tool-${crypto.randomUUID()}`;
+            const toolKey = event.toolCallId ?? event.toolName;
+            toolInputs.set(toolKey, event.input);
             chat = await this.appendToolCall(chat, {
               id: toolId,
               name: event.toolName,
@@ -862,10 +863,14 @@ export class ChatManager {
             }
             resetActiveStreamBlock();
             const toolName = event.toolName;
-            const existing = [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
-            const completedInput = event.input ?? existing?.input ?? toolInputs.get(toolName);
-            const completedToolId = existing?.id ?? `chat-tool-${crypto.randomUUID()}`;
-            toolInputs.set(toolName, completedInput);
+            const toolCallId = event.toolCallId;
+            const toolKey = toolCallId ?? toolName;
+            const existing = toolCallId
+              ? chat.state.toolCalls.find((tool) => tool.id === toolCallId)
+              : [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
+            const completedInput = event.input ?? existing?.input ?? toolInputs.get(toolKey);
+            const completedToolId = toolCallId ?? existing?.id ?? `chat-tool-${crypto.randomUUID()}`;
+            toolInputs.set(toolKey, completedInput);
             chat = await this.upsertToolCall(chat, {
               id: completedToolId,
               name: toolName,
