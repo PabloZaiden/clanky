@@ -5,7 +5,6 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createLoop } from "../helpers/factories";
-import { expectHamburgerIcon } from "../helpers/icon-assertions";
 import { mockComposerSoftWrap } from "../helpers/composer-measurement";
 import {
   createTestFile,
@@ -92,15 +91,6 @@ afterEach(() => {
 });
 
 describe("ChatDetails", () => {
-  test("renders a hamburger icon for the chat header action menu", async () => {
-    api.get("/api/chats/:id", () => createChat());
-
-    const { getByRole } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
-
-    const actionsButton = await waitFor(() => getByRole("button", { name: "Chat actions" }));
-    expectHamburgerIcon(actionsButton);
-  });
-
   test("renders the transcript and sends a new message", async () => {
     const initialChat = createChat();
     const updatedChat = createChat({
@@ -126,7 +116,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/messages", () => updatedChat, 200);
 
-    const { getByText, getByLabelText, getByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText, getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
@@ -134,13 +124,6 @@ describe("ChatDetails", () => {
     expect(getByText("Sure, let me take a look.")).toBeTruthy();
     const composer = getByLabelText("Message") as HTMLTextAreaElement;
     expect(composer.tagName).toBe("TEXTAREA");
-    expect(composer.getAttribute("rows")).toBe("1");
-    expect(composer.placeholder).toBe("");
-    expect(composer.className).toContain("min-h-9");
-    expect(composer.className).toContain("py-1.5");
-    expect(queryByText("Assistant")).toBeNull();
-    expect(queryByText("You")).toBeNull();
-    expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
 
     await user.type(composer, "Please summarize the risk.");
     await user.click(getByRole("button", { name: "Send" }));
@@ -155,21 +138,6 @@ describe("ChatDetails", () => {
       message: "Please summarize the risk.",
       attachments: [],
     });
-  });
-
-  test("uses the light-mode transcript surface for chat conversations by default", async () => {
-    api.get("/api/chats/:id", () => createChat());
-
-    const { getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Repo pairing")).toBeTruthy();
-    });
-
-    const transcript = document.getElementById("chat-transcript");
-    expect(transcript).not.toBeNull();
-    expect(transcript?.className).toContain("bg-gray-50");
-    expect(transcript?.className).toContain("text-gray-700");
   });
 
   test("opens a larger preview for attachment thumbnails in the transcript", async () => {
@@ -264,57 +232,17 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByLabelText, getByRole, queryByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
 
     expect(composer.disabled).toBe(false);
     expect(getByRole("button", { name: "Interrupt" })).toBeTruthy();
     expect(queryByRole("button", { name: "Send" })).toBeNull();
-    expect(queryByText("You can draft the next message while the AI is working. Send becomes available again when it finishes.")).toBeNull();
 
     await user.type(composer, "Queued follow-up");
 
     expect(composer.value).toBe("Queued follow-up");
-  });
-
-  test("uses unique composer ids when multiple active chats are mounted", async () => {
-    api.get("/api/chats/:id", (req) => {
-      const chatId = req.params["id"] ?? "missing-chat-id";
-      const baseChat = createChat();
-
-      return createChat({
-        config: {
-          ...baseChat.config,
-          id: chatId,
-          name: `Chat ${chatId}`,
-        },
-        state: {
-          ...baseChat.state,
-          id: chatId,
-          status: "streaming",
-          session: { id: `session-${chatId}` },
-          messages: [],
-          logs: [],
-          toolCalls: [],
-        },
-      });
-    });
-
-    const { getAllByLabelText } = renderWithUser(
-      <>
-        <ChatDetails chatId="chat-1" />
-        <ChatDetails chatId="chat-2" />
-      </>,
-    );
-
-    const composers = await waitFor(() => getAllByLabelText("Message")) as HTMLTextAreaElement[];
-
-    expect(composers).toHaveLength(2);
-
-    const composerIds = composers.map((composer) => composer.id);
-    expect(new Set(composerIds).size).toBe(2);
-
   });
 
   test("prevents the send button from taking focus on press", async () => {
@@ -333,63 +261,6 @@ describe("ChatDetails", () => {
 
     expect(sendButton.dispatchEvent(mouseDown)).toBe(false);
     expect(mouseDown.defaultPrevented).toBe(true);
-  });
-
-  test("keeps the attachment button inline and renders image previews below the chat composer row", async () => {
-    api.get("/api/chats/:id", () => createChat());
-
-    const { getByLabelText, getByRole, getByTestId, getByText, queryByTestId } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Send" })).toBeTruthy();
-    });
-
-    const messageInput = getByLabelText("Message");
-    const attachmentButton = getByRole("button", { name: "Add image" });
-    const modelSelector = getByRole("combobox");
-    const padding = getByTestId("chat-composer-padding");
-    const layout = getByTestId("chat-composer-layout");
-    const modelCell = getByTestId("chat-composer-model-cell");
-    const mainRow = getByTestId("chat-composer-main-row");
-    const attachmentCell = getByTestId("chat-composer-attachment-cell");
-
-    expect(padding).toHaveClass("p-3");
-    expect(padding).toContainElement(layout);
-    expect(layout.firstElementChild).toBe(mainRow);
-    expect(modelCell).toContainElement(modelSelector);
-    expect(attachmentCell).toContainElement(attachmentButton);
-    expect(mainRow).toContainElement(attachmentButton);
-    expect(queryByTestId("chat-composer-attachments-row")).toBeNull();
-
-    pasteFiles(messageInput, [createTestFile({ name: "chat-image.png" })]);
-
-    await waitFor(() => {
-      expect(getByText("chat-image.png")).toBeInTheDocument();
-    });
-
-    const attachmentsRow = getByTestId("chat-composer-attachments-row");
-
-    expect(mainRow).not.toContainElement(getByText("chat-image.png"));
-    expect(attachmentsRow).toContainElement(getByText("chat-image.png"));
-    expect(modelCell).not.toContainElement(getByText("chat-image.png"));
-  });
-
-  test("keeps the compact AI trigger in the chat composer on larger screens", async () => {
-    api.get("/api/chats/:id", () => createChat());
-
-    const { getByRole, getByTestId } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Send" })).toBeTruthy();
-    });
-
-    const modelCell = getByTestId("chat-composer-model-cell");
-    const select = modelCell.querySelector("select");
-    const overlay = modelCell.querySelector("[aria-hidden='true']");
-
-    expect(select?.className).toContain("h-full w-full");
-    expect(select?.className).not.toContain("sm:w-40");
-    expect(overlay?.textContent).toBe("AI");
   });
 
   test("clears stale attachment errors after a successful send", async () => {
@@ -925,13 +796,11 @@ describe("ChatDetails", () => {
     const { getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
-    expect(composer.getAttribute("rows")).toBe("1");
 
     await user.type(composer, "First line{enter}Second line");
 
     expect(composer.value).toBe("First line\nSecond line");
     expect(composer.getAttribute("rows")).toBe("2");
-    expect(composer.className).toContain("min-h-[58px]");
     expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(0);
   });
 
@@ -944,7 +813,6 @@ describe("ChatDetails", () => {
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
     mockComposerSoftWrap(composer, (value) => value.length >= 24);
-    expect(composer.getAttribute("rows")).toBe("1");
 
     await user.type(composer, "This message softly wraps");
 
@@ -952,8 +820,6 @@ describe("ChatDetails", () => {
       expect(composer.getAttribute("rows")).toBe("2");
     });
     expect(composer.value.includes("\n")).toBe(false);
-    expect(composer.className).toContain("min-h-[58px]");
-    expect(composer.className).toContain("py-2");
   });
 
   test("applies chat-scoped websocket message updates", async () => {

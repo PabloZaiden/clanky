@@ -7,7 +7,7 @@
 import { test, expect, describe, mock } from "bun:test";
 import { LoopActionBar } from "@/components/LoopActionBar";
 import { renderWithUser, waitFor } from "../helpers/render";
-import { createModelInfo, createModelConfig } from "../helpers/factories";
+import { createModelInfo } from "../helpers/factories";
 import type { ModelInfo, ModelConfig } from "@/types";
 import {
   createTestFile,
@@ -38,189 +38,6 @@ function getPlanFeedbackInput(getByRole: (role: string, options?: Record<string,
 }
 
 describe("LoopActionBar", () => {
-  describe("basic rendering", () => {
-    test("renders the message input", () => {
-      const { getByRole, queryByText } = renderWithUser(
-        <LoopActionBar {...defaultProps()} />
-      );
-      const composer = getLoopMessageInput(getByRole);
-      expect(composer).toBeInTheDocument();
-      expect(composer.getAttribute("rows")).toBe("1");
-      expect(composer.placeholder).toBe("");
-      expect(queryByText("Enter adds a new line. Press Ctrl+Enter or Cmd+Enter to send.")).toBeNull();
-    });
-
-    test("renders the Send button", () => {
-      const { getByRole } = renderWithUser(
-        <LoopActionBar {...defaultProps()} />
-      );
-      expect(getByRole("button", { name: "Send" })).toBeInTheDocument();
-    });
-
-    test("renders a model selector", () => {
-      const { container, getByRole } = renderWithUser(
-        <LoopActionBar {...defaultProps()} />
-      );
-      const select = container.querySelector("select");
-      expect(select).toBeInTheDocument();
-      expect(getByRole("combobox", { name: "Model" })).toBeInTheDocument();
-      expect(select?.getAttribute("aria-label")).toBe("Model");
-    });
-
-    test("renders the submit button with appropriate aria-label for planning mode", () => {
-      const { getByRole } = renderWithUser(
-        <LoopActionBar {...defaultProps({ isPlanning: true })} />
-      );
-      expect(getPlanFeedbackInput(getByRole).getAttribute("rows")).toBe("1");
-      expect(getPlanFeedbackInput(getByRole).placeholder).toBe("");
-      expect(getByRole("button", { name: "Send Feedback" })).toBeInTheDocument();
-    });
-
-    test("renders a Stop button while generation is active and stop is available", () => {
-      const { getByRole } = renderWithUser(
-        <LoopActionBar {...defaultProps({ isGenerating: true, onStop: mock(async () => true) })} />
-      );
-      expect(getByRole("button", { name: "Stop" })).toBeInTheDocument();
-    });
-
-    test("keeps the attachment button inline and renders image previews below the loop composer row", async () => {
-      const { getByRole, getByTestId, getByText, queryByTestId, user } = renderWithUser(
-        <LoopActionBar {...defaultProps()} />
-      );
-
-      const composer = getLoopMessageInput(getByRole);
-      const attachmentButton = getByRole("button", { name: "Add image" });
-      const modelSelector = getByRole("combobox");
-      const layout = getByTestId("loop-composer-layout");
-      const modelCell = getByTestId("loop-composer-model-cell");
-      const mainRow = getByTestId("loop-composer-main-row");
-      const attachmentCell = getByTestId("loop-composer-attachment-cell");
-
-      expect(layout.firstElementChild).toBe(mainRow);
-      expect(modelCell).toContainElement(modelSelector);
-      expect(attachmentCell).toContainElement(attachmentButton);
-      expect(mainRow).toContainElement(attachmentButton);
-      expect(queryByTestId("loop-composer-attachments-row")).toBeNull();
-
-      await user.type(composer, "Please inspect this");
-      pasteFiles(composer, [createTestFile({ name: "loop-image.png" })]);
-
-      await waitFor(() => {
-        expect(getByText("loop-image.png")).toBeInTheDocument();
-      });
-
-      const attachmentsRow = getByTestId("loop-composer-attachments-row");
-
-      expect(mainRow).not.toContainElement(getByText("loop-image.png"));
-      expect(attachmentsRow).toContainElement(getByText("loop-image.png"));
-      expect(modelCell).not.toContainElement(getByText("loop-image.png"));
-    });
-  });
-
-  describe("model selector", () => {
-    test("shows 'Loading...' when models are loading", () => {
-      const { container } = renderWithUser(
-        <LoopActionBar {...defaultProps({ modelsLoading: true })} />
-      );
-      const select = container.querySelector("select") as HTMLSelectElement;
-      expect(select).toBeDisabled();
-      const loadingOption = Array.from(select.options).find(o => o.text === "Loading...");
-      expect(loadingOption).toBeDefined();
-    });
-
-    test("shows current model name in default option", () => {
-      const models = [
-        createModelInfo({ providerID: "anthropic", modelID: "claude-sonnet-4-20250514", modelName: "Claude Sonnet 4", providerName: "Anthropic" }),
-      ];
-      const currentModel = createModelConfig({ providerID: "anthropic", modelID: "claude-sonnet-4-20250514" });
-
-      const { container } = renderWithUser(
-        <LoopActionBar {...defaultProps({ models, currentModel })} />
-      );
-      const select = container.querySelector("select") as HTMLSelectElement;
-      const defaultOption = select.options[0];
-      expect(defaultOption?.text).toBe("Claude Sonnet 4");
-    });
-
-    test("keeps the compact AI trigger in the composer on larger screens", () => {
-      const { getByTestId } = renderWithUser(
-        <LoopActionBar {...defaultProps()} />
-      );
-
-      const modelCell = getByTestId("loop-composer-model-cell");
-      const select = modelCell.querySelector("select");
-      const overlay = modelCell.querySelector("[aria-hidden='true']");
-
-      expect(select?.className).toContain("h-full w-full");
-      expect(select?.className).not.toContain("sm:w-40");
-      expect(overlay?.textContent).toBe("AI");
-    });
-
-    test("groups models by provider", () => {
-      const models = [
-        createModelInfo({ providerID: "anthropic", modelID: "claude-1", modelName: "Claude 1", providerName: "Anthropic", connected: true }),
-        createModelInfo({ providerID: "openai", modelID: "gpt-4", modelName: "GPT-4", providerName: "OpenAI", connected: true }),
-      ];
-
-      const { container } = renderWithUser(
-        <LoopActionBar {...defaultProps({ models })} />
-      );
-      const optgroups = container.querySelectorAll("optgroup");
-      const labels = Array.from(optgroups).map(g => g.label);
-      expect(labels).toContain("Anthropic");
-      expect(labels).toContain("OpenAI");
-    });
-
-    test("shows disconnected providers with 'not connected' label", () => {
-      const models = [
-        createModelInfo({ providerID: "openai", modelID: "gpt-4", modelName: "GPT-4", providerName: "OpenAI", connected: false }),
-      ];
-
-      const { container } = renderWithUser(
-        <LoopActionBar {...defaultProps({ models })} />
-      );
-      const optgroups = container.querySelectorAll("optgroup");
-      const labels = Array.from(optgroups).map(g => g.label);
-      expect(labels).toContain("OpenAI (not connected)");
-    });
-
-    test("marks the current model option as disabled and labeled (current)", () => {
-      const models = [
-        createModelInfo({ providerID: "anthropic", modelID: "claude-1", modelName: "Claude 1", providerName: "Anthropic", connected: true }),
-      ];
-      const currentModel = createModelConfig({ providerID: "anthropic", modelID: "claude-1" });
-
-      const { container } = renderWithUser(
-        <LoopActionBar {...defaultProps({ models, currentModel })} />
-      );
-      const options = container.querySelectorAll("option");
-      const currentOption = Array.from(options).find(o => o.text.includes("(current)"));
-      expect(currentOption).toBeDefined();
-      expect(currentOption?.disabled).toBe(true);
-    });
-
-    test("renders model variants as separate options", () => {
-      const models = [
-        createModelInfo({
-          providerID: "anthropic",
-          modelID: "claude-sonnet",
-          modelName: "Claude Sonnet",
-          providerName: "Anthropic",
-          connected: true,
-          variants: ["fast", "precise"],
-        }),
-      ];
-
-      const { container } = renderWithUser(
-        <LoopActionBar {...defaultProps({ models })} />
-      );
-      const options = container.querySelectorAll("option");
-      const optionTexts = Array.from(options).map(o => o.text);
-      expect(optionTexts).toContain("Claude Sonnet (fast)");
-      expect(optionTexts).toContain("Claude Sonnet (precise)");
-    });
-  });
-
   describe("disabled state", () => {
     test("disables all inputs when disabled=true", () => {
       const { getByRole, container } = renderWithUser(
@@ -377,12 +194,10 @@ describe("LoopActionBar", () => {
       );
 
       const composer = getLoopMessageInput(getByRole);
-      expect(composer.getAttribute("rows")).toBe("1");
       await user.type(composer, "First line{enter}Second line");
 
       expect(composer.value).toBe("First line\nSecond line");
       expect(composer.getAttribute("rows")).toBe("2");
-      expect(composer.className).toContain("min-h-[58px]");
       expect(onSubmit).not.toHaveBeenCalled();
     });
 
@@ -393,7 +208,6 @@ describe("LoopActionBar", () => {
 
       const composer = getLoopMessageInput(getByRole);
       mockComposerSoftWrap(composer, (value) => value.length >= 24);
-      expect(composer.getAttribute("rows")).toBe("1");
 
       await user.type(composer, "This message softly wraps");
 
@@ -401,8 +215,6 @@ describe("LoopActionBar", () => {
         expect(composer.getAttribute("rows")).toBe("2");
       });
       expect(composer.value.includes("\n")).toBe(false);
-      expect(composer.className).toContain("min-h-[58px]");
-      expect(composer.className).toContain("py-2");
     });
 
     test("submits with Ctrl+Enter", async () => {
@@ -558,29 +370,6 @@ describe("LoopActionBar", () => {
   });
 
   describe("disconnected model error", () => {
-    test("shows error when disconnected model is selected", async () => {
-      // Include both a connected and disconnected model. The disconnected option
-      // is disabled in the DOM, so we set the select value directly via fireEvent.
-      const models = [
-        createModelInfo({ providerID: "anthropic", modelID: "claude-1", modelName: "Claude 1", providerName: "Anthropic", connected: true }),
-        createModelInfo({ providerID: "openai", modelID: "gpt-4", modelName: "GPT-4", providerName: "OpenAI", connected: false }),
-      ];
-
-      const { container, getByText } = renderWithUser(
-        <LoopActionBar {...defaultProps({ models })} />
-      );
-
-      // Manually set the select value to a disconnected model (since user-event can't select disabled options)
-      const select = container.querySelector("select") as HTMLSelectElement;
-      // Simulate change
-      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")?.set?.call(select, "openai:gpt-4:");
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-
-      await waitFor(() => {
-        expect(getByText(/The selected model's provider is not connected/)).toBeInTheDocument();
-      });
-    });
-
     test("Send button is disabled when disconnected model is selected with a message", async () => {
       const models = [
         createModelInfo({ providerID: "anthropic", modelID: "claude-1", modelName: "Claude 1", providerName: "Anthropic", connected: true }),

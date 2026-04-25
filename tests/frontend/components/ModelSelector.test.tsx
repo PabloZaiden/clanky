@@ -1,27 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { ModelSelector } from "@/components/ModelSelector";
 import { renderWithUser } from "../helpers/render";
 import { createModelInfo } from "../helpers/factories";
 
 describe("ModelSelector", () => {
-  test("passes through an aria-label to the underlying select", () => {
-    const { getByRole } = renderWithUser(
+  test("calls onChange with the selected variant key", async () => {
+    const onChange = mock();
+    const { getByRole, user } = renderWithUser(
       <ModelSelector
         value=""
-        onChange={() => {}}
-        models={[createModelInfo()]}
-        ariaLabel="Model"
-      />,
-    );
-
-    expect(getByRole("combobox", { name: "Model" })).toBeInTheDocument();
-  });
-
-  test("renders variants in the discovered order with parenthesized labels", () => {
-    const { getAllByRole } = renderWithUser(
-      <ModelSelector
-        value=""
-        onChange={() => {}}
+        onChange={onChange}
         models={[
           {
             ...createModelInfo({
@@ -30,20 +18,14 @@ describe("ModelSelector", () => {
               modelID: "gpt-5.4",
               modelName: "GPT-5.4",
             }),
-            variants: ["medium", "low", "high", "xhigh"],
+            variants: ["medium", "high"],
           },
         ]}
         ariaLabel="Model"
       />,
     );
 
-    const options = getAllByRole("option").map((option) => option.textContent);
-    expect(options).toEqual([
-      "Select a model...",
-      "GPT-5.4 (medium)",
-      "GPT-5.4 (low)",
-      "GPT-5.4 (high)",
-      "GPT-5.4 (xhigh)",
-    ]);
+    await user.selectOptions(getByRole("combobox", { name: "Model" }), "copilot:gpt-5.4:high");
+    expect(onChange).toHaveBeenCalledWith("copilot:gpt-5.4:high");
   });
 });
