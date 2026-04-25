@@ -13,6 +13,26 @@ export interface CodeExplorerOption {
   target: CodeExplorerTarget;
 }
 
+export interface CodeExplorerOptionGroup {
+  kind: CodeExplorerTarget["contentType"];
+  label: string;
+  options: CodeExplorerOption[];
+}
+
+const CODE_EXPLORER_OPTION_GROUP_ORDER: CodeExplorerTarget["contentType"][] = [
+  "workspace",
+  "loop",
+  "server",
+  "chat",
+];
+
+const CODE_EXPLORER_OPTION_GROUP_LABELS: Record<CodeExplorerTarget["contentType"], string> = {
+  workspace: "Workspaces",
+  loop: "Loops",
+  server: "SSH servers",
+  chat: "Chats",
+};
+
 export interface ResolvedCodeExplorerTarget {
   routeTarget: CodeExplorerTarget;
   title: string;
@@ -58,7 +78,7 @@ export function getChatCodeExplorerRootDirectory(chat: Chat): string {
   return trimDirectory(chat.state.worktree?.worktreePath || chat.config.directory);
 }
 
-function getRouteTargetId(target: CodeExplorerTarget): string {
+export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
   switch (target.contentType) {
     case "workspace":
       return target.workspaceId;
@@ -117,6 +137,14 @@ export function getCodeExplorerOptions({
   ];
 }
 
+export function getCodeExplorerOptionGroups(options: CodeExplorerOption[]): CodeExplorerOptionGroup[] {
+  return CODE_EXPLORER_OPTION_GROUP_ORDER.map((kind) => ({
+    kind,
+    label: CODE_EXPLORER_OPTION_GROUP_LABELS[kind],
+    options: options.filter((option) => option.kind === kind),
+  })).filter((group) => group.options.length > 0);
+}
+
 export function resolveCodeExplorerTarget({
   target,
   workspaces,
@@ -132,7 +160,7 @@ export function resolveCodeExplorerTarget({
     return null;
   }
 
-  const routeTargetId = getRouteTargetId(target);
+  const routeTargetId = getCodeExplorerTargetId(target);
 
   switch (target.contentType) {
     case "workspace": {
