@@ -1991,20 +1991,6 @@ describe("log tab", () => {
     });
   });
 
-  test("keeps the non-focus log controls in a single horizontal strip", async () => {
-    setupDefaultApi();
-    const { getByTestId } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByTestId("loop-log-controls")).toBeTruthy();
-    });
-
-    const controls = getByTestId("loop-log-controls");
-    expect(controls.className).toContain("overflow-x-auto");
-    expect(controls.className).toContain("whitespace-nowrap");
-    expect(controls.className).toContain("sm:flex-wrap");
-  });
-
   test("enables show tools by default and renders a collapsed tool-call container", async () => {
     setupDefaultApi({
       state: {

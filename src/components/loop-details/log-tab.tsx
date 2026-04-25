@@ -88,7 +88,6 @@ export function LogTab({
         <div className="flex-shrink-0 border-t border-gray-200 px-2 py-2 dark:border-gray-700 sm:p-4">
           <div
             className="hide-scrollbar flex min-w-0 items-center gap-3 overflow-x-auto whitespace-nowrap sm:flex-wrap sm:overflow-visible"
-            data-testid="loop-log-controls"
             style={{ WebkitOverflowScrolling: "touch" }}
           >
             <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
