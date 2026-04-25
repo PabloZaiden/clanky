@@ -1,3 +1,7 @@
+#playwright
+.playwright
+.playwright-cli
+
 # dependencies (bun install)
 node_modules
 /.bun-*
