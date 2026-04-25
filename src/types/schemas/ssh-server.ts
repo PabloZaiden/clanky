@@ -55,6 +55,10 @@ export const CheckSshServerPrerequisitesRequestSchema = z.object({
   credentialToken: SshCredentialTokenSchema.nullable(),
 });
 
+export const GetDevboxTemplatesRequestSchema = z.object({
+  credentialToken: SshCredentialTokenSchema.nullable(),
+});
+
 export type SshKeyAlgorithm = z.infer<typeof SshKeyAlgorithmSchema>;
 export type CreateSshServerRequest = z.infer<typeof CreateSshServerRequestSchema>;
 export type UpdateSshServerRequest = z.infer<typeof UpdateSshServerRequestSchema>;
@@ -64,3 +68,4 @@ export type SshCredentialToken = z.infer<typeof SshCredentialTokenSchema>;
 export type CreateSshServerSessionRequest = z.infer<typeof CreateSshServerSessionRequestSchema>;
 export type DeleteSshServerSessionRequest = z.infer<typeof DeleteSshServerSessionRequestSchema>;
 export type CheckSshServerPrerequisitesRequest = z.infer<typeof CheckSshServerPrerequisitesRequestSchema>;
+export type GetDevboxTemplatesRequest = z.infer<typeof GetDevboxTemplatesRequestSchema>;

@@ -38,6 +38,11 @@ export {
   type UseAvailableModelsResult,
 } from "./useAvailableModels";
 export {
+  useDevboxTemplates,
+  type UseDevboxTemplatesOptions,
+  type UseDevboxTemplatesResult,
+} from "./useDevboxTemplates";
+export {
   useFileExplorer,
   useWorkspaceFiles,
   useServerFiles,

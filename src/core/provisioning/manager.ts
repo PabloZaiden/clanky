@@ -34,11 +34,18 @@ function normalizeOptionalValue(value: string | undefined): string | undefined {
 
 function buildDevboxArgs(
   command: "up" | "rebuild",
-  devcontainerSubpath?: string,
+  options: {
+    devcontainerSubpath?: string;
+    devboxTemplate?: string;
+  },
 ): string[] {
   const args: string[] = [command];
-  if (devcontainerSubpath) {
-    args.push("--devcontainer-subpath", devcontainerSubpath);
+  if (command === "up" && options.devboxTemplate) {
+    args.push("--template", options.devboxTemplate);
+    return args;
+  }
+  if (options.devcontainerSubpath) {
+    args.push("--devcontainer-subpath", options.devcontainerSubpath);
   }
   return args;
 }
@@ -64,6 +71,7 @@ export class ProvisioningManager {
           repoUrl: options.repoUrl.trim(),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
+          devboxTemplate: normalizeOptionalValue(options.devboxTemplate),
           provider: options.provider,
           mode,
           targetDirectory: normalizeOptionalValue(options.targetDirectory),
@@ -236,7 +244,10 @@ export class ProvisioningManager {
         step: "devbox_up",
         label: "Running devbox up",
         command: "devbox",
-        args: buildDevboxArgs("up", record.job.config.devcontainerSubpath),
+        args: buildDevboxArgs("up", {
+          devcontainerSubpath: record.job.config.devcontainerSubpath,
+          devboxTemplate: record.job.config.devboxTemplate,
+        }),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
@@ -545,7 +556,9 @@ export class ProvisioningManager {
         step: action.step,
         label: action.commandLabel,
         command: "devbox",
-        args: buildDevboxArgs(action.step === "devbox_rebuild" ? "rebuild" : "up", devcontainerSubpath),
+        args: buildDevboxArgs(action.step === "devbox_rebuild" ? "rebuild" : "up", {
+          devcontainerSubpath,
+        }),
         cwd: targetDirectory,
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,

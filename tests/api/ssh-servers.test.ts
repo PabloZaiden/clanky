@@ -15,11 +15,13 @@ class SshServerApiExecutor extends TestCommandExecutor {
     private readonly options: {
       connectionAvailable?: boolean;
       bashAvailable?: boolean;
-      dtachAvailable?: boolean;
-      devboxAvailable?: boolean;
-      dockerAvailable?: boolean;
-      devcontainerAvailable?: boolean;
-      gitAvailable?: boolean;
+        dtachAvailable?: boolean;
+        devboxAvailable?: boolean;
+        devboxTemplatesOutput?: string;
+        failDevboxTemplates?: boolean;
+        dockerAvailable?: boolean;
+        devcontainerAvailable?: boolean;
+        gitAvailable?: boolean;
       ghAvailable?: boolean;
     } = {},
   ) {
@@ -103,6 +105,34 @@ class SshServerApiExecutor extends TestCommandExecutor {
       return {
         success: true,
         stdout: "dtach - version 0.9\n",
+        stderr: "",
+        exitCode: 0,
+      };
+    }
+    if (command === "devbox" && args[0] === "templates") {
+      if (this.options.failDevboxTemplates) {
+        return {
+          success: false,
+          stdout: "",
+          stderr: "devbox: command not found",
+          exitCode: 127,
+        };
+      }
+      return {
+        success: true,
+        stdout: this.options.devboxTemplatesOutput ?? JSON.stringify([
+          {
+            name: "python",
+            description: "Python 3.14 on Debian bookworm.",
+            source: "built-in",
+            base: "bookworm",
+            image: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+            pinnedReference: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+            runtimeVersion: "Python 3.14",
+            languages: ["python"],
+            runnerCompatible: true,
+          },
+        ]),
         stderr: "",
         exitCode: 0,
       };
@@ -396,5 +426,133 @@ describe("Standalone SSH servers API integration", () => {
         .filter((check) => ["devbox", "docker", "devcontainer", "git", "gh"].includes(check.id))
         .every((check) => check.status === "not_applicable"),
     ).toBe(true);
+  });
+
+  test("lists devbox templates through the API", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Template Host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "/workspaces",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const templatesResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/devbox/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: null }),
+    });
+    expect(templatesResponse.ok).toBe(true);
+    const templates = await templatesResponse.json() as Array<{
+      description: string;
+      source: string;
+      base: string;
+      image: string | null;
+      pinnedReference: string;
+      name: string;
+      runtimeVersion: string;
+      languages: string[];
+      runnerCompatible: boolean;
+    }>;
+    expect(templates).toHaveLength(1);
+    expect(templates[0]).toEqual({
+      description: "Python 3.14 on Debian bookworm.",
+      source: "built-in",
+      base: "bookworm",
+      image: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+      pinnedReference: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+      name: "python",
+      runtimeVersion: "Python 3.14",
+      languages: ["python"],
+      runnerCompatible: true,
+    });
+  });
+
+  test("returns 404 when listing devbox templates for an unknown server", async () => {
+    const response = await fetch(`${baseUrl}/api/ssh-servers/missing-server/devbox/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: null }),
+    });
+    expect(response.status).toBe(404);
+    const body = await response.json() as { error: string };
+    expect(body.error).toBe("not_found");
+  });
+
+  test("returns 400 when listing devbox templates with an invalid credential token", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Template Host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "/workspaces",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const templatesResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/devbox/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: "invalid-token" }),
+    });
+    expect(templatesResponse.status).toBe(400);
+    const body = await templatesResponse.json() as { error: string };
+    expect(body.error).toBe("invalid_credential_token");
+  });
+
+  test("returns 500 when devbox templates output is invalid JSON", async () => {
+    executorFactory = () => new SshServerApiExecutor({ devboxTemplatesOutput: "not json" });
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Template Host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "/workspaces",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const templatesResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/devbox/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: null }),
+    });
+    expect(templatesResponse.status).toBe(500);
+    const body = await templatesResponse.json() as { error: string; message: string };
+    expect(body.error).toBe("ssh_server_error");
+    expect(body.message).toContain("Failed to parse devbox templates output as JSON");
+  });
+
+  test("returns 500 when devbox templates cannot be listed", async () => {
+    executorFactory = () => new SshServerApiExecutor({ failDevboxTemplates: true });
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Template Host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "/workspaces",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const templatesResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/devbox/templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: null }),
+    });
+    expect(templatesResponse.status).toBe(500);
+    const body = await templatesResponse.json() as { error: string; message: string };
+    expect(body.error).toBe("ssh_server_error");
+    expect(body.message).toContain("devbox: command not found");
   });
 });

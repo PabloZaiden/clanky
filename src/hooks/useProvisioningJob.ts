@@ -18,6 +18,7 @@ export interface StartProvisioningJobRequest {
   repoUrl: string;
   basePath: string;
   devcontainerSubpath: string | null;
+  devboxTemplate: string | null;
   provider: AgentProvider;
   password?: string;
   mode: "provision" | "rebuild" | "restart" | "arise";
@@ -200,6 +201,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           repoUrl: request.repoUrl.trim(),
           basePath: request.basePath.trim(),
           devcontainerSubpath: request.devcontainerSubpath?.trim() ? request.devcontainerSubpath.trim() : null,
+          devboxTemplate: request.devboxTemplate?.trim() ? request.devboxTemplate.trim() : null,
           provider: request.provider,
           credentialToken: credentialToken ?? null,
           mode: request.mode,

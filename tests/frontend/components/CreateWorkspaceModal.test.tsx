@@ -30,10 +30,53 @@ const registeredSshServers = [
   },
 ];
 
+const defaultTemplates = [
+  {
+    name: "python",
+    description: "Python 3.14 on Debian bookworm.",
+    source: "built-in" as const,
+    base: "bookworm",
+    image: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+    pinnedReference: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+    runtimeVersion: "Python 3.14",
+    languages: ["python"],
+    runnerCompatible: true,
+  },
+  {
+    name: "bun",
+    description: "Official Bun image on Debian trixie.",
+    source: "built-in" as const,
+    base: "trixie",
+    image: "oven/bun:1.3.13",
+    pinnedReference: "oven/bun:1.3.13",
+    runtimeVersion: "Bun 1.3.13",
+    languages: ["bun", "javascript", "typescript"],
+    runnerCompatible: true,
+  },
+];
+
+function getAdvancedOptionsButton(): HTMLButtonElement {
+  const advanced = Array.from(document.querySelectorAll("button")).find((candidate) =>
+    candidate.textContent?.includes("Advanced options"),
+  );
+  if (!(advanced instanceof HTMLButtonElement)) {
+    throw new Error("Expected advanced options button");
+  }
+  return advanced;
+}
+
 function getAutomaticDevcontainerVariantInput(): HTMLInputElement {
   const input = document.getElementById("automatic-devcontainer-subpath");
   if (!(input instanceof HTMLInputElement)) {
     throw new Error("Expected automatic devcontainer variant input");
+  }
+  return input;
+}
+
+function getAutomaticDevboxTemplateSelect(): HTMLSelectElement {
+  const input = document.getElementById("automatic-devbox-template");
+  if (!(input instanceof HTMLSelectElement)) {
+    throw new Error("Expected automatic devbox template select");
   }
   return input;
 }
@@ -97,6 +140,7 @@ describe("CreateWorkspaceModal", () => {
   beforeEach(() => {
     api.reset();
     api.install();
+    api.post("/api/ssh-servers/:id/devbox/templates", () => defaultTemplates, 200);
     ws.reset();
     ws.install();
   });
@@ -130,6 +174,7 @@ describe("CreateWorkspaceModal", () => {
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
     await user.clear(getByLabelText("Remote Base Path *"));
     await user.type(getByLabelText("Remote Base Path *"), "/srv/workspaces");
+    await user.click(getAdvancedOptionsButton());
     await user.type(getAutomaticDevcontainerVariantInput(), ".devcontainer/backend/devcontainer.json");
 
     await user.click(getByRole("button", { name: "Start Provisioning" }));
@@ -146,6 +191,7 @@ describe("CreateWorkspaceModal", () => {
       repoUrl: "git@github.com:owner/repo.git",
       basePath: "/srv/workspaces",
       devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
+      devboxTemplate: null,
       provider: "copilot",
       credentialToken: null,
       mode: "provision",
@@ -153,6 +199,85 @@ describe("CreateWorkspaceModal", () => {
       workspaceId: null,
     });
     expect(ws.getConnections("/api/ws")[0]?.queryParams["provisioningJobId"]).toBe("job-1");
+  });
+
+  test("wires accessible disclosure semantics for automatic advanced options", async () => {
+    const { getByRole, user } = renderWithUser(
+      <CreateWorkspaceModal
+        isOpen={true}
+        onClose={() => {}}
+        onCreate={mock(async () => true)}
+        registeredSshServers={registeredSshServers}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+
+    const advancedButton = getAdvancedOptionsButton();
+    const panelId = advancedButton.getAttribute("aria-controls") ?? "";
+
+    expect(panelId).not.toBe("");
+    expect(advancedButton).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById(panelId)).toBeNull();
+
+    await user.click(advancedButton);
+
+    await waitFor(() => {
+      expect(advancedButton).toHaveAttribute("aria-expanded", "true");
+      expect(document.getElementById(panelId)).toBeInTheDocument();
+    });
+  });
+
+  test("submits an automatic provisioning request with a selected devbox template", async () => {
+    const startedSnapshot = {
+      ...createSnapshot("running"),
+      job: {
+        ...createSnapshot("running").job,
+        config: {
+          ...createSnapshot("running").job.config,
+          devboxTemplate: "python",
+        },
+      },
+    };
+    api.post("/api/provisioning-jobs", () => startedSnapshot);
+    api.get("/api/provisioning-jobs/:id", () => startedSnapshot);
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <CreateWorkspaceModal
+        isOpen={true}
+        onClose={() => {}}
+        onCreate={mock(async () => true)}
+        registeredSshServers={registeredSshServers}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+    await user.type(getByLabelText("Workspace Name *"), "Template Workspace");
+    await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
+    await user.click(getAdvancedOptionsButton());
+    await user.selectOptions(getAutomaticDevboxTemplateSelect(), "python");
+
+    expect(getAutomaticDevcontainerVariantInput()).toBeDisabled();
+
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/provisioning-jobs", "POST")).toHaveLength(1);
+    });
+
+    expect(api.calls("/api/provisioning-jobs", "POST")[0]?.body).toEqual({
+      name: "Template Workspace",
+      sshServerId: "server-1",
+      repoUrl: "git@github.com:owner/repo.git",
+      basePath: "/workspaces",
+      devcontainerSubpath: null,
+      devboxTemplate: "python",
+      provider: "copilot",
+      credentialToken: null,
+      mode: "provision",
+      targetDirectory: null,
+      workspaceId: null,
+    });
   });
 
   test("hides the password field when a stored browser credential exists", async () => {
@@ -206,6 +331,7 @@ describe("CreateWorkspaceModal", () => {
     await user.click(getByRole("button", { name: "Automatic" }));
     await user.type(getByLabelText("Workspace Name *"), "Provisioned Workspace");
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:owner/repo.git");
+    await user.click(getAdvancedOptionsButton());
     await user.type(getAutomaticDevcontainerVariantInput(), ".devcontainer/backend/devcontainer.json");
     await user.click(getByRole("button", { name: "Start Provisioning" }));
 
@@ -318,6 +444,7 @@ describe("CreateWorkspaceModal", () => {
       repoUrl: "git@github.com:owner/repo.git",
       basePath: "/srv/workspaces",
       devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
+      devboxTemplate: null,
       provider: "copilot",
       credentialToken: null,
       mode: "provision",
@@ -385,6 +512,7 @@ describe("CreateWorkspaceModal", () => {
     await user.type(getByLabelText("Git Repository URL *"), "git@github.com:test/project.git");
     await user.clear(getByLabelText("Remote Base Path *"));
     await user.type(getByLabelText("Remote Base Path *"), "/custom/path");
+    await user.click(getAdvancedOptionsButton());
     await user.type(getAutomaticDevcontainerVariantInput(), ".devcontainer/backend/devcontainer.json");
 
     // Submit
@@ -414,6 +542,79 @@ describe("CreateWorkspaceModal", () => {
     expect(getAutomaticDevcontainerVariantInput().value).toBe(".devcontainer/backend/devcontainer.json");
     // Password is intentionally empty after going back (security)
     expect(window.localStorage.getItem("ralpher.activeProvisioningJobId")).toBeNull();
+  });
+
+  test("preserves a selected devbox template after failure and Back", async () => {
+    const startedSnapshot: ProvisioningJobSnapshot = {
+      job: {
+        config: {
+          id: "job-template-values",
+          name: "Template Workspace",
+          sshServerId: "server-1",
+          repoUrl: "git@github.com:test/project.git",
+          basePath: "/workspaces",
+          devboxTemplate: "python",
+          provider: "copilot",
+          createdAt: new Date().toISOString(),
+        },
+        state: {
+          status: "running",
+          currentStep: "clone_repo",
+          updatedAt: new Date().toISOString(),
+        },
+      },
+      logs: [],
+    };
+    const failedSnapshot: ProvisioningJobSnapshot = {
+      ...startedSnapshot,
+      job: {
+        ...startedSnapshot.job,
+        state: {
+          status: "failed",
+          currentStep: "clone_repo",
+          updatedAt: new Date().toISOString(),
+          error: { code: "clone_failed", message: "Clone failed" },
+        },
+      },
+    };
+    let requestCount = 0;
+
+    api.post("/api/provisioning-jobs", () => startedSnapshot);
+    api.get("/api/provisioning-jobs/:id", () => {
+      requestCount += 1;
+      return requestCount === 1 ? startedSnapshot : failedSnapshot;
+    });
+
+    const { getByLabelText, getByRole, getByText, user } = renderWithUser(
+      <CreateWorkspaceModal
+        isOpen={true}
+        onClose={() => {}}
+        onCreate={mock(async () => true)}
+        registeredSshServers={registeredSshServers}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+    await user.type(getByLabelText("Workspace Name *"), "Template Workspace");
+    await user.type(getByLabelText("Git Repository URL *"), "git@github.com:test/project.git");
+    await user.click(getAdvancedOptionsButton());
+    await user.selectOptions(getAutomaticDevboxTemplateSelect(), "python");
+
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
+
+    await waitFor(() => {
+      expect(getByText("Clone failed")).toBeInTheDocument();
+      expect(getByRole("button", { name: "Back" })).toBeInTheDocument();
+    }, { timeout: 3000 });
+
+    await user.click(getByRole("button", { name: "Back" }));
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Start Provisioning" })).toBeInTheDocument();
+    });
+
+    expect(getAutomaticDevboxTemplateSelect().value).toBe("python");
+    expect(getAutomaticDevcontainerVariantInput()).toBeDisabled();
   });
 
   test("shows Back after a live provisioning failure even if the terminal websocket event is missed", async () => {

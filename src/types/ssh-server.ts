@@ -42,6 +42,18 @@ export interface SshServer {
   publicKey: SshServerPublicKey;
 }
 
+export interface DevboxTemplateSummary {
+  name: string;
+  description: string;
+  source: "built-in";
+  base: string;
+  image: string | null;
+  pinnedReference: string;
+  runtimeVersion: string;
+  languages: string[];
+  runnerCompatible: boolean;
+}
+
 /**
  * Browser-stored encrypted SSH password payload.
  */

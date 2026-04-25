@@ -15,11 +15,12 @@ import {
 } from "../mocks/provisioning-test-executor";
 
 interface ProvisioningSnapshotResponse {
-  job: {
-    config: {
-      id: string;
-      devcontainerSubpath?: string;
-    };
+    job: {
+      config: {
+        id: string;
+        devcontainerSubpath?: string;
+        devboxTemplate?: string;
+      };
     state: {
       status: string;
       workspaceId?: string;
@@ -123,6 +124,7 @@ describe("Provisioning API integration", () => {
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: ".devcontainer/backend/devcontainer.json",
+        devboxTemplate: "python",
         provider: "copilot",
         credentialToken: null,
         mode: "provision",
@@ -134,6 +136,7 @@ describe("Provisioning API integration", () => {
     expect(response.status).toBe(201);
     const started = await response.json() as ProvisioningSnapshotResponse;
     expect(started.job.config.devcontainerSubpath).toBe(".devcontainer/backend/devcontainer.json");
+    expect(started.job.config.devboxTemplate).toBe("python");
     const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
     expect(completed.job.state.status).toBe("completed");
     expect(completed.job.state.workspaceId).toBeTruthy();
@@ -156,6 +159,7 @@ describe("Provisioning API integration", () => {
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
+        devboxTemplate: null,
         provider: "copilot",
         credentialToken: null,
         mode: "provision",
@@ -181,6 +185,7 @@ describe("Provisioning API integration", () => {
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
+        devboxTemplate: null,
         provider: "copilot",
         credentialToken: "invalid-token",
         mode: "provision",
@@ -209,6 +214,7 @@ describe("Provisioning API integration", () => {
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
+        devboxTemplate: null,
         provider: "copilot",
         credentialToken: null,
         mode: "provision",
@@ -245,6 +251,7 @@ describe("Provisioning API integration", () => {
         repoUrl: "https://github.com/octocat/example.git",
         basePath: "/workspaces",
         devcontainerSubpath: null,
+        devboxTemplate: null,
         provider: "copilot",
         credentialToken: null,
         mode: "provision",
@@ -279,6 +286,7 @@ describe("Provisioning API integration", () => {
         repoUrl: "",
         basePath: "",
         devcontainerSubpath: null,
+        devboxTemplate: null,
         provider: "copilot",
         credentialToken: null,
         mode: "arise",

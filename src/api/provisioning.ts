@@ -46,6 +46,7 @@ export const provisioningRoutes = {
           repoUrl: validation.data.repoUrl,
           basePath: validation.data.basePath,
           devcontainerSubpath: validation.data.devcontainerSubpath ?? undefined,
+          devboxTemplate: validation.data.devboxTemplate ?? undefined,
           provider: validation.data.provider,
           mode: validation.data.mode,
           targetDirectory: validation.data.targetDirectory ?? undefined,
