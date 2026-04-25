@@ -74,6 +74,17 @@ function sortToolCalls<T extends ToolCallRecord>(toolCalls: T[]): T[] {
   });
 }
 
+function mergeToolCallRecordMap<T extends ToolCallRecord>(toolCalls: T[]): Map<string, T> {
+  const toolCallsById = new Map<string, T>();
+  for (const toolCall of toolCalls) {
+    toolCallsById.set(
+      toolCall.id,
+      mergeToolCallRecord(toolCallsById.get(toolCall.id), toolCall),
+    );
+  }
+  return toolCallsById;
+}
+
 export function upsertToolCallExtra(
   extras: ToolCallExtra[] | undefined,
   extra: ToolCallExtra,
@@ -126,9 +137,22 @@ export function mergeToolCallRecords<T extends ToolCallRecord>(
   existing: T[],
   incoming: T[],
 ): T[] {
-  let merged = [...existing];
+  const merged = mergeToolCallRecordMap(existing);
   for (const toolCall of incoming) {
-    merged = upsertToolCallRecord(merged, toolCall);
+    merged.set(toolCall.id, mergeToolCallRecord(merged.get(toolCall.id), toolCall));
   }
-  return sortToolCalls(merged);
+  return sortToolCalls(Array.from(merged.values()));
+}
+
+export function reconcileToolCallRecords<T extends ToolCallRecord>(
+  existing: T[],
+  incoming: T[],
+): T[] {
+  const existingById = mergeToolCallRecordMap(existing);
+  const reconciled = new Map<string, T>();
+  for (const toolCall of incoming) {
+    const current = reconciled.get(toolCall.id) ?? existingById.get(toolCall.id);
+    reconciled.set(toolCall.id, mergeToolCallRecord(current, toolCall));
+  }
+  return sortToolCalls(Array.from(reconciled.values()));
 }

@@ -742,10 +742,10 @@ export class ChatManager {
     let currentResponseTimestamp: string | null = null;
     let totalResponseLength = 0;
     let responseSegmentCount = 0;
-      let currentReasoningLogId: string | null = null;
-      let currentReasoningLogContent = "";
-      let currentStreamBlockKind: "response" | "reasoning" | null = null;
-      const toolInputs = new Map<string, unknown>();
+    let currentReasoningLogId: string | null = null;
+    let currentReasoningLogContent = "";
+    let currentStreamBlockKind: "response" | "reasoning" | null = null;
+    const toolInputs = new Map<string, unknown>();
     const resetActiveStreamBlock = (): void => {
       currentResponseMessageId = null;
       currentResponseContent = "";
