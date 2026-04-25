@@ -28,6 +28,7 @@ import { appFetch } from "../lib/public-path";
 import { useAvailableModels, useMarkdownPreference, useToast, useWebSocket } from "../hooks";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
+import { upsertToolCallExtra } from "../types/tool-call";
 import type {
   Chat,
   ChatEvent,
@@ -201,6 +202,19 @@ export function ChatDetails({
               ...current.state,
               lastActivityAt: event.timestamp,
               toolCalls: upsertById(current.state.toolCalls as ToolCallData[], event.tool),
+            },
+          };
+        case "chat.tool_call.extra":
+          return {
+            ...current,
+            state: {
+              ...current.state,
+              lastActivityAt: event.timestamp,
+              toolCalls: (current.state.toolCalls as ToolCallData[]).map((toolCall) => (
+                toolCall.id === event.toolId
+                  ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
+                  : toolCall
+              )),
             },
           };
         case "chat.log":

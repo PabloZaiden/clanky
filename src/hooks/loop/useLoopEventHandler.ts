@@ -9,6 +9,7 @@ import type { LogEntry } from "../../components/LogViewer";
 import { createLogger } from "../../lib/logger";
 import { MAX_FRONTEND_LOGS, MAX_FRONTEND_MESSAGES, MAX_FRONTEND_TOOL_CALLS } from "./useLoopData";
 import { finalizeLatestResponseLog } from "./response-log-normalization";
+import { upsertToolCallExtra } from "../../types/tool-call";
 
 const log = createLogger("useLoop");
 
@@ -116,6 +117,14 @@ export function createLoopEventHandler(params: LoopEventHandlerParams) {
           }
           return newToolCalls;
         });
+        break;
+
+      case "loop.tool_call.extra":
+        setToolCalls((prev) => prev.map((toolCall) => (
+          toolCall.id === event.toolId
+            ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, event.extra) }
+            : toolCall
+        )));
         break;
 
       case "loop.iteration.start":

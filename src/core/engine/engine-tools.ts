@@ -20,6 +20,7 @@ export interface ToolProcessingContext {
   persistMessage: (message: MessageData) => void;
   persistToolCall: (toolCall: ToolCallData) => void;
   triggerPersistence: () => Promise<void>;
+  scheduleToolImagePreview: (toolCall: ToolCallData, iteration: number) => void;
 }
 
 export async function processLoopAgentEvent(event: AgentEvent, ctx: IterationContext, toolCtx: ToolProcessingContext): Promise<void> {
@@ -188,6 +189,7 @@ async function handleToolComplete(event: AgentEvent & { type: "tool.complete" },
     tool: toolCompleteData,
     timestamp,
   });
+  toolCtx.scheduleToolImagePreview(toolCompleteData, ctx.iteration);
   await toolCtx.triggerPersistence();
 }
 

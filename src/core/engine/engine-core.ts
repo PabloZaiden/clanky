@@ -49,6 +49,8 @@ import {
   type IterationResult,
   type IterationContext,
 } from "./engine-types";
+import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
+import { upsertToolCallExtra } from "../../types/tool-call";
 import { StopPatternDetector, nextWithTimeout } from "./engine-helpers";
 import { logToConsole, persistLoopLog, persistLoopMessage, persistLoopToolCall } from "./engine-events";
 import { buildLoopPrompt, evaluateLoopOutcome, type PromptBuildContext } from "./engine-prompt";
@@ -872,7 +874,53 @@ export class LoopEngine {
       persistMessage: this.persistMessage.bind(this),
       persistToolCall: this.persistToolCall.bind(this),
       triggerPersistence: this.triggerPersistence.bind(this),
+      scheduleToolImagePreview: this.scheduleToolImagePreview.bind(this),
     };
+  }
+
+  private scheduleToolImagePreview(toolCall: ToolCallData, iteration: number): void {
+    const path = getImageViewToolPath(toolCall.name, toolCall.input);
+    if (!path) {
+      return;
+    }
+
+    // Resolve previews in the background so the main tool flow stays responsive.
+    void (async () => {
+      try {
+        const extra = await resolveToolCallImagePreview({
+          workspaceId: this.config.workspaceId,
+          directory: this.workingDirectory,
+          path,
+        });
+        if (!extra) {
+          return;
+        }
+
+        const currentTool = this.loop.state.toolCalls.find((entry) => entry.id === toolCall.id);
+        if (!currentTool) {
+          return;
+        }
+
+        this.persistToolCall({
+          ...currentTool,
+          extras: upsertToolCallExtra(currentTool.extras, extra),
+        });
+        this.emit({
+          type: "loop.tool_call.extra",
+          loopId: this.config.id,
+          iteration,
+          toolId: toolCall.id,
+          extra,
+          timestamp: createTimestamp(),
+        });
+        await this.triggerPersistence();
+      } catch (error) {
+        this.emitLog("debug", "Skipping tool image preview generation", {
+          toolId: toolCall.id,
+          error: String(error),
+        });
+      }
+    })();
   }
 
   // ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@
 // Import and re-export model types from schema (single source of truth)
 import type { CheapModelSelection, ModelConfig } from "./schemas/model";
 import type { MessageImageAttachment } from "./message-attachments";
+import type { ToolCallRecord } from "./tool-call";
 export type { CheapModelSelection, ModelConfig };
 
 /**
@@ -252,20 +253,7 @@ export interface PersistedMessage {
  * A persisted tool call in the loop state.
  * Mirrors ToolCallData from events.ts for database persistence.
  */
-export interface PersistedToolCall {
-  /** Unique tool call ID */
-  id: string;
-  /** Tool name (e.g., "Write", "Bash", "Glob") */
-  name: string;
-  /** Tool input parameters */
-  input: unknown;
-  /** Tool output/result (if completed) */
-  output?: unknown;
-  /** Current status of the tool call */
-  status: "pending" | "running" | "completed" | "failed";
-  /** ISO 8601 timestamp when the tool call was created or last updated */
-  timestamp: string;
-}
+export interface PersistedToolCall extends ToolCallRecord {}
 
 /**
  * Tracks consecutive identical errors for failsafe exit.
