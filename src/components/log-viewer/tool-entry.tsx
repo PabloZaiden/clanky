@@ -3,6 +3,7 @@ import type { ToolCallData } from "../../types";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { DiffPatchViewer } from "../loop-details/diff-patch-viewer";
+import { HighlightedJsonBlock } from "./highlighted-json-block";
 import { LazyDetails } from "./lazy-details";
 import { formatTime } from "./utils";
 import {
@@ -34,17 +35,6 @@ function RenderedContent({ output }: { output: unknown }) {
       data-tool-value-block="true"
     >
       {content}
-    </pre>
-  );
-}
-
-function ToolValueBlock({ value }: { value: unknown }) {
-  return (
-    <pre
-      className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-sky-100 bg-white p-3 font-mono text-xs text-gray-900 dark:border-white/10 dark:bg-black/20 dark:text-gray-100"
-      data-tool-value-block="true"
-    >
-      {formatToolValue(value)}
     </pre>
   );
 }
@@ -148,7 +138,7 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
         {block.title && (
           <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">{block.title}</div>
         )}
-        <ToolValueBlock value={block.value} />
+        <HighlightedJsonBlock value={block.value} />
       </div>
     );
   }
@@ -173,7 +163,7 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
       {block.title && (
         <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">{block.title}</div>
       )}
-      <ToolValueBlock value={block.content} />
+      <HighlightedJsonBlock value={block.content} />
     </div>
   );
 }
@@ -269,13 +259,13 @@ export const ToolEntry = memo(function ToolEntry({
 
   const inputContent = structuredDetails && structuredDetails.inputBlocks.length > 0
     ? <ToolDetailSection blocks={structuredDetails.inputBlocks} />
-    : <ToolValueBlock value={tool.input} />;
+    : <HighlightedJsonBlock value={tool.input} />;
 
   const outputContent = normalizedOutputBlocks.length > 0
     ? <ToolDetailSection blocks={normalizedOutputBlocks} />
     : meta.outputType === "text"
       ? <RenderedContent output={tool.output} />
-      : <ToolValueBlock value={tool.output} />;
+      : <HighlightedJsonBlock value={tool.output} />;
 
   const renderInputContent = useCallback(
     () => (

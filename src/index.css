@@ -145,6 +145,50 @@
   animation: slide-in 0.2s ease-out;
 }
 
+.tool-json-highlight .hljs {
+  color: inherit;
+}
+
+.tool-json-highlight .hljs-punctuation {
+  color: #6b7280;
+}
+
+.tool-json-highlight .hljs-attr {
+  color: #1d4ed8;
+}
+
+.tool-json-highlight .hljs-string {
+  color: #0f766e;
+}
+
+.tool-json-highlight .hljs-number {
+  color: #9333ea;
+}
+
+.tool-json-highlight .hljs-literal {
+  color: #b45309;
+}
+
+.dark .tool-json-highlight .hljs-punctuation {
+  color: #94a3b8;
+}
+
+.dark .tool-json-highlight .hljs-attr {
+  color: #7dd3fc;
+}
+
+.dark .tool-json-highlight .hljs-string {
+  color: #86efac;
+}
+
+.dark .tool-json-highlight .hljs-number {
+  color: #c4b5fd;
+}
+
+.dark .tool-json-highlight .hljs-literal {
+  color: #fdba74;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   ::before,
