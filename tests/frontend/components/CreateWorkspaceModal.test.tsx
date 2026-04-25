@@ -201,6 +201,33 @@ describe("CreateWorkspaceModal", () => {
     expect(ws.getConnections("/api/ws")[0]?.queryParams["provisioningJobId"]).toBe("job-1");
   });
 
+  test("wires accessible disclosure semantics for automatic advanced options", async () => {
+    const { getByRole, user } = renderWithUser(
+      <CreateWorkspaceModal
+        isOpen={true}
+        onClose={() => {}}
+        onCreate={mock(async () => true)}
+        registeredSshServers={registeredSshServers}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+
+    const advancedButton = getAdvancedOptionsButton();
+    const panelId = advancedButton.getAttribute("aria-controls") ?? "";
+
+    expect(panelId).not.toBe("");
+    expect(advancedButton).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById(panelId)).toBeNull();
+
+    await user.click(advancedButton);
+
+    await waitFor(() => {
+      expect(advancedButton).toHaveAttribute("aria-expanded", "true");
+      expect(document.getElementById(panelId)).toBeInTheDocument();
+    });
+  });
+
   test("submits an automatic provisioning request with a selected devbox template", async () => {
     const startedSnapshot = {
       ...createSnapshot("running"),

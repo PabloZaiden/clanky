@@ -30,6 +30,8 @@ interface AutomaticWorkspaceFormProps {
   onAdvancedOpenChange: (open: boolean) => void;
 }
 
+const AUTOMATIC_ADVANCED_PANEL_ID = "create-workspace-automatic-advanced-options-panel";
+
 export function AutomaticWorkspaceForm({
   serverId,
   onServerIdChange,
@@ -170,6 +172,8 @@ export function AutomaticWorkspaceForm({
         <button
           type="button"
           onClick={() => onAdvancedOpenChange(!advancedOpen)}
+          aria-expanded={advancedOpen}
+          aria-controls={AUTOMATIC_ADVANCED_PANEL_ID}
           className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
         >
           <div>
@@ -182,7 +186,10 @@ export function AutomaticWorkspaceForm({
         </button>
 
         {advancedOpen && (
-          <div className="space-y-4 border-t border-gray-300 px-3 py-3 dark:border-gray-600">
+          <div
+            id={AUTOMATIC_ADVANCED_PANEL_ID}
+            className="space-y-4 border-t border-gray-300 px-3 py-3 dark:border-gray-600"
+          >
             <div>
               <div className="mb-1 flex items-center justify-between gap-3">
                 <label

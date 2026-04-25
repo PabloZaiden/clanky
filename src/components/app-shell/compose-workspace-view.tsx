@@ -22,6 +22,8 @@ interface ComposeWorkspaceViewProps {
   dashboardData: Pick<UseDashboardDataResult, "remoteOnly">;
 }
 
+const COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID = "compose-workspace-automatic-advanced-options-panel";
+
 export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
   const {
     shellHeaderOffsetClassName,
@@ -326,15 +328,6 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 help="Parent directory where the repo should be cloned."
               />
 
-              <InlineField
-                id="automatic-devcontainer-subpath"
-                label="Devcontainer variant"
-                value={automaticDevcontainerSubpath}
-                onChange={setAutomaticDevcontainerSubpath}
-                placeholder="backend"
-                help="Optional. Use when the repository contains multiple devcontainer definitions and devbox needs a specific one."
-              />
-
               <div>
                 <label
                   htmlFor="automatic-provider"
@@ -374,6 +367,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 <button
                   type="button"
                   onClick={() => setAutomaticAdvancedOpen(!automaticAdvancedOpen)}
+                  aria-expanded={automaticAdvancedOpen}
+                  aria-controls={COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID}
                   className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
                 >
                   <div>
@@ -386,7 +381,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                 </button>
 
                 {automaticAdvancedOpen && (
-                  <div className="space-y-4 border-t border-gray-200 px-4 py-4 dark:border-gray-800">
+                  <div
+                    id={COMPOSE_AUTOMATIC_ADVANCED_PANEL_ID}
+                    className="space-y-4 border-t border-gray-200 px-4 py-4 dark:border-gray-800"
+                  >
                     <div>
                       <div className="mb-1.5 flex items-center justify-between gap-3">
                         <label

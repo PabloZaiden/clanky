@@ -189,6 +189,7 @@ export async function checkSshServerPrerequisitesApi(options: {
 export async function listDevboxTemplatesApi(options: {
   serverId: string;
   password?: string;
+  signal?: AbortSignal;
 }): Promise<DevboxTemplateSummary[]> {
   const credentialToken = await resolveOptionalCredentialToken(options.serverId, options.password);
   const request: GetDevboxTemplatesRequest = {
@@ -200,6 +201,7 @@ export async function listDevboxTemplatesApi(options: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
+      signal: options.signal,
     },
     "List devbox templates",
   );
