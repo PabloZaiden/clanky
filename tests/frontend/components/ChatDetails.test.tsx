@@ -1534,10 +1534,12 @@ describe("ChatDetails", () => {
       expect(container.querySelectorAll("[data-tool-json-highlighted='true']")).toHaveLength(2);
     });
 
-    const highlightedBlock = container.querySelector("[data-tool-json-highlighted='true']");
-    expect(highlightedBlock?.querySelector(".hljs")).toBeTruthy();
-    expect(highlightedBlock?.querySelector(".hljs-attr")).toBeTruthy();
-    expect(highlightedBlock?.textContent).toContain("\"query\"");
+    const highlightedBlocks = Array.from(container.querySelectorAll("[data-tool-json-highlighted='true']"));
+    expect(highlightedBlocks).toHaveLength(2);
+    expect(highlightedBlocks[0]?.textContent).toContain("{\n  \"query\":");
+    expect(highlightedBlocks[0]?.textContent).toContain("\"provider\": \"bing\"");
+    expect(highlightedBlocks[1]?.textContent).toContain("{\n  \"type\": \"output_text\"");
+    expect(highlightedBlocks[1]?.textContent).toContain("\"value\": \"Example response\"");
   });
 
   test("keeps chat in the standard layout without focus mode controls", async () => {

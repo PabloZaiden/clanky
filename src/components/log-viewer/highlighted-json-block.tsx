@@ -3,15 +3,20 @@ import hljs from "highlight.js/lib/core";
 import jsonLanguage from "highlight.js/lib/languages/json";
 import { formatToolValue } from "./tool-inference";
 
-let isJsonLanguageRegistered = false;
+const jsonHighlightLanguage = "json";
+const isJsonHighlightingAvailable = initializeJsonHighlighting();
 
-function ensureJsonLanguageRegistered(): void {
-  if (isJsonLanguageRegistered) {
-    return;
+function initializeJsonHighlighting(): boolean {
+  if (hljs.getLanguage(jsonHighlightLanguage)) {
+    return true;
   }
 
-  hljs.registerLanguage("json", jsonLanguage);
-  isJsonLanguageRegistered = true;
+  try {
+    hljs.registerLanguage(jsonHighlightLanguage, jsonLanguage);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function renderHighlightedJson(value: unknown): { text: string; highlightedHtml: string | null } {
@@ -20,14 +25,21 @@ function renderHighlightedJson(value: unknown): { text: string; highlightedHtml:
     return { text, highlightedHtml: null };
   }
 
-  ensureJsonLanguageRegistered();
-  return {
-    text,
-    highlightedHtml: hljs.highlight(text, {
-      language: "json",
-      ignoreIllegals: true,
-    }).value,
-  };
+  if (!isJsonHighlightingAvailable) {
+    return { text, highlightedHtml: null };
+  }
+
+  try {
+    return {
+      text,
+      highlightedHtml: hljs.highlight(text, {
+        language: jsonHighlightLanguage,
+        ignoreIllegals: true,
+      }).value,
+    };
+  } catch {
+    return { text, highlightedHtml: null };
+  }
 }
 
 const blockClassName = "overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-sky-100 bg-white p-3 font-mono text-xs text-gray-900 dark:border-white/10 dark:bg-black/20 dark:text-gray-100";
