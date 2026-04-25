@@ -168,12 +168,7 @@ describe("workspace management scenario", () => {
     const dirInput = document.querySelector("#workspace-directory") as HTMLInputElement;
     await user.type(dirInput, "/");
 
-    const createBtns = Array.from(document.querySelectorAll("button")).filter(
-      (b) => b.textContent?.trim() === "Create Workspace",
-    );
-    const submitBtn = createBtns.find((b) => b.type === "submit");
-    expect(submitBtn).toBeTruthy();
-    await user.click(submitBtn!);
+    await user.click(getByRole("button", { name: "Create Workspace" }));
 
     await waitFor(() => {
       expect(window.location.hash).toBe("#/workspace/ws-new");
@@ -280,11 +275,7 @@ describe("workspace management scenario", () => {
     const dirInput = document.querySelector("#workspace-directory") as HTMLInputElement;
     await user.type(dirInput, "/workspaces/build");
 
-    const submitBtn = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "Create Workspace" && button.type === "submit",
-    );
-    expect(submitBtn).toBeTruthy();
-    await user.click(submitBtn!);
+    await user.click(getByRole("button", { name: "Create Workspace" }));
 
     await waitFor(() => {
       const postCalls = api.calls("/api/workspaces", "POST");
@@ -306,12 +297,12 @@ describe("workspace management scenario", () => {
     });
   });
 
-  test("cancel create workspace returns to the overview", async () => {
+  test("create workspace uses a header action without a cancel button", async () => {
     setupBaseApi();
     api.get("/api/loops", () => []);
     api.get("/api/workspaces", () => []);
 
-    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
+    const { getByRole, queryByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
@@ -321,16 +312,16 @@ describe("workspace management scenario", () => {
     expect(workspacesNewButton).toBeTruthy();
     await user.click(workspacesNewButton!);
     await waitFor(() => {
-      expect(getByText("Create a workspace")).toBeTruthy();
+      expect(getByRole("heading", { name: "Create a workspace" })).toBeTruthy();
     });
 
-    const cancelButtons = getAllByText("Cancel");
-    await user.click(cancelButtons.at(-1)!);
+    const form = document.getElementById("workspace-create-form");
+    const createButton = getByRole("button", { name: "Create Workspace" });
 
-    await waitFor(() => {
-      expect(window.location.hash).toBe("#/");
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-    });
+    expect(form).toBeTruthy();
+    expect(createButton).toHaveAttribute("form", "workspace-create-form");
+    expect(form?.contains(createButton)).toBe(false);
+    expect(queryByRole("button", { name: "Cancel" })).toBeNull();
   });
 
   test("shell composer keeps create controls working when switching to automatic mode", async () => {
@@ -377,7 +368,7 @@ describe("workspace management scenario", () => {
     api.post("/api/provisioning-jobs", () => startedSnapshot);
     api.get("/api/provisioning-jobs/:id", () => startedSnapshot);
 
-    const { getByRole, queryByLabelText, user } = renderWithUser(<App />);
+    const { getByRole, queryByLabelText, queryByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
@@ -390,6 +381,7 @@ describe("workspace management scenario", () => {
     await waitFor(() => {
       expect(getByRole("heading", { name: "Create a workspace" })).toBeTruthy();
       expect(getByRole("button", { name: "Create Workspace" })).toBeTruthy();
+      expect(queryByRole("button", { name: "Cancel" })).toBeNull();
     });
 
     await user.click(getByRole("button", { name: "Automatic" }));
@@ -397,6 +389,7 @@ describe("workspace management scenario", () => {
     await waitFor(() => {
       expect(queryByLabelText("Directory *")).toBeNull();
       expect(getByRole("button", { name: "Start Provisioning" })).toBeTruthy();
+      expect(queryByRole("button", { name: "Cancel" })).toBeNull();
     });
 
     const nameInput = document.querySelector("#workspace-name") as HTMLInputElement | null;

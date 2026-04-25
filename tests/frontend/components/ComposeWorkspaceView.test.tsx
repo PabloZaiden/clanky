@@ -117,6 +117,25 @@ function ComposeWorkspaceViewHarness({
 }
 
 describe("ComposeWorkspaceView", () => {
+  test("renders a single header submit action and no cancel action while editing", async () => {
+    const { getByRole, queryByRole, queryAllByText, user } = renderWithUser(<ComposeWorkspaceViewHarness />);
+    const form = document.getElementById("workspace-create-form");
+
+    expect(form).toBeTruthy();
+    expect(queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(queryAllByText("Automatic")).toHaveLength(1);
+
+    const startProvisioningButton = getByRole("button", { name: "Start Provisioning" });
+    expect(startProvisioningButton).toHaveAttribute("form", "workspace-create-form");
+    expect(form?.contains(startProvisioningButton)).toBe(false);
+
+    await user.click(getByRole("button", { name: "Manual" }));
+
+    const createWorkspaceButton = getByRole("button", { name: "Create Workspace" });
+    expect(createWorkspaceButton).toHaveAttribute("form", "workspace-create-form");
+    expect(form?.contains(createWorkspaceButton)).toBe(false);
+  });
+
   test("wires advanced options disclosure semantics in automatic mode", async () => {
     const { getAllByRole, getByRole, user } = renderWithUser(<ComposeWorkspaceViewHarness />);
     const advancedButton = getByRole("button", { name: /advanced options/i });
