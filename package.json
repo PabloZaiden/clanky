@@ -19,6 +19,7 @@
     "@tailwindcss/typography": "0.5.19",
     "bun-plugin-tailwind": "0.1.2",
     "ghostty-web": "0.4.0",
+    "highlight.js": "11.11.1",
     "jose": "6.2.2",
     "react": "19.2.5",
     "react-dom": "19.2.5",

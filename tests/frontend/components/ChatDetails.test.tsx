@@ -1482,6 +1482,64 @@ describe("ChatDetails", () => {
     expect(navigatedBack).toBe(true);
   });
 
+  test("renders highlighted raw JSON for unknown tool calls", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "idle",
+        messages: [],
+        logs: [],
+        toolCalls: [{
+          id: "tool-1",
+          name: "unknown",
+          input: {
+            query: "@opentui/react test-utils mockInput pressKey ctrl option example",
+            limit: 5,
+            filters: {
+              provider: "bing",
+              exact: false,
+            },
+          },
+          output: {
+            type: "output_text",
+            text: {
+              value: "Example response",
+              annotations: null,
+            },
+            bing_searches: null,
+          },
+          status: "completed",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        }],
+      },
+    }));
+
+    const { container, getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /^1 tool call$/i })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: /^1 tool call$/i }));
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Unknown tool (stored as unknown)" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Unknown tool (stored as unknown)" }));
+
+    await waitFor(() => {
+      expect(getByText("Input")).toBeTruthy();
+      expect(getByText("Output")).toBeTruthy();
+      expect(container.querySelectorAll("[data-tool-json-highlighted='true']")).toHaveLength(2);
+    });
+
+    const highlightedBlock = container.querySelector("[data-tool-json-highlighted='true']");
+    expect(highlightedBlock?.querySelector(".hljs")).toBeTruthy();
+    expect(highlightedBlock?.querySelector(".hljs-attr")).toBeTruthy();
+    expect(highlightedBlock?.textContent).toContain("\"query\"");
+  });
+
   test("keeps chat in the standard layout without focus mode controls", async () => {
     api.get("/api/chats/:id", () => createChat());
 
