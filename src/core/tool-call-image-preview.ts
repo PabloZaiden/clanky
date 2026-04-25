@@ -8,10 +8,7 @@ import {
   type MessageImageAttachment,
 } from "../types/message-attachments";
 
-const TOOL_CALL_IMAGE_PREVIEW_MAX_BYTES = Math.min(
-  MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES,
-  2 * 1024 * 1024,
-);
+const TOOL_CALL_IMAGE_PREVIEW_MAX_BYTES = MESSAGE_IMAGE_ATTACHMENT_MAX_BYTES;
 
 const SUPPORTED_IMAGE_MIME_TYPES = new Set<string>(MESSAGE_IMAGE_ALLOWED_MIME_TYPES);
 

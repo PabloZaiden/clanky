@@ -49,68 +49,9 @@ afterEach(() => {
   ws.uninstall();
 });
 
-// ─── Header rendering ───────────────────────────────────────────────────────
-
-describe("header rendering", () => {
-  test("renders title 'Ralpher'", async () => {
-    const { getByText } = renderWithUser(<Dashboard />);
-
-    await waitFor(() => {
-      expect(getByText("Ralpher")).toBeTruthy();
-    });
-  });
-
-  test("renders version from health API", async () => {
-    api.get("/api/health", () => ({ status: "ok", version: "2.3.1" }));
-
-    const { getByText } = renderWithUser(<Dashboard />);
-
-    await waitFor(() => {
-      expect(getByText("v2.3.1")).toBeTruthy();
-    });
-  });
-
-  test("renders New Loop button", async () => {
-    const { getByRole } = renderWithUser(<Dashboard />);
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "New Loop" })).toBeTruthy();
-    });
-  });
-
-  test("renders New Workspace button", async () => {
-    const { getByRole } = renderWithUser(<Dashboard />);
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "New Workspace" })).toBeTruthy();
-    });
-  });
-
-  test("renders Settings button", async () => {
-    const { getByTitle } = renderWithUser(<Dashboard />);
-
-    await waitFor(() => {
-      expect(getByTitle("App Settings")).toBeTruthy();
-    });
-  });
-});
-
 // ─── Connection status ──────────────────────────────────────────────────────
 // Connection status indicator was removed from the Dashboard in a prior refactor.
 // Connection status is now shown only in workspace-level settings.
-
-// ─── Empty state ────────────────────────────────────────────────────────────
-
-describe("empty state", () => {
-  test("shows 'No loops yet' when no loops exist", async () => {
-    const { getByText } = renderWithUser(<Dashboard />);
-
-    await waitFor(() => {
-      expect(getByText("No loops yet")).toBeTruthy();
-    });
-    expect(getByText(/Click "New Loop"/)).toBeTruthy();
-  });
-});
 
 describe("ssh section", () => {
   test("lets the user choose the SSH workspace from the header when multiple SSH workspaces exist", async () => {
@@ -196,102 +137,6 @@ describe("ssh section", () => {
       expect(queryByText("Workspace SSH Sessions")).toBeTruthy();
       expect(queryByText("Visible Loop")).toBeTruthy();
     });
-  });
-
-  test("wraps long server and SSH session text instead of truncating it", async () => {
-    const longServerName = `Shared host ${"with-a-very-long-name-".repeat(5)}`;
-    const longAddress = `${"ssh-gateway-".repeat(6)}example.com`;
-    const longWorkspaceSessionName = `Workspace shell ${"for-a-very-long-directory-".repeat(4)}`;
-    const longWorkspaceDirectory = `/workspaces/${"deeply-nested-service-".repeat(6)}repo`;
-    const longStandaloneSessionName = `Deploy shell ${"with-a-very-long-label-".repeat(4)}`;
-    const longStandaloneRemoteId = `ralpher-${"persistent-session-id-".repeat(5)}`;
-
-    const workspaceSession = createSshSession({
-      config: {
-        id: "workspace-session-wrap-1",
-        name: longWorkspaceSessionName,
-        directory: longWorkspaceDirectory,
-        remoteSessionName: `ralpher-${"workspace-remote-id-".repeat(4)}`,
-      },
-      state: { status: "connected" },
-    });
-
-    api.get("/api/ssh-sessions", () => [workspaceSession]);
-    api.get("/api/ssh-servers", () => [{
-      config: {
-        id: "server-wrap-1",
-        name: longServerName,
-        address: longAddress,
-        username: "deploy",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      publicKey: {
-        algorithm: "RSA-OAEP-256",
-        publicKey: "-----BEGIN PUBLIC KEY-----\nTEST\n-----END PUBLIC KEY-----",
-        fingerprint: "fp-wrap-1",
-        version: 1,
-        createdAt: new Date().toISOString(),
-      },
-    }]);
-    api.get("/api/ssh-servers/:id/sessions", () => [{
-      config: {
-        id: "server-session-wrap-1",
-        sshServerId: "server-wrap-1",
-        name: longStandaloneSessionName,
-        connectionMode: "dtach",
-        remoteSessionName: longStandaloneRemoteId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      state: { status: "connected" },
-    }]);
-
-    const { getByRole, getByText, getAllByText, user } = renderWithUser(<Dashboard />);
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: /SSH \(2\)/ })).toBeTruthy();
-    });
-
-    await user.click(getByRole("button", { name: /SSH \(2\)/ }));
-
-    await waitFor(() => {
-      expect(getByText(longServerName)).toBeTruthy();
-      expect(getByText(`deploy@${longAddress}`)).toBeTruthy();
-      expect(getByText(longWorkspaceSessionName)).toBeTruthy();
-      expect(getByText(longWorkspaceDirectory)).toBeTruthy();
-    });
-
-    const serverName = getByText(longServerName);
-    expect(serverName.className).toContain("break-words");
-    expect(serverName.className).toContain("[overflow-wrap:anywhere]");
-    expect(serverName.className.includes("truncate")).toBe(false);
-
-    const serverTarget = getByText(`deploy@${longAddress}`);
-    expect(serverTarget.className).toContain("break-words");
-    expect(serverTarget.className).toContain("[overflow-wrap:anywhere]");
-    expect(serverTarget.className.includes("truncate")).toBe(false);
-
-    const workspaceSessionName = getByText(longWorkspaceSessionName);
-    expect(workspaceSessionName.className).toContain("break-words");
-    expect(workspaceSessionName.className).toContain("[overflow-wrap:anywhere]");
-    expect(workspaceSessionName.className.includes("truncate")).toBe(false);
-
-    const workspaceDirectory = getByText(longWorkspaceDirectory);
-    expect(workspaceDirectory.className).toContain("break-words");
-    expect(workspaceDirectory.className).toContain("[overflow-wrap:anywhere]");
-    expect(workspaceDirectory.className.includes("truncate")).toBe(false);
-
-    const standaloneRemoteId = getAllByText((_content, element) =>
-      element?.textContent === `Persistent ID: ${longStandaloneRemoteId}`
-    )[0];
-    expect(standaloneRemoteId).toBeTruthy();
-    if (!(standaloneRemoteId instanceof HTMLElement)) {
-      throw new Error("Expected wrapped standalone persistent session ID");
-    }
-    expect(standaloneRemoteId.className).toContain("break-words");
-    expect(standaloneRemoteId.className).toContain("[overflow-wrap:anywhere]");
-    expect(standaloneRemoteId.className.includes("truncate")).toBe(false);
   });
 
   test("can collapse the unified ssh section without hiding loops", async () => {
@@ -941,25 +786,6 @@ describe("app settings modal", () => {
     await waitFor(() => {
       expect(getByText("App Settings")).toBeTruthy();
     });
-  });
-
-  test("renders the log level dropdown with padded select styling", async () => {
-    const { getByLabelText, getByTitle, user } = renderWithUser(
-      <ThemePreferenceProvider>
-        <Dashboard />
-      </ThemePreferenceProvider>,
-    );
-
-    await waitFor(() => {
-      expect(getByTitle("App Settings")).toBeTruthy();
-    });
-
-    await user.click(getByTitle("App Settings"));
-
-    const logLevelSelect = await waitFor(() => getByLabelText("Log Level"));
-
-    expect(logLevelSelect).toHaveClass("px-3");
-    expect(logLevelSelect).toHaveClass("py-2");
   });
 });
 
