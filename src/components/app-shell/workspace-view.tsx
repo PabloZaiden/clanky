@@ -1,7 +1,7 @@
 import type { Chat, SshServer, Workspace } from "../../types";
 import { findRegisteredSshServer } from "../../types/settings";
 import type { useChats, useLoops, useSshSessions } from "../../hooks";
-import { getLoopStatusLabel, isWorkspaceHistoryLoop } from "../../utils";
+import { getLoopStatusPill, isWorkspaceHistoryLoop } from "../../utils";
 import {
   ActionMenu,
   Button,
@@ -9,7 +9,6 @@ import {
   StatusBadge,
   type ActionMenuItem,
   getChatStatusBadgeVariant,
-  getStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
 } from "../common";
@@ -92,6 +91,7 @@ export function WorkspaceView({
 
   function renderLoopRow(loop: ReturnType<typeof useLoops>["loops"][number]) {
     const route: ShellRoute = { view: "loop", loopId: loop.config.id };
+    const statusPill = getLoopStatusPill(loop);
     return (
       <button
         key={loop.config.id}
@@ -107,8 +107,8 @@ export function WorkspaceView({
             Loop
           </span>
         </span>
-        <StatusBadge className="ml-auto shrink-0" variant={getStatusBadgeVariant(loop.state.status)}>
-          {getLoopStatusLabel(loop)}
+        <StatusBadge className="ml-auto shrink-0" variant={statusPill.variant}>
+          {statusPill.label}
         </StatusBadge>
       </button>
     );

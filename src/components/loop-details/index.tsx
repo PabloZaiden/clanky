@@ -3,11 +3,10 @@
  */
 
 import { useLoop, useLoopPortForwards, useMarkdownPreference, useToast } from "../../hooks";
-import { Button, EditIcon, getStatusBadgeVariant, StatusBadge } from "../common";
+import { Button, EditIcon, StatusBadge } from "../common";
 import { LoopActionBar } from "../LoopActionBar";
 import {
-  getStatusLabel,
-  getPlanningStatusLabel,
+  getLoopStatusPill,
   isLoopActive,
   isLoopGenerating,
   canSendTerminalFollowUp,
@@ -126,6 +125,7 @@ export function LoopDetails({
   const canTerminalFollowUp = canSendTerminalFollowUp(state.status, state.reviewMode?.addressable);
   const isPlanReady = loop.state.planMode?.isPlanReady ?? false;
   const isGenerating = isLoopGenerating(loop);
+  const statusPill = getLoopStatusPill(loop);
   const feedbackRounds = loop.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
@@ -158,8 +158,8 @@ export function LoopDetails({
                 >
                   <EditIcon />
                 </button>
-                <StatusBadge variant={isPlanning ? (isPlanReady ? "plan_ready" : "planning") : getStatusBadgeVariant(state.status)} size="sm" className="shrink-0">
-                  {isPlanning ? getPlanningStatusLabel(isPlanReady) : getStatusLabel(state.status, state.syncState)}
+                <StatusBadge variant={statusPill.variant} size="sm" className="shrink-0">
+                  {statusPill.label}
                 </StatusBadge>
               </div>
             </div>

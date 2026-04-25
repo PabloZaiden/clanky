@@ -17,50 +17,116 @@ const MANUAL_COMPLETE_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
   "stopped",
   "failed",
 ]);
+const ACTIVE_SYNC_CONFLICT_STATUSES: ReadonlySet<LoopStatus> = new Set([
+  "starting",
+  "running",
+  "waiting",
+]);
+
+export type LoopStatusPillVariant =
+  | "default"
+  | "idle"
+  | "planning"
+  | "running"
+  | "completed"
+  | "stopped"
+  | "failed"
+  | "merged"
+  | "pushed"
+  | "deleted"
+  | "plan_ready";
+
+export type LoopStatusPillKey =
+  | "idle"
+  | "draft"
+  | "planning"
+  | "plan_ready"
+  | "starting"
+  | "running"
+  | "waiting"
+  | "completed"
+  | "stopped"
+  | "failed"
+  | "max_iterations"
+  | "resolving_conflicts"
+  | "merged"
+  | "pushed"
+  | "deleted";
+
+export interface LoopStatusPill {
+  key: LoopStatusPillKey | "unknown";
+  label: string;
+  variant: LoopStatusPillVariant;
+}
+
+type LoopStatusPillState = Pick<LoopState, "status" | "planMode"> & {
+  syncState?: LoopState["syncState"] | null;
+};
+
+const LOOP_STATUS_PILLS: Record<LoopStatusPillKey, Omit<LoopStatusPill, "key">> = {
+  idle: { label: "Idle", variant: "idle" },
+  draft: { label: "Draft", variant: "default" },
+  planning: { label: "Planning", variant: "planning" },
+  plan_ready: { label: "Plan Ready", variant: "plan_ready" },
+  starting: { label: "Starting", variant: "running" },
+  running: { label: "Running", variant: "running" },
+  waiting: { label: "Waiting", variant: "running" },
+  completed: { label: "Completed", variant: "completed" },
+  stopped: { label: "Stopped", variant: "stopped" },
+  failed: { label: "Failed", variant: "failed" },
+  max_iterations: { label: "Max Iterations", variant: "stopped" },
+  resolving_conflicts: { label: "Resolving Conflicts", variant: "running" },
+  merged: { label: "Merged", variant: "merged" },
+  pushed: { label: "Pushed", variant: "pushed" },
+  deleted: { label: "Deleted", variant: "deleted" },
+};
+
+function resolveLoopStatusPillKey(
+  state: LoopStatusPillState,
+): LoopStatusPillKey | "unknown" {
+  if (state.syncState?.status === "conflicts" && ACTIVE_SYNC_CONFLICT_STATUSES.has(state.status)) {
+    return "resolving_conflicts";
+  }
+
+  if (state.status === "planning" && state.planMode?.isPlanReady === true) {
+    return "plan_ready";
+  }
+
+  return state.status in LOOP_STATUS_PILLS
+    ? state.status as LoopStatusPillKey
+    : "unknown";
+}
+
+function buildLoopStatusPill(
+  state: LoopStatusPillState,
+): LoopStatusPill {
+  const key = resolveLoopStatusPillKey(state);
+
+  if (key === "unknown") {
+    return {
+      key,
+      label: state.status,
+      variant: "default",
+    };
+  }
+
+  return {
+    key,
+    ...LOOP_STATUS_PILLS[key],
+  };
+}
 
 /**
  * Get a human-readable label for a loop status.
  * Optionally considers syncState to show "Resolving Conflicts" when
  * a loop is running to resolve merge conflicts before push.
  */
-export function getStatusLabel(status: LoopStatus, syncState?: { status: string } | null): string {
-  // If the loop is actively running and has a sync conflict state, show the sync label
-  if (syncState?.status === "conflicts" && (status === "running" || status === "starting" || status === "waiting")) {
-    return "Resolving Conflicts";
-  }
-
-  switch (status) {
-    case "idle":
-      return "Idle";
-    case "draft":
-      return "Draft";
-    case "planning":
-      return "Planning";
-    case "starting":
-      return "Starting";
-    case "running":
-      return "Running";
-    case "waiting":
-      return "Waiting";
-    case "completed":
-      return "Completed";
-    case "stopped":
-      return "Stopped";
-    case "failed":
-      return "Failed";
-    case "max_iterations":
-      return "Max Iterations";
-    case "resolving_conflicts":
-      return "Resolving Conflicts";
-    case "merged":
-      return "Merged";
-    case "pushed":
-      return "Pushed";
-    case "deleted":
-      return "Deleted";
-    default:
-      return status;
-  }
+export function getStatusLabel(status: LoopStatus, syncState?: LoopState["syncState"] | null): string {
+  return buildLoopStatusPill({
+    status,
+    syncState,
+    planMode: undefined,
+  }).label;
 }
 
 /**
@@ -231,7 +297,7 @@ export function getRecentActivityTimestamp(loop: {
  * or "Planning" when the AI is still generating/revising the plan.
  */
 export function getPlanningStatusLabel(isPlanReady: boolean): string {
-  return isPlanReady ? "Plan Ready" : "Planning";
+  return LOOP_STATUS_PILLS[isPlanReady ? "plan_ready" : "planning"].label;
 }
 
 /**
@@ -239,9 +305,24 @@ export function getPlanningStatusLabel(isPlanReady: boolean): string {
  * planning sub-states that need to distinguish ready plans from active planning.
  */
 export function getLoopStatusLabel(loop: Loop): string {
-  return loop.state.status === "planning"
-    ? getPlanningStatusLabel(loop.state.planMode?.isPlanReady ?? false)
-    : getStatusLabel(loop.state.status, loop.state.syncState);
+  return getLoopStatusPill(loop).label;
+}
+
+/**
+ * Get the shared conceptual pill definition for a loop status.
+ * This is the single source of truth for loop pill text and color.
+ */
+export function getLoopStatusPill(loop: Pick<Loop, "state">): LoopStatusPill {
+  return buildLoopStatusPill(loop.state);
+}
+
+/**
+ * Get the shared conceptual pill definition from raw loop-state inputs.
+ */
+export function getLoopStatusPillFromState(
+  state: LoopStatusPillState,
+): LoopStatusPill {
+  return buildLoopStatusPill(state);
 }
 
 /**
