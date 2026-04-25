@@ -1980,9 +1980,9 @@ describe("log tab", () => {
     expect(queryByText("TODOs")).toBeNull();
   });
 
-  test("shows log filter controls with full accessible labels", async () => {
+  test("uses accessible log footer controls with the intended defaults and shortened labels", async () => {
     setupDefaultApi();
-    const { getByLabelText, getByRole } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByLabelText, getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByLabelText("Show system info")).toBeTruthy();
@@ -1991,20 +1991,35 @@ describe("log tab", () => {
       expect(getByLabelText("Autoscroll")).toBeTruthy();
       expect(getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
     });
-  });
 
-  test("keeps the log filter bar as a single-row horizontal scroller on small screens", async () => {
-    setupDefaultApi();
-    const { getByTestId } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const showSystemInfoCheckbox = getByLabelText("Show system info") as HTMLInputElement;
+    const showReasoningCheckbox = getByLabelText("Show reasoning") as HTMLInputElement;
+    const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
+    const autoScrollCheckbox = getByLabelText("Autoscroll") as HTMLInputElement;
+    const enterFocusModeButton = getByRole("button", { name: "Enter focus mode" });
+
+    expect(showSystemInfoCheckbox.checked).toBe(false);
+    expect(showReasoningCheckbox.checked).toBe(true);
+    expect(showToolsCheckbox.checked).toBe(true);
+    expect(autoScrollCheckbox.checked).toBe(true);
+
+    await user.click(getByText("System"));
+    expect(showSystemInfoCheckbox.checked).toBe(true);
+
+    await user.click(getByText("Reasoning"));
+    expect(showReasoningCheckbox.checked).toBe(false);
+
+    await user.click(getByText("Show tools"));
+    expect(showToolsCheckbox.checked).toBe(false);
+
+    await user.click(getByText("Auto"));
+    expect(autoScrollCheckbox.checked).toBe(false);
+
+    await user.click(within(enterFocusModeButton).getByText("Focus"));
 
     await waitFor(() => {
-      expect(getByTestId("loop-log-controls")).toBeTruthy();
+      expect(getByRole("button", { name: "Exit focus mode" })).toBeInTheDocument();
     });
-
-    const controls = getByTestId("loop-log-controls");
-    expect(controls.className).toContain("overflow-x-auto");
-    expect(controls.className).toContain("whitespace-nowrap");
-    expect(controls.className).toContain("sm:flex-wrap");
   });
 
   test("enables show tools by default and renders a collapsed tool-call container", async () => {
