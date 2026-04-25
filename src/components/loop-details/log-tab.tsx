@@ -85,53 +85,60 @@ export function LogTab({
           applySafeAreaBottom={applySafeAreaBottomToFocusBar}
         />
       ) : (
-        <div className="flex-shrink-0 border-t border-gray-200 px-2 py-2 dark:border-gray-700 sm:p-4">
+        <div className="flex-shrink-0 border-t border-gray-200 px-1.5 py-2 dark:border-gray-700 sm:p-4">
           <div
-            className="hide-scrollbar flex min-w-0 items-center gap-3 overflow-x-auto whitespace-nowrap sm:flex-wrap sm:overflow-visible"
+            className="hide-scrollbar flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap sm:flex-wrap sm:gap-3 sm:overflow-visible"
             style={{ WebkitOverflowScrolling: "touch" }}
           >
-            <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
-              <span className="flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
+            <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
+              <span className="flex items-center gap-1 whitespace-nowrap sm:gap-2">
                 <input
                   type="checkbox"
                   checked={showSystemInfo}
                   onChange={(e) => onShowSystemInfoChange(e.target.checked)}
+                  aria-label="Show system info"
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
-                <span>Show system info</span>
+                <span className="sm:hidden">System</span>
+                <span className="hidden sm:inline">Show system info</span>
               </span>
             </label>
-            <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
-              <span className="flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
+            <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
+              <span className="flex items-center gap-1 whitespace-nowrap sm:gap-2">
                 <input
                   type="checkbox"
                   checked={showReasoning}
                   onChange={(e) => onShowReasoningChange(e.target.checked)}
+                  aria-label="Show reasoning"
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
-                <span>Show reasoning</span>
+                <span className="sm:hidden">Reasoning</span>
+                <span className="hidden sm:inline">Show reasoning</span>
               </span>
             </label>
-            <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
-              <span className="flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
+            <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
+              <span className="flex items-center gap-1 whitespace-nowrap sm:gap-2">
                 <input
                   type="checkbox"
                   checked={showTools}
                   onChange={(e) => onShowToolsChange(e.target.checked)}
+                  aria-label="Show tools"
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
                 <span>Show tools</span>
               </span>
             </label>
-            <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
-              <span className="flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
+            <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
+              <span className="flex items-center gap-1 whitespace-nowrap sm:gap-2">
                 <input
                   type="checkbox"
                   checked={autoScroll}
                   onChange={(e) => onAutoScrollChange(e.target.checked)}
+                  aria-label="Autoscroll"
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
-                <span>Autoscroll</span>
+                <span className="sm:hidden">Auto</span>
+                <span className="hidden sm:inline">Autoscroll</span>
               </span>
             </label>
             <Button
@@ -143,7 +150,8 @@ export function LogTab({
               aria-label="Enter focus mode"
               title="Focus mode — fullscreen logs with compact controls"
             >
-              Focus mode
+              <span className="sm:hidden">Focus</span>
+              <span className="hidden sm:inline">Focus mode</span>
             </Button>
           </div>
         </div>
