@@ -28,7 +28,7 @@ import { buildSeededPlanStatusContent, readValidatedPlanningFiles } from "./plan
 import { sanitizeBranchName } from "../utils";
 import { buildSpawnLoopName, buildSpawnLoopPrompt } from "../utils/chat-to-loop-prompt";
 import { getImageViewToolPath, resolveToolCallImagePreview } from "./tool-call-image-preview";
-import { upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
+import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -1157,8 +1157,11 @@ export class ChatManager {
 
   private async upsertToolCall(chat: Chat, tool: PersistedToolCall): Promise<Chat> {
     const existingIndex = chat.state.toolCalls.findIndex((existing) => existing.id === tool.id);
+    const persistedTool = existingIndex >= 0
+      ? mergeToolCallRecord(chat.state.toolCalls[existingIndex], tool)
+      : tool;
     const toolCalls = existingIndex >= 0
-      ? chat.state.toolCalls.map((existing, index) => index === existingIndex ? tool : existing)
+      ? chat.state.toolCalls.map((existing, index) => index === existingIndex ? persistedTool : existing)
       : [...chat.state.toolCalls, tool];
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
@@ -1168,7 +1171,7 @@ export class ChatManager {
     this.emitter.emit({
       type: "chat.tool_call",
       chatId: chat.config.id,
-      tool,
+      tool: persistedTool,
       timestamp: tool.timestamp,
     });
     return updated;
@@ -1218,6 +1221,7 @@ export class ChatManager {
           workspaceId: currentChat.config.workspaceId,
           directory,
           path,
+          toolCallId: tool.id,
         });
         if (!extra) {
           return;

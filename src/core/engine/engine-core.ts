@@ -891,6 +891,7 @@ export class LoopEngine {
           workspaceId: this.config.workspaceId,
           directory: this.workingDirectory,
           path,
+          toolCallId: toolCall.id,
         });
         if (!extra) {
           return;

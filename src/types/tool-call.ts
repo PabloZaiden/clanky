@@ -31,3 +31,16 @@ export function upsertToolCallExtra(
   return [...existing, extra];
 }
 
+export function mergeToolCallRecord<T extends ToolCallRecord>(
+  existing: T | undefined,
+  incoming: T,
+): T {
+  if (!existing || incoming.extras !== undefined) {
+    return incoming;
+  }
+
+  return {
+    ...incoming,
+    extras: existing.extras,
+  };
+}

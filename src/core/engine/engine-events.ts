@@ -5,6 +5,7 @@
 import { log } from "../logger";
 import type { LoopLogEntry, PersistedMessage } from "../../types/loop";
 import type { MessageData, ToolCallData, LogLevel } from "../../types/events";
+import { mergeToolCallRecord } from "../../types/tool-call";
 import {
   MAX_PERSISTED_LOGS,
   MAX_PERSISTED_MESSAGES,
@@ -102,26 +103,10 @@ export function persistLoopToolCall(
 ): ToolCallData[] {
   const existingIndex = toolCalls.findIndex((tc) => tc.id === toolCall.id);
   if (existingIndex >= 0) {
-      toolCalls[existingIndex] = {
-        id: toolCall.id,
-        name: toolCall.name,
-        input: toolCall.input,
-        output: toolCall.output,
-        status: toolCall.status,
-        timestamp: toolCall.timestamp,
-        extras: toolCall.extras,
-      };
-    } else {
-      toolCalls.push({
-        id: toolCall.id,
-        name: toolCall.name,
-        input: toolCall.input,
-        output: toolCall.output,
-        status: toolCall.status,
-        timestamp: toolCall.timestamp,
-        extras: toolCall.extras,
-      });
-    }
+    toolCalls[existingIndex] = mergeToolCallRecord(toolCalls[existingIndex], toolCall);
+  } else {
+    toolCalls.push(toolCall);
+  }
   if (toolCalls.length > MAX_PERSISTED_TOOL_CALLS) {
     toolCalls.splice(0, toolCalls.length - MAX_PERSISTED_TOOL_CALLS);
   }
