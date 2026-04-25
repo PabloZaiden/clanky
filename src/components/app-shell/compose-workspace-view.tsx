@@ -80,6 +80,90 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     workspaceName.trim().length > 0 &&
     workspaceDirectory.trim().length > 0 &&
     workspaceServerSettingsValid;
+  const createActionLabel =
+    workspaceCreateMode === "automatic" ? "Start Provisioning" : "Create Workspace";
+  const createActionLoading =
+    workspaceCreateMode === "automatic"
+      ? provisioning.starting
+      : workspaceCreateSubmitting || workspacesSaving;
+  const createActionDisabled =
+    workspaceCreateMode === "automatic" ? !automaticFormValid : !manualFormValid;
+
+  const createModeControls = (
+    <>
+      <Button
+        type="button"
+        size="sm"
+        variant={workspaceCreateMode === "manual" ? "primary" : "secondary"}
+        onClick={() => setWorkspaceCreateMode("manual")}
+      >
+        Manual
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant={workspaceCreateMode === "automatic" ? "primary" : "secondary"}
+        onClick={() => setWorkspaceCreateMode("automatic")}
+      >
+        Automatic
+      </Button>
+    </>
+  );
+
+  const createFormActions = (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => navigateWithinShell({ view: "home" })}
+      >
+        Cancel
+      </Button>
+      <Button
+        type="submit"
+        form={workspaceCreateFormId}
+        size="sm"
+        loading={createActionLoading}
+        disabled={createActionDisabled}
+      >
+        {createActionLabel}
+      </Button>
+    </>
+  );
+
+  const provisioningActions = (
+    <>
+      {canReturnToAutomaticForm && (
+        <Button type="button" size="sm" onClick={handleBackToAutomaticWorkspaceForm}>
+          Back to Automatic Form
+        </Button>
+      )}
+      {provisionedWorkspaceId && provisioningStatus === "completed" && (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() =>
+            navigateWithinShell({ view: "workspace", workspaceId: provisionedWorkspaceId })
+          }
+        >
+          Open Workspace
+        </Button>
+      )}
+      {(provisioningStatus === "running" || provisioningStatus === "pending") && (
+        <Button
+          type="button"
+          size="sm"
+          variant="danger"
+          onClick={() => {
+            void provisioning.cancelJob();
+          }}
+        >
+          Cancel Job
+        </Button>
+      )}
+    </>
+  );
 
   return (
     <ShellPanel
@@ -89,7 +173,11 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       headerOffsetClassName={shellHeaderOffsetClassName}
       badges={
         <>
-          <Badge variant={workspaceCreateMode === "automatic" ? "info" : "default"} size="sm">
+          <Badge
+            variant={workspaceCreateMode === "automatic" ? "info" : "default"}
+            size="sm"
+            className="hidden sm:inline-flex"
+          >
             {workspaceCreateMode === "automatic" ? "Automatic" : "Manual"}
           </Badge>
           {provisioningStatus && (
@@ -99,83 +187,12 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           )}
         </>
       }
-      actions={
-        provisioning.activeJobId ? (
-          <>
-            {canReturnToAutomaticForm && (
-              <Button type="button" size="sm" onClick={handleBackToAutomaticWorkspaceForm}>
-                Back to Automatic Form
-              </Button>
-            )}
-            {provisionedWorkspaceId && provisioningStatus === "completed" && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() =>
-                  navigateWithinShell({ view: "workspace", workspaceId: provisionedWorkspaceId })
-                }
-              >
-                Open Workspace
-              </Button>
-            )}
-            {(provisioningStatus === "running" || provisioningStatus === "pending") && (
-              <Button
-                type="button"
-                size="sm"
-                variant="danger"
-                onClick={() => {
-                  void provisioning.cancelJob();
-                }}
-              >
-                Cancel Job
-              </Button>
-            )}
-          </>
-        ) : (
-          <>
-            <Button
-              type="button"
-              size="sm"
-              variant={workspaceCreateMode === "manual" ? "primary" : "secondary"}
-              onClick={() => setWorkspaceCreateMode("manual")}
-            >
-              Manual
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={workspaceCreateMode === "automatic" ? "primary" : "secondary"}
-              onClick={() => setWorkspaceCreateMode("automatic")}
-            >
-              Automatic
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => navigateWithinShell({ view: "home" })}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              form={workspaceCreateFormId}
-              size="sm"
-              loading={
-                workspaceCreateMode === "automatic"
-                  ? provisioning.starting
-                  : workspaceCreateSubmitting || workspacesSaving
-              }
-              disabled={workspaceCreateMode === "automatic" ? !automaticFormValid : !manualFormValid}
-            >
-              {workspaceCreateMode === "automatic" ? "Start Provisioning" : "Create Workspace"}
-            </Button>
-          </>
-        )
-      }
     >
       {provisioning.activeJobId ? (
         <div className="space-y-6">
+          <div className="flex flex-wrap justify-end gap-2">
+            {provisioningActions}
+          </div>
           <ProvisioningJobView
             snapshot={provisioning.snapshot}
             logs={provisioning.logs}
@@ -190,6 +207,15 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           className="space-y-6"
           onSubmit={(event) => handleCreateWorkspace(event)}
         >
+          <div className="space-y-2 rounded-2xl border border-gray-200 bg-white/80 p-3 dark:border-gray-800 dark:bg-neutral-900/80 sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:space-y-0">
+            <div className="flex flex-wrap gap-2">
+              {createModeControls}
+            </div>
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              {createFormActions}
+            </div>
+          </div>
+
           <InlineField
             id="workspace-name"
             label="Workspace name"
