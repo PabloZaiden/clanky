@@ -3,6 +3,7 @@ import type { Chat } from "@/types";
 import type { SshServer, SshServerSession } from "@/types/ssh-server";
 import {
   getChatCodeExplorerRootDirectory,
+  getCodeExplorerOptionGroups,
   getCodeExplorerOptions,
   getLoopCodeExplorerRootDirectory,
   resolveCodeExplorerTarget,
@@ -188,6 +189,51 @@ describe("code explorer target helpers", () => {
 
     expect(options.map((option) => option.kind)).toEqual(["workspace", "loop", "server", "chat"]);
     expect(options.map((option) => option.label)).toEqual(["Frontend", "Lint Loop", "Build Server", "Review Chat"]);
+  });
+
+  test("groups target options by type with stable labels and order", () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+    });
+    const loop = createLoopWithStatus("idle", {
+      config: {
+        id: "loop-1",
+        name: "Lint Loop",
+        workspaceId: workspace.id,
+        directory: workspace.directory,
+      },
+    });
+    const chat = createChat({
+      config: {
+        id: "chat-1",
+        name: "Review Chat",
+        workspaceId: workspace.id,
+        directory: `${workspace.directory}/chat`,
+      },
+    });
+    const server = createSshServer();
+
+    const groupedOptions = getCodeExplorerOptionGroups(getCodeExplorerOptions({
+      workspaces: [workspace],
+      loops: [loop],
+      chats: [chat],
+      servers: [server],
+    }));
+
+    expect(groupedOptions.map((group) => group.label)).toEqual([
+      "Workspaces",
+      "Loops",
+      "SSH servers",
+      "Chats",
+    ]);
+    expect(groupedOptions.map((group) => group.options.map((option) => option.label))).toEqual([
+      ["Frontend"],
+      ["Lint Loop"],
+      ["Build Server"],
+      ["Review Chat"],
+    ]);
   });
 
   test("resolves chat targets to workspace-backed code explorer config", () => {

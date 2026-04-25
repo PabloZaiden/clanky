@@ -13,6 +13,26 @@ export interface CodeExplorerOption {
   target: CodeExplorerTarget;
 }
 
+export interface CodeExplorerOptionGroup {
+  kind: CodeExplorerTarget["contentType"];
+  label: string;
+  options: CodeExplorerOption[];
+}
+
+const CODE_EXPLORER_OPTION_GROUP_ORDER: CodeExplorerTarget["contentType"][] = [
+  "workspace",
+  "loop",
+  "server",
+  "chat",
+];
+
+const CODE_EXPLORER_OPTION_GROUP_LABELS: Record<CodeExplorerTarget["contentType"], string> = {
+  workspace: "Workspaces",
+  loop: "Loops",
+  server: "SSH servers",
+  chat: "Chats",
+};
+
 export interface ResolvedCodeExplorerTarget {
   routeTarget: CodeExplorerTarget;
   title: string;
@@ -115,6 +135,14 @@ export function getCodeExplorerOptions({
       target: { contentType: "chat" as const, chatId: chat.config.id },
     })),
   ];
+}
+
+export function getCodeExplorerOptionGroups(options: CodeExplorerOption[]): CodeExplorerOptionGroup[] {
+  return CODE_EXPLORER_OPTION_GROUP_ORDER.map((kind) => ({
+    kind,
+    label: CODE_EXPLORER_OPTION_GROUP_LABELS[kind],
+    options: options.filter((option) => option.kind === kind),
+  })).filter((group) => group.options.length > 0);
 }
 
 export function resolveCodeExplorerTarget({

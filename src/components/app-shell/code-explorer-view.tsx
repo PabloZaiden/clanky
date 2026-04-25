@@ -4,7 +4,7 @@ import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import { ShellPanel } from "./shell-panel";
 import { FileExplorerView } from "./file-explorer-view";
-import { getCodeExplorerOptions, resolveCodeExplorerTarget } from "./code-explorer-targets";
+import { getCodeExplorerOptionGroups, getCodeExplorerOptions, resolveCodeExplorerTarget } from "./code-explorer-targets";
 import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
 interface CodeExplorerViewProps {
@@ -23,6 +23,19 @@ interface CodeExplorerViewProps {
   ) => Promise<SshServerSession>;
   onNavigate: (route: ShellRoute) => void;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
+}
+
+function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
+  switch (target.contentType) {
+    case "workspace":
+      return target.workspaceId;
+    case "loop":
+      return target.loopId;
+    case "server":
+      return target.serverId;
+    case "chat":
+      return target.chatId;
+  }
 }
 
 export function CodeExplorerView({
@@ -45,6 +58,7 @@ export function CodeExplorerView({
     workspaces,
     servers,
   }), [chats, loops, servers, workspaces]);
+  const groupedOptions = useMemo(() => getCodeExplorerOptionGroups(options), [options]);
   const resolvedTarget = resolveCodeExplorerTarget({
     target: routeTarget,
     loops,
@@ -61,22 +75,8 @@ export function CodeExplorerView({
       return false;
     }
 
-    const routeTargetId = routeTarget.contentType === "workspace"
-      ? routeTarget.workspaceId
-      : routeTarget.contentType === "loop"
-        ? routeTarget.loopId
-        : routeTarget.contentType === "server"
-          ? routeTarget.serverId
-          : routeTarget.chatId;
-    const optionTargetId = option.target.contentType === "workspace"
-      ? option.target.workspaceId
-      : option.target.contentType === "loop"
-        ? option.target.loopId
-        : option.target.contentType === "server"
-          ? option.target.serverId
-          : option.target.chatId;
-
-    return option.kind === routeTarget.contentType && optionTargetId === routeTargetId;
+    return option.kind === routeTarget.contentType
+      && getCodeExplorerTargetId(option.target) === getCodeExplorerTargetId(routeTarget);
   })?.id ?? "";
   const contentSwitcher = (
     <select
@@ -91,10 +91,14 @@ export function CodeExplorerView({
       className="h-9 min-w-0 w-full max-w-[12rem] rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 sm:h-10 sm:max-w-none sm:w-[18rem] lg:w-[20rem] dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
     >
       <option value="">Select code explorer content</option>
-      {options.map((option) => (
-        <option key={option.id} value={option.id}>
-          {option.kind}: {option.label}
-        </option>
+      {groupedOptions.map((group) => (
+        <optgroup key={group.kind} label={group.label}>
+          {group.options.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+            </option>
+          ))}
+        </optgroup>
       ))}
     </select>
   );
@@ -112,20 +116,29 @@ export function CodeExplorerView({
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Open a workspace, loop, SSH server, or chat path in the unified code explorer.
           </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {options.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => onNavigate({ view: "code-explorer", target: option.target })}
-                className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"
-              >
-                <div className="text-sm font-medium text-gray-950 dark:text-gray-100">{option.label}</div>
-                <div className="mt-1 text-xs uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                  {option.kind}
+          <div className="space-y-5">
+            {groupedOptions.map((group) => (
+              <section key={group.kind} aria-label={group.label} className="space-y-2">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                  {group.label}
+                </h2>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {group.options.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => onNavigate({ view: "code-explorer", target: option.target })}
+                      className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"
+                    >
+                      <div className="text-sm font-medium text-gray-950 dark:text-gray-100">{option.label}</div>
+                      <div className="mt-1 text-xs uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                        {option.kind}
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{option.description}</div>
+                    </button>
+                  ))}
                 </div>
-                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{option.description}</div>
-              </button>
+              </section>
             ))}
           </div>
         </div>
