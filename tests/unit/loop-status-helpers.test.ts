@@ -38,9 +38,10 @@ const ALL_STATUSES: LoopStatus[] = [
   "pushed",
   "deleted",
 ];
+const TEST_BASE_BRANCH = "default-base-branch";
 const CONFLICT_SYNC_STATE = {
   status: "conflicts" as const,
-  baseBranch: "main",
+  baseBranch: TEST_BASE_BRANCH,
   autoPushOnComplete: false,
 };
 
@@ -216,7 +217,7 @@ describe("planning helpers", () => {
       status: "running",
       syncState: {
         status: "conflicts",
-        baseBranch: "main",
+        baseBranch: TEST_BASE_BRANCH,
         autoPushOnComplete: false,
       },
       planMode: undefined,

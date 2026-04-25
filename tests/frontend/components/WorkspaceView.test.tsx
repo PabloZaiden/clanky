@@ -76,7 +76,7 @@ describe("WorkspaceView", () => {
     expect(queryByRole("menuitem", { name: "Open in GitHub" })).toBeNull();
   });
 
-  test("renders plan-ready loop pills with the shared amber styling", () => {
+  test("renders plan-ready loop pills with the shared plan-ready badge variant", () => {
     const workspace = createWorkspace({
       id: "workspace-1",
       name: "Frontend",
@@ -111,7 +111,6 @@ describe("WorkspaceView", () => {
     );
 
     const pill = getByText("Plan Ready");
-    expect(pill.className).toContain("bg-amber-100");
-    expect(pill.className).toContain("text-amber-800");
+    expect(pill.getAttribute("data-badge-variant")).toBe("plan_ready");
   });
 });
