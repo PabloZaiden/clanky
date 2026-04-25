@@ -1970,25 +1970,41 @@ describe("error display", () => {
 describe("log tab", () => {
   test("shows the log tab without a collapsible Logs section", async () => {
     setupDefaultApi();
-    const { getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByLabelText, getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Log")).toBeTruthy();
-      expect(getByText("Show system info")).toBeTruthy();
+      expect(getByLabelText("Show system info")).toBeTruthy();
     });
     expect(queryByText("Logs")).toBeNull();
     expect(queryByText("TODOs")).toBeNull();
   });
 
-  test("shows log filter checkboxes", async () => {
+  test("shows log filter controls with full accessible labels", async () => {
     setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByLabelText, getByRole } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByText("Show system info")).toBeTruthy();
-      expect(getByText("Show reasoning")).toBeTruthy();
-      expect(getByText("Show tools")).toBeTruthy();
+      expect(getByLabelText("Show system info")).toBeTruthy();
+      expect(getByLabelText("Show reasoning")).toBeTruthy();
+      expect(getByLabelText("Show tools")).toBeTruthy();
+      expect(getByLabelText("Autoscroll")).toBeTruthy();
+      expect(getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
     });
+  });
+
+  test("keeps the log filter bar as a single-row horizontal scroller on small screens", async () => {
+    setupDefaultApi();
+    const { getByTestId } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByTestId("loop-log-controls")).toBeTruthy();
+    });
+
+    const controls = getByTestId("loop-log-controls");
+    expect(controls.className).toContain("overflow-x-auto");
+    expect(controls.className).toContain("whitespace-nowrap");
+    expect(controls.className).toContain("sm:flex-wrap");
   });
 
   test("enables show tools by default and renders a collapsed tool-call container", async () => {
