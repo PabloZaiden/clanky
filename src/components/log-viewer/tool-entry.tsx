@@ -1,6 +1,7 @@
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import type { ToolCallData } from "../../types";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
+import { ImageViewerModal } from "../ImageViewerModal";
 import { DiffPatchViewer } from "../loop-details/diff-patch-viewer";
 import { LazyDetails } from "./lazy-details";
 import { formatTime } from "./utils";
@@ -187,6 +188,52 @@ function ToolDetailSection({ blocks }: { blocks: ToolDetailBlock[] }) {
   );
 }
 
+function ToolImagePreviewSection({
+  tool,
+}: {
+  tool: ToolCallData;
+}) {
+  const imageExtras = tool.extras?.filter((extra) => extra.type === "image_preview") ?? [];
+  const [selectedExtraId, setSelectedExtraId] = useState<string | null>(null);
+  const selectedExtra = imageExtras.find((extra) => extra.id === selectedExtraId) ?? null;
+  const selectedImage = useMemo(() => selectedExtra ? {
+    src: `data:${selectedExtra.image.mimeType};base64,${selectedExtra.image.data}`,
+    alt: selectedExtra.image.filename,
+    title: selectedExtra.image.filename,
+    description: `${Math.max(1, Math.round(selectedExtra.image.size / 1024))} KB`,
+  } : null, [selectedExtra]);
+
+  if (imageExtras.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      <div className="space-y-2" data-tool-block="image-preview">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">Preview</div>
+        <div className="flex flex-wrap gap-2">
+          {imageExtras.map((extra) => (
+            <button
+              key={extra.id}
+              type="button"
+              onClick={() => setSelectedExtraId(extra.id)}
+              className="rounded-xl border border-sky-100 bg-white/90 p-1 text-left hover:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-400 dark:border-white/10 dark:bg-black/20 dark:hover:border-sky-400/60"
+              aria-label={`View ${extra.image.filename}`}
+            >
+              <img
+                src={`data:${extra.image.mimeType};base64,${extra.image.data}`}
+                alt={extra.image.filename}
+                className="h-20 w-20 rounded-lg object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+      <ImageViewerModal image={selectedImage} onClose={() => setSelectedExtraId(null)} />
+    </>
+  );
+}
+
 export const ToolEntry = memo(function ToolEntry({
   data: tool,
   timestamp,
@@ -237,9 +284,10 @@ export const ToolEntry = memo(function ToolEntry({
           <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">Input</div>
           {inputContent}
         </div>
+        <ToolImagePreviewSection tool={tool} />
       </div>
     ),
-    [inputContent]
+    [inputContent, tool]
   );
 
   const renderOutputOnlyContent = useCallback(
@@ -249,9 +297,10 @@ export const ToolEntry = memo(function ToolEntry({
           <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">{meta.outputLabel}</div>
           {outputContent}
         </div>
+        <ToolImagePreviewSection tool={tool} />
       </div>
     ),
-    [outputContent, meta.outputLabel]
+    [outputContent, meta.outputLabel, tool]
   );
 
   const renderCombinedContent = useCallback(
@@ -265,9 +314,10 @@ export const ToolEntry = memo(function ToolEntry({
           <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">{meta.outputLabel}</div>
           {outputContent}
         </div>
+        <ToolImagePreviewSection tool={tool} />
       </div>
     ),
-    [inputContent, outputContent, meta.outputLabel]
+    [inputContent, outputContent, meta.outputLabel, tool]
   );
 
   return (

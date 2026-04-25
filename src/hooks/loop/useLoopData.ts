@@ -153,6 +153,7 @@ export function useLoopData(
             output: tc.output,
             status: tc.status,
             timestamp: tc.timestamp,
+            extras: tc.extras,
           })),
         );
 

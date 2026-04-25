@@ -27,6 +27,8 @@ import { createLogger } from "./logger";
 import { buildSeededPlanStatusContent, readValidatedPlanningFiles } from "./planning-file-service";
 import { sanitizeBranchName } from "../utils";
 import { buildSpawnLoopName, buildSpawnLoopPrompt } from "../utils/chat-to-loop-prompt";
+import { getImageViewToolPath, resolveToolCallImagePreview } from "./tool-call-image-preview";
+import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -862,9 +864,18 @@ export class ChatManager {
             const toolName = event.toolName;
             const existing = [...chat.state.toolCalls].reverse().find((tool) => tool.name === toolName);
             const completedInput = event.input ?? existing?.input ?? toolInputs.get(toolName);
+            const completedToolId = existing?.id ?? `chat-tool-${crypto.randomUUID()}`;
             toolInputs.set(toolName, completedInput);
             chat = await this.upsertToolCall(chat, {
-              id: existing?.id ?? `chat-tool-${crypto.randomUUID()}`,
+              id: completedToolId,
+              name: toolName,
+              input: completedInput,
+              output: event.output,
+              status: "completed",
+              timestamp: now,
+            });
+            this.scheduleToolImagePreview(chat.config.id, {
+              id: completedToolId,
               name: toolName,
               input: completedInput,
               output: event.output,
@@ -1146,8 +1157,11 @@ export class ChatManager {
 
   private async upsertToolCall(chat: Chat, tool: PersistedToolCall): Promise<Chat> {
     const existingIndex = chat.state.toolCalls.findIndex((existing) => existing.id === tool.id);
+    const persistedTool = existingIndex >= 0
+      ? mergeToolCallRecord(chat.state.toolCalls[existingIndex], tool)
+      : tool;
     const toolCalls = existingIndex >= 0
-      ? chat.state.toolCalls.map((existing, index) => index === existingIndex ? tool : existing)
+      ? chat.state.toolCalls.map((existing, index) => index === existingIndex ? persistedTool : existing)
       : [...chat.state.toolCalls, tool];
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
@@ -1157,10 +1171,74 @@ export class ChatManager {
     this.emitter.emit({
       type: "chat.tool_call",
       chatId: chat.config.id,
-      tool,
+      tool: persistedTool,
       timestamp: tool.timestamp,
     });
     return updated;
+  }
+
+  private async appendToolCallExtra(
+    chat: Chat,
+    toolId: string,
+    extra: ToolCallExtra,
+    timestamp = createTimestamp(),
+  ): Promise<Chat> {
+    const toolCalls = chat.state.toolCalls.map((toolCall) => (
+      toolCall.id === toolId
+        ? { ...toolCall, extras: upsertToolCallExtra(toolCall.extras, extra) }
+        : toolCall
+    ));
+    const updated = await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      toolCalls,
+      lastActivityAt: timestamp,
+    });
+    this.emitter.emit({
+      type: "chat.tool_call.extra",
+      chatId: chat.config.id,
+      toolId,
+      extra,
+      timestamp,
+    });
+    return updated;
+  }
+
+  private scheduleToolImagePreview(chatId: string, tool: PersistedToolCall): void {
+    const path = getImageViewToolPath(tool.name, tool.input);
+    if (!path) {
+      return;
+    }
+
+    // Resolve previews in the background so the main chat stream is not blocked.
+    void (async () => {
+      try {
+        const currentChat = await this.loadChatIfAvailable(chatId);
+        if (!currentChat) {
+          return;
+        }
+        const directory = currentChat.state.worktree?.worktreePath ?? currentChat.config.directory;
+        const extra = await resolveToolCallImagePreview({
+          workspaceId: currentChat.config.workspaceId,
+          directory,
+          path,
+          toolCallId: tool.id,
+        });
+        if (!extra) {
+          return;
+        }
+        const latestChat = await this.loadChatIfAvailable(chatId);
+        if (!latestChat || !latestChat.state.toolCalls.some((toolCall) => toolCall.id === tool.id)) {
+          return;
+        }
+        await this.appendToolCallExtra(latestChat, tool.id, extra);
+      } catch (error) {
+        log.debug("Skipping chat tool image preview generation", {
+          chatId,
+          toolId: tool.id,
+          error: String(error),
+        });
+      }
+    })();
   }
 
   private async emitChatError(chat: Chat, message: string): Promise<Chat> {

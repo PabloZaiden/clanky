@@ -18,6 +18,7 @@
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
 import type { AutomaticPrFlowState, GitCommit, LoopConfig, LoopLogEntry, ModelConfig } from "./loop";
 import type { MessageImageAttachment } from "./message-attachments";
+import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
 
 /**
  * Message data from the AI agent.
@@ -69,20 +70,7 @@ export interface MessageData {
  * };
  * ```
  */
-export interface ToolCallData {
-  /** Unique tool call identifier (from the backend) */
-  id: string;
-  /** Stored backend tool label or category hint; not always the canonical concrete tool kind. */
-  name: string;
-  /** Tool input parameters (structure varies by tool) */
-  input: unknown;
-  /** Tool output/result (populated when status is "completed") */
-  output?: unknown;
-  /** Current execution status of the tool call */
-  status: "pending" | "running" | "completed" | "failed";
-  /** ISO 8601 timestamp when the tool call was created or last updated */
-  timestamp: string;
-}
+export interface ToolCallData extends ToolCallRecord {}
 
 /**
  * Union type of all possible loop events.
@@ -107,6 +95,7 @@ export type LoopEvent =
   | LoopIterationEndEvent
   | LoopMessageEvent
   | LoopToolCallEvent
+  | LoopToolCallExtraEvent
   | LoopProgressEvent
   | LoopLogEvent
   | LoopGitCommitEvent
@@ -140,6 +129,7 @@ export type ChatEvent =
   | ChatStatusEvent
   | ChatMessageEvent
   | ChatToolCallEvent
+  | ChatToolCallExtraEvent
   | ChatLogEvent
   | ChatInterruptedEvent
   | ChatErrorEvent
@@ -177,6 +167,14 @@ export interface ChatToolCallEvent {
   type: "chat.tool_call";
   chatId: string;
   tool: ToolCallData;
+  timestamp: string;
+}
+
+export interface ChatToolCallExtraEvent {
+  type: "chat.tool_call.extra";
+  chatId: string;
+  toolId: string;
+  extra: ToolCallExtra;
   timestamp: string;
 }
 
@@ -298,6 +296,23 @@ export interface LoopToolCallEvent {
   iteration: number;
   /** The tool call data */
   tool: ToolCallData;
+  /** ISO 8601 timestamp */
+  timestamp: string;
+}
+
+/**
+ * Emitted when a new persisted extra is attached to an existing tool call.
+ */
+export interface LoopToolCallExtraEvent {
+  type: "loop.tool_call.extra";
+  /** ID of the loop */
+  loopId: string;
+  /** Current iteration number */
+  iteration: number;
+  /** Tool call ID that owns the extra */
+  toolId: string;
+  /** The attached extra payload */
+  extra: ToolCallExtra;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

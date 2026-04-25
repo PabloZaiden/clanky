@@ -132,6 +132,42 @@ describe("LogViewer", () => {
       expect(queryByRole("dialog", { name: "screen.png" })).not.toBeInTheDocument();
     });
 
+    test("renders tool image previews inside the tool box and opens the shared viewer", async () => {
+      const tool = createToolCallData({
+        name: "view",
+        input: { path: "/tmp/screen.png" },
+        output: "<content>binary preview available</content>",
+        extras: [{
+          id: "tool-extra-1",
+          type: "image_preview",
+          image: {
+            id: "img-1",
+            filename: "screen.png",
+            mimeType: "image/png",
+            data: "ZmFrZQ==",
+            size: 1234,
+          },
+          sourcePath: "/tmp/screen.png",
+        }],
+      });
+
+      const { getByLabelText, getByRole, findByRole, queryByRole, user } = renderWithUser(
+        <LogViewer messages={[]} toolCalls={[tool]} />
+      );
+
+      await user.click(getByRole("button", { name: /^1 tool call$/i }));
+      await user.click(getByRole("button", { name: "View /tmp/screen.png" }));
+
+      const previewButton = await findByRole("button", { name: "View screen.png" });
+      expect(previewButton.closest("[data-entry-type='tool']")).not.toBeNull();
+
+      await user.click(previewButton);
+      expect(getByRole("dialog", { name: "screen.png" })).toBeInTheDocument();
+
+      await user.click(getByLabelText("Close"));
+      expect(queryByRole("dialog", { name: "screen.png" })).not.toBeInTheDocument();
+    });
+
     test("shared conversation viewer can render assistant messages", () => {
       const msg = createMessageData({ role: "assistant", content: "I can help with that" });
       const { getByText } = renderWithUser(
