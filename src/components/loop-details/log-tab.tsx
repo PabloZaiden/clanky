@@ -99,8 +99,7 @@ export function LogTab({
                   aria-label="Show system info"
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
-                <span className="sm:hidden">System</span>
-                <span className="hidden sm:inline">Show system info</span>
+                <span>System</span>
               </span>
             </label>
             <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
@@ -112,8 +111,7 @@ export function LogTab({
                   aria-label="Show reasoning"
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
-                <span className="sm:hidden">Reasoning</span>
-                <span className="hidden sm:inline">Show reasoning</span>
+                <span>Reasoning</span>
               </span>
             </label>
             <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
@@ -125,7 +123,7 @@ export function LogTab({
                   aria-label="Show tools"
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
-                <span>Show tools</span>
+                <span>Tools</span>
               </span>
             </label>
             <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
@@ -137,8 +135,7 @@ export function LogTab({
                   aria-label="Autoscroll"
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
-                <span className="sm:hidden">Auto</span>
-                <span className="hidden sm:inline">Autoscroll</span>
+                <span>Autoscroll</span>
               </span>
             </label>
             <Button
@@ -150,8 +147,7 @@ export function LogTab({
               aria-label="Enter focus mode"
               title="Focus mode — fullscreen logs with compact controls"
             >
-              <span className="sm:hidden">Focus</span>
-              <span className="hidden sm:inline">Focus mode</span>
+              <span>Focus</span>
             </Button>
           </div>
         </div>

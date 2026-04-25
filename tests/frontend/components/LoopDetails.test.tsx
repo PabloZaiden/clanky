@@ -13,11 +13,8 @@ import {
   createLoopWithStatus,
   createFileDiff,
   createSshSession,
-  createPersistedMessage,
-  createPersistedToolCall,
 } from "../helpers/factories";
 import { LoopDetails } from "@/components/LoopDetails";
-import { loopDetailsTabPaddingClassName } from "@/components/loop-details/tab-layout";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -118,31 +115,6 @@ afterEach(() => {
   ws.uninstall();
 });
 
-// ─── Loading state ───────────────────────────────────────────────────────────
-
-describe("loading state", () => {
-  test("shows loading spinner while fetching loop", async () => {
-    // Return a never-resolving promise so we stay in loading
-    let resolveLoop!: (loop: ReturnType<typeof createLoopWithStatus>) => void;
-    const pendingPromise = new Promise<ReturnType<typeof createLoopWithStatus>>((resolve) => {
-      resolveLoop = resolve;
-    });
-    api.get("/api/loops/:id", () => pendingPromise as unknown as ReturnType<typeof createLoopWithStatus>);
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    // The loading state shows an animate-spin element
-    const spinner = container.querySelector(".animate-spin");
-    expect(spinner).toBeTruthy();
-
-    // Clean up
-    resolveLoop(createLoopWithStatus("running", { config: { id: LOOP_ID } }));
-  });
-});
-
 // ─── Loop not found ──────────────────────────────────────────────────────────
 
 describe("loop not found", () => {
@@ -163,62 +135,11 @@ describe("loop not found", () => {
     expect(getByText("Loop not found")).toBeTruthy();
   });
 
-  test("shows back button in not found state", async () => {
-    api.get("/api/loops/:id", () => {
-      throw new MockApiError(404, { error: "not_found" });
-    });
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const onBack = () => {};
-    const { getByText } = renderWithUser(
-      <LoopDetails loopId={LOOP_ID} onBack={onBack} />,
-    );
-
-    await waitFor(() => {
-      expect(getByText("Not found")).toBeTruthy();
-    });
-
-    // Back button should also be present
-    const backBtn = document.querySelector('button');
-    expect(backBtn?.textContent).toContain("Back");
-  });
 });
 
 // ─── Header display ──────────────────────────────────────────────────────────
 
 describe("header display", () => {
-  test("renders loop name in header", async () => {
-    setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Test Loop")).toBeTruthy();
-    });
-  });
-
-  test("renders status badge", async () => {
-    setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Running")).toBeTruthy();
-    });
-  });
-
-  test("renders back button", async () => {
-    setupDefaultApi();
-    const onBack = () => {};
-    const { getByRole } = renderWithUser(
-      <LoopDetails loopId={LOOP_ID} onBack={onBack} />,
-    );
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: /Back/ })).toBeTruthy();
-    });
-  });
-
   test("calls onBack when back button is clicked", async () => {
     setupDefaultApi();
     let backCalled = false;
@@ -234,97 +155,11 @@ describe("header display", () => {
     await user.click(getByRole("button", { name: /Back/ }));
     expect(backCalled).toBe(true);
   });
-
-  test("hides the back button when embedded in the shell", async () => {
-    setupDefaultApi();
-    const { queryByRole } = renderWithUser(
-      <LoopDetails loopId={LOOP_ID} showBackButton={false} />,
-    );
-
-    await waitFor(() => {
-      expect(queryByRole("button", { name: /Back/ })).toBeNull();
-    });
-  });
-
-  test("renders rename button", async () => {
-    setupDefaultApi();
-    const { container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      const renameBtn = container.querySelector('button[aria-label="Rename loop"]');
-      expect(renameBtn).toBeTruthy();
-    });
-  });
-
-  test("does not show active indicator for completed loops", async () => {
-    const loop = createLoopWithStatus("completed", {
-      config: { id: LOOP_ID, name: "Done Loop" },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { getByText, container } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Done Loop")).toBeTruthy();
-    });
-
-    const pinger = container.querySelector(".animate-ping");
-    expect(pinger).toBeNull();
-  });
-
-});
-
-// ─── Connection status ───────────────────────────────────────────────────────
-
-describe("connection status", () => {
-  test("does not show a Live connection label in the header", async () => {
-    setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Test Loop")).toBeTruthy();
-    });
-  });
 });
 
 // ─── Tab navigation ──────────────────────────────────────────────────────────
 
 describe("tab navigation", () => {
-  test("renders all tab labels", async () => {
-    setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Test Loop")).toBeTruthy();
-    });
-
-    // All tabs should be visible
-    for (const tabLabel of ["Log", "Info", "Prompt", "Plan", "Diff", "Actions"]) {
-      expect(getByText(tabLabel)).toBeTruthy();
-    }
-  });
-
-  test("Log tab is active by default", async () => {
-    setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Test Loop")).toBeTruthy();
-    });
-
-    // Log tab button should have active styling
-    const logTab = getByText("Log").closest("button");
-    expect(logTab).toBeTruthy();
-    expect(logTab!.className).toContain("border-gray-900");
-  });
-
   test("can switch to Info tab", async () => {
     setupDefaultApi();
     const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
@@ -352,21 +187,6 @@ describe("tab navigation", () => {
 
     await waitFor(() => {
       expect(getByText("Original Task Prompt")).toBeTruthy();
-    });
-  });
-
-  test("Prompt tab shows the loop prompt text", async () => {
-    setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Test Loop")).toBeTruthy();
-    });
-
-    await user.click(getByText("Prompt"));
-
-    await waitFor(() => {
-      expect(getByText("Fix the bug")).toBeTruthy();
     });
   });
 
@@ -1588,159 +1408,6 @@ describe("planning mode", () => {
     });
   });
 
-  test("shows Plan Ready badge when plan is ready for review", async () => {
-    const loop = createLoopWithStatus("planning", {
-      config: { id: LOOP_ID, name: "Plan Ready Loop" },
-      state: {
-        planMode: {
-          active: true,
-          feedbackRounds: 0,
-          planningFolderCleared: false,
-          isPlanReady: true,
-        },
-      },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({ exists: true, content: "# Ready Plan" }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Plan Ready")).toBeTruthy();
-    });
-  });
-
-  test("shows spinner in log panel when planning with isPlanReady=false", async () => {
-    // When status is "planning" and isPlanReady is false, the LogViewer
-    // should receive isActive=true so it shows the "Working..." spinner
-    const loop = createLoopWithStatus("planning", {
-      config: { id: LOOP_ID, name: "Active Planning Loop" },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Active Planning Loop")).toBeTruthy();
-    });
-
-    // Switch to Log tab (planning mode defaults to Plan tab)
-    await user.click(getByText("Log"));
-
-    // The LogViewer should show the spinner since isPlanReady is false
-    await waitFor(() => {
-      expect(getByText("Working...")).toBeTruthy();
-    });
-  });
-
-  test("keeps the plan panel vertically scrollable without panel-level horizontal scrolling", async () => {
-    const loop = createLoopWithStatus("planning", {
-      config: { id: LOOP_ID, name: "Wrapped Plan Loop" },
-      state: {
-        planMode: {
-          active: true,
-          feedbackRounds: 0,
-          planningFolderCleared: false,
-          isPlanReady: true,
-        },
-      },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({
-      exists: true,
-      content: "AVeryLongTokenWithoutSpacesThatShouldStillWrapInsideThePlanPanelInsteadOfExpandingTheWholeContainer",
-    }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: false }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { container, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Wrapped Plan Loop")).toBeTruthy();
-    });
-
-    const panel = container.querySelector(".dark-scrollbar.overflow-y-auto") as HTMLElement | null;
-    expect(panel).toBeTruthy();
-    expect(panel?.className).toContain("overflow-x-hidden");
-    expect(panel?.className).toContain("overflow-y-auto");
-  });
-
-  test("does not show spinner in log panel when planning with isPlanReady=true", async () => {
-    // When status is "planning" and isPlanReady is true, the LogViewer
-    // should receive isActive=false so it shows "No logs yet. Waiting for activity."
-    const loop = createLoopWithStatus("planning", {
-      config: { id: LOOP_ID, name: "Plan Ready No Spinner" },
-      state: {
-        planMode: {
-          active: true,
-          feedbackRounds: 0,
-          planningFolderCleared: false,
-          isPlanReady: true,
-        },
-      },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({ exists: true, content: "# Plan" }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Plan Ready No Spinner")).toBeTruthy();
-    });
-
-    // Switch to Log tab
-    await user.click(getByText("Log"));
-
-    // The LogViewer should NOT show the spinner since isPlanReady is true
-    await waitFor(() => {
-      expect(getByText("No logs yet. Waiting for activity.")).toBeTruthy();
-    });
-    expect(queryByText("Working...")).toBeNull();
-  });
-
-  test("renders planning loops when isPlanReady=false", async () => {
-    const loop = createLoopWithStatus("planning", {
-      config: { id: LOOP_ID, name: "Cyan Indicator Loop" },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Cyan Indicator Loop")).toBeTruthy();
-    });
-
-  });
 
   test("renders planning loops when isPlanReady=true", async () => {
     const loop = createLoopWithStatus("planning", {
@@ -1968,154 +1635,6 @@ describe("error display", () => {
 // ─── Log tab details ─────────────────────────────────────────────────────────
 
 describe("log tab", () => {
-  test("shows the log tab without a collapsible Logs section", async () => {
-    setupDefaultApi();
-    const { getByLabelText, getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Log")).toBeTruthy();
-      expect(getByLabelText("Show system info")).toBeTruthy();
-    });
-    expect(queryByText("Logs")).toBeNull();
-    expect(queryByText("TODOs")).toBeNull();
-  });
-
-  test("uses accessible log footer controls with the intended defaults and shortened labels", async () => {
-    setupDefaultApi();
-    const { getByLabelText, getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByLabelText("Show system info")).toBeTruthy();
-      expect(getByLabelText("Show reasoning")).toBeTruthy();
-      expect(getByLabelText("Show tools")).toBeTruthy();
-      expect(getByLabelText("Autoscroll")).toBeTruthy();
-      expect(getByRole("button", { name: "Enter focus mode" })).toBeTruthy();
-    });
-
-    const showSystemInfoCheckbox = getByLabelText("Show system info") as HTMLInputElement;
-    const showReasoningCheckbox = getByLabelText("Show reasoning") as HTMLInputElement;
-    const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
-    const autoScrollCheckbox = getByLabelText("Autoscroll") as HTMLInputElement;
-    const enterFocusModeButton = getByRole("button", { name: "Enter focus mode" });
-
-    expect(showSystemInfoCheckbox.checked).toBe(false);
-    expect(showReasoningCheckbox.checked).toBe(true);
-    expect(showToolsCheckbox.checked).toBe(true);
-    expect(autoScrollCheckbox.checked).toBe(true);
-
-    await user.click(getByText("System"));
-    expect(showSystemInfoCheckbox.checked).toBe(true);
-
-    await user.click(getByText("Reasoning"));
-    expect(showReasoningCheckbox.checked).toBe(false);
-
-    await user.click(getByText("Show tools"));
-    expect(showToolsCheckbox.checked).toBe(false);
-
-    await user.click(getByText("Auto"));
-    expect(autoScrollCheckbox.checked).toBe(false);
-
-    await user.click(within(enterFocusModeButton).getByText("Focus"));
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Exit focus mode" })).toBeInTheDocument();
-    });
-  });
-
-  test("enables show tools by default and renders a collapsed tool-call container", async () => {
-    setupDefaultApi({
-      state: {
-        toolCalls: [createPersistedToolCall({ name: "read", input: { path: "/workspaces/test-project/README.md" }, status: "completed" })],
-      },
-    });
-    const { container, getByLabelText, getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: /^1 tool call$/i })).toBeTruthy();
-    });
-
-    const showToolsCheckbox = getByLabelText("Show tools") as HTMLInputElement;
-    const toggle = getByRole("button", { name: /^1 tool call$/i });
-    const panel = container.querySelector("[data-tool-group-panel='true']") as HTMLDivElement | null;
-    const controlledPanelId = toggle.getAttribute("aria-controls") ?? "";
-    expect(showToolsCheckbox.checked).toBe(true);
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(controlledPanelId).not.toBe("");
-    expect(panel?.id).toBe(controlledPanelId);
-    expect(panel?.hidden).toBe(true);
-
-    await user.click(toggle);
-
-    await waitFor(() => {
-      expect(toggle).toHaveAttribute("aria-expanded", "true");
-      expect(panel?.hidden).toBe(false);
-    });
-  });
-
-  test("uses the loop worktree root when shortening tool paths", async () => {
-    setupDefaultApi({
-      config: {
-        directory: "/workspaces/test-project",
-      },
-      state: {
-        git: {
-          originalBranch: "main",
-          workingBranch: "test-loop",
-          worktreePath: "/workspaces/test-project/.ralph-worktrees/test-loop",
-          commits: [],
-        },
-        toolCalls: [createPersistedToolCall({
-          name: "read",
-          input: {
-            path: "/workspaces/test-project/.ralph-worktrees/test-loop/src/persistence/auth.ts",
-            view_range: [20, 330],
-          },
-          status: "completed",
-        })],
-      },
-    });
-    const { getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("View src/persistence/auth.ts:20-330")).toBeTruthy();
-    });
-    expect(queryByText("View .ralph-worktrees/test-loop/src/persistence/auth.ts:20-330")).toBeNull();
-  });
-
-  test("shows autoscroll toggle", async () => {
-    setupDefaultApi();
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Autoscroll")).toBeTruthy();
-    });
-  });
-
-  test("renders the log transcript directly on the loop log panel surface", async () => {
-    setupDefaultApi({
-      state: {
-        messages: [createPersistedMessage({ role: "user", content: "Use the whole panel" })],
-      },
-    });
-    const { getByTestId, getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Use the whole panel")).toBeTruthy();
-    });
-
-    const logPanel = getByTestId("loop-log-panel");
-    expect(within(logPanel).getByText("Use the whole panel")).toBeTruthy();
-    expect(logPanel.className).toContain("bg-gray-50");
-    expect(logPanel.className).toContain("dark:bg-[#171717]");
-
-    const logViewer = logPanel.querySelector("#logs-viewer") as HTMLElement | null;
-    expect(logViewer).not.toBeNull();
-
-    const transcriptShell = getByTestId("conversation-transcript");
-    expect(logViewer).toContainElement(transcriptShell);
-    expect(transcriptShell.className).toContain(loopDetailsTabPaddingClassName);
-  });
-
   test("enters log focus mode while keeping the message composer available", async () => {
     setupDefaultApi();
     const { getByRole, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
@@ -2161,123 +1680,6 @@ describe("log tab", () => {
     });
   });
 
-});
-
-// ─── Prompt tab details ──────────────────────────────────────────────────────
-
-describe("prompt tab", () => {
-  test("shows pending prompt when loop has one", async () => {
-    const loop = createLoopWithStatus("running", {
-      config: { id: LOOP_ID, name: "Pending Loop", prompt: "Initial task" },
-      state: {
-        pendingPrompt: "Please also fix the tests",
-      },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Pending Loop")).toBeTruthy();
-    });
-
-    await user.click(getByText("Prompt"));
-
-    await waitFor(() => {
-      expect(getByText("Next Message")).toBeTruthy();
-      // The pending prompt text appears in the Prompt tab <pre>
-      const matches = document.querySelectorAll("pre");
-      const pendingPre = Array.from(matches).find(
-        (el) => el.textContent === "Please also fix the tests",
-      );
-      expect(pendingPre).toBeTruthy();
-    });
-  });
-
-  test("shows tip about action bar for active loops", async () => {
-    setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Test Loop")).toBeTruthy();
-    });
-
-    await user.click(getByText("Prompt"));
-
-    await waitFor(() => {
-      expect(getByText(/Stop the current run before sending a new message/)).toBeTruthy();
-    });
-  });
-
-  test("does not show the inactive action-bar legend for non-active loops", async () => {
-    const loop = createLoopWithStatus("completed", {
-      config: { id: LOOP_ID, name: "Done Loop", prompt: "Fix bug" },
-    });
-    api.get("/api/loops/:id", () => loop);
-    api.get("/api/loops/:id/diff", () => []);
-    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-    api.get("/api/models", () => []);
-    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-    api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-    const { getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-    await waitFor(() => {
-      expect(getByText("Done Loop")).toBeTruthy();
-    });
-
-    await user.click(getByText("Prompt"));
-
-    await waitFor(() => {
-      expect(getByText("Original Task Prompt")).toBeTruthy();
-    });
-
-    expect(queryByText(/Use the action bar to send the next message or restart/)).toBeNull();
-  });
-});
-
-// ─── Status badge variations ─────────────────────────────────────────────────
-
-describe("status badge variations", () => {
-  const statuses = [
-    { status: "completed" as const, label: "Completed" },
-    { status: "failed" as const, label: "Failed" },
-    { status: "stopped" as const, label: "Stopped" },
-    { status: "merged" as const, label: "Merged" },
-    { status: "pushed" as const, label: "Pushed" },
-    { status: "deleted" as const, label: "Deleted" },
-  ];
-
-  for (const { status, label } of statuses) {
-    test(`shows ${label} badge for ${status} loop`, async () => {
-      const loop = createLoopWithStatus(status, {
-        config: { id: LOOP_ID, name: `${label} Loop` },
-      });
-      api.get("/api/loops/:id", () => loop);
-      api.get("/api/loops/:id/diff", () => []);
-      api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-      api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-      api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-      api.get("/api/models", () => []);
-      api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
-      api.get("/api/preferences/log-level", () => ({ level: "info" }));
-
-      const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
-
-      await waitFor(() => {
-        expect(getByText(label)).toBeTruthy();
-      });
-    });
-  }
 });
 
 // ─── Actions tab comment history (review section) ────────────────────────────

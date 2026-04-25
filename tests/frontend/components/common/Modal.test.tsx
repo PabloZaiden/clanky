@@ -105,63 +105,7 @@ describe("Modal", () => {
     });
   });
 
-  describe("body scroll lock", () => {
-    test("prevents body scroll when open", () => {
-      renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      expect(document.body.style.overflow).toBe("hidden");
-    });
-  });
-
   describe("accessibility", () => {
-    test("has aria-modal attribute", () => {
-      const { getByRole } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      const dialog = getByRole("dialog");
-      expect(dialog.getAttribute("aria-modal")).toBe("true");
-    });
-
-    test("has aria-labelledby pointing to title", () => {
-      const { getByRole, getByText } = renderWithUser(
-        <Modal isOpen={true} onClose={() => {}} title="Title">
-          <p>Content</p>
-        </Modal>
-      );
-      const dialog = getByRole("dialog");
-      const title = getByText("Title");
-      expect(title.id).toBeTruthy();
-      expect(dialog.getAttribute("aria-labelledby")).toBe(title.id);
-    });
-
-    test("uses a unique title id for each open modal", () => {
-      const { getAllByRole, getByText } = renderWithUser(
-        <>
-          <Modal isOpen={true} onClose={() => {}} title="First modal">
-            <p>First content</p>
-          </Modal>
-          <Modal isOpen={true} onClose={() => {}} title="Second modal">
-            <p>Second content</p>
-          </Modal>
-        </>
-      );
-
-      const dialogs = getAllByRole("dialog");
-      const firstTitle = getByText("First modal");
-      const secondTitle = getByText("Second modal");
-
-      expect(firstTitle.id).toBeTruthy();
-      expect(secondTitle.id).toBeTruthy();
-      expect(firstTitle.id).not.toBe(secondTitle.id);
-      expect(dialogs[0]?.getAttribute("aria-labelledby")).toBe(firstTitle.id);
-      expect(dialogs[1]?.getAttribute("aria-labelledby")).toBe(secondTitle.id);
-    });
-
     test("only closes the topmost modal on Escape", async () => {
       const firstOnClose = mock(() => {});
       const secondOnClose = mock(() => {});

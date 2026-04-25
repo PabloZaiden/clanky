@@ -77,19 +77,6 @@ afterEach(() => {
 // ─── Dashboard management scenarios ──────────────────────────────────────────
 
 describe("dashboard management scenario", () => {
-  test("overview empty state explains how to populate the shell", async () => {
-    setupBaseApi();
-    api.get("/api/loops", () => []);
-    api.get("/api/workspaces", () => [WORKSPACE_A]);
-
-    const { getByRole, getByText } = renderWithUser(<App />);
-
-    await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-    });
-    expect(getByText("Recent activity will appear here as you start and finish work.")).toBeTruthy();
-  });
-
   test("overview shows active and recently finished loops, server maps, and the workspaces map", async () => {
     setupBaseApi();
 

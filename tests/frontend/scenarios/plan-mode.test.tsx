@@ -341,37 +341,4 @@ describe("plan mode scenario", () => {
     });
   });
 
-  test("feedback rounds counter is displayed", async () => {
-    const loop = planningLoop(true, 3);
-    setupApi(loop, "## Refined Plan");
-
-    window.location.hash = `/loop/${LOOP_ID}`;
-    const { getAllByText, getByText } = renderWithUser(<App />);
-
-    await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
-    });
-
-    // Should show feedback rounds
-    await waitFor(() => {
-      expect(getByText(/Feedback rounds: 3/)).toBeTruthy();
-    });
-  });
-
-  test("waiting for plan shows placeholder when no content yet", async () => {
-    const loop = planningLoop(false);
-    setupApi(loop, ""); // No plan content
-
-    window.location.hash = `/loop/${LOOP_ID}`;
-    const { getAllByText, getByText } = renderWithUser(<App />);
-
-    await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
-    });
-
-    // Should show waiting message
-    await waitFor(() => {
-      expect(getByText(/Waiting for AI to generate plan/)).toBeTruthy();
-    });
-  });
 });

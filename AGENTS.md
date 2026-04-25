@@ -300,6 +300,9 @@ test("hello world", () => {
 - **Do not add frontend tests whose only assertion is static copy or element presence.** Tests like "renders title", "shows button", "displays badge text", "matches placeholder text", or "contains exact helper copy" are not enough unless that text is the product contract being exercised as part of a larger behavior.
 - **Do not add frontend tests that only verify styling or layout implementation.** Avoid tests that assert CSS utility classes, padding, break-word/truncate behavior, row wrappers, inline placement, DOM ordering, generated ids, or `data-testid` structure unless those details are required for supported behavior or accessibility.
 - **When a component mostly renders data, prefer behavior around interactions and state changes over snapshot-like rendering checks.** Prove that clicks call the right handler, submissions send the right payload, disabled states block invalid actions, persisted data refreshes correctly, or accessibility attributes support an actual interaction flow.
+- **Do not add frontend tests whose main value is accessible naming or UI wording.** Avoid tests that lock down `aria-label`, placeholder, title, helper copy, badge text, tab labels, or similar wording unless that exact text is part of the supported product contract.
+- **Do not add frontend tests for visibility-only UI toggles or mode changes.** If a click merely makes another button, label, panel, or hint appear or disappear without proving a meaningful workflow, state transition, side effect, or business rule, skip the test.
+- **Prefer submit/result assertions over default-state rendering assertions.** If a default checkbox, selected option, or visible control only matters because it changes submitted data or downstream behavior, test that outcome instead of asserting that the control is present or pre-checked.
 
 ### Test Patterns
 
