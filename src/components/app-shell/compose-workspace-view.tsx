@@ -131,26 +131,16 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     </>
   );
 
-  const createFormActions = (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => navigateWithinShell({ view: "home" })}
-      >
-        Cancel
-      </Button>
-      <Button
-        type="submit"
-        form={workspaceCreateFormId}
-        size="sm"
-        loading={createActionLoading}
-        disabled={createActionDisabled}
-      >
-        {createActionLabel}
-      </Button>
-    </>
+  const createHeaderAction = (
+    <Button
+      type="submit"
+      form={workspaceCreateFormId}
+      size="sm"
+      loading={createActionLoading}
+      disabled={createActionDisabled}
+    >
+      {createActionLabel}
+    </Button>
   );
 
   const provisioningActions = (
@@ -193,21 +183,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
       variant="compact"
       headerOffsetClassName={shellHeaderOffsetClassName}
       badges={
-        <>
-          <Badge
-            variant={workspaceCreateMode === "automatic" ? "info" : "default"}
-            size="sm"
-            className="hidden sm:inline-flex"
-          >
-            {workspaceCreateMode === "automatic" ? "Automatic" : "Manual"}
+        provisioningStatus ? (
+          <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
+            {provisioningStatus}
           </Badge>
-          {provisioningStatus && (
-            <Badge variant={getProvisioningStatusBadgeVariant(provisioningStatus)} size="sm">
-              {provisioningStatus}
-            </Badge>
-          )}
-        </>
+        ) : undefined
       }
+      actions={!provisioning.activeJobId ? createHeaderAction : undefined}
     >
       {provisioning.activeJobId ? (
         <div className="space-y-6">
@@ -228,13 +210,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
           className="space-y-6"
           onSubmit={(event) => handleCreateWorkspace(event)}
         >
-          <div className="space-y-2 rounded-2xl border border-gray-200 bg-white/80 p-3 dark:border-gray-800 dark:bg-neutral-900/80 sm:flex sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:space-y-0">
-            <div className="flex flex-wrap gap-2">
-              {createModeControls}
-            </div>
-            <div className="flex flex-wrap gap-2 sm:justify-end">
-              {createFormActions}
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {createModeControls}
           </div>
 
           <InlineField
