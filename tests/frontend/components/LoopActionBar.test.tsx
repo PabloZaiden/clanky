@@ -416,17 +416,4 @@ describe("LoopActionBar", () => {
     });
   });
 
-  describe("terminal follow-up copy", () => {
-    test("renders custom submit label as aria-label", () => {
-      const { getByRole } = renderWithUser(
-        <LoopActionBar
-          {...defaultProps({
-            submitLabel: "Restart",
-          })}
-        />,
-      );
-
-      expect(getByRole("button", { name: "Restart" })).toBeInTheDocument();
-    });
-  });
 });

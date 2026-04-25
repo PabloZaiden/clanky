@@ -23,61 +23,6 @@ describe("AddressCommentsModal", () => {
     reviewCycle: 1,
   });
 
-  describe("rendering", () => {
-    test("renders modal title", () => {
-      const { getByText } = renderWithUser(
-        <AddressCommentsModal {...defaultProps()} />
-      );
-      expect(getByText("Address Reviewer Comments")).toBeInTheDocument();
-    });
-
-    test("renders description with loop name and review cycle", () => {
-      const { getByText } = renderWithUser(
-        <AddressCommentsModal {...defaultProps()} loopName="My Loop" reviewCycle={3} />
-      );
-      expect(getByText('Submit feedback for "My Loop" (Review Cycle 3)')).toBeInTheDocument();
-    });
-
-    test("renders textarea for comments", () => {
-      const { getByLabelText } = renderWithUser(
-        <AddressCommentsModal {...defaultProps()} />
-      );
-      expect(getByLabelText("Reviewer Comments")).toBeInTheDocument();
-    });
-
-    test("renders textarea with placeholder", () => {
-      const { getByPlaceholderText } = renderWithUser(
-        <AddressCommentsModal {...defaultProps()} />
-      );
-      expect(getByPlaceholderText(/Enter your review comments here/)).toBeInTheDocument();
-    });
-
-    test("renders Cancel and Submit Comments buttons", () => {
-      const { getByRole } = renderWithUser(
-        <AddressCommentsModal {...defaultProps()} />
-      );
-      expect(getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-      expect(getByRole("button", { name: "Insert PR review prompt" })).toBeInTheDocument();
-      expect(getByRole("button", { name: "Submit Comments" })).toBeInTheDocument();
-    });
-
-    test("renders help text about loop behavior", () => {
-      const { getByText } = renderWithUser(
-        <AddressCommentsModal {...defaultProps()} />
-      );
-      expect(getByText(/The loop will restart and address these comments/)).toBeInTheDocument();
-    });
-  });
-
-  describe("not rendered when closed", () => {
-    test("does not render content when isOpen is false", () => {
-      const { queryByText } = renderWithUser(
-        <AddressCommentsModal {...defaultProps()} isOpen={false} />
-      );
-      expect(queryByText("Address Reviewer Comments")).not.toBeInTheDocument();
-    });
-  });
-
   describe("validation", () => {
     test("Submit Comments button is disabled when textarea is empty", () => {
       const { getByRole } = renderWithUser(

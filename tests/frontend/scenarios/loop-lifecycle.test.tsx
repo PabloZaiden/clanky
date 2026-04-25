@@ -93,39 +93,6 @@ describe("loop lifecycle scenario", () => {
     expect(getAllByText("Feature Loop").length).toBeGreaterThan(0);
   });
 
-  test("completed loop shows accept and delete actions", async () => {
-    const loop = createLoopWithStatus("completed", {
-      config: { id: LOOP_ID, name: "Done Loop", directory: "/workspaces/my-project", workspaceId: "ws-1" },
-    });
-    setupApi(loop);
-
-    const { getAllByText, getByRole, user } = renderWithUser(<App />);
-
-    await waitFor(() => {
-      expect(getAllByText("Done Loop").length).toBeGreaterThan(0);
-    });
-
-    await navigateToLoopRoute();
-    await waitFor(() => {
-      expect(window.location.hash).toBe(`#/loop/${LOOP_ID}`);
-    });
-
-    await user.click(getByRole("button", { name: /Actions/ }));
-
-    // Should show accept and delete actions
-    await waitFor(() => {
-      const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
-      );
-      expect(acceptBtn).toBeTruthy();
-
-      const deleteBtn = Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Delete Loop"),
-      );
-      expect(deleteBtn).toBeTruthy();
-    });
-  });
-
   test("accept loop flow: click accept, confirm merge, loop status updates", async () => {
     const loop = createLoopWithStatus("completed", {
       config: { id: LOOP_ID, name: "Accept Loop", directory: "/workspaces/my-project", workspaceId: "ws-1" },

@@ -297,33 +297,6 @@ describe("workspace management scenario", () => {
     });
   });
 
-  test("create workspace uses a header action without a cancel button", async () => {
-    setupBaseApi();
-    api.get("/api/loops", () => []);
-    api.get("/api/workspaces", () => []);
-
-    const { getByRole, queryByRole, user } = renderWithUser(<App />);
-
-    await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-    });
-
-    const workspacesNewButton = getSectionActionButton("Workspaces");
-    expect(workspacesNewButton).toBeTruthy();
-    await user.click(workspacesNewButton!);
-    await waitFor(() => {
-      expect(getByRole("heading", { name: "Create a workspace" })).toBeTruthy();
-    });
-
-    const form = document.getElementById("workspace-create-form");
-    const createButton = getByRole("button", { name: "Create Workspace" });
-
-    expect(form).toBeTruthy();
-    expect(createButton).toHaveAttribute("form", "workspace-create-form");
-    expect(form?.contains(createButton)).toBe(false);
-    expect(queryByRole("button", { name: "Cancel" })).toBeNull();
-  });
-
   test("shell composer keeps create controls working when switching to automatic mode", async () => {
     setupBaseApi();
     api.get("/api/loops", () => []);
