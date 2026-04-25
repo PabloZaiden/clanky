@@ -243,6 +243,7 @@ function renderMainContent(props: ShellMainContentProps) {
 
     return (
       <ChatDetails
+        key={`chat:${route.chatId}`}
         chatId={route.chatId}
         onBack={() => {
           navigateWithinShell({ view: "home" });

@@ -11,6 +11,13 @@ function toTimestamp(value?: string): number | null {
 }
 
 export function mergeChatSnapshot(current: Chat, incoming: Chat): Chat {
+  if (
+    current.config.id !== incoming.config.id
+    || current.state.id !== incoming.state.id
+  ) {
+    return incoming;
+  }
+
   const currentActivityAt = toTimestamp(current.state.lastActivityAt);
   const incomingActivityAt = toTimestamp(incoming.state.lastActivityAt);
 
