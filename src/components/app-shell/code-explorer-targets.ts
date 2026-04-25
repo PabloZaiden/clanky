@@ -78,7 +78,7 @@ export function getChatCodeExplorerRootDirectory(chat: Chat): string {
   return trimDirectory(chat.state.worktree?.worktreePath || chat.config.directory);
 }
 
-function getRouteTargetId(target: CodeExplorerTarget): string {
+export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
   switch (target.contentType) {
     case "workspace":
       return target.workspaceId;
@@ -160,7 +160,7 @@ export function resolveCodeExplorerTarget({
     return null;
   }
 
-  const routeTargetId = getRouteTargetId(target);
+  const routeTargetId = getCodeExplorerTargetId(target);
 
   switch (target.contentType) {
     case "workspace": {

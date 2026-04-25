@@ -5,6 +5,7 @@ import {
   getChatCodeExplorerRootDirectory,
   getCodeExplorerOptionGroups,
   getCodeExplorerOptions,
+  getCodeExplorerTargetId,
   getLoopCodeExplorerRootDirectory,
   resolveCodeExplorerTarget,
 } from "@/components/app-shell/code-explorer-targets";
@@ -234,6 +235,13 @@ describe("code explorer target helpers", () => {
       ["Build Server"],
       ["Review Chat"],
     ]);
+  });
+
+  test("returns stable ids for every code explorer target type", () => {
+    expect(getCodeExplorerTargetId({ contentType: "workspace", workspaceId: "workspace-1" })).toBe("workspace-1");
+    expect(getCodeExplorerTargetId({ contentType: "loop", loopId: "loop-1" })).toBe("loop-1");
+    expect(getCodeExplorerTargetId({ contentType: "server", serverId: "server-1" })).toBe("server-1");
+    expect(getCodeExplorerTargetId({ contentType: "chat", chatId: "chat-1" })).toBe("chat-1");
   });
 
   test("resolves chat targets to workspace-backed code explorer config", () => {

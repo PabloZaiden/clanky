@@ -4,7 +4,12 @@ import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import { ShellPanel } from "./shell-panel";
 import { FileExplorerView } from "./file-explorer-view";
-import { getCodeExplorerOptionGroups, getCodeExplorerOptions, resolveCodeExplorerTarget } from "./code-explorer-targets";
+import {
+  getCodeExplorerOptionGroups,
+  getCodeExplorerOptions,
+  getCodeExplorerTargetId,
+  resolveCodeExplorerTarget,
+} from "./code-explorer-targets";
 import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
 interface CodeExplorerViewProps {
@@ -23,19 +28,6 @@ interface CodeExplorerViewProps {
   ) => Promise<SshServerSession>;
   onNavigate: (route: ShellRoute) => void;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
-}
-
-function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
-  switch (target.contentType) {
-    case "workspace":
-      return target.workspaceId;
-    case "loop":
-      return target.loopId;
-    case "server":
-      return target.serverId;
-    case "chat":
-      return target.chatId;
-  }
 }
 
 export function CodeExplorerView({
