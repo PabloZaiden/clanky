@@ -4,11 +4,9 @@
  */
 
 import type { LoopSummaryProps } from "../types";
-import { Badge, getStatusBadgeVariant, EditIcon, StatusBadge } from "./common";
-import type { BadgeVariant } from "./common";
+import { Badge, EditIcon, StatusBadge } from "./common";
 import {
-  getStatusLabel,
-  getPlanningStatusLabel,
+  getLoopStatusPill,
   isLoopPlanReady,
   isLoopActive,
   formatRelativeTime,
@@ -26,14 +24,7 @@ export function LoopRow({
   const isPlanReady = isLoopPlanReady(loop);
   const isDraft = state.status === "draft";
   const isAddressable = state.reviewMode?.addressable === true;
-
-  // Determine badge variant and label for planning sub-states
-  const badgeVariant: BadgeVariant = isPlanning
-    ? (isPlanReady ? "plan_ready" : "planning")
-    : getStatusBadgeVariant(state.status);
-  const badgeLabel = isPlanning
-    ? getPlanningStatusLabel(isPlanReady)
-    : getStatusLabel(state.status, state.syncState);
+  const statusPill = getLoopStatusPill(loop);
 
   // Row border highlight for active/planning states
   const borderClass = isActive && !isPlanning
@@ -99,8 +90,8 @@ export function LoopRow({
 
           {/* Badges */}
           <div className="flex max-w-full flex-wrap items-center gap-1.5">
-            <StatusBadge variant={badgeVariant}>
-              {badgeLabel}
+            <StatusBadge variant={statusPill.variant}>
+              {statusPill.label}
             </StatusBadge>
             {isAddressable && (
               <Badge variant="info">

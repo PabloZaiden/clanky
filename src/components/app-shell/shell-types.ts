@@ -1,10 +1,9 @@
-import { canJumpstart, getLoopStatusLabel, isFinalState } from "../../utils";
+import { canJumpstart, getLoopStatusPill, isFinalState } from "../../utils";
 import { createLogger } from "../../lib/logger";
 import type { Chat, Loop, SshSession, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import {
   getChatStatusBadgeVariant,
-  getLoopStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
   type BadgeVariant,
@@ -286,15 +285,15 @@ export function buildWorkspaceSidebarGroups({
       (session) => session.config.createdAt,
     )
       .map((session) => createWorkspaceSessionNode(session, loopNameById));
-    const loopNodes = workspaceLoops.map((loop) => ({
-      loop,
-      title: loop.config.name,
-      badge: getLoopStatusLabel(loop),
-      badgeVariant: getLoopStatusBadgeVariant(
-        loop.state.status,
-        loop.state.planMode?.isPlanReady ?? false,
-      ),
-    }));
+    const loopNodes = workspaceLoops.map((loop) => {
+      const statusPill = getLoopStatusPill(loop);
+      return {
+        loop,
+        title: loop.config.name,
+        badge: statusPill.label,
+        badgeVariant: statusPill.variant,
+      };
+    });
     const activeLoopNodes = loopNodes.filter((loopNode) => !isTerminalSidebarLoop(loopNode.loop));
     const historyLoopNodes = loopNodes.filter((loopNode) => isTerminalSidebarLoop(loopNode.loop));
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderWithUser, waitFor } from "../helpers/render";
-import { createWorkspace } from "../helpers/factories";
+import { createLoop, createWorkspace } from "../helpers/factories";
 
 import { WorkspaceView } from "@/components/app-shell/workspace-view";
 
@@ -74,5 +74,43 @@ describe("WorkspaceView", () => {
     await user.click(getByRole("button", { name: "Create items in workspace Frontend" }));
 
     expect(queryByRole("menuitem", { name: "Open in GitHub" })).toBeNull();
+  });
+
+  test("renders plan-ready loop pills with the shared plan-ready badge variant", () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+    });
+    const planReadyLoop = createLoop({
+      config: {
+        workspaceId: workspace.id,
+        name: "Review generated plan",
+      },
+      state: {
+        status: "planning",
+        planMode: {
+          active: true,
+          feedbackRounds: 1,
+          planningFolderCleared: false,
+          isPlanReady: true,
+        },
+      },
+    });
+
+    const { getByText } = renderWithUser(
+      <WorkspaceView
+        workspace={workspace}
+        relatedLoops={[planReadyLoop]}
+        relatedChats={[]}
+        relatedSessions={[]}
+        registeredSshServers={[]}
+        onOpenSettings={() => {}}
+        onNavigate={() => {}}
+      />,
+    );
+
+    const pill = getByText("Plan Ready");
+    expect(pill.getAttribute("data-badge-variant")).toBe("plan_ready");
   });
 });
