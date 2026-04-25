@@ -85,10 +85,13 @@ export function LogTab({
           applySafeAreaBottom={applySafeAreaBottomToFocusBar}
         />
       ) : (
-        <div className="flex-shrink-0 border-t border-gray-200 p-3 dark:border-gray-700 sm:p-4">
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">
-              <span className="flex items-center gap-2">
+        <div className="flex-shrink-0 border-t border-gray-200 px-2 py-2 dark:border-gray-700 sm:p-4">
+          <div
+            className="hide-scrollbar flex min-w-0 items-center gap-3 overflow-x-auto whitespace-nowrap sm:flex-wrap sm:overflow-visible"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
+            <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
+              <span className="flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
                 <input
                   type="checkbox"
                   checked={showSystemInfo}
@@ -98,8 +101,8 @@ export function LogTab({
                 <span>Show system info</span>
               </span>
             </label>
-            <label className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">
-              <span className="flex items-center gap-2">
+            <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
+              <span className="flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
                 <input
                   type="checkbox"
                   checked={showReasoning}
@@ -109,8 +112,8 @@ export function LogTab({
                 <span>Show reasoning</span>
               </span>
             </label>
-            <label className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">
-              <span className="flex items-center gap-2">
+            <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
+              <span className="flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
                 <input
                   type="checkbox"
                   checked={showTools}
@@ -120,8 +123,8 @@ export function LogTab({
                 <span>Show tools</span>
               </span>
             </label>
-            <label className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">
-              <span className="flex items-center gap-2">
+            <label className="shrink-0 cursor-pointer text-xs text-gray-700 dark:text-gray-300 sm:text-sm">
+              <span className="flex items-center gap-1.5 whitespace-nowrap sm:gap-2">
                 <input
                   type="checkbox"
                   checked={autoScroll}
@@ -135,6 +138,7 @@ export function LogTab({
               type="button"
               variant="secondary"
               size="xs"
+              className="shrink-0"
               onClick={onEnterFocusMode}
               aria-label="Enter focus mode"
               title="Focus mode — fullscreen logs with compact controls"
