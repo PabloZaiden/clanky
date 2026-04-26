@@ -182,7 +182,7 @@ describe("automatic PR flow GitHub helpers", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "merge", "feature/automatic-pr-flow", "--auto", "--merge"], {
+    executor.addResponse("gh", ["pr", "merge", "feature/automatic-pr-flow", "--auto", "--squash"], {
       success: true,
       stdout: "",
       stderr: "",
@@ -195,7 +195,7 @@ describe("automatic PR flow GitHub helpers", () => {
     expect(pullRequest.url).toBe("https://github.com/owner/repo/pull/42");
     expect(executor.calls).toContainEqual({
       command: "gh",
-      args: ["pr", "merge", "feature/automatic-pr-flow", "--auto", "--merge"],
+      args: ["pr", "merge", "feature/automatic-pr-flow", "--auto", "--squash"],
     });
   });
 

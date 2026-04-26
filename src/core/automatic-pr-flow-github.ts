@@ -489,7 +489,7 @@ export async function enableExistingPullRequestAutoMerge(
 
   const result = await executor.exec(
     "gh",
-    ["pr", "merge", workingBranch, "--auto", "--merge"],
+    ["pr", "merge", workingBranch, "--auto", "--squash"],
     { cwd: directory, timeout: 15000 },
   );
   if (!result.success) {
