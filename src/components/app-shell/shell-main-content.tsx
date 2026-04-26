@@ -307,6 +307,7 @@ function renderMainContent(props: ShellMainContentProps) {
         onOpenSettings={() =>
           navigateWithinShell({ view: "workspace-settings", workspaceId: selectedWorkspace.id })
         }
+        onPullLatestChanges={async () => await pullLatestChanges(selectedWorkspace.id)}
         onNavigate={navigateWithinShell}
       />
     );
@@ -352,7 +353,6 @@ function renderMainContent(props: ShellMainContentProps) {
         dashboardData={dashboardData}
         refreshWorkspaces={refreshWorkspaces}
         deleteWorkspace={deleteWorkspace}
-        pullLatestChanges={pullLatestChanges}
         navigateWithinShell={navigateWithinShell}
         shellHeaderOffsetClassName={shellHeaderOffsetClassName}
       />
