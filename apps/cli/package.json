@@ -1,0 +1,14 @@
+{
+  "name": "@ralpher/cli",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/index.ts",
+    "build": "bun src/build.ts"
+  },
+  "dependencies": {
+    "@ralpher/client-sdk": "workspace:*",
+    "@ralpher/contracts": "workspace:*",
+    "@ralpher/shared": "workspace:*"
+  }
+}

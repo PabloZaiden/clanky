@@ -18,6 +18,10 @@ const buildSteps: BuildStep[] = [
     cmd: [process.execPath, "run", "tsc"],
   },
   {
+    label: "workspace-build",
+    cmd: [process.execPath, "run", "build:workspaces"],
+  },
+  {
     label: "compile",
     cmd: [process.execPath, "src/build.ts"],
   },
