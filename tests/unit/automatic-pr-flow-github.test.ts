@@ -5,6 +5,7 @@ import { join } from "path";
 import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
 import type { PullRequestNavigationGitService } from "../../src/core/pull-request-navigation";
 import {
+  enableExistingPullRequestAutoMerge,
   ensureAutomaticPrFlowPullRequest,
   fetchAutomaticPrFlowSnapshot,
   resolveAutomaticPrFlowReviewThread,
@@ -156,6 +157,69 @@ describe("automatic PR flow GitHub helpers", () => {
       viewerCanUpdateBranch: undefined,
       mergedAt: undefined,
     });
+  });
+
+  test("enables auto-merge for an existing pull request", async () => {
+    const loop = createPushedLoop();
+    const executor = new StubExecutor();
+    const git = new StubGitService();
+
+    executor.addResponse("gh", ["--version"], {
+      success: true,
+      stdout: "gh version 2.0.0",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
+      success: true,
+      stdout: JSON.stringify({
+        number: 42,
+        url: "https://github.com/owner/repo/pull/42",
+        state: "OPEN",
+        reviewDecision: "REVIEW_REQUIRED",
+        mergeStateStatus: "CLEAN",
+      }),
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("gh", ["pr", "merge", "feature/automatic-pr-flow", "--auto", "--squash"], {
+      success: true,
+      stdout: "",
+      stderr: "",
+      exitCode: 0,
+    });
+
+    const pullRequest = await enableExistingPullRequestAutoMerge(loop, "/tmp/repo", executor, git);
+
+    expect(pullRequest.number).toBe(42);
+    expect(pullRequest.url).toBe("https://github.com/owner/repo/pull/42");
+    expect(executor.calls).toContainEqual({
+      command: "gh",
+      args: ["pr", "merge", "feature/automatic-pr-flow", "--auto", "--squash"],
+    });
+  });
+
+  test("requires an existing pull request before enabling auto-merge", async () => {
+    const loop = createPushedLoop();
+    const executor = new StubExecutor();
+    const git = new StubGitService();
+
+    executor.addResponse("gh", ["--version"], {
+      success: true,
+      stdout: "gh version 2.0.0",
+      stderr: "",
+      exitCode: 0,
+    });
+    executor.addResponse("gh", ["pr", "view", "feature/automatic-pr-flow", "--json", "number,url,state,mergedAt,reviewDecision,mergeStateStatus"], {
+      success: false,
+      stdout: "",
+      stderr: "no pull requests found for branch \"feature/automatic-pr-flow\"",
+      exitCode: 1,
+    });
+
+    await expect(enableExistingPullRequestAutoMerge(loop, "/tmp/repo", executor, git)).rejects.toThrow(
+      "This loop does not have an existing GitHub pull request yet.",
+    );
   });
 
   test("creates a pull request when one does not exist yet", async () => {

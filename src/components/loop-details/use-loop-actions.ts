@@ -11,6 +11,7 @@ import type {
   PushLoopResult,
   AddressCommentsResult,
   AutomaticPrFlowResult,
+  PullRequestAutoMergeResult,
 } from "../../hooks/loopActions";
 import { log } from "../../lib/logger";
 
@@ -27,6 +28,7 @@ interface UseLoopActionsOptions {
   markMerged: () => Promise<boolean>;
   manualCompleteLoop: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
@@ -51,6 +53,7 @@ export interface UseLoopActionsResult {
   stopAutomaticPrFlowModal: boolean;
   planActionSubmitting: boolean;
   automaticPrFlowSubmitting: boolean;
+  pullRequestAutoMergeSubmitting: boolean;
   sshConnecting: boolean;
   planningSettingsSubmitting: boolean;
 
@@ -77,6 +80,7 @@ export interface UseLoopActionsResult {
   handleManualComplete: () => Promise<void>;
   handleAddressComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<void>;
   handleOpenPullRequest: (destination: PullRequestDestinationResponse | null) => void;
+  handleEnablePullRequestAutoMerge: () => Promise<void>;
   handleStartAutomaticPrFlow: () => Promise<void>;
   handleStopAutomaticPrFlow: () => Promise<void>;
   handleAcceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<void>;
@@ -100,6 +104,7 @@ export function useLoopActions({
   markMerged,
   manualCompleteLoop,
   addressReviewComments,
+  enablePullRequestAutoMerge,
   startAutomaticPrFlow,
   stopAutomaticPrFlow,
   acceptPlan,
@@ -121,6 +126,7 @@ export function useLoopActions({
   const [startAutomaticPrFlowModal, setStartAutomaticPrFlowModal] = useState(false);
   const [stopAutomaticPrFlowModal, setStopAutomaticPrFlowModal] = useState(false);
   const [automaticPrFlowSubmitting, setAutomaticPrFlowSubmitting] = useState(false);
+  const [pullRequestAutoMergeSubmitting, setPullRequestAutoMergeSubmitting] = useState(false);
   const [sshConnecting, setSshConnecting] = useState(false);
   const [planningSettingsSubmitting, setPlanningSettingsSubmitting] = useState(false);
 
@@ -194,6 +200,18 @@ export function useLoopActions({
   function handleOpenPullRequest(destination: PullRequestDestinationResponse | null) {
     if (!destination?.enabled) return;
     window.open(destination.url, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleEnablePullRequestAutoMerge() {
+    setPullRequestAutoMergeSubmitting(true);
+    try {
+      const result = await enablePullRequestAutoMerge();
+      if (!result.success) {
+        toast.error("Failed to enable pull request auto-merge");
+      }
+    } finally {
+      setPullRequestAutoMergeSubmitting(false);
+    }
   }
 
   async function handleStartAutomaticPrFlow() {
@@ -301,6 +319,7 @@ export function useLoopActions({
     stopAutomaticPrFlowModal,
     planActionSubmitting,
     automaticPrFlowSubmitting,
+    pullRequestAutoMergeSubmitting,
     sshConnecting,
     planningSettingsSubmitting,
     setDeleteModal,
@@ -323,6 +342,7 @@ export function useLoopActions({
     handleManualComplete,
     handleAddressComments,
     handleOpenPullRequest,
+    handleEnablePullRequestAutoMerge,
     handleStartAutomaticPrFlow,
     handleStopAutomaticPrFlow,
     handleAcceptPlan,

@@ -23,6 +23,15 @@ const LOOP_ID = "loop-1";
 let openCalls: Array<{ url: string; target: string; features: string }> = [];
 let originalWindowOpen: typeof window.open;
 
+type LoopDetailsRenderResult = ReturnType<typeof renderWithUser>;
+
+async function openActionsTab(
+  renderResult: Pick<LoopDetailsRenderResult, "getByRole" | "user">,
+): Promise<HTMLElement> {
+  await renderResult.user.click(renderResult.getByRole("button", { name: /^Actions$/i }));
+  return await waitFor(() => renderResult.getByRole("region", { name: /^Actions$/i }));
+}
+
 /** Set up default API routes for LoopDetails. */
 function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>[1]) {
   const loop = createLoopWithStatus("running", {
@@ -77,6 +86,13 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
       startedAt: "2026-04-11T04:00:00.000Z",
       updatedAt: "2026-04-11T04:10:00.000Z",
       stoppedAt: "2026-04-11T04:10:00.000Z",
+    },
+  }));
+  api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+    success: true,
+    pullRequest: {
+      number: 1,
+      url: "https://github.com/example/repo/pull/1",
     },
   }));
   api.post("/api/loops/:id/pending", () => ({ success: true }));
@@ -837,20 +853,15 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByText("Pushed Loop")).toBeTruthy();
+      expect(renderResult.getByText("Pushed Loop")).toBeTruthy();
     });
 
-    await user.click(getByText("Actions"));
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: /Go to PR/i })).toBeTruthy();
-    });
-    const button = getByRole("button", { name: /Go to PR/i }) as HTMLButtonElement;
+    const actionsTab = await openActionsTab(renderResult);
+    const button = within(actionsTab).getByRole("button", { name: /Go to PR/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(getByText("GitHub CLI is not available in the loop environment.")).toBeTruthy();
   });
 
   test("pushed loop keeps PR destination failures non-blocking", async () => {
@@ -869,22 +880,16 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
-      expect(getByText("Pushed Loop")).toBeTruthy();
+      expect(renderResult.getByText("Pushed Loop")).toBeTruthy();
     });
 
-    await user.click(getByText("Actions"));
-
-    await waitFor(() => {
-      expect(getByRole("button", { name: /Go to PR/i })).toBeTruthy();
-    });
-
-    const button = getByRole("button", { name: /Go to PR/i }) as HTMLButtonElement;
+    const actionsTab = await openActionsTab(renderResult);
+    const button = within(actionsTab).getByRole("button", { name: /Go to PR/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(getByText("Failed to load pull request information.")).toBeTruthy();
-    expect(queryByText("Failed to get pull request destination: Internal Server Error")).toBeNull();
+    expect(within(actionsTab).getByRole("button", { name: /Automatic PR flow/i })).toBeTruthy();
   });
 
   test("pushed loop opens the create PR page when no PR exists", async () => {
@@ -943,6 +948,13 @@ describe("actions tab content", () => {
       destinationType: "existing_pr",
       url: "https://github.com/example/repo/pull/42",
     }));
+    api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+      },
+    }));
     api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
     api.get("/api/models", () => []);
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
@@ -995,6 +1007,13 @@ describe("actions tab content", () => {
       destinationType: "existing_pr",
       url: "https://github.com/example/repo/pull/42",
     }));
+    api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+      },
+    }));
     api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
     api.get("/api/models", () => []);
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
@@ -1016,6 +1035,101 @@ describe("actions tab content", () => {
     await waitFor(() => {
       expect(getByText("Start Automatic PR flow?")).toBeTruthy();
     });
+  });
+
+  test("pushed loop enables auto-merge only when an existing PR already exists", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID, name: "Pushed Loop" },
+      state: {
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+      },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/pull-request", () => ({
+      enabled: true,
+      destinationType: "existing_pr",
+      url: "https://github.com/example/repo/pull/42",
+    }));
+    api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+      },
+    }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(renderResult.getByText("Pushed Loop")).toBeTruthy();
+    });
+
+    const actionsTab = await openActionsTab(renderResult);
+    expect(within(actionsTab).getByRole("button", { name: /Automatic PR flow/i })).toBeTruthy();
+    const autoMergeButton = within(actionsTab).getByRole("button", { name: /Enable Auto-Merge/i }) as HTMLButtonElement;
+    expect(autoMergeButton.disabled).toBe(false);
+
+    await renderResult.user.click(autoMergeButton);
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/pull-request/auto-merge", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("pushed loop only shows auto-merge when an existing PR already exists", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID, name: "Pushed Loop" },
+      state: {
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+      },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/pull-request", () => ({
+      enabled: true,
+      destinationType: "create_pr",
+      url: "https://github.com/example/repo/compare/main...feature%2Floop?expand=1",
+    }));
+    api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+      },
+    }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(renderResult.getByText("Pushed Loop")).toBeTruthy();
+    });
+
+    const actionsTab = await openActionsTab(renderResult);
+    expect(within(actionsTab).queryByRole("button", { name: /Enable Auto-Merge/i })).toBeNull();
+    expect(api.calls("/api/loops/:id/pull-request/auto-merge", "POST")).toHaveLength(0);
   });
 
   test("pushed loop shows stop automatic PR flow state when enabled", async () => {

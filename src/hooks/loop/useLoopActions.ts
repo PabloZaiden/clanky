@@ -17,6 +17,7 @@ import type {
   PushLoopResult,
   AddressCommentsResult,
   AutomaticPrFlowResult,
+  PullRequestAutoMergeResult,
   SetPendingResult,
 } from "../loopActions";
 import { useLoopLifecycleActions } from "./useLoopLifecycleActions";
@@ -57,6 +58,7 @@ export interface UseLoopActionsResult {
   acceptPlan: (mode?: "start_loop" | "open_ssh") => Promise<AcceptPlanResult>;
   discardPlan: () => Promise<boolean>;
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   setPending: (options: {

@@ -26,6 +26,7 @@ import {
   setPendingApi,
   clearPendingApi,
   addressReviewCommentsApi,
+  enablePullRequestAutoMergeApi,
   startAutomaticPrFlowApi,
   stopAutomaticPrFlowApi,
   sendFollowUpApi,
@@ -738,5 +739,26 @@ describe("automatic PR flow APIs", () => {
       },
     });
     expect(api.calls(`/api/loops/${LOOP_ID}/automatic-pr-flow/stop`, "POST")).toHaveLength(1);
+  });
+
+  test("enablePullRequestAutoMergeApi calls POST /api/loops/:id/pull-request/auto-merge", async () => {
+    api.post(`/api/loops/${LOOP_ID}/pull-request/auto-merge`, () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/owner/repo/pull/42",
+      },
+    }));
+
+    const result = await enablePullRequestAutoMergeApi(LOOP_ID);
+
+    expect(result).toEqual({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/owner/repo/pull/42",
+      },
+    });
+    expect(api.calls(`/api/loops/${LOOP_ID}/pull-request/auto-merge`, "POST")).toHaveLength(1);
   });
 });

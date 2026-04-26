@@ -29,6 +29,14 @@ export interface AutomaticPrFlowResult {
   };
 }
 
+export interface PullRequestAutoMergeResult {
+  success: boolean;
+  pullRequest?: {
+    number: number;
+    url: string;
+  };
+}
+
 /**
  * Address reviewer comments on a pushed/merged loop via the API.
  */
@@ -95,5 +103,17 @@ export async function stopAutomaticPrFlowApi(loopId: string): Promise<AutomaticP
   return {
     success: true,
     automaticPrFlow: data.automaticPrFlow,
+  };
+}
+
+export async function enablePullRequestAutoMergeApi(loopId: string): Promise<PullRequestAutoMergeResult> {
+  const data = await apiCall<{ pullRequest: PullRequestAutoMergeResult["pullRequest"] }>(
+    `/api/loops/${loopId}/pull-request/auto-merge`,
+    { method: "POST" },
+    "Enable pull request auto-merge",
+  );
+  return {
+    success: true,
+    pullRequest: data.pullRequest,
   };
 }

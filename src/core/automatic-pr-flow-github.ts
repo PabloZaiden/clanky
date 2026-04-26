@@ -458,6 +458,47 @@ export async function ensureAutomaticPrFlowPullRequest(
   return pullRequest;
 }
 
+export async function enableExistingPullRequestAutoMerge(
+  loop: Loop,
+  directory: string,
+  executor: CommandExecutor,
+  git: PullRequestNavigationGitService,
+): Promise<AutomaticPrFlowPullRequest> {
+  const workingBranch = getWorkingBranch(loop);
+  if (!workingBranch) {
+    throw new Error("This loop does not have a working branch to enable automatic merge for.");
+  }
+
+  if (!(await isGhAvailable(executor, directory))) {
+    throw new Error(GH_UNAVAILABLE_REASON);
+  }
+
+  const remoteUrl = await git.getRemoteUrl(directory, "origin");
+  if (!parseRepositoryCoordinates(remoteUrl)) {
+    throw new Error(NO_GITHUB_REMOTE_REASON);
+  }
+
+  const existingPullRequest = await getExistingPullRequest(workingBranch, directory, executor);
+  if (!existingPullRequest) {
+    throw new Error("This loop does not have an existing GitHub pull request yet.");
+  }
+
+  if (existingPullRequest.state !== "OPEN") {
+    throw new Error("Automatic merge can only be enabled for open pull requests.");
+  }
+
+  const result = await executor.exec(
+    "gh",
+    ["pr", "merge", workingBranch, "--auto", "--squash"],
+    { cwd: directory, timeout: 15000 },
+  );
+  if (!result.success) {
+    throw new Error(result.stderr.trim() || `gh pr merge exited with code ${result.exitCode}`);
+  }
+
+  return existingPullRequest;
+}
+
 function normalizeReviewThread(thread: GraphQlThreadNode): AutomaticPrFlowFeedbackItem | null {
   const threadId = toStringValue(thread.id);
   const isResolved = thread.isResolved === true;

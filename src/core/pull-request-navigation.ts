@@ -251,7 +251,7 @@ export async function resolvePullRequestDestination(
 
   const prViewResult = await executor.exec(
     "gh",
-    ["pr", "view", "--json", "url", "-q", ".url"],
+    ["pr", "view", workingBranch, "--json", "url", "-q", ".url"],
     { cwd: directory, timeout: 10000 },
   );
   const existingPrUrl = prViewResult.stdout.trim();

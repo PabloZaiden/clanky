@@ -16,6 +16,8 @@ interface ActionsTabProps {
   loadingPullRequestDestination: boolean;
   pullRequestDestination: PullRequestDestinationResponse | null;
   onOpenPullRequest: () => void;
+  onEnablePullRequestAutoMerge: () => void;
+  pullRequestAutoMergeSubmitting: boolean;
   onStartAutomaticPrFlowModal: () => void;
   onStopAutomaticPrFlowModal: () => void;
   onAddressCommentsModal: () => void;
@@ -42,6 +44,8 @@ export function ActionsTab({
   loadingPullRequestDestination,
   pullRequestDestination,
   onOpenPullRequest,
+  onEnablePullRequestAutoMerge,
+  pullRequestAutoMergeSubmitting,
   onStartAutomaticPrFlowModal,
   onStopAutomaticPrFlowModal,
   onAddressCommentsModal,
@@ -61,9 +65,16 @@ export function ActionsTab({
   const automaticPrFlowStatus = automaticPrFlow?.status
     ? automaticPrFlow.status.replace(/_/g, " ")
     : null;
+  const hasExistingPullRequest = pullRequestDestination?.enabled === true
+    && pullRequestDestination.destinationType === "existing_pr";
+  const showPullRequestAutoMerge = hasExistingPullRequest || pullRequestAutoMergeSubmitting;
 
   return (
-    <div className={loopDetailsTabScrollContainerClassName}>
+    <div
+      role="region"
+      aria-label="Actions"
+      className={loopDetailsTabScrollContainerClassName}
+    >
       <div className={`${loopDetailsTabContentFullWidthClassName} space-y-4`}>
         <div className="min-w-0 space-y-2">
           {isPlanning ? (
@@ -207,6 +218,30 @@ export function ActionsTab({
                             )}
                           </div>
                         )}
+                      </div>
+                      <span className="text-gray-400 dark:text-gray-500">→</span>
+                    </button>
+                  )}
+
+                  {showPullRequestAutoMerge && (
+                    <button
+                      type="button"
+                      onClick={onEnablePullRequestAutoMerge}
+                      disabled={loadingPullRequestDestination || pullRequestAutoMergeSubmitting || !hasExistingPullRequest}
+                      className="w-full flex items-center gap-4 p-3 rounded-lg border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                        <span className="text-emerald-700 dark:text-emerald-300 text-sm">⇢</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {pullRequestAutoMergeSubmitting ? "Enabling Auto-Merge..." : "Enable Auto-Merge"}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {loadingPullRequestDestination
+                            ? "Checking whether this loop already has a GitHub pull request..."
+                            : "Ask GitHub to merge this pull request automatically once all merge requirements are satisfied."}
+                        </div>
                       </div>
                       <span className="text-gray-400 dark:text-gray-500">→</span>
                     </button>

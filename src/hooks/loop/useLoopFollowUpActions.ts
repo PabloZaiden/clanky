@@ -6,9 +6,11 @@
 import { useCallback } from "react";
 import {
   addressReviewCommentsApi,
+  enablePullRequestAutoMergeApi,
   sendFollowUpApi,
   getOrCreateLoopSshSessionApi,
   type AddressCommentsResult,
+  type PullRequestAutoMergeResult,
   startAutomaticPrFlowApi,
   stopAutomaticPrFlowApi,
   type AutomaticPrFlowResult,
@@ -22,6 +24,7 @@ const log = createLogger("useLoop");
 
 export interface UseLoopFollowUpActionsResult {
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   stopAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   sendFollowUp: (
@@ -119,6 +122,33 @@ export function useLoopFollowUpActions(params: UseLoopActionsParams): UseLoopFol
     [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError],
   );
 
+  const enablePullRequestAutoMerge = useCallback(async (): Promise<PullRequestAutoMergeResult> => {
+    const actionLoopId = loopId;
+    const staleAction = ignoreStaleLoopAction("enablePullRequestAutoMerge", actionLoopId, { success: false });
+    if (staleAction !== null) {
+      return staleAction;
+    }
+    try {
+      const result = await enablePullRequestAutoMergeApi(actionLoopId);
+      await refresh();
+      if (!isActiveLoop(actionLoopId)) {
+        return { success: false };
+      }
+      return result;
+    } catch (err) {
+      const staleError = ignoreStaleLoopError("enablePullRequestAutoMerge", actionLoopId, { success: false }, err);
+      if (staleError !== null) {
+        return staleError;
+      }
+      log.error("Failed to enable pull request auto-merge", {
+        loopId: actionLoopId,
+        error: String(err),
+      });
+      setError(String(err));
+      return { success: false };
+    }
+  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
+
   const startAutomaticPrFlow = useCallback(async (): Promise<AutomaticPrFlowResult> => {
     const actionLoopId = loopId;
     const staleAction = ignoreStaleLoopAction("startAutomaticPrFlow", actionLoopId, { success: false });
@@ -206,5 +236,12 @@ export function useLoopFollowUpActions(params: UseLoopActionsParams): UseLoopFol
     }
   }, [isActiveLoop, loopId, setError]);
 
-  return { addressReviewComments, startAutomaticPrFlow, stopAutomaticPrFlow, sendFollowUp, connectViaSsh };
+  return {
+    addressReviewComments,
+    enablePullRequestAutoMerge,
+    startAutomaticPrFlow,
+    stopAutomaticPrFlow,
+    sendFollowUp,
+    connectViaSsh,
+  };
 }

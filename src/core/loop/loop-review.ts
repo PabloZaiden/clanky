@@ -9,7 +9,7 @@ import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
 import { getLoopWorkingDirectory } from "./loop-types";
 import { constructReviewPrompt, setupMergedReviewWorktree, transitionToFeedbackCycleAndStart } from "./review-engine";
-import { ensureAutomaticPrFlowPullRequest } from "../automatic-pr-flow-github";
+import { enableExistingPullRequestAutoMerge, ensureAutomaticPrFlowPullRequest } from "../automatic-pr-flow-github";
 import { emitAutomaticPrFlowUpdatedEvent } from "./loop-automatic-pr-flow-events";
 export { getReviewHistoryImpl } from "./review-history";
 export { getReviewCommentsImpl } from "./review-history";
@@ -301,6 +301,46 @@ export async function stopAutomaticPrFlowImpl(
   emitAutomaticPrFlowUpdatedEvent(ctx.emitter, loopId, loop.state.automaticPrFlow);
 
   return { success: true, automaticPrFlow: loop.state.automaticPrFlow };
+}
+
+export async function enablePullRequestAutoMergeImpl(
+  _ctx: LoopCtx,
+  loopId: string,
+): Promise<{ success: boolean; error?: string; pullRequest?: { number: number; url: string } }> {
+  const loop = await loadLoop(loopId);
+  if (!loop) {
+    return { success: false, error: "Loop not found" };
+  }
+
+  if (loop.state.status !== "pushed" || loop.state.reviewMode?.addressable !== true) {
+    return {
+      success: false,
+      error: "Automatic merge only works for pushed loops that can receive review feedback.",
+    };
+  }
+
+  const workingDirectory = getLoopWorkingDirectory(loop);
+  if (!workingDirectory) {
+    return {
+      success: false,
+      error: "Loop is configured to use a worktree, but no worktree path is available.",
+    };
+  }
+
+  try {
+    const executor = await backendManager.getCommandExecutorAsync(loop.config.workspaceId, workingDirectory);
+    const git = GitService.withExecutor(executor);
+    const pullRequest = await enableExistingPullRequestAutoMerge(loop, workingDirectory, executor, git);
+    return {
+      success: true,
+      pullRequest: {
+        number: pullRequest.number,
+        url: pullRequest.url,
+      },
+    };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
 }
 
 export async function startFeedbackCycleImpl(
