@@ -47,14 +47,27 @@ function getWebAssetPath(distDir: string, pathname: string): string {
   return `${distDir}/${segments.join("/")}`;
 }
 
-async function serveWebApp(req: Request) {
+function decodeWebPathname(pathname: string): string | undefined {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function serveWebApp(req: Request) {
   const distDir = getConfiguredWebDistDir();
   if (!distDir) {
     return index;
   }
 
   const url = new URL(req.url);
-  const assetPath = getWebAssetPath(distDir, decodeURIComponent(url.pathname));
+  const decodedPathname = decodeWebPathname(url.pathname);
+  if (decodedPathname === undefined) {
+    return new Response("Malformed request path", { status: 400 });
+  }
+
+  const assetPath = getWebAssetPath(distDir, decodedPathname);
   const assetFile = Bun.file(assetPath);
   if (await assetFile.exists()) {
     return new Response(assetFile);

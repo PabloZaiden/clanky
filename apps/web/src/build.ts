@@ -1,5 +1,6 @@
 import twPlugin from "bun-plugin-tailwind";
 import { basename } from "path";
+import { rewriteBuiltIndexHtml } from "./build-index-html";
 
 const workspaceDir = `${import.meta.dir}/..`;
 const srcDir = `${workspaceDir}/src`;
@@ -38,16 +39,11 @@ if (!jsOutput) {
 }
 
 const cssOutput = result.outputs.find((output) => output.path.endsWith(".css"));
-let indexHtml = await Bun.file(`${srcDir}/index.html`).text();
-
-const styleTag = cssOutput
-  ? `<link rel="stylesheet" href="./${basename(cssOutput.path)}" />\n    `
-  : "";
-
-indexHtml = indexHtml.replace(
-  '    <script type="module" src="./frontend.tsx"></script>',
-  `${styleTag}<script type="module" src="./${basename(jsOutput.path)}"></script>`,
-);
+const sourceIndexHtml = await Bun.file(`${srcDir}/index.html`).text();
+const indexHtml = rewriteBuiltIndexHtml(sourceIndexHtml, {
+  entryScriptFileName: basename(jsOutput.path),
+  stylesheetFileName: cssOutput ? basename(cssOutput.path) : undefined,
+});
 
 await Bun.write(`${outDir}/index.html`, indexHtml);
 
