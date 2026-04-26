@@ -42,3 +42,14 @@ export {
   normalizeApiEndpointPath,
   type ApiEndpointCatalogEntry,
 } from "./api-catalog";
+
+export {
+  buildWebSocketUrl,
+  connectWsCommand,
+  runWsCommand,
+  type CliWebSocketLike,
+  type CliWsCloseResult,
+  type CliWsConnection,
+  type CliWsDependencies,
+  type WsCommandOptions,
+} from "./ws";

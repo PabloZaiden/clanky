@@ -16,7 +16,7 @@ By default, the API does not require application-level credentials. In productio
 
 When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
 
-`ralpher auth` uses the device flow endpoints, `ralpher status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with those stored tokens, `ralpher schema` exposes discoverability metadata for catalogued endpoints, and `ralpher update` checks or installs published release binaries from GitHub Releases.
+`ralpher auth` uses the device flow endpoints, `ralpher status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with those stored tokens, `ralpher ws` opens authenticated websocket sessions against `/api/ws`, `ralpher schema` exposes discoverability metadata for catalogued endpoints, and `ralpher update` checks or installs published release binaries from GitHub Releases.
 
 ## CLI discovery helpers
 
@@ -46,9 +46,12 @@ ralpher api loops/my-loop --method GET
 
 # Inspect the schema metadata for an endpoint
 ralpher schema auth/device
+
+# Stream websocket events over stdio
+ralpher ws --loop-id my-loop
 ```
 
-`ralpher help` includes the same version banner shown by `ralpher version`, which makes it easier to confirm the binary version while browsing the built-in command list. `ralpher update` currently supports only the published Linux and macOS release binaries and should not be used from a Bun source checkout. `ralpher api <endpoint>` now emits a single JSON envelope so scripts can always parse the output.
+`ralpher help` includes the same version banner shown by `ralpher version`, which makes it easier to confirm the binary version while browsing the built-in command list. `ralpher update` currently supports only the published Linux and macOS release binaries and should not be used from a Bun source checkout. `ralpher api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `ralpher ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
 
 Example CLI output:
 
@@ -2442,8 +2445,10 @@ WebSocket endpoint for real-time event streaming. Supports optional loop and SSH
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `loopId` | No | Filter events to a specific loop |
+| `chatId` | No | Filter chat events to a specific chat |
 | `sshSessionId` | No | Filter SSH session events to a specific workspace-backed SSH session |
 | `sshServerSessionId` | No | Filter SSH session events to a specific standalone SSH server session |
+| `provisioningJobId` | No | Filter provisioning events to a specific provisioning job |
 
 **Connection URL Examples**
 
@@ -2453,6 +2458,18 @@ ws://localhost:3000/api/ws?loopId=abc   # Events for loop "abc" only
 ws://localhost:3000/api/ws?sshSessionId=ssh-123
 wss://example.com/api/ws                # Secure WebSocket
 ```
+
+**CLI bridge example**
+
+```bash
+# Connect using stored CLI credentials and stream one loop only
+ralpher ws --loop-id abc-123
+
+# Override the base URL explicitly
+ralpher ws https://example.com/ralpher --provisioning-job-id job-42
+```
+
+`ralpher ws` uses the same stored bearer token and cookie state as `ralpher status` and `ralpher api`. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination.
 
 **Connection Message**
 
