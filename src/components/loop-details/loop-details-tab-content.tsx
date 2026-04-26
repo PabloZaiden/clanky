@@ -154,6 +154,8 @@ export function LoopDetailsTabContent({
           loadingPullRequestDestination={content.loadingPullRequestDestination}
           pullRequestDestination={content.pullRequestDestination}
           onOpenPullRequest={() => actions.handleOpenPullRequest(content.pullRequestDestination)}
+          onEnablePullRequestAutoMerge={actions.handleEnablePullRequestAutoMerge}
+          pullRequestAutoMergeSubmitting={actions.pullRequestAutoMergeSubmitting}
           onStartAutomaticPrFlowModal={() => actions.setStartAutomaticPrFlowModal(true)}
           onStopAutomaticPrFlowModal={() => actions.setStopAutomaticPrFlowModal(true)}
           onAddressCommentsModal={() => actions.setAddressCommentsModal(true)}

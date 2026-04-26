@@ -79,6 +79,13 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
       stoppedAt: "2026-04-11T04:10:00.000Z",
     },
   }));
+  api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+    success: true,
+    pullRequest: {
+      number: 1,
+      url: "https://github.com/example/repo/pull/1",
+    },
+  }));
   api.post("/api/loops/:id/pending", () => ({ success: true }));
   api.post("/api/loops/:id/follow-up", () => ({ success: true }));
   api.delete("/api/loops/:id/pending", () => ({ success: true }));
@@ -717,7 +724,7 @@ describe("actions tab content", () => {
       return { success: true };
     });
 
-    const { getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getAllByText, getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Stopped Loop")).toBeTruthy();
@@ -837,7 +844,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getAllByText, getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Pushed Loop")).toBeTruthy();
@@ -850,7 +857,7 @@ describe("actions tab content", () => {
     });
     const button = getByRole("button", { name: /Go to PR/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(getByText("GitHub CLI is not available in the loop environment.")).toBeTruthy();
+    expect(getAllByText("GitHub CLI is not available in the loop environment.")).toHaveLength(2);
   });
 
   test("pushed loop keeps PR destination failures non-blocking", async () => {
@@ -869,7 +876,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getAllByText, getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Pushed Loop")).toBeTruthy();
@@ -883,7 +890,7 @@ describe("actions tab content", () => {
 
     const button = getByRole("button", { name: /Go to PR/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(getByText("Failed to load pull request information.")).toBeTruthy();
+    expect(getAllByText("Failed to load pull request information.")).toHaveLength(2);
     expect(queryByText("Failed to get pull request destination: Internal Server Error")).toBeNull();
   });
 
@@ -943,6 +950,13 @@ describe("actions tab content", () => {
       destinationType: "existing_pr",
       url: "https://github.com/example/repo/pull/42",
     }));
+    api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+      },
+    }));
     api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
     api.get("/api/models", () => []);
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
@@ -995,6 +1009,13 @@ describe("actions tab content", () => {
       destinationType: "existing_pr",
       url: "https://github.com/example/repo/pull/42",
     }));
+    api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+      },
+    }));
     api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
     api.get("/api/models", () => []);
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
@@ -1016,6 +1037,112 @@ describe("actions tab content", () => {
     await waitFor(() => {
       expect(getByText("Start Automatic PR flow?")).toBeTruthy();
     });
+  });
+
+  test("pushed loop enables auto-merge only when an existing PR already exists", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID, name: "Pushed Loop" },
+      state: {
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+      },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/pull-request", () => ({
+      enabled: true,
+      destinationType: "existing_pr",
+      url: "https://github.com/example/repo/pull/42",
+    }));
+    api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+      },
+    }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const { getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Pushed Loop")).toBeTruthy();
+    });
+
+    await user.click(getByText("Actions"));
+
+    const automaticPrFlowButton = await waitFor(() => getByRole("button", { name: /Automatic PR flow/i }));
+    const autoMergeButton = getByRole("button", { name: /Enable Auto-Merge/i }) as HTMLButtonElement;
+    expect(autoMergeButton.disabled).toBe(false);
+
+    const actionButtonLabels = Array.from(document.querySelectorAll("button"))
+      .map((button) => button.textContent ?? "")
+      .filter((label) => label.includes("Automatic PR flow") || label.includes("Enable Auto-Merge"));
+    expect(actionButtonLabels).toEqual([
+      automaticPrFlowButton.textContent ?? "",
+      autoMergeButton.textContent ?? "",
+    ]);
+
+    await user.click(autoMergeButton);
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/pull-request/auto-merge", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("pushed loop disables auto-merge when the PR does not exist yet", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID, name: "Pushed Loop" },
+      state: {
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+          reviewBranches: [],
+        },
+      },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/pull-request", () => ({
+      enabled: true,
+      destinationType: "create_pr",
+      url: "https://github.com/example/repo/compare/main...feature%2Floop?expand=1",
+    }));
+    api.post("/api/loops/:id/pull-request/auto-merge", () => ({
+      success: true,
+      pullRequest: {
+        number: 42,
+        url: "https://github.com/example/repo/pull/42",
+      },
+    }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const { getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Pushed Loop")).toBeTruthy();
+    });
+
+    await user.click(getByText("Actions"));
+
+    const autoMergeButton = await waitFor(() => getByRole("button", { name: /Enable Auto-Merge/i }) as HTMLButtonElement);
+    expect(autoMergeButton.disabled).toBe(true);
+    expect(getByText("Create the pull request first, then come back here to enable auto-merge.")).toBeTruthy();
   });
 
   test("pushed loop shows stop automatic PR flow state when enabled", async () => {

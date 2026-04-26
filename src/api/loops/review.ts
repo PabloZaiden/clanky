@@ -156,4 +156,25 @@ export const loopsReviewRoutes = {
       }
     },
   },
+
+  "/api/loops/:id/pull-request/auto-merge": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      try {
+        const result = await loopManager.enablePullRequestAutoMerge(req.params.id);
+        if (!result.success) {
+          if (result.error === "Loop not found") {
+            return errorResponse("not_found", result.error, 404);
+          }
+          return errorResponse("pull_request_auto_merge_enable_failed", result.error ?? "Unknown error", 400);
+        }
+        return successResponse({ pullRequest: result.pullRequest });
+      } catch (error) {
+        log.error("Failed to enable pull request auto-merge", {
+          loopId: req.params.id,
+          error: String(error),
+        });
+        return errorResponse("pull_request_auto_merge_enable_failed", String(error), 500);
+      }
+    },
+  },
 };

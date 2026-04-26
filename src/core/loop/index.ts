@@ -32,6 +32,7 @@ import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
 import {
   addressReviewCommentsImpl,
+  enablePullRequestAutoMergeImpl,
   getReviewHistoryImpl,
   getReviewCommentsImpl,
   startAutomaticPrReviewCycleImpl,
@@ -247,6 +248,12 @@ export class LoopManager {
     loopId: string,
   ): Promise<{ success: boolean; error?: string; automaticPrFlow?: Loop["state"]["automaticPrFlow"] }> {
     return stopAutomaticPrFlowImpl(this.ctx, loopId);
+  }
+
+  async enablePullRequestAutoMerge(
+    loopId: string,
+  ): Promise<{ success: boolean; error?: string; pullRequest?: { number: number; url: string } }> {
+    return enablePullRequestAutoMergeImpl(this.ctx, loopId);
   }
 
   async getReviewHistory(loopId: string): Promise<{ success: boolean; error?: string; history?: {

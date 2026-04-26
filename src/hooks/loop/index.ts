@@ -22,6 +22,7 @@ import type {
   PushLoopResult,
   AddressCommentsResult,
   AutomaticPrFlowResult,
+  PullRequestAutoMergeResult,
   SetPendingResult,
 } from "../loopActions";
 import { useLoopStaleGuard } from "./useLoopStaleGuard";
@@ -96,6 +97,8 @@ export interface UseLoopResult {
   discardPlan: () => Promise<boolean>;
   /** Address reviewer comments (only works for pushed/merged loops with reviewMode.addressable = true) */
   addressReviewComments: (comments: string, attachments?: MessageImageAttachment[]) => Promise<AddressCommentsResult>;
+  /** Enable GitHub auto-merge for an existing pull request */
+  enablePullRequestAutoMerge: () => Promise<PullRequestAutoMergeResult>;
   /** Enable automatic pull request monitoring and automated follow-up handling */
   startAutomaticPrFlow: () => Promise<AutomaticPrFlowResult>;
   /** Disable automatic pull request monitoring and return control to manual handling */

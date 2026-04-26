@@ -49,14 +49,14 @@ export function LoopDetails({
   onSelectSshSession,
   onOpenLoopFiles,
 }: LoopDetailsProps) {
-  const {
-     loop, loading, error, messages, toolCalls, logs, gitChangeCounter,
-      accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
-      stopLoop, setPending, sendFollowUp,
-     getDiff, getPlan, getStatusFile, getPullRequestDestination,
-     sendPlanFeedback, acceptPlan, discardPlan,
-    addressReviewComments, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectViaSsh,
-   } = useLoop(loopId);
+   const {
+      loop, loading, error, messages, toolCalls, logs, gitChangeCounter,
+       accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
+       stopLoop, setPending, sendFollowUp,
+      getDiff, getPlan, getStatusFile, getPullRequestDestination,
+      sendPlanFeedback, acceptPlan, discardPlan,
+     addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, update, connectViaSsh,
+    } = useLoop(loopId);
 
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const toast = useToast();
@@ -84,12 +84,12 @@ export function LoopDetails({
         view: "code-explorer",
         target: { contentType: "loop", loopId },
       });
-    },
-     toast,
-      accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
-     addressReviewComments, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
-     fetchReviewComments: content.fetchReviewComments,
-   });
+     },
+      toast,
+       accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
+      addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
+      fetchReviewComments: content.fetchReviewComments,
+    });
   const { models, modelsLoading } = useModels({ directory: loop?.config.directory, workspaceId: loop?.config.workspaceId });
   const portForward = usePortForwardActions({ loopId, toast, createForward, deleteForward });
   const isLogFocusActive = activeTab === "log" && isLogFocusMode && !!loop;

@@ -1179,6 +1179,30 @@ describe("Loops Control API Integration", () => {
       }
     });
 
+    test("POST /api/loops/:id/pull-request/auto-merge enables GitHub auto-merge for an existing PR", async () => {
+      const autoMergeSpy = spyOn(loopManager, "enablePullRequestAutoMerge").mockResolvedValue({
+        success: true,
+        pullRequest: {
+          number: 42,
+          url: "https://github.com/owner/repo/pull/42",
+        },
+      });
+
+      try {
+        const response = await fetch(`${baseUrl}/api/loops/test-loop-id/pull-request/auto-merge`, {
+          method: "POST",
+        });
+
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body.success).toBe(true);
+        expect(body.pullRequest.number).toBe(42);
+        expect(body.pullRequest.url).toBe("https://github.com/owner/repo/pull/42");
+      } finally {
+        autoMergeSpy.mockRestore();
+      }
+    });
+
     test("GET /api/loops/:id/comments returns comments in correct order", async () => {
       // Use unique directory with bare repo to avoid conflicts
       const uniqueWorkDir = await createTrackedTempDir("ralpher-comments-order-test-");
