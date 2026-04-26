@@ -39,15 +39,16 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
 
-      - name: Type check
-        run: bunx tsc --noEmit
+      - name: Build workspace
+        run: bun run build
 
       - name: Build binary
-        run: bun ./src/build.ts --target=bun-${{ matrix.target }}
+        run: cd apps/cli && bun src/build.ts --target=bun-${{ matrix.target }}
 
       - name: Rename binary for release
         run: |
-          mv dist/ralpher-${{ matrix.target }} dist/ralpher-${{ github.ref_name }}-${{ matrix.target }}
+          mkdir -p dist
+          mv apps/cli/dist/ralpher-cli-${{ matrix.target }} dist/ralpher-${{ github.ref_name }}-${{ matrix.target }}
 
       - name: Upload binary to release
         env:

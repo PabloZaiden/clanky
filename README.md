@@ -7,6 +7,14 @@
 
 Ralpher is a web dashboard and REST API for running, reviewing, and iterating on Ralph Loops with ACP-compatible agents such as Copilot and OpenCode. It keeps autonomous coding work manageable by starting each iteration with fresh context while persisting state in `.ralph-planning/`.
 
+The repository is organized as a workspace-style monorepo:
+
+- `apps/api` - Bun API server and optional same-origin static web serving
+- `apps/web` - standalone browser app
+- `apps/cli` - standalone CLI client
+- `apps/tui` and `apps/electron` - reserved stubs for future client surfaces
+- `packages/shared`, `packages/contracts`, `packages/client-sdk` - shared runtime-neutral types/helpers, API contracts, and client transport/auth utilities
+
 ## Best way to use Ralpher
 
 The recommended workflow is to treat Ralpher as a controller for SSH-backed development environments, even when that SSH host is just your own machine.
@@ -85,11 +93,21 @@ ralpher update --version v0.8.1
 # Installed binary
 ralpher web
 
-# Development
+# Development (API server, same-origin mode)
 bun dev
+
+# Standalone web app development
+bun run dev:web
 ```
 
 The UI is available at `http://localhost:3000` by default. Use `RALPHER_PORT` to change the port and `RALPHER_HOST` to change the bind address.
+
+For split development, run the API app and web app separately:
+
+```bash
+bun run dev:api
+bun run dev:web
+```
 
 ### CLI commands
 

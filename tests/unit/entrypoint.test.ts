@@ -40,8 +40,10 @@ describe("entrypoint", () => {
     expect(receivedCliArgs!).toEqual(["status"]);
   });
 
-  test("docker starts the explicit web command", async () => {
+  test("docker runs the API binary with the built web bundle", async () => {
     const dockerfile = await Bun.file(new URL("../../Dockerfile", import.meta.url)).text();
-    expect(dockerfile).toContain('CMD ["/app/ralpher", "web"]');
+    expect(dockerfile).toContain('COPY --from=builder /app/apps/web/dist /app/web');
+    expect(dockerfile).toContain("ENV RALPHER_WEB_DIST_DIR=/app/web");
+    expect(dockerfile).toContain('CMD ["/app/ralpher-api"]');
   });
 });

@@ -2,6 +2,7 @@
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext", "DOM"],
+    "types": ["bun"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
@@ -13,6 +14,8 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
 
     // Best practices
     "strict": true,
@@ -22,7 +25,13 @@
     "noImplicitOverride": true,
 
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@ralpher/shared": ["./packages/shared/src/index.ts"],
+      "@ralpher/shared/*": ["./packages/shared/src/*"],
+      "@ralpher/contracts": ["./packages/contracts/src/index.ts"],
+      "@ralpher/contracts/*": ["./packages/contracts/src/*"],
+      "@ralpher/client-sdk": ["./packages/client-sdk/src/index.ts"],
+      "@ralpher/client-sdk/*": ["./packages/client-sdk/src/*"]
     },
 
     "noUnusedLocals": true,

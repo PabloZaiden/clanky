@@ -2,15 +2,26 @@
   "name": "@pablozaiden/ralpher",
   "description": "Ralpher is a web and rest service used to control and manage Ralph Loops in opencode",
   "version": "0.0.0-development",
+  "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "bun --hot src/index.ts",
-    "start": "NODE_ENV=production bun src/index.ts",
+    "dev": "bun run dev:api",
+    "dev:api": "cd apps/api && bun run dev",
+    "dev:web": "cd apps/web && bun run dev",
+    "dev:cli": "cd apps/cli && bun run dev",
+    "start": "bun run start:api",
+    "start:api": "cd apps/api && bun run start",
     "build": "bun scripts/run-build.ts",
+    "build:workspaces": "bun scripts/run-workspace-script.ts build",
     "test": "bun scripts/run-tests.ts all",
     "test:backend": "bun scripts/run-tests.ts backend",
     "test:frontend": "bun scripts/run-tests.ts frontend",
-    "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
+    "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo",
+    "tsc:workspaces": "bun scripts/run-workspace-script.ts build"
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",

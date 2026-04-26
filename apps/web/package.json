@@ -1,0 +1,16 @@
+{
+  "name": "@ralpher/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/dev-server.ts",
+    "build": "bun src/build.ts"
+  },
+  "dependencies": {
+    "@ralpher/client-sdk": "workspace:*",
+    "@ralpher/contracts": "workspace:*",
+    "@ralpher/shared": "workspace:*",
+    "react": "19.2.5",
+    "react-dom": "19.2.5"
+  }
+}

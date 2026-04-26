@@ -4,6 +4,7 @@
 
 import { serve, type Server } from "bun";
 import index from "./index.html";
+import { posix as pathPosix } from "path";
 import { apiRoutes } from "./api";
 import {
   wrapRouteHandlerWithApplicationAuth,
@@ -32,6 +33,53 @@ import { pushedLoopMonitor } from "./core/pushed-loop-monitor";
 type StoppableServer = {
   stop(closeActiveConnections?: boolean): void;
 };
+
+function getConfiguredWebDistDir(): string | undefined {
+  const configuredDir = process.env["RALPHER_WEB_DIST_DIR"]?.trim();
+  return configuredDir ? configuredDir.replace(/\/+$/, "") : undefined;
+}
+
+function getWebAssetPath(distDir: string, pathname: string): string {
+  const normalizedPath = pathPosix.normalize(pathname === "/" ? "/index.html" : pathname);
+  const segments = normalizedPath
+    .split("/")
+    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
+  return `${distDir}/${segments.join("/")}`;
+}
+
+function decodeWebPathname(pathname: string): string | undefined {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function serveWebApp(req: Request) {
+  const distDir = getConfiguredWebDistDir();
+  if (!distDir) {
+    return index;
+  }
+
+  const url = new URL(req.url);
+  const decodedPathname = decodeWebPathname(url.pathname);
+  if (decodedPathname === undefined) {
+    return new Response("Malformed request path", { status: 400 });
+  }
+
+  const assetPath = getWebAssetPath(distDir, decodedPathname);
+  const assetFile = Bun.file(assetPath);
+  if (await assetFile.exists()) {
+    return new Response(assetFile);
+  }
+
+  const spaIndex = Bun.file(`${distDir}/index.html`);
+  if (await spaIndex.exists()) {
+    return new Response(spaIndex);
+  }
+
+  return index;
+}
 
 function registerServerShutdown(servers: StoppableServer[]): void {
   let alreadyStopped = false;
@@ -168,7 +216,7 @@ export async function startServer(): Promise<void> {
       ...sameOriginProtectedPortForwardRoutes,
       "/api/ws": websocketRoute,
       "/api/ssh-terminal": sshTerminalRoute,
-      "/*": index,
+      "/*": serveWebApp,
     },
     websocket: websocketHandlers,
     development,

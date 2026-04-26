@@ -1,0 +1,16 @@
+{
+  "name": "@ralpher/client-sdk",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "build": "bunx tsc -p tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@ralpher/shared": "workspace:*",
+    "zod": "4.3.6"
+  }
+}
