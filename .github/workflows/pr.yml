@@ -25,3 +25,49 @@ jobs:
 
       - name: Run tests
         run: bun run test
+
+      - name: Smoke test app startup
+        run: |
+          rm -f /tmp/ralpher-pr-smoke.log /tmp/ralpher-pr-health.json
+          RALPHER_PORT=3018 bun run dev > /tmp/ralpher-pr-smoke.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID 2>/dev/null || true' EXIT
+          READY=false
+
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3018/api/health > /tmp/ralpher-pr-health.json 2>/dev/null; then
+              READY=true
+              break
+            fi
+
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "Ralpher exited before becoming ready"
+              cat /tmp/ralpher-pr-smoke.log
+              exit 1
+            fi
+
+            sleep 1
+          done
+
+          if [ "$READY" != "true" ]; then
+            echo "Ralpher did not become ready in time"
+            cat /tmp/ralpher-pr-smoke.log
+            exit 1
+          fi
+
+          html=$(curl --fail --silent http://127.0.0.1:3018/)
+          css_path=$(printf '%s' "$html" | grep -oE '/[^" ]+\.css' | head -n1)
+
+          if [ -z "$css_path" ]; then
+            echo "Could not find a CSS asset in the rendered HTML"
+            cat /tmp/ralpher-pr-smoke.log
+            exit 1
+          fi
+
+          if ! curl --fail --silent "http://127.0.0.1:3018$css_path" | grep -q 'tailwindcss'; then
+            echo "CSS asset did not include processed Tailwind output"
+            cat /tmp/ralpher-pr-smoke.log
+            exit 1
+          fi
+
+          cat /tmp/ralpher-pr-health.json
