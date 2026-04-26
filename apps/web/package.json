@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "bun src/build.ts"
+    "build": "bun src/build.ts",
+    "watch": "bun --watch src/build.ts"
   },
   "dependencies": {
     "@ralpher/client-sdk": "workspace:*",

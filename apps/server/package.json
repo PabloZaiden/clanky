@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun src/dev.ts",
+    "dev:web:build": "cd ../web && bun run build",
+    "dev:web:watch": "cd ../web && bun run watch",
+    "dev:app": "RALPHER_WEB_DIST_DIR=../web/dist bun --hot src/index.ts",
+    "dev": "bun run dev:web:build && sh -c 'bun run dev:web:watch & WEB_PID=$!; trap \"kill $WEB_PID 2>/dev/null || true\" EXIT INT TERM; bun run dev:app'",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun src/build.ts"
   },
