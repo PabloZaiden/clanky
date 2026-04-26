@@ -9,9 +9,8 @@ COPY . .
 # Install dependencies
 RUN bun install --frozen-lockfile
 
-# Build the standalone web app and API binary
-RUN cd apps/web && bun run build
-RUN cd apps/api && bun run build
+# Build the standalone server binary
+RUN cd apps/server && bun run build
 
 # Production stage - minimal image
 FROM debian:bookworm-slim
@@ -30,9 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sshpass \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy the standalone API binary and built web app from builder
-COPY --from=builder /app/apps/api/dist/ralpher-api /app/ralpher-api
-COPY --from=builder /app/apps/web/dist /app/web
+# Copy the standalone server binary from builder
+COPY --from=builder /app/apps/server/dist/ralpher /app/ralpher
 
 # Create a non-root user for running the application
 RUN groupadd --system ralpher && \
@@ -49,7 +47,6 @@ ENV RALPHER_PORT=8080
 # Override the default 127.0.0.1 so the container is reachable from outside
 ENV RALPHER_HOST=0.0.0.0
 ENV RALPHER_DATA_DIR=/app/data
-ENV RALPHER_WEB_DIST_DIR=/app/web
 ENV TERM=xterm-256color
 
 # Expose port 8080 (non-root user cannot bind to privileged ports)
@@ -66,4 +63,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 # Run the server
-CMD ["/app/ralpher-api"]
+CMD ["/app/ralpher"]

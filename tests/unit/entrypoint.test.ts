@@ -2,32 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { parseMainCommand, runMain } from "../../src/entrypoint";
 
 describe("entrypoint", () => {
-  test("requires an explicit command instead of defaulting to server mode", () => {
+  test("requires an explicit cli command", () => {
     expect(parseMainCommand([])).toEqual({ action: "help", exitCode: 1 });
     expect(parseMainCommand(["--help"])).toEqual({ action: "help", exitCode: 0 });
   });
 
-  test("starts the server only for the explicit web command", async () => {
-    let serverStarted = false;
-
-    const exitCode = await runMain(["web"], {
-      startServerFn: async () => {
-        serverStarted = true;
-      },
-    });
-
-    expect(exitCode).toBeUndefined();
-    expect(serverStarted).toBe(true);
-  });
-
-  test("dispatches non-web commands through the CLI runtime", async () => {
-    let serverStarted = false;
+  test("dispatches commands through the CLI runtime", async () => {
     let receivedCliArgs: string[] | null = null;
 
     const exitCode = await runMain(["status"], {
-      startServerFn: async () => {
-        serverStarted = true;
-      },
       runCliFn: async (args: string[]) => {
         receivedCliArgs = args;
         return 0;
@@ -35,15 +18,14 @@ describe("entrypoint", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(serverStarted).toBe(false);
     expect(receivedCliArgs).not.toBeNull();
     expect(receivedCliArgs!).toEqual(["status"]);
   });
 
-  test("docker runs the API binary with the built web bundle", async () => {
+  test("docker runs the standalone server binary", async () => {
     const dockerfile = await Bun.file(new URL("../../Dockerfile", import.meta.url)).text();
-    expect(dockerfile).toContain('COPY --from=builder /app/apps/web/dist /app/web');
-    expect(dockerfile).toContain("ENV RALPHER_WEB_DIST_DIR=/app/web");
-    expect(dockerfile).toContain('CMD ["/app/ralpher-api"]');
+    expect(dockerfile).toContain("RUN cd apps/server && bun run build");
+    expect(dockerfile).toContain('COPY --from=builder /app/apps/server/dist/ralpher /app/ralpher');
+    expect(dockerfile).toContain('CMD ["/app/ralpher"]');
   });
 });

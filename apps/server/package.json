@@ -1,9 +1,9 @@
 {
-  "name": "@ralpher/api",
+  "name": "@ralpher/server",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/index.ts",
+    "dev": "bun src/dev.ts",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun src/build.ts"
   },

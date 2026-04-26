@@ -58,7 +58,7 @@ function decodeWebPathname(pathname: string): string | undefined {
 export async function serveWebApp(req: Request) {
   const distDir = getConfiguredWebDistDir();
   if (!distDir) {
-    return index;
+    return new Response("RALPHER_WEB_DIST_DIR is not configured.", { status: 500 });
   }
 
   const url = new URL(req.url);
@@ -78,7 +78,11 @@ export async function serveWebApp(req: Request) {
     return new Response(spaIndex);
   }
 
-  return index;
+  return new Response("Configured web dist is missing index.html.", { status: 500 });
+}
+
+export function getWebAppRoute() {
+  return getConfiguredWebDistDir() ? serveWebApp : index;
 }
 
 function registerServerShutdown(servers: StoppableServer[]): void {
@@ -216,7 +220,7 @@ export async function startServer(): Promise<void> {
       ...sameOriginProtectedPortForwardRoutes,
       "/api/ws": websocketRoute,
       "/api/ssh-terminal": sshTerminalRoute,
-      "/*": serveWebApp,
+      "/*": getWebAppRoute(),
     },
     websocket: websocketHandlers,
     development,

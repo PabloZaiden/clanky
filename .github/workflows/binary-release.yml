@@ -42,16 +42,21 @@ jobs:
       - name: Build workspace
         run: bun run build
 
-      - name: Build binary
+      - name: Build server binary
+        run: cd apps/server && bun src/build.ts --target=bun-${{ matrix.target }}
+
+      - name: Build CLI binary
         run: cd apps/cli && bun src/build.ts --target=bun-${{ matrix.target }}
 
-      - name: Rename binary for release
+      - name: Rename binaries for release
         run: |
           mkdir -p dist
-          mv apps/cli/dist/ralpher-cli-${{ matrix.target }} dist/ralpher-${{ github.ref_name }}-${{ matrix.target }}
+          mv apps/server/dist/ralpher-${{ matrix.target }} dist/ralpher-${{ github.ref_name }}-${{ matrix.target }}
+          mv apps/cli/dist/ralpher-cli-${{ matrix.target }} dist/ralpher-cli-${{ github.ref_name }}-${{ matrix.target }}
 
-      - name: Upload binary to release
+      - name: Upload binaries to release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload ${{ github.ref_name }} dist/ralpher-${{ github.ref_name }}-${{ matrix.target }} --clobber
+          gh release upload ${{ github.ref_name }} dist/ralpher-cli-${{ github.ref_name }}-${{ matrix.target }} --clobber

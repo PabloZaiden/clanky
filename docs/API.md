@@ -16,42 +16,42 @@ By default, the API does not require application-level credentials. In productio
 
 When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
 
-`ralpher auth` uses the device flow endpoints, `ralpher status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with those stored tokens, `ralpher ws` opens authenticated websocket sessions against `/api/ws`, `ralpher schema` exposes discoverability metadata for catalogued endpoints, and `ralpher update` checks or installs published release binaries from GitHub Releases.
+`ralpher-cli auth` uses the device flow endpoints, `ralpher-cli status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher-cli api` sends authenticated REST calls with those stored tokens, `ralpher-cli ws` opens authenticated websocket sessions against `/api/ws`, `ralpher-cli schema` exposes discoverability metadata for catalogued endpoints, and `ralpher-cli update` checks or installs published CLI client binaries from GitHub Releases.
 
 ## CLI discovery helpers
 
-The bundled CLI now exposes API discovery directly:
+The standalone `ralpher-cli` binary exposes API discovery directly:
 
 ```bash
-# Start the web server explicitly when running the binary directly
-ralpher web
+# Start the embedded local server
+ralpher
 
 # Print the installed CLI version
-ralpher version
+ralpher-cli version
 
 # Check whether a newer published binary is available
-ralpher update --check
+ralpher-cli update --check
 
 # Update the installed release binary in place
-ralpher update
+ralpher-cli update
 
 # Authenticate against a server
-ralpher auth http://localhost:3000
+ralpher-cli auth http://localhost:3000
 
 # List discoverable endpoints
-ralpher api
+ralpher-cli api
 
 # Invoke an authenticated API request (prints one JSON object)
-ralpher api loops/my-loop --method GET
+ralpher-cli api loops/my-loop --method GET
 
 # Inspect the schema metadata for an endpoint
-ralpher schema auth/device
+ralpher-cli schema auth/device
 
 # Stream websocket events over stdio
-ralpher ws --loop-id my-loop
+ralpher-cli ws --loop-id my-loop
 ```
 
-`ralpher help` includes the same version banner shown by `ralpher version`, which makes it easier to confirm the binary version while browsing the built-in command list. `ralpher update` currently supports only the published Linux and macOS release binaries and should not be used from a Bun source checkout. `ralpher api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `ralpher ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
+`ralpher-cli help` includes the same version banner shown by `ralpher-cli version`, which makes it easier to confirm the client version while browsing the built-in command list. `ralpher-cli update` currently supports only the published Linux and macOS CLI release binaries and should not be used from a Bun source checkout. `ralpher-cli api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `ralpher-cli ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
 
 Example CLI output:
 
@@ -2463,13 +2463,13 @@ wss://example.com/api/ws                # Secure WebSocket
 
 ```bash
 # Connect using stored CLI credentials and stream one loop only
-ralpher ws --loop-id abc-123
+ralpher-cli ws --loop-id abc-123
 
 # Override the base URL explicitly
-ralpher ws https://example.com/ralpher --provisioning-job-id job-42
+ralpher-cli ws https://example.com/ralpher --provisioning-job-id job-42
 ```
 
-`ralpher ws` uses the same stored bearer token and cookie state as `ralpher status` and `ralpher api`. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination.
+`ralpher-cli ws` uses the same stored bearer token and cookie state as `ralpher-cli status` and `ralpher-cli api`. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination.
 
 **Connection Message**
 

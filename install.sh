@@ -6,7 +6,8 @@ set -e
 
 REPO="pablozaiden/ralpher"
 INSTALL_DIR="$HOME/.local/bin"
-BINARY_NAME="ralpher"
+SERVER_BINARY_NAME="ralpher"
+CLI_BINARY_NAME="ralpher-cli"
 
 # Detect OS
 detect_os() {
@@ -56,33 +57,38 @@ fi
 
 echo "Latest version: $LATEST_TAG"
 
-# Construct download URL
-ASSET_NAME="ralpher-$LATEST_TAG-$OS-$ARCH"
-DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$ASSET_NAME"
-
 # Create install directory if needed
 mkdir -p "$INSTALL_DIR"
 
-# Download binary
-echo "Downloading $ASSET_NAME..."
-TEMP_FILE=$(mktemp)
-if ! curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_FILE"; then
-  echo "Error: Failed to download from $DOWNLOAD_URL"
-  rm -f "$TEMP_FILE"
-  exit 1
-fi
+install_binary() {
+  ASSET_PREFIX="$1"
+  BINARY_NAME="$2"
+  ASSET_NAME="$ASSET_PREFIX-$LATEST_TAG-$OS-$ARCH"
+  DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$ASSET_NAME"
+  TEMP_FILE=$(mktemp)
 
-# Move to install directory
-mv "$TEMP_FILE" "$INSTALL_DIR/$BINARY_NAME"
-chmod +x "$INSTALL_DIR/$BINARY_NAME"
+  echo "Downloading $ASSET_NAME..."
+  if ! curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_FILE"; then
+    echo "Error: Failed to download from $DOWNLOAD_URL"
+    rm -f "$TEMP_FILE"
+    exit 1
+  fi
 
-echo "Installed $BINARY_NAME to $INSTALL_DIR/$BINARY_NAME"
+  mv "$TEMP_FILE" "$INSTALL_DIR/$BINARY_NAME"
+  chmod +x "$INSTALL_DIR/$BINARY_NAME"
+  echo "Installed $BINARY_NAME to $INSTALL_DIR/$BINARY_NAME"
+}
+
+install_binary "ralpher" "$SERVER_BINARY_NAME"
+install_binary "ralpher-cli" "$CLI_BINARY_NAME"
 
 # Check if install directory is in PATH
 case ":$PATH:" in
   *":$INSTALL_DIR:"*)
     echo ""
-    echo "Installation complete! Run 'ralpher' to start."
+    echo "Installation complete!"
+    echo "  Run 'ralpher' to start the local server."
+    echo "  Run 'ralpher-cli --help' to use the API client."
     ;;
   *)
     echo ""
@@ -91,6 +97,8 @@ case ":$PATH:" in
     echo "Add it to your shell profile:"
     echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
     echo ""
-    echo "Or run directly with: $INSTALL_DIR/$BINARY_NAME"
+    echo "Or run directly with:"
+    echo "  $INSTALL_DIR/$SERVER_BINARY_NAME"
+    echo "  $INSTALL_DIR/$CLI_BINARY_NAME"
     ;;
 esac

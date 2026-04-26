@@ -1,4 +1,3 @@
-import { startServer } from "../server";
 import { formatRalpherVersion, RALPHER_VERSION } from "../version";
 import {
   getAuthorizedHeaders,
@@ -23,17 +22,16 @@ import { runWsCommand, type CliWsDependencies, type WsCommandOptions } from "./w
 
 const CLI_USAGE = [
   "Usage:",
-  "  ralpher web",
-  "  ralpher version",
-  "  ralpher update [--check] [--version <version>]",
-  "  ralpher auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
-  "  ralpher status [base-url]",
-  "  ralpher api",
-  "  ralpher api <endpoint> [--method <method>] [--payload <json>]",
-  "  ralpher schema <endpoint>",
-  "  ralpher ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
+  "  ralpher-cli version",
+  "  ralpher-cli update [--check] [--version <version>]",
+  "  ralpher-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
+  "  ralpher-cli status [base-url]",
+  "  ralpher-cli api",
+  "  ralpher-cli api <endpoint> [--method <method>] [--payload <json>]",
+  "  ralpher-cli schema <endpoint>",
+  "  ralpher-cli ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
 ].join("\n");
-const CLI_HELP = [formatRalpherVersion(), "", CLI_USAGE].join("\n");
+const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE].join("\n");
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 
@@ -46,9 +44,6 @@ export type CliCommand =
   | {
     action: "help";
     exitCode: number;
-  }
-  | {
-    action: "web";
   }
   | {
       action: "version";
@@ -82,7 +77,6 @@ export interface CliRuntimeDependencies extends CliOutputDependencies {
   fetchFn?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
-  startServerFn?: typeof startServer;
   runCliFn?: typeof runCli;
   updateDependencies?: Partial<CliUpdateDependencies>;
   wsDependencies?: Partial<CliWsDependencies>;
@@ -312,14 +306,6 @@ export function parseCliCommand(args: string[]): CliCommand {
     };
   }
 
-  if (action === "web") {
-    const { positionals } = parseCommandArguments(restArgs, []);
-    if (positionals.length > 0) {
-      throw createUsageError(`Unexpected argument: ${positionals[0]}`);
-    }
-    return { action };
-  }
-
   if (action === "version") {
     const { positionals } = parseCommandArguments(restArgs, []);
     if (positionals.length > 0) {
@@ -461,7 +447,6 @@ export async function runCli(
   const now = dependencies.now ?? (() => new Date());
   const out = dependencies.out ?? console.log;
   const err = dependencies.err ?? console.error;
-  const startServerFn = dependencies.startServerFn ?? startServer;
 
   try {
     const command = parseCliCommand(args);
@@ -469,11 +454,8 @@ export async function runCli(
       case "help":
         out(CLI_HELP);
         return command.exitCode;
-      case "web":
-        await startServerFn();
-        return undefined;
       case "version":
-        out(formatRalpherVersion());
+        out(formatRalpherVersion("ralpher-cli"));
         return 0;
       case "update":
         return await runUpdateCommand(command, {
