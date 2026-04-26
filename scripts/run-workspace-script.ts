@@ -3,7 +3,7 @@ const workspaceDirs = [
   "packages/shared",
   "packages/contracts",
   "packages/client-sdk",
-  "apps/api",
+  "apps/server",
   "apps/web",
   "apps/cli",
   "apps/tui",

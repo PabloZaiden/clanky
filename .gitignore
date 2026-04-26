@@ -42,14 +42,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Ralpher data directory (Docker volume mountable)
 # Keep .gitkeep files but ignore all data
 data/*
-!data/.gitkeep
-!data/loops
-!data/sessions
-data/loops/*
-!data/loops/.gitkeep
-data/sessions/*
-!data/sessions/.gitkeep
+apps/server/data
 
 # Ralpher planning directory
-.planning/*
-!.planning/.gitkeep
+.ralph-planning/*

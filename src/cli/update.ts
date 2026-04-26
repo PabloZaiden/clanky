@@ -4,7 +4,8 @@ import { z } from "zod";
 
 const GITHUB_REPOSITORY = "pablozaiden/ralpher";
 const GITHUB_API_BASE_URL = `https://api.github.com/repos/${GITHUB_REPOSITORY}`;
-const RELEASE_BINARY_PREFIX = "ralpher";
+const RELEASE_BINARY_PREFIX = "ralpher-cli";
+const CLI_BINARY_NAME = "ralpher-cli";
 
 const ReleaseAssetSchema = z.object({
   name: z.string().min(1),
@@ -255,7 +256,9 @@ async function resolveInstalledBinaryPath(dependencies: CliUpdateDependencies): 
   const executablePath = dependencies.getExecutablePath();
   const executableName = basename(executablePath);
   if (executableName === "bun" || executableName.startsWith("bun-")) {
-    throw new Error("ralpher update only works from an installed Ralpher binary. Use install.sh when running from source.");
+    throw new Error(
+      "ralpher-cli update only works from an installed Ralpher CLI binary. Use install.sh when running from source.",
+    );
   }
   return await dependencies.resolveRealPath(executablePath);
 }
@@ -263,10 +266,10 @@ async function resolveInstalledBinaryPath(dependencies: CliUpdateDependencies): 
 function formatCheckMessage(currentVersion: string, targetVersion: string): string {
   const comparison = compareReleaseVersions(currentVersion, targetVersion);
   if (comparison === 0) {
-    return `ralpher ${currentVersion} is up to date.`;
+    return `${CLI_BINARY_NAME} ${currentVersion} is up to date.`;
   }
   if (comparison > 0) {
-    return `ralpher ${currentVersion} is newer than the latest published release ${targetVersion}.`;
+    return `${CLI_BINARY_NAME} ${currentVersion} is newer than the latest published release ${targetVersion}.`;
   }
   return `Update available: ${currentVersion} -> ${targetVersion}`;
 }
@@ -341,16 +344,16 @@ export async function runUpdateCommand(
   }
 
   if (command.version && compareReleaseVersions(currentVersion, releaseAsset.version) === 0) {
-    dependencies.out(`ralpher ${currentVersion} is already installed.`);
+    dependencies.out(`${CLI_BINARY_NAME} ${currentVersion} is already installed.`);
     return 0;
   }
 
   const installedPath = await replaceInstalledBinary(releaseAsset, dependencies);
   if (command.version) {
-    dependencies.out(`Installed ralpher ${releaseAsset.version} at ${installedPath}.`);
+    dependencies.out(`Installed ${CLI_BINARY_NAME} ${releaseAsset.version} at ${installedPath}.`);
     return 0;
   }
 
-  dependencies.out(`Updated ralpher ${currentVersion} -> ${releaseAsset.version} at ${installedPath}.`);
+  dependencies.out(`Updated ${CLI_BINARY_NAME} ${currentVersion} -> ${releaseAsset.version} at ${installedPath}.`);
   return 0;
 }

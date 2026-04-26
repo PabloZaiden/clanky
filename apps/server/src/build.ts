@@ -13,8 +13,8 @@ const target = targetArg?.split("=")[1] as
   | "bun-windows-x64"
   | undefined;
 const outfile = target?.startsWith("bun-windows")
-  ? `${tempOutputDir}/ralpher-api.exe`
-  : `${tempOutputDir}/ralpher-api`;
+  ? `${tempOutputDir}/ralpher.exe`
+  : `${tempOutputDir}/ralpher`;
 
 let buildSucceeded = false;
 
@@ -43,7 +43,7 @@ try {
     process.exitCode = 1;
   } else {
     await Bun.$`mkdir -p ${outputDir}`.quiet();
-    const destName = target ? `ralpher-api-${target.replace("bun-", "")}` : "ralpher-api";
+    const destName = target ? `ralpher-${target.replace("bun-", "")}` : "ralpher";
     const destPath = `${outputDir}/${destName}`;
     await Bun.write(destPath, Bun.file(outfile));
     if (!target?.startsWith("bun-windows")) {

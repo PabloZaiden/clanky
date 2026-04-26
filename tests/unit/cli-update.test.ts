@@ -42,7 +42,7 @@ describe("ralpher cli update", () => {
     expect(buildReleaseAssetName("v1.2.3", {
       os: "linux",
       arch: "arm64",
-    })).toBe("ralpher-v1.2.3-linux-arm64");
+    })).toBe("ralpher-cli-v1.2.3-linux-arm64");
   });
 
   test("compares semver versions including prereleases", () => {
@@ -79,8 +79,8 @@ describe("ralpher cli update", () => {
           tag_name: "v1.2.4",
           assets: [
             {
-              name: "ralpher-v1.2.4-linux-x64",
-              browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
+              name: "ralpher-cli-v1.2.4-linux-x64",
+              browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
             },
           ],
         });
@@ -114,15 +114,15 @@ describe("ralpher cli update", () => {
           tag_name: "v1.2.4",
           assets: [
             {
-              name: "ralpher-v1.2.4-linux-x64",
-              browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
+              name: "ralpher-cli-v1.2.4-linux-x64",
+              browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
             },
           ],
         });
       }),
       getExecutablePath: () => {
         executablePathResolved = true;
-        return "/usr/local/bin/ralpher";
+        return "/usr/local/bin/ralpher-cli";
       },
     });
 
@@ -132,7 +132,7 @@ describe("ralpher cli update", () => {
       "https://api.github.com/repos/pablozaiden/ralpher/releases/latest",
     ]);
     expect(output).toEqual([
-      "ralpher 1.2.4 is up to date.",
+      "ralpher-cli 1.2.4 is up to date.",
     ]);
   });
 
@@ -158,8 +158,8 @@ describe("ralpher cli update", () => {
             tag_name: "v1.2.4",
             assets: [
               {
-                name: "ralpher-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
+                name: "ralpher-cli-v1.2.4-linux-x64",
+                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
               },
             ],
           });
@@ -167,7 +167,7 @@ describe("ralpher cli update", () => {
 
         return binaryResponse(200, "next-binary");
       }),
-      getExecutablePath: () => "/usr/local/bin/ralpher",
+      getExecutablePath: () => "/usr/local/bin/ralpher-cli",
       resolveRealPath: async (path: string) => `/resolved${path}`,
       createTempDirectory: async (targetDirectory: string) => `${targetDirectory}/.ralpher-update-temp`,
       writeBinary: async (path: string) => {
@@ -190,29 +190,29 @@ describe("ralpher cli update", () => {
     expect(exitCode).toBe(0);
     expect(requests).toEqual([
       "https://api.github.com/repos/pablozaiden/ralpher/releases/latest",
-      "https://downloads.test/ralpher-v1.2.4-linux-x64",
+      "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
     ]);
     expect(writes).toEqual([
-      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-v1.2.4-linux-x64",
+      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
     ]);
     expect(chmods).toEqual([
       {
-        path: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-v1.2.4-linux-x64",
+        path: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
         mode: 0o755,
       },
     ]);
     expect(renames).toEqual([
       {
-        from: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-v1.2.4-linux-x64",
-        to: "/resolved/usr/local/bin/ralpher",
+        from: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
+        to: "/resolved/usr/local/bin/ralpher-cli",
       },
     ]);
     expect(removals).toEqual([
-      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-v1.2.4-linux-x64",
+      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
       "/resolved/usr/local/bin/.ralpher-update-temp",
     ]);
     expect(output).toEqual([
-      "Updated ralpher 1.2.3 -> 1.2.4 at /resolved/usr/local/bin/ralpher.",
+      "Updated ralpher-cli 1.2.3 -> 1.2.4 at /resolved/usr/local/bin/ralpher-cli.",
     ]);
   });
 
@@ -228,8 +228,8 @@ describe("ralpher cli update", () => {
             tag_name: "v1.2.4",
             assets: [
               {
-                name: "ralpher-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
+                name: "ralpher-cli-v1.2.4-linux-x64",
+                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
               },
             ],
           });
@@ -243,7 +243,7 @@ describe("ralpher cli update", () => {
           platform: "linux",
           arch: "x64",
         }),
-        getExecutablePath: () => "/usr/local/bin/ralpher",
+        getExecutablePath: () => "/usr/local/bin/ralpher-cli",
         resolveRealPath: async (path: string) => path,
         createTempDirectory: async (targetDirectory: string) => `${targetDirectory}/.ralpher-update-temp`,
         writeBinary: async () => undefined,
@@ -262,7 +262,7 @@ describe("ralpher cli update", () => {
 
     expect(exitCode).toBe(1);
     expect(output).toEqual([
-      "ERR:Error: Cannot update /usr/local/bin/ralpher: permission denied. Re-run with permission to modify the installed binary or use the installer script.",
+      "ERR:Error: Cannot update /usr/local/bin/ralpher-cli: permission denied. Re-run with permission to modify the installed binary or use the installer script.",
     ]);
   });
 
@@ -278,8 +278,8 @@ describe("ralpher cli update", () => {
             tag_name: "v1.2.4",
             assets: [
               {
-                name: "ralpher-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
+                name: "ralpher-cli-v1.2.4-linux-x64",
+                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
               },
             ],
           });
@@ -293,7 +293,7 @@ describe("ralpher cli update", () => {
           platform: "linux",
           arch: "x64",
         }),
-        getExecutablePath: () => "/usr/local/bin/ralpher",
+        getExecutablePath: () => "/usr/local/bin/ralpher-cli",
         resolveRealPath: async (path: string) => path,
         createTempDirectory: async () => {
           const error = new Error("permission denied") as Error & { code?: string };
@@ -305,7 +305,7 @@ describe("ralpher cli update", () => {
 
     expect(exitCode).toBe(1);
     expect(output).toEqual([
-      "ERR:Error: Cannot update /usr/local/bin/ralpher: permission denied. Re-run with permission to modify the installed binary or use the installer script.",
+      "ERR:Error: Cannot update /usr/local/bin/ralpher-cli: permission denied. Re-run with permission to modify the installed binary or use the installer script.",
     ]);
   });
 
@@ -327,8 +327,8 @@ describe("ralpher cli update", () => {
             tag_name: "v1.2.4",
             assets: [
               {
-                name: "ralpher-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
+                name: "ralpher-cli-v1.2.4-linux-x64",
+                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
               },
             ],
           });
@@ -336,7 +336,7 @@ describe("ralpher cli update", () => {
 
         return binaryResponse(200, "next-binary");
       }),
-      getExecutablePath: () => "/usr/local/bin/ralpher",
+      getExecutablePath: () => "/usr/local/bin/ralpher-cli",
       resolveRealPath: async (path: string) => path,
       createTempDirectory: async (targetDirectory: string) => `${targetDirectory}/.ralpher-update-temp`,
       writeBinary: async () => undefined,
@@ -351,10 +351,10 @@ describe("ralpher cli update", () => {
     expect(exitCode).toBe(0);
     expect(requests).toEqual([
       "https://api.github.com/repos/pablozaiden/ralpher/releases/tags/v1.2.4",
-      "https://downloads.test/ralpher-v1.2.4-linux-x64",
+      "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
     ]);
     expect(output).toEqual([
-      "Installed ralpher 1.2.4 at /usr/local/bin/ralpher.",
+      "Installed ralpher-cli 1.2.4 at /usr/local/bin/ralpher-cli.",
     ]);
   });
 });

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { serveWebApp } from "../../src/server";
+import index from "../../src/index.html";
+import { getWebAppRoute, serveWebApp } from "../../src/server";
 
 describe("serveWebApp", () => {
   const originalWebDistDir = process.env["RALPHER_WEB_DIST_DIR"];
@@ -22,6 +23,16 @@ describe("serveWebApp", () => {
     }
 
     process.env["RALPHER_WEB_DIST_DIR"] = originalWebDistDir;
+  });
+
+  test("uses Bun's HTML bundle route when no web dist is configured", () => {
+    delete process.env["RALPHER_WEB_DIST_DIR"];
+
+    expect(getWebAppRoute()).toBe(index);
+  });
+
+  test("uses the dist-serving handler when a web dist is configured", () => {
+    expect(getWebAppRoute()).toBe(serveWebApp);
   });
 
   test("returns 400 for malformed percent-encoded SPA paths", async () => {

@@ -1,14 +1,11 @@
 /**
- * Main binary entrypoint for the Ralpher server and CLI.
+ * Main binary entrypoint for the standalone Ralpher server.
  */
 
-import { runMain } from "./entrypoint";
+import { startServer } from "./server";
 
 try {
-  const exitCode = await runMain(Bun.argv.slice(2));
-  if (exitCode !== undefined) {
-    process.exit(exitCode);
-  }
+  await startServer();
 } catch (error) {
   console.error(`Fatal error during startup: ${String(error)}`);
   process.exit(1);

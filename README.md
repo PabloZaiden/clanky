@@ -9,9 +9,9 @@ Ralpher is a web dashboard and REST API for running, reviewing, and iterating on
 
 The repository is organized as a workspace-style monorepo:
 
-- `apps/api` - Bun API server and optional same-origin static web serving
-- `apps/web` - standalone browser app
-- `apps/cli` - standalone CLI client
+- `apps/server` - Bun server that embeds and serves the web app alongside the API
+- `apps/web` - browser bundle workspace for the shared web app assets
+- `apps/cli` - standalone API client CLI
 - `apps/tui` and `apps/electron` - reserved stubs for future client surfaces
 - `packages/shared`, `packages/contracts`, `packages/client-sdk` - shared runtime-neutral types/helpers, API contracts, and client transport/auth utilities
 
@@ -58,25 +58,25 @@ The recommended workflow is to treat Ralpher as a controller for SSH-backed deve
 
 ## Installation
 
-Install the latest binary:
+Install the latest binaries:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/ralpher/main/install.sh | sh
 ```
 
-The installer downloads the correct release for Linux or macOS (`x64` or `arm64`) and installs `ralpher` to `~/.local/bin/ralpher`.
+The installer downloads the correct release assets for Linux or macOS (`x64` or `arm64`) and installs both `ralpher` and `ralpher-cli` to `~/.local/bin/`.
 
 You can also download binaries directly from the [Releases page](https://github.com/pablozaiden/ralpher/releases/latest).
 
-Once installed from a release binary, you can check for updates in place:
+Once installed from a release binary, you can update the CLI client in place:
 
 ```bash
-ralpher update --check
-ralpher update
-ralpher update --version v0.8.1
+ralpher-cli update --check
+ralpher-cli update
+ralpher-cli update --version v0.8.1
 ```
 
-`ralpher update` is currently supported for the published Linux and macOS release binaries only. If you are running Ralpher from source with Bun, use the installer script or download a release binary instead of self-updating.
+`ralpher-cli update` is currently supported for the published Linux and macOS CLI client binaries only. If you are running Ralpher from source with Bun, use the installer script or download release binaries instead of self-updating.
 
 ## Quick start
 
@@ -90,64 +90,60 @@ ralpher update --version v0.8.1
 ### Run Ralpher
 
 ```bash
-# Installed binary
-ralpher web
+# Installed server binary (embedded API + web, same-origin)
+ralpher
 
-# Development (API server, same-origin mode)
+# Source development (combined API + web, same-origin)
 bun dev
 
-# Standalone web app development
-bun run dev:web
+# Server process only
+bun run dev:server
 ```
 
 The UI is available at `http://localhost:3000` by default. Use `RALPHER_PORT` to change the port and `RALPHER_HOST` to change the bind address.
 
-For split development, run the API app and web app separately:
+The normal development and published runtime is same-origin: the Bun server hosts the React app and the API together, and the frontend defaults to relative `/api` requests.
+In development, `bun dev` watches the shared web bundle in `apps/web/dist` and serves that processed output from the server so Tailwind/CSS behaves the same way as the bundled app.
 
-```bash
-bun run dev:api
-bun run dev:web
-```
+### CLI client commands
 
-### CLI commands
-
-The same binary now exposes an initial terminal client surface:
+The separately installed `ralpher-cli` binary exposes the terminal client surface:
 
 ```bash
 # Check which version is installed
-ralpher version
+ralpher-cli version
 
 # Check whether a newer published binary is available
-ralpher update --check
+ralpher-cli update --check
 
 # Update the installed release binary in place
-ralpher update
+ralpher-cli update
 
 # Install a specific published release
-ralpher update --version v0.8.1
+ralpher-cli update --version v0.8.1
 
 # Start device authorization against a specific Ralpher server
-ralpher auth http://localhost:3000
+ralpher-cli auth http://localhost:3000
 
 # Check whether stored CLI credentials are still valid
-ralpher status
+ralpher-cli status
 
 # List the discoverable REST endpoints
-ralpher api
+ralpher-cli api
 
 # Invoke an authenticated API request (prints one JSON object)
-ralpher api loops/my-loop --method GET
+ralpher-cli api loops/my-loop --method GET
 
 # Inspect the expected schema for an endpoint
-ralpher schema auth/device
+ralpher-cli schema auth/device
 
 # Stream authenticated websocket events over stdio
-ralpher ws --loop-id my-loop
+ralpher-cli ws --loop-id my-loop
 ```
 
-`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher update --check` compares the installed version with the latest published GitHub Release, `ralpher update` replaces the current installed binary in place, and `ralpher update --version <tag>` installs a specific published release. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status`, `ralpher api`, and `ralpher ws` requests reuse that same server automatically. `ralpher status` and `ralpher ws` both accept an optional positional base URL override if you need a different target server. When `ralpher api <endpoint>` calls an endpoint, it prints a single parseable JSON object with the HTTP status metadata under `status` and the parsed body, plain-text body, or `null` under `response`.
+`ralpher-cli version` prints the installed client version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher-cli update --check` compares the installed version with the latest published GitHub Release, `ralpher-cli update` replaces the current installed client binary in place, and `ralpher-cli update --version <tag>` installs a specific published CLI release. `ralpher-cli auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher-cli status`, `ralpher-cli api`, and `ralpher-cli ws` requests reuse that same server automatically. `ralpher-cli status` and `ralpher-cli ws` both accept an optional positional base URL override if you need a different target server. When `ralpher-cli api <endpoint>` calls an endpoint, it prints a single parseable JSON object with the HTTP status metadata under `status` and the parsed body, plain-text body, or `null` under `response`.
 
-`ralpher ws` connects to `/api/ws` with the stored bearer token and cookies, then bridges websocket text frames to stdout and stdin lines back to the websocket. Use one JSON value per non-empty stdin line and keep stderr reserved for diagnostics. Supported filters mirror the server query parameters: `--loop-id`, `--chat-id`, `--ssh-session-id`, `--ssh-server-session-id`, and `--provisioning-job-id`.
+`ralpher-cli ws` connects to `/api/ws` with the stored bearer token and cookies, then bridges websocket text frames to stdout and stdin lines back to the websocket. Use one JSON value per non-empty stdin line and keep stderr reserved for diagnostics. Supported filters mirror the server query parameters: `--loop-id`, `--chat-id`, `--ssh-session-id`, `--ssh-server-session-id`, and `--provisioning-job-id`.
 
 ### Create your first loop
 
@@ -197,7 +193,7 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 - Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
-- `ralpher auth` stores bearer credentials in per-user CLI state under the home directory, `ralpher status` validates them through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with the stored tokens, `ralpher ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `ralpher schema` exposes endpoint discoverability data from the built-in API catalog.
+- `ralpher-cli auth` stores bearer credentials in per-user CLI state under the home directory, `ralpher-cli status` validates them through `GET /api/auth/status`, `ralpher-cli api` sends authenticated REST calls with the stored tokens, `ralpher-cli ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `ralpher-cli schema` exposes endpoint discoverability data from the built-in API catalog.
 - Ralpher exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `RALPHER_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
@@ -220,7 +216,7 @@ volumes:
   ralpher-data:
 ```
 
-The container listens on port `8080` by default and still starts the web server automatically. Local/native runs use the explicit `ralpher web` command and default to port `3000` unless you override `RALPHER_PORT`.
+The container listens on port `8080` by default and starts the same embedded server product that the `ralpher` binary runs locally. Docker overrides the bind host to `0.0.0.0`; local/native runs default to `127.0.0.1` unless you override `RALPHER_HOST`.
 
 ## Documentation
 
@@ -239,6 +235,7 @@ bun dev
 ```
 
 `bun run build` creates a standalone executable in `dist/ralpher`.
+It also builds `apps/server/dist/ralpher` and `apps/cli/dist/ralpher-cli`.
 
 To repopulate local demo data for the UI, run:
 

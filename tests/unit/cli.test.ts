@@ -14,17 +14,16 @@ import {
 
 const CLI_USAGE = [
   "Usage:",
-  "  ralpher web",
-  "  ralpher version",
-  "  ralpher update [--check] [--version <version>]",
-  "  ralpher auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
-  "  ralpher status [base-url]",
-  "  ralpher api",
-  "  ralpher api <endpoint> [--method <method>] [--payload <json>]",
-  "  ralpher schema <endpoint>",
-  "  ralpher ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
+  "  ralpher-cli version",
+  "  ralpher-cli update [--check] [--version <version>]",
+  "  ralpher-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
+  "  ralpher-cli status [base-url]",
+  "  ralpher-cli api",
+  "  ralpher-cli api <endpoint> [--method <method>] [--payload <json>]",
+  "  ralpher-cli schema <endpoint>",
+  "  ralpher-cli ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
 ].join("\n");
-const CLI_HELP = [formatRalpherVersion(), "", CLI_USAGE].join("\n");
+const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE].join("\n");
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -126,7 +125,7 @@ describe("ralpher cli", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(output).toEqual([formatRalpherVersion()]);
+    expect(output).toEqual([formatRalpherVersion("ralpher-cli")]);
   });
 
   test("shows the current version in help output", async () => {

@@ -9,12 +9,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run dev:api",
-    "dev:api": "cd apps/api && bun run dev",
-    "dev:web": "cd apps/web && bun run dev",
+    "dev": "bun run dev:server",
+    "dev:server": "cd apps/server && bun run dev",
     "dev:cli": "cd apps/cli && bun run dev",
-    "start": "bun run start:api",
-    "start:api": "cd apps/api && bun run start",
+    "start": "bun run start:server",
+    "start:server": "cd apps/server && bun run start",
     "build": "bun scripts/run-build.ts",
     "build:workspaces": "bun scripts/run-workspace-script.ts build",
     "test": "bun scripts/run-tests.ts all",
