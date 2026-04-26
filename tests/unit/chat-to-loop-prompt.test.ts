@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PersistedMessage } from "@/types/loop";
-import { buildSpawnLoopName, buildSpawnLoopPrompt } from "@/utils/chat-to-loop-prompt";
+import { buildSpawnCurrentPlanPrompt, buildSpawnLoopName, buildSpawnLoopPrompt } from "@/utils/chat-to-loop-prompt";
 
 function createMessage(overrides: Partial<PersistedMessage>): PersistedMessage {
   return {
@@ -121,5 +121,9 @@ describe("chat-to-loop-prompt", () => {
 
     expect(name.startsWith("Plan from ")).toBe(true);
     expect(name.length).toBeLessThanOrEqual(100);
+  });
+
+  test("builds a concise prompt for current-plan spawning", () => {
+    expect(buildSpawnCurrentPlanPrompt()).toBe("Implement the existing plan in .ralph-planning/plan.md.");
   });
 });

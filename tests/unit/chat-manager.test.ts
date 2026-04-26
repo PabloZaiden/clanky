@@ -2128,6 +2128,8 @@ describe("ChatManager", () => {
 
     expect(spawned.config.autoAcceptPlan).toBe(false);
     expect(spawned.config.fullyAutonomous).toBe(false);
+    expect(spawned.config.prompt).toBe("Implement the existing plan in .ralph-planning/plan.md.");
+    expect(spawned.config.prompt).not.toContain("Turn this chat into a seeded plan loop");
     expect(spawned.state.status).toBe("planning");
     expect(spawned.state.planMode?.isPlanReady).toBe(true);
     expect(spawned.state.planMode?.planContent).toContain("Imported plan");

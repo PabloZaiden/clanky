@@ -119,6 +119,10 @@ export function buildSpawnLoopName(chatName: string): string {
   return `${prefix}${trimmed.slice(0, available)}`;
 }
 
+export function buildSpawnCurrentPlanPrompt(): string {
+  return "Implement the existing plan in .ralph-planning/plan.md.";
+}
+
 export function buildSpawnLoopPrompt(chatName: string, messages: readonly PersistedMessage[]): string {
   const formattedMessages = messages
     .map((message) => formatMessage(message))
