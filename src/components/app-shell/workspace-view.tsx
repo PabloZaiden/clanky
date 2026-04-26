@@ -88,7 +88,7 @@ export function WorkspaceView({
       }
 
       const branchLabel = result.defaultBranch ?? result.currentBranch ?? "the default branch";
-      toast.error(`Pulled latest changes for "${branchLabel}".`);
+      toast.success(`Pulled latest changes for "${branchLabel}".`);
     } catch (error) {
       toast.error(String(error));
     } finally {

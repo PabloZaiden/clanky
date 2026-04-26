@@ -11,37 +11,44 @@ import type { ReactNode } from "react";
 import { ToastContext, useToastState, type Toast as ToastData } from "../../hooks/useToast";
 
 /**
- * Color classes for error toasts.
+ * Visual configuration for each toast variant.
  */
-const TOAST_STYLES = {
-  bg: "bg-neutral-900/95",
-  border: "border-red-600/50",
-  icon: "text-red-400",
+const TOAST_VARIANTS = {
+  error: {
+    bg: "bg-neutral-900/95",
+    border: "border-red-600/50",
+    icon: "text-red-400",
+    iconPath: "M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z",
+  },
+  success: {
+    bg: "bg-neutral-900/95",
+    border: "border-emerald-600/50",
+    icon: "text-emerald-400",
+    iconPath: "M9 12.75 11.25 15 15 9.75m6 2.25a9 9 0 11-18 0 9 9 0 0118 0Z",
+  },
 };
-
-/**
- * SVG path for the error toast icon.
- */
-const TOAST_ICON = "M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z";
 
 /**
  * A single toast notification item.
  */
 function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: (id: string) => void }) {
+  const variant = TOAST_VARIANTS[toast.variant];
+
   return (
     <div
       role="alert"
-      className={`flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg backdrop-blur-sm max-w-sm animate-slide-in ${TOAST_STYLES.bg} ${TOAST_STYLES.border}`}
+      data-toast-variant={toast.variant}
+      className={`flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg backdrop-blur-sm max-w-sm animate-slide-in ${variant.bg} ${variant.border}`}
     >
       {/* Icon */}
       <svg
-        className={`w-5 h-5 flex-shrink-0 mt-0.5 ${TOAST_STYLES.icon}`}
+        className={`w-5 h-5 flex-shrink-0 mt-0.5 ${variant.icon}`}
         fill="none"
         viewBox="0 0 24 24"
         strokeWidth={1.5}
         stroke="currentColor"
       >
-        <path strokeLinecap="round" strokeLinejoin="round" d={TOAST_ICON} />
+        <path strokeLinecap="round" strokeLinejoin="round" d={variant.iconPath} />
       </svg>
 
       {/* Message */}
@@ -97,6 +104,7 @@ function ToastContainer({ toasts, onDismiss }: { toasts: ToastData[]; onDismiss:
  * ```tsx
  * const toast = useToast();
  * toast.error("Something went wrong");
+ * toast.success("Saved");
  * ```
  */
 export function ToastProvider({ children }: { children: ReactNode }) {

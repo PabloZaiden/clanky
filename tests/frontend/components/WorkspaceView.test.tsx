@@ -147,5 +147,44 @@ describe("WorkspaceView", () => {
     await waitFor(() => {
       expect(callCount).toBe(1);
     });
+
+    await waitFor(() => {
+      const toast = getByRole("alert");
+      expect(toast.textContent).toContain("Pulled latest changes for \"main\".");
+      expect(toast.getAttribute("data-toast-variant")).toBe("success");
+    });
+  });
+
+  test("shows an error toast when pull latest fails", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+    });
+
+    const { getByRole, user } = renderWithUser(
+      <WorkspaceView
+        workspace={workspace}
+        relatedLoops={[]}
+        relatedChats={[]}
+        relatedSessions={[]}
+        registeredSshServers={[]}
+        onOpenSettings={() => {}}
+        onPullLatestChanges={async () => ({
+          success: false,
+          error: "Git pull failed",
+        })}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Workspace actions for Frontend" }));
+    await user.click(getByRole("menuitem", { name: "Pull Latest Changes" }));
+
+    await waitFor(() => {
+      const toast = getByRole("alert");
+      expect(toast.textContent).toContain("Git pull failed");
+      expect(toast.getAttribute("data-toast-variant")).toBe("error");
+    });
   });
 });
