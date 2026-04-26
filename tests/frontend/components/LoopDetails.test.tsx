@@ -724,7 +724,7 @@ describe("actions tab content", () => {
       return { success: true };
     });
 
-    const { getAllByText, getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Stopped Loop")).toBeTruthy();
