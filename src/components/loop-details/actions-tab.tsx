@@ -67,9 +67,14 @@ export function ActionsTab({
     : null;
   const hasExistingPullRequest = pullRequestDestination?.enabled === true
     && pullRequestDestination.destinationType === "existing_pr";
+  const showPullRequestAutoMerge = hasExistingPullRequest || pullRequestAutoMergeSubmitting;
 
   return (
-    <div className={loopDetailsTabScrollContainerClassName}>
+    <div
+      role="region"
+      aria-label="Actions"
+      className={loopDetailsTabScrollContainerClassName}
+    >
       <div className={`${loopDetailsTabContentFullWidthClassName} space-y-4`}>
         <div className="min-w-0 space-y-2">
           {isPlanning ? (
@@ -218,31 +223,29 @@ export function ActionsTab({
                     </button>
                   )}
 
-                  <button
-                    type="button"
-                    onClick={onEnablePullRequestAutoMerge}
-                    disabled={loadingPullRequestDestination || pullRequestAutoMergeSubmitting || !hasExistingPullRequest}
-                    className="w-full flex items-center gap-4 p-3 rounded-lg border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                      <span className="text-emerald-700 dark:text-emerald-300 text-sm">⇢</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {pullRequestAutoMergeSubmitting ? "Enabling Auto-Merge..." : "Enable Auto-Merge"}
+                  {showPullRequestAutoMerge && (
+                    <button
+                      type="button"
+                      onClick={onEnablePullRequestAutoMerge}
+                      disabled={loadingPullRequestDestination || pullRequestAutoMergeSubmitting || !hasExistingPullRequest}
+                      className="w-full flex items-center gap-4 p-3 rounded-lg border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                        <span className="text-emerald-700 dark:text-emerald-300 text-sm">⇢</span>
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {loadingPullRequestDestination
-                          ? "Checking whether this loop already has a GitHub pull request..."
-                          : hasExistingPullRequest
-                          ? "Ask GitHub to merge this pull request automatically once all merge requirements are satisfied."
-                          : pullRequestDestination?.enabled
-                          ? "Create the pull request first, then come back here to enable auto-merge."
-                          : pullRequestDestination?.disabledReason ?? "Auto-merge is unavailable until a GitHub pull request exists."}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {pullRequestAutoMergeSubmitting ? "Enabling Auto-Merge..." : "Enable Auto-Merge"}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {loadingPullRequestDestination
+                            ? "Checking whether this loop already has a GitHub pull request..."
+                            : "Ask GitHub to merge this pull request automatically once all merge requirements are satisfied."}
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-gray-400 dark:text-gray-500">→</span>
-                  </button>
+                      <span className="text-gray-400 dark:text-gray-500">→</span>
+                    </button>
+                  )}
                 </>
               )}
               {state.reviewMode?.addressable && state.status !== "deleted" && (

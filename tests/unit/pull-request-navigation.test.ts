@@ -89,10 +89,11 @@ describe("pull request navigation", () => {
     expect(validateExistingPullRequestUrl("https://github.com/owner/repo/issues/42")).toBeNull();
   });
 
-  test("returns an existing PR URL when gh pr view succeeds", async () => {
+  test("returns an existing PR URL when gh pr view succeeds for the loop working branch", async () => {
     const loop = createLoopWithStatus("pushed");
     const executor = new StubExecutor();
     const git = new StubGitService();
+    const workingBranch = loop.state.git?.workingBranch ?? "";
 
     executor.addResponse("gh", ["--version"], {
       success: true,
@@ -100,7 +101,7 @@ describe("pull request navigation", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "view", "--json", "url", "-q", ".url"], {
+    executor.addResponse("gh", ["pr", "view", workingBranch, "--json", "url", "-q", ".url"], {
       success: true,
       stdout: "https://github.com/owner/repo/pull/42\n",
       stderr: "",
@@ -137,7 +138,7 @@ describe("pull request navigation", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "view", "--json", "url", "-q", ".url"], {
+    executor.addResponse("gh", ["pr", "view", "feature/test-pr", "--json", "url", "-q", ".url"], {
       success: false,
       stdout: "",
       stderr: "no pull requests found for branch \"feature/test-pr\"",
@@ -174,7 +175,7 @@ describe("pull request navigation", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "view", "--json", "url", "-q", ".url"], {
+    executor.addResponse("gh", ["pr", "view", "feature/test-pr", "--json", "url", "-q", ".url"], {
       success: true,
       stdout: "not-a-valid-url\n",
       stderr: "",
@@ -232,7 +233,7 @@ describe("pull request navigation", () => {
       stderr: "",
       exitCode: 0,
     });
-    executor.addResponse("gh", ["pr", "view", "--json", "url", "-q", ".url"], {
+    executor.addResponse("gh", ["pr", "view", "feature/from-default", "--json", "url", "-q", ".url"], {
       success: false,
       stdout: "",
       stderr: "no pull requests found",
