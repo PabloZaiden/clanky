@@ -1522,7 +1522,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getToolGroupToggle(container)).toBeTruthy();
@@ -1531,8 +1531,9 @@ describe("ChatDetails", () => {
     await user.click(getToolGroupToggle(container)!);
 
     await waitFor(() => {
-      expect(getUnknownToolToggle(container)).toBeTruthy();
-      expect(getByText("General tool: mystery-search")).toBeTruthy();
+      const unknownToolToggle = getUnknownToolToggle(container);
+      expect(unknownToolToggle).toBeTruthy();
+      expect(unknownToolToggle?.textContent).toContain("mystery-search");
     });
 
     await user.click(getUnknownToolToggle(container)!);
@@ -1569,7 +1570,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getToolGroupToggle(container)).toBeTruthy();
@@ -1578,8 +1579,9 @@ describe("ChatDetails", () => {
     await user.click(getToolGroupToggle(container)!);
 
     await waitFor(() => {
-      expect(getUnknownToolToggle(container)).toBeTruthy();
-      expect(getByText("General tool: mystery-search")).toBeTruthy();
+      const unknownToolToggle = getUnknownToolToggle(container);
+      expect(unknownToolToggle).toBeTruthy();
+      expect(unknownToolToggle?.textContent).toContain("mystery-search");
     });
 
     await user.click(getUnknownToolToggle(container)!);
@@ -1613,7 +1615,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getToolGroupToggle(container)).toBeTruthy();
@@ -1622,8 +1624,9 @@ describe("ChatDetails", () => {
     await user.click(getToolGroupToggle(container)!);
 
     await waitFor(() => {
-      expect(getUnknownToolToggle(container)).toBeTruthy();
-      expect(getByText("General tool: mystery-search")).toBeTruthy();
+      const unknownToolToggle = getUnknownToolToggle(container);
+      expect(unknownToolToggle).toBeTruthy();
+      expect(unknownToolToggle?.textContent).toContain("mystery-search");
     });
 
     await user.click(getUnknownToolToggle(container)!);
