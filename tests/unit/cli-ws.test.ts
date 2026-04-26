@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   buildWebSocketUrl,
   connectWsCommand,
@@ -76,6 +79,29 @@ function createInputLines(lines: string[]): AsyncIterable<string> & { close: () 
   };
 }
 
+function createBlockingInputLines(): AsyncIterable<string> & { close: () => void } {
+  let closed = false;
+  let resolvePending: (() => void) | null = null;
+
+  return {
+    async *[Symbol.asyncIterator]() {
+      while (!closed) {
+        await new Promise<void>((resolve) => {
+          resolvePending = resolve;
+        });
+      }
+    },
+    close() {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      resolvePending?.();
+      resolvePending = null;
+    },
+  };
+}
+
 function createWsDependencies(
   overrides: Partial<CliWsDependencies> = {},
 ): CliWsDependencies {
@@ -87,6 +113,24 @@ function createWsDependencies(
 }
 
 describe("cli websocket helpers", () => {
+  let cliHomeDir: string;
+  let originalCliHome: string | undefined;
+
+  beforeEach(async () => {
+    cliHomeDir = await mkdtemp(join(tmpdir(), "ralpher-cli-ws-home-"));
+    originalCliHome = process.env["RALPHER_CLI_HOME"];
+    process.env["RALPHER_CLI_HOME"] = cliHomeDir;
+  });
+
+  afterEach(async () => {
+    if (originalCliHome === undefined) {
+      delete process.env["RALPHER_CLI_HOME"];
+    } else {
+      process.env["RALPHER_CLI_HOME"] = originalCliHome;
+    }
+    await rm(cliHomeDir, { recursive: true, force: true });
+  });
+
   test("buildWebSocketUrl converts http urls and preserves filters", () => {
     expect(buildWebSocketUrl("http://example.test/base", {
       baseUrl: "http://example.test/base",
@@ -231,5 +275,112 @@ describe("cli websocket helpers", () => {
     expect(stderr).toEqual(["Error: stdin must contain one valid JSON value per non-empty line."]);
     expect(socket.closeCode).toBe(1000);
     expect(socket.closeReason).toBe("stdin failure");
+  });
+
+  test("runWsCommand reports websocket errors before the close result", async () => {
+    const credentials: StoredCliCredentials = {
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "access-token-4",
+      refreshToken: "refresh-token-4",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "",
+      accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
+      createdAt: "2026-04-21T17:15:00.000Z",
+      updatedAt: "2026-04-21T17:15:00.000Z",
+    };
+    await saveStoredCliCredentials(credentials);
+
+    const socket = new FakeWebSocket();
+    const originalAddEventListener = socket.addEventListener.bind(socket);
+    socket.addEventListener = (type: string, listener: (event?: unknown) => void) => {
+      originalAddEventListener(type, listener);
+      if (type === "error" && (socket.listeners.get("message")?.size ?? 0) > 0) {
+        queueMicrotask(() => {
+          socket.emit("error");
+          socket.readyState = 3;
+          socket.emit("close", {
+            code: 1000,
+            reason: "server ended after error",
+            wasClean: true,
+          });
+        });
+      }
+    };
+
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const exitCode = await runWsCommand({}, createWsDependencies({
+      out: (message: string) => stdout.push(message),
+      err: (message: string) => stderr.push(message),
+      inputLines: createBlockingInputLines(),
+      registerSignalHandler: () => () => {},
+      createSocket: () => {
+        queueMicrotask(() => {
+          socket.readyState = 1;
+          socket.emit("open");
+        });
+        return socket;
+      },
+    }));
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toEqual([]);
+    expect(stderr).toEqual(["WebSocket connection error."]);
+  });
+
+  test("runWsCommand reports unexpected websocket closes from the server", async () => {
+    const credentials: StoredCliCredentials = {
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "access-token-5",
+      refreshToken: "refresh-token-5",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "",
+      accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
+      createdAt: "2026-04-21T17:15:00.000Z",
+      updatedAt: "2026-04-21T17:15:00.000Z",
+    };
+    await saveStoredCliCredentials(credentials);
+
+    const socket = new FakeWebSocket();
+    const originalAddEventListener = socket.addEventListener.bind(socket);
+    socket.addEventListener = (type: string, listener: (event?: unknown) => void) => {
+      originalAddEventListener(type, listener);
+      if (type === "message") {
+        queueMicrotask(() => {
+          socket.readyState = 3;
+          socket.emit("close", {
+            code: 1011,
+            reason: "server failure",
+            wasClean: false,
+          });
+        });
+      }
+    };
+
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+
+    const exitCode = await runWsCommand({}, createWsDependencies({
+      out: (message: string) => stdout.push(message),
+      err: (message: string) => stderr.push(message),
+      inputLines: createBlockingInputLines(),
+      registerSignalHandler: () => () => {},
+      createSocket: () => {
+        queueMicrotask(() => {
+          socket.readyState = 1;
+          socket.emit("open");
+        });
+        return socket;
+      },
+    }));
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toEqual([]);
+    expect(stderr).toEqual(["WebSocket closed unexpectedly (code 1011: server failure)."]);
   });
 });

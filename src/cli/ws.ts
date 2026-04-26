@@ -250,6 +250,7 @@ export async function runWsCommand(
   const registerSignalHandler = dependencies.registerSignalHandler ?? registerDefaultSignalHandler;
   const cleanupCallbacks: Array<() => void> = [];
   let localShutdownRequested = false;
+  let inputClosedBySocket = false;
   let socketErrorDetected = false;
   let inputFailure: Error | null = null;
 
@@ -268,6 +269,7 @@ export async function runWsCommand(
     socketErrorDetected = true;
   };
   const handleCloseInput = () => {
+    inputClosedBySocket = true;
     closeInputLines(inputLines);
   };
 
@@ -295,6 +297,10 @@ export async function runWsCommand(
         connection.socket.send(message);
       }
 
+      if (inputClosedBySocket) {
+        return;
+      }
+
       localShutdownRequested = true;
       closeSocketIfOpen(connection.socket, 1000, "stdin EOF");
     } catch (error) {
@@ -318,13 +324,13 @@ export async function runWsCommand(
     return 1;
   }
 
-  if (!localShutdownRequested && !isNormalClose(closeResult)) {
-    err(`WebSocket closed unexpectedly (${formatCloseSummary(closeResult)}).`);
+  if (!localShutdownRequested && socketErrorDetected) {
+    err("WebSocket connection error.");
     return 1;
   }
 
-  if (socketErrorDetected && !localShutdownRequested && !isNormalClose(closeResult)) {
-    err("WebSocket connection error.");
+  if (!localShutdownRequested && !isNormalClose(closeResult)) {
+    err(`WebSocket closed unexpectedly (${formatCloseSummary(closeResult)}).`);
     return 1;
   }
 
