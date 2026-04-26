@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import hljs from "highlight.js/lib/core";
 import jsonLanguage from "highlight.js/lib/languages/json";
-import { formatToolValue } from "./tool-inference";
+import { formatJsonString, formatToolValue } from "./tool-inference";
 
 const jsonHighlightLanguage = "json";
 const isJsonHighlightingAvailable = initializeJsonHighlighting();
@@ -19,26 +19,51 @@ function initializeJsonHighlighting(): boolean {
   }
 }
 
+function getRenderableJson(value: unknown): { text: string; canHighlight: boolean } {
+  if (typeof value === "undefined") {
+    return { text: formatToolValue(value), canHighlight: false };
+  }
+
+  if (typeof value !== "string") {
+    return { text: formatToolValue(value), canHighlight: true };
+  }
+
+  const trimmedValue = value.trim();
+  if (trimmedValue.length === 0) {
+    return { text: value, canHighlight: false };
+  }
+
+  const formattedJson = formatJsonString(trimmedValue);
+  if (!formattedJson) {
+    return { text: value, canHighlight: false };
+  }
+
+  return {
+    text: formattedJson,
+    canHighlight: true,
+  };
+}
+
 function renderHighlightedJson(value: unknown): { text: string; highlightedHtml: string | null } {
-  const text = formatToolValue(value);
-  if (typeof value === "string" || typeof value === "undefined") {
-    return { text, highlightedHtml: null };
+  const renderable = getRenderableJson(value);
+  if (!renderable.canHighlight) {
+    return { text: renderable.text, highlightedHtml: null };
   }
 
   if (!isJsonHighlightingAvailable) {
-    return { text, highlightedHtml: null };
+    return { text: renderable.text, highlightedHtml: null };
   }
 
   try {
     return {
-      text,
-      highlightedHtml: hljs.highlight(text, {
+      text: renderable.text,
+      highlightedHtml: hljs.highlight(renderable.text, {
         language: jsonHighlightLanguage,
         ignoreIllegals: true,
       }).value,
     };
   } catch {
-    return { text, highlightedHtml: null };
+    return { text: renderable.text, highlightedHtml: null };
   }
 }
 

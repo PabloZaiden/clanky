@@ -311,7 +311,7 @@ export const ToolEntry = memo(function ToolEntry({
   );
 
   return (
-    <div className={`group ${spacingClass}`} data-entry-type="tool">
+    <div className={`group ${spacingClass}`} data-entry-type="tool" data-tool-kind={meta.kind}>
       {showTimestamp && (
         <time className="mb-1 block text-[11px] text-gray-500" dateTime={timestamp}>
           {formatTime(timestamp)}
