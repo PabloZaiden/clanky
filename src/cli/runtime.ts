@@ -19,6 +19,7 @@ import {
   normalizeApiEndpointPath,
 } from "./api-catalog";
 import { runUpdateCommand, type CliUpdateDependencies, type UpdateCommandOptions } from "./update";
+import { runWsCommand, type CliWsDependencies, type WsCommandOptions } from "./ws";
 
 const CLI_USAGE = [
   "Usage:",
@@ -30,6 +31,7 @@ const CLI_USAGE = [
   "  ralpher api",
   "  ralpher api <endpoint> [--method <method>] [--payload <json>]",
   "  ralpher schema <endpoint>",
+  "  ralpher ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
 ].join("\n");
 const CLI_HELP = [formatRalpherVersion(), "", CLI_USAGE].join("\n");
 
@@ -67,9 +69,12 @@ export type CliCommand =
     payload?: string;
   }
   | {
-    action: "schema";
-    endpoint: string;
-  };
+     action: "schema";
+     endpoint: string;
+   }
+  | ({
+      action: "ws";
+    } & WsCommandOptions);
 
 export type MainCommand = CliCommand;
 
@@ -80,6 +85,7 @@ export interface CliRuntimeDependencies extends CliOutputDependencies {
   startServerFn?: typeof startServer;
   runCliFn?: typeof runCli;
   updateDependencies?: Partial<CliUpdateDependencies>;
+  wsDependencies?: Partial<CliWsDependencies>;
 }
 
 function createUsageError(message: string): Error {
@@ -409,6 +415,36 @@ export function parseCliCommand(args: string[]): CliCommand {
     };
   }
 
+  if (action === "ws") {
+    const { positionals, options } = parseCommandArguments(restArgs, [
+      "--loop-id",
+      "--chat-id",
+      "--ssh-session-id",
+      "--ssh-server-session-id",
+      "--provisioning-job-id",
+    ]);
+    if (positionals.length > 1) {
+      throw createUsageError(`Unexpected argument: ${positionals[1]}`);
+    }
+
+    let baseUrl: string | undefined;
+    try {
+      baseUrl = positionals[0] ? normalizeBaseUrlValue(positionals[0]) : undefined;
+    } catch (error) {
+      throw createUsageError(String(error).replace(/^Error:\s*/, ""));
+    }
+
+    return {
+      action,
+      baseUrl,
+      loopId: options["--loop-id"]?.trim(),
+      chatId: options["--chat-id"]?.trim(),
+      sshSessionId: options["--ssh-session-id"]?.trim(),
+      sshServerSessionId: options["--ssh-server-session-id"]?.trim(),
+      provisioningJobId: options["--provisioning-job-id"]?.trim(),
+    };
+  }
+
   throw createUsageError(`Unknown command: ${action}`);
 }
 
@@ -468,6 +504,14 @@ export async function runCli(
       case "schema":
         return runSchemaCommand(command, {
           out,
+        });
+      case "ws":
+        return await runWsCommand(command, {
+          fetchFn,
+          now,
+          out,
+          err,
+          ...dependencies.wsDependencies,
         });
     }
   } catch (error) {
