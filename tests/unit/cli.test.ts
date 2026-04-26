@@ -22,6 +22,7 @@ const CLI_USAGE = [
   "  ralpher api",
   "  ralpher api <endpoint> [--method <method>] [--payload <json>]",
   "  ralpher schema <endpoint>",
+  "  ralpher ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
 ].join("\n");
 const CLI_HELP = [formatRalpherVersion(), "", CLI_USAGE].join("\n");
 
@@ -203,6 +204,45 @@ describe("ralpher cli", () => {
       clientId: "custom-cli-id",
       cookies: undefined,
     });
+  });
+
+  test("ws accepts an optional base url and filter flags", () => {
+    expect(parseCliCommand([
+      "ws",
+      "https://example.test/app",
+      "--loop-id",
+      "loop-1",
+      "--chat-id",
+      "chat-2",
+      "--ssh-session-id",
+      "ssh-3",
+      "--ssh-server-session-id",
+      "ssh-server-4",
+      "--provisioning-job-id",
+      "job-5",
+    ])).toEqual({
+      action: "ws",
+      baseUrl: "https://example.test/app",
+      loopId: "loop-1",
+      chatId: "chat-2",
+      sshSessionId: "ssh-3",
+      sshServerSessionId: "ssh-server-4",
+      provisioningJobId: "job-5",
+    });
+  });
+
+  test("ws rejects invalid base urls as usage errors", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["ws", "notaurl"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(output).toEqual([
+      `ERR:Error: Invalid base URL: notaurl\n\n${CLI_USAGE}`,
+    ]);
   });
 
   test("auth completes the device flow, stores cookies, and reuses them on requests", async () => {

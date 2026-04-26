@@ -122,9 +122,14 @@ ralpher api loops/my-loop --method GET
 
 # Inspect the expected schema for an endpoint
 ralpher schema auth/device
+
+# Stream authenticated websocket events over stdio
+ralpher ws --loop-id my-loop
 ```
 
-`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher update --check` compares the installed version with the latest published GitHub Release, `ralpher update` replaces the current installed binary in place, and `ralpher update --version <tag>` installs a specific published release. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status` and `ralpher api` requests reuse that same server automatically. `ralpher status` still accepts an optional positional base URL override if you need to revalidate against a different server. When `ralpher api <endpoint>` calls an endpoint, it now prints a single parseable JSON object with the HTTP status metadata under `status` and the parsed body, plain-text body, or `null` under `response`.
+`ralpher version` prints the installed CLI version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher update --check` compares the installed version with the latest published GitHub Release, `ralpher update` replaces the current installed binary in place, and `ralpher update --version <tag>` installs a specific published release. `ralpher auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher status`, `ralpher api`, and `ralpher ws` requests reuse that same server automatically. `ralpher status` and `ralpher ws` both accept an optional positional base URL override if you need a different target server. When `ralpher api <endpoint>` calls an endpoint, it prints a single parseable JSON object with the HTTP status metadata under `status` and the parsed body, plain-text body, or `null` under `response`.
+
+`ralpher ws` connects to `/api/ws` with the stored bearer token and cookies, then bridges websocket text frames to stdout and stdin lines back to the websocket. Use one JSON value per non-empty stdin line and keep stderr reserved for diagnostics. Supported filters mirror the server query parameters: `--loop-id`, `--chat-id`, `--ssh-session-id`, `--ssh-server-session-id`, and `--provisioning-job-id`.
 
 ### Create your first loop
 
@@ -174,7 +179,7 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 - Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
-- `ralpher auth` stores bearer credentials in per-user CLI state under the home directory, `ralpher status` validates them through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with the stored tokens, and `ralpher schema` exposes endpoint discoverability data from the built-in API catalog.
+- `ralpher auth` stores bearer credentials in per-user CLI state under the home directory, `ralpher status` validates them through `GET /api/auth/status`, `ralpher api` sends authenticated REST calls with the stored tokens, `ralpher ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `ralpher schema` exposes endpoint discoverability data from the built-in API catalog.
 - Ralpher exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `RALPHER_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
