@@ -582,7 +582,11 @@ function shellIdFromInput(input: Record<string, unknown> | undefined): string | 
 }
 
 export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "text" | "json" {
-  if (getTextFromOutput(tool.output) !== undefined) {
+  const textOutput = getTextFromOutput(tool.output);
+  if (textOutput !== undefined) {
+    if (kind === "unknown" && formatJsonString(textOutput) !== null) {
+      return "json";
+    }
     return "text";
   }
 
@@ -626,6 +630,19 @@ export function formatToolValue(value: unknown): string {
 
   const rendered = JSON.stringify(value, null, 2);
   return rendered ?? "undefined";
+}
+
+export function formatJsonString(value: string): string | null {
+  const trimmedValue = value.trim();
+  if (trimmedValue.length === 0) {
+    return null;
+  }
+
+  try {
+    return JSON.stringify(JSON.parse(trimmedValue), null, 2) ?? value;
+  } catch {
+    return null;
+  }
 }
 
 function buildViewDetails(input: Record<string, unknown>, tool: ToolCallData, context: ToolMetaContext): StructuredToolDetails {
