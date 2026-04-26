@@ -26,7 +26,7 @@ import { loopManager } from "./loop-manager";
 import { createLogger } from "./logger";
 import { buildSeededPlanStatusContent, readValidatedPlanningFiles } from "./planning-file-service";
 import { sanitizeBranchName } from "../utils";
-import { buildSpawnLoopName, buildSpawnLoopPrompt } from "../utils/chat-to-loop-prompt";
+import { buildSpawnCurrentPlanPrompt, buildSpawnLoopName, buildSpawnLoopPrompt } from "../utils/chat-to-loop-prompt";
 import { getImageViewToolPath, resolveToolCallImagePreview } from "./tool-call-image-preview";
 import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
 
@@ -448,7 +448,7 @@ export class ChatManager {
       ?? working.chat.config.baseBranch
       ?? await git.getDefaultBranch(working.chat.config.directory);
 
-    const prompt = buildSpawnLoopPrompt(working.chat.config.name, working.chat.state.messages);
+    const prompt = buildSpawnCurrentPlanPrompt();
 
     await touchWorkspace(working.chat.config.workspaceId);
 
