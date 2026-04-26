@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useToast } from "../../hooks";
 import type { Chat, SshServer, Workspace } from "../../types";
 import { findRegisteredSshServer } from "../../types/settings";
 import type { useChats, useLoops, useSshSessions } from "../../hooks";
@@ -40,6 +42,7 @@ export function WorkspaceView({
   registeredSshServers,
   headerOffsetClassName,
   onOpenSettings,
+  onPullLatestChanges,
   onNavigate,
 }: {
   workspace: Workspace;
@@ -49,8 +52,16 @@ export function WorkspaceView({
   registeredSshServers: readonly SshServer[];
   headerOffsetClassName?: string;
   onOpenSettings: () => void;
+  onPullLatestChanges: () => Promise<{
+    success: boolean;
+    defaultBranch?: string;
+    currentBranch?: string;
+    error?: string;
+  }>;
   onNavigate: (route: ShellRoute) => void;
 }) {
+  const toast = useToast();
+  const [pullingLatestChanges, setPullingLatestChanges] = useState(false);
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
   const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
@@ -62,6 +73,29 @@ export function WorkspaceView({
   const hasActivity = activityLoops.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
   const activityRowClassName = "flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800";
   const historyDescription = "Merged and deleted loops from this workspace.";
+  async function handlePullLatestChanges() {
+    if (pullingLatestChanges) {
+      return;
+    }
+
+    setPullingLatestChanges(true);
+
+    try {
+      const result = await onPullLatestChanges();
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to pull latest changes");
+        return;
+      }
+
+      const branchLabel = result.defaultBranch ?? result.currentBranch ?? "the default branch";
+      toast.success(`Pulled latest changes for "${branchLabel}".`);
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setPullingLatestChanges(false);
+    }
+  }
+
   const createActionItems: ActionMenuItem[] = [
     {
       label: "New Loop",
@@ -74,6 +108,14 @@ export function WorkspaceView({
     {
       label: "Open code explorer",
       onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "workspace", workspaceId: workspace.id } }),
+    },
+    {
+      id: "pull-latest-changes",
+      label: pullingLatestChanges ? "Pulling Latest Changes..." : "Pull Latest Changes",
+      onClick: () => {
+        void handlePullLatestChanges();
+      },
+      disabled: pullingLatestChanges,
     },
     ...(githubUrl
       ? [{
@@ -134,7 +176,7 @@ export function WorkspaceView({
           >
             {null}
           </Button>
-          <ActionMenu items={createActionItems} ariaLabel={`Create items in workspace ${workspace.name}`} />
+          <ActionMenu items={createActionItems} ariaLabel={`Workspace actions for ${workspace.name}`} />
         </>
       )}
     >

@@ -2,7 +2,7 @@ import type { Workspace } from "../../types";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { Button } from "../common";
 import { WorkspaceSettingsForm } from "../WorkspaceSettingsModal";
-import { ProvisioningActionsSection, PullLatestChangesSection } from "../workspace-settings";
+import { ProvisioningActionsSection } from "../workspace-settings";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
@@ -13,9 +13,6 @@ interface WorkspaceSettingsViewProps {
   dashboardData: UseDashboardDataResult;
   refreshWorkspaces: () => Promise<void>;
   deleteWorkspace: (id: string) => Promise<{ success: boolean; error?: string }>;
-  pullLatestChanges: (
-    id: string,
-  ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;
   navigateWithinShell: (route: ShellRoute) => void;
   shellHeaderOffsetClassName: string;
 }
@@ -26,7 +23,6 @@ export function WorkspaceSettingsView({
   dashboardData,
   refreshWorkspaces,
   deleteWorkspace,
-  pullLatestChanges,
   navigateWithinShell,
   shellHeaderOffsetClassName,
 }: WorkspaceSettingsViewProps) {
@@ -111,16 +107,6 @@ export function WorkspaceSettingsView({
             onSaved={() => navigateWithinShell({ view: "workspace", workspaceId: selectedWorkspace.id })}
             onDeleted={() => navigateWithinShell({ view: "home" })}
             onValidityChange={setWorkspaceSettingsFormValid}
-          />
-
-          <PullLatestChangesSection
-            workspace={workspaceFromHook}
-            onPullLatestChanges={
-              workspaceSettingsWorkspaceId
-                ? async () => await pullLatestChanges(workspaceSettingsWorkspaceId)
-                : async () => ({ success: false, error: "Workspace settings are unavailable." })
-            }
-            disabled={workspaceSettingsLoading}
           />
 
           {workspaceFromHook.sourceDirectory && (

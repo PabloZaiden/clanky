@@ -1,9 +1,9 @@
 /**
  * Toast notification context and hook.
  *
- * Provides a simple, app-wide error toast notification system.
+ * Provides a simple, app-wide toast notification system.
  * Wrap your app in <ToastProvider> and use the useToast() hook
- * to show error notifications.
+ * to show notifications.
  *
  * @module hooks/useToast
  */
@@ -18,6 +18,8 @@ export interface Toast {
   id: string;
   /** The message to display */
   message: string;
+  /** Visual variant for the toast */
+  variant: "error" | "success";
   /** Auto-dismiss duration in ms (default: 8000) */
   duration: number;
 }
@@ -38,12 +40,14 @@ export interface ToastContextValue {
   toasts: Toast[];
   /** Show an error toast */
   error: (message: string, options?: ToastOptions) => void;
+  /** Show a success toast */
+  success: (message: string, options?: ToastOptions) => void;
   /** Remove a toast by ID */
   dismiss: (id: string) => void;
 }
 
-/** Default duration for error toasts */
-const DEFAULT_ERROR_DURATION_MS = 8000;
+/** Default duration for toasts */
+const DEFAULT_TOAST_DURATION_MS = 8000;
 
 /** Maximum number of toasts shown at once */
 const MAX_TOASTS = 5;
@@ -83,12 +87,12 @@ export function useToastState(): ToastContextValue {
   }, []);
 
   const showToast = useCallback(
-    (message: string, options?: ToastOptions) => {
+    (variant: Toast["variant"], message: string, options?: ToastOptions) => {
       counterRef.current += 1;
       const id = `toast-${counterRef.current}-${Date.now()}`;
-      const duration = options?.duration ?? DEFAULT_ERROR_DURATION_MS;
+      const duration = options?.duration ?? DEFAULT_TOAST_DURATION_MS;
 
-      const toast: Toast = { id, message, duration };
+      const toast: Toast = { id, message, variant, duration };
 
       setToasts((prev) => {
         // Keep only the most recent toasts (trim oldest if over limit)
@@ -110,9 +114,14 @@ export function useToastState(): ToastContextValue {
   );
 
   const error = useCallback(
-    (message: string, options?: ToastOptions) => showToast(message, options),
+    (message: string, options?: ToastOptions) => showToast("error", message, options),
     [showToast],
   );
 
-  return { toasts, error, dismiss };
+  const success = useCallback(
+    (message: string, options?: ToastOptions) => showToast("success", message, options),
+    [showToast],
+  );
+
+  return { toasts, error, success, dismiss };
 }

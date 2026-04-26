@@ -577,7 +577,7 @@ describe("App shell", () => {
     });
 
     const settingsButton = getByRole("button", { name: "Open workspace settings" });
-    const createItemsButton = getByRole("button", { name: "Create items in workspace Frontend" });
+    const createItemsButton = getByRole("button", { name: "Workspace actions for Frontend" });
     expect(settingsButton.getAttribute("title")).toBe("Workspace Settings");
     expect(settingsButton.textContent?.trim() ?? "").toBe("");
     expect(settingsButton.querySelector("svg")).toBeTruthy();
@@ -1085,7 +1085,6 @@ describe("App shell", () => {
     await user.click(getByRole("button", { name: "Open workspace settings" }));
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Pull Latest Changes" })).toBeTruthy();
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
       expect(getByRole("button", { name: "Rebuild" })).toBeTruthy();
     });

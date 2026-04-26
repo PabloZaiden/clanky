@@ -553,7 +553,7 @@ describe("workspace management scenario", () => {
     expect(getAllByText("stdio").length).toBeGreaterThan(0);
   });
 
-  test("workspace settings own restart, rebuild, and pull latest actions", async () => {
+  test("workspace menu owns pull latest while settings keep restart and rebuild actions", async () => {
     setupBaseApi();
 
     const provisionedWorkspace = createWorkspace({
@@ -587,19 +587,24 @@ describe("workspace management scenario", () => {
     expect(queryByRole("button", { name: "Restart" })).toBeNull();
     expect(queryByRole("button", { name: "Rebuild" })).toBeNull();
 
-    await user.click(getByRole("button", { name: "Open workspace settings" }));
+    await user.click(getByRole("button", { name: "Workspace actions for Existing Project" }));
     await waitFor(() => {
-      expect(getByRole("button", { name: "Pull Latest Changes" })).toBeTruthy();
+      expect(getByRole("menuitem", { name: "Pull Latest Changes" })).toBeTruthy();
     });
 
-    expect(getByRole("button", { name: "Restart" })).toBeTruthy();
-    expect(getByRole("button", { name: "Rebuild" })).toBeTruthy();
-
-    await user.click(getByRole("button", { name: "Pull Latest Changes" }));
+    await user.click(getByRole("menuitem", { name: "Pull Latest Changes" }));
 
     await waitFor(() => {
       expect(api.calls("/api/workspaces/:id/pull-latest-changes", "POST")).toHaveLength(1);
     });
+
+    await user.click(getByRole("button", { name: "Open workspace settings" }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Restart" })).toBeTruthy();
+    });
+
+    expect(getByRole("button", { name: "Rebuild" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Pull Latest Changes" })).toBeNull();
   });
 
   test("workspace activity card keeps SSH copy clear when legacy sessions exist on stdio workspaces", async () => {

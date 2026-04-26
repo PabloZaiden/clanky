@@ -64,6 +64,7 @@ function createMockSnapshot(
 function createMockToast(): ToastContextValue {
   return {
     error: mock(() => {}),
+    success: mock(() => {}),
     dismiss: mock(() => {}),
     toasts: [],
   };
