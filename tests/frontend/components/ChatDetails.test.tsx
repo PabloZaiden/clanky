@@ -61,6 +61,14 @@ function createChat(overrides?: Partial<Chat>): Chat {
   };
 }
 
+function getToolGroupToggle(container: HTMLElement): HTMLButtonElement | null {
+  return container.querySelector("[data-tool-group-toggle='true']") as HTMLButtonElement | null;
+}
+
+function getUnknownToolToggle(container: HTMLElement): HTMLButtonElement | null {
+  return container.querySelector("[data-entry-type='tool'][data-tool-kind='unknown'] button") as HTMLButtonElement | null;
+}
+
 beforeEach(() => {
   api.reset();
   api.install();
@@ -1514,23 +1522,21 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: /^1 tool call$/i })).toBeTruthy();
+      expect(getToolGroupToggle(container)).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: /^1 tool call$/i }));
+    await user.click(getToolGroupToggle(container)!);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "Unknown tool (stored as unknown)" })).toBeTruthy();
+      expect(getUnknownToolToggle(container)).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Unknown tool (stored as unknown)" }));
+    await user.click(getUnknownToolToggle(container)!);
 
     await waitFor(() => {
-      expect(getByText("Input")).toBeTruthy();
-      expect(getByText("Output")).toBeTruthy();
       expect(container.querySelectorAll("[data-tool-json-highlighted='true']")).toHaveLength(2);
     });
 
@@ -1540,6 +1546,92 @@ describe("ChatDetails", () => {
     expect(highlightedBlocks[0]?.textContent).toContain("\"provider\": \"bing\"");
     expect(highlightedBlocks[1]?.textContent).toContain("{\n  \"type\": \"output_text\"");
     expect(highlightedBlocks[1]?.textContent).toContain("\"value\": \"Example response\"");
+  });
+
+  test("renders highlighted formatted JSON when an unknown tool output is stored as a valid JSON string", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "idle",
+        messages: [],
+        logs: [],
+        toolCalls: [{
+          id: "tool-1",
+          name: "unknown",
+          input: {
+            query: "search term",
+          },
+          output: "{\"type\":\"output_text\",\"text\":{\"value\":\"Example response\",\"annotations\":null},\"bing_searches\":null}",
+          status: "completed",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        }],
+      },
+    }));
+
+    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getToolGroupToggle(container)).toBeTruthy();
+    });
+
+    await user.click(getToolGroupToggle(container)!);
+
+    await waitFor(() => {
+      expect(getUnknownToolToggle(container)).toBeTruthy();
+    });
+
+    await user.click(getUnknownToolToggle(container)!);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("[data-tool-json-highlighted='true']")).toHaveLength(2);
+    });
+
+    const highlightedBlocks = Array.from(container.querySelectorAll("[data-tool-json-highlighted='true']"));
+    expect(highlightedBlocks[1]?.textContent).toContain("{\n  \"type\": \"output_text\"");
+    expect(highlightedBlocks[1]?.textContent).toContain("\"value\": \"Example response\"");
+  });
+
+  test("keeps plain text rendering when an unknown tool output is not valid JSON", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "idle",
+        messages: [],
+        logs: [],
+        toolCalls: [{
+          id: "tool-1",
+          name: "unknown",
+          input: {
+            query: "search term",
+          },
+          output: "Example response without JSON framing",
+          status: "completed",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        }],
+      },
+    }));
+
+    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getToolGroupToggle(container)).toBeTruthy();
+    });
+
+    await user.click(getToolGroupToggle(container)!);
+
+    await waitFor(() => {
+      expect(getUnknownToolToggle(container)).toBeTruthy();
+    });
+
+    await user.click(getUnknownToolToggle(container)!);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("[data-tool-json-highlighted='true']")).toHaveLength(1);
+    });
+
+    const plainTextBlocks = Array.from(container.querySelectorAll("[data-tool-value-block='true']:not([data-tool-json-highlighted='true'])"));
+    expect(plainTextBlocks).toHaveLength(1);
+    expect(plainTextBlocks[0]?.textContent).toContain("Example response without JSON framing");
   });
 
   test("keeps chat in the standard layout without focus mode controls", async () => {
