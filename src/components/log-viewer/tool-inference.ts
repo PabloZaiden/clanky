@@ -584,7 +584,7 @@ function shellIdFromInput(input: Record<string, unknown> | undefined): string | 
 export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "text" | "json" {
   const textOutput = getTextFromOutput(tool.output);
   if (textOutput !== undefined) {
-    if (kind === "unknown" && formatJsonString(textOutput) !== null) {
+    if (kind === "unknown" && isValidJsonString(textOutput)) {
       return "json";
     }
     return "text";
@@ -632,6 +632,20 @@ export function formatToolValue(value: unknown): string {
   return rendered ?? "undefined";
 }
 
+function isValidJsonString(value: string): boolean {
+  const trimmedValue = value.trim();
+  if (trimmedValue.length === 0) {
+    return false;
+  }
+
+  try {
+    JSON.parse(trimmedValue);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function formatJsonString(value: string): string | null {
   const trimmedValue = value.trim();
   if (trimmedValue.length === 0) {
@@ -639,7 +653,7 @@ export function formatJsonString(value: string): string | null {
   }
 
   try {
-    return JSON.stringify(JSON.parse(trimmedValue), null, 2) ?? value;
+    return JSON.stringify(JSON.parse(trimmedValue), null, 2);
   } catch {
     return null;
   }
