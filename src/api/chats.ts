@@ -13,6 +13,7 @@ import {
   CreateChatRequestSchema,
   InterruptChatRequestSchema,
   SendChatMessageRequestSchema,
+  SpawnCurrentPlanLoopRequestSchema,
   UpdateChatRequestSchema,
 } from "../types/schemas";
 import { requireWorkspace, errorResponse, successResponse } from "./helpers";
@@ -293,6 +294,13 @@ export const chatsRoutes = {
 
   "/api/chats/:id/spawn-loop-from-current-plan": {
     async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(SpawnCurrentPlanLoopRequestSchema, req, {
+        allowEmptyBody: true,
+      });
+      if (!validation.success) {
+        return validation.response;
+      }
+
       const chat = await chatManager.getChat(req.params.id);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
@@ -317,7 +325,7 @@ export const chatsRoutes = {
       }
 
       try {
-        const loop = await chatManager.spawnLoopFromCurrentPlan(req.params.id);
+        const loop = await chatManager.spawnLoopFromCurrentPlan(req.params.id, validation.data.planFilePath);
         return Response.json(loop, { status: 201 });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);

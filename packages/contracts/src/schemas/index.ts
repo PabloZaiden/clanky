@@ -54,6 +54,7 @@ export {
   UpdateChatRequestSchema,
   SendChatMessageRequestSchema,
   InterruptChatRequestSchema,
+  SpawnCurrentPlanLoopRequestSchema,
 } from "./chat";
 
 // Workspace schemas

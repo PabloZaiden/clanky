@@ -2121,10 +2121,11 @@ describe("ChatManager", () => {
     );
 
     const chatWorktreePath = settled.state.worktree!.worktreePath!;
-    await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
-    await writeFile(getPlanFilePath(chatWorktreePath), "# Imported plan\n\n1. Do the seeded work.\n");
+    await mkdir(join(chatWorktreePath, "plans"), { recursive: true });
+    await writeFile(join(chatWorktreePath, "plans", "imported-plan.md"), "# Imported plan\n\n1. Do the seeded work.\n");
+    await writeFile(join(chatWorktreePath, "plans", "status.md"), "# Imported status\n\nReady to review.");
 
-    const spawned = await manager.spawnLoopFromCurrentPlan(chat.config.id);
+    const spawned = await manager.spawnLoopFromCurrentPlan(chat.config.id, "plans/imported-plan.md");
 
     expect(spawned.config.autoAcceptPlan).toBe(false);
     expect(spawned.config.fullyAutonomous).toBe(false);
@@ -2137,7 +2138,38 @@ describe("ChatManager", () => {
 
     const loopWorkDir = spawned.state.git?.worktreePath ?? spawned.config.directory;
     expect(await Bun.file(getPlanFilePath(loopWorkDir)).text()).toContain("Imported plan");
-    expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toContain("Imported plan ready");
+    expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toBe("# Imported status\n\nReady to review.");
+  });
+
+  test("rejects selected plan paths that escape the chat workspace", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Chat response"],
+      initGit: true,
+    });
+
+    const manager = new ChatManager();
+    const currentBranch = await context.git.getCurrentBranch(context.workDir);
+    const chat = await manager.createChat({
+      name: "Spawn Invalid Path Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      baseBranch: currentBranch,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Turn this chat into a seeded plan loop",
+    });
+    await waitForChat(
+      chat.config.id,
+      (current) => current.state.status === "idle" && Boolean(current.state.worktree?.worktreePath),
+    );
+
+    await expect(manager.spawnLoopFromCurrentPlan(chat.config.id, "../outside.md")).rejects.toThrow(
+      "The selected plan file path must stay within the current chat workspace.",
+    );
   });
 
   test("treats uninitialized database errors by error message instead of String(error)", async () => {

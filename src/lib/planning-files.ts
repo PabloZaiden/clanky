@@ -8,7 +8,7 @@ export const PLANNING_DIRECTORY_NAME = ".ralph-planning";
 export const PLAN_FILE_NAME = "plan.md";
 export const STATUS_FILE_NAME = "status.md";
 
-function normalizePlanningBasePath(directory: string): string {
+export function normalizePlanningBasePath(directory: string): string {
   return pathPosix.normalize(directory.replaceAll("\\", "/"));
 }
 

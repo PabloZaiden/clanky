@@ -520,7 +520,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/spawn-loop-from-current-plan", () => spawnedLoop);
 
-    const { getByRole, user } = renderWithUser(
+    const { getByLabelText, getByRole, user } = renderWithUser(
       <ChatDetails
         chatId={CHAT_ID}
         onOpenLoop={(loopId) => {
@@ -535,12 +535,48 @@ describe("ChatDetails", () => {
 
     await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+    await user.type(getByLabelText("Plan file path"), "plans/current-plan.md");
+    await user.click(getByRole("button", { name: "Spawn loop" }));
 
     await waitFor(() => {
       expect(openedLoopId).toBe("loop-plan");
     });
 
     expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")).toHaveLength(1);
+    expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")[0]?.body).toEqual({
+      planFilePath: "plans/current-plan.md",
+    });
+  });
+
+  test("falls back to the default plan file when the modal input is blank", async () => {
+    const initialChat = createChat();
+    const spawnedLoop = createLoop({
+      config: {
+        id: "loop-default-plan",
+        name: "Plan from Repo pairing",
+        workspaceId: initialChat.config.workspaceId,
+        planMode: true,
+      },
+    });
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/spawn-loop-from-current-plan", () => spawnedLoop);
+
+    const { getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+    await user.click(getByRole("button", { name: "Spawn loop" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")).toHaveLength(1);
+    });
+
+    expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")[0]?.body).toEqual({});
   });
 
   test("shows the parsed current-plan spawn failure message without the Error prefix", async () => {
@@ -564,6 +600,7 @@ describe("ChatDetails", () => {
 
     await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+    await user.click(getByRole("button", { name: "Spawn loop" }));
 
     await waitFor(() => {
       expect(getByRole("alert").textContent).toContain("No Ralpher plan file was found in the current chat workspace.");
