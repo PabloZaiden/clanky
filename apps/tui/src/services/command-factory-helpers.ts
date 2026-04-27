@@ -36,6 +36,8 @@ export interface WorkspaceFormValues {
   identityFile: string;
 }
 
+export interface WorkspaceUpdateFormValues extends Omit<WorkspaceFormValues, "directory"> {}
+
 export interface ServerFormValues {
   name: string;
   address: string;
@@ -67,6 +69,8 @@ export interface LoopFormValues {
   gitCommitScope: string;
 }
 
+export interface LoopUpdateFormValues extends Omit<LoopFormValues, "workspace"> {}
+
 export interface ChatFormValues {
   workspace: string;
   name: string;
@@ -77,14 +81,19 @@ export interface ChatFormValues {
   useWorktree: boolean;
 }
 
-export function createServerSettings(values: WorkspaceFormValues): ServerSettings {
+type WorkspaceServerSettingsFormValues = Pick<
+  WorkspaceFormValues,
+  "agentProvider" | "agentTransport" | "hostname" | "port" | "username" | "password" | "identityFile"
+>;
+
+export function createServerSettings(values: WorkspaceServerSettingsFormValues): ServerSettings {
   if (values.agentTransport === "ssh") {
     return {
       agent: {
         provider: values.agentProvider,
         transport: "ssh",
-        hostname: values.hostname.trim(),
-        port: values.port,
+        hostname: assertNonEmpty(values.hostname, "hostname"),
+        port: assertValidPort(values.port),
         username: values.username.trim() || undefined,
         password: values.password.trim() || undefined,
         identityFile: values.identityFile.trim() || undefined,
@@ -111,9 +120,9 @@ export function buildCreateWorkspaceRequest(values: WorkspaceFormValues): Create
   };
 }
 
-export function buildUpdateWorkspaceRequest(values: WorkspaceFormValues): UpdateWorkspaceRequest {
+export function buildUpdateWorkspaceRequest(values: WorkspaceUpdateFormValues): UpdateWorkspaceRequest {
   return {
-    name: values.name.trim(),
+    name: assertNonEmpty(values.name, "name"),
     serverSettings: createServerSettings(values),
   };
 }
@@ -192,10 +201,10 @@ export function buildCreateLoopRequest(
   };
 }
 
-export function buildUpdateLoopRequest(values: Omit<LoopFormValues, "workspace">): UpdateLoopRequest {
+export function buildUpdateLoopRequest(values: LoopUpdateFormValues): UpdateLoopRequest {
   return {
-    name: values.name.trim(),
-    prompt: values.prompt.trim(),
+    name: assertNonEmpty(values.name, "name"),
+    prompt: assertNonEmpty(values.prompt, "prompt"),
     model: {
       providerID: assertNonEmpty(values.modelProviderID, "modelProviderID"),
       modelID: assertNonEmpty(values.modelID, "modelID"),
@@ -223,7 +232,7 @@ export function buildUpdateLoopRequest(values: Omit<LoopFormValues, "workspace">
       branchPrefix: values.gitBranchPrefix.trim(),
       commitScope: values.gitCommitScope.trim(),
     },
-    baseBranch: values.baseBranch.trim(),
+    baseBranch: assertNonEmpty(values.baseBranch, "baseBranch"),
     useWorktree: values.useWorktree,
     clearPlanningFolder: values.clearPlanningFolder,
     planMode: values.planMode,
@@ -333,4 +342,11 @@ function assertNonEmpty(value: string, field: string): string {
     throw new ConfigValidationError(`${field} is required.`, field);
   }
   return trimmed;
+}
+
+function assertValidPort(value: number, field = "port"): number {
+  if (!Number.isInteger(value) || value < 1 || value > 65535) {
+    throw new ConfigValidationError(`${field} must be an integer between 1 and 65535.`, field);
+  }
+  return value;
 }

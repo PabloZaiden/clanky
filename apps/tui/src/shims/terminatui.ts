@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
 
+const runtimeModule = await import(
+  new URL("../../../../node_modules/.bun/node_modules/@pablozaiden/terminatui/src/index.ts", import.meta.url).href,
+) as RuntimeModule;
+
 export interface CommandResult {
   success: boolean;
   data?: unknown;
@@ -7,7 +11,7 @@ export interface CommandResult {
   message?: string;
 }
 
-export class ConfigValidationError extends Error {
+class ConfigValidationErrorBase extends Error {
   constructor(
     message: string,
     public readonly field?: string,
@@ -17,6 +21,13 @@ export class ConfigValidationError extends Error {
     this.name = "ConfigValidationError";
   }
 }
+
+type RuntimeModule = {
+  Command: typeof CommandBase;
+  ConfigValidationError: typeof ConfigValidationErrorBase;
+  TuiApplication: typeof TuiApplicationBase;
+  AppContext: typeof AppContextBase;
+};
 
 export interface OptionDef {
   type: "string" | "number" | "boolean" | "array";
@@ -44,7 +55,7 @@ export type OptionValues<T extends OptionSchema> = {
           : unknown;
 };
 
-export abstract class Command<
+abstract class CommandBase<
   TOptions extends OptionSchema = OptionSchema,
   TConfig = OptionValues<TOptions>
 > {
@@ -52,7 +63,7 @@ export abstract class Command<
   displayName?: string;
   abstract readonly description: string;
   abstract readonly options: TOptions;
-  subCommands?: Command[];
+  subCommands?: CommandBase[];
   actionLabel?: string;
   buildConfig?(opts: OptionValues<TOptions>): TConfig;
   onConfigChange?(
@@ -64,13 +75,15 @@ export abstract class Command<
   renderResult?(result: CommandResult): ReactNode;
 }
 
-export type AnyCommand = Command<any, any>;
+export const Command: typeof CommandBase = runtimeModule.Command;
+export const ConfigValidationError: typeof ConfigValidationErrorBase = runtimeModule.ConfigValidationError;
+export type AnyCommand = CommandBase<any, any>;
 
 export interface ApplicationHooks {
   onError?: (error: Error) => Promise<void> | void;
 }
 
-export class TuiApplication {
+abstract class TuiApplicationBase {
   constructor(_config: {
     name: string;
     displayName?: string;
@@ -81,14 +94,21 @@ export class TuiApplication {
 
   async run(): Promise<void> {}
 
+  async runFromArgs(_argv: string[]): Promise<void> {}
+
   setHooks(_hooks: ApplicationHooks): void {}
 }
 
-export class AppContext {
-  static current = new AppContext();
+class AppContextBase {
+  static current = new AppContextBase();
 
   readonly logger = {
-    error: (_message: string) => {},
+    debug: (..._args: unknown[]) => {},
+    error: (..._args: unknown[]) => {},
+    info: (..._args: unknown[]) => {},
+    setDetailed: (_enabled: boolean) => {},
+    setMinLevel: (_level: unknown) => {},
+    warn: (..._args: unknown[]) => {},
   };
 
   private readonly services = new Map<string, unknown>();
@@ -104,4 +124,11 @@ export class AppContext {
     }
     return service as T;
   }
+
+  getConfigDir(): string {
+    return "";
+  }
 }
+
+export const TuiApplication: typeof TuiApplicationBase = runtimeModule.TuiApplication;
+export const AppContext: typeof AppContextBase = runtimeModule.AppContext;

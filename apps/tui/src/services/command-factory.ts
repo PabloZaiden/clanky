@@ -30,7 +30,9 @@ import {
   requireConfirmation,
   type ChatFormValues,
   type LoopFormValues,
+  type LoopUpdateFormValues,
   type WorkspaceFormValues,
+  type WorkspaceUpdateFormValues,
 } from "./command-factory-helpers";
 import type { ApiClient } from "./api-client";
 import type { AuthService } from "./auth-service";
@@ -163,7 +165,7 @@ export class CommandFactory {
       const workspaces = await this.apiClient.listWorkspaces();
       this.cache.setCollection("workspaces", workspaces);
       collectionCommand.subCommands = [
-        this.createWorkspaceCreateCommand(workspaces),
+        this.createWorkspaceCreateCommand(),
         this.createRefreshCommand("workspaces", "workspaces"),
         ...workspaces.map((workspace) => this.createWorkspaceEntityCommand(workspace)),
       ];
@@ -350,10 +352,9 @@ export class CommandFactory {
     });
   }
 
-  private createWorkspaceCreateCommand(workspaces: Workspace[]): AnyCommand {
+  private createWorkspaceCreateCommand(): AnyCommand {
     const factory = this;
-    const options = this.getWorkspaceOptions();
-    void workspaces;
+    const options = this.getWorkspaceCreateOptions();
     return this.createCommand({
       name: "create",
       displayName: "Create workspace",
@@ -378,7 +379,7 @@ export class CommandFactory {
 
   private createWorkspaceEntityCommand(workspace: Workspace): AnyCommand {
     const factory = this;
-    const editWorkspaceOptions = this.getWorkspaceOptions(workspace);
+    const editWorkspaceOptions = this.getWorkspaceUpdateOptions(workspace);
     return this.createCommand({
       name: buildEntityCommandName(workspace.name, workspace.id),
       displayName: workspace.name,
@@ -412,7 +413,7 @@ export class CommandFactory {
           options: editWorkspaceOptions,
           actionLabel: "Save Workspace",
           buildConfig(values) {
-            return buildUpdateWorkspaceRequest(values as WorkspaceFormValues);
+            return buildUpdateWorkspaceRequest(values as WorkspaceUpdateFormValues);
           },
           async execute(values): Promise<CommandResult> {
             const updatedWorkspace = await factory.apiClient.updateWorkspace(workspace.id, values);
@@ -542,7 +543,7 @@ export class CommandFactory {
             options: editLoopOptions,
             actionLabel: "Save Loop",
             buildConfig(values) {
-              return buildUpdateLoopRequest(values as Omit<LoopFormValues, "workspace">);
+              return buildUpdateLoopRequest(values as LoopUpdateFormValues);
             },
             async execute(values): Promise<CommandResult> {
               const updatedLoop = await factory.apiClient.updateLoop(
@@ -1143,7 +1144,7 @@ export class CommandFactory {
     } as const satisfies OptionSchema;
   }
 
-  private getWorkspaceOptions(workspace?: Workspace) {
+  private getWorkspaceCreateOptions(workspace?: Workspace) {
     const agent = workspace?.serverSettings.agent;
     return {
       name: {
@@ -1212,6 +1213,11 @@ export class CommandFactory {
         default: agent?.transport === "ssh" ? (agent.identityFile ?? "") : "",
       },
     } as const satisfies OptionSchema;
+  }
+
+  private getWorkspaceUpdateOptions(workspace: Workspace) {
+    const { directory: _directory, ...options } = this.getWorkspaceCreateOptions(workspace);
+    return options;
   }
 
   private getLoopOptions({
