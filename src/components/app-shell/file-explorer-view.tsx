@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent } from "react";
 import type { SshSession } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
@@ -53,6 +53,7 @@ interface FileExplorerViewProps {
   onCreateTerminal: () => Promise<ExplorerSession>;
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
+  initialFilePath?: string;
   buildRoute?: (startDirectory?: string) => ShellRoute;
   headerActions?: React.ReactNode;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
@@ -74,6 +75,7 @@ export function FileExplorerView({
   onCreateTerminal,
   testIdPrefix,
   credentialPromptName,
+  initialFilePath,
   buildRoute,
   headerActions,
   sshSessionDetailsComponent: SshSessionDetailsComponent = SshSessionDetails,
@@ -103,6 +105,7 @@ export function FileExplorerView({
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
   const [loadFullTreeInput, setLoadFullTreeInput] = useState(fullTreePreference.enabled);
+  const lastAutoOpenedFileRef = useRef<string | null>(null);
   const selectableSessions = useMemo(
     () => sessions.map((session) => ({
       id: session.config.id,
@@ -306,6 +309,51 @@ export function FileExplorerView({
     setActivePane("editor");
     await explorer.openFile(path);
   }, [explorer.openFile]);
+
+  useEffect(() => {
+    if (
+      !initialFilePath
+      || fullTreePreference.loading
+      || startupBlockedByPassword
+      || explorer.loadingTree
+      || explorer.loadingFile
+      || explorer.pendingFilePath === initialFilePath
+      || explorer.currentFile?.path === initialFilePath
+    ) {
+      return;
+    }
+
+    if (explorer.currentFile && explorer.isDirty && explorer.currentFile.path !== initialFilePath) {
+      return;
+    }
+
+    const routeKey = [
+      target.type,
+      target.id,
+      target.startDirectory ?? defaultRootDirectory,
+      initialFilePath,
+    ].join("::");
+    if (lastAutoOpenedFileRef.current === routeKey) {
+      return;
+    }
+
+    lastAutoOpenedFileRef.current = routeKey;
+    void handleOpenFile(initialFilePath);
+  }, [
+    defaultRootDirectory,
+    explorer.currentFile,
+    explorer.isDirty,
+    explorer.loadingFile,
+    explorer.loadingTree,
+    explorer.pendingFilePath,
+    handleOpenFile,
+    initialFilePath,
+    fullTreePreference.loading,
+    startupBlockedByPassword,
+    target.id,
+    target.startDirectory,
+    target.type,
+  ]);
 
   const explorerToolbarActions = useMemo(() => (
     <Button

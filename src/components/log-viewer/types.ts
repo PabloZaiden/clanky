@@ -1,4 +1,5 @@
 import type { MessageData, ToolCallData, LogLevel } from "../../types";
+import type { FileExplorerTarget } from "../../hooks/workspaceFileActions";
 import type { PromiseMarkerOutcomeKind } from "../../utils/promise-markers";
 
 /**
@@ -35,6 +36,17 @@ export interface FinalizedResponseLogData {
   indicator: FinalizedResponseIndicator;
 }
 
+export interface TranscriptFileLinkContext {
+  /** Explorer target used for async metadata lookups. */
+  fileExplorerTarget: FileExplorerTarget;
+  /** Effective root directory for absolute-path normalization. */
+  rootDirectory: string;
+  /** Build the hash href for a resolved file link. */
+  getFileHref: (path: string) => string;
+  /** Navigate to the resolved file in the code explorer. */
+  openFile: (path: string) => void;
+}
+
 export interface LogViewerProps {
   /** Messages to display (only user messages are rendered; assistant messages are filtered out) */
   messages: MessageData[];
@@ -64,6 +76,8 @@ export interface LogViewerProps {
   id?: string;
   /** Root directory used to display tool file paths relative to the active chat/loop context. */
   toolPathDisplayRoot?: string;
+  /** Optional chat/loop-aware context for turning inline code paths into code explorer links. */
+  fileLinkContext?: TranscriptFileLinkContext;
   /** Optional surface class override for the scroll container that owns the transcript background. */
   surfaceClassName?: string;
   /** Optional class override for the inner transcript wrapper. */

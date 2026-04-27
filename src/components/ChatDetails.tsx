@@ -30,6 +30,7 @@ import { useAvailableModels, useMarkdownPreference, useToast, useWebSocket } fro
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
+import { getHashForShellRoute } from "./app-shell/shell-navigation";
 import type {
   Chat,
   ChatEvent,
@@ -536,6 +537,41 @@ export function ChatDetails({
   }
 
   const hasCodeExplorerAction = Boolean(onOpenCodeExplorer);
+  const chatWorkingDirectory = chat?.state.worktree?.worktreePath ?? chat?.config.directory ?? "";
+  const fileLinkContext = useMemo(() => {
+    if (!chat || !chatWorkingDirectory) {
+      return undefined;
+    }
+
+    return {
+      fileExplorerTarget: {
+        type: "workspace" as const,
+        id: chat.config.workspaceId,
+        startDirectory: chatWorkingDirectory,
+      },
+      rootDirectory: chatWorkingDirectory,
+      getFileHref: (path: string) => `#${getHashForShellRoute({
+        view: "code-explorer",
+        target: {
+          contentType: "chat",
+          chatId: chat.config.id,
+          startDirectory: chatWorkingDirectory,
+          filePath: path,
+        },
+      })}`,
+      openFile: (path: string) => {
+        window.location.hash = getHashForShellRoute({
+          view: "code-explorer",
+          target: {
+            contentType: "chat",
+            chatId: chat.config.id,
+            startDirectory: chatWorkingDirectory,
+            filePath: path,
+          },
+        });
+      },
+    };
+  }, [chat, chatWorkingDirectory]);
 
   const headerActionMenuItems = useMemo<ActionMenuItem[]>(() => {
     if (!chat) {
@@ -617,7 +653,6 @@ export function ChatDetails({
 
   const hasPendingInput = message.trim().length > 0 || attachments.length > 0 || selectedModel.length > 0;
   const autoScroll = true;
-  const chatWorkingDirectory = chat.state.worktree?.worktreePath ?? chat.config.directory;
   const toolPathDisplayRoot = chatWorkingDirectory;
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
@@ -636,6 +671,7 @@ export function ChatDetails({
       showAssistantMessages
       showResponseLogs={false}
       toolPathDisplayRoot={toolPathDisplayRoot}
+      fileLinkContext={fileLinkContext}
       emptyStateMessage="No messages yet"
       activeStateMessage="Thinking…"
     />

@@ -30,6 +30,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   emptyStateMessage = "No activity yet.",
   activeStateMessage = "Working...",
   toolPathDisplayRoot,
+  fileLinkContext,
   surfaceClassName,
   transcriptClassName,
 }: ConversationViewerProps) {
@@ -155,11 +156,12 @@ export const ConversationViewer = memo(function ConversationViewer({
                   key={`msg-${entry.data.id}`}
                   data={entry.data}
                   showTimestamp={entry.showTimestamp}
-                  spacingClass={spacingClass}
-                  markdownEnabled={markdownEnabled}
-                  showRoleLabel={showMessageRoles}
-                />
-              );
+                    spacingClass={spacingClass}
+                    markdownEnabled={markdownEnabled}
+                    showRoleLabel={showMessageRoles}
+                    fileLinkContext={fileLinkContext}
+                  />
+                );
             } else if (entry.type === "tool") {
               return (
                 <ToolEntry
@@ -186,11 +188,12 @@ export const ConversationViewer = memo(function ConversationViewer({
                   key={`log-${entry.data.id}`}
                   data={entry.data}
                   showTimestamp={entry.showTimestamp}
-                  showGroupHeader={entry.showGroupHeader}
-                  spacingClass={spacingClass}
-                  markdownEnabled={markdownEnabled}
-                />
-              );
+                    showGroupHeader={entry.showGroupHeader}
+                    spacingClass={spacingClass}
+                    markdownEnabled={markdownEnabled}
+                    fileLinkContext={fileLinkContext}
+                  />
+                );
             }
           })}
           {isActive && !isEmpty && (

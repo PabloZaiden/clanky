@@ -3,6 +3,7 @@ import type { MessageData } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import { ImageViewerModal } from "../ImageViewerModal";
 import { StreamingTextContent } from "./streaming-text-content";
+import type { TranscriptFileLinkContext } from "./types";
 import { formatTime } from "./utils";
 
 interface MessageEntryProps {
@@ -11,6 +12,7 @@ interface MessageEntryProps {
   spacingClass: string;
   markdownEnabled: boolean;
   showRoleLabel: boolean;
+  fileLinkContext?: TranscriptFileLinkContext;
 }
 
 export function MessageEntry({
@@ -19,6 +21,7 @@ export function MessageEntry({
   spacingClass,
   markdownEnabled,
   showRoleLabel,
+  fileLinkContext,
 }: MessageEntryProps) {
   const isUser = msg.role === "user";
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
@@ -57,6 +60,7 @@ export function MessageEntry({
                 content={msg.content}
                 markdownEnabled={false}
                 plainTextClassName="whitespace-pre-wrap break-words text-white"
+                fileLinkContext={fileLinkContext}
               />
             </div>
           ) : shouldRenderMarkdown ? (
@@ -65,12 +69,14 @@ export function MessageEntry({
               markdownEnabled={true}
               markdownClassName="text-sm leading-7 text-gray-900 dark:text-white"
               plainTextClassName="text-sm leading-7 whitespace-pre-wrap break-words text-gray-900 dark:text-white"
+              fileLinkContext={fileLinkContext}
             />
           ) : (
             <StreamingTextContent
               content={msg.content}
               markdownEnabled={false}
               plainTextClassName="whitespace-pre-wrap break-words text-sm leading-7 text-gray-900 dark:text-white"
+              fileLinkContext={fileLinkContext}
             />
           )}
           {msg.attachments && msg.attachments.length > 0 && (

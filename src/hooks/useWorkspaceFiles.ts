@@ -58,6 +58,16 @@ function getParentDirectory(path: string): string {
   return lastSlash >= 0 ? path.slice(0, lastSlash) : "";
 }
 
+function getAncestorDirectories(path: string): string[] {
+  const directories: string[] = [];
+  let currentDirectory = getParentDirectory(path);
+  while (currentDirectory) {
+    directories.unshift(currentDirectory);
+    currentDirectory = getParentDirectory(currentDirectory);
+  }
+  return directories;
+}
+
 function upsertDirectoryEntry(
   directoryEntries: Record<string, WorkspaceFileNode[]>,
   entry: WorkspaceFileNode,
@@ -152,6 +162,9 @@ export function useFileExplorer(
   const pollTimerRef = useRef<number | null>(null);
   const fileLoadAbortControllerRef = useRef<AbortController | null>(null);
   const fileLoadRequestIdRef = useRef(0);
+  const directoryEntriesRef = useRef(directoryEntries);
+
+  directoryEntriesRef.current = directoryEntries;
 
   const isDirty = useMemo(() => editorContent !== savedContent, [editorContent, savedContent]);
   const loadingFile = pendingFilePath !== null;
@@ -235,6 +248,37 @@ export function useFileExplorer(
     fileLoadRequestIdRef.current += 1;
   }, []);
 
+  const ensureFilePathVisible = useCallback(async (path: string) => {
+    const ancestorDirectories = getAncestorDirectories(path);
+    if (ancestorDirectories.length === 0) {
+      return;
+    }
+
+    setExpandedDirectories((currentPaths) => {
+      const nextPaths = [...currentPaths];
+      for (const directory of ancestorDirectories) {
+        if (!nextPaths.includes(directory)) {
+          nextPaths.push(directory);
+        }
+      }
+      return nextPaths;
+    });
+
+    if (effectiveLoadFullTree) {
+      return;
+    }
+
+    for (const directory of ancestorDirectories) {
+      if (directoryEntriesRef.current[directory] !== undefined) {
+        continue;
+      }
+      const response = await loadDirectory(directory);
+      applyDirectoryResponse(directory, response, {
+        markAsLazySubtreeRoot: effectiveLoadFullTree && directory.length > 0,
+      });
+    }
+  }, [applyDirectoryResponse, effectiveLoadFullTree, loadDirectory]);
+
   const openFile = useCallback(async (path: string) => {
     invalidateFileLoad();
     const requestId = fileLoadRequestIdRef.current;
@@ -246,6 +290,7 @@ export function useFileExplorer(
       setError(null);
       setErrorCode(null);
       setConflictState(null);
+      await ensureFilePathVisible(path);
       const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path, {
         startDirectory,
         signal: abortController.signal,
@@ -274,7 +319,7 @@ export function useFileExplorer(
         setPendingFilePath(null);
       }
     }
-  }, [applyErrorState, invalidateFileLoad, startDirectory, targetId, targetType]);
+  }, [applyErrorState, ensureFilePathVisible, invalidateFileLoad, startDirectory, targetId, targetType]);
 
   const refreshCurrentFile = useCallback(async (options?: { force?: boolean }) => {
     if (!currentFile) {

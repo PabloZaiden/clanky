@@ -1,4 +1,6 @@
 import { MarkdownRenderer } from "../MarkdownRenderer";
+import type { TranscriptFileLinkContext } from "./types";
+import { TranscriptTextContent } from "./transcript-file-links";
 
 interface StreamingTextContentProps {
   content: string;
@@ -6,6 +8,7 @@ interface StreamingTextContentProps {
   plainTextClassName: string;
   markdownClassName?: string;
   dimmed?: boolean;
+  fileLinkContext?: TranscriptFileLinkContext;
 }
 
 export function StreamingTextContent({
@@ -14,6 +17,7 @@ export function StreamingTextContent({
   plainTextClassName,
   markdownClassName,
   dimmed = false,
+  fileLinkContext,
 }: StreamingTextContentProps) {
   if (!content) {
     return null;
@@ -28,13 +32,10 @@ export function StreamingTextContent({
         content={content}
         className={markdownClassName}
         dimmed={dimmed}
+        fileLinkContext={fileLinkContext}
       />
     );
   }
 
-  return (
-    <div className={plainTextClassName} data-dimmed={dimmed ? "true" : "false"}>
-      {content}
-    </div>
-  );
+  return <TranscriptTextContent content={content} className={plainTextClassName} dimmed={dimmed} fileLinkContext={fileLinkContext} />;
 }

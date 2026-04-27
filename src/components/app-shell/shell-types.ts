@@ -81,21 +81,25 @@ export type CodeExplorerTarget =
       contentType: "workspace";
       workspaceId: string;
       startDirectory?: string;
+      filePath?: string;
     }
   | {
       contentType: "loop";
       loopId: string;
       startDirectory?: string;
+      filePath?: string;
     }
   | {
       contentType: "server";
       serverId: string;
       startDirectory?: string;
+      filePath?: string;
     }
   | {
       contentType: "chat";
       chatId: string;
       startDirectory?: string;
+      filePath?: string;
     };
 
 export type ShellRoute =

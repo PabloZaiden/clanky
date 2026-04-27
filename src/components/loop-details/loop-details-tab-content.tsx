@@ -18,6 +18,7 @@ import { PromptTab } from "./prompt-tab";
 import { PlanTab } from "./plan-tab";
 import { DiffTab } from "./diff-tab";
 import { ActionsTab } from "./actions-tab";
+import { getHashForShellRoute } from "../app-shell/shell-navigation";
 
 interface LoopDetailsTabContentProps {
   activeTab: TabId;
@@ -74,6 +75,34 @@ export function LoopDetailsTabContent({
 }: LoopDetailsTabContentProps) {
   const { config, state } = loop;
   const toolPathDisplayRoot = state.git?.worktreePath ?? config.directory;
+  const fileLinkContext = {
+    fileExplorerTarget: {
+      type: "workspace" as const,
+      id: config.workspaceId,
+      startDirectory: toolPathDisplayRoot,
+    },
+    rootDirectory: toolPathDisplayRoot,
+    getFileHref: (path: string) => `#${getHashForShellRoute({
+      view: "code-explorer",
+      target: {
+        contentType: "loop",
+        loopId,
+        startDirectory: toolPathDisplayRoot,
+        filePath: path,
+      },
+    })}`,
+    openFile: (path: string) => {
+      window.location.hash = getHashForShellRoute({
+        view: "code-explorer",
+        target: {
+          contentType: "loop",
+          loopId,
+          startDirectory: toolPathDisplayRoot,
+          filePath: path,
+        },
+      });
+    },
+  };
 
   return (
     <div
@@ -92,6 +121,7 @@ export function LoopDetailsTabContent({
           markdownEnabled={markdownEnabled}
           isLogActive={isLogActive}
           toolPathDisplayRoot={toolPathDisplayRoot}
+          fileLinkContext={fileLinkContext}
           isFocusMode={isLogFocusMode}
           onEnterFocusMode={onEnterLogFocusMode}
           onExitFocusMode={onExitLogFocusMode}
