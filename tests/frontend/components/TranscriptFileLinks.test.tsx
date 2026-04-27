@@ -7,8 +7,10 @@ import { act, renderWithUser, waitFor } from "../helpers/render";
 
 const api = createMockApi();
 
-function createFileLinkContext(): TranscriptFileLinkContext & { openedPaths: string[] } {
-  const openedPaths: string[] = [];
+function createFileLinkContext(): TranscriptFileLinkContext & {
+  openedTargets: Array<{ path: string; startDirectory: string }>;
+} {
+  const openedTargets: Array<{ path: string; startDirectory: string }> = [];
   return {
     fileExplorerTarget: {
       type: "workspace",
@@ -16,11 +18,11 @@ function createFileLinkContext(): TranscriptFileLinkContext & { openedPaths: str
       startDirectory: "/workspaces/demo",
     },
     rootDirectory: "/workspaces/demo",
-    getFileHref: (path: string) => `#/code-explorer/chat/chat-1?filePath=${encodeURIComponent(path)}`,
-    openFile: (path: string) => {
-      openedPaths.push(path);
+    getFileHref: ({ path, startDirectory }) => `#/code-explorer/chat/chat-1?startDirectory=${encodeURIComponent(startDirectory)}&filePath=${encodeURIComponent(path)}`,
+    openFile: (target) => {
+      openedTargets.push(target);
     },
-    openedPaths,
+    openedTargets,
   };
 }
 
@@ -113,7 +115,10 @@ describe("transcript file links", () => {
     expect(api.calls("/api/workspaces/:id/files/metadata", "GET")).toHaveLength(1);
 
     await user.click(queryByRole("link", { name: "src/index.ts" })!);
-    expect(fileLinkContext.openedPaths).toEqual(["src/index.ts"]);
+    expect(fileLinkContext.openedTargets).toEqual([{
+      path: "src/index.ts",
+      startDirectory: "/workspaces/demo",
+    }]);
   });
 
   test("preserves browser behavior for modified and non-primary transcript link clicks", async () => {
@@ -150,10 +155,60 @@ describe("transcript file links", () => {
     fireEvent.click(link!, { metaKey: true });
     fireEvent.click(link!, { ctrlKey: true });
     fireEvent.click(link!, { button: 1 });
-    expect(fileLinkContext.openedPaths).toEqual([]);
+    expect(fileLinkContext.openedTargets).toEqual([]);
 
     fireEvent.click(link!);
-    expect(fileLinkContext.openedPaths).toEqual(["src/index.ts"]);
+    expect(fileLinkContext.openedTargets).toEqual([{
+      path: "src/index.ts",
+      startDirectory: "/workspaces/demo",
+    }]);
+  });
+
+  test("links absolute file paths outside the active worktree by switching the explorer root", async () => {
+    const fileLinkContext = createFileLinkContext();
+
+    api.get("/api/workspaces/:id/files/metadata", (req) => {
+      const url = new URL(req.url, "http://localhost");
+      expect(url.searchParams.get("path")).toBe("plan.md");
+      expect(url.searchParams.get("startDirectory")).toBe("/root/.copilot/session-state/session-1");
+      return {
+        workspaceId: "workspace-1",
+        file: {
+          name: "plan.md",
+          path: "plan.md",
+          kind: "file",
+          size: 24,
+          modifiedAt: "2026-01-01T00:00:00.000Z",
+          versionToken: "100:24",
+        },
+      };
+    });
+
+    const { queryByRole, user } = renderWithUser(
+      <StreamingTextContent
+        content={"Open `/root/.copilot/session-state/session-1/plan.md`."}
+        markdownEnabled={false}
+        plainTextClassName="whitespace-pre-wrap break-words text-sm"
+        fileLinkContext={fileLinkContext}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(queryByRole("link", { name: "/root/.copilot/session-state/session-1/plan.md" })).toBeInTheDocument();
+    });
+
+    const link = queryByRole("link", { name: "/root/.copilot/session-state/session-1/plan.md" });
+    expect(link).toHaveAttribute(
+      "href",
+      "#/code-explorer/chat/chat-1?startDirectory=%2Froot%2F.copilot%2Fsession-state%2Fsession-1&filePath=plan.md",
+    );
+
+    await user.click(link!);
+
+    expect(fileLinkContext.openedTargets).toEqual([{
+      path: "plan.md",
+      startDirectory: "/root/.copilot/session-state/session-1",
+    }]);
   });
 
   test("evicts old transcript link cache entries when many distinct candidates are resolved", async () => {

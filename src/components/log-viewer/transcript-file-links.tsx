@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { getFileExplorerFileMetadataApi } from "../../hooks/workspaceFileActions";
-import type { TranscriptFileLinkContext } from "./types";
+import type { TranscriptFileLinkContext, TranscriptFileLinkTarget } from "./types";
 
 const EXTENSIONLESS_FILE_NAME_SET = new Set([
   "Brewfile",
@@ -18,7 +18,7 @@ const EXTENSIONLESS_FILE_NAME_SET = new Set([
 type FileLinkResolution =
   | { status: "plain" }
   | { status: "checking" }
-  | { status: "resolved"; path: string }
+  | { status: "resolved"; target: TranscriptFileLinkTarget }
   | { status: "missing" };
 
 interface CacheEntry {
@@ -92,6 +92,19 @@ function dirname(value: string): string {
     return "";
   }
   return normalizedValue.slice(0, lastSlashIndex);
+}
+
+function parentDirectory(value: string): string {
+  const normalizedValue = normalizePath(value);
+  const directory = dirname(normalizedValue);
+  if (directory) {
+    return directory;
+  }
+  if (normalizedValue.startsWith("/")) {
+    return "/";
+  }
+  const windowsDrivePrefix = normalizedValue.match(/^[A-Za-z]:/)?.[0];
+  return windowsDrivePrefix ? `${windowsDrivePrefix}/` : "";
 }
 
 function basename(value: string): string {
@@ -180,7 +193,7 @@ function setCachedEntry(cacheKey: string, entry: CacheEntry): void {
   }
 }
 
-function resolveCandidatePath(candidate: string, context: TranscriptFileLinkContext): string | null {
+function resolveCandidateTarget(candidate: string, context: TranscriptFileLinkContext): TranscriptFileLinkTarget | null {
   if (!looksLikeFileLinkCandidate(candidate)) {
     return null;
   }
@@ -202,16 +215,34 @@ function resolveCandidatePath(candidate: string, context: TranscriptFileLinkCont
       || absoluteRelativePath === ".."
       || dirname(absoluteRelativePath).startsWith("../")
     ) {
-      return null;
+      const outsideRootDirectory = parentDirectory(normalizedCandidate);
+      const outsideRootFileName = basename(normalizedCandidate);
+      if (
+        !outsideRootDirectory
+        || outsideRootFileName === "."
+        || outsideRootFileName === ".."
+      ) {
+        return null;
+      }
+      return {
+        path: outsideRootFileName,
+        startDirectory: outsideRootDirectory,
+      };
     }
-    return absoluteRelativePath;
+    return {
+      path: absoluteRelativePath,
+      startDirectory: normalizedRoot,
+    };
   }
 
   if (normalizedCandidate.startsWith("../") || normalizedCandidate === "..") {
     return null;
   }
 
-  return normalizedCandidate;
+  return {
+    path: normalizedCandidate,
+    startDirectory: normalizedRoot,
+  };
 }
 
 function buildCacheKey(candidate: string, context: TranscriptFileLinkContext): string {
@@ -228,21 +259,27 @@ async function resolveFileLink(
   candidate: string,
   context: TranscriptFileLinkContext,
 ): Promise<FileLinkResolution> {
-  const resolvedPath = resolveCandidatePath(candidate, context);
-  if (!resolvedPath) {
+  const resolvedTarget = resolveCandidateTarget(candidate, context);
+  if (!resolvedTarget) {
     return { status: "plain" };
   }
 
   try {
     const response = await getFileExplorerFileMetadataApi(
       context.fileExplorerTarget,
-      resolvedPath,
-      { startDirectory: context.fileExplorerTarget.startDirectory ?? context.rootDirectory },
+      resolvedTarget.path,
+      { startDirectory: resolvedTarget.startDirectory },
     );
     if (response.file.kind !== "file") {
       return { status: "missing" };
     }
-    return { status: "resolved", path: response.file.path };
+    return {
+      status: "resolved",
+      target: {
+        path: response.file.path,
+        startDirectory: resolvedTarget.startDirectory,
+      },
+    };
   } catch {
     return { status: "missing" };
   }
@@ -349,7 +386,7 @@ export function TranscriptInlineCode({
     return <code className={getInlineCodeClassName(className)}>{children}</code>;
   }
 
-  const href = fileLinkContext.getFileHref(resolution.path);
+  const href = fileLinkContext.getFileHref(resolution.target);
 
   return (
     <a
@@ -359,10 +396,10 @@ export function TranscriptInlineCode({
           return;
         }
         event.preventDefault();
-        fileLinkContext.openFile(resolution.path);
+        fileLinkContext.openFile(resolution.target);
       }}
       className="inline underline decoration-dotted underline-offset-2 hover:decoration-solid"
-      data-file-link-path={resolution.path}
+      data-file-link-path={resolution.target.path}
     >
       <code className={getInlineCodeClassName(className)}>{children}</code>
     </a>

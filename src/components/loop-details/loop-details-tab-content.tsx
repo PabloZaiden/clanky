@@ -14,6 +14,7 @@ import type { UseLoopActionsResult } from "./use-loop-actions";
 import type { UsePortForwardActionsResult } from "./use-port-forward-actions";
 import type { PortForward } from "../../types";
 import { LogTab } from "./log-tab";
+import type { TranscriptFileLinkTarget } from "../log-viewer";
 import { InfoTab } from "./info-tab";
 import { PromptTab } from "./prompt-tab";
 import { PlanTab } from "./plan-tab";
@@ -77,18 +78,18 @@ export function LoopDetailsTabContent({
   const { config, state } = loop;
   const toolPathDisplayRoot = state.git?.worktreePath ?? config.directory;
 
-  const getLoopFileHash = useCallback((path: string) => getHashForShellRoute({
+  const getLoopFileHash = useCallback(({ path, startDirectory }: TranscriptFileLinkTarget) => getHashForShellRoute({
     view: "code-explorer",
     target: {
       contentType: "loop",
       loopId,
-      startDirectory: toolPathDisplayRoot,
+      startDirectory,
       filePath: path,
     },
-  }), [loopId, toolPathDisplayRoot]);
+  }), [loopId]);
 
-  const openLinkedLoopFile = useCallback((path: string) => {
-    window.location.hash = getLoopFileHash(path);
+  const openLinkedLoopFile = useCallback((target: TranscriptFileLinkTarget) => {
+    window.location.hash = getLoopFileHash(target);
   }, [getLoopFileHash]);
 
   const fileLinkContext = useMemo(() => ({
@@ -98,7 +99,7 @@ export function LoopDetailsTabContent({
       startDirectory: toolPathDisplayRoot,
     },
     rootDirectory: toolPathDisplayRoot,
-    getFileHref: (path: string) => `#${getLoopFileHash(path)}`,
+    getFileHref: (target: TranscriptFileLinkTarget) => `#${getLoopFileHash(target)}`,
     openFile: openLinkedLoopFile,
   }), [config.workspaceId, getLoopFileHash, openLinkedLoopFile, toolPathDisplayRoot]);
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
-import { ConversationViewer } from "./LogViewer";
+import { ConversationViewer, type TranscriptFileLinkTarget } from "./LogViewer";
 import {
   ImageAttachmentControl,
   ImageAttachmentPreviewList,
@@ -550,22 +550,22 @@ export function ChatDetails({
         startDirectory: chatWorkingDirectory,
       },
       rootDirectory: chatWorkingDirectory,
-      getFileHref: (path: string) => `#${getHashForShellRoute({
+      getFileHref: ({ path, startDirectory }: TranscriptFileLinkTarget) => `#${getHashForShellRoute({
         view: "code-explorer",
         target: {
           contentType: "chat",
           chatId: chat.config.id,
-          startDirectory: chatWorkingDirectory,
+          startDirectory,
           filePath: path,
         },
       })}`,
-      openFile: (path: string) => {
+      openFile: ({ path, startDirectory }: TranscriptFileLinkTarget) => {
         window.location.hash = getHashForShellRoute({
           view: "code-explorer",
           target: {
             contentType: "chat",
             chatId: chat.config.id,
-            startDirectory: chatWorkingDirectory,
+            startDirectory,
             filePath: path,
           },
         });

@@ -36,15 +36,22 @@ export interface FinalizedResponseLogData {
   indicator: FinalizedResponseIndicator;
 }
 
+export interface TranscriptFileLinkTarget {
+  /** File path relative to the selected explorer root. */
+  path: string;
+  /** Explorer root directory that should scope the file open/navigation. */
+  startDirectory: string;
+}
+
 export interface TranscriptFileLinkContext {
   /** Explorer target used for async metadata lookups. */
   fileExplorerTarget: FileExplorerTarget;
   /** Effective root directory for absolute-path normalization. */
   rootDirectory: string;
   /** Build the hash href for a resolved file link. */
-  getFileHref: (path: string) => string;
+  getFileHref: (target: TranscriptFileLinkTarget) => string;
   /** Navigate to the resolved file in the code explorer. */
-  openFile: (path: string) => void;
+  openFile: (target: TranscriptFileLinkTarget) => void;
 }
 
 export interface LogViewerProps {
