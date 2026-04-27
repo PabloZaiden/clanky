@@ -182,11 +182,24 @@ describe("ralpher cli", () => {
     ]);
   });
 
-  test("auth defaults the client id to the target host name", () => {
-    expect(parseCliCommand(["auth", "https://example.test:9090/path"])).toEqual({
+  test("auth defaults the client id to the local machine host name", () => {
+    expect(parseCliCommand(["auth", "https://example.test:9090/path"], {
+      getHostname: () => "client-workstation",
+    })).toEqual({
       action: "auth",
       baseUrl: "https://example.test:9090/path",
-      clientId: "example.test",
+      clientId: "client-workstation",
+      cookies: undefined,
+    });
+  });
+
+  test("auth falls back to ralpher-cli when the local host name is blank", () => {
+    expect(parseCliCommand(["auth", "https://example.test:9090/path"], {
+      getHostname: () => "   ",
+    })).toEqual({
+      action: "auth",
+      baseUrl: "https://example.test:9090/path",
+      clientId: "ralpher-cli",
       cookies: undefined,
     });
   });
@@ -264,6 +277,7 @@ describe("ralpher cli", () => {
     ], {
       out: (message: string) => output.push(message),
       err: (message: string) => output.push(`ERR:${message}`),
+      getHostname: () => "client-workstation",
       sleep: async () => undefined,
       now: () => new Date("2026-04-21T17:15:00.000Z"),
       fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
@@ -332,7 +346,7 @@ describe("ralpher cli", () => {
 
     expect(await loadStoredCliCredentials()).toEqual({
       baseUrl: "http://example.test",
-      clientId: "example.test",
+      clientId: "client-workstation",
       accessToken: "access-token-1",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -349,18 +363,18 @@ describe("ralpher cli", () => {
     ]);
     expect(fetchCalls.map((call) => call.body)).toEqual([
       JSON.stringify({
-        clientId: "example.test",
+        clientId: "client-workstation",
         scope: "",
       }),
       JSON.stringify({
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
         device_code: "device-code-1",
-        client_id: "example.test",
+        client_id: "client-workstation",
       }),
       JSON.stringify({
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
         device_code: "device-code-1",
-        client_id: "example.test",
+        client_id: "client-workstation",
       }),
     ]);
     expect(fetchCalls.every((call) => call.origin === "http://example.test")).toBe(true);
