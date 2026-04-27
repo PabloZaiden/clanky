@@ -91,6 +91,10 @@ function dirname(value: string): string {
   if (lastSlashIndex < 0) {
     return "";
   }
+  const windowsDrivePrefix = normalizedValue.match(/^[A-Za-z]:/)?.[0];
+  if (windowsDrivePrefix && lastSlashIndex === windowsDrivePrefix.length) {
+    return `${windowsDrivePrefix}/`;
+  }
   return normalizedValue.slice(0, lastSlashIndex);
 }
 

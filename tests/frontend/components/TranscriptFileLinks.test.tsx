@@ -211,6 +211,53 @@ describe("transcript file links", () => {
     }]);
   });
 
+  test("normalizes Windows drive-root parents for absolute transcript file links", async () => {
+    const fileLinkContext = createFileLinkContext();
+
+    api.get("/api/workspaces/:id/files/metadata", (req) => {
+      const url = new URL(req.url, "http://localhost");
+      expect(url.searchParams.get("path")).toBe("file.txt");
+      expect(url.searchParams.get("startDirectory")).toBe("C:/");
+      return {
+        workspaceId: "workspace-1",
+        file: {
+          name: "file.txt",
+          path: "file.txt",
+          kind: "file",
+          size: 24,
+          modifiedAt: "2026-01-01T00:00:00.000Z",
+          versionToken: "100:24",
+        },
+      };
+    });
+
+    const { queryByRole, user } = renderWithUser(
+      <StreamingTextContent
+        content={"Open `C:/file.txt`."}
+        markdownEnabled={false}
+        plainTextClassName="whitespace-pre-wrap break-words text-sm"
+        fileLinkContext={fileLinkContext}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(queryByRole("link", { name: "C:/file.txt" })).toBeInTheDocument();
+    });
+
+    const link = queryByRole("link", { name: "C:/file.txt" });
+    expect(link).toHaveAttribute(
+      "href",
+      "#/code-explorer/chat/chat-1?startDirectory=C%3A%2F&filePath=file.txt",
+    );
+
+    await user.click(link!);
+
+    expect(fileLinkContext.openedTargets).toEqual([{
+      path: "file.txt",
+      startDirectory: "C:/",
+    }]);
+  });
+
   test("evicts old transcript link cache entries when many distinct candidates are resolved", async () => {
     const fileLinkContext = createFileLinkContext();
 
