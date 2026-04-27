@@ -581,14 +581,19 @@ describe("Chats API Integration", () => {
     expect(settledChat.state.worktree?.worktreePath).toBeDefined();
 
     const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
-    await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
+    await mkdir(join(chatWorktreePath, "plans"), { recursive: true });
     await writeFile(
-      getPlanFilePath(chatWorktreePath),
+      join(chatWorktreePath, "plans", "seeded-plan.md"),
       "\uFEFF# Imported plan\n\n1. Do the seeded work.\n\n<promise>PLAN_READY</promise>\n",
     );
+    await writeFile(join(chatWorktreePath, "plans", "status.md"), "# Imported status\n\nReady to review.");
 
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        planFilePath: "plans/seeded-plan.md",
+      }),
     });
 
     expect(spawnResponse.status).toBe(201);
@@ -610,7 +615,101 @@ describe("Chats API Integration", () => {
     expect(statusResponse.status).toBe(200);
     await expect(statusResponse.json()).resolves.toMatchObject({
       exists: true,
-      content: expect.stringContaining("Imported plan ready for Plan from PlanSource Chat"),
+      content: "# Imported status\n\nReady to review.",
+    });
+  });
+
+  test("falls back to the default plan path when the submitted plan file path is blank", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Blank Path Plan Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Use the default plan path when no file path is provided.",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    const settledChat = await waitForChatIdle(chatId) as {
+      state: {
+        worktree?: {
+          worktreePath?: string;
+        };
+      };
+    };
+    const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
+    await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
+    await writeFile(getPlanFilePath(chatWorktreePath), "# Fallback plan\n\n1. Use the default path.\n");
+
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        planFilePath: "   ",
+      }),
+    });
+
+    expect(spawnResponse.status).toBe(201);
+    const spawnedLoop = await spawnResponse.json();
+    expect(spawnedLoop.state.planMode?.planContent).toBe("# Fallback plan\n\n1. Use the default path.");
+  });
+
+  test("rejects spawning from current plan when the selected plan path escapes the workspace", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Invalid Path Plan Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Use an invalid plan path.",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+    await waitForChatIdle(chatId);
+
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        planFilePath: "../outside.md",
+      }),
+    });
+
+    expect(spawnResponse.status).toBe(400);
+    await expect(spawnResponse.json()).resolves.toMatchObject({
+      error: "invalid_current_plan",
+      message: "The selected plan file path must stay within the current chat workspace.",
     });
   });
 

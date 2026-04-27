@@ -572,7 +572,7 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, conte
     }
     case "unknown": {
       const storedName = getStoredName(tool);
-      return storedName ? `Unknown tool (stored as ${storedName})` : "Unknown tool";
+      return storedName ? `General tool: ${storedName}` : "Unknown tool";
     }
   }
 }

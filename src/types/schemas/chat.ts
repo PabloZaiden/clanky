@@ -43,3 +43,7 @@ export const SendChatMessageRequestSchema = z.object({
 export const InterruptChatRequestSchema = z.object({
   reason: z.string().trim().min(1, "reason is required").default(DEFAULT_CHAT_INTERRUPT_REASON),
 });
+
+export const SpawnCurrentPlanLoopRequestSchema = z.object({
+  planFilePath: z.string().trim().optional(),
+});
