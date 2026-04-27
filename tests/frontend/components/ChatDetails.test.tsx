@@ -579,6 +579,41 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")[0]?.body).toEqual({});
   });
 
+  test("keeps the current-plan modal open until loop creation finishes and preserves the path after an error", async () => {
+    const initialChat = createChat();
+    const pendingSpawn = Promise.withResolvers<ReturnType<typeof createLoop>>();
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/spawn-loop-from-current-plan", async () => await pendingSpawn.promise);
+
+    const { getByDisplayValue, getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+    await user.type(getByLabelText("Plan file path"), "plans/current-plan.md");
+    await user.click(getByRole("button", { name: "Spawn loop" }));
+
+    await waitFor(() => {
+      expect((getByRole("button", { name: "Spawn loop" }) as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    expect(getByRole("heading", { name: "Spawn loop from plan file" })).toBeTruthy();
+    expect(getByDisplayValue("plans/current-plan.md")).toBeTruthy();
+
+    pendingSpawn.reject(new Error("Selected plan file was not found."));
+
+    await waitFor(() => {
+      expect((getByRole("button", { name: "Spawn loop" }) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    expect(getByRole("heading", { name: "Spawn loop from plan file" })).toBeTruthy();
+    expect(getByDisplayValue("plans/current-plan.md")).toBeTruthy();
+  });
+
   test("shows the chat worktree path as the modal resolution root when a worktree is active", async () => {
     const initialChat = createChat({
       state: {
