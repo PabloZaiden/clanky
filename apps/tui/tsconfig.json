@@ -1,4 +1,16 @@
 {
   "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@ralpher/shared": ["./packages/shared/src/index.ts"],
+      "@ralpher/shared/*": ["./packages/shared/src/*"],
+      "@ralpher/contracts": ["./packages/contracts/src/index.ts"],
+      "@ralpher/contracts/*": ["./packages/contracts/src/*"],
+      "@ralpher/client-sdk": ["./packages/client-sdk/src/index.ts"],
+      "@ralpher/client-sdk/*": ["./packages/client-sdk/src/*"],
+      "@pablozaiden/terminatui": ["apps/tui/src/shims/terminatui.ts"]
+    }
+  },
   "include": ["src/**/*"]
 }

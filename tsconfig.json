@@ -31,7 +31,8 @@
       "@ralpher/contracts": ["./packages/contracts/src/index.ts"],
       "@ralpher/contracts/*": ["./packages/contracts/src/*"],
       "@ralpher/client-sdk": ["./packages/client-sdk/src/index.ts"],
-      "@ralpher/client-sdk/*": ["./packages/client-sdk/src/*"]
+      "@ralpher/client-sdk/*": ["./packages/client-sdk/src/*"],
+      "@pablozaiden/terminatui": ["./apps/tui/src/shims/terminatui.ts"]
     },
 
     "noUnusedLocals": true,

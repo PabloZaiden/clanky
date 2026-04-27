@@ -1,1 +1,4 @@
-console.log("Ralpher TUI is not implemented yet. This app package is reserved for the future terminal UI.");
+import { RalpherTuiApp } from "./app";
+
+const app = await RalpherTuiApp.create();
+await app.run();
