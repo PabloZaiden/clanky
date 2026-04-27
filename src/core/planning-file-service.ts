@@ -2,6 +2,7 @@ import { posix as pathPosix } from "node:path";
 import type { CommandExecutor } from "./command-executor";
 import { ensurePlanningDirectory } from "./planning-directory";
 import {
+  DEFAULT_PLAN_DISPLAY_PATH,
   getPlanFilePath,
   getStatusFilePath,
   normalizePlanningBasePath,
@@ -52,7 +53,7 @@ function resolvePlanningFileSource(directory: string, requestedPlanPath?: string
     return {
       planPath: getPlanFilePath(directory),
       statusPath: getStatusFilePath(directory),
-      displayPath: ".ralph-planning/plan.md",
+      displayPath: DEFAULT_PLAN_DISPLAY_PATH,
       isDefault: true,
     };
   }

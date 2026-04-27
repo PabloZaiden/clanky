@@ -579,6 +579,32 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")[0]?.body).toEqual({});
   });
 
+  test("shows the chat worktree path as the modal resolution root when a worktree is active", async () => {
+    const initialChat = createChat({
+      state: {
+        ...createChat().state,
+        worktree: {
+          originalBranch: "main",
+          workingBranch: "chat-1",
+          worktreePath: "/workspace/repo/.ralph-worktrees/chat-1",
+        },
+      },
+    });
+
+    api.get("/api/chats/:id", () => initialChat);
+
+    const { getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "Chat actions" }));
+    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+
+    expect(getByText("/workspace/repo/.ralph-worktrees/chat-1")).toBeTruthy();
+  });
+
   test("shows the parsed current-plan spawn failure message without the Error prefix", async () => {
     const initialChat = createChat();
 

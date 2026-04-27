@@ -7,6 +7,7 @@ import { posix as pathPosix } from "node:path";
 export const PLANNING_DIRECTORY_NAME = ".ralph-planning";
 export const PLAN_FILE_NAME = "plan.md";
 export const STATUS_FILE_NAME = "status.md";
+export const DEFAULT_PLAN_DISPLAY_PATH = pathPosix.join(PLANNING_DIRECTORY_NAME, PLAN_FILE_NAME);
 
 export function normalizePlanningBasePath(directory: string): string {
   return pathPosix.normalize(directory.replaceAll("\\", "/"));
