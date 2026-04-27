@@ -13,6 +13,7 @@ import {
   parseModelKey,
 } from "./ModelSelector";
 import { RenameChatModal } from "./RenameChatModal";
+import { SpawnCurrentPlanModal } from "./SpawnCurrentPlanModal";
 import {
   ActionMenu,
   Button,
@@ -130,6 +131,8 @@ export function ChatDetails({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSpawnPending, setIsSpawnPending] = useState(false);
   const [isSpawnCurrentPlanPending, setIsSpawnCurrentPlanPending] = useState(false);
+  const [isSpawnCurrentPlanModalOpen, setIsSpawnCurrentPlanModalOpen] = useState(false);
+  const [spawnCurrentPlanPath, setSpawnCurrentPlanPath] = useState("");
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -473,20 +476,46 @@ export function ChatDetails({
     }
   }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenLoop, toast]);
 
-  const handleSpawnLoopFromCurrentPlan = useCallback(async () => {
+  const openSpawnCurrentPlanModal = useCallback(() => {
     if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
       return;
     }
+
+    setSpawnCurrentPlanPath("");
+    setIsSpawnCurrentPlanModalOpen(true);
+  }, [chat, isActive, isSpawnCurrentPlanPending, isSpawnPending]);
+
+  const closeSpawnCurrentPlanModal = useCallback(() => {
+    if (isSpawnCurrentPlanPending) {
+      return;
+    }
+
+    setIsSpawnCurrentPlanModalOpen(false);
+    setSpawnCurrentPlanPath("");
+  }, [isSpawnCurrentPlanPending]);
+
+  const handleSpawnLoopFromCurrentPlan = useCallback(async (requestedPlanPath: string) => {
+    if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
+      return;
+    }
+
+    const trimmedPlanPath = requestedPlanPath.trim();
 
     setIsSpawnCurrentPlanPending(true);
     try {
       const response = await appFetch(`/api/chats/${chatId}/spawn-loop-from-current-plan`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(trimmedPlanPath ? { planFilePath: trimmedPlanPath } : {}),
       });
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to spawn loop from current plan"));
       }
       const loop = (await response.json()) as Loop;
+      setSpawnCurrentPlanPath("");
+      setIsSpawnCurrentPlanModalOpen(false);
       onOpenLoop?.(loop.config.id);
     } catch (spawnError) {
       toast.error(getErrorMessage(spawnError));
@@ -523,7 +552,7 @@ export function ChatDetails({
       {
         id: "spawn-loop-from-current-plan",
         label: isSpawnCurrentPlanPending ? "Spawning loop from current plan..." : "Spawn loop from current plan",
-        onClick: () => void handleSpawnLoopFromCurrentPlan(),
+        onClick: () => void openSpawnCurrentPlanModal(),
         disabled: isActive || isSpawnPending || isSpawnCurrentPlanPending || chat.state.messages.length === 0,
       },
       {
@@ -544,7 +573,7 @@ export function ChatDetails({
         destructive: true,
       },
     ];
-  }, [chat, handleSpawnLoop, handleSpawnLoopFromCurrentPlan, hasCodeExplorerAction, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer]);
+  }, [chat, handleSpawnLoop, hasCodeExplorerAction, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal]);
 
   const {
     composerRef,
@@ -588,7 +617,8 @@ export function ChatDetails({
 
   const hasPendingInput = message.trim().length > 0 || attachments.length > 0 || selectedModel.length > 0;
   const autoScroll = true;
-  const toolPathDisplayRoot = chat.state.worktree?.worktreePath ?? chat.config.directory;
+  const chatWorkingDirectory = chat.state.worktree?.worktreePath ?? chat.config.directory;
+  const toolPathDisplayRoot = chatWorkingDirectory;
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
   const sendButtonClassName = `${actionButtonBaseClassName} bg-gray-900 text-white hover:bg-gray-800 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-neutral-100 dark:text-gray-950 dark:hover:bg-neutral-200 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
@@ -741,6 +771,20 @@ export function ChatDetails({
     />
   );
 
+  const spawnCurrentPlanModal = (
+    <SpawnCurrentPlanModal
+      isOpen={isSpawnCurrentPlanModalOpen}
+      submitting={isSpawnCurrentPlanPending}
+      workspaceDirectory={chatWorkingDirectory}
+      initialPlanFilePath={spawnCurrentPlanPath}
+      onClose={closeSpawnCurrentPlanModal}
+      onSubmit={async (planFilePath) => {
+        setSpawnCurrentPlanPath(planFilePath);
+        await handleSpawnLoopFromCurrentPlan(planFilePath);
+      }}
+    />
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
       <header
@@ -791,6 +835,7 @@ export function ChatDetails({
       {conversation}
       {composer}
       {renameModal}
+      {spawnCurrentPlanModal}
       {deleteConfirmModal}
     </div>
   );
