@@ -1499,7 +1499,7 @@ describe("ChatDetails", () => {
         logs: [],
         toolCalls: [{
           id: "tool-1",
-          name: "unknown",
+          name: "mystery-search",
           input: {
             query: "@opentui/react test-utils mockInput pressKey ctrl option example",
             limit: 5,
@@ -1531,7 +1531,9 @@ describe("ChatDetails", () => {
     await user.click(getToolGroupToggle(container)!);
 
     await waitFor(() => {
-      expect(getUnknownToolToggle(container)).toBeTruthy();
+      const unknownToolToggle = getUnknownToolToggle(container);
+      expect(unknownToolToggle).toBeTruthy();
+      expect(unknownToolToggle?.textContent).toContain("mystery-search");
     });
 
     await user.click(getUnknownToolToggle(container)!);
@@ -1557,7 +1559,7 @@ describe("ChatDetails", () => {
         logs: [],
         toolCalls: [{
           id: "tool-1",
-          name: "unknown",
+          name: "mystery-search",
           input: {
             query: "search term",
           },
@@ -1577,7 +1579,9 @@ describe("ChatDetails", () => {
     await user.click(getToolGroupToggle(container)!);
 
     await waitFor(() => {
-      expect(getUnknownToolToggle(container)).toBeTruthy();
+      const unknownToolToggle = getUnknownToolToggle(container);
+      expect(unknownToolToggle).toBeTruthy();
+      expect(unknownToolToggle?.textContent).toContain("mystery-search");
     });
 
     await user.click(getUnknownToolToggle(container)!);
@@ -1600,7 +1604,7 @@ describe("ChatDetails", () => {
         logs: [],
         toolCalls: [{
           id: "tool-1",
-          name: "unknown",
+          name: "mystery-search",
           input: {
             query: "search term",
           },
@@ -1620,7 +1624,9 @@ describe("ChatDetails", () => {
     await user.click(getToolGroupToggle(container)!);
 
     await waitFor(() => {
-      expect(getUnknownToolToggle(container)).toBeTruthy();
+      const unknownToolToggle = getUnknownToolToggle(container);
+      expect(unknownToolToggle).toBeTruthy();
+      expect(unknownToolToggle?.textContent).toContain("mystery-search");
     });
 
     await user.click(getUnknownToolToggle(container)!);
