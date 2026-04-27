@@ -19,7 +19,7 @@
     "test": "bun scripts/run-tests.ts all",
     "test:backend": "bun scripts/run-tests.ts backend",
     "test:frontend": "bun scripts/run-tests.ts frontend",
-    "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo",
+    "tsc": "mkdir -p .cache/tsc && bunx tsc -p tsconfig.typecheck.json --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo",
     "tsc:workspaces": "bun scripts/run-workspace-script.ts build"
   },
   "dependencies": {

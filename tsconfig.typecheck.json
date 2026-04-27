@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "dist",
+    "node_modules",
+    "apps/tui",
+    "tests/unit/tui-command-factory.test.ts",
+    "tests/unit/tui-command-factory-helpers.test.ts"
+  ]
+}

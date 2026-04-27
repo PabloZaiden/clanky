@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  AppContext,
-  ConfigValidationError,
-  TuiApplication,
-} from "@pablozaiden/terminatui";
-import {
   buildCreateLoopRequest,
   buildCreateWorkspaceRequest,
   buildEntityCommandName,
@@ -13,6 +8,19 @@ import {
   getChatActionNames,
   getLoopActionNames,
 } from "../../apps/tui/src/services/command-factory-helpers";
+
+function expectConfigValidationError(fn: () => unknown, field?: string): void {
+  try {
+    fn();
+    throw new Error("Expected ConfigValidationError to be thrown.");
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).toBe("ConfigValidationError");
+    if (field !== undefined) {
+      expect((error as Error & { field?: string }).field).toBe(field);
+    }
+  }
+}
 
 describe("tui command factory helpers", () => {
   test("buildCreateWorkspaceRequest maps ssh server settings", () => {
@@ -45,7 +53,7 @@ describe("tui command factory helpers", () => {
   });
 
   test("buildCreateWorkspaceRequest rejects invalid ssh settings locally", () => {
-    expect(() => buildCreateWorkspaceRequest({
+    expectConfigValidationError(() => buildCreateWorkspaceRequest({
       name: "Demo",
       directory: "/workspaces/demo",
       agentProvider: "copilot",
@@ -55,9 +63,9 @@ describe("tui command factory helpers", () => {
       username: "ralph",
       password: "",
       identityFile: "",
-    })).toThrow(ConfigValidationError);
+    }), "hostname");
 
-    expect(() => buildCreateWorkspaceRequest({
+    expectConfigValidationError(() => buildCreateWorkspaceRequest({
       name: "Demo",
       directory: "/workspaces/demo",
       agentProvider: "copilot",
@@ -67,7 +75,7 @@ describe("tui command factory helpers", () => {
       username: "ralph",
       password: "",
       identityFile: "",
-    })).toThrow(ConfigValidationError);
+    }), "port");
   });
 
   test("buildCreateLoopRequest preserves current loop defaults", () => {
@@ -146,7 +154,7 @@ describe("tui command factory helpers", () => {
   });
 
   test("buildUpdateWorkspaceRequest rejects an empty trimmed name", () => {
-    expect(() => buildUpdateWorkspaceRequest({
+    expectConfigValidationError(() => buildUpdateWorkspaceRequest({
       name: "   ",
       agentProvider: "copilot",
       agentTransport: "stdio",
@@ -155,11 +163,11 @@ describe("tui command factory helpers", () => {
       username: "",
       password: "",
       identityFile: "",
-    })).toThrow(ConfigValidationError);
+    }), "name");
   });
 
   test("buildUpdateLoopRequest rejects empty required text fields", () => {
-    expect(() => buildUpdateLoopRequest({
+    expectConfigValidationError(() => buildUpdateLoopRequest({
       name: "   ",
       prompt: "Implement the accepted plan.",
       modelProviderID: "anthropic",
@@ -180,9 +188,9 @@ describe("tui command factory helpers", () => {
       fullyAutonomous: false,
       gitBranchPrefix: "",
       gitCommitScope: "",
-    })).toThrow(ConfigValidationError);
+    }), "name");
 
-    expect(() => buildUpdateLoopRequest({
+    expectConfigValidationError(() => buildUpdateLoopRequest({
       name: "Ship feature",
       prompt: "   ",
       modelProviderID: "anthropic",
@@ -203,7 +211,7 @@ describe("tui command factory helpers", () => {
       fullyAutonomous: false,
       gitBranchPrefix: "",
       gitCommitScope: "",
-    })).toThrow(ConfigValidationError);
+    }), "prompt");
   });
 
   test("getLoopActionNames reflects lifecycle-specific actions", () => {
@@ -262,10 +270,5 @@ describe("tui command factory helpers", () => {
 
   test("buildEntityCommandName creates a stable safe command name", () => {
     expect(buildEntityCommandName("Fix Auth Timeout", "12345678-1234")).toBe("fix-auth-timeout-123456");
-  });
-
-  test("terminatui shim resolves the real runtime surface", () => {
-    expect(typeof TuiApplication.prototype.runFromArgs).toBe("function");
-    expect(typeof AppContext.current.getConfigDir).toBe("function");
   });
 });

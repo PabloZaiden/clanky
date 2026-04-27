@@ -2,6 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "baseUrl": ".",
+    "jsxImportSource": "@opentui/react",
     "paths": {
       "@/*": ["src/*"],
       "@ralpher/shared": ["../../packages/shared/src/index.ts"],
@@ -9,8 +10,7 @@
       "@ralpher/contracts": ["../../packages/contracts/src/index.ts"],
       "@ralpher/contracts/*": ["../../packages/contracts/src/*"],
       "@ralpher/client-sdk": ["../../packages/client-sdk/src/index.ts"],
-      "@ralpher/client-sdk/*": ["../../packages/client-sdk/src/*"],
-      "@pablozaiden/terminatui": ["src/shims/terminatui.ts"]
+      "@ralpher/client-sdk/*": ["../../packages/client-sdk/src/*"]
     }
   },
   "include": ["src/**/*"]

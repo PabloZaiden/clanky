@@ -59,6 +59,7 @@
     "apps/tui": {
       "name": "@ralpher/tui",
       "dependencies": {
+        "@opentui/react": "0.1.87",
         "@pablozaiden/terminatui": "0.7.1",
         "@ralpher/client-sdk": "workspace:*",
         "@ralpher/contracts": "workspace:*",
