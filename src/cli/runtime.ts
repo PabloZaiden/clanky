@@ -1,3 +1,4 @@
+import { hostname } from "os";
 import { formatRalpherVersion, RALPHER_VERSION } from "../version";
 import {
   getAuthorizedHeaders,
@@ -34,6 +35,7 @@ const CLI_USAGE = [
 const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE].join("\n");
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
+const DEFAULT_CLIENT_ID = "ralpher-cli";
 
 type CliOutputDependencies = {
   out?: (message: string) => void;
@@ -75,11 +77,16 @@ export type MainCommand = CliCommand;
 
 export interface CliRuntimeDependencies extends CliOutputDependencies {
   fetchFn?: typeof fetch;
+  getHostname?: () => string;
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
   runCliFn?: typeof runCli;
   updateDependencies?: Partial<CliUpdateDependencies>;
   wsDependencies?: Partial<CliWsDependencies>;
+}
+
+interface CliParseDependencies {
+  getHostname?: () => string;
 }
 
 function createUsageError(message: string): Error {
@@ -97,8 +104,9 @@ function parseOptionValue(option: string, rawValue?: string): string {
   return rawValue.trim();
 }
 
-function getDefaultClientId(baseUrl: string): string {
-  return new URL(baseUrl).hostname;
+function getDefaultClientId(getHostname: () => string = hostname): string {
+  const localHostname = getHostname().trim();
+  return localHostname || DEFAULT_CLIENT_ID;
 }
 
 function parseCommandArguments(
@@ -290,7 +298,7 @@ function runSchemaCommand(
   return 0;
 }
 
-export function parseCliCommand(args: string[]): CliCommand {
+export function parseCliCommand(args: string[], dependencies: CliParseDependencies = {}): CliCommand {
   const [action, ...restArgs] = args;
   if (!action) {
     return {
@@ -348,7 +356,7 @@ export function parseCliCommand(args: string[]): CliCommand {
     return {
       action,
       baseUrl,
-      clientId: options["--client-id"]?.trim() || getDefaultClientId(baseUrl),
+      clientId: options["--client-id"]?.trim() || getDefaultClientId(dependencies.getHostname),
       cookies,
     };
   }
@@ -449,7 +457,9 @@ export async function runCli(
   const err = dependencies.err ?? console.error;
 
   try {
-    const command = parseCliCommand(args);
+    const command = parseCliCommand(args, {
+      getHostname: dependencies.getHostname,
+    });
     switch (command.action) {
       case "help":
         out(CLI_HELP);
