@@ -274,7 +274,7 @@ export function useFileExplorer(
       }
       const response = await loadDirectory(directory);
       applyDirectoryResponse(directory, response, {
-        markAsLazySubtreeRoot: effectiveLoadFullTree && directory.length > 0,
+        markAsLazySubtreeRoot: false,
       });
     }
   }, [applyDirectoryResponse, effectiveLoadFullTree, loadDirectory]);

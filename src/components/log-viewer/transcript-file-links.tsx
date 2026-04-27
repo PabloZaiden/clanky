@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { getFileExplorerFileMetadataApi } from "../../hooks/workspaceFileActions";
 import type { TranscriptFileLinkContext } from "./types";
 
@@ -26,6 +26,7 @@ interface CacheEntry {
   promise?: Promise<FileLinkResolution>;
 }
 
+const MAX_TRANSCRIPT_FILE_LINK_CACHE_ENTRIES = 100;
 const transcriptFileLinkCache = new Map<string, CacheEntry>();
 
 function normalizeSeparators(value: string): string {
@@ -144,6 +145,7 @@ export function looksLikeFileLinkCandidate(value: string): boolean {
   if (
     !trimmedValue
     || trimmedValue.length > 260
+    || trimmedValue.includes("://")
     || trimmedValue.includes("\n")
     || trimmedValue.includes("\r")
     || trimmedValue.includes("`")
@@ -163,6 +165,19 @@ export function looksLikeFileLinkCandidate(value: string): boolean {
   }
 
   return hasFileNameShape(normalizedValue);
+}
+
+function setCachedEntry(cacheKey: string, entry: CacheEntry): void {
+  transcriptFileLinkCache.delete(cacheKey);
+  transcriptFileLinkCache.set(cacheKey, entry);
+
+  while (transcriptFileLinkCache.size > MAX_TRANSCRIPT_FILE_LINK_CACHE_ENTRIES) {
+    const oldestKey = transcriptFileLinkCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    transcriptFileLinkCache.delete(oldestKey);
+  }
 }
 
 function resolveCandidatePath(candidate: string, context: TranscriptFileLinkContext): string | null {
@@ -237,24 +252,25 @@ function getCachedResolution(candidate: string, context: TranscriptFileLinkConte
   const cacheKey = buildCacheKey(candidate, context);
   const cachedEntry = transcriptFileLinkCache.get(cacheKey);
   if (cachedEntry) {
+    setCachedEntry(cacheKey, cachedEntry);
     return cachedEntry;
   }
 
   const promise = resolveFileLink(candidate, context).then((result) => {
-    transcriptFileLinkCache.set(cacheKey, { result });
+    setCachedEntry(cacheKey, { result });
     return result;
   });
   const nextEntry: CacheEntry = {
     result: { status: "checking" },
     promise,
   };
-  transcriptFileLinkCache.set(cacheKey, nextEntry);
+  setCachedEntry(cacheKey, nextEntry);
   return nextEntry;
 }
 
 function getInlineCodeClassName(className?: string): string {
   return [
-    "break-all rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm dark:bg-neutral-800",
+    "break-all rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm text-gray-900 dark:bg-neutral-800 dark:text-gray-100",
     className,
   ].filter(Boolean).join(" ");
 }
@@ -274,6 +290,17 @@ function getTextContent(children: ReactNode): string {
 
 export function resetTranscriptFileLinkCache(): void {
   transcriptFileLinkCache.clear();
+}
+
+function shouldHandleInlineFileLinkClick(event: ReactMouseEvent<HTMLAnchorElement>): boolean {
+  return (
+    !event.defaultPrevented
+    && event.button === 0
+    && !event.metaKey
+    && !event.ctrlKey
+    && !event.shiftKey
+    && !event.altKey
+  );
 }
 
 export function TranscriptInlineCode({
@@ -328,6 +355,9 @@ export function TranscriptInlineCode({
     <a
       href={href}
       onClick={(event) => {
+        if (!shouldHandleInlineFileLinkClick(event)) {
+          return;
+        }
         event.preventDefault();
         fileLinkContext.openFile(resolution.path);
       }}

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { fireEvent } from "@testing-library/react";
 import { StreamingTextContent } from "@/components/log-viewer/streaming-text-content";
 import { looksLikeFileLinkCandidate, resetTranscriptFileLinkCache, type TranscriptFileLinkContext } from "@/components/LogViewer";
 import { createMockApi } from "../helpers/mock-api";
@@ -40,6 +41,7 @@ describe("transcript file links", () => {
     expect(looksLikeFileLinkCandidate("/workspaces/demo/src/index.ts")).toBe(true);
     expect(looksLikeFileLinkCandidate("package.json")).toBe(true);
     expect(looksLikeFileLinkCandidate("Dockerfile")).toBe(true);
+    expect(looksLikeFileLinkCandidate("https://example.com/src/index.ts")).toBe(false);
     expect(looksLikeFileLinkCandidate("echo hi")).toBe(false);
     expect(looksLikeFileLinkCandidate("--watch")).toBe(false);
     expect(looksLikeFileLinkCandidate("done")).toBe(false);
@@ -112,5 +114,101 @@ describe("transcript file links", () => {
 
     await user.click(queryByRole("link", { name: "src/index.ts" })!);
     expect(fileLinkContext.openedPaths).toEqual(["src/index.ts"]);
+  });
+
+  test("preserves browser behavior for modified and non-primary transcript link clicks", async () => {
+    const fileLinkContext = createFileLinkContext();
+
+    api.get("/api/workspaces/:id/files/metadata", () => ({
+      workspaceId: "workspace-1",
+      file: {
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 24,
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+        versionToken: "100:24",
+      },
+    }));
+
+    const { queryByRole } = renderWithUser(
+      <StreamingTextContent
+        content={"Inspect `src/index.ts`."}
+        markdownEnabled={false}
+        plainTextClassName="whitespace-pre-wrap break-words text-sm"
+        fileLinkContext={fileLinkContext}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(queryByRole("link", { name: "src/index.ts" })).toBeInTheDocument();
+    });
+
+    const link = queryByRole("link", { name: "src/index.ts" });
+    expect(link).not.toBeNull();
+
+    fireEvent.click(link!, { metaKey: true });
+    fireEvent.click(link!, { ctrlKey: true });
+    fireEvent.click(link!, { button: 1 });
+    expect(fileLinkContext.openedPaths).toEqual([]);
+
+    fireEvent.click(link!);
+    expect(fileLinkContext.openedPaths).toEqual(["src/index.ts"]);
+  });
+
+  test("evicts old transcript link cache entries when many distinct candidates are resolved", async () => {
+    const fileLinkContext = createFileLinkContext();
+
+    api.get("/api/workspaces/:id/files/metadata", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      return {
+        workspaceId: "workspace-1",
+        file: {
+          name: path.split("/").at(-1) ?? "unknown.ts",
+          path,
+          kind: "file",
+          size: 24,
+          modifiedAt: "2026-01-01T00:00:00.000Z",
+          versionToken: "100:24",
+        },
+      };
+    });
+
+    const { rerender } = renderWithUser(
+      <StreamingTextContent
+        content={"Inspect `src/file-0.ts`."}
+        markdownEnabled={false}
+        plainTextClassName="whitespace-pre-wrap break-words text-sm"
+        fileLinkContext={fileLinkContext}
+      />,
+    );
+
+    for (let index = 0; index <= 100; index += 1) {
+      rerender(
+        <StreamingTextContent
+          content={`Inspect \`src/file-${index}.ts\`.`}
+          markdownEnabled={false}
+          plainTextClassName="whitespace-pre-wrap break-words text-sm"
+          fileLinkContext={fileLinkContext}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(api.calls("/api/workspaces/:id/files/metadata", "GET")).toHaveLength(index + 1);
+      });
+    }
+
+    rerender(
+      <StreamingTextContent
+        content={"Inspect `src/file-0.ts`."}
+        markdownEnabled={false}
+        plainTextClassName="whitespace-pre-wrap break-words text-sm"
+        fileLinkContext={fileLinkContext}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(api.calls("/api/workspaces/:id/files/metadata", "GET")).toHaveLength(102);
+    });
   });
 });

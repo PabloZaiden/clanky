@@ -3,6 +3,7 @@
  * Props are passed as grouped bundles to keep the call-site concise.
  */
 
+import { useCallback, useMemo } from "react";
 import type { Loop } from "../../types";
 import type { PersistedMessage, PersistedToolCall, LoopLogEntry } from "../../types/loop";
 import type { EntityLabels } from "../../utils";
@@ -75,34 +76,31 @@ export function LoopDetailsTabContent({
 }: LoopDetailsTabContentProps) {
   const { config, state } = loop;
   const toolPathDisplayRoot = state.git?.worktreePath ?? config.directory;
-  const fileLinkContext = {
+
+  const getLoopFileHash = useCallback((path: string) => getHashForShellRoute({
+    view: "code-explorer",
+    target: {
+      contentType: "loop",
+      loopId,
+      startDirectory: toolPathDisplayRoot,
+      filePath: path,
+    },
+  }), [loopId, toolPathDisplayRoot]);
+
+  const openLinkedLoopFile = useCallback((path: string) => {
+    window.location.hash = getLoopFileHash(path);
+  }, [getLoopFileHash]);
+
+  const fileLinkContext = useMemo(() => ({
     fileExplorerTarget: {
       type: "workspace" as const,
       id: config.workspaceId,
       startDirectory: toolPathDisplayRoot,
     },
     rootDirectory: toolPathDisplayRoot,
-    getFileHref: (path: string) => `#${getHashForShellRoute({
-      view: "code-explorer",
-      target: {
-        contentType: "loop",
-        loopId,
-        startDirectory: toolPathDisplayRoot,
-        filePath: path,
-      },
-    })}`,
-    openFile: (path: string) => {
-      window.location.hash = getHashForShellRoute({
-        view: "code-explorer",
-        target: {
-          contentType: "loop",
-          loopId,
-          startDirectory: toolPathDisplayRoot,
-          filePath: path,
-        },
-      });
-    },
-  };
+    getFileHref: (path: string) => `#${getLoopFileHash(path)}`,
+    openFile: openLinkedLoopFile,
+  }), [config.workspaceId, getLoopFileHash, openLinkedLoopFile, toolPathDisplayRoot]);
 
   return (
     <div
