@@ -427,7 +427,7 @@ export class ChatManager {
     return await loopManager.getLoop(loop.config.id) ?? loop;
   }
 
-  async spawnLoopFromCurrentPlan(chatId: string): Promise<Loop> {
+  async spawnLoopFromCurrentPlan(chatId: string, planFilePath?: string): Promise<Loop> {
     const chat = await loadChat(chatId);
     if (!chat) {
       throw new Error(`Chat not found: ${chatId}`);
@@ -440,7 +440,7 @@ export class ChatManager {
       working.chat.config.workspaceId,
       working.directory,
     );
-    const currentPlan = await readValidatedPlanningFiles(workingExecutor, working.directory);
+    const currentPlan = await readValidatedPlanningFiles(workingExecutor, working.directory, planFilePath);
 
     const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
     const git = GitService.withExecutor(executor);
