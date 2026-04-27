@@ -49,6 +49,7 @@ export interface ResolvedCodeExplorerTarget {
   onCreateTerminal: () => Promise<ExplorerSession>;
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
+  initialFilePath?: string;
 }
 
 interface ResolveCodeExplorerTargetArgs {
@@ -203,6 +204,7 @@ export function resolveCodeExplorerTarget({
           connectionMode: "dtach",
         }),
         testIdPrefix: "workspace",
+        initialFilePath: target.filePath,
       };
     }
     case "loop": {
@@ -247,6 +249,7 @@ export function resolveCodeExplorerTarget({
         terminalSelectLabel: "Select loop SSH session",
         onCreateTerminal: async () => await getOrCreateLoopSshSessionApi(loop.config.id),
         testIdPrefix: "workspace",
+        initialFilePath: target.filePath,
       };
     }
     case "server": {
@@ -284,6 +287,7 @@ export function resolveCodeExplorerTarget({
         }),
         testIdPrefix: "server",
         credentialPromptName: server.config.name,
+        initialFilePath: target.filePath,
       };
     }
     case "chat": {
@@ -332,6 +336,7 @@ export function resolveCodeExplorerTarget({
           connectionMode: "dtach",
         }),
         testIdPrefix: "workspace",
+        initialFilePath: target.filePath,
       };
     }
   }

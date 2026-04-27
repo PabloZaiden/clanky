@@ -3,6 +3,7 @@ import { LogViewer } from "../LogViewer";
 import { Button } from "../common";
 import { LogFocusModeBar } from "./log-focus-mode-bar";
 import { loopDetailsTabPaddingClassName } from "./tab-layout";
+import type { TranscriptFileLinkContext } from "../log-viewer";
 
 interface LogTabProps {
   messages: PersistedMessage[];
@@ -23,6 +24,7 @@ interface LogTabProps {
   onExitFocusMode: () => void;
   applySafeAreaBottomToFocusBar?: boolean;
   toolPathDisplayRoot?: string;
+  fileLinkContext?: TranscriptFileLinkContext;
 }
 
 export function LogTab({
@@ -44,6 +46,7 @@ export function LogTab({
   onExitFocusMode,
   applySafeAreaBottomToFocusBar = false,
   toolPathDisplayRoot,
+  fileLinkContext,
 }: LogTabProps) {
   const logViewerId = "logs-viewer";
 
@@ -62,6 +65,7 @@ export function LogTab({
           markdownEnabled={markdownEnabled}
           isActive={isLogActive}
           toolPathDisplayRoot={toolPathDisplayRoot}
+          fileLinkContext={fileLinkContext}
           surfaceClassName="bg-transparent"
           transcriptClassName={
             isFocusMode

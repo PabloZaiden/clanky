@@ -25,6 +25,7 @@ function parseHashPath(hash: string): { path: string; searchParams: URLSearchPar
 function parseHash(): ShellRoute {
   const { path: hash, searchParams } = parseHashPath(window.location.hash.slice(1));
   const startDirectory = searchParams.get("startDirectory")?.trim() || undefined;
+  const filePath = searchParams.get("filePath")?.trim() || undefined;
 
   if (hash === CODE_EXPLORER_HASH_PREFIX) {
     return { view: "code-explorer" };
@@ -33,16 +34,16 @@ function parseHash(): ShellRoute {
   if (hash.startsWith(`${CODE_EXPLORER_HASH_PREFIX}/`)) {
     const [contentType, entityId] = hash.slice(CODE_EXPLORER_HASH_PREFIX.length + 1).split("/", 2);
     if (contentType === "workspace" && entityId) {
-      return { view: "code-explorer", target: { contentType, workspaceId: entityId, startDirectory } };
+      return { view: "code-explorer", target: { contentType, workspaceId: entityId, startDirectory, filePath } };
     }
     if (contentType === "loop" && entityId) {
-      return { view: "code-explorer", target: { contentType, loopId: entityId, startDirectory } };
+      return { view: "code-explorer", target: { contentType, loopId: entityId, startDirectory, filePath } };
     }
     if (contentType === "server" && entityId) {
-      return { view: "code-explorer", target: { contentType, serverId: entityId, startDirectory } };
+      return { view: "code-explorer", target: { contentType, serverId: entityId, startDirectory, filePath } };
     }
     if (contentType === "chat" && entityId) {
-      return { view: "code-explorer", target: { contentType, chatId: entityId, startDirectory } };
+      return { view: "code-explorer", target: { contentType, chatId: entityId, startDirectory, filePath } };
     }
   }
 

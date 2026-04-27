@@ -3,7 +3,7 @@ import { Badge } from "../common/Badge";
 import type { BadgeVariant } from "../common/Badge";
 import { LazyDetails } from "./lazy-details";
 import { StreamingTextContent } from "./streaming-text-content";
-import type { LogEntry } from "./types";
+import type { LogEntry, TranscriptFileLinkContext } from "./types";
 import { formatTime, getLogLevelColor, isReasoningLogEntry } from "./utils";
 
 interface LogEntryItemProps {
@@ -12,6 +12,7 @@ interface LogEntryItemProps {
   showGroupHeader: boolean;
   spacingClass: string;
   markdownEnabled: boolean;
+  fileLinkContext?: TranscriptFileLinkContext;
 }
 
 function getOtherDetails(details: Record<string, unknown>): Record<string, unknown> {
@@ -37,6 +38,7 @@ export const LogEntryItem = memo(function LogEntryItem({
   showGroupHeader,
   spacingClass,
   markdownEnabled,
+  fileLinkContext,
 }: LogEntryItemProps) {
   const details = log.details;
   const logKind = log.details?.["logKind"] as string | undefined;
@@ -100,6 +102,7 @@ export const LogEntryItem = memo(function LogEntryItem({
               dimmed={isReasoning}
               markdownClassName={`text-sm leading-7 ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
               plainTextClassName={`text-sm leading-7 whitespace-pre-wrap break-words ${isReasoning ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-white"}`}
+              fileLinkContext={fileLinkContext}
             />
           </div>
         )}

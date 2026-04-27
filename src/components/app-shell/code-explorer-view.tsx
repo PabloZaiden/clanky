@@ -155,9 +155,10 @@ export function CodeExplorerView({
       terminalSelectLabel={resolvedTarget.terminalSelectLabel}
       onCreateTerminal={resolvedTarget.onCreateTerminal}
       testIdPrefix={resolvedTarget.testIdPrefix}
-      credentialPromptName={resolvedTarget.credentialPromptName}
-      headerActions={contentSwitcher}
-      sshSessionDetailsComponent={sshSessionDetailsComponent}
-    />
+        credentialPromptName={resolvedTarget.credentialPromptName}
+        initialFilePath={resolvedTarget.initialFilePath}
+        headerActions={contentSwitcher}
+        sshSessionDetailsComponent={sshSessionDetailsComponent}
+      />
   );
 }

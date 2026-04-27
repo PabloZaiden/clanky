@@ -17,9 +17,10 @@ describe("shell navigation helpers", () => {
           contentType: "chat",
           chatId: "chat-1",
           startDirectory: "/workspaces/frontend/.chat-worktree",
+          filePath: "src/index.ts",
         },
       }),
-    ).toBe("/code-explorer/chat/chat-1?startDirectory=%2Fworkspaces%2Ffrontend%2F.chat-worktree");
+    ).toBe("/code-explorer/chat/chat-1?startDirectory=%2Fworkspaces%2Ffrontend%2F.chat-worktree&filePath=src%2Findex.ts");
     expect(
       getHashForShellRoute({
         view: "loop-files",

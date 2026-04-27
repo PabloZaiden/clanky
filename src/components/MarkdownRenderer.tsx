@@ -5,6 +5,8 @@
 
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { TranscriptFileLinkContext } from "./log-viewer/types";
+import { TranscriptInlineCode } from "./log-viewer/transcript-file-links";
 
 export interface MarkdownRendererProps {
   /** Markdown content to render */
@@ -15,6 +17,8 @@ export interface MarkdownRendererProps {
   dimmed?: boolean;
   /** Whether to display raw markdown text instead of rendered content */
   rawMode?: boolean;
+  /** Optional chat/loop-aware context for linking inline file paths. */
+  fileLinkContext?: TranscriptFileLinkContext;
 }
 
 /**
@@ -24,7 +28,13 @@ export interface MarkdownRendererProps {
  * 
  * When rawMode is true, displays the raw markdown text in a preformatted block.
  */
-export function MarkdownRenderer({ content, className = "", dimmed = false, rawMode = false }: MarkdownRendererProps) {
+export function MarkdownRenderer({
+  content,
+  className = "",
+  dimmed = false,
+  rawMode = false,
+  fileLinkContext,
+}: MarkdownRendererProps) {
   if (!content) {
     return null;
   }
@@ -66,11 +76,7 @@ export function MarkdownRenderer({ content, className = "", dimmed = false, rawM
             // Check if this is inline code or a code block
             const isInline = !className;
             if (isInline) {
-              return (
-                <code className="break-all rounded bg-gray-100 px-1.5 py-0.5 font-mono text-sm dark:bg-neutral-800">
-                  {children}
-                </code>
-              );
+              return <TranscriptInlineCode className={className} fileLinkContext={fileLinkContext}>{children}</TranscriptInlineCode>;
             }
             return <code className={className}>{children}</code>;
           },

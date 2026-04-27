@@ -2,14 +2,18 @@ import type { MouseEvent } from "react";
 import { appAbsoluteUrl } from "../../lib/public-path";
 import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
-function buildExplorerHash(path: string, startDirectory?: string): string {
-  if (!startDirectory) {
+function buildExplorerHash(path: string, startDirectory?: string, filePath?: string): string {
+  if (!startDirectory && !filePath) {
     return path;
   }
 
-  const searchParams = new URLSearchParams({
-    startDirectory,
-  });
+  const searchParams = new URLSearchParams();
+  if (startDirectory) {
+    searchParams.set("startDirectory", startDirectory);
+  }
+  if (filePath) {
+    searchParams.set("filePath", filePath);
+  }
   return `${path}?${searchParams.toString()}`;
 }
 
@@ -20,13 +24,13 @@ function buildCodeExplorerHash(target?: CodeExplorerTarget): string {
 
   switch (target.contentType) {
     case "workspace":
-      return buildExplorerHash(`/code-explorer/workspace/${target.workspaceId}`, target.startDirectory);
+      return buildExplorerHash(`/code-explorer/workspace/${target.workspaceId}`, target.startDirectory, target.filePath);
     case "loop":
-      return buildExplorerHash(`/code-explorer/loop/${target.loopId}`, target.startDirectory);
+      return buildExplorerHash(`/code-explorer/loop/${target.loopId}`, target.startDirectory, target.filePath);
     case "server":
-      return buildExplorerHash(`/code-explorer/server/${target.serverId}`, target.startDirectory);
+      return buildExplorerHash(`/code-explorer/server/${target.serverId}`, target.startDirectory, target.filePath);
     case "chat":
-      return buildExplorerHash(`/code-explorer/chat/${target.chatId}`, target.startDirectory);
+      return buildExplorerHash(`/code-explorer/chat/${target.chatId}`, target.startDirectory, target.filePath);
   }
 }
 
