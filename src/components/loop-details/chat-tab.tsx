@@ -14,7 +14,7 @@ async function parseError(response: Response, fallback: string): Promise<string>
 }
 
 export function ChatTab({ loopId }: { loopId: string }) {
-  const toast = useToast();
+  const { error: showErrorToast } = useToast();
   const [chatId, setChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export function ChatTab({ loopId }: { loopId: string }) {
         }
         const message = String(loadError);
         setError(message);
-        toast.error(message);
+        showErrorToast(message);
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false);
@@ -57,7 +57,7 @@ export function ChatTab({ loopId }: { loopId: string }) {
     return () => {
       controller.abort();
     };
-  }, [loopId, toast]);
+  }, [loopId, showErrorToast]);
 
   if (loading && !chatId) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading chat…</div>;

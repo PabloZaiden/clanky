@@ -28,7 +28,7 @@ export const loopsChatRoutes = {
       }
 
       try {
-        const result = await chatManager.getOrCreateLoopChat(req.params.id);
+        const result = await chatManager.getOrCreateLoopChat(req.params.id, loop);
         return Response.json(result.chat, { status: result.created ? 201 : 200 });
       } catch (error) {
         log.error("Failed to get or create loop chat", {

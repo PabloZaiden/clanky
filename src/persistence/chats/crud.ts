@@ -37,7 +37,7 @@ export async function loadChat(chatId: string): Promise<Chat | null> {
 
 export async function loadLoopChat(loopId: string): Promise<Chat | null> {
   const row = getDatabase()
-    .prepare("SELECT * FROM chats WHERE loop_id = ? LIMIT 1")
+    .prepare("SELECT * FROM chats WHERE loop_id = ? AND scope = 'loop' LIMIT 1")
     .get(loopId) as Record<string, unknown> | null;
 
   return row ? rowToChat(row) : null;

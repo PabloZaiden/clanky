@@ -133,33 +133,33 @@ export class ChatManager {
     return loadLoopChat(loopId);
   }
 
-  async getOrCreateLoopChat(loopId: string): Promise<{ chat: Chat; created: boolean }> {
+  async getOrCreateLoopChat(loopId: string, loop?: Loop): Promise<{ chat: Chat; created: boolean }> {
     const existing = await this.getLoopChat(loopId);
     if (existing) {
       return { chat: existing, created: false };
     }
 
-    const loop = await loopManager.getLoop(loopId);
-    if (!loop) {
+    const targetLoop = loop ?? await loopManager.getLoop(loopId);
+    if (!targetLoop) {
       throw new Error(`Loop not found: ${loopId}`);
     }
 
-    const workingDirectory = getLoopWorkingDirectory(loop);
+    const workingDirectory = getLoopWorkingDirectory(targetLoop);
     if (!workingDirectory) {
       throw new Error(`Loop ${loopId} does not currently have a working directory for chat creation`);
     }
 
     try {
       const chat = await this.createChat({
-        name: loop.config.name,
-        workspaceId: loop.config.workspaceId,
+        name: targetLoop.config.name,
+        workspaceId: targetLoop.config.workspaceId,
         scope: "loop",
         loopId,
-        modelProviderID: loop.config.model.providerID,
-        modelID: loop.config.model.modelID,
-        modelVariant: loop.config.model.variant,
+        modelProviderID: targetLoop.config.model.providerID,
+        modelID: targetLoop.config.model.modelID,
+        modelVariant: targetLoop.config.model.variant,
         useWorktree: false,
-        baseBranch: loop.config.baseBranch,
+        baseBranch: targetLoop.config.baseBranch,
         directory: workingDirectory,
       });
       return { chat, created: true };

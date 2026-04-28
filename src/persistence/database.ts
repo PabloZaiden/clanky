@@ -607,11 +607,6 @@ function ensureChatSchema(database: Database): void {
   if (!columns.some((column) => column.name === "loop_id")) {
     database.run("ALTER TABLE chats ADD COLUMN loop_id TEXT");
   }
-  database.run(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_loop_id_unique
-    ON chats(loop_id)
-    WHERE loop_id IS NOT NULL
-  `);
 }
 
 /**
