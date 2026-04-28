@@ -21,18 +21,75 @@ import {
 import { runUpdateCommand, type CliUpdateDependencies, type UpdateCommandOptions } from "./update";
 import { runWsCommand, type CliWsDependencies, type WsCommandOptions } from "./ws";
 
+type CliHelpEntry = {
+  name: string;
+  description: string;
+  usage: string[];
+};
+
+const CLI_HELP_ENTRIES: CliHelpEntry[] = [
+  {
+    name: "help",
+    description: "Show the CLI help and available commands.",
+    usage: ["ralpher-cli help"],
+  },
+  {
+    name: "version",
+    description: "Print the current ralpher-cli version.",
+    usage: ["ralpher-cli version"],
+  },
+  {
+    name: "update",
+    description: "Check for or install a newer ralpher-cli release.",
+    usage: ["ralpher-cli update [--check] [--version <version>]"],
+  },
+  {
+    name: "auth",
+    description: "Authenticate against a Ralpher server and store credentials.",
+    usage: ["ralpher-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]"],
+  },
+  {
+    name: "status",
+    description: "Show the current authentication status for a server.",
+    usage: ["ralpher-cli status [base-url]"],
+  },
+  {
+    name: "api",
+    description: "List API endpoints or send an authenticated API request.",
+    usage: [
+      "ralpher-cli api",
+      "ralpher-cli api <endpoint> [--method <method>] [--payload <json>]",
+    ],
+  },
+  {
+    name: "schema",
+    description: "Show the request schema metadata for an API endpoint.",
+    usage: ["ralpher-cli schema <endpoint>"],
+  },
+  {
+    name: "ws",
+    description: "Stream live WebSocket events for loops, chats, SSH, or provisioning.",
+    usage: [
+      "ralpher-cli ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
+    ],
+  },
+];
+
 const CLI_USAGE = [
   "Usage:",
-  "  ralpher-cli version",
-  "  ralpher-cli update [--check] [--version <version>]",
-  "  ralpher-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
-  "  ralpher-cli status [base-url]",
-  "  ralpher-cli api",
-  "  ralpher-cli api <endpoint> [--method <method>] [--payload <json>]",
-  "  ralpher-cli schema <endpoint>",
-  "  ralpher-cli ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
+  ...CLI_HELP_ENTRIES.flatMap((entry) => entry.usage.map((usageLine) => `  ${usageLine}`)),
 ].join("\n");
-const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE].join("\n");
+
+const CLI_COMMAND_WIDTH = CLI_HELP_ENTRIES.reduce(
+  (maxWidth, entry) => Math.max(maxWidth, entry.name.length),
+  0,
+);
+
+const CLI_COMMANDS = [
+  "Commands:",
+  ...CLI_HELP_ENTRIES.map((entry) => `  ${entry.name.padEnd(CLI_COMMAND_WIDTH)} ${entry.description}`),
+].join("\n");
+const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 const DEFAULT_CLIENT_ID = "ralpher-cli";
