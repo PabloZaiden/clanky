@@ -47,6 +47,7 @@ import {
 } from "../renderers/command-renderers";
 
 const noOptions = {} as const satisfies OptionSchema;
+type CollectionName = "servers" | "workspaces" | "loops" | "chats";
 
 interface RefreshableCollection {
   command: AnyCommand;
@@ -55,6 +56,7 @@ interface RefreshableCollection {
 
 export class CommandFactory {
   private readonly collections = new Map<string, RefreshableCollection>();
+  private readonly collectionErrors = new Map<CollectionName, string>();
 
   constructor(
     private readonly apiClient: ApiClient,
@@ -74,7 +76,7 @@ export class CommandFactory {
     this.collections.set("loops", loops);
     this.collections.set("chats", chats);
 
-    await Promise.all([
+    await Promise.allSettled([
       servers.refresh(),
       workspaces.refresh(),
       loops.refresh(),
@@ -121,11 +123,16 @@ export class CommandFactory {
   }
 
   private createServersCollection(): RefreshableCollection {
+    const collectionName: CollectionName = "servers";
+    const refreshCommand = this.createRefreshCommand(collectionName, "SSH servers");
+    const loadErrorCommand = this.createCollectionLoadErrorCommand(collectionName, "SSH servers");
+    const baseSubCommands = [this.createServerCreateCommand(), refreshCommand, loadErrorCommand];
     const collectionCommand = this.createCommand({
       name: "servers",
       displayName: "Servers",
       description: "Browse and manage registered SSH servers.",
       options: noOptions,
+      subCommands: baseSubCommands,
       async execute(): Promise<CommandResult> {
         return {
           success: true,
@@ -135,24 +142,36 @@ export class CommandFactory {
     });
 
     const refresh = async () => {
-      const servers = await this.apiClient.listServers();
-      this.cache.setCollection("servers", servers);
-      collectionCommand.subCommands = [
-        this.createServerCreateCommand(),
-        this.createRefreshCommand("servers", "SSH servers"),
-        ...servers.map((server) => this.createServerEntityCommand(server)),
-      ];
+      try {
+        const servers = await this.apiClient.listServers();
+        this.cache.setCollection(collectionName, servers);
+        this.collectionErrors.delete(collectionName);
+        collectionCommand.subCommands = [
+          this.createServerCreateCommand(),
+          refreshCommand,
+          ...servers.map((server) => this.createServerEntityCommand(server)),
+        ];
+      } catch (error) {
+        this.collectionErrors.set(collectionName, this.getErrorMessage(error));
+        collectionCommand.subCommands = baseSubCommands;
+        throw error;
+      }
     };
 
     return { command: collectionCommand, refresh };
   }
 
   private createWorkspacesCollection(): RefreshableCollection {
+    const collectionName: CollectionName = "workspaces";
+    const refreshCommand = this.createRefreshCommand(collectionName, "workspaces");
+    const loadErrorCommand = this.createCollectionLoadErrorCommand(collectionName, "workspaces");
+    const baseSubCommands = [this.createWorkspaceCreateCommand(), refreshCommand, loadErrorCommand];
     const collectionCommand = this.createCommand({
       name: "workspaces",
       displayName: "Workspaces",
       description: "Browse and manage workspaces.",
       options: noOptions,
+      subCommands: baseSubCommands,
       async execute(): Promise<CommandResult> {
         return {
           success: true,
@@ -162,24 +181,36 @@ export class CommandFactory {
     });
 
     const refresh = async () => {
-      const workspaces = await this.apiClient.listWorkspaces();
-      this.cache.setCollection("workspaces", workspaces);
-      collectionCommand.subCommands = [
-        this.createWorkspaceCreateCommand(),
-        this.createRefreshCommand("workspaces", "workspaces"),
-        ...workspaces.map((workspace) => this.createWorkspaceEntityCommand(workspace)),
-      ];
+      try {
+        const workspaces = await this.apiClient.listWorkspaces();
+        this.cache.setCollection(collectionName, workspaces);
+        this.collectionErrors.delete(collectionName);
+        collectionCommand.subCommands = [
+          this.createWorkspaceCreateCommand(),
+          refreshCommand,
+          ...workspaces.map((workspace) => this.createWorkspaceEntityCommand(workspace)),
+        ];
+      } catch (error) {
+        this.collectionErrors.set(collectionName, this.getErrorMessage(error));
+        collectionCommand.subCommands = baseSubCommands;
+        throw error;
+      }
     };
 
     return { command: collectionCommand, refresh };
   }
 
   private createLoopsCollection(): RefreshableCollection {
+    const collectionName: CollectionName = "loops";
+    const refreshCommand = this.createRefreshCommand(collectionName, "loops");
+    const loadErrorCommand = this.createCollectionLoadErrorCommand(collectionName, "loops");
+    const baseSubCommands = [refreshCommand, loadErrorCommand];
     const collectionCommand = this.createCommand({
       name: "loops",
       displayName: "Loops",
       description: "Browse and manage loops.",
       options: noOptions,
+      subCommands: baseSubCommands,
       async execute(): Promise<CommandResult> {
         return {
           success: true,
@@ -189,30 +220,42 @@ export class CommandFactory {
     });
 
     const refresh = async () => {
-      const [loops, workspaces] = await Promise.all([
-        this.apiClient.listLoops(),
-        this.apiClient.listWorkspaces(),
-      ]);
-      this.cache.setCollection("loops", loops);
-      this.cache.setCollection("workspaces", workspaces);
-      const branchDefaults = await this.getWorkspaceBranchDefaults(workspaces);
+      try {
+        const [loops, workspaces] = await Promise.all([
+          this.apiClient.listLoops(),
+          this.apiClient.listWorkspaces(),
+        ]);
+        this.cache.setCollection(collectionName, loops);
+        this.cache.setCollection("workspaces", workspaces);
+        const branchDefaults = await this.getWorkspaceBranchDefaults(workspaces);
+        this.collectionErrors.delete(collectionName);
 
-      collectionCommand.subCommands = [
-        this.createLoopCreateCommand(workspaces, branchDefaults),
-        this.createRefreshCommand("loops", "loops"),
-        ...loops.map((loop) => this.createLoopEntityCommand(loop)),
-      ];
+        collectionCommand.subCommands = [
+          this.createLoopCreateCommand(workspaces, branchDefaults),
+          refreshCommand,
+          ...loops.map((loop) => this.createLoopEntityCommand(loop)),
+        ];
+      } catch (error) {
+        this.collectionErrors.set(collectionName, this.getErrorMessage(error));
+        collectionCommand.subCommands = baseSubCommands;
+        throw error;
+      }
     };
 
     return { command: collectionCommand, refresh };
   }
 
   private createChatsCollection(): RefreshableCollection {
+    const collectionName: CollectionName = "chats";
+    const refreshCommand = this.createRefreshCommand(collectionName, "chats");
+    const loadErrorCommand = this.createCollectionLoadErrorCommand(collectionName, "chats");
+    const baseSubCommands = [refreshCommand, loadErrorCommand];
     const collectionCommand = this.createCommand({
       name: "chats",
       displayName: "Chats",
       description: "Browse and manage chats.",
       options: noOptions,
+      subCommands: baseSubCommands,
       async execute(): Promise<CommandResult> {
         return {
           success: true,
@@ -222,26 +265,33 @@ export class CommandFactory {
     });
 
     const refresh = async () => {
-      const [chats, workspaces] = await Promise.all([
-        this.apiClient.listChats(),
-        this.apiClient.listWorkspaces(),
-      ]);
-      this.cache.setCollection("chats", chats);
-      this.cache.setCollection("workspaces", workspaces);
-      const branchDefaults = await this.getWorkspaceBranchDefaults(workspaces);
+      try {
+        const [chats, workspaces] = await Promise.all([
+          this.apiClient.listChats(),
+          this.apiClient.listWorkspaces(),
+        ]);
+        this.cache.setCollection(collectionName, chats);
+        this.cache.setCollection("workspaces", workspaces);
+        const branchDefaults = await this.getWorkspaceBranchDefaults(workspaces);
+        this.collectionErrors.delete(collectionName);
 
-      collectionCommand.subCommands = [
-        this.createChatCreateCommand(workspaces, branchDefaults),
-        this.createRefreshCommand("chats", "chats"),
-        ...chats.map((chat) => this.createChatEntityCommand(chat)),
-      ];
+        collectionCommand.subCommands = [
+          this.createChatCreateCommand(workspaces, branchDefaults),
+          refreshCommand,
+          ...chats.map((chat) => this.createChatEntityCommand(chat)),
+        ];
+      } catch (error) {
+        this.collectionErrors.set(collectionName, this.getErrorMessage(error));
+        collectionCommand.subCommands = baseSubCommands;
+        throw error;
+      }
     };
 
     return { command: collectionCommand, refresh };
   }
 
   private createRefreshCommand(
-    collectionName: "servers" | "workspaces" | "loops" | "chats",
+    collectionName: CollectionName,
     label: string,
   ): AnyCommand {
     const factory = this;
@@ -255,6 +305,22 @@ export class CommandFactory {
         return {
           success: true,
           message: `Refreshed ${label}.`,
+        };
+      },
+    });
+  }
+
+  private createCollectionLoadErrorCommand(collectionName: CollectionName, label: string): AnyCommand {
+    const factory = this;
+    return this.createCommand({
+      name: "load-error",
+      displayName: "Load error",
+      description: `Show the latest ${label} load error.`,
+      options: noOptions,
+      async execute(): Promise<CommandResult> {
+        return {
+          success: false,
+          message: factory.collectionErrors.get(collectionName) ?? `${label} are ready to use.`,
         };
       },
     });
@@ -1691,6 +1757,10 @@ export class CommandFactory {
         return spec.renderResult?.(result);
       }
     }();
+  }
+
+  private getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }
 

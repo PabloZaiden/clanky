@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CommandFactory } from "../../apps/tui/src/services/command-factory";
 import {
   buildCreateLoopRequest,
   buildCreateWorkspaceRequest,
@@ -8,6 +9,22 @@ import {
   getChatActionNames,
   getLoopActionNames,
 } from "../../apps/tui/src/services/command-factory-helpers";
+import { AuthService } from "../../apps/tui/src/services/auth-service";
+import { EntityCache } from "../../apps/tui/src/services/entity-cache";
+import type { ApiClient } from "../../apps/tui/src/services/api-client";
+
+function createFailingStartupApiClient(message: string): ApiClient {
+  const fail = async () => {
+    throw new Error(message);
+  };
+
+  return {
+    listServers: fail,
+    listWorkspaces: fail,
+    listLoops: fail,
+    listChats: fail,
+  } as ApiClient;
+}
 
 function expectConfigValidationError(fn: () => unknown, field?: string): void {
   try {
@@ -270,5 +287,40 @@ describe("tui command factory helpers", () => {
 
   test("buildEntityCommandName creates a stable safe command name", () => {
     expect(buildEntityCommandName("Fix Auth Timeout", "12345678-1234")).toBe("fix-auth-timeout-123456");
+  });
+
+  test("createRootCommands keeps the TUI launchable when startup refresh fails", async () => {
+    const factory = new CommandFactory(
+      createFailingStartupApiClient("Unable to connect to the configured Ralpher backend."),
+      new AuthService(),
+      new EntityCache(),
+    );
+
+    const commands = await factory.createRootCommands();
+    const serversCommand = commands.find((command) => command.name === "servers");
+    const loopsCommand = commands.find((command) => command.name === "loops");
+
+    expect(commands.map((command) => command.name)).toEqual([
+      "status",
+      "servers",
+      "workspaces",
+      "loops",
+      "chats",
+    ]);
+    expect(serversCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "create",
+      "refresh",
+      "load-error",
+    ]);
+    expect(loopsCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "refresh",
+      "load-error",
+    ]);
+
+    const loadErrorResult = await serversCommand?.subCommands?.[2]?.execute({});
+    expect(loadErrorResult).toMatchObject({
+      success: false,
+      message: "Unable to connect to the configured Ralpher backend.",
+    });
   });
 });
