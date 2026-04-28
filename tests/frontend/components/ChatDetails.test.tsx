@@ -943,6 +943,7 @@ describe("ChatDetails", () => {
       ws.sendEventTo(connection!, {
         type: "chat.interrupted",
         chatId: CHAT_ID,
+        scope: "workspace",
         timestamp: "2025-01-01T00:00:05.500Z",
       });
     });
@@ -1138,6 +1139,7 @@ describe("ChatDetails", () => {
       ws.sendEventTo(connection!, {
         type: "chat.interrupted",
         chatId: CHAT_ID,
+        scope: "workspace",
         timestamp: "2025-01-01T00:00:05.000Z",
       });
     });
@@ -1172,12 +1174,14 @@ describe("ChatDetails", () => {
       ws.sendEventTo(connection!, {
         type: "chat.status",
         chatId: CHAT_ID,
+        scope: "workspace",
         status: "streaming",
         timestamp: "2025-01-01T00:00:05.000Z",
       });
       ws.sendEventTo(connection!, {
         type: "chat.interrupted",
         chatId: CHAT_ID,
+        scope: "workspace",
         timestamp: "2025-01-01T00:00:05.500Z",
       });
     });
@@ -1210,6 +1214,7 @@ describe("ChatDetails", () => {
       ws.sendEventTo(connection!, {
         type: "chat.error",
         chatId: CHAT_ID,
+        scope: "workspace",
         message: "Operation cancelled by user",
         timestamp: "2025-01-01T00:00:05.000Z",
       });

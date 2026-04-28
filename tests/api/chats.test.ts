@@ -467,10 +467,15 @@ describe("Chats API Integration", () => {
     const loaded = await getResponse.json();
     expect(loaded.config.id).toBe(created.config.id);
 
-    const standaloneListResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
-    expect(standaloneListResponse.status).toBe(200);
-    const standaloneChats = await standaloneListResponse.json();
-    expect(standaloneChats.some((chat: { config: { id: string } }) => chat.config.id === created.config.id)).toBe(false);
+    const allStandaloneListResponse = await fetch(`${baseUrl}/api/chats`);
+    expect(allStandaloneListResponse.status).toBe(200);
+    const allStandaloneChats = await allStandaloneListResponse.json();
+    expect(allStandaloneChats.some((chat: { config: { id: string } }) => chat.config.id === created.config.id)).toBe(false);
+
+    const workspaceStandaloneListResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+    expect(workspaceStandaloneListResponse.status).toBe(200);
+    const workspaceStandaloneChats = await workspaceStandaloneListResponse.json();
+    expect(workspaceStandaloneChats.some((chat: { config: { id: string } }) => chat.config.id === created.config.id)).toBe(false);
 
     const renameResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
       method: "PATCH",

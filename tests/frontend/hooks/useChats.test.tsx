@@ -166,4 +166,46 @@ describe("useChats", () => {
     expect(interruptCalls).toHaveLength(1);
     expect(interruptCalls[0]?.body).toEqual({ reason: DEFAULT_CHAT_INTERRUPT_REASON });
   });
+
+  test("refreshes standalone chats returned by event-driven status updates", async () => {
+    const workspaceChat = createChat();
+    const refreshedWorkspaceChat = createChat({
+      config: {
+        ...workspaceChat.config,
+        name: "Updated Workspace Chat",
+        updatedAt: "2025-01-01T00:00:02.000Z",
+      },
+      state: {
+        ...workspaceChat.state,
+        status: "streaming",
+      },
+    });
+
+    api.get("/api/chats", () => [workspaceChat]);
+    api.get("/api/chats/:id", () => refreshedWorkspaceChat);
+
+    const { result } = renderHook(() => useChats());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(ws.connections().length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "chat.status",
+        chatId: workspaceChat.config.id,
+        scope: "workspace",
+        status: "streaming",
+        timestamp: "2025-01-01T00:00:03.000Z",
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.chats[0]?.config.name).toBe("Updated Workspace Chat");
+    });
+  });
 });

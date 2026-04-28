@@ -22,15 +22,10 @@ function sortChats(chats: Chat[]): Chat[] {
 }
 
 function upsertChat(chats: Chat[], chat: Chat): Chat[] {
-  const next = [...chats];
-  const index = next.findIndex((item) => item.config.id === chat.config.id);
+  const next = chats.filter((item) => item.config.id !== chat.config.id);
 
-  if (index === -1) {
-    next.push(chat);
-    return sortChats(next);
-  }
-
-  next[index] = mergeChatSnapshot(next[index]!, chat);
+  const current = chats.find((item) => item.config.id === chat.config.id);
+  next.push(current ? mergeChatSnapshot(current, chat) : chat);
   return sortChats(next);
 }
 

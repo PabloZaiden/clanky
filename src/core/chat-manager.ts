@@ -13,7 +13,7 @@ import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
 import type { EventStream } from "../utils/event-stream";
-import { ChatBusyError, createInitialChatState, DEFAULT_CHAT_CONFIG, isChatBusyStatus, isLoopChat } from "../types/chat";
+import { ChatBusyError, createInitialChatState, DEFAULT_CHAT_CONFIG, isChatBusyStatus, isLoopChat, isStandaloneChat } from "../types/chat";
 import { loadChat, loadLoopChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
@@ -122,11 +122,11 @@ export class ChatManager {
   }
 
   async getAllChats(): Promise<Chat[]> {
-    return listChats();
+    return (await listChats()).filter(isStandaloneChat);
   }
 
   async getChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
-    return listChatsByWorkspace(workspaceId);
+    return (await listChatsByWorkspace(workspaceId)).filter(isStandaloneChat);
   }
 
   async getLoopChat(loopId: string): Promise<Chat | null> {
@@ -435,6 +435,7 @@ export class ChatManager {
       this.emitter.emit({
         type: "chat.deleted",
         chatId,
+        scope: chat.config.scope,
         timestamp: createTimestamp(),
       });
     }
@@ -1354,6 +1355,7 @@ export class ChatManager {
     this.emitter.emit({
       type: "chat.error",
       chatId: chat.config.id,
+      scope: chat.config.scope,
       message,
       timestamp: now,
     });
@@ -1381,6 +1383,7 @@ export class ChatManager {
     this.emitter.emit({
       type: "chat.interrupted",
       chatId: chat.config.id,
+      scope: chat.config.scope,
       timestamp: now,
     });
     return updated;
@@ -1452,6 +1455,7 @@ export class ChatManager {
       this.emitter.emit({
         type: "chat.status",
         chatId: chat.config.id,
+        scope: chat.config.scope,
         status: state.status,
         timestamp: state.lastActivityAt ?? createTimestamp(),
       });
