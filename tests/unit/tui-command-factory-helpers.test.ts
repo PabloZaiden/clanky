@@ -9,7 +9,6 @@ import {
   getChatActionNames,
   getLoopActionNames,
 } from "../../apps/tui/src/services/command-factory-helpers";
-import { AuthService } from "../../apps/tui/src/services/auth-service";
 import { EntityCache } from "../../apps/tui/src/services/entity-cache";
 import type { ApiClient } from "../../apps/tui/src/services/api-client";
 
@@ -289,38 +288,164 @@ describe("tui command factory helpers", () => {
     expect(buildEntityCommandName("Fix Auth Timeout", "12345678-1234")).toBe("fix-auth-timeout-123456");
   });
 
-  test("createRootCommands keeps the TUI launchable when startup refresh fails", async () => {
+  test("createRootCommands keeps startup lazy and only exposes top-level collections", async () => {
     const factory = new CommandFactory(
       createFailingStartupApiClient("Unable to connect to the configured Ralpher backend."),
-      new AuthService(),
       new EntityCache(),
     );
 
     const commands = await factory.createRootCommands();
     const serversCommand = commands.find((command) => command.name === "servers");
-    const loopsCommand = commands.find((command) => command.name === "loops");
+    const workspacesCommand = commands.find((command) => command.name === "workspaces");
 
     expect(commands.map((command) => command.name)).toEqual([
-      "status",
       "servers",
       "workspaces",
-      "loops",
-      "chats",
     ]);
     expect(serversCommand?.subCommands?.map((command) => command.name)).toEqual([
       "create",
-      "refresh",
-      "load-error",
+      "list",
     ]);
-    expect(loopsCommand?.subCommands?.map((command) => command.name)).toEqual([
-      "refresh",
-      "load-error",
+    expect(workspacesCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "create",
+      "list",
     ]);
 
-    const loadErrorResult = await serversCommand?.subCommands?.[2]?.execute({});
+    const serversListCommand = serversCommand?.subCommands?.find((command) => command.name === "list");
+    expect(serversListCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "refresh",
+    ]);
+
+    await expect(serversListCommand?.subCommands?.[0]?.execute({})).rejects.toThrow(
+      "Unable to connect to the configured Ralpher backend.",
+    );
+
+    const loadErrorCommand = serversListCommand?.subCommands?.find((command) => command.name === "load-error");
+    const loadErrorResult = await loadErrorCommand?.execute({});
     expect(loadErrorResult).toMatchObject({
       success: false,
       message: "Unable to connect to the configured Ralpher backend.",
     });
+  });
+
+  test("workspace navigation nests loops and chats under the workspace list hierarchy", async () => {
+    const workspace = {
+      id: "workspace-1",
+      name: "Demo",
+      directory: "/workspaces/demo",
+      serverSettings: {
+        agent: {
+          provider: "copilot",
+          transport: "stdio",
+        },
+      },
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } as const;
+    const loop = {
+      config: {
+        id: "loop-1",
+        name: "Ship feature",
+        directory: "/workspaces/demo",
+        prompt: "Implement it",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        workspaceId: "workspace-1",
+        model: {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-4",
+          variant: "",
+        },
+        useWorktree: true,
+        autoAcceptPlan: false,
+        fullyAutonomous: false,
+        planMode: true,
+        gitBranchPrefix: "",
+        gitCommitScope: "",
+        clearPlanningFolder: false,
+        cheapModel: {
+          mode: "same-as-loop",
+        },
+        baseBranch: "main",
+        maxIterations: null,
+        activityTimeoutSeconds: null,
+        git: {
+          branchPrefix: "",
+          commitScope: "",
+        },
+        maxConsecutiveErrors: 10,
+      },
+      state: {
+        status: "draft",
+      },
+    } as const;
+    const chat = {
+      config: {
+        id: "chat-1",
+        name: "Investigate",
+        workspaceId: "workspace-1",
+        directory: "/workspaces/demo",
+        prompt: "Take a look",
+        model: {
+          providerID: "anthropic",
+          modelID: "claude-sonnet-4",
+          variant: "",
+        },
+        useWorktree: true,
+        baseBranch: "main",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        mode: "chat",
+      },
+      state: {
+        status: "idle",
+      },
+    } as const;
+    const apiClient = {
+      listWorkspaces: async () => [workspace],
+      listLoops: async () => [loop],
+      listChats: async () => [chat],
+      getDefaultBranch: async () => "main",
+    } as ApiClient;
+    const factory = new CommandFactory(apiClient, new EntityCache());
+
+    const commands = await factory.createRootCommands();
+    const workspacesCommand = commands.find((command) => command.name === "workspaces");
+    const workspacesListCommand = workspacesCommand?.subCommands?.find((command) => command.name === "list");
+    await workspacesListCommand?.subCommands?.[0]?.execute({});
+
+    const workspaceCommand = workspacesListCommand?.subCommands?.find((command) => command.name !== "refresh");
+    expect(workspaceCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "info",
+      "edit",
+      "delete",
+      "loops",
+      "chats",
+    ]);
+
+    const loopsCommand = workspaceCommand?.subCommands?.find((command) => command.name === "loops");
+    const chatsCommand = workspaceCommand?.subCommands?.find((command) => command.name === "chats");
+    expect(loopsCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "create",
+      "list",
+    ]);
+    expect(chatsCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "create",
+      "list",
+    ]);
+
+    const loopsListCommand = loopsCommand?.subCommands?.find((command) => command.name === "list");
+    await loopsListCommand?.subCommands?.[0]?.execute({});
+    expect(loopsListCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "refresh",
+      "ship-feature-loop-1",
+    ]);
+
+    const chatsListCommand = chatsCommand?.subCommands?.find((command) => command.name === "list");
+    await chatsListCommand?.subCommands?.[0]?.execute({});
+    expect(chatsListCommand?.subCommands?.map((command) => command.name)).toEqual([
+      "refresh",
+      "investigate-chat-1",
+    ]);
   });
 });

@@ -7,7 +7,6 @@ describe("tui command factory", () => {
   test("workspace edit options omit directory because updates do not persist it", () => {
     const factory = new CommandFactory(
       {} as never,
-      {} as never,
       new EntityCache(),
     );
     const getWorkspaceUpdateOptions = (factory as unknown as {
