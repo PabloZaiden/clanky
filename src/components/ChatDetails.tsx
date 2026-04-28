@@ -109,6 +109,7 @@ export function ChatDetails({
   onOpenLoop,
   showBackButton = true,
   headerOffsetClassName,
+  embeddedLoopId,
 }: {
   chatId: string;
   onBack?: () => void;
@@ -116,9 +117,11 @@ export function ChatDetails({
   onOpenLoop?: (loopId: string) => void;
   showBackButton?: boolean;
   headerOffsetClassName?: string;
+  embeddedLoopId?: string;
 }) {
   const toast = useToast();
   const { enabled: markdownEnabled } = useMarkdownPreference();
+  const isEmbedded = typeof embeddedLoopId === "string" && embeddedLoopId.length > 0;
   const chatHeaderClassName = "border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-neutral-800 flex-shrink-0 safe-area-top";
   const chatHeaderInnerClassName = "px-4 sm:px-6 lg:px-8 py-2";
   const chatHeaderPrimaryRowClassName = [(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "flex min-h-14 items-center gap-2"].join(" ");
@@ -141,8 +144,8 @@ export function ChatDetails({
   const composerFormRef = useRef<HTMLFormElement>(null);
   const reconnectAttemptedRef = useRef(false);
   const { models, modelsLoading } = useAvailableModels({
-    directory: chat?.config.directory,
-    workspaceId: chat?.config.workspaceId,
+    directory: isEmbedded ? undefined : chat?.config.directory,
+    workspaceId: isEmbedded ? undefined : chat?.config.workspaceId,
   });
 
   const refreshChat = useCallback(async () => {
@@ -345,7 +348,7 @@ export function ChatDetails({
     }
 
     const trimmedMessage = message.trim();
-    const hasPendingModelChange = selectedModel.length > 0;
+    const hasPendingModelChange = !isEmbedded && selectedModel.length > 0;
     if (trimmedMessage.length === 0 && attachments.length === 0 && !hasPendingModelChange) {
       return;
     }
@@ -536,7 +539,7 @@ export function ChatDetails({
     }
   }
 
-  const hasCodeExplorerAction = Boolean(onOpenCodeExplorer);
+  const hasCodeExplorerAction = Boolean(onOpenCodeExplorer) && !isEmbedded;
   const chatWorkingDirectory = chat?.state.worktree?.worktreePath ?? chat?.config.directory ?? "";
   const fileLinkContext = useMemo(() => {
     if (!chat || !chatWorkingDirectory) {
@@ -552,29 +555,43 @@ export function ChatDetails({
       rootDirectory: chatWorkingDirectory,
       getFileHref: ({ path, startDirectory }: TranscriptFileLinkTarget) => `#${getHashForShellRoute({
         view: "code-explorer",
-        target: {
-          contentType: "chat",
-          chatId: chat.config.id,
-          startDirectory,
-          filePath: path,
-        },
+        target: embeddedLoopId
+          ? {
+              contentType: "loop",
+              loopId: embeddedLoopId,
+              startDirectory,
+              filePath: path,
+            }
+          : {
+              contentType: "chat",
+              chatId: chat.config.id,
+              startDirectory,
+              filePath: path,
+            },
       })}`,
       openFile: ({ path, startDirectory }: TranscriptFileLinkTarget) => {
         window.location.hash = getHashForShellRoute({
           view: "code-explorer",
-          target: {
-            contentType: "chat",
-            chatId: chat.config.id,
-            startDirectory,
-            filePath: path,
-          },
+          target: embeddedLoopId
+            ? {
+                contentType: "loop",
+                loopId: embeddedLoopId,
+                startDirectory,
+                filePath: path,
+              }
+            : {
+                contentType: "chat",
+                chatId: chat.config.id,
+                startDirectory,
+                filePath: path,
+              },
         });
       },
     };
-  }, [chat, chatWorkingDirectory]);
+  }, [chat, chatWorkingDirectory, embeddedLoopId]);
 
   const headerActionMenuItems = useMemo<ActionMenuItem[]>(() => {
-    if (!chat) {
+    if (!chat || isEmbedded) {
       return [];
     }
 
@@ -609,7 +626,7 @@ export function ChatDetails({
         destructive: true,
       },
     ];
-  }, [chat, handleSpawnLoop, hasCodeExplorerAction, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal]);
+  }, [chat, handleSpawnLoop, hasCodeExplorerAction, isActive, isEmbedded, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal]);
 
   const {
     composerRef,
@@ -624,6 +641,16 @@ export function ChatDetails({
   }
 
   if (!chat) {
+    if (isEmbedded) {
+      return (
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="p-6 text-sm text-gray-500 dark:text-gray-400">
+            {error ?? "Chat not found"}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex h-full min-h-0 flex-col">
         <header
@@ -651,7 +678,7 @@ export function ChatDetails({
     );
   }
 
-  const hasPendingInput = message.trim().length > 0 || attachments.length > 0 || selectedModel.length > 0;
+  const hasPendingInput = message.trim().length > 0 || attachments.length > 0 || (!isEmbedded && selectedModel.length > 0);
   const autoScroll = true;
   const toolPathDisplayRoot = chatWorkingDirectory;
   const actionButtonBaseClassName = "flex-shrink-0 inline-flex items-center justify-center h-9 w-9 rounded-md disabled:cursor-not-allowed";
@@ -686,28 +713,30 @@ export function ChatDetails({
       <div className="p-3" data-testid="chat-composer-padding">
         <label htmlFor={modelSelectId} className="sr-only">Model</label>
         <label htmlFor={messageInputId} className="sr-only">Message</label>
-        <div className="space-y-2" data-testid="chat-composer-layout">
-          <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
-            <div className="shrink-0" data-testid="chat-composer-model-cell">
-              <ModelSelector
-                id={modelSelectId}
-                value={selectedModel}
-                onChange={setSelectedModel}
-                models={models}
-                loading={modelsLoading}
-                disabled={isActive || isSubmitting}
-                showDisconnected
-                currentModelKey={currentModelKey}
-                placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
-                loadingText="Loading..."
-                emptyText="No models available"
-                compact
-                className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-              />
-            </div>
-            <textarea
-              ref={composerRef}
-              id={messageInputId}
+          <div className="space-y-2" data-testid="chat-composer-layout">
+            <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
+              {!isEmbedded && (
+                <div className="shrink-0" data-testid="chat-composer-model-cell">
+                  <ModelSelector
+                    id={modelSelectId}
+                    value={selectedModel}
+                    onChange={setSelectedModel}
+                    models={models}
+                    loading={modelsLoading}
+                    disabled={isActive || isSubmitting}
+                    showDisconnected
+                    currentModelKey={currentModelKey}
+                    placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
+                    loadingText="Loading..."
+                    emptyText="No models available"
+                    compact
+                    className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+                  />
+                </div>
+              )}
+              <textarea
+                ref={composerRef}
+                id={messageInputId}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={handleComposerKeyDown}
@@ -777,7 +806,7 @@ export function ChatDetails({
             {attachmentError}
           </p>
         )}
-        {selectedModel && !selectedModelEnabled && (
+        {!isEmbedded && selectedModel && !selectedModelEnabled && (
           <p className="mt-2 text-xs text-red-600 dark:text-red-400">
             The selected model's provider is not connected. Please select a different model.
           </p>
@@ -822,45 +851,47 @@ export function ChatDetails({
   );
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
-      <header
-        data-testid="chat-header"
-        className={chatHeaderClassName}
-      >
-        <div className={chatHeaderInnerClassName}>
-          <div
-            data-testid="chat-header-primary-row"
-            className={chatHeaderPrimaryRowClassName}
-          >
-            {showBackButton && onBack && (
-              <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-                ← Back
-              </Button>
-            )}
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-gray-900 dark:text-gray-100" title={chat.config.name}>
-                {chat.config.name}
-              </h1>
-              <StatusBadge
-                variant={getChatStatusBadgeVariant(chat.state.status)}
-                size="sm"
-                className="shrink-0"
-              >
-                {getChatStatusLabel(chat.state.status)}
-              </StatusBadge>
-            </div>
-            <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
-              <div data-testid="chat-header-actions">
-                <ActionMenu
-                  items={headerActionMenuItems}
-                  ariaLabel="Chat actions"
-                  disabled={isDeletePending}
-                />
+    <div className={`flex h-full min-h-0 flex-col bg-white ${isEmbedded ? "dark:bg-neutral-800" : "dark:bg-neutral-900"}`}>
+      {!isEmbedded && (
+        <header
+          data-testid="chat-header"
+          className={chatHeaderClassName}
+        >
+          <div className={chatHeaderInnerClassName}>
+            <div
+              data-testid="chat-header-primary-row"
+              className={chatHeaderPrimaryRowClassName}
+            >
+              {showBackButton && onBack && (
+                <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+                  ← Back
+                </Button>
+              )}
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-gray-900 dark:text-gray-100" title={chat.config.name}>
+                  {chat.config.name}
+                </h1>
+                <StatusBadge
+                  variant={getChatStatusBadgeVariant(chat.state.status)}
+                  size="sm"
+                  className="shrink-0"
+                >
+                  {getChatStatusLabel(chat.state.status)}
+                </StatusBadge>
+              </div>
+              <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+                <div data-testid="chat-header-actions">
+                  <ActionMenu
+                    items={headerActionMenuItems}
+                    ariaLabel="Chat actions"
+                    disabled={isDeletePending}
+                  />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {chat.state.error && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
@@ -870,9 +901,9 @@ export function ChatDetails({
 
       {conversation}
       {composer}
-      {renameModal}
-      {spawnCurrentPlanModal}
-      {deleteConfirmModal}
+      {!isEmbedded && renameModal}
+      {!isEmbedded && spawnCurrentPlanModal}
+      {!isEmbedded && deleteConfirmModal}
     </div>
   );
 }

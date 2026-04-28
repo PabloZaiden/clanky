@@ -27,6 +27,8 @@ function createChat(overrides?: Partial<Chat>): Chat {
       updatedAt: "2025-01-01T00:00:00.000Z",
       mode: "chat",
       ...(overrides?.config ?? {}),
+      scope: overrides?.config?.scope ?? "workspace",
+      loopId: overrides?.config?.loopId,
     },
     state: {
       id: CHAT_ID,

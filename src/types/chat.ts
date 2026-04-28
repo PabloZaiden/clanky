@@ -18,10 +18,14 @@ import type {
 
 export type { ModelConfig };
 
+export type ChatScope = "workspace" | "loop";
+
 export interface ChatConfig {
   id: string;
   name: string;
   workspaceId: string;
+  scope: ChatScope;
+  loopId?: string;
   directory: string;
   model: ModelConfig;
   useWorktree: boolean;
@@ -78,6 +82,7 @@ export const DEFAULT_CHAT_INTERRUPT_REASON = "user requested stop";
 export const DEFAULT_CHAT_CONFIG = {
   useWorktree: true,
   mode: "chat" as const,
+  scope: "workspace" as const,
 };
 
 export function createInitialChatState(id: string): ChatState {
@@ -92,6 +97,14 @@ export function createInitialChatState(id: string): ChatState {
 
 export function isChatBusyStatus(status: ChatStatus): boolean {
   return status === "starting" || status === "streaming" || status === "interrupting";
+}
+
+export function isLoopChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
+  return "config" in chat ? chat.config.scope === "loop" : chat.scope === "loop";
+}
+
+export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
+  return !isLoopChat(chat);
 }
 
 export class ChatBusyError extends Error {

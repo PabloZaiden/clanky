@@ -10,8 +10,11 @@ import { join } from "path";
 import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { loadChat, updateChatState } from "../../src/persistence/chats";
+import { saveLoop } from "../../src/persistence/loops";
 import { backendManager } from "../../src/core/backend-manager";
 import { getPlanFilePath } from "../../src/lib/planning-files";
+import type { Loop } from "../../src/types";
+import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 
@@ -81,6 +84,43 @@ describe("Chats API Integration", () => {
     }
 
     throw new Error(`Timed out waiting for chat ${chatId} to settle`);
+  }
+
+  function createTestLoop(loopId: string, workingDirectory: string): Loop {
+    const now = new Date().toISOString();
+    return {
+      config: {
+        ...DEFAULT_LOOP_CONFIG,
+        id: loopId,
+        name: `Loop ${loopId}`,
+        directory: testWorkDir,
+        prompt: "Investigate the loop chat flow",
+        createdAt: now,
+        updatedAt: now,
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        baseBranch: "main",
+        useWorktree: true,
+        mode: "loop",
+      },
+      state: {
+        id: loopId,
+        status: "completed",
+        currentIteration: 1,
+        startedAt: now,
+        completedAt: now,
+        recentIterations: [],
+        logs: [],
+        messages: [],
+        toolCalls: [],
+        git: {
+          originalBranch: "main",
+          workingBranch: `feature/${loopId}`,
+          worktreePath: workingDirectory,
+          commits: [],
+        },
+      },
+    };
   }
 
   beforeAll(async () => {
@@ -405,6 +445,44 @@ describe("Chats API Integration", () => {
 
     const persisted = await loadChat(chatId);
     expect(persisted?.config.model).toEqual(updatedTestModel);
+  });
+
+  test("creates a loop-owned default chat that stays out of standalone chat APIs", async () => {
+    const loopId = "loop-chat-api-test";
+    const loopWorkingDirectory = join(testWorkDir, ".ralph-worktrees", loopId);
+    await saveLoop(createTestLoop(loopId, loopWorkingDirectory));
+
+    const createResponse = await fetch(`${baseUrl}/api/loops/${loopId}/chat`, {
+      method: "POST",
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    expect(created.config.scope).toBe("loop");
+    expect(created.config.loopId).toBe(loopId);
+    expect(created.config.directory).toBe(loopWorkingDirectory);
+    expect(created.config.useWorktree).toBe(false);
+
+    const getResponse = await fetch(`${baseUrl}/api/loops/${loopId}/chat`);
+    expect(getResponse.status).toBe(200);
+    const loaded = await getResponse.json();
+    expect(loaded.config.id).toBe(created.config.id);
+
+    const standaloneListResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+    expect(standaloneListResponse.status).toBe(200);
+    const standaloneChats = await standaloneListResponse.json();
+    expect(standaloneChats.some((chat: { config: { id: string } }) => chat.config.id === created.config.id)).toBe(false);
+
+    const renameResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Should fail" }),
+    });
+    expect(renameResponse.status).toBe(409);
+
+    const deleteResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`, {
+      method: "DELETE",
+    });
+    expect(deleteResponse.status).toBe(409);
   });
 
   test("spawns a plan-mode loop from an existing chat without deleting the chat", async () => {

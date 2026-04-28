@@ -361,6 +361,27 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 12,
+    name: "add_chat_scope_and_loop_id",
+    up: (db) => {
+      if (!tableExists(db, "chats")) {
+        return;
+      }
+      const columns = getTableColumns(db, "chats");
+      if (!columns.includes("scope")) {
+        db.run("ALTER TABLE chats ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace'");
+      }
+      if (!columns.includes("loop_id")) {
+        db.run("ALTER TABLE chats ADD COLUMN loop_id TEXT");
+      }
+      db.run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_loop_id_unique
+        ON chats(loop_id)
+        WHERE loop_id IS NOT NULL
+      `);
+    },
+  },
 ];
 
 /**

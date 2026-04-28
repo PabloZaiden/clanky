@@ -103,6 +103,8 @@ function createChat(overrides?: {
       updatedAt: isoNow(),
       mode: "chat",
       ...(overrides?.config ?? {}),
+      scope: overrides?.config?.scope ?? "workspace",
+      loopId: overrides?.config?.loopId,
     },
     state: {
       id: overrides?.state?.id ?? overrides?.config?.id ?? "chat-1",

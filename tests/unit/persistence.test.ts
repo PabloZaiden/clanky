@@ -150,8 +150,15 @@ describe("Persistence", () => {
       const row = getDatabase().query(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chats'",
       ).get() as { name: string } | null;
+      const columns = getDatabase().query("PRAGMA table_info(chats)").all() as Array<{ name: string }>;
+      const loopIndex = getDatabase().query(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_chats_loop_id_unique'",
+      ).get() as { name: string } | null;
 
       expect(row?.name).toBe("chats");
+      expect(columns.some((column) => column.name === "scope")).toBe(true);
+      expect(columns.some((column) => column.name === "loop_id")).toBe(true);
+      expect(loopIndex?.name).toBe("idx_chats_loop_id_unique");
     });
 
     test("initializeDatabase repairs passkey credentials when a legacy migration version collides", async () => {

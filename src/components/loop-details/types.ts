@@ -1,9 +1,10 @@
 import type { ModelConfig } from "../../types/loop";
 
-export type TabId = "log" | "info" | "prompt" | "plan" | "diff" | "actions";
+export type TabId = "log" | "chat" | "info" | "prompt" | "plan" | "diff" | "actions";
 
 export const tabs: { id: TabId; label: string }[] = [
   { id: "log", label: "Log" },
+  { id: "chat", label: "Chat" },
   { id: "info", label: "Info" },
   { id: "prompt", label: "Prompt" },
   { id: "plan", label: "Plan" },

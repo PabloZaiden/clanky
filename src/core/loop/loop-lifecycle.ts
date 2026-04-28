@@ -15,6 +15,11 @@ import { assertValidTransition } from "../loop-state-machine";
 import { sshSessionManager } from "../ssh-session-manager";
 import { portForwardManager } from "../port-forward-manager";
 
+async function deleteLinkedLoopChat(loopId: string): Promise<void> {
+  const { chatManager } = await import("../chat-manager");
+  await chatManager.deleteLoopChat(loopId);
+}
+
 async function disconnectLoopEngine(ctx: LoopCtx, loopId: string): Promise<void> {
   ctx.engines.delete(loopId);
   await backendManager.disconnectLoop(loopId);
@@ -110,6 +115,8 @@ export async function deleteLoopImpl(ctx: LoopCtx, loopId: string): Promise<bool
   await updateLoopState(loopId, updatedState);
   log.debug(`[LoopManager] deleteLoop: Status updated to deleted for loop ${loopId}`);
 
+  await deleteLinkedLoopChat(loopId);
+
   ctx.emitter.emit({
     type: "loop.deleted",
     loopId,
@@ -162,6 +169,8 @@ export async function discardLoopImpl(ctx: LoopCtx, loopId: string): Promise<{ s
     await backendManager.disconnectLoop(loopId);
 
     ctx.engines.delete(loopId);
+
+    await deleteLinkedLoopChat(loopId);
 
     ctx.emitter.emit({
       type: "loop.discarded",
@@ -258,6 +267,8 @@ export async function purgeLoopImpl(_ctx: LoopCtx, loopId: string): Promise<{ su
   if (!deleted) {
     return { success: false, error: "Failed to delete loop file" };
   }
+
+  await deleteLinkedLoopChat(loopId);
 
   log.info("Loop purged", { loopId });
   return { success: true };

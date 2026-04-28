@@ -439,6 +439,7 @@ describe("workspace management scenario", () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         mode: "chat",
+        scope: "workspace",
       },
       state: {
         id: "ws-chat-1",
