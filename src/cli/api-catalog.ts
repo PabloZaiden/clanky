@@ -458,7 +458,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   },
   "/api/ssh-server-sessions/:id": {
     description: "Read, update, or delete a standalone SSH server session.",
-    requestSchema: UpdateSshSessionRequestSchema,
+    requestSchema: z.union([
+      UpdateSshSessionRequestSchema,
+      DeleteSshServerSessionRequestSchema,
+    ]),
   },
   "/api/provisioning-jobs": {
     description: "Start a remote provisioning job.",

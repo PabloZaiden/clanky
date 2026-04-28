@@ -1182,6 +1182,24 @@ describe("ralpher cli", () => {
     expect(rendered).toContain("\"path\"");
   });
 
+  test("schema shows union request bodies for multi-method SSH server session routes", async () => {
+    const output: string[] = [];
+
+    const exitCode = await runCli(["schema", "ssh-server-sessions/session-1"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+    });
+
+    expect(exitCode).toBe(0);
+    const rendered = output.join("\n");
+    expect(rendered).toContain("Endpoint: /api/ssh-server-sessions/:id");
+    expect(rendered).toContain("Methods: DELETE, GET, PATCH");
+    expect(rendered).toContain("Request body schema:");
+    expect(rendered).toContain("\"anyOf\"");
+    expect(rendered).toContain("\"name\"");
+    expect(rendered).toContain("\"credentialToken\"");
+  });
+
   test("api catalog only resolves discoverable /api endpoints", () => {
     expect(findApiEndpoint("auth/status")?.path).toBe("/api/auth/status");
     expect(findApiEndpoint("/api/auth/status")?.path).toBe("/api/auth/status");
