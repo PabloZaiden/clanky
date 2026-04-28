@@ -5,7 +5,9 @@
 export {
   saveChat,
   loadChat,
+  loadLoopChat,
   deleteChat,
+  deleteChatsByLoopId,
   listChats,
   listChatsByWorkspace,
   chatExists,

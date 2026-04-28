@@ -221,6 +221,8 @@ function createTables(database: Database): void {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'workspace',
+        loop_id TEXT,
         directory TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -250,6 +252,7 @@ function createTables(database: Database): void {
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       )
     `);
+    ensureChatSchema(database);
 
     // Sessions table - maps loops to backend sessions
     // Uses composite primary key (backend_name, loop_id) since id was unused
@@ -464,6 +467,11 @@ function createTables(database: Database): void {
       ON chats(workspace_id, created_at DESC)
     `);
     database.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_loop_id_unique
+      ON chats(loop_id)
+      WHERE loop_id IS NOT NULL
+    `);
+    database.run(`
       CREATE INDEX IF NOT EXISTS idx_chats_directory_workspace_status
       ON chats(directory, workspace_id, status)
     `);
@@ -588,6 +596,16 @@ function ensureLoopSchema(database: Database): void {
   }
   if (!columns.some((column) => column.name === "cheap_model")) {
     database.run("ALTER TABLE loops ADD COLUMN cheap_model TEXT");
+  }
+}
+
+function ensureChatSchema(database: Database): void {
+  const columns = database.query("PRAGMA table_info(chats)").all() as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "scope")) {
+    database.run("ALTER TABLE chats ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace'");
+  }
+  if (!columns.some((column) => column.name === "loop_id")) {
+    database.run("ALTER TABLE chats ADD COLUMN loop_id TEXT");
   }
 }
 

@@ -3,7 +3,7 @@
  * Props are passed as grouped bundles to keep the call-site concise.
  */
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Loop } from "../../types";
 import type { PersistedMessage, PersistedToolCall, LoopLogEntry } from "../../types/loop";
 import type { EntityLabels } from "../../utils";
@@ -20,6 +20,7 @@ import { PromptTab } from "./prompt-tab";
 import { PlanTab } from "./plan-tab";
 import { DiffTab } from "./diff-tab";
 import { ActionsTab } from "./actions-tab";
+import { ChatTab } from "./chat-tab";
 import { getHashForShellRoute } from "../app-shell/shell-navigation";
 
 interface LoopDetailsTabContentProps {
@@ -77,6 +78,13 @@ export function LoopDetailsTabContent({
 }: LoopDetailsTabContentProps) {
   const { config, state } = loop;
   const toolPathDisplayRoot = state.git?.worktreePath ?? config.directory;
+  const [hasVisitedChatTab, setHasVisitedChatTab] = useState(activeTab === "chat");
+
+  useEffect(() => {
+    if (activeTab === "chat") {
+      setHasVisitedChatTab(true);
+    }
+  }, [activeTab]);
 
   const getLoopFileHash = useCallback(({ path, startDirectory }: TranscriptFileLinkTarget) => getHashForShellRoute({
     view: "code-explorer",
@@ -126,6 +134,11 @@ export function LoopDetailsTabContent({
           onExitFocusMode={onExitLogFocusMode}
           applySafeAreaBottomToFocusBar={applySafeAreaBottomToLogFocusBar}
         />
+      )}
+      {(activeTab === "chat" || hasVisitedChatTab) && (
+        <div className={activeTab === "chat" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
+          <ChatTab loopId={loopId} />
+        </div>
       )}
       {activeTab === "info" && (
         <InfoTab

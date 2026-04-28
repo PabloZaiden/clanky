@@ -33,6 +33,8 @@ function createChat(overrides?: {
       updatedAt: "2026-01-01T00:00:00.000Z",
       mode: "chat",
       ...(overrides?.config ?? {}),
+      scope: overrides?.config?.scope ?? "workspace",
+      loopId: overrides?.config?.loopId,
     },
     state: {
       id: overrides?.state?.id ?? overrides?.config?.id ?? "chat-1",
