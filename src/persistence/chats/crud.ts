@@ -35,21 +35,34 @@ export async function loadChat(chatId: string): Promise<Chat | null> {
   return row ? rowToChat(row) : null;
 }
 
+export async function loadLoopChat(loopId: string): Promise<Chat | null> {
+  const row = getDatabase()
+    .prepare("SELECT * FROM chats WHERE loop_id = ? LIMIT 1")
+    .get(loopId) as Record<string, unknown> | null;
+
+  return row ? rowToChat(row) : null;
+}
+
 export async function deleteChat(chatId: string): Promise<boolean> {
   const result = getDatabase().prepare("DELETE FROM chats WHERE id = ?").run(chatId);
   return result.changes > 0;
 }
 
+export async function deleteChatsByLoopId(loopId: string): Promise<number> {
+  const result = getDatabase().prepare("DELETE FROM chats WHERE loop_id = ?").run(loopId);
+  return result.changes;
+}
+
 export async function listChats(): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare("SELECT * FROM chats ORDER BY created_at DESC")
+    .prepare("SELECT * FROM chats WHERE scope = 'workspace' ORDER BY created_at DESC")
     .all() as Record<string, unknown>[];
   return rows.map(rowToChat);
 }
 
 export async function listChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare("SELECT * FROM chats WHERE workspace_id = ? ORDER BY created_at DESC")
+    .prepare("SELECT * FROM chats WHERE workspace_id = ? AND scope = 'workspace' ORDER BY created_at DESC")
     .all(workspaceId) as Record<string, unknown>[];
   return rows.map(rowToChat);
 }

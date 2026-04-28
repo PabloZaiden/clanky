@@ -28,6 +28,7 @@ export { loopsSshPortsRoutes } from "./ssh-ports";
 export { loopsPendingRoutes } from "./pending";
 export { loopsPlanRoutes } from "./plan";
 export { loopsStopRoutes } from "./stop";
+export { loopsChatRoutes } from "./chat";
 
 import { loopsCrudRoutes } from "./crud";
 import { loopsDraftRoutes } from "./draft";
@@ -39,6 +40,7 @@ import { loopsPlanRoutes } from "./plan";
 import { loopsDataRoutes } from "./data";
 import { loopsReviewRoutes } from "./review";
 import { loopsStopRoutes } from "./stop";
+import { loopsChatRoutes } from "./chat";
 
 /**
  * All loops routes combined.
@@ -54,4 +56,5 @@ export const loopsRoutes = {
   ...loopsDataRoutes,
   ...loopsReviewRoutes,
   ...loopsStopRoutes,
+  ...loopsChatRoutes,
 };

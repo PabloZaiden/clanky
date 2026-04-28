@@ -267,6 +267,8 @@ describe("migration infrastructure", () => {
       expect(columns).toContain("workspace_id");
       expect(columns).toContain("session_id");
       expect(columns).toContain("interrupt_requested");
+      expect(columns).toContain("scope");
+      expect(columns).toContain("loop_id");
     });
 
     test("creates chat indexes even when chats table already exists", () => {
@@ -320,9 +322,14 @@ describe("migration infrastructure", () => {
         "idx_chats_created_at",
         "idx_chats_workspace_created_at",
         "idx_chats_directory_workspace_status",
+        "idx_chats_loop_id_unique",
       ]));
       expect(indexNames).not.toContain("idx_chats_workspace_id");
       expect(indexNames).not.toContain("idx_chats_directory");
+
+      const columns = getTableColumns(db, "chats");
+      expect(columns).toContain("scope");
+      expect(columns).toContain("loop_id");
     });
   });
 

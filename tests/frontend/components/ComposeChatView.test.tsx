@@ -52,6 +52,7 @@ function createChat(overrides?: Partial<Chat>): Chat {
       createdAt: "2026-04-21T00:00:00.000Z",
       updatedAt: "2026-04-21T00:00:00.000Z",
       mode: "chat",
+      scope: "workspace",
     },
     state: {
       id: "chat-1",

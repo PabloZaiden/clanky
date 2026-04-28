@@ -15,6 +15,7 @@ import {
   createSshSession,
 } from "../helpers/factories";
 import { LoopDetails } from "@/components/LoopDetails";
+import type { Chat } from "@/types";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -230,6 +231,78 @@ describe("tab navigation", () => {
     await waitFor(() => {
       expect(getByText(/My Plan/)).toBeTruthy();
     });
+  });
+
+  test("opens the loop Chat tab with the embedded chat composer and preserves draft input between tabs", async () => {
+    setupDefaultApi();
+    const loopChat: Chat = {
+      config: {
+        id: "loop-chat-1",
+        name: "Test Loop",
+        workspaceId: "workspace-1",
+        directory: "/workspaces/test-loop/.ralph-worktrees/loop-1",
+        model: {
+          providerID: "github",
+          modelID: "gpt-5.4",
+          variant: "",
+        },
+        useWorktree: false,
+        baseBranch: "main",
+        createdAt: "2026-04-28T00:00:00.000Z",
+        updatedAt: "2026-04-28T00:00:00.000Z",
+        mode: "chat",
+        scope: "loop",
+        loopId: LOOP_ID,
+      },
+      state: {
+        id: "loop-chat-1",
+        status: "idle",
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    };
+    let createLoopChatCalls = 0;
+    api.post("/api/loops/:id/chat", () => {
+      createLoopChatCalls += 1;
+      return loopChat;
+    });
+    api.get("/api/chats/:id", () => loopChat);
+
+    const { getByRole, getByText, queryByRole, queryByTestId, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Test Loop")).toBeTruthy();
+    });
+    expect(createLoopChatCalls).toBe(0);
+
+    await user.click(getByRole("button", { name: /^Chat$/i }));
+
+    await waitFor(() => {
+      expect(getByText("No messages yet")).toBeTruthy();
+    });
+
+    expect(createLoopChatCalls).toBe(1);
+    expect(queryByTestId("chat-header")).toBeNull();
+    expect(queryByTestId("chat-composer-model-cell")).toBeNull();
+    expect(getByRole("textbox", { name: "Message" })).toBeInTheDocument();
+    expect(getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(queryByRole("textbox", { name: "Loop message" })).toBeNull();
+
+    const messageInput = getByRole("textbox", { name: "Message" });
+    await user.type(messageInput, "Need to keep this draft");
+
+    await user.click(getByRole("button", { name: /^Info$/i }));
+    await waitFor(() => {
+      expect(getByText("Loop Information")).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: /^Chat$/i }));
+
+    await waitFor(() => {
+      expect(getByRole("textbox", { name: "Message" })).toHaveValue("Need to keep this draft");
+    });
+    expect(createLoopChatCalls).toBe(1);
   });
 
   test("Plan tab shows message when no plan exists", async () => {

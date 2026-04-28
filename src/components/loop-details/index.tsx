@@ -129,7 +129,7 @@ export function LoopDetails({
   const feedbackRounds = loop.state.planMode?.feedbackRounds ?? 0;
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
-  const showActionBar = isActive || isPlanning || canTerminalFollowUp;
+  const showActionBar = activeTab !== "chat" && (isActive || isPlanning || canTerminalFollowUp);
   const errorBannerSpacingClassName = isLogFocusActive ? "mx-3 mt-3 mb-3" : "mx-3 mt-3 mb-3 sm:mx-4";
 
   return (

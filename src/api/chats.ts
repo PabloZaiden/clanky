@@ -7,7 +7,7 @@
 
 import { chatManager } from "../core/chat-manager";
 import { createLogger } from "../core/logger";
-import { ChatBusyError, EmptyChatTranscriptError, InvalidCurrentPlanError } from "../types/chat";
+import { ChatBusyError, EmptyChatTranscriptError, InvalidCurrentPlanError, isLoopChat } from "../types/chat";
 import type { ChatConfig } from "../types/chat";
 import {
   CreateChatRequestSchema,
@@ -33,8 +33,8 @@ function createChatActionErrorResponse(error: unknown): Response | null {
   return null;
 }
 
-function mapChatUpdates(body: Partial<ChatConfig>): Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode">> {
-  const updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode">> = {};
+function mapChatUpdates(body: Partial<ChatConfig>): Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "loopId">> {
+  const updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "loopId">> = {};
 
   if (body.name !== undefined) {
     updates.name = body.name.trim();
@@ -128,6 +128,9 @@ export const chatsRoutes = {
       if (!existing) {
         return errorResponse("not_found", "Chat not found", 404);
       }
+      if (isLoopChat(existing)) {
+        return errorResponse("loop_chat_managed_by_loop", "Loop chats are managed from their owning loop", 409);
+      }
 
       const validation = await parseAndValidate(UpdateChatRequestSchema, req);
       if (!validation.success) {
@@ -165,6 +168,9 @@ export const chatsRoutes = {
       const chat = await chatManager.getChat(req.params.id);
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
+      }
+      if (isLoopChat(chat)) {
+        return errorResponse("loop_chat_managed_by_loop", "Loop chats are deleted with their owning loop", 409);
       }
 
       try {

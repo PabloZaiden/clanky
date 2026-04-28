@@ -29,7 +29,7 @@ export async function getActiveChatByDirectory(directory: string, workspaceId: s
   const placeholders = ACTIVE_CHAT_STATUSES.map(() => "?").join(", ");
   const row = getDatabase().prepare(`
     SELECT * FROM chats
-    WHERE directory = ? AND workspace_id = ? AND status IN (${placeholders})
+    WHERE directory = ? AND workspace_id = ? AND scope = 'workspace' AND status IN (${placeholders})
     LIMIT 1
   `).get(directory, workspaceId, ...ACTIVE_CHAT_STATUSES) as Record<string, unknown> | null;
 

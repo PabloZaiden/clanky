@@ -13,8 +13,8 @@ import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
 import type { EventStream } from "../utils/event-stream";
-import { ChatBusyError, createInitialChatState, DEFAULT_CHAT_CONFIG, isChatBusyStatus } from "../types/chat";
-import { loadChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
+import { ChatBusyError, createInitialChatState, DEFAULT_CHAT_CONFIG, isChatBusyStatus, isLoopChat } from "../types/chat";
+import { loadChat, loadLoopChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
@@ -29,6 +29,7 @@ import { sanitizeBranchName } from "../utils";
 import { buildSpawnCurrentPlanPrompt, buildSpawnLoopName, buildSpawnLoopPrompt } from "../utils/chat-to-loop-prompt";
 import { getImageViewToolPath, resolveToolCallImagePreview } from "./tool-call-image-preview";
 import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
+import { getLoopWorkingDirectory } from "./loop/loop-types";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -47,6 +48,8 @@ function isDatabaseNotInitializedError(error: unknown): boolean {
 export interface CreateChatOptions {
   name: string;
   workspaceId: string;
+  scope?: ChatConfig["scope"];
+  loopId?: string;
   modelProviderID: string;
   modelID: string;
   modelVariant?: string;
@@ -72,6 +75,14 @@ export class ChatManager {
       throw new Error("Chat name is required");
     }
 
+    const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
+    if (scope === "loop" && !options.loopId) {
+      throw new Error("Loop chats require a loopId");
+    }
+    if (scope === "workspace" && options.loopId) {
+      throw new Error("Standalone chats cannot specify a loopId");
+    }
+
     const id = crypto.randomUUID();
     const now = createTimestamp();
     const chat: Chat = {
@@ -79,13 +90,15 @@ export class ChatManager {
         id,
         name,
         workspaceId: options.workspaceId,
+        scope,
+        loopId: options.loopId,
         directory: options.directory ?? workspace.directory,
         model: {
           providerID: options.modelProviderID,
           modelID: options.modelID,
           variant: options.modelVariant ?? "",
         },
-        useWorktree: options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree,
+        useWorktree: scope === "loop" ? false : (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree),
         baseBranch: options.baseBranch,
         createdAt: now,
         updatedAt: now,
@@ -116,9 +129,62 @@ export class ChatManager {
     return listChatsByWorkspace(workspaceId);
   }
 
+  async getLoopChat(loopId: string): Promise<Chat | null> {
+    return loadLoopChat(loopId);
+  }
+
+  async getOrCreateLoopChat(loopId: string): Promise<{ chat: Chat; created: boolean }> {
+    const existing = await this.getLoopChat(loopId);
+    if (existing) {
+      return { chat: existing, created: false };
+    }
+
+    const loop = await loopManager.getLoop(loopId);
+    if (!loop) {
+      throw new Error(`Loop not found: ${loopId}`);
+    }
+
+    const workingDirectory = getLoopWorkingDirectory(loop);
+    if (!workingDirectory) {
+      throw new Error(`Loop ${loopId} does not currently have a working directory for chat creation`);
+    }
+
+    try {
+      const chat = await this.createChat({
+        name: loop.config.name,
+        workspaceId: loop.config.workspaceId,
+        scope: "loop",
+        loopId,
+        modelProviderID: loop.config.model.providerID,
+        modelID: loop.config.model.modelID,
+        modelVariant: loop.config.model.variant,
+        useWorktree: false,
+        baseBranch: loop.config.baseBranch,
+        directory: workingDirectory,
+      });
+      return { chat, created: true };
+    } catch (error) {
+      if (String(error).includes("UNIQUE constraint failed: chats.loop_id")) {
+        const concurrent = await this.getLoopChat(loopId);
+        if (concurrent) {
+          return { chat: concurrent, created: false };
+        }
+      }
+      throw error;
+    }
+  }
+
+  async deleteLoopChat(loopId: string): Promise<boolean> {
+    const chat = await this.getLoopChat(loopId);
+    if (!chat) {
+      return false;
+    }
+    return this.deleteChat(chat.config.id);
+  }
+
   async updateChat(
     chatId: string,
-    updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode">>,
+    updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "loopId">>,
   ): Promise<Chat | null> {
     const chat = await loadChat(chatId);
     if (!chat) {
@@ -595,6 +661,22 @@ export class ChatManager {
   }
 
   private async resolveWorkingDirectory(chat: Chat): Promise<{ chat: Chat; directory: string }> {
+    if (isLoopChat(chat)) {
+      const loopId = chat.config.loopId;
+      if (!loopId) {
+        throw new Error(`Loop chat ${chat.config.id} is missing its loopId`);
+      }
+      const loop = await loopManager.getLoop(loopId);
+      if (!loop) {
+        throw new Error(`Loop ${loopId} for chat ${chat.config.id} was not found`);
+      }
+      const directory = getLoopWorkingDirectory(loop);
+      if (!directory) {
+        throw new Error(`Loop ${loopId} does not currently have a working directory for chat ${chat.config.id}`);
+      }
+      return { chat, directory };
+    }
+
     if (!chat.config.useWorktree) {
       return {
         chat,
@@ -615,6 +697,10 @@ export class ChatManager {
   }
 
   private async ensureWorktree(chat: Chat): Promise<Chat> {
+    if (isLoopChat(chat)) {
+      return chat;
+    }
+
     if (!chat.config.useWorktree) {
       return chat;
     }
@@ -672,6 +758,10 @@ export class ChatManager {
   }
 
   private async cleanupWorktree(chat: Chat): Promise<void> {
+    if (isLoopChat(chat)) {
+      return;
+    }
+
     const worktreePath = chat.state.worktree?.worktreePath;
     if (!chat.config.useWorktree || !worktreePath) {
       return;
