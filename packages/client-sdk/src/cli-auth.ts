@@ -272,8 +272,8 @@ export async function loadStoredCliCredentials(): Promise<StoredCliCredentials |
 }
 
 export async function saveStoredCliCredentials(credentials: StoredCliCredentials): Promise<void> {
-  const stateDir = getCliStateDir();
-  const credentialsPath = join(stateDir, CLI_CREDENTIALS_FILE);
+  const credentialsPath = getCliCredentialsPath();
+  const stateDir = dirname(credentialsPath);
   const tempPath = getCliCredentialsTempPath(credentialsPath);
   const serializedCredentials = `${JSON.stringify(StoredCliCredentialsSchema.parse(credentials), null, 2)}\n`;
 
@@ -282,7 +282,11 @@ export async function saveStoredCliCredentials(credentials: StoredCliCredentials
     await Bun.write(tempPath, serializedCredentials);
     await rename(tempPath, credentialsPath);
   } catch (error) {
-    await rm(tempPath, { force: true });
+    try {
+      await rm(tempPath, { force: true });
+    } catch {
+      // Ignore cleanup failures so the original write/rename failure surfaces.
+    }
     throw error;
   }
 }
