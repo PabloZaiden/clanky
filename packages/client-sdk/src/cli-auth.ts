@@ -1,6 +1,6 @@
-import { mkdir } from "fs/promises";
+import { mkdir, rename, rm } from "fs/promises";
 import { homedir } from "os";
-import { join } from "path";
+import { basename, dirname, join } from "path";
 import { z } from "zod";
 import { formatCookieHeader, parseCookieHeader } from "./http-cookies";
 
@@ -130,6 +130,13 @@ function getCliCredentialsPath(): string {
   return join(getCliStateDir(), CLI_CREDENTIALS_FILE);
 }
 
+function getCliCredentialsTempPath(credentialsPath: string): string {
+  return join(
+    dirname(credentialsPath),
+    `.${basename(credentialsPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+  );
+}
+
 async function requestJson(
   fetchFn: typeof fetch,
   input: string | URL | Request,
@@ -203,11 +210,19 @@ export async function loadStoredCliCredentials(): Promise<StoredCliCredentials |
 }
 
 export async function saveStoredCliCredentials(credentials: StoredCliCredentials): Promise<void> {
-  await mkdir(getCliStateDir(), { recursive: true });
-  await Bun.write(
-    getCliCredentialsPath(),
-    `${JSON.stringify(StoredCliCredentialsSchema.parse(credentials), null, 2)}\n`,
-  );
+  const stateDir = getCliStateDir();
+  const credentialsPath = join(stateDir, CLI_CREDENTIALS_FILE);
+  const tempPath = getCliCredentialsTempPath(credentialsPath);
+  const serializedCredentials = `${JSON.stringify(StoredCliCredentialsSchema.parse(credentials), null, 2)}\n`;
+
+  await mkdir(stateDir, { recursive: true });
+  try {
+    await Bun.write(tempPath, serializedCredentials);
+    await rename(tempPath, credentialsPath);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 export function getAuthorizedHeaders(

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -7,6 +7,7 @@ import {
   findApiEndpoint,
   loadStoredCliCredentials,
   parseCliCommand,
+  refreshStoredCredentials,
   runCli,
   saveStoredCliCredentials,
   type StoredCliCredentials,
@@ -607,6 +608,59 @@ describe("ralpher cli", () => {
       accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
       updatedAt: "2026-04-21T17:15:00.000Z",
     });
+  });
+
+  test("refresh keeps the previous credential file readable when persistence is interrupted", async () => {
+    const existingCredentials: StoredCliCredentials = {
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "expired-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2026-04-21T17:14:59.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    };
+    await saveStoredCliCredentials(existingCredentials);
+
+    const originalWrite: typeof Bun.write = Bun.write.bind(Bun);
+    const writeSpy = spyOn(Bun, "write").mockImplementation(async (destination, data) => {
+      if (typeof destination !== "string") {
+        throw new Error(`Unexpected non-path destination: ${destination.constructor.name}`);
+      }
+      if (typeof data !== "string") {
+        throw new Error("Unexpected non-string credential payload");
+      }
+      if (data.includes("\"fresh-access\"")) {
+        await originalWrite(destination, data.slice(0, Math.floor(data.length / 2)));
+        throw new Error("simulated interrupted credential write");
+      }
+      return await originalWrite(destination, data);
+    });
+
+    try {
+      await expect(refreshStoredCredentials(existingCredentials, {
+        now: () => new Date("2026-04-21T17:15:00.000Z"),
+        fetchFn: createFetchMock(async (input: string | URL | Request) => {
+          if (String(input) !== "http://example.test/api/auth/token") {
+            throw new Error(`Unexpected fetch to ${String(input)}`);
+          }
+          return jsonResponse(200, {
+            access_token: "fresh-access",
+            refresh_token: "fresh-refresh",
+            token_type: "Bearer",
+            expires_in: 600,
+            scope: "",
+          });
+        }),
+      })).rejects.toThrow("simulated interrupted credential write");
+
+      expect(await loadStoredCliCredentials()).toEqual(existingCredentials);
+    } finally {
+      writeSpy.mockRestore();
+    }
   });
 
   test("api lists the discoverable endpoints when called without a path", async () => {
