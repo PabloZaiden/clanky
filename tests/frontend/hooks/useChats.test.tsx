@@ -166,4 +166,72 @@ describe("useChats", () => {
     expect(interruptCalls).toHaveLength(1);
     expect(interruptCalls[0]?.body).toEqual({ reason: DEFAULT_CHAT_INTERRUPT_REASON });
   });
+
+  test("filters loop-scoped chats out of the shared chat collection", async () => {
+    const workspaceChat = createChat();
+    const loopChat = createChat({
+      config: {
+        ...workspaceChat.config,
+        id: "loop-chat-1",
+        name: "Loop Chat",
+        scope: "loop",
+        loopId: "loop-1",
+      },
+    });
+
+    api.get("/api/chats", () => [workspaceChat, loopChat]);
+
+    const { result } = renderHook(() => useChats());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.chats.map((chat) => chat.config.id)).toEqual([CHAT_ID]);
+  });
+
+  test("drops loop-scoped chats returned by event-driven refreshes", async () => {
+    const workspaceChat = createChat();
+    const leakedLoopChat = createChat({
+      config: {
+        ...workspaceChat.config,
+        id: "loop-chat-1",
+        name: "Loop Chat",
+        scope: "loop",
+        loopId: "loop-1",
+        updatedAt: "2025-01-01T00:00:02.000Z",
+      },
+    });
+
+    api.get("/api/chats", () => [workspaceChat]);
+    api.get("/api/chats/:id", ({ params }) => {
+      if (params["id"] === leakedLoopChat.config.id) {
+        return leakedLoopChat;
+      }
+      return workspaceChat;
+    });
+
+    const { result } = renderHook(() => useChats());
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(ws.connections().length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "chat.status",
+        chatId: leakedLoopChat.config.id,
+        status: "idle",
+        timestamp: "2025-01-01T00:00:03.000Z",
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.chats.map((chat) => chat.config.id)).toEqual([CHAT_ID]);
+    });
+  });
 });

@@ -9,7 +9,7 @@ import type {
   SendChatMessageRequest,
   UpdateChatRequest,
 } from "../types";
-import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
+import { DEFAULT_CHAT_INTERRUPT_REASON, isStandaloneChat } from "../types";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import { useGlobalEvents } from "./useWebSocket";
 
@@ -21,16 +21,19 @@ function sortChats(chats: Chat[]): Chat[] {
   });
 }
 
-function upsertChat(chats: Chat[], chat: Chat): Chat[] {
-  const next = [...chats];
-  const index = next.findIndex((item) => item.config.id === chat.config.id);
+function filterStandaloneChats(chats: Chat[]): Chat[] {
+  return chats.filter(isStandaloneChat);
+}
 
-  if (index === -1) {
-    next.push(chat);
+function upsertStandaloneChat(chats: Chat[], chat: Chat): Chat[] {
+  const next = chats.filter((item) => item.config.id !== chat.config.id);
+
+  if (!isStandaloneChat(chat)) {
     return sortChats(next);
   }
 
-  next[index] = mergeChatSnapshot(next[index]!, chat);
+  const current = chats.find((item) => item.config.id === chat.config.id);
+  next.push(current ? mergeChatSnapshot(current, chat) : chat);
   return sortChats(next);
 }
 
@@ -80,7 +83,7 @@ export function useChats(): UseChatsResult {
         throw new Error(await parseError(response, "Failed to fetch chats"));
       }
       const data = (await response.json()) as Chat[];
-      setChats(sortChats(data));
+      setChats(sortChats(filterStandaloneChats(data)));
     } catch (refreshError) {
       if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
         return;
@@ -102,7 +105,7 @@ export function useChats(): UseChatsResult {
         throw new Error(await parseError(response, "Failed to fetch chat"));
       }
       const chat = (await response.json()) as Chat;
-      setChats((prev) => upsertChat(prev, chat));
+      setChats((prev) => upsertStandaloneChat(prev, chat));
     } catch (refreshError) {
       log.error("Failed to refresh chat", { chatId: id, error: String(refreshError) });
     }
@@ -124,7 +127,7 @@ export function useChats(): UseChatsResult {
         throw new Error(await parseError(response, "Failed to create chat"));
       }
       const chat = (await response.json()) as Chat;
-      setChats((prev) => upsertChat(prev, chat));
+      setChats((prev) => upsertStandaloneChat(prev, chat));
       return chat;
     } catch (createError) {
       log.error("Failed to create chat", {
@@ -147,7 +150,7 @@ export function useChats(): UseChatsResult {
         throw new Error(await parseError(response, "Failed to update chat"));
       }
       const chat = (await response.json()) as Chat;
-      setChats((prev) => upsertChat(prev, chat));
+      setChats((prev) => upsertStandaloneChat(prev, chat));
       return chat;
     } catch (updateError) {
       log.error("Failed to update chat", { chatId: id, error: String(updateError) });
@@ -182,7 +185,7 @@ export function useChats(): UseChatsResult {
         throw new Error(await parseError(response, "Failed to send chat message"));
       }
       const chat = (await response.json()) as Chat;
-      setChats((prev) => upsertChat(prev, chat));
+      setChats((prev) => upsertStandaloneChat(prev, chat));
       return chat;
     } catch (sendError) {
       log.error("Failed to send chat message", { chatId: id, error: String(sendError) });
@@ -204,7 +207,7 @@ export function useChats(): UseChatsResult {
         throw new Error(await parseError(response, "Failed to interrupt chat"));
       }
       const chat = (await response.json()) as Chat;
-      setChats((prev) => upsertChat(prev, chat));
+      setChats((prev) => upsertStandaloneChat(prev, chat));
       return chat;
     } catch (interruptError) {
       log.error("Failed to interrupt chat", { chatId: id, error: String(interruptError) });
@@ -222,7 +225,7 @@ export function useChats(): UseChatsResult {
         throw new Error(await parseError(response, "Failed to reconnect chat"));
       }
       const chat = (await response.json()) as Chat;
-      setChats((prev) => upsertChat(prev, chat));
+      setChats((prev) => upsertStandaloneChat(prev, chat));
       return chat;
     } catch (reconnectError) {
       log.error("Failed to reconnect chat", { chatId: id, error: String(reconnectError) });
@@ -235,7 +238,7 @@ export function useChats(): UseChatsResult {
     onEvent: (event) => {
       switch (event.type) {
         case "chat.updated":
-          setChats((prev) => upsertChat(prev, event.chat));
+          setChats((prev) => upsertStandaloneChat(prev, event.chat));
           break;
         case "chat.created":
           void refresh();

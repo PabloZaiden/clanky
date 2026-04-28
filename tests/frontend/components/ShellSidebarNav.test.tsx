@@ -238,6 +238,44 @@ describe("ShellSidebarNav", () => {
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
   });
 
+  test("does not render loop-owned chats in the workspace chat section", () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Workspace 1",
+      directory: "/workspaces/workspace-1",
+    });
+    const workspaceGroups = buildWorkspaceSidebarGroups({
+      workspaces: [workspace],
+      loops: [],
+      chats: [
+        createChat({
+          config: {
+            id: "workspace-chat-1",
+            name: "Workspace Chat",
+            workspaceId: workspace.id,
+          },
+        }),
+        createChat({
+          config: {
+            id: "loop-chat-1",
+            name: "Loop Chat",
+            workspaceId: workspace.id,
+            scope: "loop",
+            loopId: "loop-1",
+          },
+        }),
+      ],
+      sessions: [],
+    });
+
+    const { getByText, queryByText } = renderWithUser(
+      <SidebarHarness workspaceGroups={workspaceGroups} serverNodes={[]} />,
+    );
+
+    expect(getByText("Workspace Chat")).toBeInTheDocument();
+    expect(queryByText("Loop Chat")).toBeNull();
+  });
+
   test("keeps empty parent rows expandable when they expose nested action sections", () => {
     const emptyServerId = "server-empty";
     const emptyServerName = "Empty Server";

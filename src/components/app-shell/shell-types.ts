@@ -1,6 +1,7 @@
 import { canJumpstart, getLoopStatusPill, isFinalState } from "../../utils";
 import { createLogger } from "../../lib/logger";
 import type { Chat, Loop, SshSession, Workspace } from "../../types";
+import { isStandaloneChat } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import {
   getChatStatusBadgeVariant,
@@ -269,6 +270,9 @@ export function buildWorkspaceSidebarGroups({
   }
 
   for (const chat of chats) {
+    if (!isStandaloneChat(chat)) {
+      continue;
+    }
     const workspaceChats = chatsByWorkspaceId.get(chat.config.workspaceId) ?? [];
     workspaceChats.push(chat);
     chatsByWorkspaceId.set(chat.config.workspaceId, workspaceChats);
