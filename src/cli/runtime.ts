@@ -80,9 +80,14 @@ const CLI_USAGE = [
   ...CLI_HELP_ENTRIES.flatMap((entry) => entry.usage.map((usageLine) => `  ${usageLine}`)),
 ].join("\n");
 
+const CLI_COMMAND_WIDTH = CLI_HELP_ENTRIES.reduce(
+  (maxWidth, entry) => Math.max(maxWidth, entry.name.length),
+  0,
+);
+
 const CLI_COMMANDS = [
   "Commands:",
-  ...CLI_HELP_ENTRIES.map((entry) => `  ${entry.name.padEnd(8)} ${entry.description}`),
+  ...CLI_HELP_ENTRIES.map((entry) => `  ${entry.name.padEnd(CLI_COMMAND_WIDTH)} ${entry.description}`),
 ].join("\n");
 const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
 

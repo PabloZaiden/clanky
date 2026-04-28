@@ -27,16 +27,28 @@ const CLI_USAGE = [
   "  ralpher-cli schema <endpoint>",
   "  ralpher-cli ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
 ].join("\n");
+
+const CLI_COMMAND_ENTRIES = [
+  ["help", "Show the CLI help and available commands."],
+  ["version", "Print the current ralpher-cli version."],
+  ["update", "Check for or install a newer ralpher-cli release."],
+  ["auth", "Authenticate against a Ralpher server and store credentials."],
+  ["status", "Show the current authentication status for a server."],
+  ["api", "List API endpoints or send an authenticated API request."],
+  ["schema", "Show the request schema metadata for an API endpoint."],
+  ["ws", "Stream live WebSocket events for loops, chats, SSH, or provisioning."],
+] as const;
+
+const CLI_COMMAND_WIDTH = CLI_COMMAND_ENTRIES.reduce(
+  (maxWidth, [name]) => Math.max(maxWidth, name.length),
+  0,
+);
+
 const CLI_COMMANDS = [
   "Commands:",
-  "  help     Show the CLI help and available commands.",
-  "  version  Print the current ralpher-cli version.",
-  "  update   Check for or install a newer ralpher-cli release.",
-  "  auth     Authenticate against a Ralpher server and store credentials.",
-  "  status   Show the current authentication status for a server.",
-  "  api      List API endpoints or send an authenticated API request.",
-  "  schema   Show the request schema metadata for an API endpoint.",
-  "  ws       Stream live WebSocket events for loops, chats, SSH, or provisioning.",
+  ...CLI_COMMAND_ENTRIES.map(
+    ([name, description]) => `  ${name.padEnd(CLI_COMMAND_WIDTH)} ${description}`,
+  ),
 ].join("\n");
 const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
 
