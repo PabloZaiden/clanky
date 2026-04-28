@@ -435,6 +435,7 @@ export class ChatManager {
       this.emitter.emit({
         type: "chat.deleted",
         chatId,
+        scope: chat.config.scope,
         timestamp: createTimestamp(),
       });
     }
@@ -1354,6 +1355,7 @@ export class ChatManager {
     this.emitter.emit({
       type: "chat.error",
       chatId: chat.config.id,
+      scope: chat.config.scope,
       message,
       timestamp: now,
     });
@@ -1381,6 +1383,7 @@ export class ChatManager {
     this.emitter.emit({
       type: "chat.interrupted",
       chatId: chat.config.id,
+      scope: chat.config.scope,
       timestamp: now,
     });
     return updated;
@@ -1452,6 +1455,7 @@ export class ChatManager {
       this.emitter.emit({
         type: "chat.status",
         chatId: chat.config.id,
+        scope: chat.config.scope,
         status: state.status,
         timestamp: state.lastActivityAt ?? createTimestamp(),
       });

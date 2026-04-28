@@ -243,6 +243,100 @@ describe("Events WebSocket API Integration", () => {
       ws.close();
     });
 
+    test("does not forward loop chat status events to unscoped subscribers", async () => {
+      const ws = new WebSocket(`${wsUrl}/api/ws`);
+
+      await new Promise<void>((resolve) => {
+        ws.onopen = () => resolve();
+      });
+
+      await new Promise<void>((resolve) => {
+        ws.onmessage = () => resolve();
+      });
+
+      const receivedEvent = new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Timed out waiting for standalone chat status event"));
+        }, 1000);
+
+        ws.onmessage = (event) => {
+          clearTimeout(timeout);
+          try {
+            resolve(JSON.parse(event.data));
+          } catch {
+            reject(new Error("Failed to parse websocket event"));
+          }
+        };
+      });
+
+      chatEventEmitter.emit({
+        type: "chat.status",
+        chatId: "loop-chat",
+        scope: "loop",
+        status: "streaming",
+        timestamp: new Date().toISOString(),
+      });
+      chatEventEmitter.emit({
+        type: "chat.status",
+        chatId: "workspace-chat",
+        scope: "workspace",
+        status: "streaming",
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(await receivedEvent).toMatchObject({
+        type: "chat.status",
+        chatId: "workspace-chat",
+        scope: "workspace",
+      });
+
+      ws.close();
+    });
+
+    test("still forwards loop chat status events to chat-scoped subscribers", async () => {
+      const targetChatId = "loop-chat";
+      const ws = new WebSocket(`${wsUrl}/api/ws?chatId=${targetChatId}`);
+
+      await new Promise<void>((resolve) => {
+        ws.onopen = () => resolve();
+      });
+
+      await new Promise<void>((resolve) => {
+        ws.onmessage = () => resolve();
+      });
+
+      const receivedEvent = new Promise<unknown>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Timed out waiting for loop chat status event"));
+        }, 1000);
+
+        ws.onmessage = (event) => {
+          clearTimeout(timeout);
+          try {
+            resolve(JSON.parse(event.data));
+          } catch {
+            reject(new Error("Failed to parse websocket event"));
+          }
+        };
+      });
+
+      chatEventEmitter.emit({
+        type: "chat.status",
+        chatId: targetChatId,
+        scope: "loop",
+        status: "streaming",
+        timestamp: new Date().toISOString(),
+      });
+
+      expect(await receivedEvent).toMatchObject({
+        type: "chat.status",
+        chatId: targetChatId,
+        scope: "loop",
+      });
+
+      ws.close();
+    });
+
     test("filters events by loopId when specified", async () => {
       const targetLoopId = "target-loop";
       const otherLoopId = "other-loop";

@@ -152,6 +152,7 @@ export interface ChatUpdatedEvent {
 export interface ChatStatusEvent {
   type: "chat.status";
   chatId: string;
+  scope: ChatConfig["scope"];
   status: ChatStatus;
   timestamp: string;
 }
@@ -188,12 +189,14 @@ export interface ChatLogEvent {
 export interface ChatInterruptedEvent {
   type: "chat.interrupted";
   chatId: string;
+  scope: ChatConfig["scope"];
   timestamp: string;
 }
 
 export interface ChatErrorEvent {
   type: "chat.error";
   chatId: string;
+  scope: ChatConfig["scope"];
   message: string;
   timestamp: string;
 }
@@ -201,6 +204,7 @@ export interface ChatErrorEvent {
 export interface ChatDeletedEvent {
   type: "chat.deleted";
   chatId: string;
+  scope: ChatConfig["scope"];
   timestamp: string;
 }
 

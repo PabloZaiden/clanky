@@ -167,49 +167,22 @@ describe("useChats", () => {
     expect(interruptCalls[0]?.body).toEqual({ reason: DEFAULT_CHAT_INTERRUPT_REASON });
   });
 
-  test("filters loop-scoped chats out of the shared chat collection", async () => {
+  test("refreshes standalone chats returned by event-driven status updates", async () => {
     const workspaceChat = createChat();
-    const loopChat = createChat({
+    const refreshedWorkspaceChat = createChat({
       config: {
         ...workspaceChat.config,
-        id: "loop-chat-1",
-        name: "Loop Chat",
-        scope: "loop",
-        loopId: "loop-1",
-      },
-    });
-
-    api.get("/api/chats", () => [workspaceChat, loopChat]);
-
-    const { result } = renderHook(() => useChats());
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-    });
-
-    expect(result.current.chats.map((chat) => chat.config.id)).toEqual([CHAT_ID]);
-  });
-
-  test("drops loop-scoped chats returned by event-driven refreshes", async () => {
-    const workspaceChat = createChat();
-    const leakedLoopChat = createChat({
-      config: {
-        ...workspaceChat.config,
-        id: "loop-chat-1",
-        name: "Loop Chat",
-        scope: "loop",
-        loopId: "loop-1",
+        name: "Updated Workspace Chat",
         updatedAt: "2025-01-01T00:00:02.000Z",
+      },
+      state: {
+        ...workspaceChat.state,
+        status: "streaming",
       },
     });
 
     api.get("/api/chats", () => [workspaceChat]);
-    api.get("/api/chats/:id", ({ params }) => {
-      if (params["id"] === leakedLoopChat.config.id) {
-        return leakedLoopChat;
-      }
-      return workspaceChat;
-    });
+    api.get("/api/chats/:id", () => refreshedWorkspaceChat);
 
     const { result } = renderHook(() => useChats());
 
@@ -224,14 +197,15 @@ describe("useChats", () => {
     act(() => {
       ws.sendEvent({
         type: "chat.status",
-        chatId: leakedLoopChat.config.id,
-        status: "idle",
+        chatId: workspaceChat.config.id,
+        scope: "workspace",
+        status: "streaming",
         timestamp: "2025-01-01T00:00:03.000Z",
       });
     });
 
     await waitFor(() => {
-      expect(result.current.chats.map((chat) => chat.config.id)).toEqual([CHAT_ID]);
+      expect(result.current.chats[0]?.config.name).toBe("Updated Workspace Chat");
     });
   });
 });
