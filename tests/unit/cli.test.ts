@@ -7,6 +7,7 @@ import {
   findApiEndpoint,
   loadStoredCliCredentials,
   parseCliCommand,
+  refreshStoredCredentials,
   runCli,
   saveStoredCliCredentials,
   type StoredCliCredentials,
@@ -607,6 +608,122 @@ describe("ralpher cli", () => {
       accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
       updatedAt: "2026-04-21T17:15:00.000Z",
     });
+  });
+
+  test("status succeeds after stored credentials were refreshed and persisted earlier", async () => {
+    const output: string[] = [];
+    const statusRequests: Array<{
+      url: string;
+      authorization?: string | null;
+      cookie?: string | null;
+      origin?: string | null;
+    }> = [];
+
+    const expiredCredentials: StoredCliCredentials = {
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "expired-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value; session_hint=browser",
+      accessTokenExpiresAt: "2026-04-21T17:14:59.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    };
+    await saveStoredCliCredentials(expiredCredentials);
+
+    const refreshedCredentials = await refreshStoredCredentials(expiredCredentials, {
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url !== "http://example.test/api/auth/token") {
+          throw new Error(`Unexpected refresh fetch to ${url}`);
+        }
+
+        const cookie = init?.headers instanceof Headers
+          ? init.headers.get("cookie")
+          : init?.headers && "cookie" in init.headers
+            ? String(init.headers["cookie"])
+            : null;
+        const origin = init?.headers instanceof Headers
+          ? init.headers.get("origin")
+          : init?.headers && "origin" in init.headers
+            ? String(init.headers["origin"])
+            : null;
+        expect(cookie).toBe("authentik_proxy=proxy-cookie-value; session_hint=browser");
+        expect(origin).toBe("http://example.test");
+
+        return jsonResponse(200, {
+          access_token: "fresh-access",
+          refresh_token: "fresh-refresh",
+          token_type: "Bearer",
+          expires_in: 600,
+          scope: "",
+        });
+      }),
+    });
+
+    expect(refreshedCredentials).toEqual({
+      ...expiredCredentials,
+      accessToken: "fresh-access",
+      refreshToken: "fresh-refresh",
+      accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
+      updatedAt: "2026-04-21T17:15:00.000Z",
+    });
+    expect(await loadStoredCliCredentials()).toEqual(refreshedCredentials);
+
+    const exitCode = await runCli(["status"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:16:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        statusRequests.push({
+          url,
+          authorization: init?.headers instanceof Headers
+            ? init.headers.get("authorization")
+            : init?.headers && "authorization" in init.headers
+              ? String(init.headers["authorization"])
+              : null,
+          cookie: init?.headers instanceof Headers
+            ? init.headers.get("cookie")
+            : init?.headers && "cookie" in init.headers
+              ? String(init.headers["cookie"])
+              : null,
+          origin: init?.headers instanceof Headers
+            ? init.headers.get("origin")
+            : init?.headers && "origin" in init.headers
+              ? String(init.headers["origin"])
+              : null,
+        });
+
+        if (url === "http://example.test/api/auth/status") {
+          return jsonResponse(200, {
+            authenticated: true,
+            authKind: "bearer",
+            subject: "ralpher-user",
+            clientId: "ralpher-cli",
+            scope: "",
+          });
+        }
+
+        throw new Error(`Unexpected status fetch to ${url}`);
+      }),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(output).toEqual([
+      "Logged in to http://example.test as ralpher-cli.",
+    ]);
+    expect(statusRequests).toEqual([
+      {
+        url: "http://example.test/api/auth/status",
+        authorization: "Bearer fresh-access",
+        cookie: "authentik_proxy=proxy-cookie-value; session_hint=browser",
+        origin: "http://example.test",
+      },
+    ]);
   });
 
   test("api lists the discoverable endpoints when called without a path", async () => {

@@ -45,7 +45,7 @@ describe("tui auth service", () => {
     await rm(cliHomeDir, { recursive: true, force: true });
   });
 
-  test("refreshes expired credentials in memory without rewriting cli-auth.json", async () => {
+  test("refreshes expired credentials and persists the rotated token set", async () => {
     const storedCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
       clientId: "ralpher-cli",
@@ -111,6 +111,12 @@ describe("tui auth service", () => {
         origin: "http://example.test",
       },
     ]);
-    expect(await loadStoredCliCredentials()).toEqual(storedCredentials);
+    expect(await loadStoredCliCredentials()).toEqual({
+      ...storedCredentials,
+      accessToken: "fresh-access",
+      refreshToken: "fresh-refresh",
+      accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
+      updatedAt: "2026-04-21T17:15:00.000Z",
+    });
   });
 });

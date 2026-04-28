@@ -31,7 +31,6 @@ export class WsClient {
         credentials,
         fetchFn: fetch,
         now: () => new Date(),
-        persistCredentials: false,
       },
     );
 

@@ -24,12 +24,10 @@ export class AuthService {
         this.credentials,
         { baseUrl },
         authDependencies,
-        { persist: false },
       )
       : await getValidatedCredentials(
         { baseUrl },
         authDependencies,
-        { persist: false },
       );
 
     if (!credentials) {
