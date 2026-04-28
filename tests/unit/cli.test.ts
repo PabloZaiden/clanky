@@ -6,6 +6,7 @@ import { formatRalpherVersion } from "../../src/version";
 import {
   findApiEndpoint,
   getValidatedCredentials,
+  listApiEndpoints,
   loadStoredCliCredentials,
   parseCliCommand,
   refreshStoredCredentials,
@@ -1185,5 +1186,13 @@ describe("ralpher cli", () => {
     expect(findApiEndpoint("auth/status")?.path).toBe("/api/auth/status");
     expect(findApiEndpoint("/api/auth/status")?.path).toBe("/api/auth/status");
     expect(findApiEndpoint(".well-known/jwks.json")).toBeNull();
+  });
+
+  test("api catalog provides descriptions for every discoverable endpoint", () => {
+    const missingDescriptions = listApiEndpoints()
+      .filter((entry) => !entry.description?.trim())
+      .map((entry) => entry.path);
+
+    expect(missingDescriptions).toEqual([]);
   });
 });
