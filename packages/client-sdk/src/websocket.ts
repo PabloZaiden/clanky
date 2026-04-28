@@ -4,6 +4,7 @@ import {
   getValidatedCredentials,
   type StatusCommandOptions,
   type StoredCliCredentials,
+  validateStoredCredentials,
 } from "./cli-auth";
 
 const WS_READY_STATE_CLOSING = 2;
@@ -56,10 +57,12 @@ export interface CliWsConnection {
 }
 
 export interface CliWsDependencies {
+  credentials?: StoredCliCredentials;
   fetchFn: typeof fetch;
   now: () => Date;
   out?: (message: string) => void;
   err?: (message: string) => void;
+  persistCredentials?: boolean;
   createSocket?: (url: string, options: { headers: Headers }) => CliWebSocketLike;
   inputLines?: ClosableAsyncIterable<string>;
   registerSignalHandler?: (signal: NodeJS.Signals, handler: () => void) => () => void;
@@ -208,10 +211,21 @@ export function buildWebSocketUrl(baseUrl: string, command: WsCommandOptions): s
 
 export async function connectWsCommand(
   command: WsCommandOptions,
-  dependencies: Pick<CliWsDependencies, "createSocket" | "err" | "fetchFn" | "now">,
+  dependencies: Pick<CliWsDependencies, "createSocket" | "credentials" | "err" | "fetchFn" | "now" | "persistCredentials">,
 ): Promise<CliWsConnection | null> {
   const err = dependencies.err ?? console.error;
-  const credentials = await getValidatedCredentials({ baseUrl: command.baseUrl }, dependencies);
+  const credentials = dependencies.credentials
+    ? await validateStoredCredentials(
+      dependencies.credentials,
+      { baseUrl: command.baseUrl },
+      dependencies,
+      { persist: dependencies.persistCredentials },
+    )
+    : await getValidatedCredentials(
+      { baseUrl: command.baseUrl },
+      dependencies,
+      { persist: dependencies.persistCredentials },
+    );
   if (!credentials) {
     err("Not logged in.");
     return null;

@@ -76,6 +76,10 @@ export interface CliStatusDependencies {
   now: () => Date;
 }
 
+export interface CredentialPersistenceOptions {
+  persist?: boolean;
+}
+
 function getRequestUrl(input: string | URL | Request): string {
   if (input instanceof Request) {
     return input.url;
@@ -327,6 +331,7 @@ export async function refreshStoredCredentials(
     now: () => Date;
   },
   baseUrlOverride?: string,
+  options?: CredentialPersistenceOptions,
 ): Promise<StoredCliCredentials | null> {
   const baseUrl = baseUrlOverride ?? credentials.baseUrl;
   const cookieHeader = credentials.cookies || undefined;
@@ -362,18 +367,21 @@ export async function refreshStoredCredentials(
     dependencies.now(),
     baseUrlOverride,
   );
-  await saveStoredCliCredentials(refreshedCredentials);
+  if (options?.persist ?? true) {
+    await saveStoredCliCredentials(refreshedCredentials);
+  }
   return refreshedCredentials;
 }
 
-export async function getValidatedCredentials(
+export async function validateStoredCredentials(
+  storedCredentials: StoredCliCredentials | null,
   command: StatusCommandOptions,
   dependencies: {
     fetchFn: typeof fetch;
     now: () => Date;
   },
+  options?: CredentialPersistenceOptions,
 ): Promise<StoredCliCredentials | null> {
-  const storedCredentials = await loadStoredCliCredentials();
   if (!storedCredentials) {
     return null;
   }
@@ -382,7 +390,19 @@ export async function getValidatedCredentials(
     return storedCredentials;
   }
 
-  return await refreshStoredCredentials(storedCredentials, dependencies, command.baseUrl);
+  return await refreshStoredCredentials(storedCredentials, dependencies, command.baseUrl, options);
+}
+
+export async function getValidatedCredentials(
+  command: StatusCommandOptions,
+  dependencies: {
+    fetchFn: typeof fetch;
+    now: () => Date;
+  },
+  options?: CredentialPersistenceOptions,
+): Promise<StoredCliCredentials | null> {
+  const storedCredentials = await loadStoredCliCredentials();
+  return await validateStoredCredentials(storedCredentials, command, dependencies, options);
 }
 
 async function probeAuthStatus(

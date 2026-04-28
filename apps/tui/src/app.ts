@@ -27,7 +27,7 @@ export class RalpherTuiApp extends TuiApplication {
     const authService = new AuthService();
     const apiClient = new ApiClient(authService);
     const entityCache = new EntityCache();
-    const wsClient = new WsClient();
+    const wsClient = new WsClient(authService);
     const commandFactory = new CommandFactory(apiClient, authService, entityCache);
     const commands = await commandFactory.createRootCommands();
     const app = new RalpherTuiApp(commands);

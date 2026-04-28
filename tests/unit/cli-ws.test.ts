@@ -5,6 +5,7 @@ import { join } from "path";
 import {
   buildWebSocketUrl,
   connectWsCommand,
+  loadStoredCliCredentials,
   runWsCommand,
   saveStoredCliCredentials,
   type CliWebSocketLike,
@@ -59,6 +60,15 @@ function createFetchMock(
   return Object.assign(handler, {
     preconnect: fetch.preconnect,
   }) as typeof fetch;
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json",
+    },
+  });
 }
 
 function createInputLines(lines: string[]): AsyncIterable<string> & { close: () => void } {
@@ -184,6 +194,86 @@ describe("cli websocket helpers", () => {
     expect((capturedHeaders as Headers).get("authorization")).toBe("Bearer access-token-1");
     expect((capturedHeaders as Headers).get("cookie")).toBe("authentik_proxy=proxy-cookie");
     expect((capturedHeaders as Headers).get("origin")).toBe("https://example.test");
+  });
+
+  test("connectWsCommand refreshes provided credentials in memory without rewriting cli-auth.json", async () => {
+    const expiredCredentials: StoredCliCredentials = {
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "expired-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie",
+      accessTokenExpiresAt: "2026-04-21T17:14:59.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    };
+    await saveStoredCliCredentials(expiredCredentials);
+
+    const requests: Array<{
+      url: string;
+      cookie?: string | null;
+      origin?: string | null;
+    }> = [];
+    const socket = new FakeWebSocket();
+    let capturedHeaders: HeadersInit | undefined;
+
+    const connection = await connectWsCommand({
+      loopId: "loop-1",
+    }, createWsDependencies({
+      credentials: expiredCredentials,
+      persistCredentials: false,
+      fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({
+          url: String(input),
+          cookie: init?.headers instanceof Headers
+            ? init.headers.get("cookie")
+            : init?.headers && "cookie" in init.headers
+              ? String(init.headers["cookie"])
+              : null,
+          origin: init?.headers instanceof Headers
+            ? init.headers.get("origin")
+            : init?.headers && "origin" in init.headers
+              ? String(init.headers["origin"])
+              : null,
+        });
+
+        return jsonResponse(200, {
+          access_token: "fresh-access",
+          refresh_token: "fresh-refresh",
+          token_type: "Bearer",
+          expires_in: 600,
+          scope: "",
+        });
+      }),
+      createSocket: (_url, options) => {
+        capturedHeaders = options.headers;
+        queueMicrotask(() => {
+          socket.readyState = 1;
+          socket.emit("open");
+        });
+        return socket;
+      },
+    }));
+
+    expect(connection).not.toBeNull();
+    if (!capturedHeaders) {
+      throw new Error("Expected websocket handshake headers to be captured.");
+    }
+    const handshakeHeaders = new Headers(capturedHeaders);
+    expect(handshakeHeaders.get("authorization")).toBe("Bearer fresh-access");
+    expect(handshakeHeaders.get("cookie")).toBe("authentik_proxy=proxy-cookie");
+    expect(requests).toEqual([
+      {
+        url: "http://example.test/api/auth/token",
+        cookie: "authentik_proxy=proxy-cookie",
+        origin: "http://example.test",
+      },
+    ]);
+    expect(await loadStoredCliCredentials()).toEqual(expiredCredentials);
+
+    connection?.socket.close(1000, "test complete");
   });
 
   test("runWsCommand bridges stdout payloads and stdin websocket messages", async () => {

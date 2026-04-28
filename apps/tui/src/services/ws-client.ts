@@ -1,5 +1,6 @@
 import { connectWsCommand, type CliWsCloseResult, type CliWsMessageEvent } from "@ralpher/client-sdk";
 import type { ChatEvent, LoopEvent } from "@ralpher/shared";
+import type { AuthService } from "./auth-service";
 
 export interface SubscriptionHandlers<TEvent> {
   onOpen?: () => void;
@@ -9,6 +10,8 @@ export interface SubscriptionHandlers<TEvent> {
 }
 
 export class WsClient {
+  constructor(private readonly authService: AuthService) {}
+
   async subscribeLoop(loopId: string, handlers: SubscriptionHandlers<LoopEvent>): Promise<() => void> {
     return await this.subscribe({ loopId }, handlers);
   }
@@ -21,11 +24,14 @@ export class WsClient {
     command: { loopId?: string; chatId?: string },
     handlers: SubscriptionHandlers<TEvent>,
   ): Promise<() => void> {
+    const credentials = await this.authService.getCredentials();
     const connection = await connectWsCommand(
       command,
       {
+        credentials,
         fetchFn: fetch,
         now: () => new Date(),
+        persistCredentials: false,
       },
     );
 

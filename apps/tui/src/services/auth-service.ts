@@ -1,19 +1,36 @@
 import {
   getValidatedCredentials,
+  validateStoredCredentials,
   type StoredCliCredentials,
 } from "@ralpher/client-sdk";
+
+export interface AuthServiceDependencies {
+  fetchFn?: typeof fetch;
+  now?: () => Date;
+}
 
 export class AuthService {
   private credentials: StoredCliCredentials | null = null;
 
+  constructor(private readonly dependencies: AuthServiceDependencies = {}) {}
+
   async getCredentials(baseUrl?: string): Promise<StoredCliCredentials> {
-    const credentials = await getValidatedCredentials(
-      { baseUrl },
-      {
-        fetchFn: fetch,
-        now: () => new Date(),
-      },
-    );
+    const authDependencies = {
+      fetchFn: this.dependencies.fetchFn ?? fetch,
+      now: this.dependencies.now ?? (() => new Date()),
+    };
+    const credentials = this.credentials
+      ? await validateStoredCredentials(
+        this.credentials,
+        { baseUrl },
+        authDependencies,
+        { persist: false },
+      )
+      : await getValidatedCredentials(
+        { baseUrl },
+        authDependencies,
+        { persist: false },
+      );
 
     if (!credentials) {
       throw new Error("Not logged in. Run the Ralpher CLI auth flow before opening the TUI.");
