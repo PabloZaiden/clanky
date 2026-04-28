@@ -7,6 +7,7 @@ import { formatCookieHeader, parseCookieHeader } from "./http-cookies";
 const DEFAULT_SCOPE = "";
 const CLI_STATE_DIRECTORY = ".ralpher";
 const CLI_CREDENTIALS_FILE = "cli-auth.json";
+const inFlightRefreshes = new Map<string, Promise<StoredCliCredentials | null>>();
 
 const DeviceStartResponseSchema = z.object({
   device_code: z.string().min(1),
@@ -135,6 +136,67 @@ function getCliCredentialsTempPath(credentialsPath: string): string {
     dirname(credentialsPath),
     `.${basename(credentialsPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
   );
+}
+
+function getRefreshBaseUrl(credentials: StoredCliCredentials, baseUrlOverride?: string): string {
+  return baseUrlOverride ?? credentials.baseUrl;
+}
+
+function getRefreshCacheKey(credentials: StoredCliCredentials, baseUrlOverride?: string): string {
+  return JSON.stringify({
+    baseUrl: getRefreshBaseUrl(credentials, baseUrlOverride),
+    clientId: credentials.clientId,
+    cookies: credentials.cookies,
+    refreshToken: credentials.refreshToken,
+  });
+}
+
+function hasCredentialStateChanged(current: StoredCliCredentials, previous: StoredCliCredentials): boolean {
+  return current.baseUrl !== previous.baseUrl
+    || current.clientId !== previous.clientId
+    || current.accessToken !== previous.accessToken
+    || current.refreshToken !== previous.refreshToken
+    || current.tokenType !== previous.tokenType
+    || current.scope !== previous.scope
+    || current.cookies !== previous.cookies
+    || current.accessTokenExpiresAt !== previous.accessTokenExpiresAt
+    || current.updatedAt !== previous.updatedAt;
+}
+
+function isSameRefreshScope(
+  current: StoredCliCredentials,
+  previous: StoredCliCredentials,
+  baseUrlOverride?: string,
+): boolean {
+  return current.baseUrl === getRefreshBaseUrl(previous, baseUrlOverride)
+    && current.clientId === previous.clientId
+    && current.cookies === previous.cookies;
+}
+
+async function getLatestStoredCredentialsForRefresh(
+  credentials: StoredCliCredentials,
+  baseUrlOverride?: string,
+): Promise<{
+  credentials: StoredCliCredentials;
+  reusedStoredCredentials: boolean;
+}> {
+  const storedCredentials = await loadStoredCliCredentials();
+  if (!storedCredentials || !isSameRefreshScope(storedCredentials, credentials, baseUrlOverride)) {
+    return {
+      credentials,
+      reusedStoredCredentials: false,
+    };
+  }
+  if (!hasCredentialStateChanged(storedCredentials, credentials)) {
+    return {
+      credentials,
+      reusedStoredCredentials: false,
+    };
+  }
+  return {
+    credentials: storedCredentials,
+    reusedStoredCredentials: true,
+  };
 }
 
 async function requestJson(
@@ -343,42 +405,68 @@ export async function refreshStoredCredentials(
   },
   baseUrlOverride?: string,
 ): Promise<StoredCliCredentials | null> {
-  const baseUrl = baseUrlOverride ?? credentials.baseUrl;
-  const cookieHeader = credentials.cookies || undefined;
-  const { response, body } = await requestJson(
-    dependencies.fetchFn,
-    `${baseUrl}/api/auth/token`,
-    {
-      method: "POST",
-      headers: {
-        ...(cookieHeader ? { cookie: cookieHeader } : {}),
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        grant_type: "refresh_token",
-        refresh_token: credentials.refreshToken,
-        client_id: credentials.clientId,
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    const tokenError = TokenErrorResponseSchema.safeParse(body);
-    if (tokenError.success && (tokenError.data.error === "invalid_grant" || tokenError.data.error === "invalid_client")) {
-      return null;
-    }
-    throw new Error(getTokenErrorMessage(body, response.status));
+  const now = dependencies.now();
+  const {
+    credentials: activeCredentials,
+    reusedStoredCredentials,
+  } = await getLatestStoredCredentialsForRefresh(credentials, baseUrlOverride);
+  if (reusedStoredCredentials && !isAccessTokenExpired(activeCredentials, now)) {
+    return activeCredentials;
   }
 
-  const tokenSet = TokenSuccessResponseSchema.parse(body);
-  const refreshedCredentials = createUpdatedStoredCredentials(
-    credentials,
-    tokenSet,
-    dependencies.now(),
-    baseUrlOverride,
-  );
-  await saveStoredCliCredentials(refreshedCredentials);
-  return refreshedCredentials;
+  const refreshKey = getRefreshCacheKey(activeCredentials, baseUrlOverride);
+  const existingRefresh = inFlightRefreshes.get(refreshKey);
+  if (existingRefresh) {
+    return await existingRefresh;
+  }
+
+  const refreshPromise = (async (): Promise<StoredCliCredentials | null> => {
+    const baseUrl = getRefreshBaseUrl(activeCredentials, baseUrlOverride);
+    const cookieHeader = activeCredentials.cookies || undefined;
+    const { response, body } = await requestJson(
+      dependencies.fetchFn,
+      `${baseUrl}/api/auth/token`,
+      {
+        method: "POST",
+        headers: {
+          ...(cookieHeader ? { cookie: cookieHeader } : {}),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          grant_type: "refresh_token",
+          refresh_token: activeCredentials.refreshToken,
+          client_id: activeCredentials.clientId,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const tokenError = TokenErrorResponseSchema.safeParse(body);
+      if (tokenError.success && (tokenError.data.error === "invalid_grant" || tokenError.data.error === "invalid_client")) {
+        return null;
+      }
+      throw new Error(getTokenErrorMessage(body, response.status));
+    }
+
+    const tokenSet = TokenSuccessResponseSchema.parse(body);
+    const refreshedCredentials = createUpdatedStoredCredentials(
+      activeCredentials,
+      tokenSet,
+      now,
+      baseUrlOverride,
+    );
+    await saveStoredCliCredentials(refreshedCredentials);
+    return refreshedCredentials;
+  })();
+
+  inFlightRefreshes.set(refreshKey, refreshPromise);
+  try {
+    return await refreshPromise;
+  } finally {
+    if (inFlightRefreshes.get(refreshKey) === refreshPromise) {
+      inFlightRefreshes.delete(refreshKey);
+    }
+  }
 }
 
 export async function getValidatedCredentials(

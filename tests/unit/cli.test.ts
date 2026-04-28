@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { formatRalpherVersion } from "../../src/version";
 import {
   findApiEndpoint,
+  getValidatedCredentials,
   loadStoredCliCredentials,
   parseCliCommand,
   refreshStoredCredentials,
@@ -608,6 +609,106 @@ describe("ralpher cli", () => {
       accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
       updatedAt: "2026-04-21T17:15:00.000Z",
     });
+  });
+
+  test("concurrent credential validation shares one refresh result and stores its rotated refresh token", async () => {
+    const expiredCredentials: StoredCliCredentials = {
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "expired-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2026-04-21T17:14:59.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    };
+    await saveStoredCliCredentials(expiredCredentials);
+
+    const firstRefreshStarted = Promise.withResolvers<void>();
+    const releaseRefreshResponse = Promise.withResolvers<Response>();
+    let refreshRequestCount = 0;
+
+    const dependencies = {
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request) => {
+        if (String(input) !== "http://example.test/api/auth/token") {
+          throw new Error(`Unexpected fetch to ${String(input)}`);
+        }
+
+        refreshRequestCount += 1;
+        if (refreshRequestCount > 1) {
+          throw new Error("duplicate refresh request");
+        }
+
+        firstRefreshStarted.resolve();
+        return await releaseRefreshResponse.promise;
+      }),
+    };
+
+    const firstValidation = getValidatedCredentials({}, dependencies);
+    await firstRefreshStarted.promise;
+    const secondValidation = getValidatedCredentials({}, dependencies);
+    await Promise.resolve();
+
+    releaseRefreshResponse.resolve(jsonResponse(200, {
+      access_token: "fresh-access",
+      refresh_token: "fresh-refresh",
+      token_type: "Bearer",
+      expires_in: 600,
+      scope: "",
+    }));
+
+    const expectedCredentials: StoredCliCredentials = {
+      ...expiredCredentials,
+      accessToken: "fresh-access",
+      refreshToken: "fresh-refresh",
+      accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
+      updatedAt: "2026-04-21T17:15:00.000Z",
+    };
+
+    await expect(Promise.all([firstValidation, secondValidation])).resolves.toEqual([
+      expectedCredentials,
+      expectedCredentials,
+    ]);
+    expect(refreshRequestCount).toBe(1);
+    expect(await loadStoredCliCredentials()).toEqual(expectedCredentials);
+  });
+
+  test("refresh reuses newer stored credentials instead of refreshing again with a stale token", async () => {
+    const staleCredentials: StoredCliCredentials = {
+      baseUrl: "http://example.test",
+      clientId: "ralpher-cli",
+      accessToken: "expired-access",
+      refreshToken: "refresh-token-1",
+      tokenType: "Bearer",
+      scope: "",
+      cookies: "authentik_proxy=proxy-cookie-value",
+      accessTokenExpiresAt: "2026-04-21T17:14:59.000Z",
+      createdAt: "2026-04-21T17:00:00.000Z",
+      updatedAt: "2026-04-21T17:00:00.000Z",
+    };
+    const refreshedCredentials: StoredCliCredentials = {
+      ...staleCredentials,
+      accessToken: "fresh-access",
+      refreshToken: "fresh-refresh",
+      accessTokenExpiresAt: "2026-04-21T17:25:00.000Z",
+      updatedAt: "2026-04-21T17:15:00.000Z",
+    };
+    await saveStoredCliCredentials(refreshedCredentials);
+
+    let fetchCalled = false;
+    await expect(refreshStoredCredentials(staleCredentials, {
+      now: () => new Date("2026-04-21T17:15:30.000Z"),
+      fetchFn: createFetchMock(async () => {
+        fetchCalled = true;
+        throw new Error("stale credentials should not trigger a second refresh");
+      }),
+    })).resolves.toEqual(refreshedCredentials);
+
+    expect(fetchCalled).toBe(false);
+    expect(await loadStoredCliCredentials()).toEqual(refreshedCredentials);
   });
 
   test("refresh keeps the previous credential file readable when persistence is interrupted", async () => {
