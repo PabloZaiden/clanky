@@ -213,7 +213,7 @@ describe("WorkspaceFilesView", () => {
     });
   });
 
-  test("copies the selected file path and stays disabled until a file is open", async () => {
+  test("copies the selected absolute file path and shows a success toast", async () => {
     const WorkspaceFilesView = await loadWorkspaceFilesView();
     const workspace = createWorkspace({
       id: "workspace-copy-path",
@@ -279,8 +279,63 @@ describe("WorkspaceFilesView", () => {
     await user.click(copyButton);
 
     await waitFor(() => {
+      const toast = getByRole("alert");
       expect(clipboardWriteText ?? copiedText).toBe("/workspaces/copy-path/src/index.ts");
-      expect(getByRole("alert").textContent).toContain("Copied file path");
+      expect(toast.getAttribute("data-toast-variant")).toBe("success");
+    });
+  });
+
+  test("keeps copy path disabled when the selected file has no absolute path", async () => {
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
+    const workspace = createWorkspace({
+      id: "workspace-copy-path-missing-absolute",
+      name: "Copy Path Missing Absolute Workspace",
+      directory: "/workspaces/copy-path-missing-absolute",
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry({
+          name: "README.md",
+          path: "README.md",
+          absolutePath: "",
+          kind: "file",
+          size: 16,
+          versionToken: "102:16",
+        })],
+      }),
+    }));
+
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "README.md",
+        path: "README.md",
+        absolutePath: "",
+        kind: "file",
+        size: 16,
+        versionToken: "102:16",
+      }),
+      content: "# Notes\n",
+    }));
+
+    const { getByRole, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /readme\.md/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /readme\.md/i }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Copy selected file path" })).toBeDisabled();
     });
   });
 

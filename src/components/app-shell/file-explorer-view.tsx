@@ -270,6 +270,7 @@ export function FileExplorerView({
 
   const handleCopySelectedFilePath = useCallback(async () => {
     if (!selectedFileAbsolutePath) {
+      toast.error("Absolute file path is unavailable for the selected file.");
       return;
     }
 
@@ -438,7 +439,7 @@ export function FileExplorerView({
                 onToggleCollapsed={handleToggleExplorerCollapsed}
                 onToggleDirectory={explorer.toggleDirectory}
                 onOpenFile={handleOpenFile}
-                canCopySelectedFilePath={selectedFilePath !== undefined}
+                canCopySelectedFilePath={Boolean(selectedFileAbsolutePath)}
               />
             </div>
             <div
