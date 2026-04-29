@@ -43,6 +43,7 @@ export const serverSettingsRoutes = {
 
     async PUT(req: Request & { params: { id: string } }) {
       const { id } = req.params;
+      const includeSensitive = shouldIncludeSensitiveData(req);
       const result = await parseAndValidate(ServerSettingsSchema, req);
 
       if (!result.success) {
@@ -61,7 +62,11 @@ export const serverSettingsRoutes = {
 
         if (!settingsChanged) {
           log.info(`Server settings unchanged for workspace: ${currentWorkspace.name}`);
-          return Response.json(currentWorkspace.serverSettings);
+          return Response.json(
+            includeSensitive
+              ? currentWorkspace.serverSettings
+              : sanitizeServerSettings(currentWorkspace.serverSettings),
+          );
         }
 
         const workspace = await updateWorkspace(id, { serverSettings: body });
@@ -73,7 +78,11 @@ export const serverSettingsRoutes = {
         await backendManager.resetWorkspaceConnection(id);
 
         log.info(`Updated server settings for workspace: ${workspace.name}`);
-        return Response.json(workspace.serverSettings);
+        return Response.json(
+          includeSensitive
+            ? workspace.serverSettings
+            : sanitizeServerSettings(workspace.serverSettings),
+        );
       } catch (error) {
         log.error("Failed to update workspace server settings:", String(error));
         return errorResponse("update_settings_failed", `Failed to update server settings: ${String(error)}`, 500);

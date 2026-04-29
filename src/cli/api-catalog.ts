@@ -474,6 +474,7 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/provisioning-jobs": {
     description: "Start a remote provisioning job.",
     requestSchema: CreateProvisioningJobRequestSchema,
+    querySchema: SensitiveQuerySchema,
   },
   "/api/provisioning-jobs/:id": {
     description: "Read or cancel a remote provisioning job.",

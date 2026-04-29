@@ -137,6 +137,7 @@ export const crudRoutes = {
     async PUT(req: Request & { params: { id: string } }) {
       const { id } = req.params;
       log.debug("PUT /api/workspaces/:id", { workspaceId: id });
+      const includeSensitive = shouldIncludeSensitiveData(req);
       const result = await parseAndValidate(UpdateWorkspaceRequestSchema, req);
 
       if (!result.success) {
@@ -158,7 +159,7 @@ export const crudRoutes = {
 
         if (!nameChanged && !serverSettingsChanged) {
           log.info(`Workspace unchanged: ${currentWorkspace.name}`);
-          return Response.json(currentWorkspace);
+          return Response.json(includeSensitive ? currentWorkspace : sanitizeWorkspace(currentWorkspace));
         }
 
         const workspaceUpdates: Partial<Pick<Workspace, "name" | "serverSettings">> = {};
@@ -181,7 +182,7 @@ export const crudRoutes = {
         }
 
         log.info(`Updated workspace: ${workspace.name}`);
-        return Response.json(workspace);
+        return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));
       } catch (error) {
         log.error("Failed to update workspace:", String(error));
         return errorResponse("update_failed", `Failed to update workspace: ${String(error)}`, 500);

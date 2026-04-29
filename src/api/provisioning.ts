@@ -25,6 +25,7 @@ function mapProvisioningError(error: unknown): Response {
 export const provisioningRoutes = {
   "/api/provisioning-jobs": {
     async POST(req: Request): Promise<Response> {
+      const includeSensitive = shouldIncludeSensitiveData(req);
       const validation = await parseAndValidate(CreateProvisioningJobRequestSchema, req);
       if (!validation.success) {
         return validation.response;
@@ -54,7 +55,10 @@ export const provisioningRoutes = {
           workspaceId: validation.data.workspaceId ?? undefined,
           password,
         });
-        return Response.json(snapshot, { status: 201 });
+        return Response.json(
+          includeSensitive ? snapshot : sanitizeProvisioningSnapshot(snapshot),
+          { status: 201 },
+        );
       } catch (error) {
         log.error("Failed to start provisioning job", { error: String(error) });
         return mapProvisioningError(error);
