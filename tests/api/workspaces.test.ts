@@ -24,6 +24,7 @@ function makeServerSettings(overrides?: {
   port?: number;
   username?: string;
   password?: string;
+  identityFile?: string;
 }) {
   const mode = overrides?.mode ?? "spawn";
   const isConnect = mode === "connect";
@@ -36,6 +37,7 @@ function makeServerSettings(overrides?: {
         port: overrides?.port ?? 22,
         ...(overrides?.username ? { username: overrides.username } : {}),
         ...(overrides?.password ? { password: overrides.password } : {}),
+        ...(overrides?.identityFile ? { identityFile: overrides.identityFile } : {}),
       },
     };
   }
@@ -174,6 +176,150 @@ describe("Workspace API Integration", () => {
       expect(data.length).toBe(1);
       expect(data[0].name).toBe("Test Workspace");
       expect(data[0].directory).toBe(testWorkDir);
+    });
+
+    test("hides SSH secrets by default and includes them with sensitive=true", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "SSH Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings({
+            mode: "connect",
+            hostname: "ssh.example.com",
+            port: 2222,
+            username: "deploy",
+            password: "super-secret",
+            identityFile: "/keys/id_ed25519",
+          }),
+        }),
+      });
+      expect(createResponse.ok).toBe(true);
+
+      const response = await fetch(`${baseUrl}/api/workspaces`);
+      expect(response.ok).toBe(true);
+      const data = await response.json() as Array<{
+        serverSettings: {
+          agent: Record<string, unknown>;
+        };
+      }>;
+
+      expect(data).toHaveLength(1);
+      expect(data[0]!.serverSettings.agent).toEqual(expect.objectContaining({
+        transport: "ssh",
+        hostname: "ssh.example.com",
+        port: 2222,
+        username: "deploy",
+      }));
+      expect(data[0]!.serverSettings.agent["password"]).toBeUndefined();
+      expect(data[0]!.serverSettings.agent["identityFile"]).toBeUndefined();
+
+      const sensitiveResponse = await fetch(`${baseUrl}/api/workspaces?sensitive=true`);
+      expect(sensitiveResponse.ok).toBe(true);
+      const sensitiveData = await sensitiveResponse.json() as Array<{
+        serverSettings: {
+          agent: Record<string, unknown>;
+        };
+      }>;
+
+      expect(sensitiveData[0]!.serverSettings.agent["password"]).toBe("super-secret");
+      expect(sensitiveData[0]!.serverSettings.agent["identityFile"]).toBe("/keys/id_ed25519");
+    });
+  });
+
+  describe("sensitive workspace reads", () => {
+    test("hides secrets on detail and server-settings reads unless sensitive=true", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Detail Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings({
+            mode: "connect",
+            hostname: "detail.example.com",
+            username: "builder",
+            password: "detail-secret",
+            identityFile: "/keys/detail",
+          }),
+        }),
+      });
+      expect(createResponse.ok).toBe(true);
+      const created = await createResponse.json() as { id: string };
+
+      const detailResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}`);
+      expect(detailResponse.ok).toBe(true);
+      const detail = await detailResponse.json() as {
+        serverSettings: { agent: Record<string, unknown> };
+      };
+      expect(detail.serverSettings.agent["password"]).toBeUndefined();
+      expect(detail.serverSettings.agent["identityFile"]).toBeUndefined();
+
+      const sensitiveDetailResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}?sensitive=true`);
+      expect(sensitiveDetailResponse.ok).toBe(true);
+      const sensitiveDetail = await sensitiveDetailResponse.json() as {
+        serverSettings: { agent: Record<string, unknown> };
+      };
+      expect(sensitiveDetail.serverSettings.agent["password"]).toBe("detail-secret");
+      expect(sensitiveDetail.serverSettings.agent["identityFile"]).toBe("/keys/detail");
+
+      const settingsResponse = await fetch(`${baseUrl}/api/workspaces/${created.id}/server-settings`);
+      expect(settingsResponse.ok).toBe(true);
+      const settings = await settingsResponse.json() as {
+        agent: Record<string, unknown>;
+      };
+      expect(settings.agent["password"]).toBeUndefined();
+      expect(settings.agent["identityFile"]).toBeUndefined();
+
+      const sensitiveSettingsResponse = await fetch(
+        `${baseUrl}/api/workspaces/${created.id}/server-settings?sensitive=true`,
+      );
+      expect(sensitiveSettingsResponse.ok).toBe(true);
+      const sensitiveSettings = await sensitiveSettingsResponse.json() as {
+        agent: Record<string, unknown>;
+      };
+      expect(sensitiveSettings.agent["password"]).toBe("detail-secret");
+      expect(sensitiveSettings.agent["identityFile"]).toBe("/keys/detail");
+    });
+
+    test("hides secrets from exports unless sensitive=true", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Export Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings({
+            mode: "connect",
+            hostname: "export.example.com",
+            username: "exporter",
+            password: "export-secret",
+            identityFile: "/keys/export",
+          }),
+        }),
+      });
+      expect(createResponse.ok).toBe(true);
+
+      const exportResponse = await fetch(`${baseUrl}/api/workspaces/export`);
+      expect(exportResponse.ok).toBe(true);
+      const exported = await exportResponse.json() as {
+        workspaces: Array<{
+          serverSettings: { agent: Record<string, unknown> };
+        }>;
+      };
+      expect(exported.workspaces[0]!.serverSettings.agent["password"]).toBeUndefined();
+      expect(exported.workspaces[0]!.serverSettings.agent["identityFile"]).toBeUndefined();
+
+      const sensitiveExportResponse = await fetch(`${baseUrl}/api/workspaces/export?sensitive=true`);
+      expect(sensitiveExportResponse.ok).toBe(true);
+      const sensitiveExport = await sensitiveExportResponse.json() as {
+        workspaces: Array<{
+          serverSettings: { agent: Record<string, unknown> };
+        }>;
+      };
+      expect(sensitiveExport.workspaces[0]!.serverSettings.agent["password"]).toBe("export-secret");
+      expect(sensitiveExport.workspaces[0]!.serverSettings.agent["identityFile"]).toBe("/keys/export");
     });
   });
 
@@ -374,6 +520,53 @@ describe("Workspace API Integration", () => {
 
       expect(data.name).toBe("Updated Name");
       expect(data.directory).toBe(testWorkDir);
+    });
+
+    test("redacts workspace secrets by default and includes them with sensitive=true", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Sensitive Workspace",
+          directory: testWorkDir,
+          serverSettings: makeServerSettings({
+            mode: "connect",
+            hostname: "sensitive.example.com",
+            username: "deploy",
+            password: "put-secret",
+            identityFile: "/keys/put",
+          }),
+        }),
+      });
+      const workspace = await createResponse.json() as { id: string };
+
+      const defaultResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Sensitive Workspace Updated",
+        }),
+      });
+      expect(defaultResponse.ok).toBe(true);
+      const redactedWorkspace = await defaultResponse.json() as {
+        serverSettings: { agent: Record<string, unknown> };
+      };
+      expect(redactedWorkspace.serverSettings.agent["password"]).toBeUndefined();
+      expect(redactedWorkspace.serverSettings.agent["identityFile"]).toBeUndefined();
+
+      const sensitiveResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}?sensitive=true`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Sensitive Workspace Renamed Again",
+        }),
+      });
+      expect(sensitiveResponse.ok).toBe(true);
+      const sensitiveWorkspace = await sensitiveResponse.json() as {
+        serverSettings: { agent: Record<string, unknown> };
+      };
+      expect(sensitiveWorkspace.serverSettings.agent["password"]).toBe("put-secret");
+      expect(sensitiveWorkspace.serverSettings.agent["identityFile"]).toBe("/keys/put");
     });
 
     test("returns 404 for non-existent id", async () => {
@@ -744,6 +937,58 @@ describe("Workspace API Integration", () => {
         const fetchedSettings = await getResponse.json();
         expect(fetchedSettings.agent.transport).toBe("ssh");
         expect(fetchedSettings.agent.hostname).toBe("example.com");
+      });
+
+      test("redacts updated server settings by default and includes them with sensitive=true", async () => {
+        const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Sensitive Server Settings",
+            directory: testWorkDir,
+            serverSettings: makeServerSettings(),
+          }),
+        });
+        const workspace = await createResponse.json() as { id: string };
+
+        const redactedUpdateResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/server-settings`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(makeServerSettings({
+            mode: "connect",
+            hostname: "redacted.example.com",
+            username: "builder",
+            password: "settings-secret",
+            identityFile: "/keys/settings",
+          })),
+        });
+        expect(redactedUpdateResponse.ok).toBe(true);
+        const redactedSettings = await redactedUpdateResponse.json() as {
+          agent: Record<string, unknown>;
+        };
+        expect(redactedSettings.agent["password"]).toBeUndefined();
+        expect(redactedSettings.agent["identityFile"]).toBeUndefined();
+
+        const sensitiveUpdateResponse = await fetch(
+          `${baseUrl}/api/workspaces/${workspace.id}/server-settings?sensitive=true`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(makeServerSettings({
+              mode: "connect",
+              hostname: "sensitive.example.com",
+              username: "builder",
+              password: "settings-secret-2",
+              identityFile: "/keys/settings-2",
+            })),
+          },
+        );
+        expect(sensitiveUpdateResponse.ok).toBe(true);
+        const sensitiveSettings = await sensitiveUpdateResponse.json() as {
+          agent: Record<string, unknown>;
+        };
+        expect(sensitiveSettings.agent["password"]).toBe("settings-secret-2");
+        expect(sensitiveSettings.agent["identityFile"]).toBe("/keys/settings-2");
       });
 
       test("rejects invalid mode", async () => {
@@ -1492,7 +1737,7 @@ describe("Workspace API Integration", () => {
         expect(data.workspaces).toEqual([]);
       });
 
-      test("returns all workspace configs with serverSettings", async () => {
+      test("returns redacted exports by default and full exports with sensitive=true", async () => {
         // Create two workspaces with different settings
         const testWorkDir2 = await mkdtemp(join(tmpdir(), "ralpher-api-ws-export-"));
         await Bun.$`git init ${testWorkDir2}`.quiet();
@@ -1546,10 +1791,17 @@ describe("Workspace API Integration", () => {
             expect(ws.updatedAt).toBeUndefined();
           }
 
-          // Verify password is included
+          // Verify password is redacted by default
           const wsA = data.workspaces.find((w: { name: string }) => w.name === "Export WS A");
           expect(wsA).toBeDefined();
-          expect(wsA.serverSettings.agent.password).toBe("secret-a");
+          expect(wsA.serverSettings.agent.password).toBeUndefined();
+
+          const sensitiveResponse = await fetch(`${baseUrl}/api/workspaces/export?sensitive=true`);
+          expect(sensitiveResponse.ok).toBe(true);
+          const sensitiveData = await sensitiveResponse.json();
+          const sensitiveWsA = sensitiveData.workspaces.find((w: { name: string }) => w.name === "Export WS A");
+          expect(sensitiveWsA).toBeDefined();
+          expect(sensitiveWsA.serverSettings.agent.password).toBe("secret-a");
         } finally {
           await rm(testWorkDir2, { recursive: true, force: true });
         }
@@ -1825,7 +2077,7 @@ describe("Workspace API Integration", () => {
         });
 
         // Export
-        const exportResponse = await fetch(`${baseUrl}/api/workspaces/export`);
+        const exportResponse = await fetch(`${baseUrl}/api/workspaces/export?sensitive=true`);
         expect(exportResponse.ok).toBe(true);
         const exportedData = await exportResponse.json();
         expect(exportedData.workspaces).toHaveLength(1);
@@ -1847,7 +2099,7 @@ describe("Workspace API Integration", () => {
         expect(importResult.failed).toBe(0);
 
         // Verify the imported workspace matches
-        const listResponse = await fetch(`${baseUrl}/api/workspaces`);
+        const listResponse = await fetch(`${baseUrl}/api/workspaces?sensitive=true`);
         const workspaces = await listResponse.json();
         expect(workspaces).toHaveLength(1);
         expect(workspaces[0].name).toBe("RT Workspace");

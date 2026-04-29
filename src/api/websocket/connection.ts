@@ -1,6 +1,7 @@
 import type { ServerWebSocket } from "bun";
 import { chatEventEmitter, loopEventEmitter, provisioningEventEmitter, sshSessionEventEmitter } from "../../core/event-emitter";
 import { createLogger } from "../../core/logger";
+import { sanitizeProvisioningEvent } from "../../lib/sensitive-data";
 import { isStandaloneChat } from "../../types/chat";
 import type { ChatEvent, LoopEvent, ProvisioningEvent, SshSessionEvent } from "../../types";
 import type { WebSocketData } from "./types";
@@ -43,6 +44,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     sshSessionId,
     sshServerSessionId,
     provisioningJobId,
+    sensitive,
     terminalMode,
     portForwardMode,
     proxyTargetUrl,
@@ -181,7 +183,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
         }
 
         try {
-          ws.send(JSON.stringify(event));
+          ws.send(JSON.stringify(sensitive ? event : sanitizeProvisioningEvent(event)));
         } catch (sendError) {
           log.trace("Failed to send provisioning event to WebSocket client", {
             error: String(sendError),

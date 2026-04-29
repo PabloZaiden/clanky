@@ -69,6 +69,10 @@ export interface ApiEndpointCatalogEntry {
 
 type ApiEndpointOverride = Pick<ApiEndpointCatalogEntry, "description" | "requestSchema" | "querySchema">;
 
+const SensitiveQuerySchema = z.object({
+  sensitive: z.enum(["true", "false"]).optional(),
+});
+
 const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/health": {
     description: "Server health check.",
@@ -292,10 +296,12 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/workspaces": {
     description: "List workspaces or create a workspace.",
     requestSchema: CreateWorkspaceRequestSchema,
+    querySchema: SensitiveQuerySchema,
   },
   "/api/workspaces/:id": {
     description: "Read, update, or delete a workspace.",
     requestSchema: UpdateWorkspaceRequestSchema,
+    querySchema: SensitiveQuerySchema,
   },
   "/api/workspaces/import": {
     description: "Import workspaces from an export bundle.",
@@ -303,6 +309,7 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   },
   "/api/workspaces/export": {
     description: "Export workspace configuration data.",
+    querySchema: SensitiveQuerySchema,
   },
   "/api/workspaces/:id/agents-md": {
     description: "Read the AGENTS.md file and optimization status for a workspace.",
@@ -322,6 +329,7 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/workspaces/:id/server-settings": {
     description: "Read or update workspace server settings.",
     requestSchema: ServerSettingsSchema,
+    querySchema: SensitiveQuerySchema,
   },
   "/api/workspaces/:id/server-settings/status": {
     description: "Read the current workspace connection status.",
@@ -466,9 +474,11 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/provisioning-jobs": {
     description: "Start a remote provisioning job.",
     requestSchema: CreateProvisioningJobRequestSchema,
+    querySchema: SensitiveQuerySchema,
   },
   "/api/provisioning-jobs/:id": {
     description: "Read or cancel a remote provisioning job.",
+    querySchema: SensitiveQuerySchema,
   },
   "/api/provisioning-jobs/:id/logs": {
     description: "Read logs for a remote provisioning job.",

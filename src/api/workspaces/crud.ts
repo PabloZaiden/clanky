@@ -18,6 +18,7 @@ import {
   requireWorkspace,
   errorResponse,
 } from "../helpers";
+import { sanitizeWorkspace, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import {
   CreateWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
@@ -31,12 +32,13 @@ export const crudRoutes = {
    * POST /api/workspaces - Create a new workspace
    */
   "/api/workspaces": {
-    async GET() {
+    async GET(req: Request) {
       log.debug("GET /api/workspaces - Listing all workspaces");
       try {
+        const includeSensitive = shouldIncludeSensitiveData(req);
         const workspaces = await listWorkspaces();
         log.debug("GET /api/workspaces - Retrieved workspaces", { count: workspaces.length });
-        return Response.json(workspaces);
+        return Response.json(includeSensitive ? workspaces : workspaces.map(sanitizeWorkspace));
       } catch (error) {
         log.error("Failed to list workspaces:", String(error));
         return errorResponse("list_failed", `Failed to list workspaces: ${String(error)}`, 500);
@@ -125,7 +127,7 @@ export const crudRoutes = {
           log.debug("GET /api/workspaces/:id - Workspace not found", { workspaceId: id });
           return result;
         }
-        return Response.json(result);
+        return Response.json(shouldIncludeSensitiveData(req) ? result : sanitizeWorkspace(result));
       } catch (error) {
         log.error("Failed to get workspace:", String(error));
         return errorResponse("get_failed", `Failed to get workspace: ${String(error)}`, 500);
@@ -135,6 +137,7 @@ export const crudRoutes = {
     async PUT(req: Request & { params: { id: string } }) {
       const { id } = req.params;
       log.debug("PUT /api/workspaces/:id", { workspaceId: id });
+      const includeSensitive = shouldIncludeSensitiveData(req);
       const result = await parseAndValidate(UpdateWorkspaceRequestSchema, req);
 
       if (!result.success) {
@@ -156,7 +159,7 @@ export const crudRoutes = {
 
         if (!nameChanged && !serverSettingsChanged) {
           log.info(`Workspace unchanged: ${currentWorkspace.name}`);
-          return Response.json(currentWorkspace);
+          return Response.json(includeSensitive ? currentWorkspace : sanitizeWorkspace(currentWorkspace));
         }
 
         const workspaceUpdates: Partial<Pick<Workspace, "name" | "serverSettings">> = {};
@@ -179,7 +182,7 @@ export const crudRoutes = {
         }
 
         log.info(`Updated workspace: ${workspace.name}`);
-        return Response.json(workspace);
+        return Response.json(includeSensitive ? workspace : sanitizeWorkspace(workspace));
       } catch (error) {
         log.error("Failed to update workspace:", String(error));
         return errorResponse("update_failed", `Failed to update workspace: ${String(error)}`, 500);

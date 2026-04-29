@@ -8,6 +8,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { provisioningManager } from "../../src/core/provisioning-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
+import type { ProvisioningJobSnapshot } from "../../src/types";
 import { createMockBackend } from "../mocks/mock-backend";
 import {
   ProvisioningTestExecutor,
@@ -24,6 +25,9 @@ interface ProvisioningSnapshotResponse {
     state: {
       status: string;
       workspaceId?: string;
+      serverSettings?: {
+        agent: Record<string, unknown>;
+      };
       error?: {
         code: string;
         message: string;
@@ -34,6 +38,9 @@ interface ProvisioningSnapshotResponse {
   workspace?: {
     id: string;
     directory: string;
+    serverSettings?: {
+      agent: Record<string, unknown>;
+    };
   };
 }
 
@@ -147,6 +154,149 @@ describe("Provisioning API integration", () => {
     const logs = await logsResponse.json() as { success: boolean; logs: Array<{ text: string }> };
     expect(logs.success).toBe(true);
     expect(logs.logs.some((entry) => entry.text.includes("Created workspace Example Workspace"))).toBe(true);
+  });
+
+  test("hides provisioning SSH secrets by default and includes them with sensitive=true", async () => {
+    const sshServer = await createServer();
+    sshServerManager.setExecutorFactoryForTesting(() => new ProvisioningTestExecutor({
+      devboxStatusOutput: createDevboxStatusOutput({
+        workdir: "/workspaces/secure-example",
+        password: "runtime-secret",
+      }),
+    }));
+
+    const response = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Secure Workspace",
+        sshServerId: sshServer.config.id,
+        repoUrl: "https://github.com/octocat/example.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        provider: "copilot",
+        credentialToken: null,
+        mode: "provision",
+        targetDirectory: null,
+        workspaceId: null,
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    const started = await response.json() as ProvisioningSnapshotResponse;
+    await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
+
+    const redactedResponse = await fetch(`${baseUrl}/api/provisioning-jobs/${started.job.config.id}`);
+    expect(redactedResponse.ok).toBe(true);
+    const redacted = await redactedResponse.json() as ProvisioningSnapshotResponse;
+    expect(redacted.job.state.serverSettings?.agent["password"]).toBeUndefined();
+    expect(redacted.workspace?.serverSettings?.agent["password"]).toBeUndefined();
+
+    const sensitiveResponse = await fetch(
+      `${baseUrl}/api/provisioning-jobs/${started.job.config.id}?sensitive=true`,
+    );
+    expect(sensitiveResponse.ok).toBe(true);
+    const sensitive = await sensitiveResponse.json() as ProvisioningSnapshotResponse;
+    expect(sensitive.job.state.serverSettings?.agent["password"]).toBe("runtime-secret");
+    expect(sensitive.workspace?.serverSettings?.agent["password"]).toBe("runtime-secret");
+  });
+
+  test("redacts provisioning start snapshots by default and includes secrets with sensitive=true", async () => {
+    const sshServer = await createServer();
+    const snapshot = {
+      job: {
+        config: {
+          id: "job-sensitive-start",
+          name: "Sensitive Start",
+          sshServerId: sshServer.config.id,
+          repoUrl: "https://github.com/octocat/example.git",
+          basePath: "/workspaces",
+          provider: "copilot" as const,
+          mode: "restart" as const,
+          targetDirectory: "/workspaces/existing",
+          workspaceId: "workspace-sensitive",
+          createdAt: new Date().toISOString(),
+        },
+        state: {
+          status: "running",
+          workspaceId: "workspace-sensitive",
+          updatedAt: new Date().toISOString(),
+          serverSettings: {
+            agent: {
+              provider: "copilot" as const,
+              transport: "ssh" as const,
+              hostname: "ssh.example.com",
+              port: 2222,
+              username: "deploy",
+              password: "route-secret",
+            },
+          },
+        },
+      },
+      logs: [],
+      workspace: {
+        id: "workspace-sensitive",
+        name: "Sensitive Workspace",
+        directory: "/workspaces/existing",
+        serverSettings: {
+          agent: {
+            provider: "copilot" as const,
+            transport: "ssh" as const,
+            hostname: "ssh.example.com",
+            port: 2222,
+            username: "deploy",
+            password: "route-secret",
+            identityFile: "/keys/id_ed25519",
+          },
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    } satisfies ProvisioningJobSnapshot;
+
+    const originalStartJob = provisioningManager.startJob;
+    provisioningManager.startJob = async () => snapshot;
+
+    try {
+      const requestBody = {
+        name: "Sensitive Start",
+        sshServerId: sshServer.config.id,
+        repoUrl: "https://github.com/octocat/example.git",
+        basePath: "/workspaces",
+        devcontainerSubpath: null,
+        devboxTemplate: null,
+        provider: "copilot" as const,
+        credentialToken: null,
+        mode: "restart" as const,
+        targetDirectory: "/workspaces/existing",
+        workspaceId: "workspace-sensitive",
+      };
+
+      const defaultResponse = await fetch(`${baseUrl}/api/provisioning-jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      expect(defaultResponse.status).toBe(201);
+      const redacted = await defaultResponse.json() as ProvisioningSnapshotResponse;
+      expect(redacted.job.state.serverSettings?.agent["password"]).toBeUndefined();
+      expect(redacted.workspace?.serverSettings?.agent["password"]).toBeUndefined();
+      expect(redacted.workspace?.serverSettings?.agent["identityFile"]).toBeUndefined();
+
+      const sensitiveResponse = await fetch(`${baseUrl}/api/provisioning-jobs?sensitive=true`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+      expect(sensitiveResponse.status).toBe(201);
+      const sensitive = await sensitiveResponse.json() as ProvisioningSnapshotResponse;
+      expect(sensitive.job.state.serverSettings?.agent["password"]).toBe("route-secret");
+      expect(sensitive.workspace?.serverSettings?.agent["password"]).toBe("route-secret");
+      expect(sensitive.workspace?.serverSettings?.agent["identityFile"]).toBe("/keys/id_ed25519");
+    } finally {
+      provisioningManager.startJob = originalStartJob;
+    }
   });
 
   test("returns 404 when the SSH server does not exist", async () => {

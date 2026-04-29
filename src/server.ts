@@ -29,6 +29,7 @@ import {
 import { log, setLogLevel, isLogLevelFromEnv } from "./core/logger";
 import { getLogLevelPreference } from "./persistence/preferences";
 import { pushedLoopMonitor } from "./core/pushed-loop-monitor";
+import { parseSensitiveFlag } from "./lib/sensitive-data";
 
 type StoppableServer = {
   stop(closeActiveConnections?: boolean): void;
@@ -157,6 +158,7 @@ export async function startServer(): Promise<void> {
         const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
         const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
         const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
+        const sensitive = parseSensitiveFlag(url.searchParams.get("sensitive"));
 
         const upgraded = server.upgrade(req, {
           data: {
@@ -165,6 +167,7 @@ export async function startServer(): Promise<void> {
             sshSessionId,
             sshServerSessionId,
             provisioningJobId,
+            sensitive,
             terminalMode: false,
           } as WebSocketData,
         });

@@ -47,6 +47,30 @@ export interface Workspace {
   provider?: AgentProvider;
 }
 
+export type PublicAgentSettings =
+  | Extract<ServerSettings["agent"], { transport: "stdio" }>
+  | Omit<Extract<ServerSettings["agent"], { transport: "ssh" }>, "password" | "identityFile">;
+
+export interface PublicServerSettings {
+  agent: PublicAgentSettings;
+}
+
+export interface PublicWorkspace extends Omit<Workspace, "serverSettings"> {
+  serverSettings: PublicServerSettings;
+}
+
+export interface PublicWorkspaceConfig {
+  name: string;
+  directory: string;
+  serverSettings: PublicServerSettings;
+}
+
+export interface PublicWorkspaceExportData {
+  version: 1;
+  exportedAt: string;
+  workspaces: PublicWorkspaceConfig[];
+}
+
 /**
  * Result of a workspace import operation.
  * Reports what was created, skipped, and failed.
