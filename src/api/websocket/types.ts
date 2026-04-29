@@ -15,6 +15,8 @@ export interface WebSocketData {
   sshServerSessionId?: string;
   /** Optional provisioning job ID to filter provisioning events */
   provisioningJobId?: string;
+  /** Whether sensitive provisioning data should be included */
+  sensitive?: boolean;
   /** Optional forwarded port ID for proxied websocket traffic */
   portForwardId?: string;
   /** Whether this socket is a terminal transport socket */

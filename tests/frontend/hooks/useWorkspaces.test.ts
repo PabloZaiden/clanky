@@ -345,7 +345,10 @@ describe("exportConfig", () => {
       ],
     };
 
-    api.get("/api/workspaces/export", () => exportData);
+    api.get("/api/workspaces/export", (req) => {
+      expect(req.url).toContain("/api/workspaces/export?sensitive=true");
+      return exportData;
+    });
 
     const { result } = renderHook(() => useWorkspaces());
 

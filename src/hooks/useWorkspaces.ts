@@ -4,13 +4,19 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Workspace, CreateWorkspaceRequest, WorkspaceImportResult, WorkspaceExportData } from "../types/workspace";
+import type {
+  PublicWorkspace,
+  Workspace,
+  CreateWorkspaceRequest,
+  WorkspaceImportResult,
+  WorkspaceExportData,
+} from "../types/workspace";
 import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 
 export interface UseWorkspacesResult {
   /** List of workspaces */
-  workspaces: Workspace[];
+  workspaces: PublicWorkspace[];
   /** Whether workspaces are being loaded */
   loading: boolean;
   /** Error message if any */
@@ -41,7 +47,7 @@ export interface UseWorkspacesResult {
  */
 export function useWorkspaces(): UseWorkspacesResult {
   const log = createLogger("useWorkspaces");
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [workspaces, setWorkspaces] = useState<PublicWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -59,7 +65,7 @@ export function useWorkspaces(): UseWorkspacesResult {
       if (!response.ok) {
         throw new Error(`Failed to fetch workspaces: ${response.statusText}`);
       }
-      const data = (await response.json()) as Workspace[];
+      const data = (await response.json()) as PublicWorkspace[];
       setWorkspaces(data);
     } catch (err) {
       log.error("Failed to fetch workspaces", { error: String(err) });
@@ -204,7 +210,7 @@ export function useWorkspaces(): UseWorkspacesResult {
     try {
       setSaving(true);
       setError(null);
-      const response = await appFetch("/api/workspaces/export");
+      const response = await appFetch("/api/workspaces/export?sensitive=true");
       if (!response.ok) {
         const errorData = await response.json() as { message?: string };
         throw new Error(errorData.message || "Failed to export workspaces");

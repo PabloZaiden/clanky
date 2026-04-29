@@ -18,6 +18,7 @@ import {
   requireWorkspace,
   errorResponse,
 } from "../helpers";
+import { sanitizeWorkspace, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import {
   CreateWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
@@ -31,12 +32,13 @@ export const crudRoutes = {
    * POST /api/workspaces - Create a new workspace
    */
   "/api/workspaces": {
-    async GET() {
+    async GET(req: Request) {
       log.debug("GET /api/workspaces - Listing all workspaces");
       try {
+        const includeSensitive = shouldIncludeSensitiveData(req);
         const workspaces = await listWorkspaces();
         log.debug("GET /api/workspaces - Retrieved workspaces", { count: workspaces.length });
-        return Response.json(workspaces);
+        return Response.json(includeSensitive ? workspaces : workspaces.map(sanitizeWorkspace));
       } catch (error) {
         log.error("Failed to list workspaces:", String(error));
         return errorResponse("list_failed", `Failed to list workspaces: ${String(error)}`, 500);
@@ -125,7 +127,7 @@ export const crudRoutes = {
           log.debug("GET /api/workspaces/:id - Workspace not found", { workspaceId: id });
           return result;
         }
-        return Response.json(result);
+        return Response.json(shouldIncludeSensitiveData(req) ? result : sanitizeWorkspace(result));
       } catch (error) {
         log.error("Failed to get workspace:", String(error));
         return errorResponse("get_failed", `Failed to get workspace: ${String(error)}`, 500);

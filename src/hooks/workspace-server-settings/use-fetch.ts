@@ -17,7 +17,7 @@ export function useWorkspaceFetch(workspaceId: string | null) {
     }
 
     try {
-      const response = await appFetch(`/api/workspaces/${workspaceId}`);
+      const response = await appFetch(`/api/workspaces/${workspaceId}?sensitive=true`);
       if (!response.ok) {
         throw new Error(`Failed to fetch workspace: ${response.statusText}`);
       }

@@ -11,6 +11,7 @@ import {
   requireWorkspace,
   errorResponse,
 } from "../helpers";
+import { sanitizeServerSettings, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import {
   ServerSettingsSchema,
   TestConnectionRequestSchema,
@@ -25,14 +26,18 @@ export const serverSettingsRoutes = {
    */
   "/api/workspaces/:id/server-settings": {
     async GET(req: Request & { params: { id: string } }) {
-      const { id } = req.params;
-      try {
-        const result = await requireWorkspace(id);
-        if (result instanceof Response) return result;
-        return Response.json(result.serverSettings);
-      } catch (error) {
-        log.error("Failed to get workspace server settings:", String(error));
-        return errorResponse("get_settings_failed", `Failed to get server settings: ${String(error)}`, 500);
+        const { id } = req.params;
+        try {
+          const result = await requireWorkspace(id);
+          if (result instanceof Response) return result;
+          return Response.json(
+            shouldIncludeSensitiveData(req)
+              ? result.serverSettings
+              : sanitizeServerSettings(result.serverSettings),
+          );
+        } catch (error) {
+          log.error("Failed to get workspace server settings:", String(error));
+          return errorResponse("get_settings_failed", `Failed to get server settings: ${String(error)}`, 500);
       }
     },
 

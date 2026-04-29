@@ -5,6 +5,7 @@ import { createLogger } from "../core/logger";
 import { CreateProvisioningJobRequestSchema } from "../types/schemas";
 import { errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
+import { sanitizeProvisioningSnapshot, shouldIncludeSensitiveData } from "../lib/sensitive-data";
 
 const log = createLogger("api:provisioning");
 
@@ -68,7 +69,9 @@ export const provisioningRoutes = {
         if (!snapshot) {
           return errorResponse("not_found", "Provisioning job not found", 404);
         }
-        return Response.json(snapshot);
+        return Response.json(
+          shouldIncludeSensitiveData(req) ? snapshot : sanitizeProvisioningSnapshot(snapshot),
+        );
       } catch (error) {
         log.error("Failed to fetch provisioning job", {
           provisioningJobId: req.params.id,

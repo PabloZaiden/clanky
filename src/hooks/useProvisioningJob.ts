@@ -7,7 +7,7 @@ import { appFetch } from "../lib/public-path";
 import type {
   AgentProvider,
   ProvisioningEvent,
-  ProvisioningJobSnapshot,
+  PublicProvisioningJobSnapshot,
   ProvisioningLogEntry,
 } from "../types";
 import { useWebSocket, type WebSocketConnectionStatus } from "./useWebSocket";
@@ -28,14 +28,14 @@ export interface StartProvisioningJobRequest {
 
 export interface UseProvisioningJobResult {
   activeJobId: string | null;
-  snapshot: ProvisioningJobSnapshot | null;
+  snapshot: PublicProvisioningJobSnapshot | null;
   logs: ProvisioningLogEntry[];
   loading: boolean;
   starting: boolean;
   error: string | null;
   websocketStatus: WebSocketConnectionStatus;
-  startJob: (request: StartProvisioningJobRequest) => Promise<ProvisioningJobSnapshot | null>;
-  refreshJob: () => Promise<ProvisioningJobSnapshot | null>;
+  startJob: (request: StartProvisioningJobRequest) => Promise<PublicProvisioningJobSnapshot | null>;
+  refreshJob: () => Promise<PublicProvisioningJobSnapshot | null>;
   cancelJob: () => Promise<boolean>;
   clearActiveJob: () => void;
 }
@@ -73,7 +73,7 @@ const ACTIVE_JOB_REFRESH_INTERVAL_MS = 1000;
 
 export function useProvisioningJob(): UseProvisioningJobResult {
   const [activeJobId, setJobId] = useState<string | null>(null);
-  const [snapshot, setSnapshot] = useState<ProvisioningJobSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<PublicProvisioningJobSnapshot | null>(null);
   const [logs, setLogs] = useState<ProvisioningLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -86,7 +86,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
     setError(null);
   }, []);
 
-  const refreshJob = useCallback(async (): Promise<ProvisioningJobSnapshot | null> => {
+  const refreshJob = useCallback(async (): Promise<PublicProvisioningJobSnapshot | null> => {
     if (!activeJobId) {
       return null;
     }
@@ -104,7 +104,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         throw new Error(errorData.message ?? "Failed to load provisioning job");
       }
 
-      const nextSnapshot = await response.json() as ProvisioningJobSnapshot;
+      const nextSnapshot = await response.json() as PublicProvisioningJobSnapshot;
       setSnapshot(nextSnapshot);
       setLogs(nextSnapshot.logs);
       return nextSnapshot;
@@ -183,7 +183,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
 
   const startJob = useCallback(async (
     request: StartProvisioningJobRequest,
-  ): Promise<ProvisioningJobSnapshot | null> => {
+  ): Promise<PublicProvisioningJobSnapshot | null> => {
     try {
       setStarting(true);
       setError(null);
@@ -214,7 +214,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
         throw new Error(errorData.message ?? "Failed to start provisioning job");
       }
 
-      const nextSnapshot = await response.json() as ProvisioningJobSnapshot;
+      const nextSnapshot = await response.json() as PublicProvisioningJobSnapshot;
       setJobId(nextSnapshot.job.config.id);
       setSnapshot(nextSnapshot);
       setLogs(nextSnapshot.logs);

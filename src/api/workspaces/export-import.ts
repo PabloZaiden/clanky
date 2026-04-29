@@ -14,6 +14,7 @@ import type { WorkspaceExportData } from "../../types/schemas";
 import { parseAndValidate } from "../validation";
 import { errorResponse } from "../helpers";
 import { WorkspaceImportRequestSchema } from "../../types/schemas";
+import { sanitizeServerSettings, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 
 const log = createLogger("api:workspaces");
 
@@ -143,11 +144,21 @@ export const exportImportRoutes = {
    * GET /api/workspaces/export - Export all workspace configs as JSON
    */
   "/api/workspaces/export": {
-    async GET() {
+    async GET(req: Request) {
       log.debug("GET /api/workspaces/export - Exporting workspace configs");
       try {
+        const includeSensitive = shouldIncludeSensitiveData(req);
         const exportData = await exportWorkspaces();
-        return Response.json(exportData);
+        if (includeSensitive) {
+          return Response.json(exportData);
+        }
+        return Response.json({
+          ...exportData,
+          workspaces: exportData.workspaces.map((workspace) => ({
+            ...workspace,
+            serverSettings: sanitizeServerSettings(workspace.serverSettings),
+          })),
+        });
       } catch (error) {
         log.error("Failed to export workspaces:", String(error));
         return errorResponse("export_failed", `Failed to export workspaces: ${String(error)}`, 500);

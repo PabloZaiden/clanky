@@ -5,7 +5,7 @@
 import type { z } from "zod";
 import { CreateProvisioningJobRequestSchema } from "./schemas/provisioning";
 import type { AgentProvider, ServerSettings } from "./settings";
-import type { Workspace } from "./workspace";
+import type { PublicServerSettings, PublicWorkspace, Workspace } from "./workspace";
 
 export type CreateProvisioningJobRequest = z.infer<typeof CreateProvisioningJobRequestSchema>;
 
@@ -73,15 +73,28 @@ export interface ProvisioningJobState {
   updatedAt: string;
 }
 
+export interface PublicProvisioningJobState extends Omit<ProvisioningJobState, "serverSettings"> {
+  serverSettings?: PublicServerSettings;
+}
+
 export interface ProvisioningJob {
   config: ProvisioningJobConfig;
   state: ProvisioningJobState;
+}
+
+export interface PublicProvisioningJob extends Omit<ProvisioningJob, "state"> {
+  state: PublicProvisioningJobState;
 }
 
 export interface ProvisioningJobSnapshot {
   job: ProvisioningJob;
   logs: ProvisioningLogEntry[];
   workspace?: Workspace;
+}
+
+export interface PublicProvisioningJobSnapshot extends Omit<ProvisioningJobSnapshot, "job" | "workspace"> {
+  job: PublicProvisioningJob;
+  workspace?: PublicWorkspace;
 }
 
 export interface DevboxPublishedPort {
