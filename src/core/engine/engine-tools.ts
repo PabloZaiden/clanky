@@ -53,7 +53,7 @@ export async function processLoopAgentEvent(event: AgentEvent, ctx: IterationCon
       break;
 
     case "message.complete":
-      handleMessageComplete(ctx, toolCtx);
+      handleMessageComplete(event, ctx, toolCtx);
       break;
 
     case "tool.start":
@@ -115,19 +115,34 @@ function handleStreamingDelta(
   }
 }
 
-function handleMessageComplete(ctx: IterationContext, toolCtx: ToolProcessingContext): void {
+function handleMessageComplete(
+  event: AgentEvent & { type: "message.complete" },
+  ctx: IterationContext,
+  toolCtx: ToolProcessingContext,
+): void {
+  const finalResponseContent = event.content.length > 0 ? event.content : ctx.responseContent;
+  ctx.responseContent = finalResponseContent;
+  if (ctx.currentResponseLogId && ctx.currentResponseLogContent !== finalResponseContent) {
+    toolCtx.emitLog(
+      "agent",
+      "AI generating response...",
+      { logKind: "response", responseContent: finalResponseContent },
+      ctx.currentResponseLogId,
+      "trace",
+    );
+  }
   ctx.currentResponseLogId = null;
   ctx.currentResponseLogContent = "";
   ctx.currentReasoningLogId = null;
   ctx.currentReasoningLogContent = "";
   toolCtx.emitLog("agent", "AI finished generating response", {
     logKind: "system",
-    responseLength: ctx.responseContent.length,
+    responseLength: finalResponseContent.length,
   });
   const messageData: MessageData = {
     id: ctx.currentMessageId || `msg-${Date.now()}`,
     role: "assistant",
-    content: ctx.responseContent,
+    content: finalResponseContent,
     timestamp: createTimestamp(),
   };
   toolCtx.persistMessage(messageData);

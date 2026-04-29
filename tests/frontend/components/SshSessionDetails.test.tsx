@@ -1786,10 +1786,12 @@ describe("SshSessionDetails", () => {
   });
 
   test("prompts for a standalone SSH password when no browser credential is stored", async () => {
+    const standaloneServerId = "server-password-prompt";
+    clearStoredSshServerCredential(standaloneServerId);
     api.get("/api/ssh-server-sessions/:id", (req) => ({
       config: {
         id: req.params["id"]!,
-        sshServerId: "server-1",
+        sshServerId: standaloneServerId,
         name: "Password Prompt Session",
         connectionMode: "dtach",
         remoteSessionName: "ralpher-standalone-2",
@@ -1858,17 +1860,19 @@ describe("SshSessionDetails", () => {
     await waitFor(() => {
       expect(queryByText("SSH password required")).toBeNull();
       expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(1);
-      expect(globalThis.localStorage?.getItem("ralpher.sshServerCredential.server-1")).toBeTruthy();
+      expect(globalThis.localStorage?.getItem(`ralpher.sshServerCredential.${standaloneServerId}`)).toBeTruthy();
     });
 
-    expect(credentialServerId).toBe("server-1");
+    expect(credentialServerId).toBe(standaloneServerId);
   });
 
   test("keeps the standalone password prompt open and shows a toast when password submission fails", async () => {
+    const standaloneServerId = "server-password-failure";
+    clearStoredSshServerCredential(standaloneServerId);
     api.get("/api/ssh-server-sessions/:id", (req) => ({
       config: {
         id: req.params["id"]!,
-        sshServerId: "server-1",
+        sshServerId: standaloneServerId,
         name: "Password Failure Session",
         connectionMode: "dtach",
         remoteSessionName: "ralpher-standalone-failure",

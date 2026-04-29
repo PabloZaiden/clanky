@@ -2597,6 +2597,36 @@ describe("StopPatternDetector", () => {
       expect(lastReasoningLog.details?.["responseContent"]).toBe("Let me think about this.");
     });
 
+    test("uses the completion payload for the final assistant message instead of accumulated deltas", async () => {
+      const loop = createTestLoop({
+        maxIterations: Number.POSITIVE_INFINITY,
+        stopPattern: "Omega$",
+      });
+      const backend = createEventSequenceBackend((push, end) => {
+        push({ type: "message.start", messageId: "msg-1" });
+        push({ type: "message.delta", content: "Alpha" });
+        push({ type: "message.delta", content: "Omega" });
+        push({ type: "message.complete", content: "Omega" });
+        end();
+      });
+
+      const engine = new LoopEngine({
+        loop,
+        backend,
+        gitService,
+        eventEmitter: emitter,
+      });
+
+      await engine.start();
+
+      const assistantMessages = engine.state.messages.filter((message) => message.role === "assistant");
+      expect(assistantMessages.map((message) => message.content)).toEqual(["Omega"]);
+
+      const responseLogs = engine.state.logs.filter((log) => log.details?.["logKind"] === "response");
+      expect(responseLogs.map((log) => log.details?.["responseContent"])).toEqual(["Omega"]);
+      expect(engine.state.status).toBe("completed");
+    });
+
     test("starts fresh reasoning log after message.complete", async () => {
       // Use 2 iterations: first completes, second triggers new reasoning
       const loop = createTestLoop({ maxIterations: 2 });

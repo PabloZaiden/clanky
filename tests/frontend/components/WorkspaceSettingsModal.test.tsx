@@ -7,7 +7,7 @@
 
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
 import { WorkspaceSettingsModal } from "@/components/WorkspaceSettingsModal";
-import { renderWithUser, waitFor } from "../helpers/render";
+import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { createWorkspace, createServerSettings } from "../helpers/factories";
 import type { ConnectionStatus } from "@/types/settings";
@@ -94,7 +94,9 @@ describe("WorkspaceSettingsModal AGENTS.md optimization", () => {
       });
 
       // Resolve to avoid dangling promise
-      resolveHandler(agentsMdStatus());
+      await act(async () => {
+        resolveHandler(agentsMdStatus());
+      });
     });
 
     test("loading message disappears after successful fetch", async () => {
@@ -297,7 +299,9 @@ describe("WorkspaceSettingsModal AGENTS.md optimization", () => {
       const button = optimizeText.closest("button")!;
       expect(button).toBeDisabled();
 
-      resolveHandler(agentsMdStatus());
+      await act(async () => {
+        resolveHandler(agentsMdStatus());
+      });
     });
   });
 
