@@ -33,6 +33,10 @@ mock.module("@monaco-editor/react", () => ({
 }));
 
 const api = createMockApi();
+let copiedText: string | null = null;
+let clipboardWriteText: string | null = null;
+let clipboardWriteMock: ReturnType<typeof mock>;
+let execCommandMock: ReturnType<typeof mock>;
 
 function EmbeddedSshSessionStub({
   sshSessionId,
@@ -92,6 +96,32 @@ describe("WorkspaceFilesView", () => {
     api.reset();
     api.install();
     api.get("/api/preferences/file-explorer-full-tree", () => ({ enabled: true }));
+    copiedText = null;
+    clipboardWriteText = null;
+    clipboardWriteMock = mock(async (text: string) => {
+      clipboardWriteText = text;
+    });
+    execCommandMock = mock((command: string) => {
+      copiedText = document.querySelector("textarea")?.value ?? null;
+      return command === "copy";
+    });
+    if (navigator.clipboard) {
+      Object.defineProperty(navigator.clipboard, "writeText", {
+        configurable: true,
+        value: clipboardWriteMock,
+      });
+    } else {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: clipboardWriteMock,
+        },
+      });
+    }
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: execCommandMock,
+    });
   });
 
   afterEach(() => {
@@ -175,6 +205,140 @@ describe("WorkspaceFilesView", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/workspaces/:id/files/write", "POST")).toHaveLength(1);
+    });
+  });
+
+  test("copies the selected file path and stays disabled until a file is open", async () => {
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
+    const workspace = createWorkspace({
+      id: "workspace-copy-path",
+      name: "Copy Path Workspace",
+      directory: "/workspaces/copy-path",
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry()],
+        src: [createFileEntry({
+          name: "index.ts",
+          path: "src/index.ts",
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        })],
+      }),
+    }));
+
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "100:20",
+      }),
+      content: "export const value = 1;\n",
+    }));
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    const copyButton = getByRole("button", { name: "Copy selected file path" });
+    expect(copyButton).toBeDisabled();
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /src/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /src/i }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: /index.ts/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /index.ts/i }));
+    await waitFor(() => {
+      expect(getByLabelText("Monaco editor")).toBeInTheDocument();
+      expect(copyButton).toBeEnabled();
+    });
+
+    await user.click(copyButton);
+
+    await waitFor(() => {
+      expect(clipboardWriteText ?? copiedText).toBe("src/index.ts");
+    });
+  });
+
+  test("shows a toast when copying the selected file path fails", async () => {
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
+    const workspace = createWorkspace({
+      id: "workspace-copy-path-error",
+      name: "Copy Path Error Workspace",
+      directory: "/workspaces/copy-path-error",
+    });
+
+    clipboardWriteMock.mockImplementationOnce(async () => {
+      throw new Error("clipboard blocked");
+    });
+    execCommandMock.mockImplementationOnce(() => {
+      copiedText = document.querySelector("textarea")?.value ?? null;
+      return false;
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry({
+          name: "README.md",
+          path: "README.md",
+          kind: "file",
+          size: 16,
+          versionToken: "101:16",
+        })],
+      }),
+    }));
+
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "README.md",
+        path: "README.md",
+        kind: "file",
+        size: 16,
+        versionToken: "101:16",
+      }),
+      content: "# Notes\n",
+    }));
+
+    const { getByRole, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /readme\.md/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /readme\.md/i }));
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Copy selected file path" })).toBeEnabled();
+    });
+
+    await user.click(getByRole("button", { name: "Copy selected file path" }));
+
+    await waitFor(() => {
+      expect(getByRole("alert").textContent).toContain("Failed to copy file path: Error: clipboard blocked");
     });
   });
 

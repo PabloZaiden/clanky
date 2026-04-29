@@ -72,6 +72,25 @@ function HiddenFilesIcon({ visible }: { visible: boolean }) {
   );
 }
 
+function CopyPathIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"
+      />
+    </svg>
+  );
+}
+
 interface WorkspaceFileTreeProps {
   entriesByDirectory: Record<string, WorkspaceFileNode[]>;
   expandedDirectories: string[];
@@ -83,9 +102,11 @@ interface WorkspaceFileTreeProps {
   toolbarActions?: ReactNode;
   onRefresh: () => Promise<void>;
   onToggleShowHiddenFiles: () => Promise<void>;
+  onCopySelectedFilePath: () => Promise<void>;
   onToggleCollapsed: () => void;
   onToggleDirectory: (path: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
+  canCopySelectedFilePath: boolean;
 }
 
 function isHiddenEntry(entry: WorkspaceFileNode): boolean {
@@ -159,9 +180,11 @@ function WorkspaceFileTreeComponent({
   toolbarActions,
   onRefresh,
   onToggleShowHiddenFiles,
+  onCopySelectedFilePath,
   onToggleCollapsed,
   onToggleDirectory,
   onOpenFile,
+  canCopySelectedFilePath,
 }: WorkspaceFileTreeProps) {
   const renderedTree = useMemo(() => renderDirectory(
     "",
@@ -227,6 +250,18 @@ function WorkspaceFileTreeComponent({
             icon={<HiddenFilesIcon visible={showHiddenFiles} />}
           >
             <span className="sr-only">{showHiddenFiles ? "Hide hidden files" : "Show hidden files"}</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void onCopySelectedFilePath()}
+            disabled={!canCopySelectedFilePath}
+            aria-label="Copy selected file path"
+            title="Copy selected file path"
+            className="w-9 px-0"
+            icon={<CopyPathIcon />}
+          >
+            <span className="sr-only">Copy selected file path</span>
           </Button>
           <Button
             variant="ghost"

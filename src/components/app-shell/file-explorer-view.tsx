@@ -3,6 +3,7 @@ import type { SshSession } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
+import { writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
 import { Button, GearIcon, Modal } from "../common";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
@@ -103,6 +104,7 @@ export function FileExplorerView({
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
+  const selectedFilePath = explorer.currentFile?.path;
   const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
   const [loadFullTreeInput, setLoadFullTreeInput] = useState(fullTreePreference.enabled);
   const lastAutoOpenedFileRef = useRef<string | null>(null);
@@ -265,6 +267,18 @@ export function FileExplorerView({
     setExplorerCollapsed((current) => !current);
   }, []);
 
+  const handleCopySelectedFilePath = useCallback(async () => {
+    if (!selectedFilePath) {
+      return;
+    }
+
+    try {
+      await writeTextToClipboard(selectedFilePath);
+    } catch (error) {
+      toast.error(`Failed to copy file path: ${String(error)}`);
+    }
+  }, [selectedFilePath, toast]);
+
   const handleCloseServerPasswordModal = useCallback(() => {
     setServerPasswordModalOpen(false);
     setServerPassword("");
@@ -410,7 +424,7 @@ export function FileExplorerView({
               <WorkspaceFileTree
                 entriesByDirectory={explorer.directoryEntries}
                 expandedDirectories={explorer.expandedDirectories}
-                currentFilePath={explorer.currentFile?.path}
+                currentFilePath={selectedFilePath}
                 showHiddenFiles={explorer.showHiddenFiles}
                 loading={explorer.loadingTree}
                 error={explorer.error}
@@ -418,9 +432,11 @@ export function FileExplorerView({
                 toolbarActions={explorerToolbarActions}
                 onRefresh={explorer.refreshTree}
                 onToggleShowHiddenFiles={explorer.toggleShowHiddenFiles}
+                onCopySelectedFilePath={handleCopySelectedFilePath}
                 onToggleCollapsed={handleToggleExplorerCollapsed}
                 onToggleDirectory={explorer.toggleDirectory}
                 onOpenFile={handleOpenFile}
+                canCopySelectedFilePath={selectedFilePath !== undefined}
               />
             </div>
             <div
