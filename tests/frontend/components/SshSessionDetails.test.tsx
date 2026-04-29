@@ -1833,7 +1833,7 @@ describe("SshSessionDetails", () => {
       };
     });
 
-    const { getByLabelText, getByText, queryByText, user } = renderWithUser(
+    const { getByLabelText, getByText, user } = renderWithUser(
       <SshSessionDetails sshSessionId="standalone-ssh-2" onBack={() => {}} />,
     );
 
@@ -1854,16 +1854,21 @@ describe("SshSessionDetails", () => {
 
     expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(0);
 
-    await user.type(passwordInput, "secret");
-    await user.click(getByText("Continue"));
+    await act(async () => {
+      await user.type(passwordInput, "secret");
+      await user.click(getByText("Continue"));
+    });
 
     await waitFor(() => {
-      expect(queryByText("SSH password required")).toBeNull();
       expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(1);
       expect(globalThis.localStorage?.getItem(`ralpher.sshServerCredential.${standaloneServerId}`)).toBeTruthy();
+      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
     });
 
     expect(credentialServerId).toBe(standaloneServerId);
+    expect(ws.getConnections("/api/ssh-terminal")[0]?.sentMessages).toContain(
+      JSON.stringify({ type: "terminal.auth", credentialToken: "token-456" }),
+    );
   });
 
   test("keeps the standalone password prompt open and shows a toast when password submission fails", async () => {

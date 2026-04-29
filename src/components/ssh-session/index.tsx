@@ -208,7 +208,7 @@ export function SshSessionDetails({
       standalone.setStandaloneCredentialToken(token);
       standalone.setShowPasswordPrompt(false);
       standalone.setPendingStandaloneAction(null);
-      void connection.connectTerminal({ standaloneCredentialToken: token });
+      await connection.connectTerminal({ standaloneCredentialToken: token });
     } catch (error) {
       showErrorToast(String(error));
     }

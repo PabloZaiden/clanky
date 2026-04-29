@@ -20,6 +20,7 @@ export interface WorkspaceFileNode {
 }
 
 export interface WorkspaceFileEntry extends WorkspaceFileNode {
+  absolutePath: string;
   size: number;
   modifiedAt: string;
   versionToken: string;

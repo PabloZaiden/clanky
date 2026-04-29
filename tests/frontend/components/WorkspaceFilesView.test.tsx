@@ -70,14 +70,17 @@ async function loadWorkspaceFilesView() {
 function createFileEntry(overrides?: Partial<{
   name: string;
   path: string;
+  absolutePath: string;
   kind: "file" | "directory";
   size: number;
   modifiedAt: string;
   versionToken: string;
 }>) {
+  const path = overrides?.path ?? "src";
   return {
     name: overrides?.name ?? "src",
-    path: overrides?.path ?? "src",
+    path,
+    absolutePath: overrides?.absolutePath ?? `/workspace-root/${path}`,
     kind: overrides?.kind ?? "directory",
     size: overrides?.size ?? 0,
     modifiedAt: overrides?.modifiedAt ?? "2026-01-01T00:00:00.000Z",
@@ -144,6 +147,7 @@ describe("WorkspaceFilesView", () => {
         src: [createFileEntry({
           name: "index.ts",
           path: "src/index.ts",
+          absolutePath: "/workspaces/editor-workspace/src/index.ts",
           kind: "file",
           size: 20,
           versionToken: "100:20",
@@ -156,6 +160,7 @@ describe("WorkspaceFilesView", () => {
       file: createFileEntry({
         name: "index.ts",
         path: "src/index.ts",
+        absolutePath: "/workspaces/editor-workspace/src/index.ts",
         kind: "file",
         size: 20,
         versionToken: "100:20",
@@ -223,6 +228,7 @@ describe("WorkspaceFilesView", () => {
         src: [createFileEntry({
           name: "index.ts",
           path: "src/index.ts",
+          absolutePath: "/workspaces/copy-path/src/index.ts",
           kind: "file",
           size: 20,
           versionToken: "100:20",
@@ -235,6 +241,7 @@ describe("WorkspaceFilesView", () => {
       file: createFileEntry({
         name: "index.ts",
         path: "src/index.ts",
+        absolutePath: "/workspaces/copy-path/src/index.ts",
         kind: "file",
         size: 20,
         versionToken: "100:20",
@@ -272,7 +279,8 @@ describe("WorkspaceFilesView", () => {
     await user.click(copyButton);
 
     await waitFor(() => {
-      expect(clipboardWriteText ?? copiedText).toBe("src/index.ts");
+      expect(clipboardWriteText ?? copiedText).toBe("/workspaces/copy-path/src/index.ts");
+      expect(getByRole("alert").textContent).toContain("Copied file path");
     });
   });
 
@@ -298,6 +306,7 @@ describe("WorkspaceFilesView", () => {
         "": [createFileEntry({
           name: "README.md",
           path: "README.md",
+          absolutePath: "/workspaces/copy-path-error/README.md",
           kind: "file",
           size: 16,
           versionToken: "101:16",
@@ -310,6 +319,7 @@ describe("WorkspaceFilesView", () => {
       file: createFileEntry({
         name: "README.md",
         path: "README.md",
+        absolutePath: "/workspaces/copy-path-error/README.md",
         kind: "file",
         size: 16,
         versionToken: "101:16",
