@@ -105,6 +105,7 @@ export function FileExplorerView({
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const selectedFilePath = explorer.currentFile?.path;
+  const selectedFileAbsolutePath = explorer.currentFile?.absolutePath;
   const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
   const [loadFullTreeInput, setLoadFullTreeInput] = useState(fullTreePreference.enabled);
   const lastAutoOpenedFileRef = useRef<string | null>(null);
@@ -268,16 +269,18 @@ export function FileExplorerView({
   }, []);
 
   const handleCopySelectedFilePath = useCallback(async () => {
-    if (!selectedFilePath) {
+    if (!selectedFileAbsolutePath) {
+      toast.error("Absolute file path is unavailable for the selected file.");
       return;
     }
 
     try {
-      await writeTextToClipboard(selectedFilePath);
+      await writeTextToClipboard(selectedFileAbsolutePath);
+      toast.success("Copied file path");
     } catch (error) {
       toast.error(`Failed to copy file path: ${String(error)}`);
     }
-  }, [selectedFilePath, toast]);
+  }, [selectedFileAbsolutePath, toast]);
 
   const handleCloseServerPasswordModal = useCallback(() => {
     setServerPasswordModalOpen(false);
@@ -436,7 +439,7 @@ export function FileExplorerView({
                 onToggleCollapsed={handleToggleExplorerCollapsed}
                 onToggleDirectory={explorer.toggleDirectory}
                 onOpenFile={handleOpenFile}
-                canCopySelectedFilePath={selectedFilePath !== undefined}
+                canCopySelectedFilePath={Boolean(selectedFileAbsolutePath)}
               />
             </div>
             <div

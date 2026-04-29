@@ -204,11 +204,11 @@ export function SshSessionDetails({
         return;
       }
 
-      standalone.setStandalonePassword("");
+      await connection.connectTerminal({ standaloneCredentialToken: token });
       standalone.setStandaloneCredentialToken(token);
+      standalone.setStandalonePassword("");
       standalone.setShowPasswordPrompt(false);
       standalone.setPendingStandaloneAction(null);
-      void connection.connectTerminal({ standaloneCredentialToken: token });
     } catch (error) {
       showErrorToast(String(error));
     }

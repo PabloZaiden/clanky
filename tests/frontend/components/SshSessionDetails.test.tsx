@@ -1833,7 +1833,7 @@ describe("SshSessionDetails", () => {
       };
     });
 
-    const { getByLabelText, getByText, queryByText, user } = renderWithUser(
+    const { getByLabelText, getByText, user } = renderWithUser(
       <SshSessionDetails sshSessionId="standalone-ssh-2" onBack={() => {}} />,
     );
 
@@ -1854,16 +1854,21 @@ describe("SshSessionDetails", () => {
 
     expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(0);
 
-    await user.type(passwordInput, "secret");
-    await user.click(getByText("Continue"));
+    await act(async () => {
+      await user.type(passwordInput, "secret");
+      await user.click(getByText("Continue"));
+    });
 
     await waitFor(() => {
-      expect(queryByText("SSH password required")).toBeNull();
       expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(1);
       expect(globalThis.localStorage?.getItem(`ralpher.sshServerCredential.${standaloneServerId}`)).toBeTruthy();
+      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
     });
 
     expect(credentialServerId).toBe(standaloneServerId);
+    expect(ws.getConnections("/api/ssh-terminal")[0]?.sentMessages).toContain(
+      JSON.stringify({ type: "terminal.auth", credentialToken: "token-456" }),
+    );
   });
 
   test("keeps the standalone password prompt open and shows a toast when password submission fails", async () => {
@@ -1927,6 +1932,97 @@ describe("SshSessionDetails", () => {
     });
 
     expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(0);
+  });
+
+  test("keeps the standalone password prompt open for retry when terminal reconnect setup throws", async () => {
+    const standaloneServerId = "server-password-connect-retry";
+    clearStoredSshServerCredential(standaloneServerId);
+    api.get("/api/ssh-server-sessions/:id", (req) => ({
+      config: {
+        id: req.params["id"]!,
+        sshServerId: standaloneServerId,
+        name: "Password Retry Session",
+        connectionMode: "dtach",
+        remoteSessionName: "ralpher-standalone-retry",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      state: { status: "ready" },
+    }));
+    api.get("/api/ssh-servers/:id", (req) => ({
+      config: {
+        id: req.params["id"]!,
+        name: "Retry Host",
+        address: "retry.example.com",
+        username: "admin",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      publicKey: {
+        algorithm: "RSA-OAEP-256",
+        publicKey: TEST_PUBLIC_KEY,
+        fingerprint: "fp-1",
+        version: 1,
+        createdAt: new Date().toISOString(),
+      },
+    }));
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fp-1",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "token-retry",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+
+    const { getByLabelText, getByText, queryByText, user } = renderWithUser(
+      <SshSessionDetails sshSessionId="standalone-ssh-retry" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(getByText("Password Retry Session")).toBeTruthy();
+      expect(getByText("SSH password required")).toBeTruthy();
+    });
+
+    const passwordInput = getByLabelText("SSH password") as HTMLInputElement;
+    await user.type(passwordInput, "secret");
+
+    const installedWebSocket = globalThis.WebSocket;
+    globalThis.WebSocket = function ThrowingWebSocket() {
+      throw new Error("WebSocket setup failed");
+    } as unknown as typeof WebSocket;
+    (globalThis.WebSocket as unknown as Record<string, number>)["CONNECTING"] = installedWebSocket.CONNECTING;
+    (globalThis.WebSocket as unknown as Record<string, number>)["OPEN"] = installedWebSocket.OPEN;
+    (globalThis.WebSocket as unknown as Record<string, number>)["CLOSING"] = installedWebSocket.CLOSING;
+    (globalThis.WebSocket as unknown as Record<string, number>)["CLOSED"] = installedWebSocket.CLOSED;
+
+    try {
+      await user.click(getByText("Continue"));
+
+      await waitFor(() => {
+        expect(getByText("SSH password required")).toBeTruthy();
+        expect(getByText(/WebSocket setup failed/)).toBeTruthy();
+      });
+
+      expect(passwordInput.value).toBe("secret");
+      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(0);
+    } finally {
+      globalThis.WebSocket = installedWebSocket;
+    }
+
+    await user.click(getByText("Continue"));
+
+    await waitFor(() => {
+      expect(queryByText("SSH password required")).toBeNull();
+      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
+    });
+
+    expect(ws.getConnections("/api/ssh-terminal")[0]?.sentMessages).toContain(
+      JSON.stringify({ type: "terminal.auth", credentialToken: "token-retry" }),
+    );
   });
 
   test("shows focus mode toggle in touch controls and enters focus mode on click", async () => {

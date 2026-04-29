@@ -317,6 +317,7 @@ function toFileEntry(
 ): WorkspaceFileEntry {
   return {
     ...toFileNode(target, absolutePath, metadata.kind),
+    absolutePath,
     size: metadata.size,
     modifiedAt: metadata.modifiedAt,
     versionToken: metadata.versionToken,

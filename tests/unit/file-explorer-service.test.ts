@@ -314,3 +314,56 @@ describe("fileExplorerService.listDirectory", () => {
     expect(result.entriesByDirectory["src-link"]).toEqual([]);
   });
 });
+
+describe("fileExplorerService file entries", () => {
+  const tempDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(tempDirectories.splice(0).map(async (directory) => {
+      await rm(directory, { recursive: true, force: true });
+    }));
+  });
+
+  test("includes the absolute path when reading a file", async () => {
+    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-read-"));
+    tempDirectories.push(rootDirectory);
+    await mkdir(join(rootDirectory, "src"), { recursive: true });
+    await writeFile(join(rootDirectory, "src", "index.ts"), "export const value = 1;\n");
+
+    const result = await fileExplorerService.readFile({
+      id: "workspace-1",
+      rootDirectory,
+      pathScopeLabel: "workspace root",
+      executor: new TestCommandExecutor(),
+    }, "src/index.ts");
+
+    expect(result.file.path).toBe("src/index.ts");
+    expect(result.file.absolutePath).toBe(join(rootDirectory, "src", "index.ts"));
+    expect(result.content).toContain("value = 1");
+  });
+
+  test("includes the absolute path in metadata for alternate roots", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-alt-root-"));
+    const alternateRoot = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-alt-target-"));
+    tempDirectories.push(workspaceRoot, alternateRoot);
+    await mkdir(join(alternateRoot, "notes"), { recursive: true });
+    await writeFile(join(alternateRoot, "notes", "todo.txt"), "remember the milk\n");
+
+    const resolvedRootDirectory = await resolveFileExplorerRootDirectory(
+      new TestCommandExecutor(),
+      workspaceRoot,
+      alternateRoot,
+    );
+
+    const result = await fileExplorerService.getMetadata({
+      id: "workspace-1",
+      rootDirectory: resolvedRootDirectory,
+      pathScopeLabel: "workspace root",
+      executor: new TestCommandExecutor(),
+    }, "notes/todo.txt");
+
+    expect(result).not.toBeNull();
+    expect(result?.path).toBe("notes/todo.txt");
+    expect(result?.absolutePath).toBe(join(alternateRoot, "notes", "todo.txt"));
+  });
+});

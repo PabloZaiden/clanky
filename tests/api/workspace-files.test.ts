@@ -122,10 +122,11 @@ describe("workspace files API integration", () => {
 
     const data = await response.json() as {
       content: string;
-      file: { path: string; kind: string };
+      file: { path: string; absolutePath: string; kind: string };
     };
     expect(data.content).toContain("value = 1");
     expect(data.file.path).toBe("src/index.ts");
+    expect(data.file.absolutePath).toBe(join(workDir, "src", "index.ts"));
     expect(data.file.kind).toBe("file");
   });
 
@@ -208,8 +209,9 @@ describe("workspace files API integration", () => {
     );
     expect(response.ok).toBe(true);
 
-    const data = await response.json() as { file: { path: string; versionToken: string } };
+    const data = await response.json() as { file: { path: string; absolutePath: string; versionToken: string } };
     expect(data.file.path).toBe("src/index.ts");
+    expect(data.file.absolutePath).toBe(join(workDir, "src", "index.ts"));
     expect(data.file.versionToken.length).toBeGreaterThan(0);
   });
 
@@ -330,8 +332,9 @@ describe("workspace files API integration", () => {
       `${baseUrl}/api/workspaces/${workspace.id}/files/content?path=${encodeURIComponent("notes/todo.txt")}&startDirectory=${startDirectory}`,
     );
     expect(readResponse.ok).toBe(true);
-    const readData = await readResponse.json() as { content: string; file: { path: string } };
+    const readData = await readResponse.json() as { content: string; file: { path: string; absolutePath: string } };
     expect(readData.file.path).toBe("notes/todo.txt");
+    expect(readData.file.absolutePath).toBe(join(alternateRootDir, "notes", "todo.txt"));
     expect(readData.content).toBe("alternate root note\n");
 
     const metadataResponse = await fetch(
