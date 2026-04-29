@@ -28,11 +28,8 @@ export function AgentsMdSection({ workspace }: AgentsMdSectionProps) {
   useEffect(() => {
     setOptimizeSuccess(null);
     setWasAlreadyOptimized(false);
-
+    resetOptimizer();
     void fetchOptimizerStatus(workspace.id);
-    return () => {
-      resetOptimizer();
-    };
   }, [fetchOptimizerStatus, resetOptimizer, workspace]);
 
   async function handleOptimize() {

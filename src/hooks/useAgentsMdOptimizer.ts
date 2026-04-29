@@ -4,7 +4,7 @@
  * to a workspace's AGENTS.md file.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { OptimizationAnalysis, OptimizationPreview } from "../core/agents-md-optimizer";
 import { analyzeAgentsMd } from "../core/agents-md-optimizer";
 import { log } from "../lib/logger";
@@ -75,35 +75,53 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
   const [preview, setPreview] = useState<OptimizationPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   const fetchStatus = useCallback(async (workspaceId: string): Promise<AgentsMdStatus | null> => {
     try {
-      setLoading(true);
-      setError(null);
+      if (isMountedRef.current) {
+        setLoading(true);
+        setError(null);
+      }
       const response = await appFetch(`/api/workspaces/${workspaceId}/agents-md`);
       if (!response.ok) {
         const errorData = await response.json() as { message?: string };
         throw new Error(errorData.message || "Failed to fetch AGENTS.md status");
       }
       const data = (await response.json()) as AgentsMdStatus;
-      setStatus(data);
+      if (isMountedRef.current) {
+        setStatus(data);
+      }
       return data;
     } catch (err) {
       const rawMessage = String(err);
       // Provide user-friendly messages for common connection errors
       const message = formatOptimizerError(rawMessage);
-      setError(message);
+      if (isMountedRef.current) {
+        setError(message);
+      }
       log.error("Failed to fetch AGENTS.md status:", err);
       return null;
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const fetchPreview = useCallback(async (workspaceId: string): Promise<OptimizationPreview | null> => {
     try {
-      setLoading(true);
-      setError(null);
+      if (isMountedRef.current) {
+        setLoading(true);
+        setError(null);
+      }
       const response = await appFetch(`/api/workspaces/${workspaceId}/agents-md/preview`, {
         method: "POST",
       });
@@ -112,30 +130,38 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
         throw new Error(errorData.message || "Failed to preview optimization");
       }
       const data = (await response.json()) as OptimizationPreview;
-      setPreview(data);
-      // Also update the status from the preview analysis
-      setStatus({
-        content: data.currentContent,
-        fileExists: data.fileExists,
-        analysis: data.analysis,
-      });
+      if (isMountedRef.current) {
+        setPreview(data);
+        // Also update the status from the preview analysis
+        setStatus({
+          content: data.currentContent,
+          fileExists: data.fileExists,
+          analysis: data.analysis,
+        });
+      }
       return data;
     } catch (err) {
       const rawMessage = String(err);
       // Apply the same user-friendly formatting as fetchStatus and optimize
       const message = formatOptimizerError(rawMessage);
-      setError(message);
+      if (isMountedRef.current) {
+        setError(message);
+      }
       log.error("Failed to preview AGENTS.md optimization:", err);
       return null;
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const optimize = useCallback(async (workspaceId: string): Promise<OptimizeResult | null> => {
     try {
-      setLoading(true);
-      setError(null);
+      if (isMountedRef.current) {
+        setLoading(true);
+        setError(null);
+      }
       const response = await appFetch(`/api/workspaces/${workspaceId}/agents-md/optimize`, {
         method: "POST",
       });
@@ -145,7 +171,7 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
       }
       const data = (await response.json()) as OptimizeResult;
       // Update local status after successful optimization
-      if (data.success) {
+      if (data.success && isMountedRef.current) {
         // Derive analysis from the returned content, or use analysis from server if provided
         const derivedAnalysis = data.analysis ?? analyzeAgentsMd(data.content);
         setStatus({
@@ -159,15 +185,22 @@ export function useAgentsMdOptimizer(): UseAgentsMdOptimizerResult {
     } catch (err) {
       const rawMessage = String(err);
       const message = formatOptimizerError(rawMessage);
-      setError(message);
+      if (isMountedRef.current) {
+        setError(message);
+      }
       log.error("Failed to optimize AGENTS.md:", err);
       return null;
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   const reset = useCallback(() => {
+    if (!isMountedRef.current) {
+      return;
+    }
     setStatus(null);
     setPreview(null);
     setLoading(false);
