@@ -16,7 +16,7 @@ By default, the API does not require application-level credentials. In productio
 
 When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
 
-`ralpher-cli auth` uses the device flow endpoints, `ralpher-cli status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher-cli api` sends authenticated REST calls with those stored tokens, `ralpher-cli ws` opens authenticated websocket sessions against `/api/ws`, `ralpher-cli schema` exposes discoverability metadata for catalogued endpoints, and `ralpher-cli update` checks or installs published CLI client binaries from GitHub Releases.
+`ralpher-cli auth` uses the device flow endpoints, `ralpher-cli status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher-cli api` sends authenticated REST calls with those stored tokens, `ralpher-cli ws` opens authenticated websocket sessions against `/api/ws`, `ralpher-cli schema` exposes discoverability metadata for catalogued endpoints, and `ralpher-cli update` checks or installs published Ralpher release binaries from GitHub Releases.
 
 ## CLI discovery helpers
 
@@ -32,7 +32,7 @@ ralpher-cli version
 # Check whether a newer published binary is available
 ralpher-cli update --check
 
-# Update the installed release binary in place
+# Update the installed release binaries in place
 ralpher-cli update
 
 # Authenticate against a server
@@ -51,7 +51,7 @@ ralpher-cli schema auth/device
 ralpher-cli ws --loop-id my-loop
 ```
 
-`ralpher-cli help` includes the same version banner shown by `ralpher-cli version`, which makes it easier to confirm the client version while browsing the built-in command list. `ralpher-cli update` currently supports only the published Linux and macOS CLI release binaries and should not be used from a Bun source checkout. `ralpher-cli api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `ralpher-cli ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
+`ralpher-cli help` includes the same version banner shown by `ralpher-cli version`, which makes it easier to confirm the client version while browsing the built-in command list. `ralpher-cli update` currently supports only the published Linux and macOS release binaries, updates `ralpher-cli` plus a sibling `ralpher` binary when one is installed beside it, prints progress while release metadata and downloads are in flight, and should not be used from a Bun source checkout. If a present `ralpher` binary cannot be replaced because it is in use or not writable, the command fails with a clear message. `ralpher-cli api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `ralpher-cli ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
 
 Example CLI output:
 

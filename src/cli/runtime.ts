@@ -40,7 +40,7 @@ const CLI_HELP_ENTRIES: CliHelpEntry[] = [
   },
   {
     name: "update",
-    description: "Check for or install a newer ralpher-cli release.",
+    description: "Check for or install newer Ralpher release binaries.",
     usage: ["ralpher-cli update [--check] [--version <version>]"],
   },
   {

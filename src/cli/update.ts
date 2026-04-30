@@ -4,8 +4,8 @@ import { z } from "zod";
 
 const GITHUB_REPOSITORY = "pablozaiden/ralpher";
 const GITHUB_API_BASE_URL = `https://api.github.com/repos/${GITHUB_REPOSITORY}`;
-const RELEASE_BINARY_PREFIX = "ralpher-cli";
 const CLI_BINARY_NAME = "ralpher-cli";
+const SERVER_BINARY_NAME = "ralpher";
 
 const ReleaseAssetSchema = z.object({
   name: z.string().min(1),
@@ -39,6 +39,7 @@ export interface CliUpdateDependencies {
   };
   getExecutablePath: () => string;
   resolveRealPath: (path: string) => Promise<string>;
+  fileExists: (path: string) => Promise<boolean>;
   createTempDirectory: (targetDirectory: string) => Promise<string>;
   writeBinary: (path: string, content: WritableBinaryContent) => Promise<void>;
   chmodFile: (path: string, mode: number) => Promise<void>;
@@ -52,9 +53,16 @@ export interface CliUpdateDependencies {
 type GitHubRelease = z.infer<typeof ReleaseSchema>;
 
 type ReleaseAsset = {
+  binaryName: string;
   version: string;
   assetName: string;
   downloadUrl: string;
+};
+
+type InstalledBinaryTarget = {
+  binaryName: string;
+  assetPrefix: string;
+  targetPath: string;
 };
 
 function createDefaultUpdateDependencies(): CliUpdateDependencies {
@@ -68,6 +76,7 @@ function createDefaultUpdateDependencies(): CliUpdateDependencies {
     }),
     getExecutablePath: () => process.execPath,
     resolveRealPath: async (path: string) => await realpath(path),
+    fileExists: async (path: string) => await Bun.file(path).exists(),
     createTempDirectory: async (targetDirectory: string) => await mkdtemp(join(targetDirectory, ".ralpher-update-")),
     writeBinary: async (path: string, content: WritableBinaryContent) => {
       await Bun.write(path, content);
@@ -198,7 +207,11 @@ export function resolveReleasePlatform(platform: NodeJS.Platform, arch: string):
 }
 
 export function buildReleaseAssetName(tag: string, target: ReleasePlatform): string {
-  return `${RELEASE_BINARY_PREFIX}-${tag}-${target.os}-${target.arch}`;
+  return buildBinaryReleaseAssetName(CLI_BINARY_NAME, tag, target);
+}
+
+function buildBinaryReleaseAssetName(binaryName: string, tag: string, target: ReleasePlatform): string {
+  return `${binaryName}-${tag}-${target.os}-${target.arch}`;
 }
 
 async function fetchRelease(
@@ -209,6 +222,7 @@ async function fetchRelease(
   const releaseUrl = tag
     ? `${GITHUB_API_BASE_URL}/releases/tags/${tag}`
     : `${GITHUB_API_BASE_URL}/releases/latest`;
+  dependencies.out(tag ? `Fetching release metadata for ${tag}...` : "Fetching release metadata...");
   const response = await dependencies.fetchFn(releaseUrl, {
     headers: {
       accept: "application/vnd.github+json",
@@ -232,20 +246,19 @@ async function fetchRelease(
   return ReleaseSchema.parse(rawBody);
 }
 
-async function resolveReleaseAsset(
-  command: UpdateCommandOptions,
-  dependencies: CliUpdateDependencies,
-): Promise<ReleaseAsset> {
-  const release = await fetchRelease(command.version, dependencies);
-  const runtimePlatform = dependencies.getPlatform();
-  const releasePlatform = resolveReleasePlatform(runtimePlatform.platform, runtimePlatform.arch);
-  const assetName = buildReleaseAssetName(release.tag_name, releasePlatform);
+function resolveReleaseAsset(
+  release: GitHubRelease,
+  target: ReleasePlatform,
+  binaryName: string,
+): ReleaseAsset {
+  const assetName = buildBinaryReleaseAssetName(binaryName, release.tag_name, target);
   const asset = release.assets.find((entry) => entry.name === assetName);
   if (!asset) {
     throw new Error(`Release ${release.tag_name} does not include asset ${assetName}.`);
   }
 
   return {
+    binaryName,
     version: normalizeReleaseVersion(release.tag_name),
     assetName,
     downloadUrl: asset.browser_download_url,
@@ -278,17 +291,21 @@ function toPermissionMessage(path: string, error: unknown): Error {
   const code = typeof error === "object" && error && "code" in error ? String(error.code) : undefined;
   if (code === "EACCES" || code === "EPERM") {
     return new Error(
-      `Cannot update ${path}: permission denied. Re-run with permission to modify the installed binary or use the installer script.`,
-    );
+        `Cannot update ${path}: permission denied. Re-run with permission to modify the installed binary or use the installer script.`,
+      );
+  }
+  if (code === "EBUSY" || code === "ETXTBSY") {
+    return new Error(`Cannot update ${path}: the binary is currently in use. Stop any running Ralpher process and try again.`);
   }
   return new Error(`Failed to update ${path}: ${String(error)}`);
 }
 
 async function replaceInstalledBinary(
+  target: InstalledBinaryTarget,
   asset: ReleaseAsset,
   dependencies: CliUpdateDependencies,
 ): Promise<string> {
-  const targetPath = await resolveInstalledBinaryPath(dependencies);
+  const targetPath = target.targetPath;
   let tempDirectory: string | undefined;
   let tempPath: string | undefined;
   let tempCreated = false;
@@ -296,6 +313,7 @@ async function replaceInstalledBinary(
   try {
     tempDirectory = await dependencies.createTempDirectory(dirname(targetPath));
     tempPath = join(tempDirectory, asset.assetName);
+    dependencies.out(`Downloading ${asset.assetName}...`);
     const response = await dependencies.fetchFn(asset.downloadUrl);
     if (!response.ok) {
       throw new Error(`Failed to download ${asset.assetName}: GitHub returned ${String(response.status)}.`);
@@ -308,6 +326,7 @@ async function replaceInstalledBinary(
     const installedBinaryStat = await dependencies.statFile(targetPath);
     const executableMode = installedBinaryStat.mode & 0o777;
     await dependencies.chmodFile(tempPath, executableMode || 0o755);
+    dependencies.out(`Replacing ${targetPath}...`);
     await dependencies.renameFile(tempPath, targetPath);
     return targetPath;
   } catch (error) {
@@ -322,6 +341,30 @@ async function replaceInstalledBinary(
   }
 }
 
+async function resolveInstalledBinaryTargets(
+  dependencies: CliUpdateDependencies,
+): Promise<InstalledBinaryTarget[]> {
+  const cliPath = await resolveInstalledBinaryPath(dependencies);
+  const targets: InstalledBinaryTarget[] = [];
+  const companionPath = join(dirname(cliPath), SERVER_BINARY_NAME);
+
+  if (await dependencies.fileExists(companionPath)) {
+    targets.push({
+      binaryName: SERVER_BINARY_NAME,
+      assetPrefix: SERVER_BINARY_NAME,
+      targetPath: companionPath,
+    });
+  }
+
+  targets.push({
+    binaryName: CLI_BINARY_NAME,
+    assetPrefix: CLI_BINARY_NAME,
+    targetPath: cliPath,
+  });
+
+  return targets;
+}
+
 export async function runUpdateCommand(
   command: UpdateCommandOptions,
   dependencyOverrides: Partial<CliUpdateDependencies> = {},
@@ -331,29 +374,37 @@ export async function runUpdateCommand(
     ...dependencyOverrides,
   };
   const currentVersion = normalizeReleaseVersion(dependencies.currentVersion);
-  const releaseAsset = await resolveReleaseAsset(command, dependencies);
+  const release = await fetchRelease(command.version, dependencies);
+  const runtimePlatform = dependencies.getPlatform();
+  const releasePlatform = resolveReleasePlatform(runtimePlatform.platform, runtimePlatform.arch);
+  const cliReleaseAsset = resolveReleaseAsset(release, releasePlatform, CLI_BINARY_NAME);
 
   if (command.checkOnly) {
-    dependencies.out(formatCheckMessage(currentVersion, releaseAsset.version));
+    dependencies.out(formatCheckMessage(currentVersion, cliReleaseAsset.version));
     return 0;
   }
 
-  if (!command.version && compareReleaseVersions(currentVersion, releaseAsset.version) >= 0) {
-    dependencies.out(formatCheckMessage(currentVersion, releaseAsset.version));
+  if (!command.version && compareReleaseVersions(currentVersion, cliReleaseAsset.version) >= 0) {
+    dependencies.out(formatCheckMessage(currentVersion, cliReleaseAsset.version));
     return 0;
   }
 
-  if (command.version && compareReleaseVersions(currentVersion, releaseAsset.version) === 0) {
+  if (command.version && compareReleaseVersions(currentVersion, cliReleaseAsset.version) === 0) {
     dependencies.out(`${CLI_BINARY_NAME} ${currentVersion} is already installed.`);
     return 0;
   }
 
-  const installedPath = await replaceInstalledBinary(releaseAsset, dependencies);
-  if (command.version) {
-    dependencies.out(`Installed ${CLI_BINARY_NAME} ${releaseAsset.version} at ${installedPath}.`);
-    return 0;
+  const installedTargets = await resolveInstalledBinaryTargets(dependencies);
+  for (const target of installedTargets) {
+    const releaseAsset = resolveReleaseAsset(release, releasePlatform, target.assetPrefix);
+    const installedPath = await replaceInstalledBinary(target, releaseAsset, dependencies);
+    if (command.version) {
+      dependencies.out(`Installed ${target.binaryName} ${releaseAsset.version} at ${installedPath}.`);
+      continue;
+    }
+
+    dependencies.out(`Updated ${target.binaryName} ${currentVersion} -> ${releaseAsset.version} at ${installedPath}.`);
   }
 
-  dependencies.out(`Updated ${CLI_BINARY_NAME} ${currentVersion} -> ${releaseAsset.version} at ${installedPath}.`);
   return 0;
 }
