@@ -141,10 +141,6 @@ ralpher-cli schema auth/device
 ralpher-cli ws --loop-id my-loop
 ```
 
-`ralpher-cli version` prints the installed client version, and the built-in help output shows the same version banner for quick support/debugging context. `ralpher-cli update --check` compares the installed version with the latest published GitHub Release, `ralpher-cli update` replaces the current installed client binary in place, and `ralpher-cli update --version <tag>` installs a specific published CLI release. `ralpher-cli auth` stores the chosen server URL alongside the tokens under the user's home folder (`~/.ralpher/cli-auth.json` by default), so later `ralpher-cli status`, `ralpher-cli api`, and `ralpher-cli ws` requests reuse that same server automatically. `ralpher-cli status` and `ralpher-cli ws` both accept an optional positional base URL override if you need a different target server. When `ralpher-cli api <endpoint>` calls an endpoint, it prints a single parseable JSON object with the HTTP status metadata under `status` and the parsed body, plain-text body, or `null` under `response`.
-
-`ralpher-cli ws` connects to `/api/ws` with the stored bearer token and cookies, then bridges websocket text frames to stdout and stdin lines back to the websocket. Use one JSON value per non-empty stdin line and keep stderr reserved for diagnostics. Supported filters mirror the server query parameters: `--loop-id`, `--chat-id`, `--ssh-session-id`, `--ssh-server-session-id`, and `--provisioning-job-id`.
-
 ### Create your first loop
 
 1. Open the dashboard and click **New Loop**.
