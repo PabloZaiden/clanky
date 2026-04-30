@@ -1965,4 +1965,61 @@ describe("actions tab comment history", () => {
       expect(getByText("No comments yet.")).toBeTruthy();
     });
   });
+
+  test("wraps long feedback lines inside the review comment card", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID, name: "Review Loop" },
+      state: {
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 1,
+          reviewBranches: [],
+        },
+      },
+    });
+    const longComment = [
+      "Feedback 1",
+      "(sources=review_thread:PRRT_kwDOQ9x4vs5-xnOH,authors=copilot-pull-request-reviewer,paths=src/cli/update.ts:406,urls=https://github.com/PabloZaiden/ralpher/pull/540#discussion_r1234567890123456789012345678901234567890)",
+      "Make companion `ralpher` replacement failures non-fatal in `ralpher-cli update`.",
+    ].join("\n");
+
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/comments", () => ({
+      success: true,
+      comments: [
+        {
+          id: "c1",
+          loopId: LOOP_ID,
+          reviewCycle: 1,
+          commentText: longComment,
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+
+    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(renderResult.getByText("Review Loop")).toBeTruthy();
+    });
+
+    const actionsTab = await openActionsTab(renderResult);
+    const commentBody = await waitFor(() =>
+      within(actionsTab).getByText((_, element) => (
+        element instanceof HTMLParagraphElement && element.textContent === longComment
+      ))
+    );
+
+    expect(commentBody.className).toContain("whitespace-pre-wrap");
+    expect(commentBody.className).toContain("break-words");
+    expect(commentBody.className).toContain("[overflow-wrap:anywhere]");
+  });
 });

@@ -97,7 +97,7 @@ export function ReviewTab({ loop, labels, loadingComments, reviewComments, embed
                           {comments.map((comment) => (
                             <div
                               key={comment.id}
-                              className="bg-white dark:bg-neutral-800 border border-gray-200 dark:border-gray-700 rounded p-3"
+                              className="min-w-0 bg-white dark:bg-neutral-800 border border-gray-200 dark:border-gray-700 rounded p-3"
                             >
                               <div className="flex items-start justify-between gap-2 mb-2">
                                 <span
@@ -113,7 +113,7 @@ export function ReviewTab({ loop, labels, loadingComments, reviewComments, embed
                                   {new Date(comment.createdAt).toLocaleString()}
                                 </span>
                               </div>
-                              <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                              <p className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-gray-700 dark:text-gray-300">
                                 {comment.commentText}
                               </p>
                               {comment.addressedAt && (
