@@ -31,7 +31,7 @@ const CLI_USAGE = [
 const CLI_COMMAND_ENTRIES = [
   ["help", "Show the CLI help and available commands."],
   ["version", "Print the current ralpher-cli version."],
-  ["update", "Check for or install a newer ralpher-cli release."],
+  ["update", "Check for or install newer Ralpher release binaries."],
   ["auth", "Authenticate against a Ralpher server and store credentials."],
   ["status", "Show the current authentication status for a server."],
   ["api", "List API endpoints or send an authenticated API request."],
