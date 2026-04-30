@@ -32,6 +32,7 @@ type WritableBinaryContent = Uint8Array | string;
 export interface CliUpdateDependencies {
   fetchFn: typeof fetch;
   out: (message: string) => void;
+  err: (message: string) => void;
   currentVersion: string;
   getPlatform: () => {
     platform: NodeJS.Platform;
@@ -69,6 +70,7 @@ function createDefaultUpdateDependencies(): CliUpdateDependencies {
   return {
     fetchFn: fetch,
     out: console.log,
+    err: console.error,
     currentVersion: "0.0.0-development",
     getPlatform: () => ({
       platform: process.platform,
@@ -291,13 +293,18 @@ function toPermissionMessage(path: string, error: unknown): Error {
   const code = typeof error === "object" && error && "code" in error ? String(error.code) : undefined;
   if (code === "EACCES" || code === "EPERM") {
     return new Error(
-        `Cannot update ${path}: permission denied. Re-run with permission to modify the installed binary or use the installer script.`,
-      );
+      `Cannot update ${path}: permission denied. Re-run with permission to modify the installed binary or use the installer script.`,
+    );
   }
   if (code === "EBUSY" || code === "ETXTBSY") {
     return new Error(`Cannot update ${path}: the binary is currently in use. Stop any running Ralpher process and try again.`);
   }
   return new Error(`Failed to update ${path}: ${String(error)}`);
+}
+
+function formatCompanionUpdateWarning(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `Warning: ${message} Continuing with ${CLI_BINARY_NAME} update.`;
 }
 
 async function replaceInstalledBinary(
@@ -397,7 +404,16 @@ export async function runUpdateCommand(
   const installedTargets = await resolveInstalledBinaryTargets(dependencies);
   for (const target of installedTargets) {
     const releaseAsset = resolveReleaseAsset(release, releasePlatform, target.assetPrefix);
-    const installedPath = await replaceInstalledBinary(target, releaseAsset, dependencies);
+    let installedPath: string;
+    try {
+      installedPath = await replaceInstalledBinary(target, releaseAsset, dependencies);
+    } catch (error) {
+      if (target.binaryName === SERVER_BINARY_NAME) {
+        dependencies.err(formatCompanionUpdateWarning(error));
+        continue;
+      }
+      throw error;
+    }
     if (command.version) {
       dependencies.out(`Installed ${target.binaryName} ${releaseAsset.version} at ${installedPath}.`);
       continue;

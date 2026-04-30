@@ -528,6 +528,7 @@ export async function runCli(
         return await runUpdateCommand(command, {
           fetchFn,
           out,
+          err,
           currentVersion: RALPHER_VERSION,
           ...dependencies.updateDependencies,
         });

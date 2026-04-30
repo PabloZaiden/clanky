@@ -424,7 +424,7 @@ describe("ralpher cli update", () => {
     ]);
   });
 
-  test("fails gracefully when the companion ralpher binary is in use", async () => {
+  test("warns and continues when the companion ralpher binary is in use", async () => {
     const output: string[] = [];
     const requests: string[] = [];
 
@@ -477,16 +477,20 @@ describe("ralpher cli update", () => {
       },
     });
 
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(0);
     expect(requests).toEqual([
       "https://api.github.com/repos/pablozaiden/ralpher/releases/latest",
       "https://downloads.test/ralpher-v1.2.4-linux-x64",
+      "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
     ]);
     expect(output).toEqual([
       "Fetching release metadata...",
       "Downloading ralpher-v1.2.4-linux-x64...",
       "Replacing /usr/local/bin/ralpher...",
-      "ERR:Error: Cannot update /usr/local/bin/ralpher: the binary is currently in use. Stop any running Ralpher process and try again.",
+      "ERR:Warning: Cannot update /usr/local/bin/ralpher: the binary is currently in use. Stop any running Ralpher process and try again. Continuing with ralpher-cli update.",
+      "Downloading ralpher-cli-v1.2.4-linux-x64...",
+      "Replacing /usr/local/bin/ralpher-cli...",
+      "Updated ralpher-cli 1.2.3 -> 1.2.4 at /usr/local/bin/ralpher-cli.",
     ]);
   });
 
