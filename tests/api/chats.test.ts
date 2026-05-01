@@ -218,6 +218,56 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("checks out the selected branch for non-worktree chats without creating a managed chat branch", async () => {
+    const originalBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+    const selectedBranch = "selected-chat-base";
+
+    await Bun.$`git -C ${testWorkDir} checkout -b ${selectedBranch}`.quiet();
+    await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+
+    try {
+      const branchFormat = "%(refname:short)";
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Selected Branch Chat",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: selectedBranch,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Use the selected branch",
+          attachments: [],
+        }),
+      });
+      expect(sendResponse.status).toBe(200);
+
+      await waitForChatIdle(created.config.id as string);
+
+      const currentBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+      expect(currentBranch).toBe(selectedBranch);
+
+      const branches = (await Bun.$`git -C ${testWorkDir} for-each-ref --format=${branchFormat} refs/heads`.text())
+        .split("\n")
+        .map((branch) => branch.trim())
+        .filter(Boolean);
+      expect(branches.some((branch) => branch.startsWith("chat-selected-branch-chat-"))).toBe(false);
+      expect(branches.includes(selectedBranch)).toBe(true);
+    } finally {
+      await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+    }
+  });
+
   test("preserves the original first message after multiple sends and reconnect", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
@@ -461,6 +511,19 @@ describe("Chats API Integration", () => {
     expect(created.config.loopId).toBe(loopId);
     expect(created.config.directory).toBe(loopWorkingDirectory);
     expect(created.config.useWorktree).toBe(false);
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Stay in the loop worktree",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    await waitForChatIdle(created.config.id as string);
+    expect(mockBackend.getDirectory()).toBe(loopWorkingDirectory);
 
     const getResponse = await fetch(`${baseUrl}/api/loops/${loopId}/chat`);
     expect(getResponse.status).toBe(200);

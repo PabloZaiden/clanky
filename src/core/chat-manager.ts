@@ -679,6 +679,7 @@ export class ChatManager {
     }
 
     if (!chat.config.useWorktree) {
+      await this.ensureStandaloneChatBranch(chat);
       return {
         chat,
         directory: chat.config.directory,
@@ -695,6 +696,35 @@ export class ChatManager {
       chat: prepared,
       directory: worktreePath,
     };
+  }
+
+  private async ensureStandaloneChatBranch(chat: Chat): Promise<void> {
+    if (isLoopChat(chat) || chat.config.useWorktree) {
+      return;
+    }
+
+    const expectedBranch = chat.config.baseBranch?.trim();
+    if (!expectedBranch) {
+      return;
+    }
+
+    const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const git = GitService.withExecutor(executor);
+    const isGitRepo = await git.isGitRepo(chat.config.directory);
+    if (!isGitRepo) {
+      return;
+    }
+    const result = await git.ensureBranch(chat.config.directory, expectedBranch, {
+      autoCheckout: true,
+    });
+
+    if (result.checkedOut) {
+      log.info("[ChatManager] Checked out selected branch for standalone chat", {
+        chatId: chat.config.id,
+        fromBranch: result.currentBranch,
+        toBranch: result.expectedBranch,
+      });
+    }
   }
 
   private async ensureWorktree(chat: Chat): Promise<Chat> {
