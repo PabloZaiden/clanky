@@ -13,14 +13,23 @@ import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
 import type { EventStream } from "../utils/event-stream";
-import { ChatBusyError, createInitialChatState, DEFAULT_CHAT_CONFIG, isChatBusyStatus, isLoopChat, isStandaloneChat } from "../types/chat";
+import {
+  ChatBranchCheckoutError,
+  ChatBusyError,
+  createInitialChatState,
+  DEFAULT_CHAT_CONFIG,
+  InvalidChatBaseBranchError,
+  isChatBusyStatus,
+  isLoopChat,
+  isStandaloneChat,
+} from "../types/chat";
 import { loadChat, loadLoopChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { nextWithTimeout } from "./engine/engine-helpers";
 import { isSessionNotFoundError } from "./engine/engine-session";
-import { GitService } from "./git";
+import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { loopManager } from "./loop-manager";
 import { createLogger } from "./logger";
@@ -714,9 +723,28 @@ export class ChatManager {
     if (!isGitRepo) {
       return;
     }
-    const result = await git.ensureBranch(chat.config.directory, expectedBranch, {
-      autoCheckout: true,
-    });
+
+    try {
+      await git.assertValidBranchName(chat.config.directory, expectedBranch);
+    } catch (error) {
+      if (error instanceof InvalidBranchNameError) {
+        throw new InvalidChatBaseBranchError(expectedBranch);
+      }
+      throw error;
+    }
+
+    let result;
+    try {
+      result = await git.ensureBranch(chat.config.directory, expectedBranch, {
+        autoCheckout: true,
+      });
+    } catch (error) {
+      throw new ChatBranchCheckoutError(
+        expectedBranch,
+        `Unable to switch the standalone chat to branch '${expectedBranch}'. ${String(error)}`,
+        { cause: error instanceof Error ? error : undefined },
+      );
+    }
 
     if (result.checkedOut) {
       log.info("[ChatManager] Checked out selected branch for standalone chat", {

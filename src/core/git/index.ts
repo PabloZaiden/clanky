@@ -13,6 +13,7 @@ import { log } from "../logger";
 export {
   BranchMismatchError,
   GitCommandError,
+  InvalidBranchNameError,
 } from "./git-types";
 export type {
   GitCommandResult,
@@ -31,7 +32,7 @@ export type {
 // Sub-module imports
 import { isGitRepo, getCurrentBranch, getLocalBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
 import { getRemoteUrl as getRemoteUrlRemote, pushBranch, fetchBranch, pull, pullBranch } from "./git-remote";
-import { createBranch, checkoutBranch, deleteBranch, ensureBranch } from "./git-branch";
+import { assertValidBranchName, createBranch, checkoutBranch, deleteBranch, ensureBranch } from "./git-branch";
 import { stageAll, commit, getLastCommitMessage } from "./git-commit";
 import { stash, stashPop } from "./git-stash";
 import { resetHard, mergeBranch, mergeWithConflictDetection, abortMerge, ensureMergeStrategy } from "./git-merge";
@@ -201,6 +202,10 @@ export class GitService {
 
   async createBranch(directory: string, branchName: string): Promise<void> {
     return createBranch(this.executor, directory, branchName);
+  }
+
+  async assertValidBranchName(directory: string, branchName: string): Promise<void> {
+    return assertValidBranchName(this.executor, directory, branchName);
   }
 
   async checkoutBranch(directory: string, branchName: string): Promise<void> {
