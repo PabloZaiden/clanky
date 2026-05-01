@@ -218,6 +218,135 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("checks out the selected branch for non-worktree chats without creating a managed chat branch", async () => {
+    const originalBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+    const selectedBranch = "selected-chat-base";
+
+    await Bun.$`git -C ${testWorkDir} checkout -b ${selectedBranch}`.quiet();
+    await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+
+    try {
+      const branchFormat = "%(refname:short)";
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Selected Branch Chat",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: selectedBranch,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Use the selected branch",
+          attachments: [],
+        }),
+      });
+      expect(sendResponse.status).toBe(200);
+
+      await waitForChatIdle(created.config.id as string);
+
+      const currentBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+      expect(currentBranch).toBe(selectedBranch);
+
+      const branches = (await Bun.$`git -C ${testWorkDir} for-each-ref --format=${branchFormat} refs/heads`.text())
+        .split("\n")
+        .map((branch) => branch.trim())
+        .filter(Boolean);
+      expect(branches.some((branch) => branch.startsWith("chat-selected-branch-chat-"))).toBe(false);
+      expect(branches.includes(selectedBranch)).toBe(true);
+    } finally {
+      await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+    }
+  });
+
+  test("rejects invalid standalone chat base branches before branch checkout", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Invalid Branch Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "-unsafe-branch",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Try to use the invalid branch",
+        attachments: [],
+      }),
+    });
+
+    expect(sendResponse.status).toBe(400);
+    await expect(sendResponse.json()).resolves.toMatchObject({
+      error: "invalid_chat_base_branch",
+      message: "Standalone chat base branch '-unsafe-branch' is not a valid git branch name.",
+    });
+  });
+
+  test("returns a conflict when standalone branch checkout cannot proceed", async () => {
+    const originalBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+    const selectedBranch = `selected-chat-conflict-${crypto.randomUUID().slice(0, 8)}`;
+    const dirtyFile = join(testWorkDir, "standalone-chat-dirty.txt");
+
+    await Bun.$`git -C ${testWorkDir} checkout -b ${selectedBranch}`.quiet();
+    await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+    await writeFile(dirtyFile, "dirty working tree\n");
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Branch Conflict Chat",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: selectedBranch,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Try to switch branches with local changes",
+          attachments: [],
+        }),
+      });
+
+      expect(sendResponse.status).toBe(409);
+      const errorBody = await sendResponse.json();
+      expect(errorBody).toMatchObject({
+        error: "chat_branch_checkout_failed",
+      });
+      expect(errorBody.message).toContain(`Unable to switch the standalone chat to branch '${selectedBranch}'.`);
+      expect(errorBody.message).toContain(`Cannot auto-checkout to '${selectedBranch}'`);
+    } finally {
+      await rm(dirtyFile, { force: true });
+      await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
+    }
+  });
+
   test("preserves the original first message after multiple sends and reconnect", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
@@ -461,6 +590,19 @@ describe("Chats API Integration", () => {
     expect(created.config.loopId).toBe(loopId);
     expect(created.config.directory).toBe(loopWorkingDirectory);
     expect(created.config.useWorktree).toBe(false);
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Stay in the loop worktree",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    await waitForChatIdle(created.config.id as string);
+    expect(mockBackend.getDirectory()).toBe(loopWorkingDirectory);
 
     const getResponse = await fetch(`${baseUrl}/api/loops/${loopId}/chat`);
     expect(getResponse.status).toBe(200);

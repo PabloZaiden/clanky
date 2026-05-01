@@ -1581,6 +1581,48 @@ describe("ChatManager", () => {
     }
   });
 
+  test("checks out the selected branch for non-worktree chats without creating a managed chat branch", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the chat backend"],
+      initGit: true,
+    });
+
+    const originalBranch = await context.git.getCurrentBranch(context.workDir);
+    const selectedBranch = "selected-chat-base";
+    await context.git.createBranch(context.workDir, selectedBranch);
+    await context.git.checkoutBranch(context.workDir, originalBranch);
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Runtime Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      baseBranch: selectedBranch,
+      ...testModelFields,
+    });
+
+    const started = await manager.sendMessage(chat.config.id, {
+      message: "Say hello",
+    });
+
+    expect(started.state.status).toBe("streaming");
+
+    const completed = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle" && current.state.messages.some((message) => message.role === "assistant"),
+    );
+
+    expect(completed.state.worktree).toBeUndefined();
+    expect(context.mockBackend?.getDirectory()).toBe(context.workDir);
+    expect(await context.git.getCurrentBranch(context.workDir)).toBe(selectedBranch);
+    expect(
+      (await context.git.getLocalBranches(context.workDir)).some((branch) =>
+        branch.name.startsWith("chat-runtime-chat-"),
+      ),
+    ).toBe(false);
+  });
+
   test("persists the active assistant message incrementally while streaming", async () => {
     context = await setupTestContext({
       useMockBackend: true,
@@ -2056,13 +2098,14 @@ describe("ChatManager", () => {
     startPlanModeSpy.mockResolvedValue();
 
     try {
+      const currentBranch = await context.git.getCurrentBranch(context.workDir);
       const manager = new ChatManager();
       const chat = await manager.createChat({
         name: "Spawn Model Chat",
         workspaceId: testWorkspaceId,
         directory: context.workDir,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: currentBranch,
         ...testModelFields,
       });
 

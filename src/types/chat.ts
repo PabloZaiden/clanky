@@ -136,3 +136,27 @@ export class InvalidCurrentPlanError extends Error {
     this.name = "InvalidCurrentPlanError";
   }
 }
+
+export class InvalidChatBaseBranchError extends Error {
+  readonly code = "invalid_chat_base_branch";
+  readonly status = 400;
+  readonly branchName: string;
+
+  constructor(branchName: string) {
+    super(`Standalone chat base branch '${branchName}' is not a valid git branch name.`);
+    this.name = "InvalidChatBaseBranchError";
+    this.branchName = branchName;
+  }
+}
+
+export class ChatBranchCheckoutError extends Error {
+  readonly code = "chat_branch_checkout_failed";
+  readonly status = 409;
+  readonly branchName: string;
+
+  constructor(branchName: string, message = `Unable to switch the standalone chat to branch '${branchName}'.`, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ChatBranchCheckoutError";
+    this.branchName = branchName;
+  }
+}

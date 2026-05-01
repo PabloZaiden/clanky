@@ -7,7 +7,14 @@
 
 import { chatManager } from "../core/chat-manager";
 import { createLogger } from "../core/logger";
-import { ChatBusyError, EmptyChatTranscriptError, InvalidCurrentPlanError, isLoopChat } from "../types/chat";
+import {
+  ChatBranchCheckoutError,
+  ChatBusyError,
+  EmptyChatTranscriptError,
+  InvalidChatBaseBranchError,
+  InvalidCurrentPlanError,
+  isLoopChat,
+} from "../types/chat";
 import type { ChatConfig } from "../types/chat";
 import {
   CreateChatRequestSchema,
@@ -27,6 +34,8 @@ function createChatActionErrorResponse(error: unknown): Response | null {
     error instanceof ChatBusyError
     || error instanceof EmptyChatTranscriptError
     || error instanceof InvalidCurrentPlanError
+    || error instanceof InvalidChatBaseBranchError
+    || error instanceof ChatBranchCheckoutError
   ) {
     return errorResponse(error.code, error.message, error.status);
   }
@@ -252,6 +261,10 @@ export const chatsRoutes = {
         }
         return Response.json(reconnected);
       } catch (error) {
+        const knownErrorResponse = createChatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
         log.error("Failed to reconnect chat", { chatId: req.params.id, error: String(error) });
         return errorResponse("reconnect_failed", String(error), 500);
       }
