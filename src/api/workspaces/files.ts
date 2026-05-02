@@ -16,6 +16,23 @@ import { parseAndValidate, validateRequest } from "../validation";
 
 const log = createLogger("api:workspace-files");
 
+function createInlineImageResponse(
+  data: Uint8Array,
+  contentType: string,
+  fileName: string,
+): Response {
+  const safeFileName = fileName.replace(/["\r\n]/g, "_");
+  const body = new ArrayBuffer(data.byteLength);
+  new Uint8Array(body).set(data);
+  return new Response(body, {
+    headers: {
+      "Cache-Control": "no-store",
+      "Content-Disposition": `inline; filename="${safeFileName}"`,
+      "Content-Type": contentType,
+    },
+  });
+}
+
 function mapFileError(error: unknown): Response {
   if (error instanceof Response) {
     return error;
@@ -41,6 +58,9 @@ function mapFileError(error: unknown): Response {
   }
   if (message.includes("not a directory") || message.includes("not a file")) {
     return errorResponse("invalid_path_type", message, 400);
+  }
+  if (message.includes("not a browser-renderable image")) {
+    return errorResponse("invalid_preview_type", message, 400);
   }
   if (message.includes("must stay within the active workspace explorer root")) {
     return errorResponse("invalid_workspace_path", message, 400);
@@ -112,6 +132,34 @@ export const workspaceFilesRoutes = {
         }));
       } catch (error) {
         log.error("Failed to read workspace file", {
+          workspaceId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/preview": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const response = await workspaceFileService.readImageFile(workspaceResult, validation.data.path, {
+          startDirectory: validation.data.startDirectory,
+        });
+        return createInlineImageResponse(response.data, response.contentType, response.file.name);
+      } catch (error) {
+        log.error("Failed to preview workspace file", {
           workspaceId: req.params.id,
           path: validation.data.path,
           error: String(error),

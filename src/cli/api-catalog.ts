@@ -350,6 +350,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
     description: "Read a workspace file.",
     querySchema: GetWorkspaceFileRequestSchema,
   },
+  "/api/workspaces/:id/files/preview": {
+    description: "Preview a browser-renderable workspace image file.",
+    querySchema: GetWorkspaceFileRequestSchema,
+  },
   "/api/workspaces/:id/files/tree": {
     description: "Load the full workspace file tree.",
     querySchema: GetWorkspaceFileTreeRequestSchema,
@@ -442,6 +446,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   },
   "/api/ssh-servers/:id/files/content": {
     description: "Read a standalone SSH server file.",
+    querySchema: GetWorkspaceFileRequestSchema,
+  },
+  "/api/ssh-servers/:id/files/preview": {
+    description: "Preview a browser-renderable standalone SSH server image file.",
     querySchema: GetWorkspaceFileRequestSchema,
   },
   "/api/ssh-servers/:id/files/tree": {

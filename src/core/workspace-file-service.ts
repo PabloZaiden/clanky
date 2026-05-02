@@ -6,12 +6,20 @@ import { backendManager } from "./backend-manager";
 import { fileExplorerService, resolveFileExplorerRootDirectory } from "./file-explorer-service";
 import type {
   Workspace,
+  WorkspaceFileEntry,
   WorkspaceFileMetadataResponse,
   WorkspaceFileListResponse,
   WorkspaceFileReadResponse,
   WorkspaceFileTreeResponse,
   WorkspaceFileWriteResponse,
 } from "../types";
+
+export interface WorkspaceFileImageReadResponse {
+  workspaceId: string;
+  file: WorkspaceFileEntry;
+  contentType: string;
+  data: Uint8Array;
+}
 
 class WorkspaceFileService {
   private async getTarget(workspace: Workspace, startDirectory?: string) {
@@ -56,6 +64,22 @@ class WorkspaceFileService {
       workspaceId: workspace.id,
       file: response.file,
       content: response.content,
+    };
+  }
+
+  async readImageFile(
+    workspace: Workspace,
+    requestedPath: string,
+    options?: { startDirectory?: string },
+  ): Promise<WorkspaceFileImageReadResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.readImageFile(target, requestedPath);
+
+    return {
+      workspaceId: workspace.id,
+      file: response.file,
+      contentType: response.contentType,
+      data: response.data,
     };
   }
 

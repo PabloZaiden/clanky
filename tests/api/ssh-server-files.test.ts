@@ -27,6 +27,7 @@ describe("Standalone SSH server files API integration", () => {
     await mkdir(join(workDir, "src"), { recursive: true });
     await writeFile(join(workDir, "README.md"), "# Server files\n");
     await writeFile(join(workDir, "src", "index.ts"), "export const serverValue = 1;\n");
+    await writeFile(join(workDir, "logo.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n");
     await mkdir(join(alternateRootDir, "logs"), { recursive: true });
     await writeFile(join(alternateRootDir, "logs", "output.log"), "server alt root\n");
 
@@ -124,7 +125,7 @@ describe("Standalone SSH server files API integration", () => {
     };
     expect(listData.serverId).toBe(createdServer.config.id);
     expect(listData.directory).toBe("");
-    expect(listData.entries.map((entry) => entry.name)).toEqual(["src", "README.md"]);
+    expect(listData.entries.map((entry) => entry.name)).toEqual(["src", "logo.svg", "README.md"]);
 
     const readToken = await issueCredentialToken(createdServer.config.id);
     const readResponse = await fetch(
@@ -145,6 +146,34 @@ describe("Standalone SSH server files API integration", () => {
     expect(readData.serverId).toBe(createdServer.config.id);
     expect(readData.file.path).toBe("src/index.ts");
     expect(readData.content).toContain("serverValue = 1");
+  });
+
+  test("previews browser-renderable server images with credential and image headers", async () => {
+    const createdServer = await createServer();
+
+    const missingCredentialResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/preview?path=${encodeURIComponent("logo.svg")}`,
+    );
+    expect(missingCredentialResponse.status).toBe(400);
+    const missingCredentialData = await missingCredentialResponse.json() as { error: string; message: string };
+    expect(missingCredentialData.error).toBe("invalid_credential_token");
+    expect(missingCredentialData.message).toBe("SSH credential token is required for standalone server file access");
+
+    const previewToken = await issueCredentialToken(createdServer.config.id);
+    const previewResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/preview?path=${encodeURIComponent("logo.svg")}`,
+      {
+        headers: {
+          "x-ralpher-ssh-credential-token": previewToken,
+        },
+      },
+    );
+
+    expect(previewResponse.ok).toBe(true);
+    expect(previewResponse.headers.get("Content-Type")).toBe("image/svg+xml");
+    expect(previewResponse.headers.get("Cache-Control")).toBe("no-store");
+    expect(previewResponse.headers.get("Content-Disposition")).toBe("inline; filename=\"logo.svg\"");
+    expect(await previewResponse.text()).toContain("<svg");
   });
 
   test("writes files on a standalone server and rejects escaping paths", async () => {
