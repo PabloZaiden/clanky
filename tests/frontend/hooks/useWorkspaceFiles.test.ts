@@ -25,10 +25,12 @@ function createDirectoryEntry(overrides?: Partial<{
   path: string;
   kind: "file" | "directory";
   loadOnExpand: boolean;
-  size: number;
-  modifiedAt: string;
-  versionToken: string;
-}>) {
+    size: number;
+    modifiedAt: string;
+    versionToken: string;
+    mimeType: string;
+    isImage: boolean;
+  }>) {
   return {
     name: overrides?.name ?? "src",
     path: overrides?.path ?? "src",
@@ -37,6 +39,8 @@ function createDirectoryEntry(overrides?: Partial<{
     size: overrides?.size ?? 0,
     modifiedAt: overrides?.modifiedAt ?? "2026-01-01T00:00:00.000Z",
     versionToken: overrides?.versionToken ?? "100:0",
+    mimeType: overrides?.mimeType,
+    isImage: overrides?.isImage,
   };
 }
 
@@ -50,6 +54,8 @@ describe("useWorkspaceFiles", () => {
   beforeEach(() => {
     api.reset();
     api.install();
+    URL.createObjectURL = () => "blob:preview";
+    URL.revokeObjectURL = () => {};
     window.localStorage.clear();
     clearStoredSshServerCredential("server-1");
   });
@@ -411,6 +417,52 @@ describe("useWorkspaceFiles", () => {
 
     expect(result.current.isDirty).toBe(false);
     expect(result.current.currentFile?.versionToken).toBe("200:20");
+  });
+
+  test("opens SVG files as image previews without reading text content", async () => {
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: "workspace-1",
+      ...createTreeResponse({
+        "": [createDirectoryEntry({
+          name: "logo.svg",
+          path: "logo.svg",
+          kind: "file",
+          size: 120,
+          versionToken: "100:120",
+        })],
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/metadata", () => ({
+      workspaceId: "workspace-1",
+      file: createDirectoryEntry({
+        name: "logo.svg",
+        path: "logo.svg",
+        kind: "file",
+        size: 120,
+        versionToken: "100:120",
+        mimeType: "image/svg+xml",
+        isImage: true,
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/preview", () => "<svg />");
+    api.get("/api/workspaces/:id/files/content", () => {
+      throw new Error("image files should not be read as text");
+    });
+
+    const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.openFile("logo.svg");
+    });
+
+    expect(result.current.currentFile?.isImage).toBe(true);
+    expect(result.current.imagePreviewUrl).toBe("blob:preview");
+    expect(result.current.editorContent).toBe("");
+    expect(api.calls("/api/workspaces/:id/files/preview")).toHaveLength(1);
+    expect(api.calls("/api/workspaces/:id/files/content")).toHaveLength(0);
   });
 
   test("surfaces save conflicts", async () => {

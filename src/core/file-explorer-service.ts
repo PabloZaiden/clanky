@@ -3,11 +3,13 @@
  */
 
 import { posix as pathPosix } from "node:path";
+import { Buffer } from "node:buffer";
 import type {
   WorkspaceFileEntry,
   WorkspaceFileNode,
 } from "../types";
 import type { CommandExecutor } from "./command-executor";
+import { getBrowserImageMimeType } from "../utils/workspace-file-images";
 
 const LIST_SEPARATOR = "\t";
 const FULL_TREE_DEFERRED_DIRECTORY_NAMES = [
@@ -61,6 +63,12 @@ export interface FileExplorerTreeResult {
 export interface FileExplorerReadResult {
   file: WorkspaceFileEntry;
   content: string;
+}
+
+export interface FileExplorerImageReadResult {
+  file: WorkspaceFileEntry;
+  contentType: string;
+  data: Uint8Array;
 }
 
 export interface FileExplorerWriteResult {
@@ -315,12 +323,14 @@ function toFileEntry(
   absolutePath: string,
   metadata: { kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string },
 ): WorkspaceFileEntry {
+  const mimeType = getBrowserImageMimeType(absolutePath);
   return {
     ...toFileNode(target, absolutePath, metadata.kind),
     absolutePath,
     size: metadata.size,
     modifiedAt: metadata.modifiedAt,
     versionToken: metadata.versionToken,
+    ...(mimeType ? { mimeType, isImage: true } : {}),
   };
 }
 
@@ -561,6 +571,40 @@ export class FileExplorerService {
     return {
       file: toFileEntry(target, absolutePath, metadata),
       content,
+    };
+  }
+
+  async readImageFile(target: FileExplorerTarget, requestedPath: string): Promise<FileExplorerImageReadResult> {
+    const absolutePath = resolveTargetPath(target, requestedPath);
+    const metadata = await runMetadataCommand(target.executor, absolutePath);
+
+    if (!metadata) {
+      throw new Error("Requested file does not exist");
+    }
+    if (metadata.kind !== "file") {
+      throw new Error("Requested path is not a file");
+    }
+
+    const file = toFileEntry(target, absolutePath, metadata);
+    if (!file.isImage || !file.mimeType) {
+      throw new Error("Requested file is not a browser-renderable image");
+    }
+
+    const result = await target.executor.exec(
+      "base64",
+      [absolutePath],
+      {
+        logFailures: false,
+      },
+    );
+    if (!result.success) {
+      throw new Error(result.stderr.trim() || "Failed to read image file");
+    }
+
+    return {
+      file,
+      contentType: file.mimeType,
+      data: Uint8Array.from(Buffer.from(result.stdout.replace(/\s/g, ""), "base64")),
     };
   }
 

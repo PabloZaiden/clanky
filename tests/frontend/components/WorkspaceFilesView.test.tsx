@@ -72,10 +72,12 @@ function createFileEntry(overrides?: Partial<{
   path: string;
   absolutePath: string;
   kind: "file" | "directory";
-  size: number;
-  modifiedAt: string;
-  versionToken: string;
-}>) {
+    size: number;
+    modifiedAt: string;
+    versionToken: string;
+    mimeType: string;
+    isImage: boolean;
+  }>) {
   const path = overrides?.path ?? "src";
   return {
     name: overrides?.name ?? "src",
@@ -85,6 +87,8 @@ function createFileEntry(overrides?: Partial<{
     size: overrides?.size ?? 0,
     modifiedAt: overrides?.modifiedAt ?? "2026-01-01T00:00:00.000Z",
     versionToken: overrides?.versionToken ?? "100:0",
+    mimeType: overrides?.mimeType,
+    isImage: overrides?.isImage,
   };
 }
 
@@ -99,6 +103,8 @@ describe("WorkspaceFilesView", () => {
     api.reset();
     api.install();
     api.get("/api/preferences/file-explorer-full-tree", () => ({ enabled: true }));
+    URL.createObjectURL = () => "blob:workspace-preview";
+    URL.revokeObjectURL = () => {};
     copiedText = null;
     clipboardWriteText = null;
     clipboardWriteMock = mock(async (text: string) => {
@@ -211,6 +217,69 @@ describe("WorkspaceFilesView", () => {
     await waitFor(() => {
       expect(api.calls("/api/workspaces/:id/files/write", "POST")).toHaveLength(1);
     });
+  });
+
+  test("previews selected SVG files as images instead of opening the editor", async () => {
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
+    const workspace = createWorkspace({
+      id: "workspace-image-preview",
+      name: "Image Workspace",
+      directory: "/workspaces/image-workspace",
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry({
+          name: "logo.svg",
+          path: "logo.svg",
+          absolutePath: "/workspaces/image-workspace/logo.svg",
+          kind: "file",
+          size: 120,
+          versionToken: "100:120",
+        })],
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/metadata", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "logo.svg",
+        path: "logo.svg",
+        absolutePath: "/workspaces/image-workspace/logo.svg",
+        kind: "file",
+        size: 120,
+        versionToken: "100:120",
+        mimeType: "image/svg+xml",
+        isImage: true,
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/preview", () => "<svg />");
+    api.get("/api/workspaces/:id/files/content", () => {
+      throw new Error("image files should not be read as text");
+    });
+
+    const { getByRole, queryByLabelText, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /logo.svg/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /logo.svg/i }));
+
+    await waitFor(() => {
+      const image = getByRole("img", { name: "logo.svg" }) as HTMLImageElement;
+      expect(image.src).toBe("blob:workspace-preview");
+    });
+    expect(queryByLabelText("Monaco editor")).not.toBeInTheDocument();
+    expect(api.calls("/api/workspaces/:id/files/preview")).toHaveLength(1);
+    expect(api.calls("/api/workspaces/:id/files/content")).toHaveLength(0);
   });
 
   test("copies the selected absolute file path and shows a success toast", async () => {

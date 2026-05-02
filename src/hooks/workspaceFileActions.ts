@@ -224,6 +224,24 @@ export async function getFileExplorerFileMetadataApi(
   return await response.json() as WorkspaceFileMetadataResponse | SshServerFileMetadataResponse;
 }
 
+export async function readFileExplorerImagePreviewApi(
+  target: FileExplorerTarget,
+  path: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<Blob> {
+  const searchParams = buildFileExplorerSearchParams(target, {
+    path,
+  }, options);
+  const response = await appFetch(
+    `${getFileExplorerBasePath(target)}/preview?${searchParams.toString()}`,
+    await buildFileExplorerRequestInit(target, options),
+  );
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.blob();
+}
+
 export async function writeFileExplorerFileApi(
   target: FileExplorerTarget,
   request: WriteWorkspaceFileRequest,

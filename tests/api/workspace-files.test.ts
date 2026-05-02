@@ -29,6 +29,7 @@ describe("workspace files API integration", () => {
     await mkdir(join(workDir, "src"), { recursive: true });
     await writeFile(join(workDir, "README.md"), "# Workspace files\n");
     await writeFile(join(workDir, "src", "index.ts"), "export const value = 1;\n");
+    await writeFile(join(workDir, "logo.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>\n");
     await Bun.$`git -C ${workDir} add .`.quiet();
     await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
     await mkdir(join(alternateRootDir, "notes"), { recursive: true });
@@ -91,7 +92,7 @@ describe("workspace files API integration", () => {
       entries: Array<{ name: string; path: string; kind: string; versionToken?: string }>;
     };
     expect(data.directory).toBe("");
-    expect(data.entries.map((entry) => entry.name)).toEqual([".git", "src", "README.md"]);
+    expect(data.entries.map((entry) => entry.name)).toEqual([".git", "src", "logo.svg", "README.md"]);
     expect(data.entries.find((entry) => entry.name === ".git")?.kind).toBe("directory");
     expect(data.entries.find((entry) => entry.name === "README.md")?.path).toBe("README.md");
     expect(data.entries[0]?.versionToken).toBeUndefined();
@@ -108,7 +109,7 @@ describe("workspace files API integration", () => {
       entries: Array<{ name: string; kind: string }>;
     };
     expect(data.directory).toBe("");
-    expect(data.entries.map((entry) => entry.name)).toEqual([".git", "src", "README.md"]);
+    expect(data.entries.map((entry) => entry.name)).toEqual([".git", "src", "logo.svg", "README.md"]);
     expect(data.entries.find((entry) => entry.name === ".git")?.kind).toBe("directory");
   });
 
@@ -130,6 +131,25 @@ describe("workspace files API integration", () => {
     expect(data.file.kind).toBe("file");
   });
 
+  test("previews browser-renderable image files with image content type", async () => {
+    const workspace = await createWorkspace();
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/preview?path=${encodeURIComponent("logo.svg")}`,
+    );
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("Content-Type")).toBe("image/svg+xml");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.text()).toContain("<svg");
+
+    const metadataResponse = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/metadata?path=${encodeURIComponent("logo.svg")}`,
+    );
+    const metadata = await metadataResponse.json() as { file: { isImage?: boolean; mimeType?: string } };
+    expect(metadata.file.isImage).toBe(true);
+    expect(metadata.file.mimeType).toBe("image/svg+xml");
+  });
+
   test("loads the full file tree from the selected root", async () => {
     const workspace = await createWorkspace();
 
@@ -139,7 +159,7 @@ describe("workspace files API integration", () => {
     const data = await response.json() as {
       entriesByDirectory: Record<string, Array<{ name: string; path: string; kind: string }>>;
     };
-    expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "README.md"]);
+    expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "logo.svg", "README.md"]);
     expect(data.entriesByDirectory["src"]?.map((entry) => entry.path)).toEqual(["src/index.ts"]);
   });
 
@@ -157,8 +177,8 @@ describe("workspace files API integration", () => {
       const data = await response.json() as {
         entriesByDirectory: Record<string, Array<{ name: string; path: string; kind: string }>>;
       };
-      expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "src-link", "readme-link", "README.md"]);
-      expect(data.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "directory", "file", "file"]);
+      expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "src-link", "logo.svg", "readme-link", "README.md"]);
+      expect(data.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "directory", "file", "file", "file"]);
       expect(data.entriesByDirectory["src-link"]).toEqual([]);
     } finally {
       await rm(directoryLinkPath, { force: true });
@@ -178,8 +198,8 @@ describe("workspace files API integration", () => {
       const data = await response.json() as {
         entriesByDirectory: Record<string, Array<{ name: string; path: string; kind: string }>>;
       };
-      expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "broken-link", "README.md"]);
-      expect(data.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "file", "file"]);
+      expect(data.entriesByDirectory[""]?.map((entry) => entry.name)).toEqual([".git", "src", "broken-link", "logo.svg", "README.md"]);
+      expect(data.entriesByDirectory[""]?.map((entry) => entry.kind)).toEqual(["directory", "directory", "file", "file", "file"]);
     } finally {
       await rm(brokenLinkPath, { force: true });
     }

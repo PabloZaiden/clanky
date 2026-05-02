@@ -24,6 +24,8 @@ export interface WorkspaceFileEntry extends WorkspaceFileNode {
   size: number;
   modifiedAt: string;
   versionToken: string;
+  mimeType?: string;
+  isImage?: boolean;
 }
 
 export interface WorkspaceFileListResponse {
