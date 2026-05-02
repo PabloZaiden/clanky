@@ -5,6 +5,8 @@ import { clearStoredSshServerCredential, storeSshServerPassword } from "@/lib/ss
 import { createMockApi, MockApiError } from "../helpers/mock-api";
 
 const api = createMockApi();
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
 const TEST_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAsKNhd9E/OQ+lbqKlfYjv
 69xGawOr9J0cMf2Qj3jWXaXv6mm1xrDBMYNboWkjxV6AZAG9zDJO6s8eP/rj7s3P
@@ -62,6 +64,8 @@ describe("useWorkspaceFiles", () => {
 
   afterEach(() => {
     api.uninstall();
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
   });
 
   test("loads the root tree on mount", async () => {
@@ -463,6 +467,129 @@ describe("useWorkspaceFiles", () => {
     expect(result.current.editorContent).toBe("");
     expect(api.calls("/api/workspaces/:id/files/preview")).toHaveLength(1);
     expect(api.calls("/api/workspaces/:id/files/content")).toHaveLength(0);
+  });
+
+  test("loads server image previews with the SSH credential header", async () => {
+    api.get("/api/ssh-servers/:id/public-key", () => ({
+      algorithm: "RSA-OAEP-256",
+      publicKey: TEST_PUBLIC_KEY,
+      fingerprint: "fingerprint",
+      version: 1,
+      createdAt: new Date().toISOString(),
+    }));
+    api.post("/api/ssh-servers/:id/credentials", () => ({
+      credentialToken: "credential-token",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }));
+    api.get("/api/ssh-servers/:id/files/tree", () => ({
+      serverId: "server-1",
+      ...createTreeResponse({
+        "": [createDirectoryEntry({
+          name: "logo.png",
+          path: "logo.png",
+          kind: "file",
+          size: 67,
+          versionToken: "100:67",
+        })],
+      }),
+    }));
+    api.get("/api/ssh-servers/:id/files/metadata", (req) => {
+      expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("credential-token");
+      return {
+        serverId: "server-1",
+        file: createDirectoryEntry({
+          name: "logo.png",
+          path: "logo.png",
+          kind: "file",
+          size: 67,
+          versionToken: "100:67",
+          mimeType: "image/png",
+          isImage: true,
+        }),
+      };
+    });
+    api.get("/api/ssh-servers/:id/files/preview", (req) => {
+      expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("credential-token");
+      return "png-bytes";
+    });
+    api.get("/api/ssh-servers/:id/files/content", () => {
+      throw new Error("server image files should not be read as text");
+    });
+
+    await storeSshServerPassword("server-1", "super-secret");
+
+    const { result } = renderHook(() => useServerFiles("server-1"));
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.openFile("logo.png");
+    });
+
+    expect(result.current.currentFile?.isImage).toBe(true);
+    expect(result.current.imagePreviewUrl).toBe("blob:preview");
+    expect(result.current.editorContent).toBe("");
+    expect(api.calls("/api/ssh-servers/:id/files/preview")).toHaveLength(1);
+    expect(api.calls("/api/ssh-servers/:id/files/content")).toHaveLength(0);
+  });
+
+  test("keeps existing editor state when image preview loading fails", async () => {
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: "workspace-1",
+      ...createTreeResponse({ "": [] }),
+    }));
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: "workspace-1",
+      file: createDirectoryEntry({
+        name: "index.ts",
+        path: "src/index.ts",
+        kind: "file",
+        size: 20,
+        versionToken: "100:20",
+      }),
+      content: "export const value = 1;\n",
+    }));
+    api.get("/api/workspaces/:id/files/metadata", () => ({
+      workspaceId: "workspace-1",
+      file: createDirectoryEntry({
+        name: "logo.png",
+        path: "logo.png",
+        kind: "file",
+        size: 67,
+        versionToken: "200:67",
+        mimeType: "image/png",
+        isImage: true,
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/preview", () => {
+      throw new MockApiError(500, {
+        error: "workspace_file_error",
+        message: "Failed to read image file",
+      });
+    });
+
+    const { result } = renderHook(() => useWorkspaceFiles("workspace-1"));
+    await waitFor(() => {
+      expect(result.current.loadingTree).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.openFile("src/index.ts");
+    });
+    await act(async () => {
+      result.current.setEditorContent("changed");
+    });
+    await act(async () => {
+      await result.current.openFile("logo.png");
+    });
+
+    expect(result.current.currentFile).toBeNull();
+    expect(result.current.imagePreviewUrl).toBeNull();
+    expect(result.current.editorContent).toBe("");
+    expect(result.current.savedContent).toBe("");
+    expect(result.current.isDirty).toBe(false);
+    expect(result.current.error).toBe("Failed to read image file");
   });
 
   test("surfaces save conflicts", async () => {

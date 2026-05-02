@@ -12,7 +12,6 @@ const IMAGE_MIME_TYPES_BY_EXTENSION: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".png": "image/png",
   ".svg": "image/svg+xml",
-  ".svgz": "image/svg+xml",
   ".webp": "image/webp",
 };
 

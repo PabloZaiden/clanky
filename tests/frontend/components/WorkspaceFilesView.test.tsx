@@ -33,6 +33,8 @@ mock.module("@monaco-editor/react", () => ({
 }));
 
 const api = createMockApi();
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
 let copiedText: string | null = null;
 let clipboardWriteText: string | null = null;
 let clipboardWriteMock: ReturnType<typeof mock>;
@@ -135,6 +137,8 @@ describe("WorkspaceFilesView", () => {
 
   afterEach(() => {
     api.uninstall();
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
     mock.restore();
   });
 

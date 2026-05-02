@@ -329,9 +329,6 @@ export function useFileExplorer(
         return;
       }
       const metadata = metadataResponse.file;
-      setCurrentDirectory(getParentDirectory(metadata.path));
-      setCurrentFile(metadata);
-      setAutoReloadedAt(null);
 
       const imageBlob = await readFileExplorerImagePreviewApi({ type: targetType, id: targetId }, path, {
         startDirectory,
@@ -340,6 +337,9 @@ export function useFileExplorer(
       if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
         return;
       }
+      setCurrentDirectory(getParentDirectory(metadata.path));
+      setCurrentFile(metadata);
+      setAutoReloadedAt(null);
       replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
       setEditorContent("");
       setSavedContent("");
@@ -347,6 +347,11 @@ export function useFileExplorer(
       if (isAbortError(requestError) || abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
         return;
       }
+      replaceImagePreviewUrl(null);
+      setCurrentFile(null);
+      setEditorContent("");
+      setSavedContent("");
+      setConflictState(null);
       applyErrorState(requestError);
     } finally {
       const isLatestRequest = fileLoadRequestIdRef.current === requestId;

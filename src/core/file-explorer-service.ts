@@ -323,7 +323,7 @@ function toFileEntry(
   absolutePath: string,
   metadata: { kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string },
 ): WorkspaceFileEntry {
-  const mimeType = getBrowserImageMimeType(absolutePath);
+  const mimeType = metadata.kind === "file" ? getBrowserImageMimeType(absolutePath) : null;
   return {
     ...toFileNode(target, absolutePath, metadata.kind),
     absolutePath,
@@ -590,13 +590,14 @@ export class FileExplorerService {
       throw new Error("Requested file is not a browser-renderable image");
     }
 
-    const result = await target.executor.exec(
-      "base64",
-      [absolutePath],
-      {
-        logFailures: false,
-      },
-    );
+    const result = await target.executor.exec("bash", [
+      "-lc",
+      `path="$1"; if base64 --help 2>&1 | grep -q -- '-w'; then base64 -w 0 "$path"; else base64 < "$path" | tr -d '\\n'; fi`,
+      "file-explorer-image-preview",
+      absolutePath,
+    ], {
+      logFailures: false,
+    });
     if (!result.success) {
       throw new Error(result.stderr.trim() || "Failed to read image file");
     }
