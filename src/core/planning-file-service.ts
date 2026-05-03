@@ -1,4 +1,4 @@
-import { posix as pathPosix } from "node:path";
+import { posix as pathPosix, win32 as pathWin32 } from "node:path";
 import type { CommandExecutor } from "./command-executor";
 import { ensurePlanningDirectory } from "./planning-directory";
 import {
@@ -47,6 +47,18 @@ function sanitizePlanPathForMessage(planPath: string): string {
     .trim();
 }
 
+function isExplicitAbsolutePlanPath(rawPath: string, normalizedPath: string): boolean {
+  return pathPosix.isAbsolute(normalizedPath)
+    || pathWin32.isAbsolute(rawPath)
+    || pathWin32.isAbsolute(normalizedPath);
+}
+
+function isPathContainedWithinWorkspace(workspaceDirectory: string, targetPath: string): boolean {
+  const relativePath = pathPosix.relative(workspaceDirectory, targetPath);
+  return relativePath === ""
+    || (!relativePath.startsWith("../") && relativePath !== ".." && !pathPosix.isAbsolute(relativePath));
+}
+
 function resolvePlanningFileSource(directory: string, requestedPlanPath?: string): PlanningFileSource {
   const trimmedPlanPath = requestedPlanPath?.trim() ?? "";
   if (!trimmedPlanPath) {
@@ -63,16 +75,18 @@ function resolvePlanningFileSource(directory: string, requestedPlanPath?: string
   if (!normalizedRequestedPath || normalizedRequestedPath === "." || normalizedRequestedPath === "/") {
     throw new InvalidCurrentPlanError("The selected plan file path must point to a plan file.");
   }
-  const planPath = pathPosix.isAbsolute(normalizedRequestedPath)
+  const isAbsolutePlanPath = isExplicitAbsolutePlanPath(trimmedPlanPath, normalizedRequestedPath);
+  const planPath = isAbsolutePlanPath
     ? normalizedRequestedPath
     : pathPosix.normalize(pathPosix.join(workspaceDirectory, normalizedRequestedPath));
+  if (!isAbsolutePlanPath && !isPathContainedWithinWorkspace(workspaceDirectory, planPath)) {
+    throw new InvalidCurrentPlanError("Relative plan file paths must stay within the current chat workspace.");
+  }
 
   return {
     planPath,
     statusPath: pathPosix.join(pathPosix.dirname(planPath), STATUS_FILE_NAME),
-    displayPath: sanitizePlanPathForMessage(
-      pathPosix.isAbsolute(normalizedRequestedPath) ? normalizedRequestedPath : normalizedRequestedPath,
-    ),
+    displayPath: sanitizePlanPathForMessage(normalizedRequestedPath),
     isDefault: false,
   };
 }

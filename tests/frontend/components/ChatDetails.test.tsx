@@ -639,6 +639,8 @@ describe("ChatDetails", () => {
     await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
 
+    expect(getByText("Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .ralph-planning/plan.md.")).toBeTruthy();
+    expect(getByText(/Relative paths resolve from the current chat workspace\./)).toBeTruthy();
     expect(getByText("/workspace/repo/.ralph-worktrees/chat-1/.ralph-planning/plan.md")).toBeTruthy();
   });
 

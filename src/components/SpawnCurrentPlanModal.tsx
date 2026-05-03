@@ -49,7 +49,7 @@ export function SpawnCurrentPlanModal({
       isOpen={isOpen}
       onClose={handleClose}
       title="Spawn loop from plan file"
-      description="Enter an absolute plan path, or leave the field blank to use .ralph-planning/plan.md from the current chat workspace."
+      description="Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .ralph-planning/plan.md."
       size="sm"
       showCloseButton={!submitting}
       closeOnOverlayClick={!submitting}
@@ -88,7 +88,7 @@ export function SpawnCurrentPlanModal({
           />
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Blank input uses <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-neutral-700">{workspaceDirectory}/.ralph-planning/plan.md</code>.
+          Relative paths resolve from the current chat workspace. Blank input uses <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-neutral-700">{workspaceDirectory}/.ralph-planning/plan.md</code>.
         </p>
       </form>
     </Modal>
