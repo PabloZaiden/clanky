@@ -49,7 +49,7 @@ export function SpawnCurrentPlanModal({
       isOpen={isOpen}
       onClose={handleClose}
       title="Spawn loop from plan file"
-      description="Choose a plan file from the current chat workspace. Leave the field blank to fall back to .ralph-planning/plan.md."
+      description="Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .ralph-planning/plan.md."
       size="sm"
       showCloseButton={!submitting}
       closeOnOverlayClick={!submitting}
@@ -83,12 +83,12 @@ export function SpawnCurrentPlanModal({
             value={planFilePath}
             onChange={(event) => setPlanFilePath(event.target.value)}
             disabled={submitting}
-            placeholder=".ralph-planning/feature-plan.md"
+            placeholder="/workspaces/shared/feature-plan.md"
             className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
           />
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          The path is resolved relative to <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-neutral-700">{workspaceDirectory}</code>.
+          Relative paths resolve from the current chat workspace. Blank input uses <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-neutral-700">{workspaceDirectory}/.ralph-planning/plan.md</code>.
         </p>
       </form>
     </Modal>

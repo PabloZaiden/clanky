@@ -895,7 +895,7 @@ describe("Chats API Integration", () => {
     expect(spawnedLoop.state.planMode?.planContent).toBe("# Fallback plan\n\n1. Use the default path.");
   });
 
-  test("rejects spawning from current plan when the selected plan path escapes the workspace", async () => {
+  test("spawns from an absolute plan path outside the chat workspace", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -923,18 +923,36 @@ describe("Chats API Integration", () => {
     expect(sendResponse.status).toBe(200);
     await waitForChatIdle(chatId);
 
+    const importedPlanDir = join(testDataDir, "imported-plan-files");
+    await mkdir(importedPlanDir, { recursive: true });
+    const importedPlanPath = join(importedPlanDir, "external-plan.md");
+    await writeFile(importedPlanPath, "# External plan\n\n1. Import from an absolute path.\n");
+    await writeFile(join(importedPlanDir, "status.md"), "# External status\n\nReady from outside workspace.");
+
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        planFilePath: "../outside.md",
+        planFilePath: importedPlanPath,
       }),
     });
 
-    expect(spawnResponse.status).toBe(400);
-    await expect(spawnResponse.json()).resolves.toMatchObject({
-      error: "invalid_current_plan",
-      message: "The selected plan file path must stay within the current chat workspace.",
+    expect(spawnResponse.status).toBe(201);
+    const spawnedLoop = await spawnResponse.json();
+    expect(spawnedLoop.state.planMode?.planContent).toBe("# External plan\n\n1. Import from an absolute path.");
+
+    const planResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/plan`);
+    expect(planResponse.status).toBe(200);
+    await expect(planResponse.json()).resolves.toMatchObject({
+      exists: true,
+      content: "# External plan\n\n1. Import from an absolute path.",
+    });
+
+    const statusResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/status-file`);
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      exists: true,
+      content: "# External status\n\nReady from outside workspace.",
     });
   });
 
