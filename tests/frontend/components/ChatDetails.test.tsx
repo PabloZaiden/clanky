@@ -616,7 +616,7 @@ describe("ChatDetails", () => {
     expect(getByDisplayValue("plans/current-plan.md")).toBeTruthy();
   });
 
-  test("shows the chat worktree path as the modal resolution root when a worktree is active", async () => {
+  test("shows that blank input falls back to the chat worktree plan path", async () => {
     const initialChat = createChat({
       state: {
         ...createChat().state,
@@ -639,7 +639,7 @@ describe("ChatDetails", () => {
     await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
 
-    expect(getByText("/workspace/repo/.ralph-worktrees/chat-1")).toBeTruthy();
+    expect(getByText("/workspace/repo/.ralph-worktrees/chat-1/.ralph-planning/plan.md")).toBeTruthy();
   });
 
   test("shows the parsed current-plan spawn failure message without the Error prefix", async () => {

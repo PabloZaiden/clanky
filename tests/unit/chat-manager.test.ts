@@ -2184,7 +2184,7 @@ describe("ChatManager", () => {
     expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toBe("# Imported status\n\nReady to review.");
   });
 
-  test("rejects selected plan paths that escape the chat workspace", async () => {
+  test("allows selected absolute plan paths outside the chat workspace", async () => {
     context = await setupTestContext({
       useMockBackend: true,
       mockResponses: ["Chat response"],
@@ -2210,9 +2210,18 @@ describe("ChatManager", () => {
       (current) => current.state.status === "idle" && Boolean(current.state.worktree?.worktreePath),
     );
 
-    await expect(manager.spawnLoopFromCurrentPlan(chat.config.id, "../outside.md")).rejects.toThrow(
-      "The selected plan file path must stay within the current chat workspace.",
-    );
+    const importedPlanDir = join(context.dataDir, "external-plan-files");
+    await mkdir(importedPlanDir, { recursive: true });
+    const importedPlanPath = join(importedPlanDir, "external-plan.md");
+    await writeFile(importedPlanPath, "# Imported plan\n\n1. Use an absolute path.\n");
+    await writeFile(join(importedPlanDir, "status.md"), "# Imported status\n\nReady from outside workspace.");
+
+    const spawned = await manager.spawnLoopFromCurrentPlan(chat.config.id, importedPlanPath);
+
+    expect(spawned.state.planMode?.planContent).toBe("# Imported plan\n\n1. Use an absolute path.");
+    const loopWorkDir = spawned.state.git?.worktreePath ?? spawned.config.directory;
+    expect(await Bun.file(getPlanFilePath(loopWorkDir)).text()).toContain("# Imported plan\n\n1. Use an absolute path.");
+    expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toBe("# Imported status\n\nReady from outside workspace.");
   });
 
   test("treats uninitialized database errors by error message instead of String(error)", async () => {
