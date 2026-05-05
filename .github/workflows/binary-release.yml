@@ -2,61 +2,28 @@ name: Build and Release Binaries
 
 on:
   release:
-    types: [published]
+    types:
+      - published
 
 jobs:
-  build-binaries:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-x64
-          - os: ubuntu-latest
-            target: linux-arm64
-          - os: macos-latest
-            target: darwin-x64
-          - os: macos-latest
-            target: darwin-arm64
-
-    runs-on: ${{ matrix.os }}
+  binaries:
+    uses: pablozaiden/installer/.github/workflows/reusable-binary-release.yml@126f52a743c46db69baeccfcd6350b52d2569c2a
     permissions:
       contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Update package.json version
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp && mv package.json.tmp package.json
-
-      - name: Build workspace
-        run: bun run build
-
-      - name: Build server binary
-        run: cd apps/server && bun src/build.ts --target=bun-${{ matrix.target }}
-
-      - name: Build CLI binary
-        run: cd apps/cli && bun src/build.ts --target=bun-${{ matrix.target }}
-
-      - name: Rename binaries for release
-        run: |
-          mkdir -p dist
-          mv apps/server/dist/ralpher-${{ matrix.target }} dist/ralpher-${{ github.ref_name }}-${{ matrix.target }}
-          mv apps/cli/dist/ralpher-cli-${{ matrix.target }} dist/ralpher-cli-${{ github.ref_name }}-${{ matrix.target }}
-
-      - name: Upload binaries to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release upload ${{ github.ref_name }} dist/ralpher-${{ github.ref_name }}-${{ matrix.target }} --clobber
-          gh release upload ${{ github.ref_name }} dist/ralpher-cli-${{ github.ref_name }}-${{ matrix.target }} --clobber
+    with:
+      prebuild_command: bun run build
+      binaries: |
+        [
+          {
+            "name": "ralpher",
+            "asset_prefix": "ralpher",
+            "build_command": "cd apps/server && bun src/build.ts --target=$BUN_TARGET",
+            "output_path": "apps/server/dist/ralpher-$RELEASE_TARGET"
+          },
+          {
+            "name": "ralpher-cli",
+            "asset_prefix": "ralpher-cli",
+            "build_command": "cd apps/cli && bun src/build.ts --target=$BUN_TARGET",
+            "output_path": "apps/cli/dist/ralpher-cli-$RELEASE_TARGET"
+          }
+        ]

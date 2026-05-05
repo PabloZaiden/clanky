@@ -7,7 +7,14 @@ import {
   resolveReleasePlatform,
   runCli,
   runUpdateCommand,
+  type CliUpdateDependencies,
 } from "../../src/cli";
+
+type AssetBodyMap = Record<string, string>;
+
+function sha256(value: string): string {
+  return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+}
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -18,7 +25,7 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-function binaryResponse(status: number, body: string): Response {
+function textResponse(status: number, body: string): Response {
   return new Response(body, {
     status,
     headers: {
@@ -33,6 +40,78 @@ function createFetchMock(
   return Object.assign(handler, {
     preconnect: fetch.preconnect,
   }) as typeof fetch;
+}
+
+function createRelease(tag: string, assetBodies: AssetBodyMap): unknown {
+  return {
+    tag_name: tag,
+    assets: Object.keys(assetBodies).flatMap((assetName) => [
+      {
+        name: assetName,
+        browser_download_url: `https://downloads.test/${assetName}`,
+      },
+      {
+        name: `${assetName}.sha256`,
+        browser_download_url: `https://downloads.test/${assetName}.sha256`,
+      },
+    ]),
+  };
+}
+
+function createUpdateDependencies(options: {
+  currentVersion?: string;
+  releaseTag?: string;
+  assetBodies?: AssetBodyMap;
+  output?: string[];
+  errors?: string[];
+  requests?: string[];
+  installedPaths?: Set<string>;
+  renameFile?: CliUpdateDependencies["renameFile"];
+} = {}): CliUpdateDependencies {
+  const releaseTag = options.releaseTag ?? "v1.2.4";
+  const assetBodies = options.assetBodies ?? {
+    [`ralpher-cli-${releaseTag}-linux-x64`]: "cli-binary",
+  };
+  const output = options.output ?? [];
+  const errors = options.errors ?? [];
+  const requests = options.requests ?? [];
+  const installedPaths = options.installedPaths ?? new Set(["/usr/local/bin/ralpher-cli"]);
+
+  return {
+    currentVersion: options.currentVersion ?? "1.2.3",
+    out: (message: string) => output.push(message),
+    err: (message: string) => errors.push(message),
+    getPlatform: () => ({
+      platform: "linux",
+      arch: "x64",
+    }),
+    getExecutablePath: () => "/usr/local/bin/ralpher-cli",
+    resolveRealPath: async (path: string) => path,
+    fileExists: async (path: string) => installedPaths.has(path),
+    createTempDirectory: async (_targetDirectory: string, prefix: string) => `/tmp/${prefix}test`,
+    writeBinary: async () => {},
+    chmodFile: async () => {},
+    renameFile: options.renameFile ?? (async () => {}),
+    removeFile: async () => {},
+    statFile: async () => ({ mode: 0o755 }),
+    fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes("/releases/")) {
+        expect(init?.headers).toMatchObject({
+          accept: "application/vnd.github+json",
+        });
+        return jsonResponse(200, createRelease(releaseTag, assetBodies));
+      }
+
+      const assetName = url.replace("https://downloads.test/", "");
+      if (assetName.endsWith(".sha256")) {
+        const binaryAssetName = assetName.slice(0, -".sha256".length);
+        return textResponse(200, `${sha256(assetBodies[binaryAssetName] ?? "")}  ${binaryAssetName}`);
+      }
+      return textResponse(200, assetBodies[assetName] ?? "");
+    }),
+  };
 }
 
 describe("ralpher cli update", () => {
@@ -58,7 +137,7 @@ describe("ralpher cli update", () => {
       arch: "x64",
     });
     expect(() => resolveReleasePlatform("win32", "x64")).toThrow(
-      "Unsupported platform: win32-x64. Ralpher releases support Linux and macOS on x64 and arm64.",
+      "Unsupported platform: win32-x64. Supported release targets are Linux and macOS on x64 and arm64.",
     );
   });
 
@@ -66,26 +145,10 @@ describe("ralpher cli update", () => {
     const output: string[] = [];
     const requests: string[] = [];
 
-    const exitCode = await runUpdateCommand({ checkOnly: true }, {
-      currentVersion: "1.2.3",
-      out: (message: string) => output.push(message),
-      getPlatform: () => ({
-        platform: "linux",
-        arch: "x64",
-      }),
-      fetchFn: createFetchMock(async (input: string | URL | Request) => {
-        requests.push(String(input));
-        return jsonResponse(200, {
-          tag_name: "v1.2.4",
-          assets: [
-            {
-              name: "ralpher-cli-v1.2.4-linux-x64",
-              browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-            },
-          ],
-        });
-      }),
-    });
+    const exitCode = await runUpdateCommand({ checkOnly: true }, createUpdateDependencies({
+      output,
+      requests,
+    }));
 
     expect(exitCode).toBe(0);
     expect(requests).toEqual([
@@ -103,27 +166,14 @@ describe("ralpher cli update", () => {
     let executablePathResolved = false;
 
     const exitCode = await runUpdateCommand({ checkOnly: false }, {
-      currentVersion: "1.2.4",
-      out: (message: string) => output.push(message),
-      getPlatform: () => ({
-        platform: "linux",
-        arch: "x64",
+      ...createUpdateDependencies({
+        currentVersion: "1.2.4",
+        output,
+        requests,
       }),
-      fetchFn: createFetchMock(async (input: string | URL | Request) => {
-        requests.push(String(input));
-        return jsonResponse(200, {
-          tag_name: "v1.2.4",
-          assets: [
-            {
-              name: "ralpher-cli-v1.2.4-linux-x64",
-              browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-            },
-          ],
-        });
-      }),
-      getExecutablePath: () => {
+      resolveRealPath: async (path: string) => {
         executablePathResolved = true;
-        return "/usr/local/bin/ralpher-cli";
+        return path;
       },
     });
 
@@ -138,412 +188,117 @@ describe("ralpher cli update", () => {
     ]);
   });
 
-  test("installs the requested release over the current executable when no companion binary is present", async () => {
+  test("updates installed cli binary with checksum verification", async () => {
     const output: string[] = [];
     const requests: string[] = [];
-    const writes: string[] = [];
-    const chmods: Array<{ path: string; mode: number }> = [];
-    const renames: Array<{ from: string; to: string }> = [];
-    const removals: string[] = [];
+    const renames: string[] = [];
 
     const exitCode = await runUpdateCommand({ checkOnly: false }, {
-      currentVersion: "1.2.3",
-      out: (message: string) => output.push(message),
-      getPlatform: () => ({
-        platform: "linux",
-        arch: "x64",
+      ...createUpdateDependencies({
+        output,
+        requests,
       }),
-      fetchFn: createFetchMock(async (input: string | URL | Request) => {
-        requests.push(String(input));
-        if (String(input).includes("/releases/latest")) {
-          return jsonResponse(200, {
-            tag_name: "v1.2.4",
-            assets: [
-              {
-                name: "ralpher-cli-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-              },
-            ],
-          });
-        }
-
-        return binaryResponse(200, "next-binary");
-      }),
-      getExecutablePath: () => "/usr/local/bin/ralpher-cli",
-      resolveRealPath: async (path: string) => `/resolved${path}`,
-      fileExists: async () => false,
-      createTempDirectory: async (targetDirectory: string) => `${targetDirectory}/.ralpher-update-temp`,
-      writeBinary: async (path: string) => {
-        writes.push(path);
-      },
-      chmodFile: async (path: string, mode: number) => {
-        chmods.push({ path, mode });
-      },
       renameFile: async (from: string, to: string) => {
-        renames.push({ from, to });
+        renames.push(`${from}->${to}`);
       },
-      removeFile: async (path: string) => {
-        removals.push(path);
-      },
-      statFile: async () => ({
-        mode: 0o100755,
-      }),
     });
 
     expect(exitCode).toBe(0);
     expect(requests).toEqual([
       "https://api.github.com/repos/pablozaiden/ralpher/releases/latest",
       "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-    ]);
-    expect(writes).toEqual([
-      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
-    ]);
-    expect(chmods).toEqual([
-      {
-        path: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
-        mode: 0o755,
-      },
+      "https://downloads.test/ralpher-cli-v1.2.4-linux-x64.sha256",
     ]);
     expect(renames).toEqual([
-      {
-        from: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
-        to: "/resolved/usr/local/bin/ralpher-cli",
-      },
-    ]);
-    expect(removals).toEqual([
-      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
-      "/resolved/usr/local/bin/.ralpher-update-temp",
+      "/usr/local/bin/ralpher-cli->/tmp/.ralpher-cli-update-test/ralpher-cli.backup",
+      "/tmp/.ralpher-cli-update-test/ralpher-cli-v1.2.4-linux-x64->/usr/local/bin/ralpher-cli",
     ]);
     expect(output).toEqual([
       "Fetching release metadata...",
       "Downloading ralpher-cli-v1.2.4-linux-x64...",
-      "Replacing /resolved/usr/local/bin/ralpher-cli...",
-      "Updated ralpher-cli 1.2.3 -> 1.2.4 at /resolved/usr/local/bin/ralpher-cli.",
-    ]);
-  });
-
-  test("updates the companion ralpher binary when it is installed beside the cli", async () => {
-    const output: string[] = [];
-    const requests: string[] = [];
-    const writes: string[] = [];
-    const chmods: Array<{ path: string; mode: number }> = [];
-    const renames: Array<{ from: string; to: string }> = [];
-    const removals: string[] = [];
-
-    const exitCode = await runUpdateCommand({ checkOnly: false }, {
-      currentVersion: "1.2.3",
-      out: (message: string) => output.push(message),
-      getPlatform: () => ({
-        platform: "linux",
-        arch: "x64",
-      }),
-      fetchFn: createFetchMock(async (input: string | URL | Request) => {
-        requests.push(String(input));
-        if (String(input).includes("/releases/latest")) {
-          return jsonResponse(200, {
-            tag_name: "v1.2.4",
-            assets: [
-              {
-                name: "ralpher-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
-              },
-              {
-                name: "ralpher-cli-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-              },
-            ],
-          });
-        }
-
-        return binaryResponse(200, "next-binary");
-      }),
-      getExecutablePath: () => "/usr/local/bin/ralpher-cli",
-      resolveRealPath: async (path: string) => `/resolved${path}`,
-      fileExists: async (path: string) => path === "/resolved/usr/local/bin/ralpher",
-      createTempDirectory: async (targetDirectory: string) => `${targetDirectory}/.ralpher-update-temp`,
-      writeBinary: async (path: string) => {
-        writes.push(path);
-      },
-      chmodFile: async (path: string, mode: number) => {
-        chmods.push({ path, mode });
-      },
-      renameFile: async (from: string, to: string) => {
-        renames.push({ from, to });
-      },
-      removeFile: async (path: string) => {
-        removals.push(path);
-      },
-      statFile: async () => ({
-        mode: 0o100755,
-      }),
-    });
-
-    expect(exitCode).toBe(0);
-    expect(requests).toEqual([
-      "https://api.github.com/repos/pablozaiden/ralpher/releases/latest",
-      "https://downloads.test/ralpher-v1.2.4-linux-x64",
-      "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-    ]);
-    expect(writes).toEqual([
-      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-v1.2.4-linux-x64",
-      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
-    ]);
-    expect(chmods).toEqual([
-      {
-        path: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-v1.2.4-linux-x64",
-        mode: 0o755,
-      },
-      {
-        path: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
-        mode: 0o755,
-      },
-    ]);
-    expect(renames).toEqual([
-      {
-        from: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-v1.2.4-linux-x64",
-        to: "/resolved/usr/local/bin/ralpher",
-      },
-      {
-        from: "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
-        to: "/resolved/usr/local/bin/ralpher-cli",
-      },
-    ]);
-    expect(removals).toEqual([
-      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-v1.2.4-linux-x64",
-      "/resolved/usr/local/bin/.ralpher-update-temp",
-      "/resolved/usr/local/bin/.ralpher-update-temp/ralpher-cli-v1.2.4-linux-x64",
-      "/resolved/usr/local/bin/.ralpher-update-temp",
-    ]);
-    expect(output).toEqual([
-      "Fetching release metadata...",
-      "Downloading ralpher-v1.2.4-linux-x64...",
-      "Replacing /resolved/usr/local/bin/ralpher...",
-      "Updated ralpher 1.2.3 -> 1.2.4 at /resolved/usr/local/bin/ralpher.",
-      "Downloading ralpher-cli-v1.2.4-linux-x64...",
-      "Replacing /resolved/usr/local/bin/ralpher-cli...",
-      "Updated ralpher-cli 1.2.3 -> 1.2.4 at /resolved/usr/local/bin/ralpher-cli.",
-    ]);
-  });
-
-  test("reports permission failures clearly", async () => {
-    const output: string[] = [];
-
-    const exitCode = await runCli(["update"], {
-      out: (message: string) => output.push(message),
-      err: (message: string) => output.push(`ERR:${message}`),
-      fetchFn: createFetchMock(async (input: string | URL | Request) => {
-        if (String(input).includes("/releases/latest")) {
-          return jsonResponse(200, {
-            tag_name: "v1.2.4",
-            assets: [
-              {
-                name: "ralpher-cli-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-              },
-            ],
-          });
-        }
-
-        return binaryResponse(200, "next-binary");
-      }),
-      updateDependencies: {
-        currentVersion: "1.2.3",
-        getPlatform: () => ({
-          platform: "linux",
-          arch: "x64",
-        }),
-        getExecutablePath: () => "/usr/local/bin/ralpher-cli",
-        resolveRealPath: async (path: string) => path,
-        fileExists: async () => false,
-        createTempDirectory: async (targetDirectory: string) => `${targetDirectory}/.ralpher-update-temp`,
-        writeBinary: async () => undefined,
-        chmodFile: async () => undefined,
-        renameFile: async () => {
-          const error = new Error("permission denied") as Error & { code?: string };
-          error.code = "EACCES";
-          throw error;
-        },
-        removeFile: async () => undefined,
-        statFile: async () => ({
-          mode: 0o100755,
-        }),
-      },
-    });
-
-    expect(exitCode).toBe(1);
-    expect(output).toEqual([
-      "Fetching release metadata...",
-      "Downloading ralpher-cli-v1.2.4-linux-x64...",
-      "Replacing /usr/local/bin/ralpher-cli...",
-      "ERR:Error: Cannot update /usr/local/bin/ralpher-cli: permission denied. Re-run with permission to modify the installed binary or use the installer script.",
-    ]);
-  });
-
-  test("reports temp directory permission failures clearly", async () => {
-    const output: string[] = [];
-
-    const exitCode = await runCli(["update"], {
-      out: (message: string) => output.push(message),
-      err: (message: string) => output.push(`ERR:${message}`),
-      fetchFn: createFetchMock(async (input: string | URL | Request) => {
-        if (String(input).includes("/releases/latest")) {
-          return jsonResponse(200, {
-            tag_name: "v1.2.4",
-            assets: [
-              {
-                name: "ralpher-cli-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-              },
-            ],
-          });
-        }
-
-        return binaryResponse(200, "next-binary");
-      }),
-      updateDependencies: {
-        currentVersion: "1.2.3",
-        getPlatform: () => ({
-          platform: "linux",
-          arch: "x64",
-        }),
-        getExecutablePath: () => "/usr/local/bin/ralpher-cli",
-        resolveRealPath: async (path: string) => path,
-        fileExists: async () => false,
-        createTempDirectory: async () => {
-          const error = new Error("permission denied") as Error & { code?: string };
-          error.code = "EACCES";
-          throw error;
-        },
-      },
-    });
-
-    expect(exitCode).toBe(1);
-    expect(output).toEqual([
-      "Fetching release metadata...",
-      "ERR:Error: Cannot update /usr/local/bin/ralpher-cli: permission denied. Re-run with permission to modify the installed binary or use the installer script.",
-    ]);
-  });
-
-  test("warns and continues when the companion ralpher binary is in use", async () => {
-    const output: string[] = [];
-    const requests: string[] = [];
-
-    const exitCode = await runCli(["update"], {
-      out: (message: string) => output.push(message),
-      err: (message: string) => output.push(`ERR:${message}`),
-      fetchFn: createFetchMock(async (input: string | URL | Request) => {
-        requests.push(String(input));
-        if (String(input).includes("/releases/latest")) {
-          return jsonResponse(200, {
-            tag_name: "v1.2.4",
-            assets: [
-              {
-                name: "ralpher-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-v1.2.4-linux-x64",
-              },
-              {
-                name: "ralpher-cli-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-              },
-            ],
-          });
-        }
-
-        return binaryResponse(200, "next-binary");
-      }),
-      updateDependencies: {
-        currentVersion: "1.2.3",
-        getPlatform: () => ({
-          platform: "linux",
-          arch: "x64",
-        }),
-        getExecutablePath: () => "/usr/local/bin/ralpher-cli",
-        resolveRealPath: async (path: string) => path,
-        fileExists: async (path: string) => path === "/usr/local/bin/ralpher",
-        createTempDirectory: async (targetDirectory: string) => `${targetDirectory}/.ralpher-update-temp`,
-        writeBinary: async () => undefined,
-        chmodFile: async () => undefined,
-        renameFile: async (_from: string, to: string) => {
-          if (to === "/usr/local/bin/ralpher") {
-            const error = new Error("text file busy") as Error & { code?: string };
-            error.code = "ETXTBSY";
-            throw error;
-          }
-        },
-        removeFile: async () => undefined,
-        statFile: async () => ({
-          mode: 0o100755,
-        }),
-      },
-    });
-
-    expect(exitCode).toBe(0);
-    expect(requests).toEqual([
-      "https://api.github.com/repos/pablozaiden/ralpher/releases/latest",
-      "https://downloads.test/ralpher-v1.2.4-linux-x64",
-      "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-    ]);
-    expect(output).toEqual([
-      "Fetching release metadata...",
-      "Downloading ralpher-v1.2.4-linux-x64...",
-      "Replacing /usr/local/bin/ralpher...",
-      "ERR:Warning: Cannot update /usr/local/bin/ralpher: the binary is currently in use. Stop any running Ralpher process and try again. Continuing with ralpher-cli update.",
-      "Downloading ralpher-cli-v1.2.4-linux-x64...",
+      "Downloading ralpher-cli-v1.2.4-linux-x64.sha256...",
+      "Verified checksum for ralpher-cli-v1.2.4-linux-x64.",
       "Replacing /usr/local/bin/ralpher-cli...",
       "Updated ralpher-cli 1.2.3 -> 1.2.4 at /usr/local/bin/ralpher-cli.",
     ]);
   });
 
-  test("specific-version updates install the requested tag", async () => {
+  test("updates companion server binary when installed beside cli", async () => {
     const output: string[] = [];
     const requests: string[] = [];
 
-    const exitCode = await runUpdateCommand({ checkOnly: false, version: "1.2.4" }, {
-      currentVersion: "1.2.3",
-      out: (message: string) => output.push(message),
-      getPlatform: () => ({
-        platform: "linux",
-        arch: "x64",
-      }),
-      fetchFn: createFetchMock(async (input: string | URL | Request) => {
-        requests.push(String(input));
-        if (String(input).includes("/releases/tags/v1.2.4")) {
-          return jsonResponse(200, {
-            tag_name: "v1.2.4",
-            assets: [
-              {
-                name: "ralpher-cli-v1.2.4-linux-x64",
-                browser_download_url: "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
-              },
-            ],
-          });
-        }
+    const exitCode = await runUpdateCommand({ checkOnly: false }, createUpdateDependencies({
+      output,
+      requests,
+      installedPaths: new Set([
+        "/usr/local/bin/ralpher",
+        "/usr/local/bin/ralpher-cli",
+      ]),
+      assetBodies: {
+        "ralpher-v1.2.4-linux-x64": "server-binary",
+        "ralpher-cli-v1.2.4-linux-x64": "cli-binary",
+      },
+    }));
 
-        return binaryResponse(200, "next-binary");
-      }),
-      getExecutablePath: () => "/usr/local/bin/ralpher-cli",
-      resolveRealPath: async (path: string) => path,
-      fileExists: async () => false,
-      createTempDirectory: async (targetDirectory: string) => `${targetDirectory}/.ralpher-update-temp`,
-      writeBinary: async () => undefined,
-      chmodFile: async () => undefined,
-      renameFile: async () => undefined,
-      removeFile: async () => undefined,
-      statFile: async () => ({
-        mode: 0o100755,
+    expect(exitCode).toBe(0);
+    expect(requests).toContain("https://downloads.test/ralpher-v1.2.4-linux-x64");
+    expect(requests).toContain("https://downloads.test/ralpher-cli-v1.2.4-linux-x64");
+    expect(output).toContain("Updated ralpher 1.2.3 -> 1.2.4 at /usr/local/bin/ralpher.");
+    expect(output).toContain("Updated ralpher-cli 1.2.3 -> 1.2.4 at /usr/local/bin/ralpher-cli.");
+  });
+
+  test("explicit version fetches a tagged release and reports install", async () => {
+    const output: string[] = [];
+    const requests: string[] = [];
+
+    const exitCode = await runUpdateCommand({ checkOnly: false, version: "1.2.4" }, createUpdateDependencies({
+      output,
+      requests,
+    }));
+
+    expect(exitCode).toBe(0);
+    expect(requests[0]).toBe("https://api.github.com/repos/pablozaiden/ralpher/releases/tags/v1.2.4");
+    expect(output).toContain("Installed ralpher-cli 1.2.4 at /usr/local/bin/ralpher-cli.");
+  });
+
+  test("surfaces shared installer failures", async () => {
+    await expect(runUpdateCommand({ checkOnly: false }, {
+      ...createUpdateDependencies(),
+      renameFile: async () => {
+        const error = new Error("busy") as Error & { code: string };
+        error.code = "EBUSY";
+        throw error;
+      },
+    })).rejects.toThrow(
+      "Cannot update ralpher-cli: the binary is currently in use. Stop any running Ralpher CLI process and try again.",
+    );
+  });
+
+  test("rejects source-mode updates", async () => {
+    await expect(runUpdateCommand({ checkOnly: false }, {
+      ...createUpdateDependencies(),
+      getExecutablePath: () => "/usr/local/bin/bun",
+    })).rejects.toThrow(
+      "ralpher-cli update only works from an installed Ralpher CLI binary. Use the installer script when running from source.",
+    );
+  });
+
+  test("runCli wires update command dependencies through the adapter", async () => {
+    const output: string[] = [];
+    const requests: string[] = [];
+
+    const exitCode = await runCli(["update", "--check"], {
+      out: (message: string) => output.push(message),
+      updateDependencies: createUpdateDependencies({
+        output,
+        requests,
       }),
     });
 
     expect(exitCode).toBe(0);
     expect(requests).toEqual([
-      "https://api.github.com/repos/pablozaiden/ralpher/releases/tags/v1.2.4",
-      "https://downloads.test/ralpher-cli-v1.2.4-linux-x64",
+      "https://api.github.com/repos/pablozaiden/ralpher/releases/latest",
     ]);
-    expect(output).toEqual([
-      "Fetching release metadata for v1.2.4...",
-      "Downloading ralpher-cli-v1.2.4-linux-x64...",
-      "Replacing /usr/local/bin/ralpher-cli...",
-      "Installed ralpher-cli 1.2.4 at /usr/local/bin/ralpher-cli.",
-    ]);
+    expect(output.at(-1)).toBe("Update available: 1.2.3 -> 1.2.4");
   });
 });

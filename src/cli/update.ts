@@ -1,21 +1,6 @@
-import { chmod, mkdtemp, realpath, rename, rm, stat } from "fs/promises";
-import { basename, dirname, join } from "path";
-import { z } from "zod";
-
 const GITHUB_REPOSITORY = "pablozaiden/ralpher";
-const GITHUB_API_BASE_URL = `https://api.github.com/repos/${GITHUB_REPOSITORY}`;
 const CLI_BINARY_NAME = "ralpher-cli";
 const SERVER_BINARY_NAME = "ralpher";
-
-const ReleaseAssetSchema = z.object({
-  name: z.string().min(1),
-  browser_download_url: z.string().url(),
-});
-
-const ReleaseSchema = z.object({
-  tag_name: z.string().min(1),
-  assets: z.array(ReleaseAssetSchema),
-});
 
 export interface UpdateCommandOptions {
   checkOnly: boolean;
@@ -29,77 +14,66 @@ export type ReleasePlatform = {
 
 type WritableBinaryContent = Uint8Array | string;
 
-export interface CliUpdateDependencies {
+type UpdaterDependencies = {
   fetchFn: typeof fetch;
   out: (message: string) => void;
   err: (message: string) => void;
-  currentVersion: string;
   getPlatform: () => {
-    platform: NodeJS.Platform;
+    platform: string;
     arch: string;
   };
   getExecutablePath: () => string;
   resolveRealPath: (path: string) => Promise<string>;
   fileExists: (path: string) => Promise<boolean>;
-  createTempDirectory: (targetDirectory: string) => Promise<string>;
+  createTempDirectory: (targetDirectory: string, prefix: string) => Promise<string>;
   writeBinary: (path: string, content: WritableBinaryContent) => Promise<void>;
   chmodFile: (path: string, mode: number) => Promise<void>;
   renameFile: (from: string, to: string) => Promise<void>;
   removeFile: (path: string) => Promise<void>;
-  statFile: (path: string) => Promise<{
-    mode: number;
-  }>;
-}
-
-type GitHubRelease = z.infer<typeof ReleaseSchema>;
-
-type ReleaseAsset = {
-  binaryName: string;
-  version: string;
-  assetName: string;
-  downloadUrl: string;
+  statFile: (path: string) => Promise<{ mode: number }>;
 };
 
-type InstalledBinaryTarget = {
+type UpdaterConfig = {
+  repository: string;
   binaryName: string;
-  assetPrefix: string;
-  targetPath: string;
-};
-
-function createDefaultUpdateDependencies(): CliUpdateDependencies {
-  return {
-    fetchFn: fetch,
-    out: console.log,
-    err: console.error,
-    currentVersion: "0.0.0-development",
-    getPlatform: () => ({
-      platform: process.platform,
-      arch: process.arch,
-    }),
-    getExecutablePath: () => process.execPath,
-    resolveRealPath: async (path: string) => await realpath(path),
-    fileExists: async (path: string) => await Bun.file(path).exists(),
-    createTempDirectory: async (targetDirectory: string) => await mkdtemp(join(targetDirectory, ".ralpher-update-")),
-    writeBinary: async (path: string, content: WritableBinaryContent) => {
-      await Bun.write(path, content);
-    },
-    chmodFile: async (path: string, mode: number) => {
-      await chmod(path, mode);
-    },
-    renameFile: async (from: string, to: string) => {
-      await rename(from, to);
-    },
-    removeFile: async (path: string) => {
-      await rm(path, { force: true, recursive: true });
-    },
-    statFile: async (path: string) => {
-      const currentStat = await stat(path);
-      return {
-        mode: currentStat.mode,
-      };
-    },
+  currentVersion: string;
+  productName: string;
+  checksum: {
+    required: boolean;
   };
-}
+  companionBinaries: Array<{
+    binaryName: string;
+    assetPrefix: string;
+    required: boolean;
+  }>;
+};
+
+type InstallerModule = {
+  runUpdateCommand: (
+    command: UpdateCommandOptions,
+    config: UpdaterConfig,
+    dependencyOverrides?: Partial<UpdaterDependencies>,
+  ) => Promise<number>;
+};
+
+export type CliUpdateDependencies = Partial<UpdaterDependencies> & {
+  currentVersion?: string;
+};
+
+export const RALPHER_UPDATER_CONFIG = {
+  repository: GITHUB_REPOSITORY,
+  binaryName: CLI_BINARY_NAME,
+  currentVersion: "0.0.0-development",
+  productName: "Ralpher CLI",
+  checksum: { required: true },
+  companionBinaries: [
+    {
+      binaryName: SERVER_BINARY_NAME,
+      assetPrefix: SERVER_BINARY_NAME,
+      required: false,
+    },
+  ],
+} satisfies UpdaterConfig;
 
 export function normalizeReleaseVersion(rawValue: string): string {
   const trimmed = rawValue.trim();
@@ -195,232 +169,47 @@ export function compareReleaseVersions(left: string, right: string): number {
   return comparePrereleaseIdentifiers(leftVersion.prerelease, rightVersion.prerelease);
 }
 
-export function resolveReleasePlatform(platform: NodeJS.Platform, arch: string): ReleasePlatform {
-  if ((platform === "linux" || platform === "darwin") && (arch === "x64" || arch === "arm64")) {
+export function resolveReleasePlatform(platform: string, arch: string): ReleasePlatform {
+  const os = platform === "linux" || platform === "darwin" ? platform : undefined;
+  const normalizedArch = arch === "x64" || arch === "amd64"
+    ? "x64"
+    : arch === "arm64" || arch === "aarch64"
+      ? "arm64"
+      : undefined;
+
+  if (os && normalizedArch) {
     return {
-      os: platform,
-      arch,
+      os,
+      arch: normalizedArch,
     };
   }
 
-  throw new Error(
-    `Unsupported platform: ${platform}-${arch}. Ralpher releases support Linux and macOS on x64 and arm64.`,
-  );
+  throw new Error(`Unsupported platform: ${platform}-${arch}. Supported release targets are Linux and macOS on x64 and arm64.`);
 }
 
 export function buildReleaseAssetName(tag: string, target: ReleasePlatform): string {
-  return buildBinaryReleaseAssetName(CLI_BINARY_NAME, tag, target);
+  return `${CLI_BINARY_NAME}-${normalizeReleaseTag(tag)}-${target.os}-${target.arch}`;
 }
 
-function buildBinaryReleaseAssetName(binaryName: string, tag: string, target: ReleasePlatform): string {
-  return `${binaryName}-${tag}-${target.os}-${target.arch}`;
-}
-
-async function fetchRelease(
-  version: string | undefined,
-  dependencies: CliUpdateDependencies,
-): Promise<GitHubRelease> {
-  const tag = version ? normalizeReleaseTag(version) : undefined;
-  const releaseUrl = tag
-    ? `${GITHUB_API_BASE_URL}/releases/tags/${tag}`
-    : `${GITHUB_API_BASE_URL}/releases/latest`;
-  dependencies.out(tag ? `Fetching release metadata for ${tag}...` : "Fetching release metadata...");
-  const response = await dependencies.fetchFn(releaseUrl, {
-    headers: {
-      accept: "application/vnd.github+json",
-    },
-  });
-
-  if (response.status === 404 && tag) {
-    throw new Error(`Release not found: ${tag}`);
-  }
-  if (!response.ok) {
-    throw new Error(`Failed to load release metadata: GitHub returned ${String(response.status)}.`);
-  }
-
-  let rawBody: unknown;
-  try {
-    rawBody = await response.json();
-  } catch (error) {
-    throw new Error(`Failed to parse release metadata: ${String(error)}`);
-  }
-
-  return ReleaseSchema.parse(rawBody);
-}
-
-function resolveReleaseAsset(
-  release: GitHubRelease,
-  target: ReleasePlatform,
-  binaryName: string,
-): ReleaseAsset {
-  const assetName = buildBinaryReleaseAssetName(binaryName, release.tag_name, target);
-  const asset = release.assets.find((entry) => entry.name === assetName);
-  if (!asset) {
-    throw new Error(`Release ${release.tag_name} does not include asset ${assetName}.`);
-  }
-
-  return {
-    binaryName,
-    version: normalizeReleaseVersion(release.tag_name),
-    assetName,
-    downloadUrl: asset.browser_download_url,
-  };
-}
-
-async function resolveInstalledBinaryPath(dependencies: CliUpdateDependencies): Promise<string> {
-  const executablePath = dependencies.getExecutablePath();
-  const executableName = basename(executablePath);
-  if (executableName === "bun" || executableName.startsWith("bun-")) {
-    throw new Error(
-      "ralpher-cli update only works from an installed Ralpher CLI binary. Use install.sh when running from source.",
-    );
-  }
-  return await dependencies.resolveRealPath(executablePath);
-}
-
-function formatCheckMessage(currentVersion: string, targetVersion: string): string {
-  const comparison = compareReleaseVersions(currentVersion, targetVersion);
-  if (comparison === 0) {
-    return `${CLI_BINARY_NAME} ${currentVersion} is up to date.`;
-  }
-  if (comparison > 0) {
-    return `${CLI_BINARY_NAME} ${currentVersion} is newer than the latest published release ${targetVersion}.`;
-  }
-  return `Update available: ${currentVersion} -> ${targetVersion}`;
-}
-
-function toPermissionMessage(path: string, error: unknown): Error {
-  const code = typeof error === "object" && error && "code" in error ? String(error.code) : undefined;
-  if (code === "EACCES" || code === "EPERM") {
-    return new Error(
-      `Cannot update ${path}: permission denied. Re-run with permission to modify the installed binary or use the installer script.`,
-    );
-  }
-  if (code === "EBUSY" || code === "ETXTBSY") {
-    return new Error(`Cannot update ${path}: the binary is currently in use. Stop any running Ralpher process and try again.`);
-  }
-  return new Error(`Failed to update ${path}: ${String(error)}`);
-}
-
-function formatCompanionUpdateWarning(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return `Warning: ${message} Continuing with ${CLI_BINARY_NAME} update.`;
-}
-
-async function replaceInstalledBinary(
-  target: InstalledBinaryTarget,
-  asset: ReleaseAsset,
-  dependencies: CliUpdateDependencies,
-): Promise<string> {
-  const targetPath = target.targetPath;
-  let tempDirectory: string | undefined;
-  let tempPath: string | undefined;
-  let tempCreated = false;
-
-  try {
-    tempDirectory = await dependencies.createTempDirectory(dirname(targetPath));
-    tempPath = join(tempDirectory, asset.assetName);
-    dependencies.out(`Downloading ${asset.assetName}...`);
-    const response = await dependencies.fetchFn(asset.downloadUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to download ${asset.assetName}: GitHub returned ${String(response.status)}.`);
-    }
-
-    const payload = await response.bytes();
-    await dependencies.writeBinary(tempPath, payload);
-    tempCreated = true;
-
-    const installedBinaryStat = await dependencies.statFile(targetPath);
-    const executableMode = installedBinaryStat.mode & 0o777;
-    await dependencies.chmodFile(tempPath, executableMode || 0o755);
-    dependencies.out(`Replacing ${targetPath}...`);
-    await dependencies.renameFile(tempPath, targetPath);
-    return targetPath;
-  } catch (error) {
-    throw toPermissionMessage(targetPath, error);
-  } finally {
-    if (tempCreated && tempPath) {
-      await dependencies.removeFile(tempPath);
-    }
-    if (tempDirectory) {
-      await dependencies.removeFile(tempDirectory);
-    }
-  }
-}
-
-async function resolveInstalledBinaryTargets(
-  dependencies: CliUpdateDependencies,
-): Promise<InstalledBinaryTarget[]> {
-  const cliPath = await resolveInstalledBinaryPath(dependencies);
-  const targets: InstalledBinaryTarget[] = [];
-  const companionPath = join(dirname(cliPath), SERVER_BINARY_NAME);
-
-  if (await dependencies.fileExists(companionPath)) {
-    targets.push({
-      binaryName: SERVER_BINARY_NAME,
-      assetPrefix: SERVER_BINARY_NAME,
-      targetPath: companionPath,
-    });
-  }
-
-  targets.push({
-    binaryName: CLI_BINARY_NAME,
-    assetPrefix: CLI_BINARY_NAME,
-    targetPath: cliPath,
-  });
-
-  return targets;
+async function loadInstaller(): Promise<InstallerModule> {
+  const importModule = new Function("specifier", "return import(specifier)") as (
+    specifier: string,
+  ) => Promise<unknown>;
+  return await importModule("@pablozaiden/installer") as InstallerModule;
 }
 
 export async function runUpdateCommand(
   command: UpdateCommandOptions,
-  dependencyOverrides: Partial<CliUpdateDependencies> = {},
+  dependencyOverrides: CliUpdateDependencies = {},
 ): Promise<number> {
-  const dependencies = {
-    ...createDefaultUpdateDependencies(),
-    ...dependencyOverrides,
-  };
-  const currentVersion = normalizeReleaseVersion(dependencies.currentVersion);
-  const release = await fetchRelease(command.version, dependencies);
-  const runtimePlatform = dependencies.getPlatform();
-  const releasePlatform = resolveReleasePlatform(runtimePlatform.platform, runtimePlatform.arch);
-  const cliReleaseAsset = resolveReleaseAsset(release, releasePlatform, CLI_BINARY_NAME);
-
-  if (command.checkOnly) {
-    dependencies.out(formatCheckMessage(currentVersion, cliReleaseAsset.version));
-    return 0;
-  }
-
-  if (!command.version && compareReleaseVersions(currentVersion, cliReleaseAsset.version) >= 0) {
-    dependencies.out(formatCheckMessage(currentVersion, cliReleaseAsset.version));
-    return 0;
-  }
-
-  if (command.version && compareReleaseVersions(currentVersion, cliReleaseAsset.version) === 0) {
-    dependencies.out(`${CLI_BINARY_NAME} ${currentVersion} is already installed.`);
-    return 0;
-  }
-
-  const installedTargets = await resolveInstalledBinaryTargets(dependencies);
-  for (const target of installedTargets) {
-    const releaseAsset = resolveReleaseAsset(release, releasePlatform, target.assetPrefix);
-    let installedPath: string;
-    try {
-      installedPath = await replaceInstalledBinary(target, releaseAsset, dependencies);
-    } catch (error) {
-      if (target.binaryName === SERVER_BINARY_NAME) {
-        dependencies.err(formatCompanionUpdateWarning(error));
-        continue;
-      }
-      throw error;
-    }
-    if (command.version) {
-      dependencies.out(`Installed ${target.binaryName} ${releaseAsset.version} at ${installedPath}.`);
-      continue;
-    }
-
-    dependencies.out(`Updated ${target.binaryName} ${currentVersion} -> ${releaseAsset.version} at ${installedPath}.`);
-  }
-
-  return 0;
+  const { currentVersion, ...installerDependencyOverrides } = dependencyOverrides;
+  const installer = await loadInstaller();
+  return await installer.runUpdateCommand(
+    command,
+    {
+      ...RALPHER_UPDATER_CONFIG,
+      currentVersion: currentVersion ?? RALPHER_UPDATER_CONFIG.currentVersion,
+    },
+    installerDependencyOverrides,
+  );
 }

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "repo": "pablozaiden/ralpher",
+  "installDir": "$HOME/.local/bin",
+  "binaries": [
+    {
+      "name": "ralpher",
+      "assetPrefix": "ralpher",
+      "postInstallMessage": "Run 'ralpher' to start the local server."
+    },
+    {
+      "name": "ralpher-cli",
+      "assetPrefix": "ralpher-cli",
+      "postInstallMessage": "Run 'ralpher-cli --help' to use the API client."
+    }
+  ],
+  "checksums": {
+    "required": true,
+    "extension": ".sha256"
+  },
+  "platforms": {
+    "linux": ["x64", "arm64"],
+    "darwin": ["x64", "arm64"]
+  }
+}

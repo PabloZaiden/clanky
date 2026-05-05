@@ -11,6 +11,7 @@
         "@tailwindcss/typography": "0.5.19",
         "bun-plugin-tailwind": "0.1.2",
         "ghostty-web": "0.4.0",
+        "@pablozaiden/installer": "github:PabloZaiden/installer#126f52a743c46db69baeccfcd6350b52d2569c2a",
         "highlight.js": "11.11.1",
         "jose": "6.2.3",
         "react": "19.2.5",
@@ -136,6 +137,8 @@
     "@oven/bun-windows-x64": ["@oven/bun-windows-x64@1.3.13", "", { "os": "win32", "cpu": "x64" }, "sha512-vqDEFX63ZZQF3YstPSpPD+RxNm5AILPdUuuKpNwsj7ld4NjhdHUYkAmLXDtKNWt9JMRL10bop//W8faY/LV+RQ=="],
 
     "@oven/bun-windows-x64-baseline": ["@oven/bun-windows-x64-baseline@1.3.13", "", { "os": "win32", "cpu": "x64" }, "sha512-6gy4hhQSjq/T/S9hC9m3NxY0RY+9Ww+XNlB+8koIMTsMSYEjk7Ho+hFHQz1Bn4W61Ub7Vykufg+jgDgPfa2GFA=="],
+
+    "@pablozaiden/installer": ["@pablozaiden/installer@github:PabloZaiden/installer#126f52a", { "peerDependencies": { "typescript": "^5" } }, "PabloZaiden-installer-126f52a", "sha512-3lrjktIV+LwJCbfBuY/NOMFX+xWQkxQACuzwtgOB9uqvXjsEuUUMn5ngybTsMF2OdLo3H3lWtyJlJgJ7m+PUOg=="],
 
     "@peculiar/asn1-android": ["@peculiar/asn1-android@2.6.0", "", { "dependencies": { "@peculiar/asn1-schema": "^2.6.0", "asn1js": "^3.0.6", "tslib": "^2.8.1" } }, "sha512-cBRCKtYPF7vJGN76/yG8VbxRcHLPF3HnkoHhKOZeHpoVtbMYfY9ROKtH3DtYUY9m8uI1Mh47PRhHf2hSK3xcSQ=="],
 

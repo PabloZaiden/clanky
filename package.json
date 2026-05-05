@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
+    "@pablozaiden/installer": "github:PabloZaiden/installer#126f52a743c46db69baeccfcd6350b52d2569c2a",
     "@simplewebauthn/browser": "13.3.0",
     "@simplewebauthn/server": "13.3.0",
     "@tailwindcss/typography": "0.5.19",
