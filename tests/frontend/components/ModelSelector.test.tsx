@@ -90,7 +90,7 @@ describe("ModelSelector", () => {
     ]);
   });
 
-  test("fallback variant selection matches the sorted dropdown order", () => {
+  test("fallback variant selection preserves backend-provided priority", () => {
     expect(
       getPreferredModelVariant(
         [
@@ -106,6 +106,6 @@ describe("ModelSelector", () => {
         "gpt-5.4",
         "missing",
       ),
-    ).toBe("low");
+    ).toBe("high");
   });
 });

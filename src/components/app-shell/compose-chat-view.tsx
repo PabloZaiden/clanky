@@ -12,7 +12,6 @@ import {
   ModelSelector,
   modelVariantExists,
   parseModelKey,
-  sortModelVariants,
 } from "../ModelSelector";
 import { BranchSelector } from "../create-loop/branch-selector";
 import { Button } from "../common";
@@ -51,7 +50,7 @@ function getPreferredModelKey(
   return makeModelKey(
     firstConnected.providerID,
     firstConnected.modelID,
-    firstConnected.variants ? sortModelVariants(firstConnected.variants)[0] ?? "" : "",
+    firstConnected.variants?.[0] ?? "",
   );
 }
 

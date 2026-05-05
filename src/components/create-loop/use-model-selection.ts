@@ -12,7 +12,6 @@ import {
   makeModelKey,
   getPreferredModelVariant,
   parseModelKey,
-  sortModelVariants,
 } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
 import type { CheapModelSelection } from "../../types";
@@ -176,7 +175,7 @@ export function useModelSelection({
     if (firstConnected) {
       const variant =
         firstConnected.variants && firstConnected.variants.length > 0
-          ? sortModelVariants(firstConnected.variants)[0]
+          ? firstConnected.variants[0]
           : "";
       const modelKey = makeModelKey(firstConnected.providerID, firstConnected.modelID, variant);
       log.debug("Setting model to first connected:", modelKey);

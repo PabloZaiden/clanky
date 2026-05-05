@@ -100,7 +100,7 @@ export function getPreferredModelVariant(
   if (model.variants.includes(variant)) {
     return variant;
   }
-  return sortModelVariants(model.variants)[0] ?? null;
+  return model.variants[0] ?? null;
 }
 
 // ─── Model grouping/sorting ──────────────────────────────────────────────────
