@@ -11,6 +11,7 @@ import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
 import { WorkspaceEditorPanel } from "../workspace-files/editor-panel";
+import { WorkspaceImagePreviewPanel } from "../workspace-files/image-preview-panel";
 import { WorkspaceFileConflictModal } from "../workspace-files/conflict-modal";
 import { ServerPasswordModal } from "./server-password-modal";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
@@ -479,18 +480,29 @@ export function FileExplorerView({
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {activePane === "editor" ? (
-            <WorkspaceEditorPanel
-              filePath={explorer.currentFile?.path}
-              pendingFilePath={explorer.pendingFilePath}
-              value={explorer.editorContent}
-              loading={explorer.loadingFile}
-              saving={explorer.savingFile}
-              dirty={explorer.isDirty}
-              autoReloadedAt={explorer.autoReloadedAt}
-              onChange={explorer.setEditorContent}
-              onRefresh={handleRefreshEditor}
-              onSave={handleSave}
-            />
+            explorer.currentFile?.isImage ? (
+              <WorkspaceImagePreviewPanel
+                filePath={explorer.currentFile.path}
+                pendingFilePath={explorer.pendingFilePath}
+                imagePreviewUrl={explorer.imagePreviewUrl}
+                loading={explorer.loadingFile}
+                autoReloadedAt={explorer.autoReloadedAt}
+                onRefresh={handleRefreshEditor}
+              />
+            ) : (
+              <WorkspaceEditorPanel
+                filePath={explorer.currentFile?.path}
+                pendingFilePath={explorer.pendingFilePath}
+                value={explorer.editorContent}
+                loading={explorer.loadingFile}
+                saving={explorer.savingFile}
+                dirty={explorer.isDirty}
+                autoReloadedAt={explorer.autoReloadedAt}
+                onChange={explorer.setEditorContent}
+                onRefresh={handleRefreshEditor}
+                onSave={handleSave}
+              />
+            )
           ) : (
             <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
               <div className="flex flex-col items-stretch gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-800 md:flex-row md:items-center md:justify-between">

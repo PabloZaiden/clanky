@@ -950,6 +950,89 @@ describe("App shell", () => {
     }
   });
 
+  test("toggles the desktop sidebar with Cmd+B and Ctrl+B shortcuts", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = createMatchMediaMock(true);
+
+    try {
+      const { getByLabelText, user } = renderWithUser(<App />);
+
+      await waitFor(() => {
+        expect(getByLabelText("Hide sidebar")).toBeTruthy();
+      });
+
+      const sidebar = document.querySelector("aside");
+      expect(sidebar).toBeTruthy();
+      if (!(sidebar instanceof HTMLElement)) {
+        throw new Error("Expected sidebar element to exist");
+      }
+
+      await user.keyboard("{Meta>}b{/Meta}");
+
+      await waitFor(() => {
+        expect(sidebar.hasAttribute("hidden")).toBe(true);
+        expect(getByLabelText("Open sidebar")).toBeTruthy();
+      });
+
+      await user.keyboard("{Control>}b{/Control}");
+
+      await waitFor(() => {
+        expect(sidebar.hasAttribute("hidden")).toBe(false);
+        expect(getByLabelText("Hide sidebar")).toBeTruthy();
+      });
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
+  test("labels the narrow sidebar toggle by its current action", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = createMatchMediaMock(false);
+
+    try {
+      const { getByLabelText, queryByLabelText, user } = renderWithUser(<App />);
+
+      await waitFor(() => {
+        expect(getByLabelText("Open sidebar")).toBeTruthy();
+      });
+
+      await user.click(getByLabelText("Open sidebar"));
+
+      await waitFor(() => {
+        expect(getByLabelText("Close sidebar")).toBeTruthy();
+        expect(queryByLabelText("Hide sidebar")).toBeNull();
+      });
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
+  test("does not toggle the sidebar shortcut from editable fields", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = createMatchMediaMock(true);
+
+    try {
+      const { getByLabelText } = renderWithUser(<App />);
+
+      await waitFor(() => {
+        expect(getByLabelText("Hide sidebar")).toBeTruthy();
+      });
+
+      const sidebar = document.querySelector("aside");
+      expect(sidebar).toBeTruthy();
+      if (!(sidebar instanceof HTMLElement)) {
+        throw new Error("Expected sidebar element to exist");
+      }
+
+      fireEvent.keyDown(getByLabelText("Search sidebar"), { key: "b", metaKey: true });
+
+      expect(sidebar).not.toHaveAttribute("hidden");
+      expect(getByLabelText("Hide sidebar")).toBeTruthy();
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   test("settings button navigates to the shell settings view", async () => {
     const { getByLabelText, getByRole, user } = renderWithUser(<App />);
 

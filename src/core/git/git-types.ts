@@ -39,6 +39,20 @@ export class GitCommandError extends Error {
 }
 
 /**
+ * Error thrown when a branch name fails git ref validation.
+ */
+export class InvalidBranchNameError extends Error {
+  readonly code = "INVALID_BRANCH_NAME";
+  readonly branchName: string;
+
+  constructor(branchName: string, message = `Invalid git branch name: '${branchName}'`) {
+    super(message);
+    this.name = "InvalidBranchNameError";
+    this.branchName = branchName;
+  }
+}
+
+/**
  * Result of a git command execution.
  */
 export interface GitCommandResult {

@@ -1581,6 +1581,48 @@ describe("ChatManager", () => {
     }
   });
 
+  test("checks out the selected branch for non-worktree chats without creating a managed chat branch", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the chat backend"],
+      initGit: true,
+    });
+
+    const originalBranch = await context.git.getCurrentBranch(context.workDir);
+    const selectedBranch = "selected-chat-base";
+    await context.git.createBranch(context.workDir, selectedBranch);
+    await context.git.checkoutBranch(context.workDir, originalBranch);
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Runtime Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      baseBranch: selectedBranch,
+      ...testModelFields,
+    });
+
+    const started = await manager.sendMessage(chat.config.id, {
+      message: "Say hello",
+    });
+
+    expect(started.state.status).toBe("streaming");
+
+    const completed = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle" && current.state.messages.some((message) => message.role === "assistant"),
+    );
+
+    expect(completed.state.worktree).toBeUndefined();
+    expect(context.mockBackend?.getDirectory()).toBe(context.workDir);
+    expect(await context.git.getCurrentBranch(context.workDir)).toBe(selectedBranch);
+    expect(
+      (await context.git.getLocalBranches(context.workDir)).some((branch) =>
+        branch.name.startsWith("chat-runtime-chat-"),
+      ),
+    ).toBe(false);
+  });
+
   test("persists the active assistant message incrementally while streaming", async () => {
     context = await setupTestContext({
       useMockBackend: true,
@@ -2056,13 +2098,14 @@ describe("ChatManager", () => {
     startPlanModeSpy.mockResolvedValue();
 
     try {
+      const currentBranch = await context.git.getCurrentBranch(context.workDir);
       const manager = new ChatManager();
       const chat = await manager.createChat({
         name: "Spawn Model Chat",
         workspaceId: testWorkspaceId,
         directory: context.workDir,
         useWorktree: false,
-        baseBranch: "main",
+        baseBranch: currentBranch,
         ...testModelFields,
       });
 
@@ -2141,7 +2184,7 @@ describe("ChatManager", () => {
     expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toBe("# Imported status\n\nReady to review.");
   });
 
-  test("rejects selected plan paths that escape the chat workspace", async () => {
+  test("allows selected absolute plan paths outside the chat workspace", async () => {
     context = await setupTestContext({
       useMockBackend: true,
       mockResponses: ["Chat response"],
@@ -2167,9 +2210,18 @@ describe("ChatManager", () => {
       (current) => current.state.status === "idle" && Boolean(current.state.worktree?.worktreePath),
     );
 
-    await expect(manager.spawnLoopFromCurrentPlan(chat.config.id, "../outside.md")).rejects.toThrow(
-      "The selected plan file path must stay within the current chat workspace.",
-    );
+    const importedPlanDir = join(context.dataDir, "external-plan-files");
+    await mkdir(importedPlanDir, { recursive: true });
+    const importedPlanPath = join(importedPlanDir, "external-plan.md");
+    await writeFile(importedPlanPath, "# Imported plan\n\n1. Use an absolute path.\n");
+    await writeFile(join(importedPlanDir, "status.md"), "# Imported status\n\nReady from outside workspace.");
+
+    const spawned = await manager.spawnLoopFromCurrentPlan(chat.config.id, importedPlanPath);
+
+    expect(spawned.state.planMode?.planContent).toBe("# Imported plan\n\n1. Use an absolute path.");
+    const loopWorkDir = spawned.state.git?.worktreePath ?? spawned.config.directory;
+    expect(await Bun.file(getPlanFilePath(loopWorkDir)).text()).toContain("# Imported plan\n\n1. Use an absolute path.");
+    expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toBe("# Imported status\n\nReady from outside workspace.");
   });
 
   test("treats uninitialized database errors by error message instead of String(error)", async () => {

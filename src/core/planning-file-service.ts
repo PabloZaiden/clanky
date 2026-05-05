@@ -1,4 +1,4 @@
-import { posix as pathPosix } from "node:path";
+import { posix as pathPosix, win32 as pathWin32 } from "node:path";
 import type { CommandExecutor } from "./command-executor";
 import { ensurePlanningDirectory } from "./planning-directory";
 import {
@@ -47,6 +47,18 @@ function sanitizePlanPathForMessage(planPath: string): string {
     .trim();
 }
 
+function isExplicitAbsolutePlanPath(rawPath: string, normalizedPath: string): boolean {
+  return pathPosix.isAbsolute(normalizedPath)
+    || pathWin32.isAbsolute(rawPath)
+    || pathWin32.isAbsolute(normalizedPath);
+}
+
+function isPathContainedWithinWorkspace(workspaceDirectory: string, targetPath: string): boolean {
+  const relativePath = pathPosix.relative(workspaceDirectory, targetPath);
+  return relativePath === ""
+    || (!relativePath.startsWith("../") && relativePath !== ".." && !pathPosix.isAbsolute(relativePath));
+}
+
 function resolvePlanningFileSource(directory: string, requestedPlanPath?: string): PlanningFileSource {
   const trimmedPlanPath = requestedPlanPath?.trim() ?? "";
   if (!trimmedPlanPath) {
@@ -61,22 +73,20 @@ function resolvePlanningFileSource(directory: string, requestedPlanPath?: string
   const workspaceDirectory = normalizePlanningBasePath(directory);
   const normalizedRequestedPath = pathPosix.normalize(trimmedPlanPath.replaceAll("\\", "/"));
   if (!normalizedRequestedPath || normalizedRequestedPath === "." || normalizedRequestedPath === "/") {
-    throw new InvalidCurrentPlanError("The selected plan file path must point to a file inside the current chat workspace.");
+    throw new InvalidCurrentPlanError("The selected plan file path must point to a plan file.");
   }
-  if (pathPosix.isAbsolute(normalizedRequestedPath)) {
-    throw new InvalidCurrentPlanError("The selected plan file path must be relative to the current chat workspace.");
-  }
-
-  const planPath = pathPosix.normalize(pathPosix.join(workspaceDirectory, normalizedRequestedPath));
-  const relativePath = pathPosix.relative(workspaceDirectory, planPath);
-  if (!relativePath || relativePath.startsWith("..") || pathPosix.isAbsolute(relativePath)) {
-    throw new InvalidCurrentPlanError("The selected plan file path must stay within the current chat workspace.");
+  const isAbsolutePlanPath = isExplicitAbsolutePlanPath(trimmedPlanPath, normalizedRequestedPath);
+  const planPath = isAbsolutePlanPath
+    ? normalizedRequestedPath
+    : pathPosix.normalize(pathPosix.join(workspaceDirectory, normalizedRequestedPath));
+  if (!isAbsolutePlanPath && !isPathContainedWithinWorkspace(workspaceDirectory, planPath)) {
+    throw new InvalidCurrentPlanError("Relative plan file paths must stay within the current chat workspace.");
   }
 
   return {
     planPath,
     statusPath: pathPosix.join(pathPosix.dirname(planPath), STATUS_FILE_NAME),
-    displayPath: sanitizePlanPathForMessage(relativePath),
+    displayPath: sanitizePlanPathForMessage(normalizedRequestedPath),
     isDefault: false,
   };
 }
@@ -92,7 +102,7 @@ export async function readValidatedPlanningFiles(
     if (source.isDefault) {
       throw new InvalidCurrentPlanError("No Ralpher plan file was found in the current chat workspace.");
     }
-    throw new InvalidCurrentPlanError(`No plan file was found at "${source.displayPath}" in the current chat workspace.`);
+    throw new InvalidCurrentPlanError(`No plan file was found at "${source.displayPath}".`);
   }
   const planContent = normalizePlanContent(rawPlanContent);
   if (!hasMeaningfulPlanContent(rawPlanContent)) {

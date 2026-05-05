@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createLogger } from "../../lib/logger";
 import {
   type ShellRoute,
@@ -16,8 +16,17 @@ export interface UseSidebarResult {
   navigateWithinShell: (route: ShellRoute) => void;
   openSidebar: () => void;
   hideSidebar: () => void;
+  toggleSidebar: () => void;
   isNodeCollapsed: (collapseKey: string) => boolean;
   toggleNodeCollapsed: (collapseKey: string) => void;
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest("input, textarea, select, [contenteditable=''], [contenteditable='true']"));
 }
 
 export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) => void): UseSidebarResult {
@@ -61,26 +70,54 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
     return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
-  const navigateWithinShell = (nextRoute: ShellRoute) => {
+  const navigateWithinShell = useCallback((nextRoute: ShellRoute) => {
     setSidebarOpen(false);
     onNavigate(nextRoute);
-  };
+  }, [onNavigate]);
 
-  const openSidebar = () => {
+  const openSidebar = useCallback(() => {
     if (isDesktopShellViewport()) {
       setSidebarCollapsed(false);
       return;
     }
     setSidebarOpen(true);
-  };
+  }, []);
 
-  const hideSidebar = () => {
+  const hideSidebar = useCallback(() => {
     if (isDesktopShellViewport()) {
       setSidebarCollapsed(true);
       return;
     }
     setSidebarOpen(false);
-  };
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    if (isDesktopShellViewport()) {
+      setSidebarCollapsed((current) => !current);
+      return;
+    }
+    setSidebarOpen((current) => !current);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey || event.shiftKey) {
+        return;
+      }
+      if ((!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== "b") {
+        return;
+      }
+      if (isEditableShortcutTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+      toggleSidebar();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [toggleSidebar]);
 
   function isNodeCollapsed(collapseKey: string): boolean {
     return collapsedNodes[collapseKey] ?? false;
@@ -110,6 +147,7 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
     navigateWithinShell,
     openSidebar,
     hideSidebar,
+    toggleSidebar,
     isNodeCollapsed,
     toggleNodeCollapsed,
   };

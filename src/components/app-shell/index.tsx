@@ -201,7 +201,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         sidebarOpen={sidebar.sidebarOpen}
         sidebarCollapsed={sidebar.sidebarCollapsed}
         navigateWithinShell={navigateWithinShell}
-        hideSidebar={sidebar.hideSidebar}
+        toggleSidebar={sidebar.toggleSidebar}
         isNodeCollapsed={sidebar.isNodeCollapsed}
         toggleNodeCollapsed={sidebar.toggleNodeCollapsed}
         workspaceGroups={sidebarWorkspaceGroups}

@@ -13,14 +13,23 @@ import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
 import type { EventStream } from "../utils/event-stream";
-import { ChatBusyError, createInitialChatState, DEFAULT_CHAT_CONFIG, isChatBusyStatus, isLoopChat, isStandaloneChat } from "../types/chat";
+import {
+  ChatBranchCheckoutError,
+  ChatBusyError,
+  createInitialChatState,
+  DEFAULT_CHAT_CONFIG,
+  InvalidChatBaseBranchError,
+  isChatBusyStatus,
+  isLoopChat,
+  isStandaloneChat,
+} from "../types/chat";
 import { loadChat, loadLoopChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
 import { nextWithTimeout } from "./engine/engine-helpers";
 import { isSessionNotFoundError } from "./engine/engine-session";
-import { GitService } from "./git";
+import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
 import { loopManager } from "./loop-manager";
 import { createLogger } from "./logger";
@@ -679,6 +688,7 @@ export class ChatManager {
     }
 
     if (!chat.config.useWorktree) {
+      await this.ensureStandaloneChatBranch(chat);
       return {
         chat,
         directory: chat.config.directory,
@@ -695,6 +705,54 @@ export class ChatManager {
       chat: prepared,
       directory: worktreePath,
     };
+  }
+
+  private async ensureStandaloneChatBranch(chat: Chat): Promise<void> {
+    if (isLoopChat(chat) || chat.config.useWorktree) {
+      return;
+    }
+
+    const expectedBranch = chat.config.baseBranch?.trim();
+    if (!expectedBranch) {
+      return;
+    }
+
+    const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
+    const git = GitService.withExecutor(executor);
+    const isGitRepo = await git.isGitRepo(chat.config.directory);
+    if (!isGitRepo) {
+      return;
+    }
+
+    try {
+      await git.assertValidBranchName(chat.config.directory, expectedBranch);
+    } catch (error) {
+      if (error instanceof InvalidBranchNameError) {
+        throw new InvalidChatBaseBranchError(expectedBranch);
+      }
+      throw error;
+    }
+
+    let result;
+    try {
+      result = await git.ensureBranch(chat.config.directory, expectedBranch, {
+        autoCheckout: true,
+      });
+    } catch (error) {
+      throw new ChatBranchCheckoutError(
+        expectedBranch,
+        `Unable to switch the standalone chat to branch '${expectedBranch}'. ${String(error)}`,
+        { cause: error instanceof Error ? error : undefined },
+      );
+    }
+
+    if (result.checkedOut) {
+      log.info("[ChatManager] Checked out selected branch for standalone chat", {
+        chatId: chat.config.id,
+        fromBranch: result.currentBranch,
+        toBranch: result.expectedBranch,
+      });
+    }
   }
 
   private async ensureWorktree(chat: Chat): Promise<Chat> {

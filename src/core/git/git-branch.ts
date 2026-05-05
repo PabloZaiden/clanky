@@ -6,14 +6,32 @@ import type { CommandExecutor } from "../command-executor";
 import { log } from "../logger";
 import { runGitCommand, gitError } from "./git-core";
 import { verifyBranch, hasUncommittedChanges } from "./git-repo-query";
-import { BranchMismatchError } from "./git-types";
+import { BranchMismatchError, InvalidBranchNameError } from "./git-types";
 import type { EnsureBranchOptions, EnsureBranchResult } from "./git-types";
+
+export async function assertValidBranchName(
+  executor: CommandExecutor,
+  directory: string,
+  branchName: string,
+): Promise<void> {
+  const result = await runGitCommand(
+    executor,
+    directory,
+    ["check-ref-format", "--branch", branchName],
+    { allowFailure: true },
+  );
+  if (result.success) {
+    return;
+  }
+  throw new InvalidBranchNameError(branchName);
+}
 
 export async function createBranch(
   executor: CommandExecutor,
   directory: string,
   branchName: string
 ): Promise<void> {
+  await assertValidBranchName(executor, directory, branchName);
   const args = ["checkout", "-b", branchName];
   const result = await runGitCommand(executor, directory, args);
   if (!result.success) {
@@ -26,6 +44,7 @@ export async function checkoutBranch(
   directory: string,
   branchName: string
 ): Promise<void> {
+  await assertValidBranchName(executor, directory, branchName);
   const args = ["checkout", branchName];
   const result = await runGitCommand(executor, directory, args);
   if (!result.success) {
@@ -38,6 +57,7 @@ export async function deleteBranch(
   directory: string,
   branchName: string
 ): Promise<void> {
+  await assertValidBranchName(executor, directory, branchName);
   const args = ["branch", "-D", branchName];
   const result = await runGitCommand(executor, directory, args);
   if (!result.success) {
@@ -51,6 +71,7 @@ export async function ensureBranch(
   expectedBranch: string,
   options: EnsureBranchOptions = {}
 ): Promise<EnsureBranchResult> {
+  await assertValidBranchName(executor, directory, expectedBranch);
   const { autoCheckout = false } = options;
 
   const verification = await verifyBranch(executor, directory, expectedBranch);

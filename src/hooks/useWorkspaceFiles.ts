@@ -12,8 +12,10 @@ import {
   loadFileExplorerTreeApi,
   listFileExplorerFilesApi,
   readFileExplorerFileApi,
+  readFileExplorerImagePreviewApi,
   writeFileExplorerFileApi,
 } from "./workspaceFileActions";
+import { isBrowserRenderableImage } from "../utils/workspace-file-images";
 
 export interface WorkspaceFileConflictState {
   kind: "save_conflict" | "reload_conflict";
@@ -29,6 +31,7 @@ export interface UseFileExplorerResult {
   pendingFilePath: string | null;
   showHiddenFiles: boolean;
   editorContent: string;
+  imagePreviewUrl: string | null;
   savedContent: string;
   loadingTree: boolean;
   loadingFile: boolean;
@@ -151,6 +154,7 @@ export function useFileExplorer(
   const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
   const [showHiddenFiles, setShowHiddenFiles] = useState(true);
   const [editorContent, setEditorContent] = useState("");
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [savedContent, setSavedContent] = useState("");
   const [loadingTree, setLoadingTree] = useState(true);
   const [savingFile, setSavingFile] = useState(false);
@@ -163,6 +167,7 @@ export function useFileExplorer(
   const fileLoadAbortControllerRef = useRef<AbortController | null>(null);
   const fileLoadRequestIdRef = useRef(0);
   const directoryEntriesRef = useRef(directoryEntries);
+  const imagePreviewUrlRef = useRef<string | null>(null);
 
   directoryEntriesRef.current = directoryEntries;
 
@@ -248,6 +253,14 @@ export function useFileExplorer(
     fileLoadRequestIdRef.current += 1;
   }, []);
 
+  const replaceImagePreviewUrl = useCallback((nextUrl: string | null) => {
+    if (imagePreviewUrlRef.current) {
+      URL.revokeObjectURL(imagePreviewUrlRef.current);
+    }
+    imagePreviewUrlRef.current = nextUrl;
+    setImagePreviewUrl(nextUrl);
+  }, []);
+
   const ensureFilePathVisible = useCallback(async (path: string) => {
     const ancestorDirectories = getAncestorDirectories(path);
     if (ancestorDirectories.length === 0) {
@@ -291,22 +304,54 @@ export function useFileExplorer(
       setErrorCode(null);
       setConflictState(null);
       await ensureFilePathVisible(path);
-      const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path, {
+      if (!isBrowserRenderableImage(path)) {
+        replaceImagePreviewUrl(null);
+        const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path, {
+          startDirectory,
+          signal: abortController.signal,
+        });
+        if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
+          return;
+        }
+        setCurrentDirectory(getParentDirectory(response.file.path));
+        setCurrentFile(response.file);
+        setEditorContent(response.content);
+        setSavedContent(response.content);
+        setAutoReloadedAt(null);
+        return;
+      }
+
+      const metadataResponse = await getFileExplorerFileMetadataApi({ type: targetType, id: targetId }, path, {
         startDirectory,
         signal: abortController.signal,
       });
       if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
         return;
       }
-      setCurrentDirectory(getParentDirectory(response.file.path));
-      setCurrentFile(response.file);
-      setEditorContent(response.content);
-      setSavedContent(response.content);
+      const metadata = metadataResponse.file;
+
+      const imageBlob = await readFileExplorerImagePreviewApi({ type: targetType, id: targetId }, path, {
+        startDirectory,
+        signal: abortController.signal,
+      });
+      if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
+        return;
+      }
+      setCurrentDirectory(getParentDirectory(metadata.path));
+      setCurrentFile(metadata);
       setAutoReloadedAt(null);
+      replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
+      setEditorContent("");
+      setSavedContent("");
     } catch (requestError) {
       if (isAbortError(requestError) || abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
         return;
       }
+      replaceImagePreviewUrl(null);
+      setCurrentFile(null);
+      setEditorContent("");
+      setSavedContent("");
+      setConflictState(null);
       applyErrorState(requestError);
     } finally {
       const isLatestRequest = fileLoadRequestIdRef.current === requestId;
@@ -319,7 +364,7 @@ export function useFileExplorer(
         setPendingFilePath(null);
       }
     }
-  }, [applyErrorState, ensureFilePathVisible, invalidateFileLoad, startDirectory, targetId, targetType]);
+  }, [applyErrorState, ensureFilePathVisible, invalidateFileLoad, replaceImagePreviewUrl, startDirectory, targetId, targetType]);
 
   const refreshCurrentFile = useCallback(async (options?: { force?: boolean }) => {
     if (!currentFile) {
@@ -341,6 +386,9 @@ export function useFileExplorer(
 
   const saveCurrentFile = useCallback(async (options?: { overwrite?: boolean }) => {
     if (!currentFile) {
+      return false;
+    }
+    if (currentFile.isImage) {
       return false;
     }
 
@@ -414,6 +462,30 @@ export function useFileExplorer(
         return;
       }
 
+      if (metadata.isImage) {
+        const imageBlob = await readFileExplorerImagePreviewApi(
+          { type: targetType, id: targetId },
+          activeFile.path,
+          { startDirectory },
+        );
+        const latestFileBeforeApply = currentFileRef.current;
+        if (
+          fileLoadRequestIdRef.current !== pollRequestId
+          || latestFileBeforeApply?.path !== activeFile.path
+          || latestFileBeforeApply.versionToken !== activeFile.versionToken
+        ) {
+          return;
+        }
+
+        setCurrentFile(metadata);
+        replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
+        setEditorContent("");
+        setSavedContent("");
+        setDirectoryEntries((currentEntries) => upsertDirectoryEntry(currentEntries, metadata));
+        setAutoReloadedAt(new Date().toISOString());
+        return;
+      }
+
       if (isDirtyRef.current) {
         setConflictState({
           kind: "reload_conflict",
@@ -439,6 +511,7 @@ export function useFileExplorer(
       }
 
       setCurrentFile(readResponse.file);
+      replaceImagePreviewUrl(null);
       setEditorContent(readResponse.content);
       setSavedContent(readResponse.content);
       setDirectoryEntries((currentEntries) => upsertDirectoryEntry(currentEntries, readResponse.file));
@@ -454,7 +527,7 @@ export function useFileExplorer(
       }
       applyErrorState(requestError);
     }
-  }, [applyErrorState, loadingFile, savingFile, startDirectory, targetId, targetType]);
+  }, [applyErrorState, loadingFile, replaceImagePreviewUrl, savingFile, startDirectory, targetId, targetType]);
 
   const toggleDirectory = useCallback(async (path: string) => {
     const isExpanded = expandedDirectories.includes(path);
@@ -491,6 +564,7 @@ export function useFileExplorer(
     setPendingFilePath(null);
     setShowHiddenFiles(true);
     setEditorContent("");
+    replaceImagePreviewUrl(null);
     setSavedContent("");
     setConflictState(null);
     setAutoReloadedAt(null);
@@ -534,6 +608,7 @@ export function useFileExplorer(
     loadDirectory,
     loadFullTree,
     loadTree,
+    replaceImagePreviewUrl,
     startDirectory,
     targetId,
     targetType,
@@ -542,8 +617,9 @@ export function useFileExplorer(
   useEffect(() => {
     return () => {
       invalidateFileLoad();
+      replaceImagePreviewUrl(null);
     };
-  }, [invalidateFileLoad]);
+  }, [invalidateFileLoad, replaceImagePreviewUrl]);
 
   useEffect(() => {
     if (pollTimerRef.current !== null) {
@@ -575,6 +651,7 @@ export function useFileExplorer(
     pendingFilePath,
     showHiddenFiles,
     editorContent,
+    imagePreviewUrl,
     savedContent,
     loadingTree,
     loadingFile,
