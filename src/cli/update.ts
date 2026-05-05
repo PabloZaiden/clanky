@@ -192,10 +192,7 @@ export function buildReleaseAssetName(tag: string, target: ReleasePlatform): str
 }
 
 async function loadInstaller(): Promise<InstallerModule> {
-  const importModule = new Function("specifier", "return import(specifier)") as (
-    specifier: string,
-  ) => Promise<unknown>;
-  return await importModule("@pablozaiden/installer") as InstallerModule;
+  return await import("@pablozaiden/installer" as string) as InstallerModule;
 }
 
 export async function runUpdateCommand(
