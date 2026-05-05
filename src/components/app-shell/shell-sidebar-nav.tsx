@@ -24,7 +24,7 @@ interface ShellSidebarNavProps {
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;
   navigateWithinShell: (route: ShellRoute) => void;
-  hideSidebar: () => void;
+  toggleSidebar: () => void;
   isNodeCollapsed: (collapseKey: string) => boolean;
   toggleNodeCollapsed: (collapseKey: string) => void;
   workspaceGroups: SidebarWorkspaceGroupNode[];
@@ -101,7 +101,7 @@ export function ShellSidebarNav({
   sidebarOpen,
   sidebarCollapsed,
   navigateWithinShell,
-  hideSidebar,
+  toggleSidebar,
   isNodeCollapsed,
   toggleNodeCollapsed,
   workspaceGroups,
@@ -372,7 +372,7 @@ export function ShellSidebarNav({
             </button>
             <button
               type="button"
-              onClick={hideSidebar}
+              onClick={toggleSidebar}
               aria-label={sidebarOpen ? "Close sidebar" : "Hide sidebar"}
               className={iconButtonDefault}
             >
