@@ -974,11 +974,33 @@ describe("App shell", () => {
         expect(getByLabelText("Open sidebar")).toBeTruthy();
       });
 
-      await user.keyboard("{Control>}B{/Control}");
+      await user.keyboard("{Control>}b{/Control}");
 
       await waitFor(() => {
         expect(sidebar.hasAttribute("hidden")).toBe(false);
         expect(getByLabelText("Hide sidebar")).toBeTruthy();
+      });
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
+  test("labels the narrow sidebar toggle by its current action", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = createMatchMediaMock(false);
+
+    try {
+      const { getByLabelText, queryByLabelText, user } = renderWithUser(<App />);
+
+      await waitFor(() => {
+        expect(getByLabelText("Open sidebar")).toBeTruthy();
+      });
+
+      await user.click(getByLabelText("Open sidebar"));
+
+      await waitFor(() => {
+        expect(getByLabelText("Close sidebar")).toBeTruthy();
+        expect(queryByLabelText("Hide sidebar")).toBeNull();
       });
     } finally {
       window.matchMedia = originalMatchMedia;
