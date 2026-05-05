@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
-    "@pablozaiden/installer": "github:PabloZaiden/installer#126f52a743c46db69baeccfcd6350b52d2569c2a",
+    "@pablozaiden/installer": "0.0.3",
     "@simplewebauthn/browser": "13.3.0",
     "@simplewebauthn/server": "13.3.0",
     "@tailwindcss/typography": "0.5.19",
@@ -49,5 +49,8 @@
     "@types/react": "19.2.10",
     "@types/react-dom": "19.2.3",
     "typescript": "6.0.3"
+  },
+  "patchedDependencies": {
+    "@pablozaiden/installer@0.0.3": "patches/@pablozaiden%2Finstaller@0.0.3.patch"
   }
 }
