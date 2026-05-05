@@ -9,6 +9,13 @@ import type { ModelInfo } from "../types";
 
 // ─── Shared model utilities ───────────────────────────────────────────────────
 
+const REASONING_EFFORT_ORDER = new Map([
+  ["low", 0],
+  ["medium", 1],
+  ["high", 2],
+  ["xhigh", 3],
+]);
+
 /** Build a model key string from provider, model, and variant. */
 export function makeModelKey(providerID: string, modelID: string, variant?: string): string {
   return `${providerID}:${modelID}:${variant ?? ""}`;
@@ -59,6 +66,24 @@ export function modelVariantExists(
   return model.variants.includes(variant);
 }
 
+export function sortModelVariants(variants: readonly string[]): string[] {
+  return [...variants].sort((a, b) => {
+    const aOrder = REASONING_EFFORT_ORDER.get(a);
+    const bOrder = REASONING_EFFORT_ORDER.get(b);
+
+    if (aOrder !== undefined && bOrder !== undefined) {
+      return aOrder - bOrder;
+    }
+    if (aOrder !== undefined) {
+      return -1;
+    }
+    if (bOrder !== undefined) {
+      return 1;
+    }
+    return a.localeCompare(b);
+  });
+}
+
 export function getPreferredModelVariant(
   models: ModelInfo[],
   providerID: string,
@@ -75,7 +100,7 @@ export function getPreferredModelVariant(
   if (model.variants.includes(variant)) {
     return variant;
   }
-  return model.variants[0] ?? null;
+  return sortModelVariants(model.variants)[0] ?? null;
 }
 
 // ─── Model grouping/sorting ──────────────────────────────────────────────────
@@ -149,7 +174,7 @@ export function renderModelOptions(
   const { disabled = false, currentModelKey } = config;
   const variants =
     model.variants && model.variants.length > 0
-      ? model.variants
+      ? sortModelVariants(model.variants)
       : [""]; // No variants = single option with empty variant
 
   return variants.map((variant) => {
