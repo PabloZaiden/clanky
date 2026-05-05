@@ -1,6 +1,7 @@
 [install]
 exact = true
 minimumReleaseAge = 259200 # 3 days in seconds — avoids freshly published malicious packages
+minimumReleaseAgeExcludes = ["@pablozaiden/installer"]
 
 [serve.static]
 plugins = ["bun-plugin-tailwind"]

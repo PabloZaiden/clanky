@@ -58,13 +58,13 @@ The recommended workflow is to treat Ralpher as a controller for SSH-backed deve
 
 ## Installation
 
-Install the latest binaries:
+Install the latest Linux or macOS binary releases:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pablozaiden/ralpher/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/126f52a743c46db69baeccfcd6350b52d2569c2a/install.sh | sh -s -- pablozaiden/ralpher
 ```
 
-The installer downloads the correct release assets for Linux or macOS (`x64` or `arm64`) and installs both `ralpher` and `ralpher-cli` to `~/.local/bin/`.
+The shared installer downloads the latest release assets for Linux or macOS (`x64` or `arm64`) and installs both `ralpher` and `ralpher-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
 
 You can also download binaries directly from the [Releases page](https://github.com/pablozaiden/ralpher/releases/latest).
 
@@ -76,7 +76,7 @@ ralpher-cli update
 ralpher-cli update --version v0.8.1
 ```
 
-`ralpher-cli update` is currently supported for the published Linux and macOS release binaries only. It always updates `ralpher-cli`, also updates a sibling `ralpher` binary when one is installed beside it, and prints progress while release metadata and binary downloads are in flight. If a present `ralpher` binary cannot be replaced because it is in use or not writable, the command reports a warning for that sibling update and still completes the `ralpher-cli` update instead of surfacing an unhelpful stack-shaped error. If you are running Ralpher from source with Bun, use the installer script or download release binaries instead of self-updating.
+`ralpher-cli update` is currently supported for the published Linux and macOS release binaries only. It updates `ralpher-cli`, also updates a sibling `ralpher` binary when one is installed beside it, verifies published checksums, and prints progress while release metadata and binary downloads are in flight. If you are running Ralpher from source with Bun, use the shared installer or download release binaries instead of self-updating.
 
 ## Quick start
 
