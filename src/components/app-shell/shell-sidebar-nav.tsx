@@ -17,6 +17,7 @@ import {
   type SidebarWorkspaceNode,
   type SidebarWorkspaceGroupNode,
   type SidebarWorkspaceSessionNode,
+  isDesktopShellViewport,
 } from "./shell-types";
 
 interface ShellSidebarNavProps {
@@ -24,7 +25,7 @@ interface ShellSidebarNavProps {
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;
   navigateWithinShell: (route: ShellRoute) => void;
-  hideSidebar: () => void;
+  toggleSidebar: () => void;
   isNodeCollapsed: (collapseKey: string) => boolean;
   toggleNodeCollapsed: (collapseKey: string) => void;
   workspaceGroups: SidebarWorkspaceGroupNode[];
@@ -101,7 +102,7 @@ export function ShellSidebarNav({
   sidebarOpen,
   sidebarCollapsed,
   navigateWithinShell,
-  hideSidebar,
+  toggleSidebar,
   isNodeCollapsed,
   toggleNodeCollapsed,
   workspaceGroups,
@@ -199,6 +200,11 @@ export function ShellSidebarNav({
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
   const visibleWorkspaceGroups = workspaceGroups.filter((group) => group.workspaces.length > 0);
+  const sidebarToggleLabel = sidebarOpen
+    ? "Close sidebar"
+    : !isDesktopShellViewport()
+      ? "Open sidebar"
+      : "Hide sidebar";
   const searchResults = useMemo<SidebarSearchResults | null>(() => {
     if (!searchQuery) {
       return null;
@@ -372,8 +378,8 @@ export function ShellSidebarNav({
             </button>
             <button
               type="button"
-              onClick={hideSidebar}
-              aria-label={sidebarOpen ? "Close sidebar" : "Hide sidebar"}
+              onClick={toggleSidebar}
+              aria-label={sidebarToggleLabel}
               className={iconButtonDefault}
             >
               <SidebarIcon size="h-5 w-5" />

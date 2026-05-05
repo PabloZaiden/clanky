@@ -215,7 +215,7 @@ function SidebarHarness({
       sidebarOpen
       sidebarCollapsed={false}
       navigateWithinShell={navigateWithinShell ?? mock(() => {})}
-      hideSidebar={mock(() => {})}
+      toggleSidebar={mock(() => {})}
       isNodeCollapsed={(key) => collapsed[key] ?? false}
       toggleNodeCollapsed={(key) => setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? false) }))}
       workspaceGroups={workspaceGroupsOverride ?? workspaceGroups}
