@@ -2,6 +2,72 @@ import type { MouseEvent } from "react";
 import { appAbsoluteUrl } from "../../lib/public-path";
 import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
+export type ShellShortcutAction =
+  | "new-loop"
+  | "new-chat"
+  | "new-ssh-session"
+  | "settings"
+  | "code-explorer"
+  | "sidebar-search";
+
+interface ShellShortcutDefinition {
+  action: ShellShortcutAction;
+  key: string;
+  label: string;
+  route?: ShellRoute;
+}
+
+export const SHELL_SHORTCUTS: Record<ShellShortcutAction, ShellShortcutDefinition> = {
+  "new-loop": {
+    action: "new-loop",
+    key: "l",
+    label: "Cmd+Shift+L",
+    route: { view: "compose", kind: "loop" },
+  },
+  "new-chat": {
+    action: "new-chat",
+    key: "c",
+    label: "Cmd+Shift+C",
+    route: { view: "compose", kind: "chat" },
+  },
+  "new-ssh-session": {
+    action: "new-ssh-session",
+    key: "s",
+    label: "Cmd+Shift+S",
+    route: { view: "compose", kind: "ssh-session" },
+  },
+  settings: {
+    action: "settings",
+    key: ",",
+    label: "Cmd+Shift+,",
+    route: { view: "settings" },
+  },
+  "code-explorer": {
+    action: "code-explorer",
+    key: "e",
+    label: "Cmd+Shift+E",
+    route: { view: "code-explorer" },
+  },
+  "sidebar-search": {
+    action: "sidebar-search",
+    key: "f",
+    label: "Cmd+Shift+F",
+  },
+};
+
+export function getShellShortcutTitle(action: ShellShortcutAction, title: string): string {
+  return `${title} (${SHELL_SHORTCUTS[action].label})`;
+}
+
+export function getShellShortcutForKeyboardEvent(event: KeyboardEvent): ShellShortcutDefinition | null {
+  if (event.defaultPrevented || event.altKey || !event.shiftKey || (!event.metaKey && !event.ctrlKey)) {
+    return null;
+  }
+
+  const eventKey = event.key.toLowerCase();
+  return Object.values(SHELL_SHORTCUTS).find((shortcut) => shortcut.key === eventKey) ?? null;
+}
+
 function buildExplorerHash(path: string, startDirectory?: string, filePath?: string): string {
   if (!startDirectory && !filePath) {
     return path;
