@@ -480,25 +480,30 @@ describe("App shell", () => {
   });
 
   test("shows the sidebar and focuses search with the global search hotkey", async () => {
+    const originalMatchMedia = window.matchMedia;
     window.matchMedia = createMatchMediaMock(true);
-    const { getByLabelText, getByRole } = renderWithUser(<App />);
+    try {
+      const { getByLabelText, getByRole } = renderWithUser(<App />);
 
-    await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-    });
+      await waitFor(() => {
+        expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      });
 
-    fireEvent.click(getByRole("button", { name: "Hide sidebar" }));
-    await waitFor(() => {
-      expect(getByRole("button", { name: "Open sidebar" })).toBeTruthy();
-    });
+      fireEvent.click(getByRole("button", { name: "Hide sidebar" }));
+      await waitFor(() => {
+        expect(getByRole("button", { name: "Open sidebar" })).toBeTruthy();
+      });
 
-    fireEvent.keyDown(window, { key: "f", metaKey: true, shiftKey: true });
+      fireEvent.keyDown(window, { key: "f", metaKey: true, shiftKey: true });
 
-    await waitFor(() => {
-      const searchInput = getByLabelText("Search sidebar");
-      expect(document.activeElement).toBe(searchInput);
-      expect(getByRole("button", { name: "Hide sidebar" })).toBeTruthy();
-    });
+      await waitFor(() => {
+        const searchInput = getByLabelText("Search sidebar");
+        expect(document.activeElement).toBe(searchInput);
+        expect(getByRole("button", { name: "Hide sidebar" })).toBeTruthy();
+      });
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 
   test("renders loop details inside the shell without a back button", async () => {

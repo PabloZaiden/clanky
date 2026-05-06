@@ -82,13 +82,13 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const { workspaceGroups } = useLoopGrouping(loops, workspaces, !workspacesLoading);
 
   const sidebar = useSidebar(route, onNavigate);
-  const { navigateWithinShell } = sidebar;
+  const { navigateWithinShell, showSidebar } = sidebar;
   const [sidebarSearchFocusRequest, setSidebarSearchFocusRequest] = useState(0);
 
   const focusSidebarSearch = useCallback(() => {
-    sidebar.showSidebar();
+    showSidebar();
     setSidebarSearchFocusRequest((current) => current + 1);
-  }, [sidebar]);
+  }, [showSidebar]);
 
   const workspaceCreate = useWorkspaceCreate({
     route,

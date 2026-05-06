@@ -13,7 +13,7 @@ export type ShellShortcutAction =
 interface ShellShortcutDefinition {
   action: ShellShortcutAction;
   key: string;
-  label: string;
+  labelKey: string;
   route?: ShellRoute;
 }
 
@@ -21,42 +21,46 @@ export const SHELL_SHORTCUTS: Record<ShellShortcutAction, ShellShortcutDefinitio
   "new-loop": {
     action: "new-loop",
     key: "l",
-    label: "Cmd+Shift+L",
+    labelKey: "L",
     route: { view: "compose", kind: "loop" },
   },
   "new-chat": {
     action: "new-chat",
     key: "c",
-    label: "Cmd+Shift+C",
+    labelKey: "C",
     route: { view: "compose", kind: "chat" },
   },
   "new-ssh-session": {
     action: "new-ssh-session",
     key: "s",
-    label: "Cmd+Shift+S",
+    labelKey: "S",
     route: { view: "compose", kind: "ssh-session" },
   },
   settings: {
     action: "settings",
     key: ",",
-    label: "Cmd+Shift+,",
+    labelKey: ",",
     route: { view: "settings" },
   },
   "code-explorer": {
     action: "code-explorer",
     key: "e",
-    label: "Cmd+Shift+E",
+    labelKey: "E",
     route: { view: "code-explorer" },
   },
   "sidebar-search": {
     action: "sidebar-search",
     key: "f",
-    label: "Cmd+Shift+F",
+    labelKey: "F",
   },
 };
 
+export function getShellShortcutLabel(action: ShellShortcutAction): string {
+  return `Ctrl/Cmd+Shift+${SHELL_SHORTCUTS[action].labelKey}`;
+}
+
 export function getShellShortcutTitle(action: ShellShortcutAction, title: string): string {
-  return `${title} (${SHELL_SHORTCUTS[action].label})`;
+  return `${title} (${getShellShortcutLabel(action)})`;
 }
 
 export function getShellShortcutForKeyboardEvent(event: KeyboardEvent): ShellShortcutDefinition | null {

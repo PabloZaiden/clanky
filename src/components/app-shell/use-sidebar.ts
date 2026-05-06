@@ -92,13 +92,7 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
     setSidebarOpen(false);
   }, []);
 
-  const showSidebar = useCallback(() => {
-    if (isDesktopShellViewport()) {
-      setSidebarCollapsed(false);
-      return;
-    }
-    setSidebarOpen(true);
-  }, []);
+  const showSidebar = openSidebar;
 
   const toggleSidebar = useCallback(() => {
     if (isDesktopShellViewport()) {
