@@ -61,7 +61,7 @@ The recommended workflow is to treat Ralpher as a controller for SSH-backed deve
 Install the latest Linux or macOS binary releases:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/126f52a743c46db69baeccfcd6350b52d2569c2a/install.sh | sh -s -- pablozaiden/ralpher
+curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh | sh -s -- pablozaiden/ralpher
 ```
 
 The shared installer downloads the latest release assets for Linux or macOS (`x64` or `arm64`) and installs both `ralpher` and `ralpher-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
