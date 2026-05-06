@@ -1,6 +1,6 @@
-import { useMemo, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { CodeIcon, GearIcon, RefreshIcon, SidebarIcon } from "../common";
-import { getShellRouteUrl, isModifiedNavigationClick } from "./shell-navigation";
+import { getShellRouteUrl, getShellShortcutTitle, isModifiedNavigationClick } from "./shell-navigation";
 import { EmptySection, ShellSection, SidebarTreeItem, SidebarTreeSection } from "./shell-sidebar";
 import {
   type SidebarChatNode,
@@ -31,6 +31,7 @@ interface ShellSidebarNavProps {
   workspaceGroups: SidebarWorkspaceGroupNode[];
   serverNodes: SidebarServerNode[];
   version: string | undefined;
+  sidebarSearchFocusRequest: number;
 }
 
 const iconButtonBase =
@@ -108,9 +109,19 @@ export function ShellSidebarNav({
   workspaceGroups,
   serverNodes,
   version,
+  sidebarSearchFocusRequest,
 }: ShellSidebarNavProps) {
   const [searchInput, setSearchInput] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const searchQuery = searchInput.trim().toLowerCase();
+
+  useEffect(() => {
+    if (sidebarSearchFocusRequest <= 0 || sidebarCollapsed) {
+      return;
+    }
+
+    searchInputRef.current?.focus();
+  }, [sidebarCollapsed, sidebarSearchFocusRequest]);
 
   function handleSidebarItemClick(event: MouseEvent<HTMLButtonElement>, nextRoute: ShellRoute) {
     if (isModifiedNavigationClick(event)) {
@@ -362,7 +373,7 @@ export function ShellSidebarNav({
               aria-label="Open code explorer"
               aria-current={route.view === "code-explorer" ? "page" : undefined}
               className={route.view === "code-explorer" ? iconButtonActive : iconButtonDefault}
-              title="Code explorer"
+              title={getShellShortcutTitle("code-explorer", "Code explorer")}
             >
               <CodeIcon size="h-5 w-5" />
             </button>
@@ -372,7 +383,7 @@ export function ShellSidebarNav({
               aria-label="Open settings"
               aria-current={route.view === "settings" ? "page" : undefined}
               className={route.view === "settings" ? iconButtonActive : iconButtonDefault}
-              title="Settings"
+              title={getShellShortcutTitle("settings", "Settings")}
             >
               <GearIcon size="h-5 w-5" />
             </button>
@@ -396,9 +407,11 @@ export function ShellSidebarNav({
           <input
             id="shell-sidebar-search"
             type="text"
+            ref={searchInputRef}
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Search sidebar"
+            title={getShellShortcutTitle("sidebar-search", "Search sidebar")}
             className={searchInputClassName}
           />
         </div>
@@ -661,6 +674,7 @@ export function ShellSidebarNav({
                               <SidebarTreeSection
                                 title="Loops"
                                 actionLabel="New"
+                                actionTitle={getShellShortcutTitle("new-loop", "New loop")}
                                 onAction={() => navigateWithinShell({
                                   view: "compose",
                                   kind: "loop",
@@ -690,6 +704,7 @@ export function ShellSidebarNav({
                               <SidebarTreeSection
                                 title="Chats"
                                 actionLabel="New"
+                                actionTitle={getShellShortcutTitle("new-chat", "New chat")}
                                 onAction={() => navigateWithinShell({
                                   view: "compose",
                                   kind: "chat",
@@ -718,6 +733,7 @@ export function ShellSidebarNav({
                               <SidebarTreeSection
                                 title="SSH sessions"
                                 actionLabel="New"
+                                actionTitle={getShellShortcutTitle("new-ssh-session", "New SSH session")}
                                 onAction={() => navigateWithinShell({
                                   view: "compose",
                                   kind: "ssh-session",
@@ -788,6 +804,7 @@ export function ShellSidebarNav({
                         <SidebarTreeSection
                           title="Sessions"
                           actionLabel="New"
+                          actionTitle={getShellShortcutTitle("new-ssh-session", "New SSH session")}
                           onAction={() => navigateWithinShell({
                             view: "compose",
                             kind: "ssh-session",

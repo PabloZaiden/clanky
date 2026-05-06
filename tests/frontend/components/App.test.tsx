@@ -416,6 +416,96 @@ describe("App shell", () => {
     expect(queryByRole("dialog")).toBeNull();
   });
 
+  test("supports global shell hotkeys for primary destinations", async () => {
+    setupDefaultApi({
+      workspaces: [
+        createWorkspace({
+          id: "workspace-1",
+          name: "Project One",
+          directory: "/workspaces/project-one",
+        }),
+      ],
+      sshServers: [createSshServer()],
+    });
+    const { getByRole } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+    });
+
+    fireEvent.keyDown(window, { key: "l", metaKey: true, shiftKey: true });
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Start a new loop" })).toBeTruthy();
+      expect(window.location.hash).toBe("#/new/loop");
+    });
+
+    fireEvent.keyDown(window, { key: "c", metaKey: true, shiftKey: true });
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Start a new chat" })).toBeTruthy();
+      expect(window.location.hash).toBe("#/new/chat");
+    });
+
+    fireEvent.keyDown(window, { key: "s", metaKey: true, shiftKey: true });
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Create an SSH session" })).toBeTruthy();
+      expect(window.location.hash).toBe("#/new/ssh-session");
+    });
+
+    fireEvent.keyDown(window, { key: ",", metaKey: true, shiftKey: true });
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Settings" })).toBeTruthy();
+      expect(window.location.hash).toBe("#/settings");
+    });
+
+    fireEvent.keyDown(window, { key: "e", metaKey: true, shiftKey: true });
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Code explorer" })).toBeTruthy();
+      expect(window.location.hash).toBe("#/code-explorer");
+    });
+  });
+
+  test("does not trigger global shell hotkeys while typing in editable controls", async () => {
+    const { getByLabelText, getByRole } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+    });
+
+    const searchInput = getByLabelText("Search sidebar");
+    searchInput.focus();
+    fireEvent.keyDown(searchInput, { key: "e", metaKey: true, shiftKey: true });
+
+    expect(window.location.hash).not.toBe("#/code-explorer");
+    expect(document.activeElement).toBe(searchInput);
+  });
+
+  test("shows the sidebar and focuses search with the global search hotkey", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = createMatchMediaMock(true);
+    try {
+      const { getByLabelText, getByRole } = renderWithUser(<App />);
+
+      await waitFor(() => {
+        expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      });
+
+      fireEvent.click(getByRole("button", { name: "Hide sidebar" }));
+      await waitFor(() => {
+        expect(getByRole("button", { name: "Open sidebar" })).toBeTruthy();
+      });
+
+      fireEvent.keyDown(window, { key: "f", metaKey: true, shiftKey: true });
+
+      await waitFor(() => {
+        const searchInput = getByLabelText("Search sidebar");
+        expect(document.activeElement).toBe(searchInput);
+        expect(getByRole("button", { name: "Hide sidebar" })).toBeTruthy();
+      });
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   test("renders loop details inside the shell without a back button", async () => {
     const loop = createLoop({
       config: { id: "loop-1", name: "Shell Loop", workspaceId: "workspace-1" },
