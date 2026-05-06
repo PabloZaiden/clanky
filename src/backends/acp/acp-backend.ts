@@ -76,6 +76,9 @@ export class AcpBackend implements Backend {
   /** Track whether message.start has been emitted for active prompt per session */
   private sessionMessageStarted = new Map<string, boolean>();
 
+  /** Track accumulated assistant text per active prompt to normalize delta/snapshot updates */
+  private sessionMessageContent = new Map<string, string>();
+
   /** Monotonic per-session prompt sequence to ignore stale async completions */
   private sessionPromptSequences = new Map<string, number>();
 
@@ -220,6 +223,7 @@ export class AcpBackend implements Backend {
 
     this.sessionSubscribers.clear();
     this.sessionMessageStarted.clear();
+    this.sessionMessageContent.clear();
     this.sessionPromptSequences.clear();
     this.sessionPromptHasActivity.clear();
     this.sessionIgnoreStatusUntilActivity.clear();
@@ -533,6 +537,7 @@ export class AcpBackend implements Backend {
             content: "",
           });
           this.sessionMessageStarted.delete(sessionId);
+          this.sessionMessageContent.delete(sessionId);
           this.sessionPromptSequences.delete(sessionId);
           this.sessionPromptHasActivity.delete(sessionId);
           this.sessionIgnoreStatusUntilActivity.delete(sessionId);
@@ -602,22 +607,27 @@ export class AcpBackend implements Backend {
     }
 
     if (updateType === "agent_message_chunk") {
+      const text = getString(content["text"]) ?? "";
+      if (text.length === 0) {
+        return;
+      }
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
       }
       this.sessionIgnoreStatusUntilActivity.delete(sessionId);
-      const text = getString(content["text"]) ?? "";
       if (!this.sessionMessageStarted.get(sessionId)) {
         this.sessionMessageStarted.set(sessionId, true);
+        this.sessionMessageContent.set(sessionId, "");
         this.emitSessionEvent(sessionId, {
           type: "message.start",
           messageId: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         });
       }
-      if (text.length > 0) {
+      const delta = this.normalizeMessageChunk(sessionId, text);
+      if (delta.length > 0) {
         this.emitSessionEvent(sessionId, {
           type: "message.delta",
-          content: text,
+          content: delta,
         });
       }
       return;
@@ -789,6 +799,27 @@ export class AcpBackend implements Backend {
     }
 
     return undefined;
+  }
+
+  private normalizeMessageChunk(sessionId: string, text: string): string {
+    if (text.length === 0) {
+      return "";
+    }
+
+    const previousContent = this.sessionMessageContent.get(sessionId) ?? "";
+    if (previousContent.length === 0) {
+      this.sessionMessageContent.set(sessionId, text);
+      return text;
+    }
+
+    if (text.length > previousContent.length && text.startsWith(previousContent)) {
+      this.sessionMessageContent.set(sessionId, text);
+      return text.slice(previousContent.length);
+    }
+
+    const nextContent = previousContent + text;
+    this.sessionMessageContent.set(sessionId, nextContent);
+    return text;
   }
 
   private addSessionSubscriber(sessionId: string, subscriber: SessionSubscriber): void {
@@ -1429,6 +1460,7 @@ export class AcpBackend implements Backend {
     this.sessionCache.delete(id);
     this.sessionSubscribers.delete(id);
     this.sessionMessageStarted.delete(id);
+    this.sessionMessageContent.delete(id);
     this.sessionPromptSequences.delete(id);
     this.sessionPromptHasActivity.delete(id);
     this.sessionReasoningPartKeys.delete(id);
@@ -1496,6 +1528,7 @@ export class AcpBackend implements Backend {
     } finally {
       this.removeSessionSubscriber(sessionId, capture);
       this.sessionMessageStarted.delete(sessionId);
+      this.sessionMessageContent.delete(sessionId);
     }
 
     if (!responseContent) {
@@ -1557,6 +1590,7 @@ export class AcpBackend implements Backend {
     this.ensureConnected();
     await this.configureCopilotPromptSession(sessionId, prompt.model);
     this.sessionMessageStarted.set(sessionId, false);
+    this.sessionMessageContent.set(sessionId, "");
     const sequence = (this.sessionPromptSequences.get(sessionId) ?? 0) + 1;
     this.sessionPromptSequences.set(sessionId, sequence);
     this.sessionPromptHasActivity.set(sessionId, false);
@@ -1589,6 +1623,7 @@ export class AcpBackend implements Backend {
           content: "",
         });
         this.sessionMessageStarted.delete(sessionId);
+        this.sessionMessageContent.delete(sessionId);
         this.sessionPromptSequences.delete(sessionId);
         this.sessionPromptHasActivity.delete(sessionId);
         this.sessionIgnoreStatusUntilActivity.delete(sessionId);
@@ -1616,6 +1651,7 @@ export class AcpBackend implements Backend {
           message,
         });
         this.sessionMessageStarted.delete(sessionId);
+        this.sessionMessageContent.delete(sessionId);
         this.sessionPromptSequences.delete(sessionId);
         this.sessionPromptHasActivity.delete(sessionId);
         this.sessionIgnoreStatusUntilActivity.delete(sessionId);
@@ -1637,6 +1673,7 @@ export class AcpBackend implements Backend {
           this.sessionPromptSequences.set(sessionId, (this.sessionPromptSequences.get(sessionId) ?? 0) + 1);
           this.sessionPromptHasActivity.set(sessionId, false);
           this.sessionMessageStarted.set(sessionId, false);
+          this.sessionMessageContent.set(sessionId, "");
           this.sessionIgnoreStatusUntilActivity.add(sessionId);
           this.sessionReasoningPartKeys.delete(sessionId);
           this.sessionLastReasoningChunkSignature.delete(sessionId);
