@@ -173,6 +173,82 @@ describe("AcpBackend ACP parsing", () => {
     expect(backend.toolCallNames.has("call-1")).toBe(false);
   });
 
+  test("normalizes cumulative Copilot agent_message_chunk updates to deltas", () => {
+    const backend = getBackend();
+    const sessionId = "session-cumulative-message";
+    const events: Array<Record<string, unknown>> = [];
+
+    backend.sessionSubscribers.set(
+      sessionId,
+      new Set([
+        (event: unknown) => {
+          events.push(event as Record<string, unknown>);
+        },
+      ]),
+    );
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "First paragraph.\n\n",
+          },
+        },
+      },
+    });
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "Second paragraph.",
+          },
+        },
+      },
+    });
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "First paragraph.\n\nSecond paragraph.\n\n<promise>PLAN_READY</promise>",
+          },
+        },
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "message.start",
+        messageId: expect.any(String),
+      },
+      {
+        type: "message.delta",
+        content: "First paragraph.\n\n",
+      },
+      {
+        type: "message.delta",
+        content: "Second paragraph.",
+      },
+      {
+        type: "message.delta",
+        content: "\n\n<promise>PLAN_READY</promise>",
+      },
+    ]);
+  });
+
   test("maps failed tool_call_update to tool.complete (non-fatal)", () => {
     const backend = getBackend();
     const sessionId = "session-2b";
