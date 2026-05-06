@@ -50,6 +50,11 @@ interface ActiveChatStream {
   generation: number;
 }
 
+interface ResolvedChatDirectory {
+  chat: Chat;
+  directory: string;
+}
+
 function isDatabaseNotInitializedError(error: unknown): boolean {
   return error instanceof Error && error.message === DATABASE_NOT_INITIALIZED_MESSAGE;
 }
@@ -511,7 +516,9 @@ export class ChatManager {
 
     this.assertChatIsAvailable(chat);
 
-    const working = await this.resolveWorkingDirectory(chat);
+    const working = await this.resolveWorkingDirectory(chat, {
+      prepareWorkspace: !this.hasEstablishedWorkspaceContext(chat),
+    });
     const workingExecutor = await backendManager.getCommandExecutorAsync(
       working.chat.config.workspaceId,
       working.directory,
@@ -579,13 +586,19 @@ export class ChatManager {
     }
   }
 
+  private hasEstablishedWorkspaceContext(chat: Chat): boolean {
+    return Boolean(chat.state.session?.id || chat.state.startedAt);
+  }
+
   private async ensureBackendConnected(chat: Chat): Promise<Backend> {
     const workspace = await getWorkspace(chat.config.workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
     }
 
-    const working = await this.resolveWorkingDirectory(chat);
+    const working = await this.resolveWorkingDirectory(chat, {
+      prepareWorkspace: !this.hasEstablishedWorkspaceContext(chat),
+    });
     await backendManager.getBackendAsync(chat.config.workspaceId);
     const backend = this.getChatBackend(working.chat.config.id, working.chat.config.workspaceId);
     if (!backend.isConnected() || backend.getDirectory() !== working.directory) {
@@ -626,11 +639,17 @@ export class ChatManager {
       }
     }
 
-    return this.createSession(chat, backend);
+    return this.createSession(chat, backend, {
+      prepareWorkspace: !this.hasEstablishedWorkspaceContext(chat),
+    });
   }
 
-  private async createSession(chat: Chat, backend: Backend): Promise<Chat> {
-    const working = await this.resolveWorkingDirectory(chat);
+  private async createSession(
+    chat: Chat,
+    backend: Backend,
+    options: { prepareWorkspace: boolean },
+  ): Promise<Chat> {
+    const working = await this.resolveWorkingDirectory(chat, options);
     const session = await backend.createSession({
       title: `Ralpher Chat: ${working.chat.config.name}`,
       directory: working.directory,
@@ -663,14 +682,17 @@ export class ChatManager {
           lastActivityAt: createTimestamp(),
         });
     try {
-      return await this.createSession(reconnecting, backend);
+      return await this.createSession(reconnecting, backend, { prepareWorkspace: false });
     } catch (error) {
       await this.emitChatError(reconnecting, String(error));
       throw error;
     }
   }
 
-  private async resolveWorkingDirectory(chat: Chat): Promise<{ chat: Chat; directory: string }> {
+  private async resolveWorkingDirectory(
+    chat: Chat,
+    options: { prepareWorkspace: boolean },
+  ): Promise<ResolvedChatDirectory> {
     if (isLoopChat(chat)) {
       const loopId = chat.config.loopId;
       if (!loopId) {
@@ -688,10 +710,25 @@ export class ChatManager {
     }
 
     if (!chat.config.useWorktree) {
-      await this.ensureStandaloneChatBranch(chat);
+      if (options.prepareWorkspace) {
+        await this.ensureStandaloneChatBranch(chat);
+      }
       return {
         chat,
         directory: chat.config.directory,
+      };
+    }
+
+    if (!options.prepareWorkspace) {
+      const worktreePath = chat.state.worktree?.worktreePath;
+      if (!worktreePath) {
+        throw new Error(
+          `Chat ${chat.config.id} is configured to use a worktree but no established worktree path was recorded`,
+        );
+      }
+      return {
+        chat,
+        directory: worktreePath,
       };
     }
 
