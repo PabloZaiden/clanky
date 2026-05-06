@@ -300,14 +300,14 @@ describe("Chats API Integration", () => {
     });
   });
 
-  test("returns a conflict when standalone branch checkout cannot proceed", async () => {
+  test("does not checkout the base branch when following up on an established standalone chat", async () => {
     const originalBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
-    const selectedBranch = `selected-chat-conflict-${crypto.randomUUID().slice(0, 8)}`;
+    const selectedBranch = `selected-chat-followup-base-${crypto.randomUUID().slice(0, 8)}`;
+    const followupBranch = `selected-chat-followup-current-${crypto.randomUUID().slice(0, 8)}`;
     const dirtyFile = join(testWorkDir, "standalone-chat-dirty.txt");
 
     await Bun.$`git -C ${testWorkDir} checkout -b ${selectedBranch}`.quiet();
     await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
-    await writeFile(dirtyFile, "dirty working tree\n");
 
     try {
       const createResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -324,23 +324,35 @@ describe("Chats API Integration", () => {
 
       expect(createResponse.status).toBe(201);
       const created = await createResponse.json();
+      const chatId = created.config.id as string;
 
-      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+      const firstSendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: "Try to switch branches with local changes",
+          message: "Establish the chat session",
           attachments: [],
         }),
       });
+      expect(firstSendResponse.status).toBe(200);
+      await waitForChatIdle(chatId);
 
-      expect(sendResponse.status).toBe(409);
-      const errorBody = await sendResponse.json();
-      expect(errorBody).toMatchObject({
-        error: "chat_branch_checkout_failed",
+      await Bun.$`git -C ${testWorkDir} checkout -b ${followupBranch}`.quiet();
+      await writeFile(dirtyFile, "dirty working tree\n");
+
+      const followupResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Follow up without changing branches",
+          attachments: [],
+        }),
       });
-      expect(errorBody.message).toContain(`Unable to switch the standalone chat to branch '${selectedBranch}'.`);
-      expect(errorBody.message).toContain(`Cannot auto-checkout to '${selectedBranch}'`);
+      expect(followupResponse.status).toBe(200);
+      await waitForChatIdle(chatId);
+
+      const currentBranch = (await Bun.$`git -C ${testWorkDir} branch --show-current`.text()).trim();
+      expect(currentBranch).toBe(followupBranch);
     } finally {
       await rm(dirtyFile, { force: true });
       await Bun.$`git -C ${testWorkDir} checkout ${originalBranch}`.quiet();
