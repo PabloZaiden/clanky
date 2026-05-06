@@ -607,11 +607,14 @@ export class AcpBackend implements Backend {
     }
 
     if (updateType === "agent_message_chunk") {
+      const text = getString(content["text"]) ?? "";
+      if (text.length === 0) {
+        return;
+      }
       if (this.sessionPromptSequences.has(sessionId)) {
         this.sessionPromptHasActivity.set(sessionId, true);
       }
       this.sessionIgnoreStatusUntilActivity.delete(sessionId);
-      const text = getString(content["text"]) ?? "";
       if (!this.sessionMessageStarted.get(sessionId)) {
         this.sessionMessageStarted.set(sessionId, true);
         this.sessionMessageContent.set(sessionId, "");
@@ -809,13 +812,9 @@ export class AcpBackend implements Backend {
       return text;
     }
 
-    if (text.startsWith(previousContent)) {
+    if (text.length > previousContent.length && text.startsWith(previousContent)) {
       this.sessionMessageContent.set(sessionId, text);
       return text.slice(previousContent.length);
-    }
-
-    if (previousContent.endsWith(text)) {
-      return "";
     }
 
     const nextContent = previousContent + text;
