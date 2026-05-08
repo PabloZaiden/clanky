@@ -31,6 +31,12 @@ export function getProcessExitHint(command: string, exitCode: number): string | 
   return undefined;
 }
 
+export function isTransientSshAuthenticationFailure(error: unknown): boolean {
+  const message = String(error);
+  return message.includes("ACP process exited with code 255")
+    && message.includes("Permission denied (publickey,password,keyboard-interactive)");
+}
+
 export function inferProviderID(modelID: string): string {
   if (modelID.startsWith("claude")) {
     return "anthropic";

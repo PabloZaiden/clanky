@@ -20,6 +20,9 @@ describe("buildConnectionConfig SSH command options", () => {
     const args = config.args ?? [];
 
     expect(config.command).toBe("sshpass");
+    expect(args.slice(0, 2)).toEqual(["-e", "ssh"]);
+    expect(args).not.toContain("secret");
+    expect(config.env?.SSHPASS).toBe("secret");
     expect(args).toContain("ssh");
     expect(args).toContain("NumberOfPasswordPrompts=1");
     expect(args).toContain("PreferredAuthentications=password,keyboard-interactive");
