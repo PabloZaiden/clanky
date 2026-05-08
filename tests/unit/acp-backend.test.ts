@@ -6,7 +6,11 @@
  */
 
 import { test, expect, describe, beforeEach } from "bun:test";
-import { AcpBackend, sanitizeSpawnArgsForLogging } from "../../src/backends/acp";
+import {
+  AcpBackend,
+  isTransientSshAuthenticationFailure,
+  sanitizeSpawnArgsForLogging,
+} from "../../src/backends/acp";
 
 describe("AcpBackend", () => {
   let backend: AcpBackend;
@@ -62,6 +66,21 @@ describe("AcpBackend", () => {
 
     expect(killSignals).toEqual(["SIGTERM"]);
     expect(backend.isConnected()).toBe(false);
+  });
+
+  test("detects transient SSH auth failures from ACP initialization", () => {
+    expect(
+      isTransientSshAuthenticationFailure(
+        new Error(
+          "ACP process exited with code 255: [stderr] vscode@localhost: Permission denied (publickey,password,keyboard-interactive).",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isTransientSshAuthenticationFailure(
+        new Error("ACP process exited with code 1: [stderr] bash: no job control in this shell"),
+      ),
+    ).toBe(false);
   });
 
   test("throws when createSession called before connect", async () => {

@@ -40,10 +40,17 @@ import {
   MAX_RECENT_PROCESS_LINES,
 } from "./types";
 import { isRecord, getString, getNumber, firstString } from "./json-helpers";
-import { sanitizeSpawnArgsForLogging, getProcessExitHint, inferProviderID } from "./process-utils";
+import {
+  sanitizeSpawnArgsForLogging,
+  getProcessExitHint,
+  inferProviderID,
+  isTransientSshAuthenticationFailure,
+} from "./process-utils";
 
 const ACP_PROCESS_EXIT_WAIT_MS = 1_000;
 const ACP_PROCESS_FORCE_KILL_WAIT_MS = 250;
+const ACP_SSH_INITIALIZE_ATTEMPTS = 3;
+const ACP_SSH_INITIALIZE_RETRY_DELAY_MS = 250;
 
 type CachedModels = {
   models: ModelInfo[];
@@ -167,32 +174,55 @@ export class AcpBackend implements Backend {
       provider: config.provider,
     });
 
-    let process: Bun.Subprocess;
-    try {
-      process = Bun.spawn([command, ...args], {
-        cwd: spawnCwd,
-        stdin: "pipe",
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-    } catch (error) {
-      throw new Error(`Failed to spawn ACP process (${command}) in cwd '${spawnCwd}': ${String(error)}`);
-    }
+    const maxAttempts = config.transport === "ssh" ? ACP_SSH_INITIALIZE_ATTEMPTS : 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      this.recentProcessLines = [];
+      let process: Bun.Subprocess;
+      try {
+        process = Bun.spawn([command, ...args], {
+          cwd: spawnCwd,
+          env: config.env,
+          stdin: "pipe",
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+      } catch (error) {
+        throw new Error(`Failed to spawn ACP process (${command}) in cwd '${spawnCwd}': ${String(error)}`);
+      }
 
-    this.process = process;
-    this.startProcessReaders(command);
+      this.process = process;
+      this.startProcessReaders(command);
 
-    try {
-      await this.sendRpcRequest("initialize", {
-        protocolVersion: 1,
-        clientInfo: {
-          name: "ralpher",
-          version: "0.0.0",
-        },
-      });
-    } catch (error) {
-      await this.disconnect();
-      throw new Error(`Failed to initialize ACP process (${command}): ${String(error)}`);
+      try {
+        await this.sendRpcRequest("initialize", {
+          protocolVersion: 1,
+          clientInfo: {
+            name: "ralpher",
+            version: "0.0.0",
+          },
+        });
+        break;
+      } catch (error) {
+        await this.terminateProcess(process);
+        if (this.process === process) {
+          this.process = null;
+        }
+        this.pendingRequests.clear();
+
+        if (!isTransientSshAuthenticationFailure(error) || attempt >= maxAttempts) {
+          await this.disconnect();
+          throw new Error(`Failed to initialize ACP process (${command}): ${String(error)}`);
+        }
+
+        log.warn("[AcpBackend] Retrying ACP SSH initialization after transient auth failure", {
+          attempt,
+          maxAttempts,
+          provider: config.provider,
+          hostname: config.hostname,
+          port: config.port,
+        });
+        await Bun.sleep(ACP_SSH_INITIALIZE_RETRY_DELAY_MS);
+      }
     }
     log.debug("[AcpBackend] ACP runtime initialized", { command });
 
