@@ -166,7 +166,7 @@ describe("Plan Mode API Integration", () => {
     await Bun.$`git -C ${workDir} remote add origin ${currentRemoteDir}`.quiet();
     const currentBranch = (await Bun.$`git -C ${workDir} branch --show-current`.text()).trim();
     await Bun.$`git -C ${workDir} push -u origin ${currentBranch}`.quiet();
-    await Bun.$`git -C ${currentRemoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
+    await Bun.$`git --git-dir=${currentRemoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
     return workDir;
   }
 

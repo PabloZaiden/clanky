@@ -67,6 +67,7 @@ export class MockAcpBackend implements Backend {
   private readonly models: MockModelInfo[];
   private readonly sessions = new Map<string, AgentSession>();
   private readonly sentPrompts: PromptInput[] = [];
+  private readonly permissionReplies: Array<{ requestId: string; response: string }> = [];
   private readonly configOptionUpdates: Array<{ sessionId: string; configId: string; value: string }> = [];
   private readonly sessionModelUpdates: Array<{ sessionId: string; modelId: string }> = [];
   private nextCreateSessionError: string | null = null;
@@ -182,8 +183,8 @@ export class MockAcpBackend implements Backend {
     return stream;
   }
 
-  async replyToPermission(_requestId: string, _response: string): Promise<void> {
-    // Mock - no-op
+  async replyToPermission(requestId: string, response: string): Promise<void> {
+    this.permissionReplies.push({ requestId, response });
   }
 
   async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {
@@ -287,6 +288,10 @@ export class MockAcpBackend implements Backend {
 
   getSentPrompts(): PromptInput[] {
     return [...this.sentPrompts];
+  }
+
+  getPermissionReplies(): Array<{ requestId: string; response: string }> {
+    return [...this.permissionReplies];
   }
 
   getConfigOptionUpdates(): Array<{ sessionId: string; configId: string; value: string }> {

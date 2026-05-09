@@ -14,6 +14,7 @@ export const CreateChatRequestSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
   model: ModelConfigSchema,
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
+  autoApprovePermissions: z.boolean().default(true),
   baseBranch: z.string().min(1, "baseBranch is required"),
 });
 
@@ -42,6 +43,10 @@ export const SendChatMessageRequestSchema = z.object({
 
 export const InterruptChatRequestSchema = z.object({
   reason: z.string().trim().min(1, "reason is required").default(DEFAULT_CHAT_INTERRUPT_REASON),
+});
+
+export const ReplyToChatPermissionRequestSchema = z.object({
+  decision: z.enum(["allow", "deny"]),
 });
 
 export const SpawnCurrentPlanLoopRequestSchema = z.object({

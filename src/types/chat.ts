@@ -29,6 +29,7 @@ export interface ChatConfig {
   directory: string;
   model: ModelConfig;
   useWorktree: boolean;
+  autoApprovePermissions?: boolean;
   baseBranch?: string;
   createdAt: string;
   updatedAt: string;
@@ -45,6 +46,22 @@ export interface ChatError {
   message: string;
   timestamp: string;
   code?: string;
+}
+
+export type ChatPermissionRequestStatus = "pending" | "approved" | "denied" | "cancelled";
+
+export type ChatPermissionDecision = "allow" | "deny";
+
+export interface ChatPermissionRequest {
+  requestId: string;
+  sessionId: string;
+  permission: string;
+  patterns: string[];
+  status: ChatPermissionRequestStatus;
+  createdAt: string;
+  resolvedAt?: string;
+  decision?: ChatPermissionDecision;
+  error?: string;
 }
 
 export type ChatStatus =
@@ -68,6 +85,7 @@ export interface ChatState {
   messages: PersistedMessage[];
   logs: LoopLogEntry[];
   toolCalls: PersistedToolCall[];
+  pendingPermissionRequests?: ChatPermissionRequest[];
   activeMessageId?: string;
   interruptRequested?: boolean;
 }
@@ -81,6 +99,7 @@ export const DEFAULT_CHAT_INTERRUPT_REASON = "user requested stop";
 
 export const DEFAULT_CHAT_CONFIG = {
   useWorktree: true,
+  autoApprovePermissions: true,
   mode: "chat" as const,
   scope: "workspace" as const,
 };
@@ -92,6 +111,7 @@ export function createInitialChatState(id: string): ChatState {
     messages: [],
     logs: [],
     toolCalls: [],
+    pendingPermissionRequests: [],
   };
 }
 
@@ -114,6 +134,26 @@ export class ChatBusyError extends Error {
   constructor(message = "Chat is busy") {
     super(message);
     this.name = "ChatBusyError";
+  }
+}
+
+export class ChatPermissionRequestNotFoundError extends Error {
+  readonly code = "permission_request_not_found";
+  readonly status = 404;
+
+  constructor(requestId: string) {
+    super(`Pending permission request not found: ${requestId}`);
+    this.name = "ChatPermissionRequestNotFoundError";
+  }
+}
+
+export class ChatPermissionReplyError extends Error {
+  readonly code = "permission_reply_failed";
+  readonly status = 409;
+
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ChatPermissionReplyError";
   }
 }
 

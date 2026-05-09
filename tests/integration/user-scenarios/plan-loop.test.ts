@@ -330,7 +330,7 @@ describe("Plan + Loop User Scenarios", () => {
         expect(fullyAutonomousLoop.state.automaticPrFlow?.enabled).toBe(true);
         expect(fullyAutonomousLoop.state.automaticPrFlow?.pullRequestNumber).toBe(123);
 
-        const pushRef = await Bun.$`git -C ${ctx.remoteDir!} show-ref --verify refs/heads/${pushedLoop.state.git!.workingBranch}`.nothrow();
+        const pushRef = await Bun.$`git --git-dir=${ctx.remoteDir!} show-ref --verify refs/heads/${pushedLoop.state.git!.workingBranch}`.nothrow();
         expect(pushRef.exitCode).toBe(0);
 
         await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
@@ -394,7 +394,7 @@ describe("Plan + Loop User Scenarios", () => {
         expect(fullyAutonomousLoop.state.automaticPrFlow?.enabled).toBe(true);
         expect(fullyAutonomousLoop.state.automaticPrFlow?.pullRequestNumber).toBe(123);
 
-        const pushRef = await Bun.$`git -C ${ctx.remoteDir!} show-ref --verify refs/heads/${pushedLoop.state.git!.workingBranch}`.nothrow();
+        const pushRef = await Bun.$`git --git-dir=${ctx.remoteDir!} show-ref --verify refs/heads/${pushedLoop.state.git!.workingBranch}`.nothrow();
         expect(pushRef.exitCode).toBe(0);
 
         await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
