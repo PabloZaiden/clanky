@@ -11,7 +11,7 @@ import type {
   UncommittedChangesError,
   Workspace,
 } from "../../types";
-import type { CreateLoopFormSubmitRequest } from "../CreateLoopForm";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
 import type { CreateLoopResult } from "../../hooks/useLoops";
 import { createLogger } from "../../lib/logger";
 import {

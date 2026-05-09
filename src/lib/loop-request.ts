@@ -1,5 +1,5 @@
 import type { UpdateLoopRequest } from "../types";
-import type { CreateLoopFormSubmitRequest } from "../components/CreateLoopForm";
+import type { CreateLoopFormSubmitRequest } from "../types/loop-request";
 
 /**
  * Draft editors start from the create-loop form shape, but draft PUT requests

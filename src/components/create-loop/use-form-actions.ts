@@ -7,7 +7,8 @@ import { useState, useRef, useEffect, useCallback, type FormEvent } from "react"
 import type { ComposerImageAttachment } from "../../types/message-attachments";
 import { parseModelKey } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
-import type { CreateLoopFormProps, CreateLoopFormSubmitRequest } from "./types";
+import type { CreateLoopFormProps } from "./types";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
 import { toMessageImageAttachments } from "../../lib/image-attachments";
 import { cheapModelValueToSelection } from "./use-model-selection";
 import { DEFAULT_LOOP_CONFIG } from "../../types/loop";

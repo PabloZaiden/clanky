@@ -8,7 +8,8 @@ import {
   saveStoredLoopModelPreference,
 } from "../../lib/model-selection-preferences";
 import type { ShellRoute } from "./shell-types";
-import type { CreateLoopFormActionState, CreateLoopFormSubmitRequest } from "../CreateLoopForm";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
+import type { CreateLoopFormActionState } from "../CreateLoopForm";
 
 export interface UseComposeStateResult {
   composeActionState: CreateLoopFormActionState | null;

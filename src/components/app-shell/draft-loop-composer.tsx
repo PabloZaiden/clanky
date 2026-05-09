@@ -6,8 +6,8 @@ import {
   getComposeDraftActionLabel,
   getComposeSubmitActionLabel,
   type CreateLoopFormActionState,
-  type CreateLoopFormSubmitRequest,
 } from "../CreateLoopForm";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
 import { Button, ConfirmModal } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";

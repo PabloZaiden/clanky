@@ -4,7 +4,7 @@ import type {
   UncommittedChangesError,
   Workspace,
 } from "../types";
-import type { CreateLoopFormSubmitRequest } from "../components/CreateLoopForm";
+import type { CreateLoopFormSubmitRequest } from "../types/loop-request";
 import { createLogger } from "./logger";
 import {
   saveStoredLoopCheapModelPreference,

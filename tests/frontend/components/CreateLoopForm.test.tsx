@@ -7,7 +7,8 @@
  */
 
 import { test, expect, describe, mock, beforeEach, afterEach } from "bun:test";
-import { CreateLoopForm, type CreateLoopFormActionState, type CreateLoopFormSubmitRequest } from "@/components/CreateLoopForm";
+import { CreateLoopForm, type CreateLoopFormActionState } from "@/components/CreateLoopForm";
+import type { CreateLoopFormSubmitRequest } from "@/types/loop-request";
 import { renderWithUser, waitFor, act } from "../helpers/render";
 import {
   createModelInfo,
