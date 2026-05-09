@@ -1578,8 +1578,7 @@ export class ChatManager {
       },
       completedAt: now,
       pendingPermissionRequests: this.resolvePendingPermissionRequests(chat.state.pendingPermissionRequests ?? [], {
-        status: "denied",
-        decision: "deny",
+        status: "cancelled",
         resolvedAt: now,
         error: message,
       }),
@@ -1611,8 +1610,7 @@ export class ChatManager {
       completedAt: undefined,
       activeMessageId: undefined,
       pendingPermissionRequests: this.resolvePendingPermissionRequests(chat.state.pendingPermissionRequests ?? [], {
-        status: "denied",
-        decision: "deny",
+        status: "cancelled",
         resolvedAt: now,
         error: "Interrupted",
       }),

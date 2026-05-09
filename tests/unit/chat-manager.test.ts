@@ -1581,6 +1581,15 @@ class PermissionGateBackend implements Backend {
     this.subscriptions.clear();
   }
 
+  failActivePrompt(message: string): void {
+    const subscription = [...this.subscriptions.values()][0];
+    if (!subscription) {
+      throw new Error("Missing subscription for permission failure");
+    }
+    subscription.push({ type: "error", message });
+    subscription.end();
+  }
+
   getSdkClient(): null {
     return null;
   }
@@ -1748,6 +1757,86 @@ describe("ChatManager", () => {
       && current.state.messages.some((message) => message.content === "Permission accepted"),
     );
     expect(completed.state.error).toBeUndefined();
+  });
+
+  test("cancels pending chat permission requests on provider failure without recording a denial decision", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      initGit: true,
+    });
+
+    const backend = new PermissionGateBackend();
+    backendManager.setBackendForTesting(backend);
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Failing Permission Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      autoApprovePermissions: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Run the check",
+    });
+
+    await waitForChat(chat.config.id, (current) =>
+      current.state.status === "streaming"
+      && (current.state.pendingPermissionRequests ?? []).some((request) => request.status === "pending"),
+    );
+
+    backend.failActivePrompt("Provider crashed while waiting for permission");
+
+    const failed = await waitForChat(chat.config.id, (current) => current.state.status === "failed");
+    expect(failed.state.pendingPermissionRequests?.[0]).toMatchObject({
+      requestId: "permission-1",
+      status: "cancelled",
+      error: "Provider crashed while waiting for permission",
+    });
+    expect(failed.state.pendingPermissionRequests?.[0]?.decision).toBeUndefined();
+  });
+
+  test("cancels pending chat permission requests on interrupt without recording a denial decision", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      initGit: true,
+    });
+
+    const backend = new PermissionGateBackend();
+    backendManager.setBackendForTesting(backend);
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Interrupted Permission Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      autoApprovePermissions: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Run the check",
+    });
+
+    const waiting = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "streaming"
+      && (current.state.pendingPermissionRequests ?? []).some((request) => request.status === "pending"),
+    );
+
+    const interrupted = await (manager as unknown as {
+      completeInterruptedChat: (chatToInterrupt: typeof waiting) => Promise<typeof waiting>;
+    }).completeInterruptedChat(waiting);
+    backend.abortAllSubscriptions();
+
+    expect(interrupted.state.pendingPermissionRequests?.[0]).toMatchObject({
+      requestId: "permission-1",
+      status: "cancelled",
+      error: "Interrupted",
+    });
+    expect(interrupted.state.pendingPermissionRequests?.[0]?.decision).toBeUndefined();
   });
 
   test("pulls the main checkout before creating a new chat worktree", async () => {

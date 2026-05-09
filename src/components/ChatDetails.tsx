@@ -141,6 +141,7 @@ export function ChatDetails({
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [permissionReplyPendingIds, setPermissionReplyPendingIds] = useState<string[]>([]);
+  const permissionReplyPendingIdsRef = useRef(new Set<string>());
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const reconnectAttemptedRef = useRef(false);
@@ -438,10 +439,11 @@ export function ChatDetails({
   }
 
   async function handlePermissionReply(requestId: string, decision: "allow" | "deny"): Promise<void> {
-    if (permissionReplyPendingIds.includes(requestId)) {
+    if (permissionReplyPendingIdsRef.current.has(requestId)) {
       return;
     }
 
+    permissionReplyPendingIdsRef.current.add(requestId);
     setPermissionReplyPendingIds((current) => [...current, requestId]);
     try {
       const response = await appFetch(`/api/chats/${chatId}/permissions/${encodeURIComponent(requestId)}`, {
@@ -457,6 +459,7 @@ export function ChatDetails({
     } catch (permissionError) {
       toast.error(getErrorMessage(permissionError));
     } finally {
+      permissionReplyPendingIdsRef.current.delete(requestId);
       setPermissionReplyPendingIds((current) => current.filter((id) => id !== requestId));
     }
   }

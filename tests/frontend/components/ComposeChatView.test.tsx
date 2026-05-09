@@ -413,7 +413,7 @@ describe("ComposeChatView", () => {
     });
     const createChatRequest = mock(async (_request: CreateChatRequest) => createChat());
 
-    const { getAllByRole, getByLabelText, getByRole, user } = renderWithUser(
+    const { getByLabelText, getByRole, user } = renderWithUser(
       <ComposeChatView
         composeWorkspace={workspace}
         workspaces={[workspace]}
@@ -440,11 +440,7 @@ describe("ComposeChatView", () => {
     );
 
     await user.type(getByLabelText("Name"), "Repository pairing session");
-    const autoApproveCheckbox = getAllByRole("checkbox").find(
-      (checkbox: HTMLElement) => checkbox.parentElement?.textContent?.includes("Auto-approve permissions"),
-    );
-    expect(autoApproveCheckbox).toBeDefined();
-    await user.click(autoApproveCheckbox!);
+    await user.click(getByRole("checkbox", { name: /auto-approve permissions/i }));
     await user.click(getByRole("button", { name: "Create chat" }));
 
     await waitFor(() => {

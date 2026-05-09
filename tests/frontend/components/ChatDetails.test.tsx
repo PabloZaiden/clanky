@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { fireEvent } from "@testing-library/react";
 import { DEFAULT_CHAT_INTERRUPT_REASON, type Chat } from "@/types";
 import { ChatDetails } from "@/components/ChatDetails";
 import { createMockApi } from "../helpers/mock-api";
@@ -202,6 +203,50 @@ describe("ChatDetails", () => {
     const replyCalls = api.calls("/api/chats/:id/permissions/:requestId", "POST");
     expect(replyCalls).toHaveLength(1);
     expect(replyCalls[0]?.body).toEqual({ decision: "allow" });
+  });
+
+  test("dedupes rapid permission approval clicks", async () => {
+    const pendingChat = createChat({
+      config: {
+        ...createChat().config,
+        autoApprovePermissions: false,
+      },
+      state: {
+        ...createChat().state,
+        status: "streaming",
+        pendingPermissionRequests: [{
+          requestId: "permission-1",
+          sessionId: "session-1",
+          permission: "execute",
+          patterns: ["bun test"],
+          status: "pending",
+          createdAt: "2025-01-01T00:00:02.000Z",
+        }],
+      },
+    });
+
+    let resolveReply: ((chat: Chat) => void) | undefined;
+    api.get("/api/chats/:id", () => pendingChat);
+    api.post("/api/chats/:id/permissions/:requestId", () =>
+      new Promise<Chat>((resolve) => {
+        resolveReply = resolve;
+      }), 200);
+
+    const { getByRole } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Allow" })).toBeInTheDocument();
+    });
+
+    const allowButton = getByRole("button", { name: "Allow" });
+    fireEvent.click(allowButton);
+    fireEvent.click(allowButton);
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id/permissions/:requestId", "POST")).toHaveLength(1);
+    });
+
+    resolveReply?.(pendingChat);
   });
 
   test("replaces the transcript when the selected chat changes to an older chat", async () => {

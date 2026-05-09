@@ -48,7 +48,7 @@ export interface ChatError {
   code?: string;
 }
 
-export type ChatPermissionRequestStatus = "pending" | "approved" | "denied";
+export type ChatPermissionRequestStatus = "pending" | "approved" | "denied" | "cancelled";
 
 export type ChatPermissionDecision = "allow" | "deny";
 
