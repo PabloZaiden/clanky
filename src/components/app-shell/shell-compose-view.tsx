@@ -3,7 +3,8 @@ import type { CreateSshSessionRequest, CreateSshServerRequest } from "../../type
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
-import type { CreateLoopFormActionState, CreateLoopFormSubmitRequest } from "../CreateLoopForm";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
+import type { CreateLoopFormActionState } from "../CreateLoopForm";
 import { SshSessionComposer, SshServerComposer } from "./shell-composers";
 import type { ComposeKind, ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";

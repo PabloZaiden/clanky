@@ -1,14 +1,14 @@
-import type { CreateLoopRequest, UpdateLoopRequest } from "../types";
+import type { UpdateLoopRequest } from "../types";
+import type { CreateLoopFormSubmitRequest } from "../types/loop-request";
 
 /**
  * Draft editors start from the create-loop form shape, but draft PUT requests
  * must use the narrower update contract.
  */
-export function toDraftLoopUpdateRequest(request: CreateLoopRequest): UpdateLoopRequest {
+export function toDraftLoopUpdateRequest(request: CreateLoopFormSubmitRequest): UpdateLoopRequest {
   return {
     name: request.name,
     prompt: request.prompt,
-    model: request.model,
     cheapModel: request.cheapModel,
     maxIterations: request.maxIterations,
     maxConsecutiveErrors: request.maxConsecutiveErrors,
@@ -21,5 +21,6 @@ export function toDraftLoopUpdateRequest(request: CreateLoopRequest): UpdateLoop
     planMode: request.planMode,
     autoAcceptPlan: request.autoAcceptPlan,
     fullyAutonomous: request.fullyAutonomous,
+    ...(request.model ? { model: request.model } : {}),
   };
 }

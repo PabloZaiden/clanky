@@ -7,7 +7,8 @@ import { useState, useRef, useEffect, useCallback, type FormEvent } from "react"
 import type { ComposerImageAttachment } from "../../types/message-attachments";
 import { parseModelKey } from "../ModelSelector";
 import { createLogger } from "../../lib/logger";
-import type { CreateLoopFormProps, CreateLoopFormSubmitRequest } from "./types";
+import type { CreateLoopFormProps } from "./types";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
 import { toMessageImageAttachments } from "../../lib/image-attachments";
 import { cheapModelValueToSelection } from "./use-model-selection";
 import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
@@ -124,7 +125,7 @@ export function useFormActions({
 
       if (!selectedWorkspaceId) return;
       if (!currentPrompt.trim()) return;
-      if (!selectedModel) return;
+      if (!asDraft && !selectedModel) return;
       if (!asDraft && !selectedModelEnabled) return;
       if ((asDraft || isEditing) && !currentName.trim()) return;
 
@@ -141,16 +142,8 @@ export function useFormActions({
           return;
         }
 
-        const parsedModel = parseModelKey(selectedModel);
-        if (!parsedModel) {
-          return;
-        }
-
-        const model = {
-          providerID: parsedModel.providerID,
-          modelID: parsedModel.modelID,
-          variant: parsedModel.variant ?? "",
-        };
+        const parsedModel = selectedModel ? parseModelKey(selectedModel) : null;
+        if (!asDraft && !parsedModel) return;
 
         const request: CreateLoopFormSubmitRequest = {
           name: finalName,
@@ -160,7 +153,6 @@ export function useFormActions({
           planMode,
           autoAcceptPlan: planMode ? (fullyAutonomous ? true : autoAcceptPlan) : false,
           fullyAutonomous: planMode ? fullyAutonomous : false,
-          model,
           cheapModel: cheapModelValueToSelection(selectedCheapModel),
           maxIterations: maxIterations.trim()
             ? Math.max(parseInt(maxIterations, 10), 1)
@@ -181,6 +173,13 @@ export function useFormActions({
           clearPlanningFolder,
           draft: asDraft,
         };
+        if (parsedModel) {
+          request.model = {
+            providerID: parsedModel.providerID,
+            modelID: parsedModel.modelID,
+            variant: parsedModel.variant ?? "",
+          };
+        }
 
         const success = await onSubmit(request);
         if (success && closeOnSuccess) {
