@@ -21,6 +21,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "model_model_id",
   "model_variant",
   "use_worktree",
+  "auto_approve_permissions",
   "base_branch",
   "mode",
   "status",
@@ -38,6 +39,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "messages",
   "logs",
   "tool_calls",
+  "pending_permission_requests",
   "active_message_id",
   "interrupt_requested",
 ]);
@@ -74,6 +76,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     model_model_id: config.model.modelID,
     model_variant: config.model.variant ?? null,
     use_worktree: config.useWorktree ? 1 : 0,
+    auto_approve_permissions: config.autoApprovePermissions === false ? 0 : 1,
     base_branch: config.baseBranch ?? null,
     mode: config.mode,
     status: state.status,
@@ -91,6 +94,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     messages: JSON.stringify(state.messages),
     logs: JSON.stringify(state.logs),
     tool_calls: JSON.stringify(state.toolCalls),
+    pending_permission_requests: JSON.stringify(state.pendingPermissionRequests ?? []),
     active_message_id: state.activeMessageId ?? null,
     interrupt_requested: state.interruptRequested ? 1 : 0,
   };
@@ -112,6 +116,9 @@ export function rowToChat(row: Record<string, unknown>): Chat {
       variant: (row["model_variant"] as string | null) ?? "",
     },
     useWorktree: row["use_worktree"] === 1,
+    autoApprovePermissions: row["auto_approve_permissions"] === undefined
+      || row["auto_approve_permissions"] === null
+      || row["auto_approve_permissions"] === 1,
     baseBranch: (row["base_branch"] as string | null) ?? undefined,
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,
@@ -127,6 +134,9 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     messages: row["messages"] ? safeJsonParse(row["messages"] as string, [], "messages", rowId) : [],
     logs: row["logs"] ? safeJsonParse(row["logs"] as string, [], "logs", rowId) : [],
     toolCalls: row["tool_calls"] ? safeJsonParse(row["tool_calls"] as string, [], "tool_calls", rowId) : [],
+    pendingPermissionRequests: row["pending_permission_requests"]
+      ? safeJsonParse(row["pending_permission_requests"] as string, [], "pending_permission_requests", rowId)
+      : [],
     activeMessageId: (row["active_message_id"] as string | null) ?? undefined,
     interruptRequested: row["interrupt_requested"] === 1 ? true : undefined,
   };

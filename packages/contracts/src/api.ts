@@ -22,6 +22,7 @@ import {
   CreateChatRequestSchema,
   GenerateLoopTitleRequestSchema,
   InterruptChatRequestSchema,
+  ReplyToChatPermissionRequestSchema,
   SendChatMessageRequestSchema,
   SpawnCurrentPlanLoopRequestSchema,
   UpdateLoopRequestSchema,
@@ -155,6 +156,7 @@ export type UpdateLoopRequest = z.infer<typeof UpdateLoopRequestSchema>;
 export type UpdateChatRequest = z.infer<typeof UpdateChatRequestSchema>;
 export type SendChatMessageRequest = z.infer<typeof SendChatMessageRequestSchema>;
 export type InterruptChatRequest = z.infer<typeof InterruptChatRequestSchema>;
+export type ReplyToChatPermissionRequest = z.infer<typeof ReplyToChatPermissionRequestSchema>;
 export type SpawnCurrentPlanLoopRequest = z.infer<typeof SpawnCurrentPlanLoopRequestSchema>;
 
 export type ListChatsResponse = Chat[];

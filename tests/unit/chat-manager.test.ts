@@ -1471,6 +1471,146 @@ class IdleStatusInterruptBackend implements Backend {
   }
 }
 
+class PermissionGateBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+  readonly permissionReplies: Array<{ requestId: string; response: string }> = [];
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session = {
+      id: `permission-gate-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: "unused",
+      content: "unused",
+      parts: [{ type: "text", text: "unused" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, _prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "permission.asked",
+        requestId: "permission-1",
+        sessionId,
+        permission: "execute",
+        patterns: ["bun test"],
+      });
+    }, 0);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(requestId: string, response: string): Promise<void> {
+    this.permissionReplies.push({ requestId, response });
+    const subscription = [...this.subscriptions.values()][0];
+    if (!subscription) {
+      throw new Error("Missing subscription for permission reply");
+    }
+    setTimeout(() => {
+      subscription.push({ type: "message.start", messageId: `msg-${crypto.randomUUID()}` });
+      subscription.push({ type: "message.delta", content: "Permission accepted" });
+      subscription.push({ type: "message.complete", content: "Permission accepted" });
+      subscription.end();
+    }, 0);
+  }
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://permission-gate-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 type ChatManagerInternals = {
   activeStreamGenerations: Map<string, number>;
   activeStreams: Map<string, { generation: number }>;
@@ -1526,6 +1666,88 @@ describe("ChatManager", () => {
       "Say hello",
       "Hello from the chat backend",
     ]);
+  });
+
+  test("auto-approves chat permission requests when enabled", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      initGit: true,
+    });
+
+    const backend = new PermissionGateBackend();
+    backendManager.setBackendForTesting(backend);
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Auto Permission Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      autoApprovePermissions: true,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Run the check",
+    });
+
+    const completed = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "Permission accepted"),
+    );
+
+    expect(backend.permissionReplies).toEqual([{ requestId: "permission-1", response: "always" }]);
+    expect(completed.state.pendingPermissionRequests ?? []).toEqual([]);
+    expect(completed.state.error).toBeUndefined();
+  });
+
+  test("records chat permission requests and resumes after manual approval", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      initGit: true,
+    });
+
+    const backend = new PermissionGateBackend();
+    backendManager.setBackendForTesting(backend);
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Manual Permission Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      autoApprovePermissions: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Run the check",
+    });
+
+    const waiting = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "streaming"
+      && (current.state.pendingPermissionRequests ?? []).some((request) => request.status === "pending"),
+    );
+    expect(waiting.state.pendingPermissionRequests?.[0]).toMatchObject({
+      requestId: "permission-1",
+      permission: "execute",
+      patterns: ["bun test"],
+      status: "pending",
+    });
+
+    const approved = await manager.replyToPermission(chat.config.id, "permission-1", "allow");
+    expect(approved?.state.pendingPermissionRequests?.[0]).toMatchObject({
+      requestId: "permission-1",
+      status: "approved",
+      decision: "allow",
+    });
+    expect(backend.permissionReplies).toEqual([{ requestId: "permission-1", response: "once" }]);
+
+    const completed = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "Permission accepted"),
+    );
+    expect(completed.state.error).toBeUndefined();
   });
 
   test("pulls the main checkout before creating a new chat worktree", async () => {

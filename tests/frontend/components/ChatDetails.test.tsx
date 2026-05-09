@@ -31,6 +31,7 @@ function createChat(overrides?: Partial<Chat>): Chat {
         variant: "",
       },
       useWorktree: true,
+      autoApprovePermissions: true,
       baseBranch: "main",
       createdAt: "2025-01-01T00:00:00.000Z",
       updatedAt: "2025-01-01T00:00:00.000Z",
@@ -58,6 +59,7 @@ function createChat(overrides?: Partial<Chat>): Chat {
       ],
       logs: [],
       toolCalls: [],
+      pendingPermissionRequests: [],
       ...(overrides?.state ?? {}),
     },
   };
@@ -148,6 +150,58 @@ describe("ChatDetails", () => {
       message: "Please summarize the risk.",
       attachments: [],
     });
+  });
+
+  test("approves pending permission requests through the chat permission API", async () => {
+    const pendingChat = createChat({
+      config: {
+        ...createChat().config,
+        autoApprovePermissions: false,
+      },
+      state: {
+        ...createChat().state,
+        status: "streaming",
+        pendingPermissionRequests: [{
+          requestId: "permission-1",
+          sessionId: "session-1",
+          permission: "execute",
+          patterns: ["bun test"],
+          status: "pending",
+          createdAt: "2025-01-01T00:00:02.000Z",
+        }],
+      },
+    });
+    const approvedChat = createChat({
+      config: pendingChat.config,
+      state: {
+        ...pendingChat.state,
+        pendingPermissionRequests: [{
+          ...pendingChat.state.pendingPermissionRequests![0]!,
+          status: "approved",
+          decision: "allow",
+          resolvedAt: "2025-01-01T00:00:03.000Z",
+        }],
+      },
+    });
+
+    api.get("/api/chats/:id", () => pendingChat);
+    api.post("/api/chats/:id/permissions/:requestId", () => approvedChat, 200);
+
+    const { getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Allow" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "Allow" }));
+
+    await waitFor(() => {
+      expect(queryByRole("button", { name: "Allow" })).not.toBeInTheDocument();
+    });
+
+    const replyCalls = api.calls("/api/chats/:id/permissions/:requestId", "POST");
+    expect(replyCalls).toHaveLength(1);
+    expect(replyCalls[0]?.body).toEqual({ decision: "allow" });
   });
 
   test("replaces the transcript when the selected chat changes to an older chat", async () => {

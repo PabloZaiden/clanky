@@ -28,6 +28,7 @@ import {
   PlanFeedbackRequestSchema,
   PublicRevokeRequestSchema,
   RefreshEndpointRequestSchema,
+  ReplyToChatPermissionRequestSchema,
   SendChatMessageRequestSchema,
   ServerSettingsSchema,
   SetDashboardViewModeRequestSchema,
@@ -268,6 +269,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/chats/:id/interrupt": {
     description: "Interrupt an active chat run.",
     requestSchema: InterruptChatRequestSchema,
+  },
+  "/api/chats/:id/permissions/:requestId": {
+    description: "Approve or deny a pending chat permission request.",
+    requestSchema: ReplyToChatPermissionRequestSchema,
   },
   "/api/chats/:id/reconnect": {
     description: "Reconnect a chat session to its backend runtime.",

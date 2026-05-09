@@ -140,6 +140,7 @@ export function ChatDetails({
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [permissionReplyPendingIds, setPermissionReplyPendingIds] = useState<string[]>([]);
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const reconnectAttemptedRef = useRef(false);
@@ -436,6 +437,30 @@ export function ChatDetails({
     }
   }
 
+  async function handlePermissionReply(requestId: string, decision: "allow" | "deny"): Promise<void> {
+    if (permissionReplyPendingIds.includes(requestId)) {
+      return;
+    }
+
+    setPermissionReplyPendingIds((current) => [...current, requestId]);
+    try {
+      const response = await appFetch(`/api/chats/${chatId}/permissions/${encodeURIComponent(requestId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to reply to permission request"));
+      }
+      const nextChat = (await response.json()) as Chat;
+      setChat(nextChat);
+    } catch (permissionError) {
+      toast.error(getErrorMessage(permissionError));
+    } finally {
+      setPermissionReplyPendingIds((current) => current.filter((id) => id !== requestId));
+    }
+  }
+
   async function handleDelete() {
     if (isDeletePending) {
       return;
@@ -703,6 +728,62 @@ export function ChatDetails({
       activeStateMessage="Thinking…"
     />
   );
+  const pendingPermissionRequests = (chat.state.pendingPermissionRequests ?? []).filter(
+    (permissionRequest) => permissionRequest.status === "pending",
+  );
+  const permissionApprovalPanel = pendingPermissionRequests.length > 0 && (
+    <div className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/30">
+      <div className="mx-auto max-w-4xl space-y-3">
+        {pendingPermissionRequests.map((permissionRequest) => {
+          const isReplying = permissionReplyPendingIds.includes(permissionRequest.requestId);
+          return (
+            <div
+              key={permissionRequest.requestId}
+              className="rounded-md border border-amber-200 bg-white p-3 shadow-sm dark:border-amber-900/70 dark:bg-neutral-900"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-amber-900 dark:text-amber-200">
+                    Provider requests permission: {permissionRequest.permission}
+                  </p>
+                  {permissionRequest.patterns.length > 0 && (
+                    <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-amber-100 p-2 font-mono text-xs text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+                      {permissionRequest.patterns.join("\n")}
+                    </pre>
+                  )}
+                  {permissionRequest.error && (
+                    <p className="mt-2 text-xs text-red-700 dark:text-red-300">
+                      {permissionRequest.error}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void handlePermissionReply(permissionRequest.requestId, "deny")}
+                    disabled={isReplying}
+                  >
+                    Deny
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void handlePermissionReply(permissionRequest.requestId, "allow")}
+                    disabled={isReplying}
+                    loading={isReplying}
+                  >
+                    Allow
+                  </Button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   const composer = (
     <form
@@ -900,6 +981,7 @@ export function ChatDetails({
       )}
 
       {conversation}
+      {permissionApprovalPanel}
       {composer}
       {!isEmbedded && renameModal}
       {!isEmbedded && spawnCurrentPlanModal}

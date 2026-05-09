@@ -10,6 +10,8 @@ import { createLogger } from "../core/logger";
 import {
   ChatBranchCheckoutError,
   ChatBusyError,
+  ChatPermissionReplyError,
+  ChatPermissionRequestNotFoundError,
   EmptyChatTranscriptError,
   InvalidChatBaseBranchError,
   InvalidCurrentPlanError,
@@ -19,6 +21,7 @@ import type { ChatConfig } from "../types/chat";
 import {
   CreateChatRequestSchema,
   InterruptChatRequestSchema,
+  ReplyToChatPermissionRequestSchema,
   SendChatMessageRequestSchema,
   SpawnCurrentPlanLoopRequestSchema,
   UpdateChatRequestSchema,
@@ -36,6 +39,8 @@ function createChatActionErrorResponse(error: unknown): Response | null {
     || error instanceof InvalidCurrentPlanError
     || error instanceof InvalidChatBaseBranchError
     || error instanceof ChatBranchCheckoutError
+    || error instanceof ChatPermissionRequestNotFoundError
+    || error instanceof ChatPermissionReplyError
   ) {
     return errorResponse(error.code, error.message, error.status);
   }
@@ -109,6 +114,7 @@ export const chatsRoutes = {
           modelID: body.model.modelID,
           modelVariant: body.model.variant,
           useWorktree: body.useWorktree,
+          autoApprovePermissions: body.autoApprovePermissions,
           baseBranch: body.baseBranch,
           directory: workspace.directory,
         });
@@ -243,6 +249,43 @@ export const chatsRoutes = {
       } catch (error) {
         log.error("Failed to interrupt chat", { chatId: req.params.id, error: String(error) });
         return errorResponse("interrupt_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/chats/:id/permissions/:requestId": {
+    async POST(req: Request & { params: { id: string; requestId: string } }): Promise<Response> {
+      const existing = await chatManager.getChat(req.params.id);
+      if (!existing) {
+        return errorResponse("not_found", "Chat not found", 404);
+      }
+
+      const validation = await parseAndValidate(ReplyToChatPermissionRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const updated = await chatManager.replyToPermission(
+          req.params.id,
+          req.params.requestId,
+          validation.data.decision,
+        );
+        if (!updated) {
+          return errorResponse("not_found", "Chat not found", 404);
+        }
+        return Response.json(updated);
+      } catch (error) {
+        const knownErrorResponse = createChatActionErrorResponse(error);
+        if (knownErrorResponse) {
+          return knownErrorResponse;
+        }
+        log.error("Failed to reply to chat permission request", {
+          chatId: req.params.id,
+          requestId: req.params.requestId,
+          error: String(error),
+        });
+        return errorResponse("permission_reply_failed", String(error), 500);
       }
     },
   },

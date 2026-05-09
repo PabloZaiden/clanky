@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { ComposeChatView } from "@/components/app-shell/compose-chat-view";
 import type { UseDashboardDataResult } from "@/hooks/useDashboardData";
-import type { Chat } from "@/types";
+import type { Chat, CreateChatRequest } from "@/types";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createBranchInfo, createModelInfo, createWorkspace } from "../helpers/factories";
 
@@ -48,6 +48,7 @@ function createChat(overrides?: Partial<Chat>): Chat {
         variant: "",
       },
       useWorktree: true,
+      autoApprovePermissions: true,
       baseBranch: "main",
       createdAt: "2026-04-21T00:00:00.000Z",
       updatedAt: "2026-04-21T00:00:00.000Z",
@@ -60,6 +61,7 @@ function createChat(overrides?: Partial<Chat>): Chat {
       messages: [],
       logs: [],
       toolCalls: [],
+      pendingPermissionRequests: [],
     },
     ...overrides,
   };
@@ -344,7 +346,7 @@ describe("ComposeChatView", () => {
       directory: "/workspaces/ralpher",
     });
     const setLastModel = mock(() => {});
-    const createChatRequest = mock(async () => createChat());
+    const createChatRequest = mock(async (_request: CreateChatRequest) => createChat());
     const navigateWithinShell = mock(() => {});
 
     const { getByLabelText, getByRole, user } = renderWithUser(
@@ -382,6 +384,9 @@ describe("ComposeChatView", () => {
     await waitFor(() => {
       expect(createChatRequest).toHaveBeenCalledTimes(1);
     });
+    expect(createChatRequest.mock.calls[0]?.[0]).toMatchObject({
+      autoApprovePermissions: true,
+    });
 
     expect(window.localStorage.getItem(CHAT_MODEL_STORAGE_KEY)).toBe(
       JSON.stringify({
@@ -398,6 +403,55 @@ describe("ComposeChatView", () => {
     expect(navigateWithinShell).toHaveBeenCalledWith({
       view: "chat",
       chatId: "chat-1",
+    });
+  });
+
+  test("submits disabled auto-approval when the checkbox is unchecked", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      directory: "/workspaces/ralpher",
+    });
+    const createChatRequest = mock(async (_request: CreateChatRequest) => createChat());
+
+    const { getAllByRole, getByLabelText, getByRole, user } = renderWithUser(
+      <ComposeChatView
+        composeWorkspace={workspace}
+        workspaces={[workspace]}
+        workspacesLoading={false}
+        workspaceError={null}
+        dashboardData={createDashboardData({
+          models: [
+            createModelInfo({
+              providerID: "copilot",
+              providerName: "Copilot",
+              modelID: "gpt-5.4",
+              modelName: "GPT-5.4",
+              connected: true,
+            }),
+          ],
+          branches: [createBranchInfo({ name: "main", current: true })],
+          defaultBranch: "main",
+          currentBranch: "main",
+        })}
+        shellHeaderOffsetClassName=""
+        navigateWithinShell={mock(() => {})}
+        createChat={createChatRequest}
+      />,
+    );
+
+    await user.type(getByLabelText("Name"), "Repository pairing session");
+    const autoApproveCheckbox = getAllByRole("checkbox").find(
+      (checkbox: HTMLElement) => checkbox.parentElement?.textContent?.includes("Auto-approve permissions"),
+    );
+    expect(autoApproveCheckbox).toBeDefined();
+    await user.click(autoApproveCheckbox!);
+    await user.click(getByRole("button", { name: "Create chat" }));
+
+    await waitFor(() => {
+      expect(createChatRequest).toHaveBeenCalledTimes(1);
+    });
+    expect(createChatRequest.mock.calls[0]?.[0]).toMatchObject({
+      autoApprovePermissions: false,
     });
   });
 });

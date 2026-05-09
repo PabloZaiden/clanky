@@ -77,7 +77,7 @@ describe("Workspace API Integration", () => {
     const defaultBranch = (await Bun.$`git -C ${sourceDir} branch --show-current`.text()).trim();
     await Bun.$`git -C ${sourceDir} remote add origin ${originDir}`.quiet();
     await Bun.$`git -C ${sourceDir} push -u origin ${defaultBranch}`.quiet();
-    await Bun.$`git -C ${originDir} symbolic-ref HEAD refs/heads/${defaultBranch}`.quiet();
+    await Bun.$`git --git-dir=${originDir} symbolic-ref HEAD refs/heads/${defaultBranch}`.quiet();
     await Bun.$`git clone ${originDir} ${cloneDir}`.quiet();
     await Bun.$`git -C ${cloneDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${cloneDir} config user.name "Test User"`.quiet();

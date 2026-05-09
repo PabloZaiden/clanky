@@ -230,6 +230,7 @@ function createTables(database: Database): void {
         model_model_id TEXT,
         model_variant TEXT,
         use_worktree INTEGER NOT NULL DEFAULT 1,
+        auto_approve_permissions INTEGER NOT NULL DEFAULT 1,
         base_branch TEXT,
         mode TEXT NOT NULL DEFAULT 'chat',
         status TEXT NOT NULL DEFAULT 'idle',
@@ -247,6 +248,7 @@ function createTables(database: Database): void {
         messages TEXT,
         logs TEXT,
         tool_calls TEXT,
+        pending_permission_requests TEXT,
         active_message_id TEXT,
         interrupt_requested INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
@@ -606,6 +608,12 @@ function ensureChatSchema(database: Database): void {
   }
   if (!columns.some((column) => column.name === "loop_id")) {
     database.run("ALTER TABLE chats ADD COLUMN loop_id TEXT");
+  }
+  if (!columns.some((column) => column.name === "auto_approve_permissions")) {
+    database.run("ALTER TABLE chats ADD COLUMN auto_approve_permissions INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!columns.some((column) => column.name === "pending_permission_requests")) {
+    database.run("ALTER TABLE chats ADD COLUMN pending_permission_requests TEXT");
   }
 }
 
