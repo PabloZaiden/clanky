@@ -56,7 +56,16 @@ export function useComposeState({
   }, [route.view, route.view === "compose" ? route.kind : undefined]);
 
   async function finalizeLoopCreation(request: CreateLoopFormSubmitRequest) {
-    const result = await createLoop(request as CreateLoopRequest);
+    if (!request.model) {
+      toast.error("Please select a model before starting a loop.");
+      return null;
+    }
+
+    const createRequest: CreateLoopRequest = {
+      ...request,
+      model: request.model,
+    };
+    const result = await createLoop(createRequest);
 
     if (result.startError) {
       toast.error("Uncommitted changes blocked the new run. Resolve them and try again.");

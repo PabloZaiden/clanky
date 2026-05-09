@@ -39,7 +39,7 @@ interface SubmitHandlerProps {
 export async function handleCreateLoopSubmit(
   props: SubmitHandlerProps,
   editLoop: Loop | null | undefined,
-  request: CreateLoopRequest,
+  request: CreateLoopFormSubmitRequest,
   toast: { error: (msg: string) => void },
 ): Promise<boolean> {
   const isEditing = !!editLoop;
@@ -58,6 +58,11 @@ export async function handleCreateLoopSubmit(
           toast.error(message);
         },
       });
+    }
+
+    if (!request.model) {
+      toast.error("Please select a model before starting a loop.");
+      return false;
     }
 
     void (async () => {
@@ -104,7 +109,16 @@ export async function handleCreateLoopSubmit(
     return true;
   }
 
-  const result = await props.onCreateLoop(request);
+  if (!request.model) {
+    toast.error("Please select a model before creating a loop.");
+    return false;
+  }
+
+  const createRequest: CreateLoopRequest = {
+    ...request,
+    model: request.model,
+  };
+  const result = await props.onCreateLoop(createRequest);
 
   if (result.startError) {
     props.setUncommittedModal({

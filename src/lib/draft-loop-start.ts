@@ -1,10 +1,10 @@
 import type {
   CheapModelSelection,
-  CreateLoopRequest,
   ModelConfig,
   UncommittedChangesError,
   Workspace,
 } from "../types";
+import type { CreateLoopFormSubmitRequest } from "../components/CreateLoopForm";
 import { createLogger } from "./logger";
 import {
   saveStoredLoopCheapModelPreference,
@@ -17,7 +17,7 @@ const log = createLogger("DraftLoopStart");
 
 interface PersistLoopPreferencesOptions {
   workspaces: Workspace[];
-  request: CreateLoopRequest;
+  request: CreateLoopFormSubmitRequest;
 }
 
 interface PersistDraftChangesOptions extends PersistLoopPreferencesOptions {
@@ -30,7 +30,7 @@ interface PersistDraftChangesOptions extends PersistLoopPreferencesOptions {
 
 interface StartDraftLoopOptions {
   loopId: string;
-  request: CreateLoopRequest;
+  request: CreateLoopFormSubmitRequest;
   onRefresh: () => Promise<void>;
 }
 
@@ -43,13 +43,15 @@ export async function persistLoopPreferences({
   workspaces,
   request,
 }: PersistLoopPreferencesOptions): Promise<void> {
-  const operations: Promise<Response>[] = [
-    appFetch("/api/preferences/last-model", {
+  const operations: Promise<Response>[] = [];
+
+  if (request.model) {
+    operations.push(appFetch("/api/preferences/last-model", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request.model),
-    }),
-  ];
+    }));
+  }
 
   if (request.cheapModel) {
     operations.push(
@@ -75,8 +77,10 @@ export async function persistLoopPreferences({
   await Promise.all(operations);
 }
 
-export function persistLocalLoopPreferences(request: CreateLoopRequest): void {
-  saveStoredLoopModelPreference(request.model);
+export function persistLocalLoopPreferences(request: CreateLoopFormSubmitRequest): void {
+  if (request.model) {
+    saveStoredLoopModelPreference(request.model);
+  }
   saveStoredLoopCheapModelPreference(request.cheapModel);
 }
 
@@ -102,7 +106,9 @@ export async function persistDraftChanges({
       return false;
     }
 
-    setLastModel(request.model);
+    if (request.model) {
+      setLastModel(request.model);
+    }
     setLastCheapModel(request.cheapModel ?? null);
     persistLocalLoopPreferences(request);
 

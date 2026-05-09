@@ -1208,6 +1208,38 @@ describe("CreateLoopForm", () => {
       expect(req.draft).toBe(true);
     });
 
+    test("saves a draft without a selected model", async () => {
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            workspaces: testWorkspaces(),
+            models: [],
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Draft");
+      await setInputValue(user, getByLabelText(/Title/) as HTMLInputElement, "Draft title");
+
+      await waitFor(() => {
+        expect(getByRole("button", { name: "Save as Draft" })).toBeEnabled();
+      });
+
+      await user.click(getByRole("button", { name: "Save as Draft" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopFormSubmitRequest;
+      expect(req.draft).toBe(true);
+      expect(req.model).toBeUndefined();
+    });
+
     test("calls onSubmit with useWorktree=false when unchecked", async () => {
       const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
 
