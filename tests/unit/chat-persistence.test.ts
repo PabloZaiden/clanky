@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { loadLoopChat, saveChat } from "../../src/persistence/chats";
+import { getWorkspaceChatNameStats, loadLoopChat, saveChat } from "../../src/persistence/chats";
 import { createInitialChatState, type Chat } from "../../src/types/chat";
 import {
   setupTestContext,
@@ -13,6 +13,7 @@ let context: TestContext;
 
 function createChat(overrides?: {
   id?: string;
+  name?: string;
   scope?: Chat["config"]["scope"];
   loopId?: string;
 }): Chat {
@@ -22,7 +23,7 @@ function createChat(overrides?: {
   return {
     config: {
       id,
-      name: `Chat ${id}`,
+      name: overrides?.name ?? `Chat ${id}`,
       workspaceId: testWorkspaceId,
       scope: overrides?.scope ?? "workspace",
       loopId: overrides?.loopId,
@@ -70,6 +71,36 @@ describe("chat persistence", () => {
         scope: "loop",
         loopId: "loop-1",
       },
+    });
+  });
+
+  test("getWorkspaceChatNameStats returns count and maximum generated suffix without loading chats", async () => {
+    await saveChat(createChat({
+      id: "generated-1",
+      name: "Test Workspace - 1",
+    }));
+    await saveChat(createChat({
+      id: "generated-4",
+      name: "Test Workspace - 4",
+    }));
+    await saveChat(createChat({
+      id: "explicit",
+      name: "Explicit Chat",
+    }));
+    await saveChat(createChat({
+      id: "other-prefix",
+      name: "Other Workspace - 9",
+    }));
+    await saveChat(createChat({
+      id: "loop-chat",
+      name: "Test Workspace - 10",
+      scope: "loop",
+      loopId: "loop-1",
+    }));
+
+    await expect(getWorkspaceChatNameStats(testWorkspaceId, "Test Workspace")).resolves.toEqual({
+      standaloneChatCount: 4,
+      maxGeneratedSuffix: 4,
     });
   });
 });

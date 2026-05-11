@@ -1667,6 +1667,41 @@ describe("ChatManager", () => {
     expect(thirdChat.config.name).toBe("Test Workspace - 3");
   });
 
+  test("uses the next unused generated suffix after generated chats are deleted", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      initGit: true,
+    });
+
+    const manager = new ChatManager();
+    const firstChat = await manager.createChat({
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+    const secondChat = await manager.createChat({
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+
+    expect(firstChat.config.name).toBe("Test Workspace - 1");
+    expect(secondChat.config.name).toBe("Test Workspace - 2");
+
+    await manager.deleteChat(firstChat.config.id);
+
+    const nextChat = await manager.createChat({
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+
+    expect(nextChat.config.name).toBe("Test Workspace - 3");
+  });
+
   test("streams chat responses and persists assistant messages", async () => {
     context = await setupTestContext({
       useMockBackend: true,

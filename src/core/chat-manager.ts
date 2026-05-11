@@ -26,7 +26,17 @@ import {
   isStandaloneChat,
 } from "../types/chat";
 import type { ChatPermissionDecision, ChatPermissionRequest } from "../types/chat";
-import { loadChat, loadLoopChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
+import {
+  loadChat,
+  loadLoopChat,
+  listChats,
+  listChatsByWorkspace,
+  saveChat,
+  deleteChat,
+  updateChatConfig,
+  updateChatState,
+  getWorkspaceChatNameStats,
+} from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
@@ -76,8 +86,8 @@ export interface CreateChatOptions {
   directory?: string;
 }
 
-function buildGeneratedChatName(projectName: string, existingChatCount: number): string {
-  const suffix = ` - ${existingChatCount + 1}`;
+function buildGeneratedChatName(projectName: string, nextSuffix: number): string {
+  const suffix = ` - ${nextSuffix}`;
   const fallbackPrefix = "Chat";
   const trimmedProjectName = projectName.trim() || fallbackPrefix;
   const maxPrefixLength = Math.max(1, 100 - suffix.length);
@@ -107,10 +117,14 @@ export class ChatManager {
     const id = crypto.randomUUID();
     const now = createTimestamp();
     const explicitName = options.name?.trim() ?? "";
-    const existingStandaloneChats = explicitName
-      ? []
-      : (await listChatsByWorkspace(options.workspaceId)).filter(isStandaloneChat);
-    const name = explicitName || buildGeneratedChatName(workspace.name, existingStandaloneChats.length);
+    const generatedNamePrefix = (workspace.name.trim() || "Chat").slice(0, 100).trim() || "Chat";
+    const chatNameStats = explicitName
+      ? null
+      : await getWorkspaceChatNameStats(options.workspaceId, generatedNamePrefix);
+    const nextGeneratedSuffix = chatNameStats
+      ? Math.max(chatNameStats.standaloneChatCount + 1, chatNameStats.maxGeneratedSuffix + 1)
+      : 1;
+    const name = explicitName || buildGeneratedChatName(workspace.name, nextGeneratedSuffix);
     const chat: Chat = {
       config: {
         id,
