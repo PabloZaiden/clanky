@@ -10,6 +10,6 @@
     "build": "bunx tsc -p tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
-    "zod": "4.3.6"
+    "zod": "4.4.3"
   }
 }
