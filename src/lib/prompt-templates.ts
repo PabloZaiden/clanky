@@ -194,6 +194,33 @@ After making fixes, re-read the updated documentation to confirm:
       planMode: true,
     },
   },
+  {
+    id: "update-project-dependencies",
+    name: "Update all project dependencies to the latest stable version",
+    description:
+      "Updates project dependencies to the latest stable versions across detected package ecosystems and verifies the result.",
+    prompt: `Update all project dependencies in this repository to the latest stable versions.
+
+**Approach:**
+1. Discover every dependency manifest and lockfile in the repository, including files such as \`package.json\`, \`bun.lock\`, \`package-lock.json\`, \`pnpm-lock.yaml\`, \`yarn.lock\`, \`requirements*.txt\`, \`pyproject.toml\`, \`Pipfile\`, \`poetry.lock\`, \`Gemfile\`, \`Gemfile.lock\`, \`go.mod\`, \`Cargo.toml\`, and any other ecosystem-specific dependency files present.
+2. Identify the package manager or tooling used by each ecosystem, preferring the lockfile and existing project scripts over introducing new tooling.
+3. Update dependencies to the latest stable non-prerelease versions available for the existing dependency channels.
+4. Include major-version updates when they are stable, but review release notes or migration guidance when available and make any required code, configuration, or test updates.
+5. Regenerate or update lockfiles using the repository's existing package managers.
+6. Run the project's relevant formatting, linting, build, type-check, and test commands based on the repository's existing scripts and documentation.
+7. If a dependency cannot be safely updated, leave the project in a working state and document the package, attempted version, reason it is blocked, and the next action needed.
+
+**Rules:**
+- Prefer stable releases; do not upgrade to alpha, beta, rc, nightly, canary, or other prerelease versions unless the project already depends on that prerelease channel or the user explicitly requested it.
+- Preserve the repository's existing package manager choices and lockfile strategy.
+- Do not remove dependencies unless they are clearly obsolete as part of the update and the codebase no longer uses them.
+- Do not ignore failing validation. Fix compatibility issues caused by dependency updates, or revert the specific problematic update and document why.
+- Keep changes focused on dependency updates and required compatibility fixes.
+- Summarize the updated dependency groups, important major-version changes, validation commands run, and any remaining blockers.`,
+    defaults: {
+      planMode: true,
+    },
+  },
 ] as const;
 
 /**
