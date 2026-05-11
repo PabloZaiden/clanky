@@ -38,6 +38,10 @@ export function isTransientSshAuthenticationFailure(error: unknown): boolean {
 }
 
 export function inferProviderID(modelID: string): string {
+  const providerPrefix = modelID.split("/", 1)[0];
+  if (providerPrefix && providerPrefix !== modelID) {
+    return providerPrefix;
+  }
   if (modelID.startsWith("claude")) {
     return "anthropic";
   }
