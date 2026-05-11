@@ -71,11 +71,19 @@ export interface FileExplorerImageReadResult {
   data: Uint8Array;
 }
 
+export interface FileExplorerDownloadReadResult {
+  file: WorkspaceFileEntry;
+  contentType: string;
+  data: Uint8Array;
+}
+
 export interface FileExplorerWriteResult {
   success: true;
   file: WorkspaceFileEntry;
   overwritten: boolean;
 }
+
+export const MAX_FILE_EXPLORER_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 
 export class FileExplorerConflictError extends Error {
   readonly currentFile: WorkspaceFileEntry | null;
@@ -84,6 +92,18 @@ export class FileExplorerConflictError extends Error {
     super(message);
     this.name = "FileExplorerConflictError";
     this.currentFile = currentFile;
+  }
+}
+
+export class FileExplorerDownloadTooLargeError extends Error {
+  readonly file: WorkspaceFileEntry;
+  readonly maxBytes: number;
+
+  constructor(file: WorkspaceFileEntry, maxBytes: number) {
+    super(`Requested file is too large to download through the file explorer (${file.size} bytes; limit is ${maxBytes} bytes)`);
+    this.name = "FileExplorerDownloadTooLargeError";
+    this.file = file;
+    this.maxBytes = maxBytes;
   }
 }
 
@@ -505,6 +525,26 @@ async function runFullTreeCommand(
     .filter((entry) => entry.path.length > 0);
 }
 
+async function readFileBytes(
+  target: FileExplorerTarget,
+  absolutePath: string,
+): Promise<Uint8Array> {
+  const result = await target.executor.exec("bash", [
+    "-lc",
+    `path="$1"; if base64 --help 2>&1 | grep -q -- '-w'; then base64 -w 0 "$path"; else base64 < "$path" | tr -d '\\n'; fi`,
+    "file-explorer-file-bytes",
+    absolutePath,
+  ], {
+    logFailures: false,
+    timeout: 120_000,
+  });
+  if (!result.success) {
+    throw new Error(result.stderr.trim() || "Failed to read file");
+  }
+
+  return Uint8Array.from(Buffer.from(result.stdout.replace(/\s/g, ""), "base64"));
+}
+
 export class FileExplorerService {
   async listDirectory(
     target: FileExplorerTarget,
@@ -590,22 +630,38 @@ export class FileExplorerService {
       throw new Error("Requested file is not a browser-renderable image");
     }
 
-    const result = await target.executor.exec("bash", [
-      "-lc",
-      `path="$1"; if base64 --help 2>&1 | grep -q -- '-w'; then base64 -w 0 "$path"; else base64 < "$path" | tr -d '\\n'; fi`,
-      "file-explorer-image-preview",
-      absolutePath,
-    ], {
-      logFailures: false,
-    });
-    if (!result.success) {
-      throw new Error(result.stderr.trim() || "Failed to read image file");
+    return {
+      file,
+      contentType: file.mimeType,
+      data: await readFileBytes(target, absolutePath),
+    };
+  }
+
+  async readDownloadFile(
+    target: FileExplorerTarget,
+    requestedPath: string,
+    options?: { maxBytes?: number },
+  ): Promise<FileExplorerDownloadReadResult> {
+    const absolutePath = resolveTargetPath(target, requestedPath);
+    const metadata = await runMetadataCommand(target.executor, absolutePath);
+
+    if (!metadata) {
+      throw new Error("Requested file does not exist");
+    }
+    if (metadata.kind !== "file") {
+      throw new Error("Requested path is not a file");
+    }
+
+    const file = toFileEntry(target, absolutePath, metadata);
+    const maxBytes = options?.maxBytes ?? MAX_FILE_EXPLORER_DOWNLOAD_BYTES;
+    if (file.size > maxBytes) {
+      throw new FileExplorerDownloadTooLargeError(file, maxBytes);
     }
 
     return {
       file,
-      contentType: file.mimeType,
-      data: Uint8Array.from(Buffer.from(result.stdout.replace(/\s/g, ""), "base64")),
+      contentType: file.mimeType ?? "application/octet-stream",
+      data: await readFileBytes(target, absolutePath),
     };
   }
 

@@ -13,6 +13,7 @@ import {
 } from "../../types/schemas";
 import { errorResponse, requireWorkspace } from "../helpers";
 import { parseAndValidate, validateRequest } from "../validation";
+import { createFileDownloadResponse } from "../file-download-response";
 
 const log = createLogger("api:workspace-files");
 
@@ -46,6 +47,9 @@ function mapFileError(error: unknown): Response {
       message,
       currentFile,
     }, { status: 409 });
+  }
+  if ((error as { name?: string } | null)?.name === "FileExplorerDownloadTooLargeError") {
+    return errorResponse("file_too_large", message, 413);
   }
   if (message.includes("start directory does not exist")) {
     return errorResponse("start_directory_not_found", message, 404);
@@ -160,6 +164,34 @@ export const workspaceFilesRoutes = {
         return createInlineImageResponse(response.data, response.contentType, response.file.name);
       } catch (error) {
         log.error("Failed to preview workspace file", {
+          workspaceId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/download": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const response = await workspaceFileService.readDownloadFile(workspaceResult, validation.data.path, {
+          startDirectory: validation.data.startDirectory,
+        });
+        return createFileDownloadResponse(response.data, response.contentType, response.file);
+      } catch (error) {
+        log.error("Failed to download workspace file", {
           workspaceId: req.params.id,
           path: validation.data.path,
           error: String(error),

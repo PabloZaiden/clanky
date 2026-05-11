@@ -105,6 +105,20 @@ describe("WorkspaceFilesView", () => {
     api.reset();
     api.install();
     api.get("/api/preferences/file-explorer-full-tree", () => ({ enabled: true }));
+    api.get("/api/workspaces/:id/files/metadata", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      const name = path.split("/").pop() || path;
+      return {
+        workspaceId: req.params["id"],
+        file: createFileEntry({
+          name,
+          path,
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        }),
+      };
+    });
     URL.createObjectURL = () => "blob:workspace-preview";
     URL.revokeObjectURL = () => {};
     copiedText = null;
@@ -355,6 +369,223 @@ describe("WorkspaceFilesView", () => {
       const toast = getByRole("alert");
       expect(clipboardWriteText ?? copiedText).toBe("/workspaces/copy-path/src/index.ts");
       expect(toast.getAttribute("data-toast-variant")).toBe("success");
+    });
+  });
+
+  test("downloads the selected file from the explorer toolbar", async () => {
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
+    const workspace = createWorkspace({
+      id: "workspace-download-file",
+      name: "Download Workspace",
+      directory: "/workspaces/download-file",
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry({
+          name: "README.md",
+          path: "README.md",
+          absolutePath: "/workspaces/download-file/README.md",
+          kind: "file",
+          size: 16,
+          versionToken: "101:16",
+        })],
+      }),
+    }));
+
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "README.md",
+        path: "README.md",
+        absolutePath: "/workspaces/download-file/README.md",
+        kind: "file",
+        size: 16,
+        versionToken: "101:16",
+      }),
+      content: "# Download\n",
+    }));
+    api.get("/api/workspaces/:id/files/download", () => new Response("# Download\n", {
+      headers: { "Content-Type": "text/markdown" },
+    }));
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    const downloadButton = getByRole("button", { name: "Download selected file" });
+    expect(downloadButton).toBeDisabled();
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /readme\.md/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /readme\.md/i }));
+    await waitFor(() => {
+      expect(getByLabelText("Monaco editor")).toBeInTheDocument();
+      expect(downloadButton).toBeEnabled();
+    });
+
+    await user.click(downloadButton);
+
+    await waitFor(() => {
+      expect(api.calls("/api/workspaces/:id/files/download")).toHaveLength(1);
+    });
+  });
+
+  test("warns before loading large files and lets the user download them from the warning", async () => {
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
+    const workspace = createWorkspace({
+      id: "workspace-large-file",
+      name: "Large File Workspace",
+      directory: "/workspaces/large-file",
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry({
+          name: "large.log",
+          path: "large.log",
+          absolutePath: "/workspaces/large-file/large.log",
+          kind: "file",
+          size: 20 * 1024 + 1,
+          versionToken: "300:20481",
+        })],
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/metadata", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "large.log",
+        path: "large.log",
+        absolutePath: "/workspaces/large-file/large.log",
+        kind: "file",
+        size: 20 * 1024 + 1,
+        versionToken: "300:20481",
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "large.log",
+        path: "large.log",
+        absolutePath: "/workspaces/large-file/large.log",
+        kind: "file",
+        size: 20 * 1024 + 1,
+        versionToken: "300:20481",
+      }),
+      content: "large content\n",
+    }));
+    api.get("/api/workspaces/:id/files/download", () => new Response("large content\n", {
+      headers: { "Content-Type": "application/octet-stream" },
+    }));
+
+    const { getByRole, getByText, queryByLabelText, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /large\.log/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /large\.log/i }));
+
+    await waitFor(() => {
+      expect(getByRole("alert")).toHaveTextContent("This is a large file");
+      expect(getByText(/download it or open it with the code explorer/i)).toBeInTheDocument();
+    });
+    expect(queryByLabelText("Monaco editor")).not.toBeInTheDocument();
+    expect(api.calls("/api/workspaces/:id/files/content")).toHaveLength(0);
+
+    await user.click(getByRole("button", { name: "Download" }));
+    await waitFor(() => {
+      expect(api.calls("/api/workspaces/:id/files/download")).toHaveLength(1);
+      expect(getByRole("button", { name: "Open with code explorer" })).toBeEnabled();
+    });
+
+    expect(api.calls("/api/workspaces/:id/files/content")).toHaveLength(0);
+  });
+
+  test("opens a large file only after explicit confirmation", async () => {
+    const WorkspaceFilesView = await loadWorkspaceFilesView();
+    const workspace = createWorkspace({
+      id: "workspace-large-file-open",
+      name: "Large File Open Workspace",
+      directory: "/workspaces/large-file-open",
+    });
+
+    api.get("/api/workspaces/:id/files/tree", () => ({
+      workspaceId: workspace.id,
+      ...createTreeResponse({
+        "": [createFileEntry({
+          name: "large.log",
+          path: "large.log",
+          absolutePath: "/workspaces/large-file-open/large.log",
+          kind: "file",
+          size: 20 * 1024 + 1,
+          versionToken: "300:20481",
+        })],
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/metadata", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "large.log",
+        path: "large.log",
+        absolutePath: "/workspaces/large-file-open/large.log",
+        kind: "file",
+        size: 20 * 1024 + 1,
+        versionToken: "300:20481",
+      }),
+    }));
+    api.get("/api/workspaces/:id/files/content", () => ({
+      workspaceId: workspace.id,
+      file: createFileEntry({
+        name: "large.log",
+        path: "large.log",
+        absolutePath: "/workspaces/large-file-open/large.log",
+        kind: "file",
+        size: 20 * 1024 + 1,
+        versionToken: "300:20481",
+      }),
+      content: "large content\n",
+    }));
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <WorkspaceFilesView
+        workspace={workspace}
+        sessions={[]}
+        createSession={async () => createSshSession()}
+        onNavigate={() => {}}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: /large\.log/i })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: /large\.log/i }));
+    await waitFor(() => {
+      expect(getByRole("alert")).toHaveTextContent("This is a large file");
+    });
+    expect(api.calls("/api/workspaces/:id/files/content")).toHaveLength(0);
+
+    await user.click(getByRole("button", { name: "Open with code explorer" }));
+    await waitFor(() => {
+      expect(api.calls("/api/workspaces/:id/files/content")).toHaveLength(1);
+      expect(getByLabelText("Monaco editor")).toHaveValue("large content\n");
     });
   });
 

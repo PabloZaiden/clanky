@@ -359,6 +359,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
     description: "Preview a browser-renderable workspace image file.",
     querySchema: GetWorkspaceFileRequestSchema,
   },
+  "/api/workspaces/:id/files/download": {
+    description: "Download a workspace file from the active explorer root.",
+    querySchema: GetWorkspaceFileRequestSchema,
+  },
   "/api/workspaces/:id/files/tree": {
     description: "Load the full workspace file tree.",
     querySchema: GetWorkspaceFileTreeRequestSchema,
@@ -455,6 +459,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   },
   "/api/ssh-servers/:id/files/preview": {
     description: "Preview a browser-renderable standalone SSH server image file.",
+    querySchema: GetWorkspaceFileRequestSchema,
+  },
+  "/api/ssh-servers/:id/files/download": {
+    description: "Download a standalone SSH server file from the active explorer root.",
     querySchema: GetWorkspaceFileRequestSchema,
   },
   "/api/ssh-servers/:id/files/tree": {

@@ -19,6 +19,7 @@ import {
 } from "../types/schemas";
 import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
+import { createFileDownloadResponse } from "./file-download-response";
 
 const log = createLogger("api:ssh-server-files");
 const SSH_CREDENTIAL_TOKEN_HEADER = "x-ralpher-ssh-credential-token";
@@ -53,6 +54,9 @@ function mapFileError(error: unknown): Response {
       message,
       currentFile,
     }, { status: 409 });
+  }
+  if ((error as { name?: string } | null)?.name === "FileExplorerDownloadTooLargeError") {
+    return errorResponse("file_too_large", message, 413);
   }
   if (message.includes("SSH server not found")) {
     return errorResponse("not_found", message, 404);
@@ -194,6 +198,28 @@ export const sshServerFilesRoutes = {
         return createInlineImageResponse(response.data, response.contentType, response.file.name);
       } catch (error) {
         log.error("Failed to preview standalone SSH server file", {
+          serverId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/files/download": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const response = await fileExplorerService.readDownloadFile(target, validation.data.path);
+        return createFileDownloadResponse(response.data, response.contentType, response.file);
+      } catch (error) {
+        log.error("Failed to download standalone SSH server file", {
           serverId: req.params.id,
           path: validation.data.path,
           error: String(error),
