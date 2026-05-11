@@ -199,6 +199,9 @@ export function createMockApi(): MockApiInstance {
 
     try {
       const responseData = await result.route.handler(mockReq);
+      if (responseData instanceof Response) {
+        return responseData;
+      }
       return new Response(JSON.stringify(responseData), {
         status: result.route.statusCode,
         headers: { "Content-Type": "application/json" },

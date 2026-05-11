@@ -23,6 +23,12 @@ export interface WorkspaceFileConflictState {
   currentFile: WorkspaceFileEntry | null;
 }
 
+export interface WorkspaceLargeFileWarningState {
+  file: WorkspaceFileEntry;
+}
+
+export const LARGE_FILE_WARNING_THRESHOLD_BYTES = 20 * 1024;
+
 export interface UseFileExplorerResult {
   directoryEntries: Record<string, WorkspaceFileNode[]>;
   expandedDirectories: string[];
@@ -40,11 +46,13 @@ export interface UseFileExplorerResult {
   errorCode: FileExplorerCredentialErrorCode | null;
   isDirty: boolean;
   conflictState: WorkspaceFileConflictState | null;
+  largeFileWarning: WorkspaceLargeFileWarningState | null;
   autoReloadedAt: string | null;
   refreshTree: (path?: string) => Promise<void>;
   toggleShowHiddenFiles: () => Promise<void>;
   toggleDirectory: (path: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
+  openLargeFileInEditor: (path?: string) => Promise<boolean>;
   setEditorContent: (value: string) => void;
   saveCurrentFile: (options?: { overwrite?: boolean }) => Promise<boolean>;
   refreshCurrentFile: (options?: { force?: boolean }) => Promise<boolean>;
@@ -161,6 +169,7 @@ export function useFileExplorer(
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<FileExplorerCredentialErrorCode | null>(null);
   const [conflictState, setConflictState] = useState<WorkspaceFileConflictState | null>(null);
+  const [largeFileWarning, setLargeFileWarning] = useState<WorkspaceLargeFileWarningState | null>(null);
   const [autoReloadedAt, setAutoReloadedAt] = useState<string | null>(null);
   const [lazySubtreeRoots, setLazySubtreeRoots] = useState<string[]>([]);
   const pollTimerRef = useRef<number | null>(null);
@@ -175,9 +184,11 @@ export function useFileExplorer(
   const loadingFile = pendingFilePath !== null;
   const currentFileRef = useRef<WorkspaceFileEntry | null>(currentFile);
   const isDirtyRef = useRef(isDirty);
+  const largeFileWarningRef = useRef<WorkspaceLargeFileWarningState | null>(largeFileWarning);
 
   currentFileRef.current = currentFile;
   isDirtyRef.current = isDirty;
+  largeFileWarningRef.current = largeFileWarning;
 
   const applyErrorState = useCallback((requestError: unknown) => {
     setError(requestError instanceof Error ? requestError.message : String(requestError));
@@ -292,7 +303,7 @@ export function useFileExplorer(
     }
   }, [applyDirectoryResponse, effectiveLoadFullTree, loadDirectory]);
 
-  const openFile = useCallback(async (path: string) => {
+  const openFile = useCallback(async (path: string, options?: { allowLargeFile?: boolean }) => {
     invalidateFileLoad();
     const requestId = fileLoadRequestIdRef.current;
     const abortController = new AbortController();
@@ -303,9 +314,28 @@ export function useFileExplorer(
       setError(null);
       setErrorCode(null);
       setConflictState(null);
+      setLargeFileWarning(null);
       await ensureFilePathVisible(path);
       if (!isBrowserRenderableImage(path)) {
         replaceImagePreviewUrl(null);
+        const metadataResponse = await getFileExplorerFileMetadataApi({ type: targetType, id: targetId }, path, {
+          startDirectory,
+          signal: abortController.signal,
+        });
+        if (abortController.signal.aborted || fileLoadRequestIdRef.current !== requestId) {
+          return;
+        }
+        const metadata = metadataResponse.file;
+        if (metadata.size > LARGE_FILE_WARNING_THRESHOLD_BYTES && !options?.allowLargeFile) {
+          setCurrentDirectory(getParentDirectory(metadata.path));
+          setCurrentFile(metadata);
+          setEditorContent("");
+          setSavedContent("");
+          setAutoReloadedAt(null);
+          setLargeFileWarning({ file: metadata });
+          return;
+        }
+
         const response = await readFileExplorerFileApi({ type: targetType, id: targetId }, path, {
           startDirectory,
           signal: abortController.signal,
@@ -318,6 +348,7 @@ export function useFileExplorer(
         setEditorContent(response.content);
         setSavedContent(response.content);
         setAutoReloadedAt(null);
+        setLargeFileWarning(null);
         return;
       }
 
@@ -340,6 +371,7 @@ export function useFileExplorer(
       setCurrentDirectory(getParentDirectory(metadata.path));
       setCurrentFile(metadata);
       setAutoReloadedAt(null);
+      setLargeFileWarning(null);
       replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
       setEditorContent("");
       setSavedContent("");
@@ -352,6 +384,7 @@ export function useFileExplorer(
       setEditorContent("");
       setSavedContent("");
       setConflictState(null);
+      setLargeFileWarning(null);
       applyErrorState(requestError);
     } finally {
       const isLatestRequest = fileLoadRequestIdRef.current === requestId;
@@ -365,6 +398,17 @@ export function useFileExplorer(
       }
     }
   }, [applyErrorState, ensureFilePathVisible, invalidateFileLoad, replaceImagePreviewUrl, startDirectory, targetId, targetType]);
+
+  const openLargeFileInEditor = useCallback(async (path?: string) => {
+    const warning = largeFileWarningRef.current;
+    const pathToOpen = path ?? warning?.file.path;
+    if (!pathToOpen) {
+      return false;
+    }
+
+    await openFile(pathToOpen, { allowLargeFile: true });
+    return true;
+  }, [openFile]);
 
   const refreshCurrentFile = useCallback(async (options?: { force?: boolean }) => {
     if (!currentFile) {
@@ -380,7 +424,9 @@ export function useFileExplorer(
       return false;
     }
 
-    await openFile(currentFile.path);
+    await openFile(currentFile.path, {
+      allowLargeFile: currentFile.size > LARGE_FILE_WARNING_THRESHOLD_BYTES,
+    });
     return true;
   }, [currentFile, isDirty, openFile]);
 
@@ -436,7 +482,7 @@ export function useFileExplorer(
 
   const checkForExternalChanges = useCallback(async () => {
     const activeFile = currentFileRef.current;
-    if (!activeFile || loadingFile || savingFile) {
+    if (!activeFile || loadingFile || savingFile || largeFileWarningRef.current) {
       return;
     }
 
@@ -567,6 +613,7 @@ export function useFileExplorer(
     replaceImagePreviewUrl(null);
     setSavedContent("");
     setConflictState(null);
+    setLargeFileWarning(null);
     setAutoReloadedAt(null);
     setLazySubtreeRoots([]);
     setEffectiveLoadFullTree(loadFullTree);
@@ -660,11 +707,13 @@ export function useFileExplorer(
     errorCode,
     isDirty,
     conflictState,
+    largeFileWarning,
     autoReloadedAt,
     refreshTree,
     toggleShowHiddenFiles,
     toggleDirectory,
     openFile,
+    openLargeFileInEditor,
     setEditorContent,
     saveCurrentFile,
     refreshCurrentFile,

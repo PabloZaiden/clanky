@@ -54,6 +54,22 @@ describe("App workspace files route", () => {
     ws.reset();
     ws.install();
     window.location.hash = "";
+    api.get("/api/workspaces/:id/files/metadata", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      const name = path.split("/").pop() || path;
+      return {
+        workspaceId: req.params["id"],
+        file: {
+          name,
+          path,
+          absolutePath: `/workspaces/demo/${path}`,
+          kind: "file",
+          size: 20,
+          modifiedAt: "2026-01-01T00:00:00.000Z",
+          versionToken: "100:20",
+        },
+      };
+    });
   });
 
   afterEach(() => {

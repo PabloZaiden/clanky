@@ -151,6 +151,37 @@ describe("workspace files API integration", () => {
     expect(metadata.file.mimeType).toBe("image/svg+xml");
   });
 
+  test("downloads workspace files as attachments", async () => {
+    const workspace = await createWorkspace();
+    const rfc5987FileName = "rfc5987-!'()*.txt";
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("README.md")}`,
+    );
+
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
+    expect(await response.text()).toBe("# Workspace files\n");
+
+    await writeFile(join(workDir, rfc5987FileName), "special name\n");
+    try {
+      const specialResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent(rfc5987FileName)}`,
+      );
+
+      expect(specialResponse.ok).toBe(true);
+      expect(specialResponse.headers.get("Content-Disposition")).toBe(
+        "attachment; filename=\"rfc5987-!'()*.txt\"; filename*=UTF-8''rfc5987-%21%27%28%29%2A.txt",
+      );
+      expect(await specialResponse.text()).toBe("special name\n");
+    } finally {
+      await rm(join(workDir, rfc5987FileName), { force: true });
+    }
+  });
+
   test("does not report directories with image-like names as images", async () => {
     const workspace = await createWorkspace();
 

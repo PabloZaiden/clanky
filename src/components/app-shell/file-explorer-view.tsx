@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent } from "react";
-import type { SshSession } from "../../types";
+import type { SshSession, WorkspaceFileEntry } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
@@ -12,9 +12,11 @@ import type { ShellRoute } from "./shell-types";
 import { WorkspaceFileTree } from "../workspace-files/file-tree";
 import { WorkspaceEditorPanel } from "../workspace-files/editor-panel";
 import { WorkspaceImagePreviewPanel } from "../workspace-files/image-preview-panel";
+import { LargeFileWarningPanel } from "../workspace-files/large-file-warning-panel";
 import { WorkspaceFileConflictModal } from "../workspace-files/conflict-modal";
 import { ServerPasswordModal } from "./server-password-modal";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
+import { downloadFileExplorerFileApi } from "../../hooks/workspaceFileActions";
 
 function TerminalIcon() {
   return (
@@ -37,6 +39,17 @@ type ExplorerSession = SshSession | SshServerSession;
 
 function isServerCredentialErrorCode(errorCode: string | null): boolean {
   return errorCode === "missing_ssh_credential" || errorCode === "invalid_ssh_credential";
+}
+
+function triggerBrowserDownload(blob: Blob, fileName: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName || "download";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 interface FileExplorerViewProps {
@@ -104,6 +117,8 @@ export function FileExplorerView({
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const [downloadingFilePath, setDownloadingFilePath] = useState<string | null>(null);
+  const [openingLargeFile, setOpeningLargeFile] = useState(false);
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const selectedFilePath = explorer.currentFile?.path;
   const selectedFileAbsolutePath = explorer.currentFile?.absolutePath;
@@ -283,6 +298,45 @@ export function FileExplorerView({
     }
   }, [selectedFileAbsolutePath, toast]);
 
+  const handleDownloadFile = useCallback(async (file: WorkspaceFileEntry | null = explorer.currentFile) => {
+    if (!file) {
+      toast.error("Select a file to download.");
+      return;
+    }
+
+    try {
+      setDownloadingFilePath(file.path);
+      const blob = await downloadFileExplorerFileApi(target, file.path, {
+        startDirectory: target.startDirectory,
+      });
+      triggerBrowserDownload(blob, file.name);
+      toast.success("Started file download");
+    } catch (error) {
+      toast.error(`Failed to download file: ${String(error)}`);
+    } finally {
+      setDownloadingFilePath(null);
+    }
+  }, [explorer.currentFile, target, toast]);
+
+  const handleOpenLargeFileInEditor = useCallback(async (file: WorkspaceFileEntry | null = explorer.largeFileWarning?.file ?? null) => {
+    if (!file) {
+      toast.error("Large file warning is no longer available.");
+      return;
+    }
+
+    try {
+      setOpeningLargeFile(true);
+      const opened = await explorer.openLargeFileInEditor(file.path);
+      if (!opened) {
+        toast.error("Large file warning is no longer available.");
+      }
+    } catch (error) {
+      toast.error(`Failed to open large file: ${String(error)}`);
+    } finally {
+      setOpeningLargeFile(false);
+    }
+  }, [explorer, toast]);
+
   const handleCloseServerPasswordModal = useCallback(() => {
     setServerPasswordModalOpen(false);
     setServerPassword("");
@@ -437,10 +491,12 @@ export function FileExplorerView({
                 onRefresh={explorer.refreshTree}
                 onToggleShowHiddenFiles={explorer.toggleShowHiddenFiles}
                 onCopySelectedFilePath={handleCopySelectedFilePath}
+                onDownloadSelectedFile={handleDownloadFile}
                 onToggleCollapsed={handleToggleExplorerCollapsed}
                 onToggleDirectory={explorer.toggleDirectory}
                 onOpenFile={handleOpenFile}
                 canCopySelectedFilePath={Boolean(selectedFileAbsolutePath)}
+                canDownloadSelectedFile={Boolean(explorer.currentFile)}
               />
             </div>
             <div
@@ -480,7 +536,15 @@ export function FileExplorerView({
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {activePane === "editor" ? (
-            explorer.currentFile?.isImage ? (
+            explorer.largeFileWarning ? (
+              <LargeFileWarningPanel
+                file={explorer.largeFileWarning.file}
+                downloading={downloadingFilePath === explorer.largeFileWarning.file.path}
+                opening={openingLargeFile}
+                onDownload={() => handleDownloadFile(explorer.largeFileWarning?.file ?? null)}
+                onOpenInCodeExplorer={() => handleOpenLargeFileInEditor(explorer.largeFileWarning?.file ?? null)}
+              />
+            ) : explorer.currentFile?.isImage ? (
               <WorkspaceImagePreviewPanel
                 filePath={explorer.currentFile.path}
                 pendingFilePath={explorer.pendingFilePath}
