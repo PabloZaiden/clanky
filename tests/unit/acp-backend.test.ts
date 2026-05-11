@@ -989,6 +989,97 @@ describe("AcpBackend", () => {
     expect(response.content).toBe("OK");
   });
 
+  test("sendPrompt resets OpenCode reasoning effort using the created session directory", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "opencode";
+      directory: string;
+      defaultReasoningEfforts: Map<string, Map<string, string>>;
+      sendRpcRequest: (method: string, params: Record<string, unknown>, timeoutMs?: number) => Promise<unknown>;
+    };
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "opencode";
+    internal.directory = "/tmp/backend-connect-directory";
+    const modelID = "anthropic/claude-sonnet-4-5";
+    const configOptionsForEffort = (effort: string): Array<Record<string, unknown>> => [
+      {
+        id: "model",
+        name: "Model",
+        type: "select",
+        currentValue: modelID,
+        category: "model",
+        options: [{ value: modelID, name: "Claude Sonnet 4.5" }],
+      },
+      {
+        id: "reasoning_effort",
+        name: "Reasoning Effort",
+        type: "select",
+        currentValue: effort,
+        category: "reasoning_effort",
+        options: [
+          { value: "low", name: "low" },
+          { value: "medium", name: "medium" },
+          { value: "high", name: "high" },
+        ],
+      },
+    ];
+    internal.sendRpcRequest = async (
+      method: string,
+      params: Record<string, unknown>,
+    ): Promise<unknown> => {
+      calls.push({ method, params });
+      if (method === "session/new") {
+        expect(params["cwd"]).toBe("/tmp/session-cwd");
+        return {
+          sessionId: "session-with-custom-cwd",
+          cwd: "/tmp/session-cwd",
+          configOptions: configOptionsForEffort("medium"),
+        };
+      }
+      if (method === "session/set_config_option") {
+        return {
+          configOptions: configOptionsForEffort(String(params["value"])),
+        };
+      }
+      if (method === "session/prompt") {
+        return { content: "OK" };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    await backend.createSession({ directory: "/tmp/session-cwd" });
+    await backend.sendPrompt("session-with-custom-cwd", {
+      parts: [{ type: "text", text: "use high" }],
+      model: {
+        providerID: "anthropic",
+        modelID,
+        variant: "high",
+      },
+    });
+    await backend.sendPrompt("session-with-custom-cwd", {
+      parts: [{ type: "text", text: "reset" }],
+      model: {
+        providerID: "anthropic",
+        modelID,
+        variant: "",
+      },
+    });
+
+    expect(
+      internal.defaultReasoningEfforts.get("/tmp/session-cwd")?.get(modelID),
+    ).toBe("medium");
+    expect(internal.defaultReasoningEfforts.has("/tmp/backend-connect-directory")).toBe(false);
+    expect(
+      calls
+        .filter((call) => call.method === "session/set_config_option")
+        .map((call) => call.params["value"]),
+    ).toEqual(["high", "medium"]);
+  });
+
   test("sendPrompt resets Copilot effort to cached default for the base variant", async () => {
     const internal = backend as unknown as {
       connected: boolean;

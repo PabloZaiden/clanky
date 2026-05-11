@@ -103,6 +103,7 @@ export class AcpBackend implements Backend {
 
   /** Cache sessions and model discovery results */
   private sessionCache = new Map<string, AgentSession>();
+  private sessionDirectories = new Map<string, string>();
   private modelCache = new Map<string, CachedModels>();
   private defaultReasoningEfforts = new Map<string, Map<string, string>>();
 
@@ -260,6 +261,7 @@ export class AcpBackend implements Backend {
     this.sessionReasoningPartKeys.clear();
     this.sessionLastReasoningChunkSignature.clear();
     this.sessionCache.clear();
+    this.sessionDirectories.clear();
     this.modelCache.clear();
     this.defaultReasoningEfforts.clear();
     this.pendingPermissionRequests.clear();
@@ -1077,6 +1079,10 @@ export class AcpBackend implements Backend {
     return this.defaultReasoningEfforts.get(directory)?.get(modelID);
   }
 
+  private getSessionDirectory(sessionId: string): string {
+    return this.sessionDirectories.get(sessionId) ?? this.directory;
+  }
+
   private buildReasoningEffortVariants(configOptions: ConfigOption[]): string[] {
     const reasoningOption = this.getReasoningEffortConfigOption(configOptions);
     if (!reasoningOption) {
@@ -1252,13 +1258,14 @@ export class AcpBackend implements Backend {
     }
 
     let configOptions = this.sessionCache.get(sessionId)?.configOptions ?? [];
+    const sessionDirectory = this.getSessionDirectory(sessionId);
     const modelOption = this.getModelConfigOption(configOptions);
     if (modelOption && !modelOption.options.some((option) => option.value === model.modelID)) {
       return;
     }
     if (modelOption && modelOption.currentValue !== model.modelID) {
       configOptions = await this.setConfigOption(sessionId, modelOption.id, model.modelID);
-      this.rememberDefaultReasoningEffort(this.directory, model.modelID, configOptions);
+      this.rememberDefaultReasoningEffort(sessionDirectory, model.modelID, configOptions);
     }
 
     const reasoningOption = this.getReasoningEffortConfigOption(configOptions);
@@ -1268,7 +1275,7 @@ export class AcpBackend implements Backend {
 
     const desiredEffort = model.variant && model.variant.length > 0
       ? model.variant
-      : this.getDefaultReasoningEffort(this.directory, model.modelID) ?? reasoningOption.currentValue;
+      : this.getDefaultReasoningEffort(sessionDirectory, model.modelID) ?? reasoningOption.currentValue;
 
     if (!desiredEffort || reasoningOption.currentValue === desiredEffort) {
       return;
@@ -1301,6 +1308,7 @@ export class AcpBackend implements Backend {
     if (!id) {
       throw new Error("ACP session/new did not return sessionId");
     }
+    const sessionDirectory = getString(result["cwd"]) ?? options.directory;
 
     const session = this.mapSession({
       id,
@@ -1321,7 +1329,7 @@ export class AcpBackend implements Backend {
       const configModels = this.parseModelsFromConfigOptions(configOptions);
       if (configModels.length > 0) {
         this.setCachedModels(
-          options.directory,
+          sessionDirectory,
           configModels,
           this.shouldTreatCachedModelsAsComplete(),
         );
@@ -1331,7 +1339,7 @@ export class AcpBackend implements Backend {
       const modelOption = configOptions.find((o) => o.category === "model" || o.id === "model");
       if (modelOption) {
         session.model = modelOption.currentValue;
-        this.rememberDefaultReasoningEffort(options.directory, modelOption.currentValue, configOptions);
+        this.rememberDefaultReasoningEffort(sessionDirectory, modelOption.currentValue, configOptions);
       }
     }
 
@@ -1346,14 +1354,15 @@ export class AcpBackend implements Backend {
       }
     }
 
+    this.sessionDirectories.set(id, sessionDirectory);
     this.sessionCache.set(id, session);
 
     // Fallback: parse models from legacy fields if none from config options
-    if (!this.hasCachedModels(options.directory)) {
+    if (!this.hasCachedModels(sessionDirectory)) {
       const models = this.parseModelsFromSessionResult(result);
       if (models.length > 0) {
         this.setCachedModels(
-          options.directory,
+          sessionDirectory,
           models,
           this.shouldTreatCachedModelsAsComplete(),
         );
@@ -1394,7 +1403,11 @@ export class AcpBackend implements Backend {
       if (modelOption) {
         cached.model = modelOption.currentValue;
         if (configId === "model") {
-          this.rememberDefaultReasoningEffort(this.directory, modelOption.currentValue, configOptions);
+          this.rememberDefaultReasoningEffort(
+            this.getSessionDirectory(sessionId),
+            modelOption.currentValue,
+            configOptions,
+          );
         }
       }
     }
@@ -1477,6 +1490,7 @@ export class AcpBackend implements Backend {
       } catch (error) {
         const message = String(error);
         if (message.includes("Method not found") || message.includes("-32601")) {
+          this.sessionDirectories.set(listedSession.id, sessionDirectory);
           this.sessionCache.set(listedSession.id, listedSession);
           return listedSession;
         }
@@ -1506,6 +1520,7 @@ export class AcpBackend implements Backend {
     }
 
     this.sessionCache.delete(id);
+    this.sessionDirectories.delete(id);
     this.sessionSubscribers.delete(id);
     this.sessionMessageStarted.delete(id);
     this.sessionMessageContent.delete(id);
@@ -1952,6 +1967,7 @@ export class AcpBackend implements Backend {
     fallbackTitle?: string,
   ): AgentSession {
     const sessionDirectory = isRecord(result) ? getString(result["cwd"]) ?? directory : directory;
+    this.sessionDirectories.set(sessionId, sessionDirectory);
     const session = this.mapSession({
       id: sessionId,
       title: isRecord(result) ? getString(result["title"]) ?? fallbackTitle : fallbackTitle,
