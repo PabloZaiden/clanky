@@ -337,7 +337,7 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
     await Bun.$`git -C ${workDir} remote add origin ${remoteDir}`.quiet();
     await Bun.$`git -C ${workDir} push -u origin ${defaultBranch}`.quiet();
     // Set bare repo HEAD to the pushed branch so clones work regardless of git defaults
-    await Bun.$`git -C ${remoteDir} symbolic-ref HEAD refs/heads/${defaultBranch}`.quiet();
+    await Bun.$`git --git-dir=${remoteDir} symbolic-ref HEAD refs/heads/${defaultBranch}`.quiet();
   }
 
   // Reset loop manager to clear any stale engines from previous tests

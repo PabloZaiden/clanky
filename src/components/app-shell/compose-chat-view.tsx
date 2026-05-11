@@ -91,6 +91,7 @@ export function ComposeChatView({
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(composeWorkspace?.id ?? "");
   const [selectedModel, setSelectedModel] = useState("");
   const [useWorktree, setUseWorktree] = useState(true);
+  const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
   const [baseBranch, setBaseBranch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -153,6 +154,7 @@ export function ComposeChatView({
           variant: parsedModel.variant ?? "",
         },
         useWorktree,
+        autoApprovePermissions,
         baseBranch: baseBranch.trim() || currentBranch.trim(),
       });
       if (!chat) {
@@ -290,6 +292,25 @@ export function ComposeChatView({
               </span>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 Keep the chat session isolated in its own Ralph worktree when supported.
+              </p>
+            </div>
+          </label>
+        </div>
+
+        <div>
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={autoApprovePermissions}
+              onChange={(event) => setAutoApprovePermissions(event.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+            />
+            <div className="flex-1">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Auto-approve permissions
+              </span>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Let the provider continue automatically when it requests permission to run actions.
               </p>
             </div>
           </label>

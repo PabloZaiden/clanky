@@ -180,6 +180,7 @@ describe("Chats API Integration", () => {
     const created = await createResponse.json();
     expect(created.config.name).toBe("Chat API Test");
     expect(created.config.workspaceId).toBe(testWorkspaceId);
+    expect(created.config.autoApprovePermissions).toBe(true);
     expect(created.state.status).toBe("idle");
 
     const listResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
@@ -216,6 +217,78 @@ describe("Chats API Integration", () => {
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.session.id).toBe(settled.state.session?.id);
     expect(reconnected.state.status).toBe("idle");
+  });
+
+  test("replies to pending chat permission requests", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Permission Reply API",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        autoApprovePermissions: false,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Establish the backend connection",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+    const settled = await waitForChatIdle(chatId) as Awaited<ReturnType<typeof loadChat>>;
+    expect(settled).not.toBeNull();
+
+    await updateChatState(chatId, {
+      ...settled!.state,
+      status: "streaming",
+      pendingPermissionRequests: [{
+        requestId: "permission-api-1",
+        sessionId: settled!.state.session?.id ?? "session-1",
+        permission: "execute",
+        patterns: ["bun test"],
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      }],
+    });
+
+    const replyResponse = await fetch(`${baseUrl}/api/chats/${chatId}/permissions/permission-api-1`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: "allow" }),
+    });
+
+    expect(replyResponse.status).toBe(200);
+    const replied = await replyResponse.json();
+    expect(replied.state.pendingPermissionRequests?.[0]).toMatchObject({
+      requestId: "permission-api-1",
+      status: "approved",
+      decision: "allow",
+    });
+    expect(mockBackend.getPermissionReplies().at(-1)).toEqual({
+      requestId: "permission-api-1",
+      response: "once",
+    });
+
+    const staleReplyResponse = await fetch(`${baseUrl}/api/chats/${chatId}/permissions/missing-permission`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision: "deny" }),
+    });
+    expect(staleReplyResponse.status).toBe(404);
+    await expect(staleReplyResponse.json()).resolves.toMatchObject({
+      error: "permission_request_not_found",
+    });
   });
 
   test("checks out the selected branch for non-worktree chats without creating a managed chat branch", async () => {

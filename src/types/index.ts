@@ -3,6 +3,7 @@
  */
 
 export * from "./loop";
+export * from "./loop-request";
 export * from "./chat";
 export * from "./ssh-session";
 export * from "./ssh-server";

@@ -16,6 +16,8 @@ import type { EventStream } from "../utils/event-stream";
 import {
   ChatBranchCheckoutError,
   ChatBusyError,
+  ChatPermissionReplyError,
+  ChatPermissionRequestNotFoundError,
   createInitialChatState,
   DEFAULT_CHAT_CONFIG,
   InvalidChatBaseBranchError,
@@ -23,6 +25,7 @@ import {
   isLoopChat,
   isStandaloneChat,
 } from "../types/chat";
+import type { ChatPermissionDecision, ChatPermissionRequest } from "../types/chat";
 import { loadChat, loadLoopChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
@@ -68,6 +71,7 @@ export interface CreateChatOptions {
   modelID: string;
   modelVariant?: string;
   useWorktree?: boolean;
+  autoApprovePermissions?: boolean;
   baseBranch?: string;
   directory?: string;
 }
@@ -113,6 +117,7 @@ export class ChatManager {
           variant: options.modelVariant ?? "",
         },
         useWorktree: scope === "loop" ? false : (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree),
+        autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
         baseBranch: options.baseBranch,
         createdAt: now,
         updatedAt: now,
@@ -430,6 +435,54 @@ export class ChatManager {
       return this.completeInterruptedChat(interrupted);
     }
     return interrupted;
+  }
+
+  async replyToPermission(chatId: string, requestId: string, decision: ChatPermissionDecision): Promise<Chat | null> {
+    const chat = await loadChat(chatId);
+    if (!chat) {
+      return null;
+    }
+
+    const request = (chat.state.pendingPermissionRequests ?? []).find(
+      (permissionRequest) => permissionRequest.requestId === requestId && permissionRequest.status === "pending",
+    );
+    if (!request) {
+      throw new ChatPermissionRequestNotFoundError(requestId);
+    }
+
+    const backend = this.getChatBackend(chat.config.id, chat.config.workspaceId);
+    if (!backend.isConnected()) {
+      throw new ChatPermissionReplyError(`Cannot reply to permission request ${requestId}: chat backend is not connected`);
+    }
+
+    const reply = decision === "allow" ? "once" : "deny";
+    try {
+      await backend.replyToPermission(requestId, reply);
+    } catch (error) {
+      const failed = await this.updatePermissionRequest(chat, requestId, {
+        status: "pending",
+        error: String(error),
+      });
+      this.emitChatUpdated(failed);
+      throw new ChatPermissionReplyError(`Failed to reply to permission request ${requestId}: ${String(error)}`, {
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+
+    const updated = await this.updatePermissionRequest(chat, requestId, {
+      status: decision === "allow" ? "approved" : "denied",
+      decision,
+      resolvedAt: createTimestamp(),
+      error: undefined,
+    });
+    this.emitChatUpdated(updated);
+    await this.emitChatLog(
+      updated,
+      "info",
+      decision === "allow" ? "Permission request approved" : "Permission request denied",
+      { requestId, permission: request.permission, patterns: request.patterns },
+    );
+    return await loadChat(chatId) ?? updated;
   }
 
   async deleteChat(chatId: string): Promise<boolean> {
@@ -897,7 +950,7 @@ export class ChatManager {
       promptPromise,
       generation,
     });
-    void this.consumeEventStream(chat.config.id, eventStream, promptPromise, generation);
+    void this.consumeEventStream(chat.config.id, backend, eventStream, promptPromise, generation);
     return this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: "streaming",
@@ -910,6 +963,7 @@ export class ChatManager {
 
   private async consumeEventStream(
     chatId: string,
+    backend: Backend,
     eventStream: EventStream<AgentEvent>,
     promptPromise: Promise<void>,
     generation: number,
@@ -1155,8 +1209,18 @@ export class ChatManager {
             return;
 
           case "permission.asked":
-            await this.emitChatError(chat, `Permission approval required: ${event.permission}`);
-            return;
+            if (isInterrupted) {
+              break;
+            }
+            chat = await this.handlePermissionAsked(chat, backend, {
+              requestId: event.requestId,
+              sessionId: event.sessionId,
+              permission: event.permission,
+              patterns: event.patterns,
+              status: "pending",
+              createdAt: now,
+            });
+            break;
 
           case "question.asked":
             await this.emitChatError(
@@ -1330,6 +1394,76 @@ export class ChatManager {
     return updated;
   }
 
+  private async handlePermissionAsked(
+    chat: Chat,
+    backend: Backend,
+    request: ChatPermissionRequest,
+  ): Promise<Chat> {
+    if (chat.config.autoApprovePermissions !== false) {
+      const logged = await this.emitChatLog(chat, "info", `Auto-approving permission request: ${request.permission}`, {
+        requestId: request.requestId,
+        patterns: request.patterns,
+      });
+      try {
+        await backend.replyToPermission(request.requestId, "always");
+      } catch (error) {
+        return this.emitChatError(logged, `Failed to approve permission request ${request.permission}: ${String(error)}`);
+      }
+      return this.emitChatLog(logged, "info", "Permission approved successfully", {
+        requestId: request.requestId,
+      });
+    }
+
+    const updated = await this.upsertPermissionRequest(chat, request);
+    this.emitChatUpdated(updated);
+    return this.emitChatLog(updated, "info", `Permission approval required: ${request.permission}`, {
+      requestId: request.requestId,
+      patterns: request.patterns,
+    });
+  }
+
+  private async upsertPermissionRequest(chat: Chat, request: ChatPermissionRequest): Promise<Chat> {
+    const existingRequests = chat.state.pendingPermissionRequests ?? [];
+    const existingIndex = existingRequests.findIndex(
+      (permissionRequest) => permissionRequest.requestId === request.requestId,
+    );
+    const requests = existingIndex >= 0
+      ? existingRequests.map((permissionRequest, index) =>
+        index === existingIndex ? { ...permissionRequest, ...request } : permissionRequest
+      )
+      : [...existingRequests, request];
+
+    return this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      pendingPermissionRequests: requests,
+      lastActivityAt: request.createdAt,
+    });
+  }
+
+  private async updatePermissionRequest(
+    chat: Chat,
+    requestId: string,
+    updates: Partial<ChatPermissionRequest>,
+  ): Promise<Chat> {
+    const requests = (chat.state.pendingPermissionRequests ?? []).map((request) =>
+      request.requestId === requestId ? { ...request, ...updates } : request
+    );
+    return this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      pendingPermissionRequests: requests,
+      lastActivityAt: createTimestamp(),
+    });
+  }
+
+  private emitChatUpdated(chat: Chat): void {
+    this.emitter.emit({
+      type: "chat.updated",
+      chatId: chat.config.id,
+      chat,
+      timestamp: chat.state.lastActivityAt ?? createTimestamp(),
+    });
+  }
+
   private async appendToolCall(chat: Chat, tool: PersistedToolCall): Promise<Chat> {
     const toolCalls = [...chat.state.toolCalls, tool];
     const updated = await this.updateChatStateAndReturn(chat, {
@@ -1443,6 +1577,11 @@ export class ChatManager {
         timestamp: now,
       },
       completedAt: now,
+      pendingPermissionRequests: this.resolvePendingPermissionRequests(chat.state.pendingPermissionRequests ?? [], {
+        status: "cancelled",
+        resolvedAt: now,
+        error: message,
+      }),
       activeMessageId: undefined,
       interruptRequested: false,
       lastActivityAt: now,
@@ -1470,6 +1609,11 @@ export class ChatManager {
       interruptRequested: false,
       completedAt: undefined,
       activeMessageId: undefined,
+      pendingPermissionRequests: this.resolvePendingPermissionRequests(chat.state.pendingPermissionRequests ?? [], {
+        status: "cancelled",
+        resolvedAt: now,
+        error: "Interrupted",
+      }),
       messages: activeMessageId
         ? chat.state.messages.filter((message) => message.id !== activeMessageId)
         : chat.state.messages,
@@ -1504,6 +1648,15 @@ export class ChatManager {
         error: String(error),
       });
     }
+  }
+
+  private resolvePendingPermissionRequests(
+    requests: ChatPermissionRequest[],
+    updates: Pick<ChatPermissionRequest, "status" | "resolvedAt" | "decision" | "error">,
+  ): ChatPermissionRequest[] {
+    return requests.map((request) =>
+      request.status === "pending" ? { ...request, ...updates } : request
+    );
   }
 
   private nextActiveStreamGeneration(chatId: string): number {

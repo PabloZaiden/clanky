@@ -382,6 +382,22 @@ export const migrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 13,
+    name: "add_chat_permission_approval_state",
+    up: (db) => {
+      if (!tableExists(db, "chats")) {
+        return;
+      }
+      const columns = getTableColumns(db, "chats");
+      if (!columns.includes("auto_approve_permissions")) {
+        db.run("ALTER TABLE chats ADD COLUMN auto_approve_permissions INTEGER NOT NULL DEFAULT 1");
+      }
+      if (!columns.includes("pending_permission_requests")) {
+        db.run("ALTER TABLE chats ADD COLUMN pending_permission_requests TEXT");
+      }
+    },
+  },
 ];
 
 /**

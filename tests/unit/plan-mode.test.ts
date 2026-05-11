@@ -39,7 +39,7 @@ async function setupRemote(ctx: TestContext): Promise<{ remoteDir: string; curre
   await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
   const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
   await Bun.$`git -C ${ctx.workDir} push -u origin ${currentBranch}`.quiet();
-  await Bun.$`git -C ${remoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
+  await Bun.$`git --git-dir=${remoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
   return { remoteDir, currentBranch };
 }
 

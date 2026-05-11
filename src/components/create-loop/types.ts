@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import type { CreateLoopRequest, ModelInfo, BranchInfo } from "../../types";
+import type { ModelInfo, BranchInfo } from "../../types";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
 import type { ComposerImageAttachment } from "../../types/message-attachments";
 import type { Workspace } from "../../types/workspace";
 import type { CheapModelSelection } from "../../types";
@@ -106,5 +107,3 @@ export interface CreateLoopFormProps {
   /** Optional extra actions rendered beside the draft/save action group. */
   leadingActions?: ReactNode;
 }
-
-export type CreateLoopFormSubmitRequest = CreateLoopRequest;

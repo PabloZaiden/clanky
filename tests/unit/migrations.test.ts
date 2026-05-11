@@ -269,6 +269,8 @@ describe("migration infrastructure", () => {
       expect(columns).toContain("interrupt_requested");
       expect(columns).toContain("scope");
       expect(columns).toContain("loop_id");
+      expect(columns).toContain("auto_approve_permissions");
+      expect(columns).toContain("pending_permission_requests");
     });
 
     test("creates chat indexes even when chats table already exists", () => {
@@ -330,6 +332,8 @@ describe("migration infrastructure", () => {
       const columns = getTableColumns(db, "chats");
       expect(columns).toContain("scope");
       expect(columns).toContain("loop_id");
+      expect(columns).toContain("auto_approve_permissions");
+      expect(columns).toContain("pending_permission_requests");
     });
   });
 

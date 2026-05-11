@@ -25,8 +25,8 @@ import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
   CreateLoopFormActionState,
-  CreateLoopFormSubmitRequest,
 } from "../CreateLoopForm";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
 
 interface ShellMainContentProps {
   route: ShellRoute;

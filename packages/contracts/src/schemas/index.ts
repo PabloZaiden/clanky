@@ -54,6 +54,7 @@ export {
   UpdateChatRequestSchema,
   SendChatMessageRequestSchema,
   InterruptChatRequestSchema,
+  ReplyToChatPermissionRequestSchema,
   SpawnCurrentPlanLoopRequestSchema,
 } from "./chat";
 
