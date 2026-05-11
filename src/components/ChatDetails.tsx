@@ -14,6 +14,7 @@ import {
 } from "./ModelSelector";
 import { RenameChatModal } from "./RenameChatModal";
 import { SpawnCurrentPlanModal } from "./SpawnCurrentPlanModal";
+import { ChatTemplateSelector } from "./chat-template-selector";
 import {
   ActionMenu,
   Button,
@@ -129,6 +130,7 @@ export function ChatDetails({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -405,6 +407,7 @@ export function ChatDetails({
       const nextChat = (await response.json()) as Chat;
       setChat(nextChat);
       setMessage("");
+      setSelectedTemplate("");
       setAttachments([]);
       setAttachmentError(null);
     } catch (submitError) {
@@ -797,30 +800,36 @@ export function ChatDetails({
       <div className="p-3" data-testid="chat-composer-padding">
         <label htmlFor={modelSelectId} className="sr-only">Model</label>
         <label htmlFor={messageInputId} className="sr-only">Message</label>
-          <div className="space-y-2" data-testid="chat-composer-layout">
-            <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
-              {!isEmbedded && (
-                <div className="shrink-0" data-testid="chat-composer-model-cell">
-                  <ModelSelector
-                    id={modelSelectId}
-                    value={selectedModel}
-                    onChange={setSelectedModel}
-                    models={models}
-                    loading={modelsLoading}
-                    disabled={isActive || isSubmitting}
-                    showDisconnected
-                    currentModelKey={currentModelKey}
-                    placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
-                    loadingText="Loading..."
-                    emptyText="No models available"
-                    compact
-                    className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-                  />
-                </div>
-              )}
-              <textarea
-                ref={composerRef}
-                id={messageInputId}
+        <div className="space-y-2" data-testid="chat-composer-layout">
+          <ChatTemplateSelector
+            selectedTemplate={selectedTemplate}
+            onChange={setSelectedTemplate}
+            onPromptChange={setMessage}
+            disabled={isActive || isSubmitting}
+          />
+          <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
+            {!isEmbedded && (
+              <div className="shrink-0" data-testid="chat-composer-model-cell">
+                <ModelSelector
+                  id={modelSelectId}
+                  value={selectedModel}
+                  onChange={setSelectedModel}
+                  models={models}
+                  loading={modelsLoading}
+                  disabled={isActive || isSubmitting}
+                  showDisconnected
+                  currentModelKey={currentModelKey}
+                  placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
+                  loadingText="Loading..."
+                  emptyText="No models available"
+                  compact
+                  className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+                />
+              </div>
+            )}
+            <textarea
+              ref={composerRef}
+              id={messageInputId}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={handleComposerKeyDown}
