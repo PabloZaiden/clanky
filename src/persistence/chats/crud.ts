@@ -67,6 +67,43 @@ export async function listChatsByWorkspace(workspaceId: string): Promise<Chat[]>
   return rows.map(rowToChat);
 }
 
+export async function getWorkspaceChatNameStats(
+  workspaceId: string,
+  generatedNamePrefix: string,
+): Promise<{ standaloneChatCount: number; maxGeneratedSuffix: number }> {
+  const suffixStart = generatedNamePrefix.length + " - ".length + 1;
+  const row = getDatabase()
+    .prepare(`
+      SELECT
+        COUNT(*) AS standalone_chat_count,
+        COALESCE(MAX(
+          CASE
+            WHEN substr(name, 1, ?) = ?
+              AND substr(name, ?, 3) = ' - '
+              AND length(name) >= ?
+              AND substr(name, ?) NOT GLOB '*[^0-9]*'
+            THEN CAST(substr(name, ?) AS INTEGER)
+          END
+        ), 0) AS max_generated_suffix
+      FROM chats
+      WHERE workspace_id = ? AND scope = 'workspace'
+    `)
+    .get(
+      generatedNamePrefix.length,
+      generatedNamePrefix,
+      generatedNamePrefix.length + 1,
+      suffixStart,
+      suffixStart,
+      suffixStart,
+      workspaceId,
+    ) as { standalone_chat_count: number; max_generated_suffix: number } | null;
+
+  return {
+    standaloneChatCount: row?.standalone_chat_count ?? 0,
+    maxGeneratedSuffix: row?.max_generated_suffix ?? 0,
+  };
+}
+
 export async function chatExists(chatId: string): Promise<boolean> {
   return getDatabase().prepare("SELECT 1 FROM chats WHERE id = ? LIMIT 1").get(chatId) !== null;
 }

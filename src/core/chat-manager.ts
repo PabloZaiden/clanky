@@ -26,7 +26,17 @@ import {
   isStandaloneChat,
 } from "../types/chat";
 import type { ChatPermissionDecision, ChatPermissionRequest } from "../types/chat";
-import { loadChat, loadLoopChat, listChats, listChatsByWorkspace, saveChat, deleteChat, updateChatConfig, updateChatState } from "../persistence/chats";
+import {
+  loadChat,
+  loadLoopChat,
+  listChats,
+  listChatsByWorkspace,
+  saveChat,
+  deleteChat,
+  updateChatConfig,
+  updateChatState,
+  getWorkspaceChatNameStats,
+} from "../persistence/chats";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import { backendManager, buildConnectionConfig } from "./backend";
 import { chatEventEmitter, SimpleEventEmitter } from "./event-emitter";
@@ -63,7 +73,7 @@ function isDatabaseNotInitializedError(error: unknown): boolean {
 }
 
 export interface CreateChatOptions {
-  name: string;
+  name?: string;
   workspaceId: string;
   scope?: ChatConfig["scope"];
   loopId?: string;
@@ -74,6 +84,14 @@ export interface CreateChatOptions {
   autoApprovePermissions?: boolean;
   baseBranch?: string;
   directory?: string;
+}
+
+function buildGeneratedChatName(projectName: string, nextSuffix: number): string {
+  const suffix = ` - ${nextSuffix}`;
+  const fallbackPrefix = "Chat";
+  const trimmedProjectName = projectName.trim() || fallbackPrefix;
+  const maxPrefixLength = Math.max(1, 100 - suffix.length);
+  return `${trimmedProjectName.slice(0, maxPrefixLength).trim() || fallbackPrefix}${suffix}`;
 }
 
 export class ChatManager {
@@ -88,11 +106,6 @@ export class ChatManager {
       throw new Error(`Workspace not found: ${options.workspaceId}`);
     }
 
-    const name = options.name.trim();
-    if (!name) {
-      throw new Error("Chat name is required");
-    }
-
     const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
     if (scope === "loop" && !options.loopId) {
       throw new Error("Loop chats require a loopId");
@@ -103,6 +116,15 @@ export class ChatManager {
 
     const id = crypto.randomUUID();
     const now = createTimestamp();
+    const explicitName = options.name?.trim() ?? "";
+    const generatedNamePrefix = (workspace.name.trim() || "Chat").slice(0, 100).trim() || "Chat";
+    const chatNameStats = explicitName
+      ? null
+      : await getWorkspaceChatNameStats(options.workspaceId, generatedNamePrefix);
+    const nextGeneratedSuffix = chatNameStats
+      ? Math.max(chatNameStats.standaloneChatCount + 1, chatNameStats.maxGeneratedSuffix + 1)
+      : 1;
+    const name = explicitName || buildGeneratedChatName(workspace.name, nextGeneratedSuffix);
     const chat: Chat = {
       config: {
         id,

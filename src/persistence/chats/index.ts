@@ -10,6 +10,7 @@ export {
   deleteChatsByLoopId,
   listChats,
   listChatsByWorkspace,
+  getWorkspaceChatNameStats,
   chatExists,
 } from "./crud";
 export { updateChatState, updateChatConfig } from "./updates";

@@ -23,6 +23,31 @@ describe("CreateChatRequestSchema", () => {
 
     expect(result.success).toBe(true);
   });
+
+  test("accepts omitted and blank chat names for generated titles", () => {
+    const basePayload = {
+      workspaceId: "ws-1",
+      model: {
+        providerID: "copilot",
+        modelID: "gpt-5.4",
+        variant: "",
+      },
+      useWorktree: true,
+      baseBranch: "main",
+    };
+
+    expect(CreateChatRequestSchema.safeParse(basePayload).success).toBe(true);
+
+    const blankName = CreateChatRequestSchema.safeParse({
+      ...basePayload,
+      name: "   ",
+    });
+    expect(blankName.success).toBe(true);
+    if (!blankName.success) {
+      return;
+    }
+    expect(blankName.data.name).toBe("");
+  });
 });
 
 describe("SendChatMessageRequestSchema", () => {

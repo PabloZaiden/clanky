@@ -10,7 +10,7 @@ import { ModelConfigSchema } from "./model";
 import { LoopNameSchema, MessageImageAttachmentsSchema } from "./loop";
 
 export const CreateChatRequestSchema = z.object({
-  name: LoopNameSchema,
+  name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
   workspaceId: z.string().min(1, "workspaceId is required"),
   model: ModelConfigSchema,
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
