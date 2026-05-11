@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import { CHAT_PROMPT_TEMPLATES, getChatTemplateById } from "../lib/chat-prompt-templates";
 
 interface ChatTemplateSelectorProps {
@@ -13,13 +15,14 @@ export function ChatTemplateSelector({
   onPromptChange,
   disabled = false,
 }: ChatTemplateSelectorProps) {
+  const templateSelectId = useId();
   const template = selectedTemplate ? getChatTemplateById(selectedTemplate) : undefined;
 
   return (
     <div className="space-y-1">
-      <label htmlFor="chat-template" className="sr-only">Template</label>
+      <label htmlFor={templateSelectId} className="sr-only">Template</label>
       <select
-        id="chat-template"
+        id={templateSelectId}
         value={selectedTemplate}
         onChange={(event) => {
           const templateId = event.target.value;
