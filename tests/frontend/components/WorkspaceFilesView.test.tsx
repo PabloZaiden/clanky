@@ -379,6 +379,8 @@ describe("WorkspaceFilesView", () => {
       name: "Download Workspace",
       directory: "/workspaces/download-file",
     });
+    const revokeObjectURLMock = mock((_url: string) => {});
+    URL.revokeObjectURL = revokeObjectURLMock as typeof URL.revokeObjectURL;
 
     api.get("/api/workspaces/:id/files/tree", () => ({
       workspaceId: workspace.id,
@@ -436,6 +438,7 @@ describe("WorkspaceFilesView", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/workspaces/:id/files/download")).toHaveLength(1);
+      expect(revokeObjectURLMock).toHaveBeenCalledWith("blob:workspace-preview");
     });
   });
 

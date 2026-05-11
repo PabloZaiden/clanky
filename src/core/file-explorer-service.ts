@@ -542,7 +542,7 @@ async function readFileBytes(
     throw new Error(result.stderr.trim() || "Failed to read file");
   }
 
-  return Uint8Array.from(Buffer.from(result.stdout.replace(/\s/g, ""), "base64"));
+  return Uint8Array.from(Buffer.from(result.stdout, "base64"));
 }
 
 export class FileExplorerService {

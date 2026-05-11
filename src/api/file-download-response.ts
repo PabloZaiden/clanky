@@ -9,7 +9,7 @@ function sanitizeAttachmentFileName(fileName: string): string {
 }
 
 function encodeAttachmentFileName(fileName: string): string {
-  return encodeURIComponent(fileName).replace(/['()]/g, (character) =>
+  return encodeURIComponent(fileName).replace(/[!'()*]/g, (character) =>
     `%${character.charCodeAt(0).toString(16).toUpperCase()}`
   );
 }

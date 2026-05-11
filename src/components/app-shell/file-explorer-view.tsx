@@ -49,7 +49,7 @@ function triggerBrowserDownload(blob: Blob, fileName: string): void {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 interface FileExplorerViewProps {
