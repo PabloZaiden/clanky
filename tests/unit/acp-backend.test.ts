@@ -165,7 +165,7 @@ describe("AcpBackend", () => {
       directory: string;
       sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
       modelCache: Map<string, { models: Array<{ modelID: string; name?: string; variants: string[] }>; complete: boolean }>;
-      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+      defaultReasoningEfforts: Map<string, Map<string, string>>;
     };
 
     internal.connected = true;
@@ -234,9 +234,9 @@ describe("AcpBackend", () => {
     });
     expect(internal.modelCache.has("/tmp/backend-directory")).toBe(false);
     expect(
-      internal.copilotDefaultReasoningEfforts.get("/tmp/loaded-session-directory")?.get("gpt-5.4"),
+      internal.defaultReasoningEfforts.get("/tmp/loaded-session-directory")?.get("gpt-5.4"),
     ).toBe("medium");
-    expect(internal.copilotDefaultReasoningEfforts.has("/tmp/backend-directory")).toBe(false);
+    expect(internal.defaultReasoningEfforts.has("/tmp/backend-directory")).toBe(false);
   });
 
   test("getSession returns null when session/load says the listed session is not found", async () => {
@@ -341,7 +341,7 @@ describe("AcpBackend", () => {
       provider: "copilot";
       directory: string;
       sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
-      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+      defaultReasoningEfforts: Map<string, Map<string, string>>;
     };
 
     internal.connected = true;
@@ -433,8 +433,103 @@ describe("AcpBackend", () => {
       { modelID: "gpt-4.1", variants: [""] },
     ]);
     expect(
-      internal.copilotDefaultReasoningEfforts.get("/tmp/copilot-models")?.get("gpt-5.4"),
+      internal.defaultReasoningEfforts.get("/tmp/copilot-models")?.get("gpt-5.4"),
     ).toBe("medium");
+  });
+
+  test("getModels discovers OpenCode reasoning-effort variants from config options", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "opencode";
+      directory: string;
+      sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+    };
+
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "opencode";
+    internal.directory = "/tmp/opencode-models";
+    internal.sendRpcRequest = async (method: string, params: Record<string, unknown>): Promise<unknown> => {
+      if (method === "session/new") {
+        return {
+          sessionId: "opencode-discovery-session",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "anthropic/claude-sonnet-4-5",
+              category: "model",
+              options: [
+                { value: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5" },
+                { value: "openai/gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: "medium",
+              category: "reasoning_effort",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      if (
+        method === "session/set_config_option"
+        && params["configId"] === "model"
+        && params["value"] === "openai/gpt-5.4"
+      ) {
+        return {
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "openai/gpt-5.4",
+              category: "model",
+              options: [
+                { value: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5" },
+                { value: "openai/gpt-5.4", name: "GPT-5.4" },
+              ],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: "medium",
+              category: "reasoning_effort",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/delete") {
+        return {};
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    const models = await backend.getModels("/tmp/opencode-models");
+
+    expect(models.map((model) => ({
+      providerID: model.providerID,
+      modelID: model.modelID,
+      variants: model.variants,
+    }))).toEqual([
+      { providerID: "anthropic", modelID: "anthropic/claude-sonnet-4-5", variants: ["medium", "low", "high"] },
+      { providerID: "openai", modelID: "openai/gpt-5.4", variants: ["medium", "low", "high"] },
+    ]);
   });
 
   test("getModels ignores incomplete Copilot cache seeded by createSession", async () => {
@@ -444,7 +539,7 @@ describe("AcpBackend", () => {
       provider: "copilot";
       directory: string;
       sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
-      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+      defaultReasoningEfforts: Map<string, Map<string, string>>;
     };
 
     const calls: string[] = [];
@@ -550,7 +645,7 @@ describe("AcpBackend", () => {
       provider: "copilot";
       directory: string;
       sendRpcRequest: (method: string, params: Record<string, unknown>) => Promise<unknown>;
-      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+      defaultReasoningEfforts: Map<string, Map<string, string>>;
     };
 
     const calls: string[] = [];
@@ -676,7 +771,7 @@ describe("AcpBackend", () => {
         model?: string;
         configOptions?: Array<Record<string, unknown>>;
       }>;
-      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+      defaultReasoningEfforts: Map<string, Map<string, string>>;
       sendRpcRequest: (method: string, params: Record<string, unknown>, timeoutMs?: number) => Promise<unknown>;
     };
 
@@ -712,7 +807,7 @@ describe("AcpBackend", () => {
         },
       ],
     });
-    internal.copilotDefaultReasoningEfforts.set("/tmp/copilot-prompt", new Map([["gpt-5.4", "medium"]]));
+    internal.defaultReasoningEfforts.set("/tmp/copilot-prompt", new Map([["gpt-5.4", "medium"]]));
     internal.sendRpcRequest = async (
       method: string,
       params: Record<string, unknown>,
@@ -780,6 +875,211 @@ describe("AcpBackend", () => {
     expect(response.content).toBe("OK");
   });
 
+  test("sendPrompt applies OpenCode reasoning effort from model variant", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "opencode";
+      directory: string;
+      sessionCache: Map<string, {
+        id: string;
+        createdAt: string;
+        model?: string;
+        configOptions?: Array<Record<string, unknown>>;
+      }>;
+      sendRpcRequest: (method: string, params: Record<string, unknown>, timeoutMs?: number) => Promise<unknown>;
+    };
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "opencode";
+    internal.directory = "/tmp/opencode-prompt";
+    internal.sessionCache.set("session-opencode", {
+      id: "session-opencode",
+      createdAt: new Date().toISOString(),
+      model: "anthropic/claude-sonnet-4-5",
+      configOptions: [
+        {
+          id: "model",
+          name: "Model",
+          type: "select",
+          currentValue: "anthropic/claude-sonnet-4-5",
+          category: "model",
+          options: [{ value: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5" }],
+        },
+        {
+          id: "reasoning_effort",
+          name: "Reasoning Effort",
+          type: "select",
+          currentValue: "medium",
+          category: "reasoning_effort",
+          options: [
+            { value: "low", name: "low" },
+            { value: "medium", name: "medium" },
+            { value: "high", name: "high" },
+          ],
+        },
+      ],
+    });
+    internal.sendRpcRequest = async (
+      method: string,
+      params: Record<string, unknown>,
+    ): Promise<unknown> => {
+      calls.push({ method, params });
+      if (method === "session/set_config_option") {
+        return {
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              currentValue: "anthropic/claude-sonnet-4-5",
+              category: "model",
+              options: [{ value: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5" }],
+            },
+            {
+              id: "reasoning_effort",
+              name: "Reasoning Effort",
+              type: "select",
+              currentValue: params["value"],
+              category: "reasoning_effort",
+              options: [
+                { value: "low", name: "low" },
+                { value: "medium", name: "medium" },
+                { value: "high", name: "high" },
+              ],
+            },
+          ],
+        };
+      }
+      if (method === "session/prompt") {
+        return { content: "OK" };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    const response = await backend.sendPrompt("session-opencode", {
+      parts: [{ type: "text", text: "test" }],
+      model: {
+        providerID: "anthropic",
+        modelID: "anthropic/claude-sonnet-4-5",
+        variant: "high",
+      },
+    });
+
+    expect(calls).toEqual([
+      {
+        method: "session/set_config_option",
+        params: {
+          sessionId: "session-opencode",
+          configId: "reasoning_effort",
+          value: "high",
+        },
+      },
+      {
+        method: "session/prompt",
+        params: {
+          sessionId: "session-opencode",
+          prompt: [{ type: "text", text: "test" }],
+          model: "anthropic/claude-sonnet-4-5",
+        },
+      },
+    ]);
+    expect(response.content).toBe("OK");
+  });
+
+  test("sendPrompt resets OpenCode reasoning effort using the created session directory", async () => {
+    const internal = backend as unknown as {
+      connected: boolean;
+      process: Bun.Subprocess | Record<string, never> | null;
+      provider: "opencode";
+      directory: string;
+      defaultReasoningEfforts: Map<string, Map<string, string>>;
+      sendRpcRequest: (method: string, params: Record<string, unknown>, timeoutMs?: number) => Promise<unknown>;
+    };
+
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    internal.connected = true;
+    internal.process = {} as Record<string, never>;
+    internal.provider = "opencode";
+    internal.directory = "/tmp/backend-connect-directory";
+    const modelID = "anthropic/claude-sonnet-4-5";
+    const configOptionsForEffort = (effort: string): Array<Record<string, unknown>> => [
+      {
+        id: "model",
+        name: "Model",
+        type: "select",
+        currentValue: modelID,
+        category: "model",
+        options: [{ value: modelID, name: "Claude Sonnet 4.5" }],
+      },
+      {
+        id: "reasoning_effort",
+        name: "Reasoning Effort",
+        type: "select",
+        currentValue: effort,
+        category: "reasoning_effort",
+        options: [
+          { value: "low", name: "low" },
+          { value: "medium", name: "medium" },
+          { value: "high", name: "high" },
+        ],
+      },
+    ];
+    internal.sendRpcRequest = async (
+      method: string,
+      params: Record<string, unknown>,
+    ): Promise<unknown> => {
+      calls.push({ method, params });
+      if (method === "session/new") {
+        expect(params["cwd"]).toBe("/tmp/session-cwd");
+        return {
+          sessionId: "session-with-custom-cwd",
+          cwd: "/tmp/session-cwd",
+          configOptions: configOptionsForEffort("medium"),
+        };
+      }
+      if (method === "session/set_config_option") {
+        return {
+          configOptions: configOptionsForEffort(String(params["value"])),
+        };
+      }
+      if (method === "session/prompt") {
+        return { content: "OK" };
+      }
+      throw new Error(`Unexpected method: ${method}`);
+    };
+
+    await backend.createSession({ directory: "/tmp/session-cwd" });
+    await backend.sendPrompt("session-with-custom-cwd", {
+      parts: [{ type: "text", text: "use high" }],
+      model: {
+        providerID: "anthropic",
+        modelID,
+        variant: "high",
+      },
+    });
+    await backend.sendPrompt("session-with-custom-cwd", {
+      parts: [{ type: "text", text: "reset" }],
+      model: {
+        providerID: "anthropic",
+        modelID,
+        variant: "",
+      },
+    });
+
+    expect(
+      internal.defaultReasoningEfforts.get("/tmp/session-cwd")?.get(modelID),
+    ).toBe("medium");
+    expect(internal.defaultReasoningEfforts.has("/tmp/backend-connect-directory")).toBe(false);
+    expect(
+      calls
+        .filter((call) => call.method === "session/set_config_option")
+        .map((call) => call.params["value"]),
+    ).toEqual(["high", "medium"]);
+  });
+
   test("sendPrompt resets Copilot effort to cached default for the base variant", async () => {
     const internal = backend as unknown as {
       connected: boolean;
@@ -792,7 +1092,7 @@ describe("AcpBackend", () => {
         model?: string;
         configOptions?: Array<Record<string, unknown>>;
       }>;
-      copilotDefaultReasoningEfforts: Map<string, Map<string, string>>;
+      defaultReasoningEfforts: Map<string, Map<string, string>>;
       sendRpcRequest: (method: string, params: Record<string, unknown>, timeoutMs?: number) => Promise<unknown>;
     };
 
@@ -828,7 +1128,7 @@ describe("AcpBackend", () => {
         },
       ],
     });
-    internal.copilotDefaultReasoningEfforts.set("/tmp/copilot-reset", new Map([["gpt-5.4", "medium"]]));
+    internal.defaultReasoningEfforts.set("/tmp/copilot-reset", new Map([["gpt-5.4", "medium"]]));
     internal.sendRpcRequest = async (
       method: string,
       params: Record<string, unknown>,
