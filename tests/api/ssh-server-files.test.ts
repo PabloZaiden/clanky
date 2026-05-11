@@ -176,6 +176,31 @@ describe("Standalone SSH server files API integration", () => {
     expect(await previewResponse.text()).toContain("<svg");
   });
 
+  test("downloads standalone server files as attachments with credentials", async () => {
+    const createdServer = await createServer();
+    const missingCredentialResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/download?path=${encodeURIComponent("README.md")}`,
+    );
+    expect(missingCredentialResponse.status).toBe(400);
+
+    const credentialToken = await issueCredentialToken(createdServer.config.id);
+    const response = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/download?path=${encodeURIComponent("README.md")}`,
+      {
+        headers: {
+          "x-ralpher-ssh-credential-token": credentialToken,
+        },
+      },
+    );
+
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
+    expect(await response.text()).toBe("# Server files\n");
+  });
+
   test("writes files on a standalone server and rejects escaping paths", async () => {
     const createdServer = await createServer();
     const metadataToken = await issueCredentialToken(createdServer.config.id);

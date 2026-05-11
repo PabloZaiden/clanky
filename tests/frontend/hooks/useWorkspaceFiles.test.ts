@@ -56,6 +56,34 @@ describe("useWorkspaceFiles", () => {
   beforeEach(() => {
     api.reset();
     api.install();
+    api.get("/api/workspaces/:id/files/metadata", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      const name = path.split("/").pop() || path;
+      return {
+        workspaceId: req.params["id"],
+        file: createDirectoryEntry({
+          name,
+          path,
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        }),
+      };
+    });
+    api.get("/api/ssh-servers/:id/files/metadata", (req) => {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      const name = path.split("/").pop() || path;
+      return {
+        serverId: req.params["id"],
+        file: createDirectoryEntry({
+          name,
+          path,
+          kind: "file",
+          size: 20,
+          versionToken: "100:20",
+        }),
+      };
+    });
     URL.createObjectURL = () => "blob:preview";
     URL.revokeObjectURL = () => {};
     window.localStorage.clear();
@@ -817,6 +845,18 @@ describe("useWorkspaceFiles", () => {
 
     api.get("/api/workspaces/:id/files/metadata", (req) => {
       const path = new URL(req.url, "http://localhost").searchParams.get("path");
+      if (path === "src/second.ts") {
+        return {
+          workspaceId: "workspace-1",
+          file: createDirectoryEntry({
+            name: "second.ts",
+            path: "src/second.ts",
+            kind: "file",
+            size: 21,
+            versionToken: "101:21",
+          }),
+        };
+      }
       if (path !== "src/first.ts") {
         throw new Error(`Unexpected metadata path: ${path}`);
       }

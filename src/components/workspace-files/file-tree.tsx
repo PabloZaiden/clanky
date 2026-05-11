@@ -91,6 +91,20 @@ function CopyPathIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
+    </svg>
+  );
+}
+
 interface WorkspaceFileTreeProps {
   entriesByDirectory: Record<string, WorkspaceFileNode[]>;
   expandedDirectories: string[];
@@ -103,10 +117,12 @@ interface WorkspaceFileTreeProps {
   onRefresh: () => Promise<void>;
   onToggleShowHiddenFiles: () => Promise<void>;
   onCopySelectedFilePath: () => Promise<void>;
+  onDownloadSelectedFile: () => Promise<void>;
   onToggleCollapsed: () => void;
   onToggleDirectory: (path: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
   canCopySelectedFilePath: boolean;
+  canDownloadSelectedFile: boolean;
 }
 
 function isHiddenEntry(entry: WorkspaceFileNode): boolean {
@@ -181,10 +197,12 @@ function WorkspaceFileTreeComponent({
   onRefresh,
   onToggleShowHiddenFiles,
   onCopySelectedFilePath,
+  onDownloadSelectedFile,
   onToggleCollapsed,
   onToggleDirectory,
   onOpenFile,
   canCopySelectedFilePath,
+  canDownloadSelectedFile,
 }: WorkspaceFileTreeProps) {
   const renderedTree = useMemo(() => renderDirectory(
     "",
@@ -262,6 +280,18 @@ function WorkspaceFileTreeComponent({
             icon={<CopyPathIcon />}
           >
             <span className="sr-only">Copy selected file path</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void onDownloadSelectedFile()}
+            disabled={!canDownloadSelectedFile}
+            aria-label="Download selected file"
+            title="Download selected file"
+            className="w-9 px-0"
+            icon={<DownloadIcon />}
+          >
+            <span className="sr-only">Download selected file</span>
           </Button>
           <Button
             variant="ghost"

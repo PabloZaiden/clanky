@@ -242,6 +242,24 @@ export async function readFileExplorerImagePreviewApi(
   return await response.blob();
 }
 
+export async function downloadFileExplorerFileApi(
+  target: FileExplorerTarget,
+  path: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<Blob> {
+  const searchParams = buildFileExplorerSearchParams(target, {
+    path,
+  }, options);
+  const response = await appFetch(
+    `${getFileExplorerBasePath(target)}/download?${searchParams.toString()}`,
+    await buildFileExplorerRequestInit(target, options),
+  );
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.blob();
+}
+
 export async function writeFileExplorerFileApi(
   target: FileExplorerTarget,
   request: WriteWorkspaceFileRequest,
@@ -309,6 +327,14 @@ export async function writeWorkspaceFileApi(
   return response as WorkspaceFileWriteResponse;
 }
 
+export async function downloadWorkspaceFileApi(
+  workspaceId: string,
+  path: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<Blob> {
+  return await downloadFileExplorerFileApi({ type: "workspace", id: workspaceId }, path, options);
+}
+
 export async function listServerFilesApi(
   serverId: string,
   path = "",
@@ -351,4 +377,12 @@ export async function writeServerFileApi(
 ): Promise<SshServerFileWriteResponse> {
   const response = await writeFileExplorerFileApi({ type: "server", id: serverId }, request, options);
   return response as SshServerFileWriteResponse;
+}
+
+export async function downloadServerFileApi(
+  serverId: string,
+  path: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<Blob> {
+  return await downloadFileExplorerFileApi({ type: "server", id: serverId }, path, options);
 }
