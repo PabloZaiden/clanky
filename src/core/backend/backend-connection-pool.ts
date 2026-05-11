@@ -9,7 +9,7 @@ import { buildSshRemoteShellCommand } from "../remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromSettings } from "../ssh-connection-target";
 import { getProviderAcpCommand } from "../agent-runtime-command";
 
-function buildAgentRuntimeCommand(settings: ServerSettings): { command: string; args: string[] } {
+function buildAgentRuntimeCommand(settings: ServerSettings): { command: string; args: string[]; env?: NodeJS.ProcessEnv } {
   const provider = settings.agent.provider;
   const providerCommand = getProviderAcpCommand(provider, settings.agent.transport);
   const providerInvocation = [providerCommand.command, ...providerCommand.args].join(" ");
@@ -26,11 +26,12 @@ function buildAgentRuntimeCommand(settings: ServerSettings): { command: string; 
   const sshProcess = buildSshProcessConfig({
     target: sshTarget,
     remoteCommand,
-    passwordHandling: "argument",
+    passwordHandling: "environment",
   });
   return {
     command: sshProcess.command,
     args: sshProcess.args,
+    env: sshProcess.env,
   };
 }
 
@@ -57,6 +58,7 @@ export function buildConnectionConfig(settings: ServerSettings, directory: strin
     identityFile: sshTarget?.identityFile,
     command: derivedCommand.command,
     args: derivedCommand.args,
+    env: derivedCommand.env,
     directory,
   };
 }

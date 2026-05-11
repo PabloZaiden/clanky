@@ -40,6 +40,8 @@ export interface BackendConnectionConfig {
   command?: string;
   /** Derived command args for ACP transport */
   args?: string[];
+  /** Environment for the spawned ACP runtime */
+  env?: NodeJS.ProcessEnv;
   /** Working directory for the backend */
   directory: string;
 }

@@ -173,6 +173,160 @@ describe("AcpBackend ACP parsing", () => {
     expect(backend.toolCallNames.has("call-1")).toBe(false);
   });
 
+  test("normalizes cumulative Copilot agent_message_chunk updates to deltas", () => {
+    const backend = getBackend();
+    const sessionId = "session-cumulative-message";
+    const events: Array<Record<string, unknown>> = [];
+
+    backend.sessionSubscribers.set(
+      sessionId,
+      new Set([
+        (event: unknown) => {
+          events.push(event as Record<string, unknown>);
+        },
+      ]),
+    );
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "First paragraph.\n\n",
+          },
+        },
+      },
+    });
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "Second paragraph.",
+          },
+        },
+      },
+    });
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "First paragraph.\n\nSecond paragraph.\n\n<promise>PLAN_READY</promise>",
+          },
+        },
+      },
+    });
+
+    expect(events).toEqual([
+      {
+        type: "message.start",
+        messageId: expect.any(String),
+      },
+      {
+        type: "message.delta",
+        content: "First paragraph.\n\n",
+      },
+      {
+        type: "message.delta",
+        content: "Second paragraph.",
+      },
+      {
+        type: "message.delta",
+        content: "\n\n<promise>PLAN_READY</promise>",
+      },
+    ]);
+  });
+
+  test("preserves repeated Copilot agent_message_chunk delta text", () => {
+    const backend = getBackend();
+    const sessionId = "session-repeated-delta";
+    const events: Array<Record<string, unknown>> = [];
+
+    backend.sessionSubscribers.set(
+      sessionId,
+      new Set([
+        (event: unknown) => {
+          events.push(event as Record<string, unknown>);
+        },
+      ]),
+    );
+
+    const repeatedDeltaMessage = {
+      jsonrpc: "2.0" as const,
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "ha",
+          },
+        },
+      },
+    };
+
+    backend.handleRpcMessage(repeatedDeltaMessage);
+    backend.handleRpcMessage(repeatedDeltaMessage);
+
+    expect(events).toEqual([
+      {
+        type: "message.start",
+        messageId: expect.any(String),
+      },
+      {
+        type: "message.delta",
+        content: "ha",
+      },
+      {
+        type: "message.delta",
+        content: "ha",
+      },
+    ]);
+  });
+
+  test("ignores empty Copilot agent_message_chunk updates", () => {
+    const backend = getBackend();
+    const sessionId = "session-empty-message-chunk";
+    const events: Array<Record<string, unknown>> = [];
+
+    backend.sessionSubscribers.set(
+      sessionId,
+      new Set([
+        (event: unknown) => {
+          events.push(event as Record<string, unknown>);
+        },
+      ]),
+    );
+
+    backend.handleRpcMessage({
+      jsonrpc: "2.0",
+      method: "session/update",
+      params: {
+        sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            text: "",
+          },
+        },
+      },
+    });
+
+    expect(events).toEqual([]);
+  });
+
   test("maps failed tool_call_update to tool.complete (non-fatal)", () => {
     const backend = getBackend();
     const sessionId = "session-2b";

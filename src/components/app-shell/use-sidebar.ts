@@ -16,12 +16,13 @@ export interface UseSidebarResult {
   navigateWithinShell: (route: ShellRoute) => void;
   openSidebar: () => void;
   hideSidebar: () => void;
+  showSidebar: () => void;
   toggleSidebar: () => void;
   isNodeCollapsed: (collapseKey: string) => boolean;
   toggleNodeCollapsed: (collapseKey: string) => void;
 }
 
-function isEditableShortcutTarget(target: EventTarget | null): boolean {
+export function isEditableShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
   }
@@ -91,6 +92,8 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
     setSidebarOpen(false);
   }, []);
 
+  const showSidebar = openSidebar;
+
   const toggleSidebar = useCallback(() => {
     if (isDesktopShellViewport()) {
       setSidebarCollapsed((current) => !current);
@@ -147,6 +150,7 @@ export function useSidebar(_route: ShellRoute, onNavigate: (route: ShellRoute) =
     navigateWithinShell,
     openSidebar,
     hideSidebar,
+    showSidebar,
     toggleSidebar,
     isNodeCollapsed,
     toggleNodeCollapsed,

@@ -20,10 +20,12 @@ function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined
 function SectionAction({
   title,
   actionLabel,
+  actionTitle,
   onAction,
 }: {
   title: string;
   actionLabel?: string;
+  actionTitle?: string;
   onAction?: () => void;
 }) {
   if (!onAction || !actionLabel) {
@@ -36,6 +38,7 @@ function SectionAction({
         type="button"
         onClick={onAction}
         aria-label={`${actionLabel} ${title}`}
+        title={actionTitle}
         className={SECTION_ACTION_BUTTON_CLASS}
       >
         {actionLabel}
@@ -47,6 +50,7 @@ function SectionAction({
 export function ShellSection({
   title,
   actionLabel,
+  actionTitle,
   onAction,
   collapsed,
   onToggle,
@@ -54,6 +58,7 @@ export function ShellSection({
 }: {
   title: string;
   actionLabel?: string;
+  actionTitle?: string;
   onAction?: () => void;
   collapsed: boolean;
   onToggle: () => void;
@@ -80,7 +85,7 @@ export function ShellSection({
             </span>
           </button>
         </h2>
-        <SectionAction title={title} actionLabel={actionLabel} onAction={onAction} />
+        <SectionAction title={title} actionLabel={actionLabel} actionTitle={actionTitle} onAction={onAction} />
       </div>
       {!collapsed && (
         <div id={contentId} className="space-y-1">
@@ -94,6 +99,7 @@ export function ShellSection({
 export function SidebarTreeSection({
   title,
   actionLabel,
+  actionTitle,
   onAction,
   collapsed,
   onToggle,
@@ -102,6 +108,7 @@ export function SidebarTreeSection({
 }: {
   title: string;
   actionLabel?: string;
+  actionTitle?: string;
   onAction?: () => void;
   collapsed?: boolean;
   onToggle?: () => void;
@@ -139,7 +146,7 @@ export function SidebarTreeSection({
             </span>
           </div>
         )}
-        <SectionAction title={title} actionLabel={actionLabel} onAction={onAction} />
+        <SectionAction title={title} actionLabel={actionLabel} actionTitle={actionTitle} onAction={onAction} />
       </div>
       {contentVisible && (
         <div id={contentId} className="space-y-1">

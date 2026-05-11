@@ -7,7 +7,6 @@ import { WorkspaceSelector } from "../WorkspaceSelector";
 import {
   type CreateLoopFormActionState,
   type CreateLoopFormProps,
-  type CreateLoopFormSubmitRequest,
   getComposeDraftActionLabel,
   getComposeSubmitActionLabel,
 } from "./types";
@@ -21,6 +20,7 @@ import { AdvancedOptions } from "./advanced-options";
 import { FormActions } from "./form-actions";
 import { useCreateLoopForm } from "./use-create-loop-form";
 import type { ComposerImageAttachment } from "../../types/message-attachments";
+import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
 
 export type { CreateLoopFormActionState, CreateLoopFormProps, CreateLoopFormSubmitRequest };
 export { getComposeDraftActionLabel, getComposeSubmitActionLabel };

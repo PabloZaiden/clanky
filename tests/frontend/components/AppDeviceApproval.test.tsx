@@ -40,7 +40,7 @@ describe("App device approval route", () => {
       clientId: "ralpher-cli",
       scope: "loops:read",
       status: "pending",
-      expiresAt: "2026-04-21T15:00:00.000Z",
+      expiresAt: "2099-04-21T15:00:00.000Z",
       passkeyRequired: true,
     }));
     api.post("/api/auth/device/approve", () => ({
@@ -48,7 +48,7 @@ describe("App device approval route", () => {
       clientId: "ralpher-cli",
       scope: "loops:read",
       status: "approved",
-      expiresAt: "2026-04-21T15:00:00.000Z",
+      expiresAt: "2099-04-21T15:00:00.000Z",
       passkeyRequired: true,
     }), 200);
 

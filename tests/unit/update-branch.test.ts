@@ -30,7 +30,7 @@ async function setupRemote(ctx: TestContext): Promise<{ remoteDir: string; curre
   const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
   await Bun.$`git -C ${ctx.workDir} push -u origin ${currentBranch}`.quiet();
   // Set bare repo HEAD to the pushed branch so clones work regardless of git defaults
-  await Bun.$`git -C ${remoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
+  await Bun.$`git --git-dir=${remoteDir} symbolic-ref HEAD refs/heads/${currentBranch}`.quiet();
   return { remoteDir, currentBranch };
 }
 

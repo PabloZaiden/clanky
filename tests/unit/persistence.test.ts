@@ -158,6 +158,8 @@ describe("Persistence", () => {
       expect(row?.name).toBe("chats");
       expect(columns.some((column) => column.name === "scope")).toBe(true);
       expect(columns.some((column) => column.name === "loop_id")).toBe(true);
+      expect(columns.some((column) => column.name === "auto_approve_permissions")).toBe(true);
+      expect(columns.some((column) => column.name === "pending_permission_requests")).toBe(true);
       expect(loopIndex?.name).toBe("idx_chats_loop_id_unique");
     });
 

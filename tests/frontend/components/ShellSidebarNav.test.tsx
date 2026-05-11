@@ -221,6 +221,7 @@ function SidebarHarness({
       workspaceGroups={workspaceGroupsOverride ?? workspaceGroups}
       serverNodes={serverNodesOverride ?? serverNodes}
       version="test"
+      sidebarSearchFocusRequest={0}
     />
   );
 }
@@ -580,6 +581,20 @@ describe("ShellSidebarNav", () => {
       expect(button.parentElement).not.toBeNull();
       expect(button.parentElement as HTMLElement).toHaveClass("min-w-12", "justify-end");
     }
+  });
+
+  test("exposes shell shortcut tooltips on global action controls", () => {
+    const { getAllByRole, getByLabelText, getByRole } = renderWithUser(<SidebarHarness />);
+
+    expect(getByRole("button", { name: "Open code explorer" })).toHaveAttribute("title", "Code explorer (Ctrl/Cmd+Shift+E)");
+    expect(getByRole("button", { name: "Open settings" })).toHaveAttribute("title", "Settings (Ctrl/Cmd+Shift+,)");
+    expect(getByLabelText("Search sidebar")).toHaveAttribute("title", "Search sidebar (Ctrl/Cmd+Shift+F)");
+    expect(getAllByRole("button", { name: "New Loops" })[0]).toHaveAttribute("title", "New loop (Ctrl/Cmd+Shift+L)");
+    expect(getAllByRole("button", { name: "New Chats" })[0]).toHaveAttribute("title", "New chat (Ctrl/Cmd+Shift+C)");
+    expect(getAllByRole("button", { name: "New SSH sessions" })[0]).toHaveAttribute(
+      "title",
+      "New SSH session (Ctrl/Cmd+Shift+S)",
+    );
   });
 
   test("hides empty workspace groups", () => {

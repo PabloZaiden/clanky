@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useChats,
   useDashboardData,
@@ -15,6 +15,8 @@ import { buildServerSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-ty
 import { ShellSidebarNav } from "./shell-sidebar-nav";
 import { ShellMainContent } from "./shell-main-content";
 import { useSidebar } from "./use-sidebar";
+import { getShellShortcutForKeyboardEvent } from "./shell-navigation";
+import { isEditableShortcutTarget } from "./use-sidebar";
 import { useWorkspaceCreate } from "./use-workspace-create";
 import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
 import { useComposeState } from "./use-compose-state";
@@ -80,7 +82,13 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const { workspaceGroups } = useLoopGrouping(loops, workspaces, !workspacesLoading);
 
   const sidebar = useSidebar(route, onNavigate);
-  const { navigateWithinShell } = sidebar;
+  const { navigateWithinShell, showSidebar } = sidebar;
+  const [sidebarSearchFocusRequest, setSidebarSearchFocusRequest] = useState(0);
+
+  const focusSidebarSearch = useCallback(() => {
+    showSidebar();
+    setSidebarSearchFocusRequest((current) => current + 1);
+  }, [showSidebar]);
 
   const workspaceCreate = useWorkspaceCreate({
     route,
@@ -186,6 +194,27 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         ? (servers.find((s) => s.config.id === codeExplorerServerId) ?? null)
         : null;
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const shortcut = getShellShortcutForKeyboardEvent(event);
+      if (!shortcut || isEditableShortcutTarget(event.target)) {
+        return;
+      }
+
+      event.preventDefault();
+      if (shortcut.action === "sidebar-search") {
+        focusSidebarSearch();
+        return;
+      }
+      if (shortcut.route) {
+        navigateWithinShell(shortcut.route);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusSidebarSearch, navigateWithinShell]);
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-gray-100 text-gray-950 dark:bg-neutral-950 dark:text-gray-100">
       <div
@@ -207,6 +236,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         workspaceGroups={sidebarWorkspaceGroups}
         serverNodes={serverNodes}
         version={dashboardData.version ?? undefined}
+        sidebarSearchFocusRequest={sidebarSearchFocusRequest}
       />
 
       <ShellMainContent
