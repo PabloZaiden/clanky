@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { fireEvent } from "@testing-library/react";
 import { DEFAULT_CHAT_INTERRUPT_REASON, type Chat } from "@/types";
 import { ChatDetails } from "@/components/ChatDetails";
+import { getChatTemplateById } from "@/lib/chat-prompt-templates";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { act, renderWithUser, waitFor } from "../helpers/render";
@@ -151,6 +152,56 @@ describe("ChatDetails", () => {
       message: "Please summarize the risk.",
       attachments: [],
     });
+  });
+
+  test("fills the composer from the Project Analysis template and sends edited text", async () => {
+    const initialChat = createChat({ state: { ...createChat().state, messages: [] } });
+    const updatedChat = createChat({
+      config: {
+        ...initialChat.config,
+        updatedAt: "2025-01-01T00:00:02.000Z",
+      },
+      state: {
+        ...initialChat.state,
+        messages: [{
+          id: "user-1",
+          role: "user",
+          content: "Analyze this entire project in detail.\n\nPlease include deployment notes.",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        }],
+      },
+    });
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/messages", () => updatedChat, 200);
+
+    const { getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Repo pairing" })).toBeInTheDocument();
+    });
+
+    await user.selectOptions(getByLabelText("Template"), "project-analysis");
+
+    const template = getChatTemplateById("project-analysis");
+    expect(template).toBeDefined();
+    const templatePrompt = template!.prompt;
+    const composer = getByLabelText("Message") as HTMLTextAreaElement;
+    expect(composer.value).toBe(templatePrompt);
+
+    await user.type(composer, "\n\nPlease include deployment notes.");
+    await user.click(getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(1);
+    });
+
+    const sendCalls = api.calls("/api/chats/:id/messages", "POST");
+    expect(sendCalls[0]?.body).toMatchObject({
+      message: `${templatePrompt}\n\nPlease include deployment notes.`,
+      attachments: [],
+    });
+    expect((getByLabelText("Template") as HTMLSelectElement).value).toBe("");
   });
 
   test("approves pending permission requests through the chat permission API", async () => {
