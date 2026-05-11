@@ -205,7 +205,6 @@ export function ComposeChatView({
               || modelsLoading
               || !selectedWorkspace
               || !selectedModel
-              || name.trim().length === 0
             }
             loading={isSubmitting}
           >

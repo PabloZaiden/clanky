@@ -1634,6 +1634,39 @@ describe("ChatManager", () => {
     }
   });
 
+  test("generates project-based names for chats without explicit names", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      initGit: true,
+    });
+
+    const manager = new ChatManager();
+    const firstChat = await manager.createChat({
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+    const explicitChat = await manager.createChat({
+      name: "Explicit Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+    const thirdChat = await manager.createChat({
+      name: "   ",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+
+    expect(firstChat.config.name).toBe("Test Workspace - 1");
+    expect(explicitChat.config.name).toBe("Explicit Chat");
+    expect(thirdChat.config.name).toBe("Test Workspace - 3");
+  });
+
   test("streams chat responses and persists assistant messages", async () => {
     context = await setupTestContext({
       useMockBackend: true,

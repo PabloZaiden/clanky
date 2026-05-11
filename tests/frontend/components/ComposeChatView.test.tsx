@@ -406,6 +406,56 @@ describe("ComposeChatView", () => {
     });
   });
 
+  test("submits chat creation without a name so the API can generate one", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      directory: "/workspaces/ralpher",
+    });
+    const createChatRequest = mock(async (_request: CreateChatRequest) => createChat({
+      config: {
+        ...createChat().config,
+        name: "Ralpher - 1",
+      },
+    }));
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <ComposeChatView
+        composeWorkspace={workspace}
+        workspaces={[workspace]}
+        workspacesLoading={false}
+        workspaceError={null}
+        dashboardData={createDashboardData({
+          models: [
+            createModelInfo({
+              providerID: "copilot",
+              providerName: "Copilot",
+              modelID: "gpt-5.4",
+              modelName: "GPT-5.4",
+              connected: true,
+            }),
+          ],
+          branches: [createBranchInfo({ name: "main", current: true })],
+          defaultBranch: "main",
+          currentBranch: "main",
+        })}
+        shellHeaderOffsetClassName=""
+        navigateWithinShell={mock(() => {})}
+        createChat={createChatRequest}
+      />,
+    );
+
+    await user.selectOptions(getByLabelText("Model"), "copilot:gpt-5.4:");
+    await user.click(getByRole("button", { name: "Create chat" }));
+
+    await waitFor(() => {
+      expect(createChatRequest).toHaveBeenCalledTimes(1);
+    });
+    expect(createChatRequest.mock.calls[0]?.[0]).toMatchObject({
+      name: "",
+      workspaceId: "workspace-1",
+    });
+  });
+
   test("submits disabled auto-approval when the checkbox is unchecked", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",

@@ -63,7 +63,7 @@ function isDatabaseNotInitializedError(error: unknown): boolean {
 }
 
 export interface CreateChatOptions {
-  name: string;
+  name?: string;
   workspaceId: string;
   scope?: ChatConfig["scope"];
   loopId?: string;
@@ -74,6 +74,14 @@ export interface CreateChatOptions {
   autoApprovePermissions?: boolean;
   baseBranch?: string;
   directory?: string;
+}
+
+function buildGeneratedChatName(projectName: string, existingChatCount: number): string {
+  const suffix = ` - ${existingChatCount + 1}`;
+  const fallbackPrefix = "Chat";
+  const trimmedProjectName = projectName.trim() || fallbackPrefix;
+  const maxPrefixLength = Math.max(1, 100 - suffix.length);
+  return `${trimmedProjectName.slice(0, maxPrefixLength).trim() || fallbackPrefix}${suffix}`;
 }
 
 export class ChatManager {
@@ -88,11 +96,6 @@ export class ChatManager {
       throw new Error(`Workspace not found: ${options.workspaceId}`);
     }
 
-    const name = options.name.trim();
-    if (!name) {
-      throw new Error("Chat name is required");
-    }
-
     const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
     if (scope === "loop" && !options.loopId) {
       throw new Error("Loop chats require a loopId");
@@ -103,6 +106,11 @@ export class ChatManager {
 
     const id = crypto.randomUUID();
     const now = createTimestamp();
+    const explicitName = options.name?.trim() ?? "";
+    const existingStandaloneChats = explicitName
+      ? []
+      : (await listChatsByWorkspace(options.workspaceId)).filter(isStandaloneChat);
+    const name = explicitName || buildGeneratedChatName(workspace.name, existingStandaloneChats.length);
     const chat: Chat = {
       config: {
         id,
