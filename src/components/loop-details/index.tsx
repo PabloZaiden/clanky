@@ -3,7 +3,7 @@
  */
 
 import { useLoop, useLoopPortForwards, useMarkdownPreference, useToast } from "../../hooks";
-import { Button, EditIcon, StatusBadge } from "../common";
+import { Button, StatusBadge } from "../common";
 import { LoopActionBar } from "../LoopActionBar";
 import {
   getLoopStatusPill,
@@ -151,13 +151,6 @@ export function LoopDetails({
               {showBackButton && onBack && <Button variant="ghost" size="sm" onClick={onBack}>← Back</Button>}
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-gray-900 dark:text-gray-100">{config.name}</h1>
-                <button
-                  onClick={() => actions.setRenameModal(true)}
-                  className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-neutral-700"
-                  aria-label={`Rename ${labels.singular}`} title={`Rename ${labels.singular}`}
-                >
-                  <EditIcon />
-                </button>
                 <StatusBadge variant={statusPill.variant} size="sm" className="shrink-0">
                   {statusPill.label}
                 </StatusBadge>

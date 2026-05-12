@@ -659,7 +659,7 @@ describe("Loops CRUD API Integration", () => {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Updated Conflict Loop",
+          prompt: "Updated conflict prompt",
         }),
       });
 
@@ -1981,7 +1981,7 @@ Updated line 3`;
       expect(getBody.config.name).toBe("Renamed Loop");
     });
 
-    test("renames a completed loop", async () => {
+    test("rejects renaming a completed loop while allowing other updates", async () => {
       // Create a unique directory for this test
       const uniqueWorkDir = await mkdtemp(join(tmpdir(), "ralpher-rename-test-"));
       await Bun.$`git init -b main ${uniqueWorkDir}`.quiet();
@@ -2021,9 +2021,20 @@ Updated line 3`;
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: "After Completion" }),
         });
-        expect(renameResponse.status).toBe(200);
+        expect(renameResponse.status).toBe(409);
         const renameBody = await renameResponse.json();
-        expect(renameBody.config.name).toBe("After Completion");
+        expect(renameBody.error).toBe("loop_rename_restricted");
+        expect(renameBody.message).toContain("draft");
+
+        const updateResponse = await fetch(`${baseUrl}/api/loops/${loopId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stopPattern: "DONE" }),
+        });
+        expect(updateResponse.status).toBe(200);
+        const updateBody = await updateResponse.json();
+        expect(updateBody.config.name).toBe("Before Completion");
+        expect(updateBody.config.stopPattern).toBe("DONE");
       } finally {
         await rm(uniqueWorkDir, { recursive: true, force: true });
       }

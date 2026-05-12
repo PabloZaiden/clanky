@@ -3,7 +3,7 @@
  */
 
 import type { LoopSummaryProps } from "../types";
-import { Badge, Card, EditIcon, StatusBadge } from "./common";
+import { Badge, Card, StatusBadge } from "./common";
 import {
   getLoopStatusPill,
   isLoopPlanReady,
@@ -14,8 +14,6 @@ import {
 export function LoopCard({
   loop,
   onClick,
-
-  onRename,
 }: LoopSummaryProps) {
   const { config, state } = loop;
   const isActive = isLoopActive(state.status);
@@ -70,19 +68,6 @@ export function LoopCard({
             <h3 className="min-w-0 flex-1 break-words text-base font-semibold text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere] sm:text-lg">
               {config.name}
             </h3>
-            {onRename && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRename();
-                }}
-                className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-neutral-700"
-                aria-label="Rename loop"
-                title="Rename loop"
-              >
-                <EditIcon />
-              </button>
-            )}
           </div>
           <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
             <StatusBadge variant={statusPill.variant}>

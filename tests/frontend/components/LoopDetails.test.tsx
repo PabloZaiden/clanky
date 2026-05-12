@@ -1458,10 +1458,10 @@ describe("mark merged modal", () => {
   });
 });
 
-describe("rename modal", () => {
-  test("opens rename modal when rename button is clicked", async () => {
+describe("loop rename restrictions", () => {
+  test("does not expose rename controls from loop details", async () => {
     setupDefaultApi();
-    const { getByText, container, user } = renderWithUser(
+    const { getByText, container } = renderWithUser(
       <LoopDetails loopId={LOOP_ID} />,
     );
 
@@ -1470,13 +1470,7 @@ describe("rename modal", () => {
     });
 
     const renameBtn = container.querySelector('button[aria-label="Rename loop"]');
-    expect(renameBtn).toBeTruthy();
-
-    await user.click(renameBtn as HTMLElement);
-
-    await waitFor(() => {
-      expect(getByText("Rename Loop")).toBeTruthy();
-    });
+    expect(renameBtn).toBeNull();
   });
 });
 

@@ -534,8 +534,6 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getAllByText("Loop One").length).toBeGreaterThan(0);
-      const renameButton = document.querySelector('button[aria-label="Rename loop"]');
-      expect(renameButton).toBeTruthy();
     });
 
     await user.click(getByRole("button", { name: /Actions/ }));

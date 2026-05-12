@@ -8,18 +8,6 @@ import { renderWithUser } from "../helpers/render";
 import { createLoop } from "../helpers/factories";
 
 describe("LoopCard", () => {
-  describe("rename button", () => {
-    test("rename button calls onRename", async () => {
-      const loop = createLoop();
-      const onRename = mock();
-      const { getByLabelText, user } = renderWithUser(
-        <LoopCard loop={loop} onRename={onRename} />
-      );
-      await user.click(getByLabelText("Rename loop"));
-      expect(onRename).toHaveBeenCalled();
-    });
-  });
-
   describe("card click", () => {
     test("clicking card invokes onClick handler", async () => {
       const loop = createLoop({ config: { name: "Clickable Loop" } });

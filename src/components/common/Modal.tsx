@@ -106,8 +106,7 @@ export function Modal({
       document.body.style.overflow = "hidden";
 
       // Auto-focus the modal container so keyboard navigation works
-      // immediately. Individual modal consumers can override focus
-      // (e.g., RenameLoopModal focuses its input via its own useEffect).
+      // immediately. Individual modal consumers can override focus.
       if (modalRef.current) {
         modalRef.current.focus();
       }
