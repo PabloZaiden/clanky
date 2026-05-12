@@ -1,9 +1,10 @@
 /**
- * Prompt templates for loop creation.
+ * Prompt templates for loop creation and chat composition.
  *
  * Each template provides a predefined prompt that can be selected from
- * a dropdown in the loop creation form. Templates may also specify
- * default form values (e.g., planMode) that are applied when selected.
+ * loop creation or chat composition. Templates may also specify
+ * loop-only default form values (e.g., planMode) that are applied only
+ * when selected from the loop creation form.
  *
  * To add a new template, append an entry to the `PROMPT_TEMPLATES` array.
  */
@@ -14,7 +15,7 @@ export interface PromptTemplateDefaults {
   planMode?: boolean;
 }
 
-/** A predefined prompt template for loop creation. */
+/** A predefined prompt template shared by loop creation and chat composition. */
 export interface PromptTemplate {
   /** Unique identifier for the template. */
   id: string;
@@ -24,8 +25,8 @@ export interface PromptTemplate {
   description: string;
   /** The full prompt text that autofills the textarea. */
   prompt: string;
-  /** Optional form defaults applied when the template is selected. */
-  defaults?: PromptTemplateDefaults;
+  /** Optional loop form defaults applied when selected from loop creation. */
+  loopDefaults?: PromptTemplateDefaults;
 }
 
 /**
@@ -35,6 +36,47 @@ export interface PromptTemplate {
  * a unique `id`. The order here determines the order in the dropdown.
  */
 export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
+  {
+    id: "project-analysis",
+    name: "Project Analysis",
+    description:
+      "Analyzes the whole project and produces detailed architecture and state diagrams.",
+    prompt: `Analyze this entire project in detail.
+
+Your goal is to understand the full codebase and produce a comprehensive project analysis. Inspect the repository structure, source code, tests, configuration, documentation, and any important generated or support files.
+
+Produce a detailed explanation that covers:
+
+1. **Project purpose**
+   - What the project does
+   - Who or what it is for
+   - The main user workflows and supported capabilities
+
+2. **Architecture**
+   - The major modules, layers, services, components, and data stores
+   - How the frontend, backend, persistence, background processes, and external integrations fit together
+   - Important boundaries, responsibilities, and dependencies between modules
+
+3. **Data and control flow**
+   - How important requests, events, jobs, or commands move through the system
+   - How state is created, updated, persisted, synchronized, and displayed
+   - Any important lifecycle or error-handling flows
+
+4. **Architecture diagrams**
+   - Generate clear Mermaid diagrams for the overall system architecture
+   - Add additional diagrams for major subsystems when helpful
+   - Include enough labels that someone new to the project can understand the relationships
+
+5. **State diagrams**
+   - Generate Mermaid state diagrams for the important domain objects and workflows
+   - Include key states, transitions, triggers, and terminal/error states
+
+6. **Implementation notes**
+   - Call out important conventions, abstractions, extension points, and operational assumptions
+   - Mention notable risks, complexity hotspots, or areas that deserve deeper follow-up
+
+Be thorough and concrete. Reference specific files and directories where they clarify the explanation. Prefer accurate, evidence-based analysis over speculation.`,
+  },
   {
     id: "thorough-code-review",
     name: "Thorough Code Review",
@@ -74,7 +116,7 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
 - Use severity levels consistently: Critical (data loss, security), Major (correctness, maintainability), Minor (style, convention), Suggestion (improvements)
 - Cross-reference findings across documents where they overlap
 - Consider the project's existing conventions and architecture when evaluating code`,
-    defaults: {
+    loopDefaults: {
       planMode: true,
     },
   },
@@ -97,7 +139,7 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
 - Follow the project's existing coding conventions
 - If a fix requires a larger refactor, note it in the plan but implement it incrementally
 - Track which issues you've fixed in your status updates`,
-    defaults: {
+    loopDefaults: {
       planMode: true,
     },
   },
@@ -122,7 +164,7 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
 - Never delete or skip tests to make the suite pass
 - Run the full suite (not individual tests) for final verification
 - Follow the project's existing coding conventions`,
-    defaults: {
+    loopDefaults: {
       planMode: false,
     },
   },
@@ -136,7 +178,7 @@ export const PROMPT_TEMPLATES: readonly PromptTemplate[] = [
 Read \`.ralph-planning/plan.md\` for the full plan and \`.ralph-planning/status.md\` for current progress. Pick up the next pending task and continue implementation.
 
 Follow the standard workflow in the planning files — update status after each completed task.`,
-    defaults: {
+    loopDefaults: {
       planMode: false,
     },
   },
@@ -190,7 +232,7 @@ After making fixes, re-read the updated documentation to confirm:
 - Do not add excessive documentation — keep it concise and useful
 - Follow the project's existing conventions if they are evident in the codebase and documentation
 - Run the project's build command after all changes to verify nothing is broken`,
-    defaults: {
+    loopDefaults: {
       planMode: true,
     },
   },
@@ -217,7 +259,7 @@ After making fixes, re-read the updated documentation to confirm:
 - Do not ignore failing validation. Fix compatibility issues caused by dependency updates, or revert the specific problematic update and document why.
 - Keep changes focused on dependency updates and required compatibility fixes.
 - Summarize the updated dependency groups, important major-version changes, validation commands run, and any remaining blockers.`,
-    defaults: {
+    loopDefaults: {
       planMode: true,
     },
   },

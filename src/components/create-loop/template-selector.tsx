@@ -35,8 +35,8 @@ export function TemplateSelector({
             if (template) {
               onPromptChange(template.prompt);
               promptRef.current = template.prompt;
-              if (template.defaults?.planMode !== undefined) {
-                onPlanModeChange(template.defaults.planMode);
+              if (template.loopDefaults?.planMode !== undefined) {
+                onPlanModeChange(template.loopDefaults.planMode);
               }
             }
           }
