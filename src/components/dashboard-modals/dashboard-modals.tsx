@@ -20,7 +20,6 @@ import type { CreateLoopResult } from "../../hooks/useLoops";
 import type { UseWorkspaceServerSettingsResult } from "../../hooks/useWorkspaceServerSettings";
 import {
   UncommittedChangesModal,
-  RenameLoopModal,
 } from "../LoopModals";
 import { AppSettingsModal } from "../AppSettingsModal";
 import { RenameSshSessionModal } from "../RenameSshSessionModal";
@@ -64,10 +63,6 @@ export interface DashboardModalsProps {
   onCloseUncommittedModal: () => void;
   setUncommittedModal: (state: { open: boolean; loopId: string | null; error: UncommittedChangesError | null }) => void;
 
-  // Rename modal
-  renameModal: { open: boolean; loopId: string | null };
-  onCloseRenameModal: () => void;
-  onRename: (loopId: string, newName: string) => Promise<void>;
   sshSessionRenameModal: { open: boolean; sessionId: string | null };
   onCloseSshSessionRenameModal: () => void;
   onRenameSshSession: (sessionId: string, newName: string) => Promise<void>;
@@ -158,18 +153,6 @@ export function DashboardModals(props: DashboardModalsProps) {
         onExportConfig={props.onExportConfig}
         onImportConfig={props.onImportConfig}
         configSaving={props.workspaceCreating}
-      />
-
-      {/* Rename Loop modal */}
-      <RenameLoopModal
-        isOpen={props.renameModal.open}
-        onClose={props.onCloseRenameModal}
-        currentName={props.loops.find(l => l.config.id === props.renameModal.loopId)?.config.name ?? ""}
-        onRename={async (newName) => {
-          if (props.renameModal.loopId) {
-            await props.onRename(props.renameModal.loopId, newName);
-          }
-        }}
       />
 
       <RenameSshSessionModal

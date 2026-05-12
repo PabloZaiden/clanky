@@ -8,14 +8,12 @@ import { LoopRow } from "../LoopRow";
 
 interface LoopActions {
   onClick?: () => void;
-  onRename?: () => void;
 }
 
 export interface StatusSectionsProps {
   statusGroups: StatusGroups;
   keyPrefix: string;
   viewMode: DashboardViewMode;
-  onRename: (loopId: string) => void;
   onEditDraft: (loopId: string) => void;
   onSelectLoop?: (loopId: string) => void;
 }
@@ -25,14 +23,11 @@ export function StatusSections({
   statusGroups,
   keyPrefix,
   viewMode,
-  onRename,
   onEditDraft,
   onSelectLoop,
 }: StatusSectionsProps) {
   function getLoopActions(sectionKey: StatusSectionKey, loopId: string): LoopActions {
-    const actions: LoopActions = {
-      onRename: () => onRename(loopId),
-    };
+    const actions: LoopActions = {};
 
     if (sectionKey === "draft") {
       actions.onClick = () => onEditDraft(loopId);

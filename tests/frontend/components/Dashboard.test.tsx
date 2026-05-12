@@ -737,10 +737,10 @@ describe("create loop modal", () => {
 // ─── Address comments modal ─────────────────────────────────────────────────
 // Address comments action was removed from dashboard cards (now in LoopDetails).
 
-// ─── Rename loop modal ──────────────────────────────────────────────────────
+// ─── Loop rename restrictions ────────────────────────────────────────────────
 
-describe("rename loop modal", () => {
-  test("opens rename modal when rename is triggered", async () => {
+describe("loop rename restrictions", () => {
+  test("does not expose rename controls for started loops", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
     const loop = createLoopWithStatus("running", {
       config: { id: "l1", name: "Rename Me", workspaceId: "ws-1" },
@@ -749,21 +749,14 @@ describe("rename loop modal", () => {
     api.get("/api/loops", () => [loop]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText, user } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithUser(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Rename Me")).toBeTruthy();
     });
 
-    // LoopCard renders a rename button with aria-label "Rename loop"
     const renameBtn = document.querySelector('button[aria-label="Rename loop"]');
-    expect(renameBtn).toBeTruthy();
-
-    await user.click(renameBtn as HTMLElement);
-
-    await waitFor(() => {
-      expect(getByText("Rename Loop")).toBeTruthy();
-    });
+    expect(renameBtn).toBeNull();
   });
 });
 

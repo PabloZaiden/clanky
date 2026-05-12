@@ -15,7 +15,6 @@ import {
   MarkMergedModal,
   ManualCompleteLoopModal,
   UpdateBranchModal,
-  RenameLoopModal,
 } from "../LoopModals";
 
 interface LoopDetailsModalsProps {
@@ -72,13 +71,6 @@ export function LoopDetailsModals({ loopName, state, actions }: LoopDetailsModal
         onSubmit={actions.handleAddressComments}
         loopName={loopName}
         reviewCycle={(state.reviewMode?.reviewCycles || 0) + 1}
-      />
-
-      <RenameLoopModal
-        isOpen={actions.renameModal}
-        onClose={() => actions.setRenameModal(false)}
-        currentName={loopName}
-        onRename={actions.handleRename}
       />
 
       <ConfirmModal

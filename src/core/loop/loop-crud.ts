@@ -249,6 +249,20 @@ function assertAllowedPlanModeUpdateKeys(
   }
 }
 
+function assertNameUpdateAllowed(
+  state: LoopState,
+  updates: Partial<Omit<LoopConfig, "id" | "createdAt">>,
+): void {
+  if (updates.name === undefined || state.status === "draft") {
+    return;
+  }
+
+  throw createLoopUpdateError(
+    "Loop name can only be updated while the loop is still a draft.",
+    "LOOP_RENAME_RESTRICTED",
+  );
+}
+
 function syncPostApprovalFullyAutonomousPending(
   config: LoopConfig,
   state: LoopState,
@@ -284,6 +298,7 @@ export async function updateLoopImpl(
   const currentConfig = engine?.config ?? loop.config;
   const currentState = engine?.state ?? loop.state;
 
+  assertNameUpdateAllowed(currentState, updates);
   assertAllowedPlanModeUpdateKeys(currentConfig, currentState, updates);
 
   if (engine) {

@@ -344,6 +344,53 @@ describe("LoopManager", () => {
       expect(updated!.config.prompt).toBe("Updated prompt");
     });
 
+    test("allows renaming a draft loop", async () => {
+      const loop = await manager.createLoop({
+        ...testModelFields,
+        directory: testWorkDir,
+        prompt: "Draft prompt",
+        name: "Draft Loop",
+        workspaceId: testWorkspaceId,
+        planMode: false,
+        draft: true,
+      });
+
+      const updated = await manager.updateLoop(loop.config.id, {
+        name: "Renamed Draft",
+      });
+
+      expect(updated).not.toBeNull();
+      expect(updated!.config.name).toBe("Renamed Draft");
+    });
+
+    test("rejects renaming non-draft loops but allows other updates", async () => {
+      const loop = await manager.createLoop({
+        ...testModelFields,
+        directory: testWorkDir,
+        prompt: "Original prompt",
+        name: "Started Loop",
+        workspaceId: testWorkspaceId,
+        planMode: false,
+      });
+
+      await expect(
+        manager.updateLoop(loop.config.id, {
+          name: "Renamed Started Loop",
+        })
+      ).rejects.toMatchObject({
+        code: "LOOP_RENAME_RESTRICTED",
+        status: 409,
+      });
+
+      const updated = await manager.updateLoop(loop.config.id, {
+        prompt: "Updated prompt",
+      });
+
+      expect(updated).not.toBeNull();
+      expect(updated!.config.name).toBe("Started Loop");
+      expect(updated!.config.prompt).toBe("Updated prompt");
+    });
+
     test("rejects baseBranch update when git state exists", async () => {
       const loop = await manager.createLoop({
         ...testModelFields,

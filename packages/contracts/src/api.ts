@@ -147,7 +147,8 @@ export type CreateSshSessionRequest = z.infer<typeof CreateSshSessionRequestSche
 
 /**
  * Request body for PATCH /api/loops/:id endpoint.
- * All fields are optional - only provided fields are updated.
+ * All fields are optional - only provided fields are updated. Name updates
+ * are accepted only while the loop is still a draft.
  * 
  * Type is derived from UpdateLoopRequestSchema - the Zod schema is the
  * single source of truth for both validation and TypeScript types.
