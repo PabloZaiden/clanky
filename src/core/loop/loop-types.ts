@@ -1,4 +1,4 @@
-import type { CheapModelSelection, Loop, ModelConfig } from "../../types/loop";
+import type { CheapModelSelection, FollowUpPromptMode, Loop, ModelConfig } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { SshSession } from "../../types/ssh-session";
 
@@ -102,6 +102,13 @@ export interface SendFollowUpResult {
   reviewCycle?: number;
   branch?: string;
   commentIds?: string[];
+}
+
+export interface SendFollowUpOptions {
+  message: string;
+  model?: ModelConfig;
+  attachments?: MessageImageAttachment[];
+  promptMode?: FollowUpPromptMode;
 }
 
 /**

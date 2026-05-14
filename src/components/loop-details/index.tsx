@@ -10,6 +10,7 @@ import {
   isLoopActive,
   isLoopGenerating,
   canSendTerminalFollowUp,
+  canJumpstart,
   getEntityLabel,
 } from "../../utils";
 import type { TabId } from "./types";
@@ -250,7 +251,17 @@ export function LoopDetails({
           onStop={isActive || isPlanning ? stopLoop : undefined}
           onSubmit={async (options) => {
             if (isPlanning) { if (options.message) { await sendPlanFeedback(options.message, options.attachments); return true; } return false; }
-            if (canTerminalFollowUp) { if (options.message) return await sendFollowUp(options.message, options.model, options.attachments); return false; }
+            if (canTerminalFollowUp) {
+              if (options.message) {
+                return await sendFollowUp(
+                  options.message,
+                  options.model,
+                  options.attachments,
+                  canJumpstart(state.status) ? "plain_chat" : "loop_context",
+                );
+              }
+              return false;
+            }
             const result = await setPending(options);
             return result.success;
           }}

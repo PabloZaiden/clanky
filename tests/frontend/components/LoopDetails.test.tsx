@@ -1701,6 +1701,10 @@ describe("loop action bar", () => {
     await waitFor(() => {
       expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
     });
+    expect(api.calls("/api/loops/:id/follow-up", "POST")[0]?.body).toMatchObject({
+      message: "Please revise this",
+      promptMode: "loop_context",
+    });
   });
 
   test("shows restart composer for completed loops and submits follow-up", async () => {
@@ -1728,6 +1732,10 @@ describe("loop action bar", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
+    });
+    expect(api.calls("/api/loops/:id/follow-up", "POST")[0]?.body).toMatchObject({
+      message: "Continue from the last result",
+      promptMode: "plain_chat",
     });
   });
 

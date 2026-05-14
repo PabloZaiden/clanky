@@ -204,6 +204,7 @@ export const loopsPendingRoutes = {
         message: body.message.trim(),
         model: body.model ?? undefined,
         attachments: body.attachments,
+        promptMode: body.promptMode ?? "loop_context",
       });
       if (!result.success) {
         if (result.error?.includes("not found")) {

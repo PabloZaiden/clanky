@@ -10,6 +10,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import type { Loop, UpdateLoopRequest, SshSession } from "../../types";
+import type { FollowUpPromptMode } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type {
   AcceptLoopResult,
@@ -72,6 +73,7 @@ export interface UseLoopActionsResult {
     message: string,
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
+    promptMode?: FollowUpPromptMode,
   ) => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
 }

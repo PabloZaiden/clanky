@@ -16,6 +16,7 @@ import {
   type AutomaticPrFlowResult,
 } from "../loopActions";
 import { createLogger } from "../../lib/logger";
+import type { FollowUpPromptMode } from "../../types/loop";
 import type { SshSession } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { UseLoopActionsParams } from "./useLoopActions";
@@ -31,6 +32,7 @@ export interface UseLoopFollowUpActionsResult {
     message: string,
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
+    promptMode?: FollowUpPromptMode,
   ) => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
 }
@@ -88,6 +90,7 @@ export function useLoopFollowUpActions(params: UseLoopActionsParams): UseLoopFol
       message: string,
       model?: { providerID: string; modelID: string },
       attachments?: MessageImageAttachment[],
+      promptMode: FollowUpPromptMode = "loop_context",
     ): Promise<boolean> => {
       const actionLoopId = loopId;
       const staleAction = ignoreStaleLoopAction("sendFollowUp", actionLoopId, false);
@@ -99,7 +102,7 @@ export function useLoopFollowUpActions(params: UseLoopActionsParams): UseLoopFol
         messageLength: message.length,
       });
       try {
-        await sendFollowUpApi(actionLoopId, message, model, attachments);
+        await sendFollowUpApi(actionLoopId, message, model, attachments, promptMode);
         await refresh();
         if (!isActiveLoop(actionLoopId)) {
           return false;

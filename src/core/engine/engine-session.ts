@@ -92,8 +92,7 @@ export async function reconnectLoopSession(ctx: SessionOperationContext): Promis
 
   const activeSessionId = ctx.getSessionId();
   if (activeSessionId && ctx.backend.isConnected()) {
-    log.debug("[LoopEngine] reconnectSession: Already have an active connected session", { sessionId: activeSessionId });
-    return;
+    log.debug("[LoopEngine] reconnectSession: Verifying active connected session", { sessionId: activeSessionId });
   }
 
   const existingSessionId = activeSessionId ?? ctx.state.session?.id;
