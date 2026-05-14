@@ -4,7 +4,7 @@
 import type { LoopEngine } from "../loop-engine";
 import type { SimpleEventEmitter } from "../event-emitter";
 import type { LoopEvent } from "../../types/events";
-import type { FollowUpPromptMode, Loop, ModelConfig } from "../../types/loop";
+import type { Loop, ModelConfig } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { GitService } from "../git-service";
 import type { CommandExecutor } from "../command-executor";
@@ -38,8 +38,5 @@ export interface LoopCtx {
     loopId: string,
     options: { prompt: string; model?: ModelConfig; reviewCommentText?: string; attachments?: MessageImageAttachment[] },
   ): Promise<SendFollowUpResult>;
-  jumpstartLoop(
-    loopId: string,
-    options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[]; promptMode?: FollowUpPromptMode },
-  ): Promise<{ success: boolean; error?: string }>;
+  jumpstartLoop(loopId: string, options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }): Promise<{ success: boolean; error?: string }>;
 }

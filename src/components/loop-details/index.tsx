@@ -10,7 +10,6 @@ import {
   isLoopActive,
   isLoopGenerating,
   canSendTerminalFollowUp,
-  canJumpstart,
   getEntityLabel,
 } from "../../utils";
 import type { TabId } from "./types";
@@ -257,7 +256,7 @@ export function LoopDetails({
                   options.message,
                   options.model,
                   options.attachments,
-                  canJumpstart(state.status) ? "plain_chat" : "loop_context",
+                  state.status === "completed" ? "plain_chat" : "loop_context",
                 );
               }
               return false;

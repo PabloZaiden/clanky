@@ -79,7 +79,7 @@ async function startPlainChatFollowUp(
     return { success: false, error: "Planning loops must receive feedback through plan feedback" };
   }
 
-  if (!isPlainChatRestartableStatus(loop.state.status)) {
+  if (loop.state.status !== "completed") {
     return { success: false, error: `Loop cannot accept a plain chat follow-up from status: ${loop.state.status}` };
   }
 
@@ -96,7 +96,11 @@ async function startPlainChatFollowUp(
   const git = GitService.withExecutor(executor);
   await ctx.ensureLoopBranchCheckedOut(loop, git, workingDirectory);
 
-  const engine = activeEngine ?? new LoopEngine({
+  if (activeEngine) {
+    ctx.engines.delete(loopId);
+  }
+
+  const engine = new LoopEngine({
     loop,
     backend: backendManager.getLoopBackend(loopId, loop.config.workspaceId),
     gitService: git,
@@ -107,16 +111,11 @@ async function startPlainChatFollowUp(
     skipGitSetup: true,
   });
 
-  if (!activeEngine) {
-    ctx.engines.set(loopId, engine);
-    startStatePersistenceImpl(ctx, loopId);
-  }
-
   const previousSessionId = engine.state.session?.id;
   try {
     await engine.reconnectSession();
   } catch (error) {
-    if (!activeEngine) {
+    if (ctx.engines.get(loopId) === engine) {
       ctx.engines.delete(loopId);
     }
     return { success: false, error: `Failed to reconnect loop session: ${String(error)}` };
@@ -131,6 +130,8 @@ async function startPlainChatFollowUp(
 
   preparePlainChatState(engine, options);
   await updateLoopState(loopId, engine.state);
+  ctx.engines.set(loopId, engine);
+  startStatePersistenceImpl(ctx, loopId);
 
   engine.runSingleTurn().catch(async (error) => {
     log.error(`Plain chat follow-up failed for loop ${loopId}: ${String(error)}`);
@@ -172,10 +173,6 @@ function preparePlainChatState(
   if (options.model) {
     engine.setPendingModel(options.model);
   }
-}
-
-function isPlainChatRestartableStatus(status: LoopStatus): boolean {
-  return status === "completed" || status === "stopped" || status === "failed" || status === "max_iterations";
 }
 
 function isActiveSingleTurnStatus(status: LoopStatus): boolean {

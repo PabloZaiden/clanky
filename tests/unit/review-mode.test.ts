@@ -368,6 +368,38 @@ describe("Review Mode", () => {
       }
     });
 
+    test("plain chat follow-up is rejected for non-completed terminal loops", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+      });
+
+      try {
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Stopped Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+        loop.state.status = "stopped";
+        await saveLoop(loop);
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "Resume with context",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(false);
+        expect(followUpResult.error).toContain("status: stopped");
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
     test("restarts a pushed loop on the existing review branch", async () => {
       const ctx = await setupTestContext({
         initGit: true,

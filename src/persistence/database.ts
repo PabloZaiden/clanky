@@ -191,6 +191,7 @@ function createTables(database: Database): void {
         tool_calls TEXT,
         consecutive_errors TEXT,
         pending_prompt TEXT,
+        pending_prompt_mode TEXT,
         pending_model_provider_id TEXT,
         pending_model_model_id TEXT,
         pending_model_variant TEXT,
@@ -598,6 +599,9 @@ function ensureLoopSchema(database: Database): void {
   }
   if (!columns.some((column) => column.name === "cheap_model")) {
     database.run("ALTER TABLE loops ADD COLUMN cheap_model TEXT");
+  }
+  if (!columns.some((column) => column.name === "pending_prompt_mode")) {
+    database.run("ALTER TABLE loops ADD COLUMN pending_prompt_mode TEXT");
   }
 }
 
