@@ -338,6 +338,38 @@ describe("SshTerminalBridge", () => {
     }
   });
 
+  test("normalizes non-capable TERM values when opening the SSH terminal", async () => {
+    const previousTerm = process.env["TERM"];
+    const previousColorTerm = process.env["COLORTERM"];
+    process.env["TERM"] = "dumb";
+    delete process.env["COLORTERM"];
+
+    try {
+      const bridge = new SshTerminalBridge(session.config.id, {
+        onOutput: () => {},
+      });
+
+      await bridge.connect();
+
+      expect(lastSpawnCommand?.[0]).toBe("ssh");
+      expect(lastSpawnEnv?.["TERM"]).toBe("xterm-256color");
+      expect(lastSpawnEnv?.["COLORTERM"]).toBe("truecolor");
+
+      await bridge.dispose();
+    } finally {
+      if (previousTerm === undefined) {
+        delete process.env["TERM"];
+      } else {
+        process.env["TERM"] = previousTerm;
+      }
+      if (previousColorTerm === undefined) {
+        delete process.env["COLORTERM"];
+      } else {
+        process.env["COLORTERM"] = previousColorTerm;
+      }
+    }
+  });
+
   test("marks startup probe failures as failed and tears down the SSH process", async () => {
     execImpl = async (command: string, args: string[]) => {
       if (command === "bash" && args[0] === "-lc" && args[1]?.includes("command -v dtach")) {

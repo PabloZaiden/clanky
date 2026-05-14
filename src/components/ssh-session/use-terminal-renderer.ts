@@ -10,6 +10,7 @@ import {
   remeasureTerminalFont,
   resolveTerminalFontFamily,
   TERMINAL_FONT_SIZE_PX,
+  TERMINAL_SCROLLBACK_LINES,
   TERMINAL_THEME,
 } from "./terminal-constants";
 import { installTerminalMouseHandlers } from "./terminal-mouse";
@@ -70,6 +71,9 @@ export function useTerminalRenderer({
         terminal = new Terminal({
           fontSize: TERMINAL_FONT_SIZE_PX,
           fontFamily: terminalFontFamily,
+          cursorBlink: true,
+          cursorStyle: "block",
+          scrollback: TERMINAL_SCROLLBACK_LINES,
           theme: TERMINAL_THEME,
         });
         fitAddon = new FitAddon();

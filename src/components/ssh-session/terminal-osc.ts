@@ -17,8 +17,12 @@ function toOscRgb(color: string): string | null {
   return `rgb:${match[1]}/${match[2]}/${match[3]}`;
 }
 
-function buildTerminalOscColorReply(command: "10" | "11"): string | null {
-  const color = command === "10" ? TERMINAL_THEME.foreground : TERMINAL_THEME.background;
+function buildTerminalOscColorReply(command: "10" | "11" | "12"): string | null {
+  const color = command === "10"
+    ? TERMINAL_THEME.foreground
+    : command === "11"
+    ? TERMINAL_THEME.background
+    : TERMINAL_THEME.cursor;
   const rgb = toOscRgb(color);
   return rgb ? `${TERMINAL_OSC_QUERY_SEQUENCE_START}${command};${rgb}${TERMINAL_OSC_STRING_TERMINATOR}` : null;
 }
@@ -80,7 +84,7 @@ function buildTerminalOscPaletteReply(payload: string): string | null {
 }
 
 type TerminalOscColorQuery = {
-  command: "4" | "10" | "11";
+  command: "4" | "10" | "11" | "12";
   index: number;
   length: number;
 };
@@ -95,10 +99,12 @@ function findTerminalOscColorQuery(buffer: string, cursor: number): TerminalOscC
   const query4Index = buffer.indexOf(`${TERMINAL_OSC_QUERY_SEQUENCE_START}4;`, cursor);
   const query10Index = buffer.indexOf(`${TERMINAL_OSC_QUERY_SEQUENCE_START}10;?`, cursor);
   const query11Index = buffer.indexOf(`${TERMINAL_OSC_QUERY_SEQUENCE_START}11;?`, cursor);
+  const query12Index = buffer.indexOf(`${TERMINAL_OSC_QUERY_SEQUENCE_START}12;?`, cursor);
   const candidates = [
     query4Index >= 0 ? { command: "4" as const, index: query4Index, length: `${TERMINAL_OSC_QUERY_SEQUENCE_START}4;`.length } : null,
     query10Index >= 0 ? { command: "10" as const, index: query10Index, length: `${TERMINAL_OSC_QUERY_SEQUENCE_START}10;?`.length } : null,
     query11Index >= 0 ? { command: "11" as const, index: query11Index, length: `${TERMINAL_OSC_QUERY_SEQUENCE_START}11;?`.length } : null,
+    query12Index >= 0 ? { command: "12" as const, index: query12Index, length: `${TERMINAL_OSC_QUERY_SEQUENCE_START}12;?`.length } : null,
   ].filter((candidate): candidate is TerminalOscColorQuery => candidate !== null);
 
   if (candidates.length === 0) {
@@ -138,6 +144,7 @@ function getTerminalOscQueryCarryoverLength(buffer: string): number {
     `${TERMINAL_OSC_QUERY_SEQUENCE_START}4;`,
     `${TERMINAL_OSC_QUERY_SEQUENCE_START}10;?`,
     `${TERMINAL_OSC_QUERY_SEQUENCE_START}11;?`,
+    `${TERMINAL_OSC_QUERY_SEQUENCE_START}12;?`,
   ];
   const maxCarryoverLength = queryPrefixes.reduce((maxLength, prefix) => Math.max(maxLength, prefix.length), 0) - 1;
 

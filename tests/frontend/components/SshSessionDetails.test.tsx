@@ -14,28 +14,28 @@ import { clearStoredSshServerCredential } from "@/lib/ssh-browser-credentials";
 let clipboardWrites: string[] = [];
 const originalDocumentFonts = "fonts" in document ? document.fonts : undefined;
 const expectedTerminalTheme = {
-  background: "#1e1e1e",
-  foreground: "#d4d4d4",
-  cursor: "#aeafad",
-  cursorAccent: "#1e1e1e",
-  selectionBackground: "#264f78",
+  background: "#15191f",
+  foreground: "#cdd0d7",
+  cursor: "#f2f4f8",
+  cursorAccent: "#15191f",
+  selectionBackground: "#2f3541",
   selectionForeground: "#ffffff",
-  black: "#000000",
-  red: "#cd3131",
-  green: "#0dbc79",
-  yellow: "#e5e510",
-  blue: "#2472c8",
-  magenta: "#bc3fbc",
-  cyan: "#11a8cd",
-  white: "#e5e5e5",
-  brightBlack: "#666666",
-  brightRed: "#f14c4c",
-  brightGreen: "#23d18b",
-  brightYellow: "#f5f543",
-  brightBlue: "#3b8eea",
-  brightMagenta: "#d670d6",
-  brightCyan: "#29b8db",
-  brightWhite: "#ffffff",
+  black: "#15191f",
+  red: "#ff6b6b",
+  green: "#8bd49c",
+  yellow: "#f4d06f",
+  blue: "#7aa2f7",
+  magenta: "#c678dd",
+  cyan: "#5de4c7",
+  white: "#cdd0d7",
+  brightBlack: "#5c6370",
+  brightRed: "#ff7b72",
+  brightGreen: "#9ece6a",
+  brightYellow: "#f9e2af",
+  brightBlue: "#89b4fa",
+  brightMagenta: "#f5c2e7",
+  brightCyan: "#94e2d5",
+  brightWhite: "#f2f4f8",
 } as const;
 
 function restoreDocumentFonts() {
@@ -168,7 +168,10 @@ describe("SshSessionDetails", () => {
 
     expect(lastTerminalOptions).toEqual({
       fontSize: 12,
-      fontFamily: "SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", monospace, \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", \"Ralpher Terminal Nerd Font\"",
+      fontFamily: "\"Ralpher Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
+      cursorBlink: true,
+      cursorStyle: "block",
+      scrollback: 10000,
       theme: expectedTerminalTheme,
     });
   });
@@ -228,7 +231,10 @@ describe("SshSessionDetails", () => {
 
     expect(lastTerminalOptions).toEqual({
       fontSize: 12,
-      fontFamily: "SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", monospace, \"Liga SFMono Nerd Font\", \"Ralpher Terminal Nerd Font\"",
+      fontFamily: "\"Ralpher Terminal Nerd Font\", \"Liga SFMono Nerd Font\", monospace",
+      cursorBlink: true,
+      cursorStyle: "block",
+      scrollback: 10000,
       theme: expectedTerminalTheme,
     });
   });
@@ -252,7 +258,7 @@ describe("SshSessionDetails", () => {
     await act(async () => {
       ws.sendEventTo(terminalConnection, {
         type: "terminal.output",
-        data: "\u001b]11;?\u001b\\\u001b]4;0;?\u001b\\",
+        data: "\u001b]11;?\u001b\\\u001b]12;?\u001b\\\u001b]4;0;?\u001b\\",
       });
       ws.sendEventTo(terminalConnection, {
         type: "terminal.output",
@@ -264,24 +270,29 @@ describe("SshSessionDetails", () => {
     expect(lastTerminal!.writes.some((chunk) =>
       chunk.includes("\u001b]11;?")
       || chunk.includes("\u001b]10;?")
+      || chunk.includes("\u001b]12;?")
       || chunk.includes("\u001b]4;0;?")
       || chunk.includes("\u001b]4;2;?")
     )).toBe(false);
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]4;0;rgb:00/00/00\u001b\\",
+      data: "\u001b]4;0;rgb:15/19/1f\u001b\\",
     }));
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]4;2;rgb:0d/bc/79\u001b\\",
+      data: "\u001b]4;2;rgb:8b/d4/9c\u001b\\",
     }));
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]11;rgb:1e/1e/1e\u001b\\",
+      data: "\u001b]11;rgb:15/19/1f\u001b\\",
     }));
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]10;rgb:d4/d4/d4\u001b\\",
+      data: "\u001b]12;rgb:f2/f4/f8\u001b\\",
+    }));
+    expect(terminalConnection.sentMessages).toContain(JSON.stringify({
+      type: "terminal.input",
+      data: "\u001b]10;rgb:cd/d0/d7\u001b\\",
     }));
   });
 

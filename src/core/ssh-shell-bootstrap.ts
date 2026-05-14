@@ -2,7 +2,7 @@
  * Shared shell bootstrap helpers used by SSH terminal startup commands.
  */
 
-import { DEFAULT_SSH_COLOR_TERM } from "./ssh-terminal-env";
+import { DEFAULT_SSH_COLOR_TERM, DEFAULT_SSH_TERM } from "./ssh-terminal-env";
 
 function quoteShell(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -31,6 +31,8 @@ export function buildShellBootstrapCommand(options: { directory?: string; useTmu
 
   return [
     changeDirectoryCommand,
+    "case \"${TERM:-}\" in ''|dumb|unknown) TERM=" + quoteShell(DEFAULT_SSH_TERM) + ";; esac;",
+    "export TERM;",
     `COLORTERM=${quoteShell(DEFAULT_SSH_COLOR_TERM)};`,
     "export COLORTERM;",
     "shell=\"${SHELL:-/bin/sh}\";",

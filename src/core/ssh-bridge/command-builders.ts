@@ -8,7 +8,7 @@ import {
   buildPersistentSessionAttachCommand,
 } from "../ssh-persistent-session";
 import { buildShellBootstrapCommand } from "../ssh-shell-bootstrap";
-import { DEFAULT_SSH_COLOR_TERM, DEFAULT_SSH_TERM } from "../ssh-terminal-env";
+import { DEFAULT_SSH_COLOR_TERM, normalizeSshTerm } from "../ssh-terminal-env";
 import {
   buildSshProcessConfig,
   type SshConnectionTarget,
@@ -66,12 +66,11 @@ function buildSessionStartupCommand(
 }
 
 function buildSpawnEnv(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
-  const configuredTerm = process.env["TERM"]?.trim();
   const configuredColorTerm = process.env["COLORTERM"]?.trim();
   return {
     ...process.env,
     ...extraEnv,
-    TERM: configuredTerm && configuredTerm.length > 0 ? configuredTerm : DEFAULT_SSH_TERM,
+    TERM: normalizeSshTerm(process.env["TERM"]),
     COLORTERM: configuredColorTerm && configuredColorTerm.length > 0 ? configuredColorTerm : DEFAULT_SSH_COLOR_TERM,
   };
 }
