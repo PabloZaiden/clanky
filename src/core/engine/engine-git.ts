@@ -102,10 +102,10 @@ export async function setupLoopGitBranch(ctx: GitOperationContext, _allowPlannin
     throw new Error(`Directory is not a git repository: ${directory}`);
   }
 
-  await ctx.git.ensureWorktreeExcluded(directory);
-
   const originalBranch = await resolveOriginalBranch(ctx, directory);
-  const branchName = await resolveBranchName(ctx, directory);
+  const branchName = ctx.config.useWorktree
+    ? await resolveBranchName(ctx, directory)
+    : await resolveDirectBranchName(ctx, directory);
 
   if (originalBranch === branchName && !ctx.state.git?.originalBranch) {
     ctx.emitLog("warn", `Base branch matches generated working branch (${originalBranch}); preserving base branch but continuing`, {
@@ -114,24 +114,21 @@ export async function setupLoopGitBranch(ctx: GitOperationContext, _allowPlannin
     });
   }
 
-  await syncMainCheckoutBeforeWorktree({
-    git: ctx.git,
-    directory,
-    baseBranch: originalBranch,
-    onInfo: (message: string) => {
-      ctx.emitLog("info", message);
-    },
-    onDebug: (message: string) => {
-      ctx.emitLog("debug", message);
-    },
-  });
-
-  const worktreePath = ctx.config.useWorktree
-    ? await setupWorktree(ctx, directory, branchName, originalBranch)
-    : undefined;
-
-  if (!ctx.config.useWorktree) {
-    await setupBranchInMainCheckout(ctx, directory, branchName, originalBranch);
+  let worktreePath: string | undefined;
+  if (ctx.config.useWorktree) {
+    await ctx.git.ensureWorktreeExcluded(directory);
+    await syncMainCheckoutBeforeWorktree({
+      git: ctx.git,
+      directory,
+      baseBranch: originalBranch,
+      onInfo: (message: string) => {
+        ctx.emitLog("info", message);
+      },
+      onDebug: (message: string) => {
+        ctx.emitLog("debug", message);
+      },
+    });
+    worktreePath = await setupWorktree(ctx, directory, branchName, originalBranch);
   }
 
   ctx.updateState({
@@ -151,30 +148,6 @@ export async function setupLoopGitBranch(ctx: GitOperationContext, _allowPlannin
     useWorktree: ctx.config.useWorktree,
   });
   log.debug("[LoopEngine] Exiting setupGitBranch");
-}
-
-async function setupBranchInMainCheckout(
-  ctx: GitOperationContext,
-  directory: string,
-  branchName: string,
-  originalBranch: string,
-): Promise<void> {
-  const branchExists = await ctx.git.branchExists(directory, branchName);
-
-  if (branchExists) {
-    ctx.emitLog("info", `Checking out existing working branch in main checkout: ${branchName}`);
-    await ctx.git.checkoutBranch(directory, branchName);
-    return;
-  }
-
-  const currentBranch = await ctx.git.getCurrentBranch(directory);
-  if (currentBranch !== originalBranch) {
-    ctx.emitLog("info", `Checking out base branch before creating working branch: ${originalBranch}`);
-    await ctx.git.checkoutBranch(directory, originalBranch);
-  }
-
-  ctx.emitLog("info", `Creating working branch in main checkout: ${branchName}`);
-  await ctx.git.createBranch(directory, branchName);
 }
 
 async function resolveBranchName(ctx: GitOperationContext, directory: string): Promise<string> {
@@ -202,10 +175,26 @@ async function resolveBranchName(ctx: GitOperationContext, directory: string): P
   return branchName;
 }
 
+async function resolveDirectBranchName(ctx: GitOperationContext, directory: string): Promise<string> {
+  if (ctx.state.git?.workingBranch) {
+    return ctx.state.git.workingBranch;
+  }
+
+  // Non-worktree loops intentionally commit directly on the user's current branch.
+  const branch = await ctx.git.getCurrentBranch(directory);
+  ctx.emitLog("info", `Using current branch directly: ${branch}`);
+  return branch;
+}
+
 async function resolveOriginalBranch(ctx: GitOperationContext, directory: string): Promise<string> {
   if (ctx.state.git?.originalBranch) {
     const branch = ctx.state.git.originalBranch;
     ctx.emitLog("info", `Preserving existing original branch: ${branch}`);
+    return branch;
+  }
+  if (!ctx.config.useWorktree) {
+    const branch = await ctx.git.getCurrentBranch(directory);
+    ctx.emitLog("info", `Using current branch directly as original branch: ${branch}`);
     return branch;
   }
   if (ctx.config.baseBranch) {

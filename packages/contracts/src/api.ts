@@ -264,12 +264,10 @@ export type GetCommentsResponse =
 export interface ReviewHistory {
   /** Whether the loop can still receive reviewer comments */
   addressable: boolean;
-  /** How the loop was originally completed (push or merge) */
-  completionAction: "push" | "merge";
+  /** How the loop was last finalized */
+  completionAction: "local" | "push";
   /** Number of review cycles completed (times comments were addressed) */
   reviewCycles: number;
-  /** For merged loops: list of all branches created during review cycles */
-  reviewBranches: string[];
 }
 
 /**
@@ -295,8 +293,6 @@ export type ReviewHistoryResponse =
 export type AcceptResponse =
   | {
       success: true;
-      /** The SHA of the merge commit created */
-      mergeCommit: string;
     }
   | {
       success: false;

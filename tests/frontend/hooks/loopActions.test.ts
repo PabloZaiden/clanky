@@ -60,12 +60,11 @@ describe("acceptLoopApi", () => {
   test("calls POST /api/loops/:id/accept and returns result", async () => {
     api.post(`/api/loops/${LOOP_ID}/accept`, () => ({
       success: true,
-      mergeCommit: "abc123def",
     }));
 
     const result = await acceptLoopApi(LOOP_ID);
 
-    expect(result).toEqual({ success: true, mergeCommit: "abc123def" });
+    expect(result).toEqual({ success: true });
     expect(api.calls(`/api/loops/${LOOP_ID}/accept`, "POST")).toHaveLength(1);
   });
 

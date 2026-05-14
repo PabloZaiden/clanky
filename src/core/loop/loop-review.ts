@@ -8,7 +8,7 @@ import { loadLoop, saveLoop } from "../../persistence/loops";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
 import { getLoopWorkingDirectory } from "./loop-types";
-import { constructReviewPrompt, setupMergedReviewWorktree, transitionToFeedbackCycleAndStart } from "./review-engine";
+import { constructReviewPrompt, transitionToFeedbackCycleAndStart } from "./review-engine";
 import { enableExistingPullRequestAutoMerge, ensureAutomaticPrFlowPullRequest } from "../automatic-pr-flow-github";
 import { emitAutomaticPrFlowUpdatedEvent } from "./loop-automatic-pr-flow-events";
 export { getReviewHistoryImpl } from "./review-history";
@@ -359,10 +359,10 @@ export async function startFeedbackCycleImpl(
   }
 
   if (!loop.state.reviewMode?.addressable) {
-    return { success: false, error: "Loop is not addressable. Only pushed or merged loops can receive follow-up feedback." };
+    return { success: false, error: "Loop is not addressable. Only pushed or locally accepted loops can receive follow-up feedback." };
   }
 
-  if (loop.state.status !== "pushed" && loop.state.status !== "merged") {
+  if (loop.state.status !== "pushed" && loop.state.status !== "accepted_local") {
     return { success: false, error: `Cannot send follow-up on loop with status: ${loop.state.status}` };
   }
 
@@ -382,38 +382,19 @@ export async function startFeedbackCycleImpl(
         }
       : undefined;
 
-    if (loop.state.reviewMode.completionAction === "push") {
-      if (!loop.state.git?.workingBranch) {
-        return { success: false, error: "No working branch found for pushed loop" };
-      }
-
-      loop.state.reviewMode.reviewCycles += 1;
-
-      return transitionToFeedbackCycleAndStart(ctx, loopId, loop, backend, git, {
-        prompt: options.prompt,
-        model: options.model,
-        transitionLabel: "pushed",
-        reviewComment,
-        nextReviewCycle,
-        resultBranch: loop.state.git.workingBranch,
-        attachments: options.attachments,
-      });
-    }
-
-    if (!loop.state.git?.originalBranch) {
-      return { success: false, error: "No original branch found for merged loop" };
+    if (!loop.state.git?.workingBranch) {
+      return { success: false, error: "No working branch found for loop" };
     }
 
     loop.state.reviewMode.reviewCycles += 1;
-    const reviewBranchName = await setupMergedReviewWorktree(loop, git);
 
     return transitionToFeedbackCycleAndStart(ctx, loopId, loop, backend, git, {
       prompt: options.prompt,
       model: options.model,
-      transitionLabel: "merged",
+      transitionLabel: loop.state.reviewMode.completionAction,
       reviewComment,
       nextReviewCycle,
-      resultBranch: reviewBranchName,
+      resultBranch: loop.state.git.workingBranch,
       attachments: options.attachments,
     });
   } catch (error) {

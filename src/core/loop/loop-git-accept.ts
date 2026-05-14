@@ -3,7 +3,6 @@ import type { AcceptLoopResult } from "./loop-types";
 import { createTimestamp } from "../../types/events";
 import { updateLoopState } from "../../persistence/loops";
 import { backendManager } from "../backend-manager";
-import { GitService } from "../git-service";
 import { log } from "../logger";
 import { assertValidTransition } from "../loop-state-machine";
 
@@ -26,44 +25,26 @@ export async function acceptLoopImpl(ctx: LoopCtx, loopId: string): Promise<Acce
     return { success: false, error: "No git branch was created for this loop" };
   }
 
-  if (loop.state.reviewMode?.completionAction &&
-      loop.state.reviewMode.completionAction !== "merge") {
-    return {
-      success: false,
-      error: "This loop was originally pushed. Use push to finalize review cycles.",
-    };
-  }
-
   ctx.loopsBeingAccepted.add(loopId);
   log.debug(`[LoopManager] acceptLoop: Starting accept for loop ${loopId}`);
 
   try {
-    const executor = await backendManager.getCommandExecutorAsync(loop.config.workspaceId, loop.config.directory);
-    const git = GitService.withExecutor(executor);
-
-    const mergeCommit = await git.mergeBranch(
-      loop.config.directory,
-      loop.state.git.workingBranch,
-      loop.state.git.originalBranch
-    );
-
     const reviewMode = loop.state.reviewMode
       ? {
           ...loop.state.reviewMode,
           addressable: true,
-          completionAction: "merge" as const,
+          completionAction: "local" as const,
         }
       : {
           addressable: true,
-          completionAction: "merge" as const,
+          completionAction: "local" as const,
           reviewCycles: 0,
-          reviewBranches: [loop.state.git.workingBranch],
         };
 
-    assertValidTransition(loop.state.status, "merged", "acceptLoop");
+    assertValidTransition(loop.state.status, "accepted_local", "acceptLoop");
     const updatedState = {
       ...loop.state,
-      status: "merged" as const,
+      status: "accepted_local" as const,
       reviewMode,
     };
     await updateLoopState(loopId, updatedState);
@@ -75,11 +56,10 @@ export async function acceptLoopImpl(ctx: LoopCtx, loopId: string): Promise<Acce
     ctx.emitter.emit({
       type: "loop.accepted",
       loopId,
-      mergeCommit,
       timestamp: createTimestamp(),
     });
 
-    return { success: true, mergeCommit };
+    return { success: true };
   } catch (error) {
     return { success: false, error: String(error) };
   } finally {

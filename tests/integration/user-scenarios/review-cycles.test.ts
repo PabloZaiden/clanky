@@ -218,19 +218,19 @@ describe("Review Cycle User Scenarios", () => {
       const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
       const firstWorkingBranch = completedLoop.state.git!.workingBranch;
 
-      // Accept (merge) the loop
+      // Accept the loop locally
       const { status: acceptStatus } = await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
       expect(acceptStatus).toBe(200);
 
       // Verify we're back on original branch
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
-      // Verify loop is merged with review mode
-      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
-      expect(mergedLoop.state.reviewMode).toBeDefined();
-      expect(mergedLoop.state.reviewMode?.addressable).toBe(true);
-      expect(mergedLoop.state.reviewMode?.completionAction).toBe("merge");
-      expect(mergedLoop.state.reviewMode?.reviewCycles).toBe(0);
+      // Verify loop is accepted locally with review mode
+      const acceptedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
+      expect(acceptedLoop.state.reviewMode).toBeDefined();
+      expect(acceptedLoop.state.reviewMode?.addressable).toBe(true);
+      expect(acceptedLoop.state.reviewMode?.completionAction).toBe("local");
+      expect(acceptedLoop.state.reviewMode?.reviewCycles).toBe(0);
 
       // Address reviewer comments
       const addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
@@ -242,7 +242,7 @@ describe("Review Cycle User Scenarios", () => {
       const addressResult = await addressResponse.json();
       expect(addressResult.success).toBe(true);
       expect(addressResult.reviewCycle).toBe(1);
-      expect(addressResult.branch).toContain("-review-1");
+      expect(addressResult.branch).toBe(firstWorkingBranch);
 
       // Wait for addressing to complete
       const addressedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
@@ -250,18 +250,12 @@ describe("Review Cycle User Scenarios", () => {
       // Verify review cycle was incremented
       expect(addressedLoop.state.reviewMode?.reviewCycles).toBe(1);
 
-      // Verify new review branch was created
+      // Verify the same branch was reused
       const reviewBranch = addressedLoop.state.git!.workingBranch;
-      expect(reviewBranch).toContain("-review-1");
-      expect(reviewBranch).not.toBe(firstWorkingBranch);
+      expect(reviewBranch).toBe(firstWorkingBranch);
       expect(await branchExists(ctx.workDir, reviewBranch)).toBe(true);
 
-      // Verify review branches array contains both branches
-      expect(addressedLoop.state.reviewMode?.reviewBranches.length).toBe(2);
-      expect(addressedLoop.state.reviewMode?.reviewBranches).toContain(firstWorkingBranch);
-      expect(addressedLoop.state.reviewMode?.reviewBranches).toContain(reviewBranch);
-
-      // Can merge again
+      // Can accept locally again
       const { status: accept2Status } = await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
       expect(accept2Status).toBe(200);
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
@@ -289,7 +283,7 @@ describe("Review Cycle User Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("merged loop creates new branch for each review cycle", async () => {
+    test("local accepted loop reuses the same branch for each review cycle", async () => {
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
       // Create and complete initial loop
@@ -303,9 +297,9 @@ describe("Review Cycle User Scenarios", () => {
       await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
       const initialBranch = (await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}`).then(r => r.json())).state.git.workingBranch;
 
-      // Initial merge
+      // Initial local accept
       await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
 
       // Review cycle 1
       let addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {
@@ -319,11 +313,11 @@ describe("Review Cycle User Scenarios", () => {
       
       const afterReview1 = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}`).then(r => r.json());
       const review1Branch = afterReview1.state.git.workingBranch;
-      expect(review1Branch).toContain("-review-1");
+      expect(review1Branch).toBe(initialBranch);
 
-      // Merge again
+      // Accept locally again
       await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Review cycle 2
@@ -338,17 +332,12 @@ describe("Review Cycle User Scenarios", () => {
 
       const afterReview2 = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}`).then(r => r.json());
       const review2Branch = afterReview2.state.git.workingBranch;
-      expect(review2Branch).toContain("-review-2");
-      expect(review2Branch).not.toBe(review1Branch);
+      expect(review2Branch).toBe(initialBranch);
 
-      // Verify review history tracks all branches
+      // Verify review history tracks review cycles without per-cycle branches
       const historyResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/review-history`);
       const history = await historyResponse.json();
       expect(history.history.reviewCycles).toBe(2);
-      expect(history.history.reviewBranches.length).toBe(3); // initial + 2 review branches
-      expect(history.history.reviewBranches).toContain(initialBranch);
-      expect(history.history.reviewBranches).toContain(review1Branch);
-      expect(history.history.reviewBranches).toContain(review2Branch);
     }, { timeout: 45_000 });
   });
 
@@ -390,7 +379,7 @@ describe("Review Cycle User Scenarios", () => {
 
       // Accept (merge) the initial work
       await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
 
       // Submit first round of feedback
       const comment1Text = "Please add error handling for edge cases";
@@ -408,7 +397,7 @@ describe("Review Cycle User Scenarios", () => {
       // Wait for first review cycle to complete and merge
       await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
       await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
 
       // Verify first comment is still in history after merge
       let commentsResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/comments`);
@@ -435,7 +424,7 @@ describe("Review Cycle User Scenarios", () => {
       // Wait for second review cycle to complete and merge
       await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
       await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
 
       // CRITICAL: Both comments should still be in history after all merges
       commentsResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/comments`);
@@ -613,7 +602,7 @@ describe("Review Cycle User Scenarios", () => {
       // Wait for initial completion and merge
       await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
       await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
 
       // Address comments - this should only return AFTER the loop has started
       const addressResponse = await fetch(`${ctx.baseUrl}/api/loops/${loop.config.id}/address-comments`, {

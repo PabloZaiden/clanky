@@ -179,16 +179,14 @@ export interface LoopState {
     isPlanReady: boolean;
   };
 
-  /** Review mode state for addressing comments after push/merge */
+  /** Review mode state for addressing comments after local accept or push */
   reviewMode?: {
     /** Whether the loop can receive reviewer comments */
     addressable: boolean;
     /** How the loop was originally completed */
-    completionAction: "push" | "merge";
+    completionAction: "local" | "push";
     /** Number of review cycles completed */
     reviewCycles: number;
-    /** List of branches created during review cycles (for merged loops) */
-    reviewBranches: string[];
   };
 
   /** Persisted backend PR monitoring state for pushed loops */
@@ -272,7 +270,7 @@ export interface ConsecutiveErrorTracker {
  * Possible statuses for a Ralph Loop.
  * 
  * Lifecycle: draft -> idle -> starting -> running <-> waiting -> completed/stopped/failed
- * Final states: merged, pushed, deleted (can be purged)
+ * Final states: accepted_local, merged, pushed, deleted (can be purged)
  */
 export type LoopStatus =
   | "idle"                // Created but not started (transitional)
@@ -286,7 +284,8 @@ export type LoopStatus =
   | "failed"              // Unrecoverable error occurred
   | "max_iterations"      // Hit the maximum iteration limit
   | "resolving_conflicts" // Resolving merge conflicts with base branch before push
-  | "merged"              // Changes merged into original branch (final state)
+  | "accepted_local"      // Commits accepted locally without pushing
+  | "merged"              // Pushed branch was merged externally (final state)
   | "pushed"              // Branch pushed to remote (final state, can receive reviews)
   | "deleted";            // Marked for deletion (final state, awaiting purge)
 

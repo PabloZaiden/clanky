@@ -177,7 +177,6 @@ describe("LoopManager", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: [],
         },
       });
 
@@ -702,10 +701,10 @@ describe("LoopManager", () => {
         planMode: false,
       });
 
-      // Manually update the state to a final state without git
+      // Manually update the state to a pushed state without git
       await updateLoopState(loop.config.id, {
         ...loop.state,
-        status: "completed",
+        status: "pushed",
         // No git state
       });
 

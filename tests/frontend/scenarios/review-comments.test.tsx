@@ -36,7 +36,6 @@ function pushedAddressableLoop(reviewCycles = 0) {
         addressable: true,
         completionAction: "push",
         reviewCycles,
-        reviewBranches: [],
       },
     },
   });
@@ -48,9 +47,8 @@ function mergedAddressableLoop(reviewCycles = 0) {
     state: {
       reviewMode: {
         addressable: true,
-        completionAction: "merge",
+        completionAction: "local",
         reviewCycles,
-        reviewBranches: [],
       },
     },
   });

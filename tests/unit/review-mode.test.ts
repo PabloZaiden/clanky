@@ -67,22 +67,18 @@ describe("Review Mode", () => {
         expect(completedLoop).not.toBeNull();
         expect(completedLoop!.state.git?.workingBranch).toBeDefined();
 
-        // Accept (merge) the loop
+        // Accept the loop locally
         const acceptResult = await ctx.manager.acceptLoop(loop.config.id);
         expect(acceptResult.success).toBe(true);
 
         // Verify review mode is initialized
         const acceptedLoop = await ctx.manager.getLoop(loop.config.id);
         expect(acceptedLoop).not.toBeNull();
-        expect(acceptedLoop!.state.status).toBe("merged");
+        expect(acceptedLoop!.state.status).toBe("accepted_local");
         expect(acceptedLoop!.state.reviewMode).toBeDefined();
         expect(acceptedLoop!.state.reviewMode!.addressable).toBe(true);
-        expect(acceptedLoop!.state.reviewMode!.completionAction).toBe("merge");
+        expect(acceptedLoop!.state.reviewMode!.completionAction).toBe("local");
         expect(acceptedLoop!.state.reviewMode!.reviewCycles).toBe(0);
-        // reviewBranches should contain the working branch after merge
-        expect(acceptedLoop!.state.reviewMode!.reviewBranches.length).toBe(1);
-        expect(acceptedLoop!.state.reviewMode!.reviewBranches[0]).not.toContain("ralph/");
-        expect(acceptedLoop!.state.reviewMode!.reviewBranches[0]).toMatch(/-[0-9a-f]{7}$/);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -169,8 +165,6 @@ describe("Review Mode", () => {
         expect(pushedLoop!.state.reviewMode!.addressable).toBe(true);
         expect(pushedLoop!.state.reviewMode!.completionAction).toBe("push");
         expect(pushedLoop!.state.reviewMode!.reviewCycles).toBe(0);
-        // For pushed loops, reviewBranches tracks the working branch
-        expect(pushedLoop!.state.reviewMode!.reviewBranches.length).toBe(1);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -365,7 +359,7 @@ describe("Review Mode", () => {
         expect(followUpResult.success).toBe(true);
         expect(followUpResult.reviewCycle).toBe(1);
         expect(followUpResult.branch).toBeDefined();
-        expect(followUpResult.branch).not.toBe(originalBranch);
+        expect(followUpResult.branch).toBe(originalBranch);
 
         await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
       } finally {
@@ -554,10 +548,8 @@ describe("Review Mode", () => {
         expect(result.success).toBe(true);
         expect(result.history).toBeDefined();
         expect(result.history!.addressable).toBe(true);
-        expect(result.history!.completionAction).toBe("merge");
+        expect(result.history!.completionAction).toBe("local");
         expect(result.history!.reviewCycles).toBe(0);
-        // reviewBranches should contain the working branch
-        expect(result.history!.reviewBranches.length).toBe(1);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -612,7 +604,7 @@ describe("Review Mode", () => {
   });
 
   describe("Completion Action Enforcement", () => {
-    test("acceptLoop rejects if loop was originally pushed", async () => {
+    test("acceptLoop allows local acceptance after a pushed review cycle", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -659,16 +651,15 @@ describe("Review Mode", () => {
         // Wait for the review cycle to complete
         await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
 
-        // Now try to accept (merge) - this should be rejected
+        // Now accept locally; review cycles can choose local or push each time
         const acceptResult = await ctx.manager.acceptLoop(loop.config.id);
-        expect(acceptResult.success).toBe(false);
-        expect(acceptResult.error).toContain("originally pushed");
+        expect(acceptResult.success).toBe(true);
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("pushLoop rejects if loop was originally merged", async () => {
+    test("pushLoop allows pushing after a locally accepted review cycle", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -703,7 +694,7 @@ describe("Review Mode", () => {
 
         // Verify it was merged
         const mergedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(mergedLoop!.state.reviewMode?.completionAction).toBe("merge");
+        expect(mergedLoop!.state.reviewMode?.completionAction).toBe("local");
 
         // Address comments to start a new review cycle
         const addressResult = await ctx.manager.addressReviewComments(
@@ -715,10 +706,9 @@ describe("Review Mode", () => {
         // Wait for the review cycle to complete
         await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
 
-        // Now try to push - this should be rejected
+        // Now push; review cycles can choose local or push each time
         const pushResult = await ctx.manager.pushLoop(loop.config.id);
-        expect(pushResult.success).toBe(false);
-        expect(pushResult.error).toContain("originally merged");
+        expect(pushResult.success).toBe(true);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -756,7 +746,7 @@ describe("Review Mode", () => {
 
         // Verify completionAction is now set
         const afterAccept = await ctx.manager.getLoop(loop.config.id);
-        expect(afterAccept!.state.reviewMode?.completionAction).toBe("merge");
+        expect(afterAccept!.state.reviewMode?.completionAction).toBe("local");
       } finally {
         await teardownTestContext(ctx);
       }

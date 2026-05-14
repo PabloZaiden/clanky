@@ -219,15 +219,14 @@ describe("Branch Safety - Worktree Isolation", () => {
 
       expect(status).toBe(200);
       expect(acceptBody.success).toBe(true);
-      expect(acceptBody.mergeCommit).toBeDefined();
 
       // Main checkout stays on original branch after merge
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Verify the loop state is now "merged"
-      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
       assertLoopState(mergedLoop, {
-        status: "merged",
+        status: "accepted_local",
         hasError: false,
       });
     });

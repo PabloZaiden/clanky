@@ -239,7 +239,6 @@ describe("WebSocket events", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
       },
     });
@@ -251,7 +250,6 @@ describe("WebSocket events", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
         automaticPrFlow: {
           enabled: true,
@@ -534,14 +532,13 @@ describe("deleteLoop", () => {
 describe("acceptLoop", () => {
   test("calls acceptLoopApi and refreshes the loop", async () => {
     const loop = createLoopWithStatus("completed", { config: { id: "loop-1" }, state: { id: "loop-1" } });
-    const mergedLoop = createLoopWithStatus("merged", { config: { id: "loop-1" }, state: { id: "loop-1" } });
+    const acceptedLoop = createLoopWithStatus("accepted_local", { config: { id: "loop-1" }, state: { id: "loop-1" } });
     setupLoopsList([loop]);
 
     api.post("/api/loops/:id/accept", () => ({
       success: true,
-      mergeCommit: "abc123",
     }));
-    api.get("/api/loops/:id", () => mergedLoop);
+    api.get("/api/loops/:id", () => acceptedLoop);
 
     const { result } = renderHook(() => useLoops());
 
@@ -549,13 +546,12 @@ describe("acceptLoop", () => {
       expect(result.current.loops).toHaveLength(1);
     });
 
-    let acceptResult: { success: boolean; mergeCommit?: string } = { success: false };
+    let acceptResult: { success: boolean } = { success: false };
     await act(async () => {
       acceptResult = await result.current.acceptLoop("loop-1");
     });
 
     expect(acceptResult.success).toBe(true);
-    expect(acceptResult.mergeCommit).toBe("abc123");
   });
 
   test("returns success: false on error", async () => {

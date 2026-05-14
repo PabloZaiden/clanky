@@ -83,7 +83,7 @@ export interface ToolCallData extends ToolCallRecord {}
  * - **Lifecycle events**: created, started, completed, stopped, session_aborted, error, deleted, merged
  * - **Iteration events**: iteration.start, iteration.end
  * - **Activity events**: message, tool_call, progress, log, git.commit
- * - **Completion events**: accepted (merged locally), merged (detected externally), discarded, pushed
+ * - **Completion events**: accepted (kept locally), merged (detected externally), discarded, pushed
  * - **Sync events**: sync.started, sync.clean, sync.conflicts, sync.failed
  * - **Plan mode events**: plan.ready, plan.feedback, plan.accepted, plan.discarded
  * - **State events**: pending.updated, automatic_pr_flow.updated
@@ -480,14 +480,12 @@ export interface LoopMergedEvent {
 }
 
 /**
- * Emitted when a loop's changes are accepted (merged into the original branch).
+ * Emitted when a loop's committed changes are accepted locally without pushing.
  */
 export interface LoopAcceptedEvent {
   type: "loop.accepted";
   /** ID of the loop that was accepted */
   loopId: string;
-  /** SHA of the merge commit created */
-  mergeCommit: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }

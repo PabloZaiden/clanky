@@ -16,20 +16,16 @@ export async function pushLoopImpl(ctx: LoopCtx, loopId: string): Promise<PushLo
     return { success: false, error: "Loop not found" };
   }
 
-  if (loop.state.status !== "completed" && loop.state.status !== "max_iterations") {
+  if (
+    loop.state.status !== "completed" &&
+    loop.state.status !== "max_iterations" &&
+    loop.state.status !== "accepted_local"
+  ) {
     return { success: false, error: `Cannot push loop in status: ${loop.state.status}` };
   }
 
   if (!loop.state.git) {
     return { success: false, error: "No git branch was created for this loop" };
-  }
-
-  if (loop.state.reviewMode?.completionAction &&
-      loop.state.reviewMode.completionAction !== "push") {
-    return {
-      success: false,
-      error: "This loop was originally merged. Use merge to finalize review cycles.",
-    };
   }
 
   ctx.loopsBeingAccepted.add(loopId);

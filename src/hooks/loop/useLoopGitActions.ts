@@ -1,6 +1,6 @@
 /**
  * Git operation actions for the useLoop hook.
- * Handles accept (merge), push, and branch update operations.
+ * Handles local accept, push, and branch update operations.
  */
 
 import { useCallback } from "react";
@@ -39,7 +39,7 @@ export function useLoopGitActions(params: UseLoopActionsParams): UseLoopGitActio
       if (!isActiveLoop(actionLoopId)) {
         return { success: false };
       }
-      log.info("Loop accepted", { loopId: actionLoopId, mergeCommit: result.mergeCommit });
+      log.info("Loop accepted locally", { loopId: actionLoopId });
       return result;
     } catch (err) {
       const staleError = ignoreStaleLoopError("accept", actionLoopId, { success: false }, err);

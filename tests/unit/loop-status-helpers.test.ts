@@ -35,6 +35,7 @@ const ALL_STATUSES: LoopStatus[] = [
   "max_iterations",
   "resolving_conflicts",
   "merged",
+  "accepted_local",
   "pushed",
   "deleted",
 ];
@@ -98,6 +99,7 @@ describe("getStatusLabel", () => {
       max_iterations: "Max Iterations",
       resolving_conflicts: "Resolving Conflicts",
       merged: "Merged",
+      accepted_local: "Accepted Locally",
       pushed: "Pushed",
       deleted: "Deleted",
     };
@@ -125,8 +127,8 @@ describe("status action helpers", () => {
   test("exposes the expected accept, merge, final, active, running, and jumpstart states", () => {
     expectStatuses(canAccept, ["completed", "max_iterations"]);
     expectStatuses((status) => canManualComplete(status, true), ["stopped", "failed"]);
-    expectStatuses((status) => canMarkMerged(status, true), ["completed", "max_iterations", "pushed"]);
-    expectStatuses(isFinalState, ["merged", "pushed", "deleted"]);
+    expectStatuses((status) => canMarkMerged(status, true), ["pushed"]);
+    expectStatuses(isFinalState, ["accepted_local", "merged", "pushed", "deleted"]);
     expectStatuses(isLoopActive, ["starting", "running", "waiting"]);
     expectStatuses(isLoopRunning, ["starting", "running"]);
     expectStatuses(canJumpstart, ["completed", "stopped", "failed", "max_iterations"]);
@@ -150,6 +152,7 @@ describe("status action helpers", () => {
       "waiting",
       "resolving_conflicts",
       "completed",
+      "accepted_local",
       "pushed",
     ]);
   });
@@ -160,9 +163,9 @@ describe("status action helpers", () => {
 });
 
 describe("review-mode helpers", () => {
-  test("only treats merged and pushed loops as awaiting feedback when explicitly addressable", () => {
+  test("only treats accepted local and pushed loops as awaiting feedback when explicitly addressable", () => {
     for (const status of ALL_STATUSES) {
-      expect(isAwaitingFeedback(status, true)).toBe(status === "merged" || status === "pushed");
+      expect(isAwaitingFeedback(status, true)).toBe(status === "accepted_local" || status === "pushed");
       expect(isAwaitingFeedback(status, false)).toBe(false);
       expect(isAwaitingFeedback(status, undefined)).toBe(false);
     }
@@ -181,15 +184,15 @@ describe("review-mode helpers", () => {
       "stopped",
       "failed",
       "max_iterations",
-      "merged",
+      "accepted_local",
       "pushed",
       "deleted",
     ]);
   });
 
-  test("archives only deleted loops or merged/pushed loops that are no longer addressable", () => {
-    expectStatuses((status) => isArchivedLoop(status, false), ["merged", "pushed", "deleted"]);
-    expectStatuses((status) => isArchivedLoop(status, true), ["deleted"]);
+  test("archives only deleted loops or final non-addressable loops", () => {
+    expectStatuses((status) => isArchivedLoop(status, false), ["accepted_local", "merged", "pushed", "deleted"]);
+    expectStatuses((status) => isArchivedLoop(status, true), ["merged", "deleted"]);
   });
 });
 

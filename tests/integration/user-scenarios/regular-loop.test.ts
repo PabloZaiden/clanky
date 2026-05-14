@@ -258,7 +258,6 @@ describe("Regular Loop User Scenarios", () => {
 
       expect(status).toBe(200);
       expect(acceptBody.success).toBe(true);
-      expect(acceptBody.mergeCommit).toBeDefined();
 
       // Main checkout stays on original branch (worktrees don't modify it)
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
@@ -267,16 +266,16 @@ describe("Regular Loop User Scenarios", () => {
       expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
 
       // Verify the loop state is now "merged"
-      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
       assertLoopState(mergedLoop, {
-        status: "merged",
+        status: "accepted_local",
         hasError: false,
       });
       
       // Verify reviewMode was initialized
       expect(mergedLoop.state.reviewMode).toBeDefined();
       expect(mergedLoop.state.reviewMode?.addressable).toBe(true);
-      expect(mergedLoop.state.reviewMode?.completionAction).toBe("merge");
+      expect(mergedLoop.state.reviewMode?.completionAction).toBe("local");
       expect(mergedLoop.state.reviewMode?.reviewCycles).toBe(0);
     });
   });
@@ -486,9 +485,9 @@ describe("Regular Loop User Scenarios", () => {
       expect([200, 400]).toContain(status);
 
       // Wait for completion and clean up
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, ["completed", "merged"]);
-      const finalLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, ["completed", "merged", "deleted"]);
-      if (finalLoop.state.status !== "deleted" && finalLoop.state.status !== "merged") {
+      await waitForLoopStatus(ctx.baseUrl, loop.config.id, ["completed", "accepted_local"]);
+      const finalLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, ["completed", "accepted_local", "deleted"]);
+      if (finalLoop.state.status !== "deleted" && finalLoop.state.status !== "accepted_local") {
         await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
       }
     });

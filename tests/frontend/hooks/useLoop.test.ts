@@ -1072,7 +1072,6 @@ describe("WebSocket event: loop.automatic_pr_flow.updated", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
       },
     });
@@ -1084,7 +1083,6 @@ describe("WebSocket event: loop.automatic_pr_flow.updated", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
         automaticPrFlow: {
           enabled: true,
