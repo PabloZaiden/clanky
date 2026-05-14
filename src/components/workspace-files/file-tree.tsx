@@ -239,11 +239,6 @@ function WorkspaceFileTreeComponent({
             Files
           </div>
         )}
-        {!collapsed && (
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Explorer</h2>
-          </div>
-        )}
         <div className={collapsed ? "flex items-center gap-1.5 lg:flex-col" : "flex w-full items-center justify-between gap-1.5"}>
           {toolbarActions}
           <Button
