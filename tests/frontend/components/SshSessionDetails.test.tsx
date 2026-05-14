@@ -14,28 +14,28 @@ import { clearStoredSshServerCredential } from "@/lib/ssh-browser-credentials";
 let clipboardWrites: string[] = [];
 const originalDocumentFonts = "fonts" in document ? document.fonts : undefined;
 const expectedTerminalTheme = {
-  background: "#15191f",
-  foreground: "#cdd0d7",
-  cursor: "#f2f4f8",
-  cursorAccent: "#15191f",
-  selectionBackground: "#2f3541",
+  background: "#111820",
+  foreground: "#d2d6dc",
+  cursor: "#f8fafc",
+  cursorAccent: "#111820",
+  selectionBackground: "#26313d",
   selectionForeground: "#ffffff",
-  black: "#15191f",
-  red: "#ff6b6b",
-  green: "#8bd49c",
-  yellow: "#f4d06f",
-  blue: "#7aa2f7",
-  magenta: "#c678dd",
-  cyan: "#5de4c7",
-  white: "#cdd0d7",
-  brightBlack: "#5c6370",
-  brightRed: "#ff7b72",
-  brightGreen: "#9ece6a",
-  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",
-  brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5",
-  brightWhite: "#f2f4f8",
+  black: "#111820",
+  red: "#ff7b72",
+  green: "#86efac",
+  yellow: "#fde68a",
+  blue: "#93c5fd",
+  magenta: "#e879f9",
+  cyan: "#67e8f9",
+  white: "#d2d6dc",
+  brightBlack: "#737b89",
+  brightRed: "#ffa198",
+  brightGreen: "#bbf7d0",
+  brightYellow: "#fef3c7",
+  brightBlue: "#bfdbfe",
+  brightMagenta: "#f0abfc",
+  brightCyan: "#a5f3fc",
+  brightWhite: "#f8fafc",
 } as const;
 
 function restoreDocumentFonts() {
@@ -167,7 +167,7 @@ describe("SshSessionDetails", () => {
     });
 
     expect(lastTerminalOptions).toEqual({
-      fontSize: 12,
+      fontSize: 16,
       fontFamily: "\"Ralpher Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
       cursorBlink: true,
       cursorStyle: "block",
@@ -194,6 +194,7 @@ describe("SshSessionDetails", () => {
     const terminalHost = lastTerminal!.element!;
     expect(terminalHost.style.caretColor).toBe("transparent");
     expect(terminalHost.classList.contains("caret-transparent")).toBe(true);
+    expect(terminalHost.classList.contains("terminal-modern-rendering")).toBe(true);
   });
 
   test("does not refocus the terminal after ghostty open already focused it", async () => {
@@ -230,7 +231,7 @@ describe("SshSessionDetails", () => {
     });
 
     expect(lastTerminalOptions).toEqual({
-      fontSize: 12,
+      fontSize: 16,
       fontFamily: "\"Ralpher Terminal Nerd Font\", \"Liga SFMono Nerd Font\", monospace",
       cursorBlink: true,
       cursorStyle: "block",
@@ -276,23 +277,23 @@ describe("SshSessionDetails", () => {
     )).toBe(false);
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]4;0;rgb:15/19/1f\u001b\\",
+      data: "\u001b]4;0;rgb:11/18/20\u001b\\",
     }));
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]4;2;rgb:8b/d4/9c\u001b\\",
+      data: "\u001b]4;2;rgb:86/ef/ac\u001b\\",
     }));
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]11;rgb:15/19/1f\u001b\\",
+      data: "\u001b]11;rgb:11/18/20\u001b\\",
     }));
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]12;rgb:f2/f4/f8\u001b\\",
+      data: "\u001b]12;rgb:f8/fa/fc\u001b\\",
     }));
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
-      data: "\u001b]10;rgb:cd/d0/d7\u001b\\",
+      data: "\u001b]10;rgb:d2/d6/dc\u001b\\",
     }));
   });
 

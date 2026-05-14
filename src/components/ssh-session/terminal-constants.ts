@@ -1,6 +1,6 @@
 import { FitAddon, init, Terminal } from "ghostty-web";
 
-export const TERMINAL_FONT_SIZE_PX = 12;
+export const TERMINAL_FONT_SIZE_PX = 16;
 export const TERMINAL_SCROLLBACK_LINES = 10_000;
 export const TERMINAL_SYMBOL_FONT_FAMILIES = [
   "Liga SFMono Nerd Font",
@@ -50,9 +50,9 @@ export const TERMINAL_FONT_FAMILY = buildTerminalFontFamily([
   ...TERMINAL_BUNDLED_NERD_FONT_FAMILIES,
   "monospace",
 ]);
-export const TERMINAL_PADDING_X_PX = 2;
-export const TERMINAL_PADDING_BOTTOM_PX = 2;
-export const TERMINAL_PADDING_TOP_PX = 4;
+export const TERMINAL_PADDING_X_PX = 14;
+export const TERMINAL_PADDING_BOTTOM_PX = 10;
+export const TERMINAL_PADDING_TOP_PX = 10;
 export const TERMINAL_OSC_QUERY_SEQUENCE_START = "\u001b]";
 export const TERMINAL_OSC_STRING_TERMINATOR = "\u001b\\";
 export const TERMINAL_OSC_BELL_TERMINATOR = "\u0007";
@@ -63,28 +63,28 @@ export const TERMINAL_MOUSE_DRAG_MODE = 1002;
 export const TERMINAL_MOUSE_ANY_MOTION_MODE = 1003;
 export const TERMINAL_MOUSE_SGR_MODE = 1006;
 export const TERMINAL_THEME = {
-  background: "#15191f",
-  foreground: "#cdd0d7",
-  cursor: "#f2f4f8",
-  cursorAccent: "#15191f",
-  selectionBackground: "#2f3541",
+  background: "#111820",
+  foreground: "#d2d6dc",
+  cursor: "#f8fafc",
+  cursorAccent: "#111820",
+  selectionBackground: "#26313d",
   selectionForeground: "#ffffff",
-  black: "#15191f",
-  red: "#ff6b6b",
-  green: "#8bd49c",
-  yellow: "#f4d06f",
-  blue: "#7aa2f7",
-  magenta: "#c678dd",
-  cyan: "#5de4c7",
-  white: "#cdd0d7",
-  brightBlack: "#5c6370",
-  brightRed: "#ff7b72",
-  brightGreen: "#9ece6a",
-  brightYellow: "#f9e2af",
-  brightBlue: "#89b4fa",
-  brightMagenta: "#f5c2e7",
-  brightCyan: "#94e2d5",
-  brightWhite: "#f2f4f8",
+  black: "#111820",
+  red: "#ff7b72",
+  green: "#86efac",
+  yellow: "#fde68a",
+  blue: "#93c5fd",
+  magenta: "#e879f9",
+  cyan: "#67e8f9",
+  white: "#d2d6dc",
+  brightBlack: "#737b89",
+  brightRed: "#ffa198",
+  brightGreen: "#bbf7d0",
+  brightYellow: "#fef3c7",
+  brightBlue: "#bfdbfe",
+  brightMagenta: "#f0abfc",
+  brightCyan: "#a5f3fc",
+  brightWhite: "#f8fafc",
 } as const;
 
 export const TERMINAL_ANSI_PALETTE = [

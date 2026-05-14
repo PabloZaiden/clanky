@@ -264,7 +264,7 @@ export function SshSessionDetails({
     <div
       className={
         isFocusMode
-          ? "flex h-full min-h-0 flex-col bg-[#1e1e1e]"
+          ? "flex h-full min-h-0 flex-col bg-[#111820]"
           : "h-full min-h-0 flex flex-col bg-gray-50 dark:bg-neutral-900"
       }
       style={focusModeContainerStyle}
@@ -342,13 +342,13 @@ export function SshSessionDetails({
         <div
           className={
             isFocusMode
-              ? "min-h-0 flex flex-1 flex-col overflow-hidden bg-[#1e1e1e]"
-              : "min-h-0 flex flex-1 flex-col overflow-hidden rounded-sm border border-gray-200 dark:border-gray-700 bg-[#1e1e1e] dark:bg-[#1e1e1e]"
+              ? "min-h-0 flex flex-1 flex-col overflow-hidden bg-[#111820]"
+              : "min-h-0 flex flex-1 flex-col overflow-hidden rounded-lg border border-slate-700/70 bg-[#111820] shadow-inner dark:border-slate-700/70 dark:bg-[#111820]"
           }
         >
           <div
             ref={terminalContainerRef}
-            className="relative box-border min-h-0 h-full flex-1 bg-[#1e1e1e] w-full caret-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
+            className="terminal-modern-rendering relative box-border min-h-0 h-full flex-1 bg-[#111820] w-full caret-transparent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400/80"
             style={{
               caretColor: "transparent",
               padding: `${TERMINAL_PADDING_TOP_PX}px ${TERMINAL_PADDING_X_PX}px ${TERMINAL_PADDING_BOTTOM_PX}px`,
