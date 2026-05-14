@@ -394,6 +394,7 @@ async function runBuckets(
   buckets: TestBucket[],
   env: Record<string, string>,
   maxWorkers: number,
+  runBucketImpl: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult> = runBucket,
 ): Promise<TestResult[]> {
   const results: TestResult[] = [];
   let nextIndex = 0;
@@ -406,11 +407,30 @@ async function runBuckets(
       if (bucket === undefined) {
         return;
       }
-      results.push(await runBucket(bucket, env));
+      results.push(await runBucketImpl(bucket, env));
     }
   });
 
   await Promise.all(workers);
+  return results;
+}
+
+function isFrontendBucket(bucket: TestBucket): boolean {
+  return bucket.id.startsWith("frontend-");
+}
+
+async function runInitialBuckets(
+  buckets: TestBucket[],
+  env: Record<string, string>,
+  maxWorkers: number,
+  runBucketImpl: (bucket: TestBucket, env: Record<string, string>) => Promise<TestResult>,
+): Promise<TestResult[]> {
+  const frontendBuckets = buckets.filter(isFrontendBucket);
+  const otherBuckets = buckets.filter((bucket) => !isFrontendBucket(bucket));
+  const results = await runBuckets(otherBuckets, env, maxWorkers, runBucketImpl);
+
+  // Frontend test buckets share happy-dom browser globals and must not overlap.
+  results.push(...await runBuckets(frontendBuckets, env, 1, runBucketImpl));
   return results;
 }
 
@@ -439,9 +459,7 @@ export async function runTestBuckets(
   }
   log("");
 
-  const initialResults = dependencies.buildBuckets === undefined && dependencies.runBucket === undefined
-    ? await runBuckets(buckets, env, maxWorkers)
-    : await Promise.all(buckets.map(async (bucket) => await runBucketImpl(bucket, env)));
+  const initialResults = await runInitialBuckets(buckets, env, maxWorkers, runBucketImpl);
   const failedResults = initialResults.filter((result) => result.exitCode !== 0);
   const retryResults = new Map<string, TestResult>();
 

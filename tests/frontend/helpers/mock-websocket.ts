@@ -101,6 +101,7 @@ function parseQueryParams(url: string): Record<string, string> {
 export function createMockWebSocket(): MockWebSocketManager {
   const activeConnections: MockWebSocketConnection[] = [];
   let OriginalWebSocket: typeof WebSocket | null = null;
+  let OriginalWindowWebSocket: typeof WebSocket | null = null;
   let autoOpen = true;
 
   function createMockInstance(url: string): MockWebSocketInstance {
@@ -246,16 +247,25 @@ export function createMockWebSocket(): MockWebSocketManager {
       if (!OriginalWebSocket) {
         OriginalWebSocket = globalThis.WebSocket;
       }
+      if (!OriginalWindowWebSocket) {
+        OriginalWindowWebSocket = window.WebSocket;
+      }
       // Replace global WebSocket with our mock constructor
-      globalThis.WebSocket = function MockWebSocket(url: string | URL) {
+      const MockWebSocketConstructor = function MockWebSocket(url: string | URL) {
         return createMockInstance(url.toString());
       } as unknown as typeof WebSocket;
+      globalThis.WebSocket = MockWebSocketConstructor;
+      window.WebSocket = MockWebSocketConstructor;
 
       // Copy static constants
       (globalThis.WebSocket as unknown as Record<string, number>)["CONNECTING"] = CONNECTING;
       (globalThis.WebSocket as unknown as Record<string, number>)["OPEN"] = OPEN;
       (globalThis.WebSocket as unknown as Record<string, number>)["CLOSING"] = CLOSING;
       (globalThis.WebSocket as unknown as Record<string, number>)["CLOSED"] = CLOSED;
+      (window.WebSocket as unknown as Record<string, number>)["CONNECTING"] = CONNECTING;
+      (window.WebSocket as unknown as Record<string, number>)["OPEN"] = OPEN;
+      (window.WebSocket as unknown as Record<string, number>)["CLOSING"] = CLOSING;
+      (window.WebSocket as unknown as Record<string, number>)["CLOSED"] = CLOSED;
     },
 
     uninstall: () => {
@@ -263,6 +273,10 @@ export function createMockWebSocket(): MockWebSocketManager {
       if (OriginalWebSocket) {
         globalThis.WebSocket = OriginalWebSocket;
         OriginalWebSocket = null;
+      }
+      if (OriginalWindowWebSocket) {
+        window.WebSocket = OriginalWindowWebSocket;
+        OriginalWindowWebSocket = null;
       }
     },
   };
