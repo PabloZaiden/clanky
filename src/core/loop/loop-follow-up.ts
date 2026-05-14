@@ -79,7 +79,7 @@ async function startPlainChatFollowUp(
     return { success: false, error: "Planning loops must receive feedback through plan feedback" };
   }
 
-  if (loop.state.status !== "completed") {
+  if (loop.state.status !== "completed" && loop.state.status !== "pushed") {
     return { success: false, error: `Loop cannot accept a plain chat follow-up from status: ${loop.state.status}` };
   }
 

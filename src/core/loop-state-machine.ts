@@ -118,7 +118,8 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   // → idle: review comments restarting the loop
   // → resolving_conflicts: re-push encountered conflicts
   // → pushed: re-push after branch update (updateBranch)
-  pushed: new Set(["merged", "deleted", "idle", "resolving_conflicts", "pushed"]),
+  // → starting: plain chat follow-up reusing the pushed loop session
+  pushed: new Set(["merged", "deleted", "idle", "resolving_conflicts", "pushed", "starting"]),
 
   // deleted: soft-deleted, can be revived into a fresh feedback cycle before purge
   deleted: new Set(["stopped", "planning"]),
