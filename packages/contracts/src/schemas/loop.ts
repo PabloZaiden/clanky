@@ -108,8 +108,8 @@ export const CreateLoopRequestSchema = z.object({
 /**
  * Schema for UpdateLoopRequest - PATCH /api/loops/:id
  *
- * All fields are optional. Extends UpdateLoopRequest interface with
- * additional fields that the PATCH endpoint supports.
+ * All fields are optional. Name updates are accepted only for draft loops;
+ * that state-based restriction is enforced by the loop update service.
  */
 export const UpdateLoopRequestSchema = z.object({
   name: LoopNameSchema.optional(),

@@ -167,8 +167,8 @@ describe("SshSessionDetails", () => {
     });
 
     expect(lastTerminalOptions).toEqual({
-      fontSize: 12,
-      fontFamily: "SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", monospace, \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", \"Ralpher Terminal Nerd Font\"",
+      fontSize: 16,
+      fontFamily: "\"Ralpher Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
       theme: expectedTerminalTheme,
     });
   });
@@ -227,8 +227,8 @@ describe("SshSessionDetails", () => {
     });
 
     expect(lastTerminalOptions).toEqual({
-      fontSize: 12,
-      fontFamily: "SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", monospace, \"Liga SFMono Nerd Font\", \"Ralpher Terminal Nerd Font\"",
+      fontSize: 16,
+      fontFamily: "\"Ralpher Terminal Nerd Font\", \"Liga SFMono Nerd Font\", monospace",
       theme: expectedTerminalTheme,
     });
   });

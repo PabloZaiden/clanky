@@ -42,6 +42,16 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   defaultRoute("/api/git/default-branch", () => ({
     defaultBranch: "",
   })),
+  defaultRoute("/api/git/github-repository-url", () => ({
+    url: null,
+  })),
+  defaultRoute("/api/workspaces", () => []),
+  defaultRoute("/api/workspaces/:id/server-settings/status", () => ({
+    connected: false,
+    message: "Not connected",
+  })),
+  defaultRoute("/api/ssh-sessions", () => []),
+  defaultRoute("/api/ssh-servers", () => []),
   defaultRoute("/api/check-planning-dir", () => ({
     warning: null,
   })),

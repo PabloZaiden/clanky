@@ -26,8 +26,6 @@ export interface UseDashboardModalsResult {
   setEditDraftId: (id: string | null) => void;
   uncommittedModal: UncommittedModalState;
   setUncommittedModal: (state: UncommittedModalState) => void;
-  renameModal: ModalState;
-  setRenameModal: (state: ModalState) => void;
   sshSessionRenameModal: { open: boolean; sessionId: string | null };
   setSshSessionRenameModal: (state: { open: boolean; sessionId: string | null }) => void;
   showServerSettingsModal: boolean;
@@ -57,7 +55,6 @@ export function useDashboardModals(
     loopId: null,
     error: null,
   });
-  const [renameModal, setRenameModal] = useState<ModalState>({ open: false, loopId: null });
   const [sshSessionRenameModal, setSshSessionRenameModal] = useState<{ open: boolean; sessionId: string | null }>({
     open: false,
     sessionId: null,
@@ -93,8 +90,6 @@ export function useDashboardModals(
     setEditDraftId,
     uncommittedModal,
     setUncommittedModal,
-    renameModal,
-    setRenameModal,
     sshSessionRenameModal,
     setSshSessionRenameModal,
     showServerSettingsModal,

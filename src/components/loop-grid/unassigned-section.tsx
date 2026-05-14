@@ -7,7 +7,6 @@ export interface UnassignedSectionProps {
   unassignedLoops: Loop[];
   unassignedStatusGroups: StatusGroups;
   viewMode: DashboardViewMode;
-  onRename: (loopId: string) => void;
   onEditDraft: (loopId: string) => void;
   onSelectLoop?: (loopId: string) => void;
 }
@@ -17,7 +16,6 @@ export function UnassignedSection({
   unassignedLoops,
   unassignedStatusGroups,
   viewMode,
-  onRename,
   onEditDraft,
   onSelectLoop,
 }: UnassignedSectionProps) {
@@ -46,7 +44,6 @@ export function UnassignedSection({
           statusGroups={unassignedStatusGroups}
           keyPrefix="unassigned"
           viewMode={viewMode}
-          onRename={onRename}
           onEditDraft={onEditDraft}
           onSelectLoop={onSelectLoop}
         />

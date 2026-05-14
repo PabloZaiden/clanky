@@ -2,7 +2,7 @@
  * Loop item routes.
  *
  * - GET /api/loops/:id - Get a specific loop
- * - PATCH /api/loops/:id - Update any loop's configuration
+ * - PATCH /api/loops/:id - Update a loop's configuration; name updates are draft-only
  * - PUT /api/loops/:id - Update a draft loop's configuration
  * - DELETE /api/loops/:id - Delete a loop
  */
@@ -101,6 +101,9 @@ async function applyLoopUpdates(
       if (code === "PLAN_EXECUTION_UPDATE_RESTRICTED") {
         return errorResponse("plan_execution_update_restricted", errorMessage, status ?? 409);
       }
+      if (code === "LOOP_RENAME_RESTRICTED") {
+        return errorResponse("loop_rename_restricted", errorMessage, status ?? 409);
+      }
     }
     log.error("Failed to update loop", { loopId, error: errorMessage });
     return errorResponse("update_failed", errorMessage, 500);
@@ -129,11 +132,12 @@ export const loopsItemRoutes = {
     /**
      * PATCH /api/loops/:id - Update a loop's configuration.
      *
-     * Updates the specified fields of a loop's configuration. Active execution
+     * Updates the specified fields of a loop's configuration. Name updates are
+     * only accepted while the loop is still a draft. Active execution
      * loops must be stopped first, except active planning loops may update only
      * autoAcceptPlan and fullyAutonomous. Partial updates are supported.
      *
-     * Updatable fields: name, directory, prompt, model, maxIterations,
+     * Updatable fields: name (draft-only), directory, prompt, model, maxIterations,
      * maxConsecutiveErrors, activityTimeoutSeconds, stopPattern, baseBranch,
      * clearPlanningFolder, planMode, git, autoAcceptPlan, fullyAutonomous
      *

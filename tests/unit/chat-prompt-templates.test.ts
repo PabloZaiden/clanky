@@ -3,11 +3,23 @@ import {
   CHAT_PROMPT_TEMPLATES,
   getChatTemplateById,
 } from "../../src/lib/chat-prompt-templates";
+import {
+  PROMPT_TEMPLATES,
+  getTemplateById,
+} from "../../src/lib/prompt-templates";
 
 describe("chat prompt templates", () => {
-  test("defines only the Project Analysis template with the required instructions", () => {
-    expect(CHAT_PROMPT_TEMPLATES).toHaveLength(1);
+  test("uses the shared prompt template registry", () => {
+    expect(CHAT_PROMPT_TEMPLATES).toBe(PROMPT_TEMPLATES);
+    expect(getChatTemplateById("project-analysis")).toBe(
+      getTemplateById("project-analysis"),
+    );
+    expect(getChatTemplateById("fix-failing-tests")).toBe(
+      getTemplateById("fix-failing-tests"),
+    );
+  });
 
+  test("includes the Project Analysis template with the required instructions", () => {
     const template = getChatTemplateById("project-analysis");
     expect(template?.name).toBe("Project Analysis");
     expect(template?.prompt).toContain("Analyze this entire project in detail");

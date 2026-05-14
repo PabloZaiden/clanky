@@ -56,6 +56,48 @@ class MockIntersectionObserver {
 }
 window.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
 
+class DefaultMockWebSocket extends EventTarget {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSING = 2;
+  static readonly CLOSED = 3;
+
+  readonly url: string;
+  readyState = DefaultMockWebSocket.CONNECTING;
+  onopen: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+
+  constructor(url: string | URL) {
+    super();
+    this.url = url.toString();
+    queueMicrotask(() => {
+      if (this.readyState !== DefaultMockWebSocket.CONNECTING) {
+        return;
+      }
+      this.readyState = DefaultMockWebSocket.OPEN;
+      const event = new Event("open");
+      this.onopen?.(event);
+      this.dispatchEvent(event);
+    });
+  }
+
+  send() {}
+
+  close(code = 1000, reason = "") {
+    if (this.readyState === DefaultMockWebSocket.CLOSED) {
+      return;
+    }
+    this.readyState = DefaultMockWebSocket.CLOSED;
+    const event = new CloseEvent("close", { code, reason, wasClean: true });
+    this.onclose?.(event);
+    this.dispatchEvent(event);
+  }
+}
+globalThis.WebSocket = DefaultMockWebSocket as unknown as typeof WebSocket;
+window.WebSocket = DefaultMockWebSocket as unknown as typeof WebSocket;
+
 // Set a proper base URL so relative fetch URLs (e.g. "/api/loops") work correctly.
 // Without this, document.location is "about:blank" and new Request("/api/...") throws.
 if (window.location.href === "about:blank") {

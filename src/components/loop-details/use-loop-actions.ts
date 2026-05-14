@@ -46,7 +46,6 @@ export interface UseLoopActionsResult {
   markMergedModal: boolean;
   manualCompleteModal: boolean;
   addressCommentsModal: boolean;
-  renameModal: boolean;
   updateBranchModal: boolean;
   discardPlanModal: boolean;
   startAutomaticPrFlowModal: boolean;
@@ -64,7 +63,6 @@ export interface UseLoopActionsResult {
   setMarkMergedModal: (open: boolean) => void;
   setManualCompleteModal: (open: boolean) => void;
   setAddressCommentsModal: (open: boolean) => void;
-  setRenameModal: (open: boolean) => void;
   setUpdateBranchModal: (open: boolean) => void;
   setDiscardPlanModal: (open: boolean) => void;
   setStartAutomaticPrFlowModal: (open: boolean) => void;
@@ -87,7 +85,6 @@ export interface UseLoopActionsResult {
   handleDiscardPlan: () => Promise<void>;
   handleConnectViaSsh: () => Promise<void>;
   handleOpenLoopFiles: () => void;
-  handleRename: (newName: string) => Promise<void>;
   handleUpdatePlanningSettings: (request: Pick<UpdateLoopRequest, "autoAcceptPlan" | "fullyAutonomous">) => Promise<boolean>;
 }
 
@@ -119,7 +116,6 @@ export function useLoopActions({
   const [markMergedModal, setMarkMergedModal] = useState(false);
   const [manualCompleteModal, setManualCompleteModal] = useState(false);
   const [addressCommentsModal, setAddressCommentsModal] = useState(false);
-  const [renameModal, setRenameModal] = useState(false);
   const [updateBranchModal, setUpdateBranchModal] = useState(false);
   const [discardPlanModal, setDiscardPlanModal] = useState(false);
   const [planActionSubmitting, setPlanActionSubmitting] = useState(false);
@@ -290,10 +286,6 @@ export function useLoopActions({
     onOpenLoopFiles?.();
   }
 
-  async function handleRename(newName: string) {
-    await update({ name: newName });
-  }
-
   async function handleUpdatePlanningSettings(
     request: Pick<UpdateLoopRequest, "autoAcceptPlan" | "fullyAutonomous">,
   ): Promise<boolean> {
@@ -312,7 +304,6 @@ export function useLoopActions({
     markMergedModal,
     manualCompleteModal,
     addressCommentsModal,
-    renameModal,
     updateBranchModal,
     discardPlanModal,
     startAutomaticPrFlowModal,
@@ -328,7 +319,6 @@ export function useLoopActions({
     setMarkMergedModal,
     setManualCompleteModal,
     setAddressCommentsModal,
-    setRenameModal,
     setUpdateBranchModal,
     setDiscardPlanModal,
     setStartAutomaticPrFlowModal,
@@ -349,7 +339,6 @@ export function useLoopActions({
     handleDiscardPlan,
     handleConnectViaSsh,
     handleOpenLoopFiles,
-    handleRename,
     handleUpdatePlanningSettings,
   };
 }

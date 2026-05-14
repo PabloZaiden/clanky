@@ -19,7 +19,6 @@ export interface LoopGridProps {
   unassignedStatusGroups: StatusGroups;
   onSelectLoop?: (loopId: string) => void;
   onEditDraft: (loopId: string) => void;
-  onRename: (loopId: string) => void;
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
 }
@@ -35,7 +34,6 @@ export function LoopGrid({
   unassignedStatusGroups,
   onSelectLoop,
   onEditDraft,
-  onRename,
   onOpenWorkspaceSettings,
   onDeleteWorkspace,
 }: LoopGridProps) {
@@ -99,7 +97,6 @@ export function LoopGrid({
                 statusGroups={statusGroups}
                 keyPrefix={`workspace-${workspace.id}`}
                 viewMode={viewMode}
-                onRename={onRename}
                 onEditDraft={onEditDraft}
                 onSelectLoop={onSelectLoop}
               />
@@ -113,7 +110,6 @@ export function LoopGrid({
         unassignedLoops={unassignedLoops}
         unassignedStatusGroups={unassignedStatusGroups}
         viewMode={viewMode}
-        onRename={onRename}
         onEditDraft={onEditDraft}
         onSelectLoop={onSelectLoop}
       />

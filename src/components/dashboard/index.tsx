@@ -33,7 +33,6 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
     refresh,
     createLoop,
     purgeLoop,
-    updateLoop,
     purgeArchivedWorkspaceLoops,
   } = useLoops();
   const {
@@ -266,7 +265,6 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
             unassignedStatusGroups={unassignedStatusGroups}
             onSelectLoop={handleSelectItem}
             onEditDraft={modals.handleEditDraft}
-            onRename={(loopId) => modals.setRenameModal({ open: true, loopId })}
             onOpenWorkspaceSettings={(workspaceId) => modals.setWorkspaceSettingsModal({ open: true, workspaceId })}
             onDeleteWorkspace={deleteWorkspace}
           />
@@ -305,10 +303,6 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
         uncommittedModal={modals.uncommittedModal}
         onCloseUncommittedModal={() => modals.setUncommittedModal({ open: false, loopId: null, error: null })}
         setUncommittedModal={modals.setUncommittedModal}
-        // Rename modal
-        renameModal={modals.renameModal}
-        onCloseRenameModal={() => modals.setRenameModal({ open: false, loopId: null })}
-        onRename={async (loopId, newName) => { await updateLoop(loopId, { name: newName }); }}
         sshSessionRenameModal={modals.sshSessionRenameModal}
         onCloseSshSessionRenameModal={() => modals.setSshSessionRenameModal({ open: false, sessionId: null })}
         onRenameSshSession={async (sessionId, newName) => {

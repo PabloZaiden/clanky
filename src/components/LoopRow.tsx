@@ -4,7 +4,7 @@
  */
 
 import type { LoopSummaryProps } from "../types";
-import { Badge, EditIcon, StatusBadge } from "./common";
+import { Badge, StatusBadge } from "./common";
 import {
   getLoopStatusPill,
   isLoopPlanReady,
@@ -15,8 +15,6 @@ import {
 export function LoopRow({
   loop,
   onClick,
-
-  onRename,
 }: LoopSummaryProps) {
   const { config, state } = loop;
   const isActive = isLoopActive(state.status);
@@ -45,7 +43,7 @@ export function LoopRow({
       <div className="px-4 py-3">
         {/* Responsive layout: stack on small screens and wrap across rows on wider layouts as needed */}
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:gap-4">
-          {/* Status indicator dot + Name + Rename */}
+          {/* Status indicator dot + name */}
           <div className="flex min-w-0 flex-1 items-start gap-2">
             {/* Status dot */}
             {isActive && !isPlanning && (
@@ -73,19 +71,6 @@ export function LoopRow({
             <h3 className="min-w-0 flex-1 break-words text-sm font-semibold text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere] sm:text-base">
               {config.name}
             </h3>
-            {onRename && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRename();
-                }}
-                className="flex-shrink-0 p-0.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-neutral-700"
-                aria-label="Rename loop"
-                title="Rename loop"
-              >
-                <EditIcon size="h-3.5 w-3.5" />
-              </button>
-            )}
           </div>
 
           {/* Badges */}
