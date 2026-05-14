@@ -245,13 +245,13 @@ describe("error handling scenario", () => {
     // Click Accept
     await waitFor(() => {
       const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
       );
       expect(acceptBtn).toBeTruthy();
     });
 
     const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
     );
     await user.click(acceptBtn!);
 
@@ -260,9 +260,9 @@ describe("error handling scenario", () => {
       expect(getByText("Finalize Loop")).toBeTruthy();
     });
 
-    // Click Accept Local
+    // Click Accept Locally
     const mergeBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept Local"),
+      (b) => b.textContent?.includes("Accept Locally"),
     );
     await user.click(mergeBtn!);
 

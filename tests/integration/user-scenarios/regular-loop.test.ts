@@ -487,7 +487,7 @@ describe("Regular Loop User Scenarios", () => {
       // Wait for completion and clean up
       await waitForLoopStatus(ctx.baseUrl, loop.config.id, ["completed", "accepted_local"]);
       const finalLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, ["completed", "accepted_local", "deleted"]);
-      if (finalLoop.state.status !== "deleted" && finalLoop.state.status !== "merged") {
+      if (finalLoop.state.status !== "deleted" && finalLoop.state.status !== "accepted_local") {
         await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
       }
     });

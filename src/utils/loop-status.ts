@@ -8,6 +8,8 @@ import type { Loop, LoopConfig, LoopState, LoopStatus } from "../types";
 import { createLogger } from "../lib/logger";
 
 const log = createLogger("LoopStatus");
+// The backend accepts `merged` for idempotency, but the UI only offers the
+// action for pushed loops where marking an external PR merge is still useful.
 const MARK_MERGED_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
   "pushed",
 ]);
@@ -75,7 +77,7 @@ const LOOP_STATUS_PILLS: Record<LoopStatusPillKey, Omit<LoopStatusPill, "key">> 
   failed: { label: "Failed", variant: "failed" },
   max_iterations: { label: "Max Iterations", variant: "stopped" },
   resolving_conflicts: { label: "Resolving Conflicts", variant: "running" },
-  accepted_local: { label: "Accepted Local", variant: "completed" },
+  accepted_local: { label: "Accepted Locally", variant: "completed" },
   merged: { label: "Merged", variant: "merged" },
   pushed: { label: "Pushed", variant: "pushed" },
   deleted: { label: "Deleted", variant: "deleted" },

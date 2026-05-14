@@ -99,7 +99,7 @@ describe("getStatusLabel", () => {
       max_iterations: "Max Iterations",
       resolving_conflicts: "Resolving Conflicts",
       merged: "Merged",
-      accepted_local: "Accepted Local",
+      accepted_local: "Accepted Locally",
       pushed: "Pushed",
       deleted: "Deleted",
     };

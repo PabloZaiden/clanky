@@ -540,13 +540,13 @@ describe("App shell", () => {
 
     await waitFor(() => {
       const finalizeButton = Array.from(document.querySelectorAll("button")).find(
-        (button) => button.textContent?.includes("Accept") && button.textContent?.includes("merge or push"),
+        (button) => button.textContent?.includes("Accept") && button.textContent?.includes("locally or push"),
       );
       expect(finalizeButton).toBeTruthy();
     });
 
     const finalizeButton = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.textContent?.includes("Accept") && button.textContent?.includes("merge or push"),
+      (button) => button.textContent?.includes("Accept") && button.textContent?.includes("locally or push"),
     );
     await user.click(finalizeButton!);
 

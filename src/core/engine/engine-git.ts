@@ -180,6 +180,7 @@ async function resolveDirectBranchName(ctx: GitOperationContext, directory: stri
     return ctx.state.git.workingBranch;
   }
 
+  // Non-worktree loops intentionally commit directly on the user's current branch.
   const branch = await ctx.git.getCurrentBranch(directory);
   ctx.emitLog("info", `Using current branch directly: ${branch}`);
   return branch;

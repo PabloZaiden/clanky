@@ -223,9 +223,11 @@ export async function purgeLoopImpl(_ctx: LoopCtx, loopId: string): Promise<{ su
           log.debug(`[LoopManager] purgeLoop: Removed worktree and pruned metadata for loop ${loopId}: ${worktreePath}`);
         }
 
-        if (loop.config.useWorktree && loop.state.git?.workingBranch) {
+        const workingBranch = loop.state.git?.workingBranch;
+        const originalBranch = loop.state.git?.originalBranch;
+        if (workingBranch && workingBranch !== originalBranch) {
           try {
-            await git.deleteBranch(cleanupDirectory, loop.state.git.workingBranch);
+            await git.deleteBranch(cleanupDirectory, workingBranch);
             log.debug(`[LoopManager] purgeLoop: Deleted working branch for loop ${loopId}`);
           } catch (error) {
             log.debug(`[LoopManager] purgeLoop: Could not delete working branch: ${String(error)}`);

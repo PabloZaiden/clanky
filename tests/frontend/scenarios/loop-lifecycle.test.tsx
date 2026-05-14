@@ -118,13 +118,13 @@ describe("loop lifecycle scenario", () => {
     // Click Accept button
     await waitFor(() => {
       const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
       );
       expect(acceptBtn).toBeTruthy();
     });
 
     const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
     );
     await user.click(acceptBtn!);
 
@@ -133,9 +133,9 @@ describe("loop lifecycle scenario", () => {
       expect(getByText("Finalize Loop")).toBeTruthy();
     });
 
-    // Click "Accept Local" in the modal
+    // Click "Accept Locally" in the modal
     const mergeBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept Local"),
+      (b) => b.textContent?.includes("Accept Locally"),
     );
     expect(mergeBtn).toBeTruthy();
     await user.click(mergeBtn!);
@@ -242,13 +242,13 @@ describe("loop lifecycle scenario", () => {
     // Click Accept button to open AcceptLoopModal
     await waitFor(() => {
       const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
       );
       expect(acceptBtn).toBeTruthy();
     });
 
     const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
     );
     await user.click(acceptBtn!);
 
