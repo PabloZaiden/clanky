@@ -398,6 +398,20 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    version: 14,
+    name: "add_loop_pending_prompt_mode",
+    up: (db) => {
+      if (!tableExists(db, "loops")) {
+        return;
+      }
+      const columns = getTableColumns(db, "loops");
+      if (columns.includes("pending_prompt_mode")) {
+        return;
+      }
+      db.run("ALTER TABLE loops ADD COLUMN pending_prompt_mode TEXT");
+    },
+  },
 ];
 
 /**

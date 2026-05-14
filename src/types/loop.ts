@@ -158,6 +158,9 @@ export interface LoopState {
   /** Pending prompt that overrides config.prompt for the next iteration only */
   pendingPrompt?: string;
 
+  /** How the pending prompt should be delivered to the agent */
+  pendingPromptMode?: FollowUpPromptMode;
+
   /** Model override for the next prompt (one-time, cleared after use) */
   pendingModel?: ModelConfig;
 
@@ -212,6 +215,8 @@ export interface LoopState {
     mergeCommitMessage?: string;
   };
 }
+
+export type FollowUpPromptMode = "loop_context" | "plain_chat";
 
 /**
  * A persisted log entry in the loop state.

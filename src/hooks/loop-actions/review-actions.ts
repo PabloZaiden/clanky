@@ -3,6 +3,7 @@
  */
 
 import { apiCall, apiActionWithBody } from "./helpers";
+import type { FollowUpPromptMode } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 
 /**
@@ -73,11 +74,12 @@ export async function sendFollowUpApi(
   message: string,
   model?: { providerID: string; modelID: string },
   attachments?: MessageImageAttachment[],
+  promptMode: FollowUpPromptMode = "loop_context",
 ): Promise<boolean> {
   return apiActionWithBody(
     `/api/loops/${loopId}/follow-up`,
     "POST",
-    { message, model: model ? { ...model, variant: "" } : null, attachments: attachments ?? [] },
+    { message, model: model ? { ...model, variant: "" } : null, attachments: attachments ?? [], promptMode },
     "Send follow-up",
   );
 }

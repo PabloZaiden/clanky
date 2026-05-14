@@ -280,6 +280,126 @@ describe("Review Mode", () => {
   });
 
   describe("sendFollowUp", () => {
+    test("sends completed-loop LogViewer follow-up as a plain chat turn in the existing session", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+        mockResponses: ["<promise>COMPLETE</promise>", "Here is a plain response without a marker"],
+      });
+
+      try {
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Plain Chat Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+
+        await ctx.manager.startLoop(loop.config.id);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+        const completedLoop = await ctx.manager.getLoop(loop.config.id);
+        const originalSessionId = completedLoop!.state.session!.id;
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "What did you just change?",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(true);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+
+        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
+        expect(resumedLoop!.state.session!.id).toBe(originalSessionId);
+        expect(resumedLoop!.state.currentIteration).toBe(2);
+
+        const sentPrompts = ctx.mockBackend!.getSentPrompts();
+        const lastPrompt = sentPrompts[sentPrompts.length - 1]!;
+        expect(lastPrompt.parts[0]).toEqual({ type: "text", text: "What did you just change?" });
+        const promptText = lastPrompt.parts[0]?.type === "text" ? lastPrompt.parts[0].text : "";
+        expect(promptText).not.toContain("Original Goal");
+        expect(promptText).not.toContain(".ralph-planning");
+        expect(promptText).not.toContain("<promise>COMPLETE</promise>");
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
+    test("plain chat follow-up recreates the session when the persisted session expired", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+        mockResponses: ["<promise>COMPLETE</promise>", "Fresh session response"],
+      });
+
+      try {
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Expired Session Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+
+        await ctx.manager.startLoop(loop.config.id);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+        const completedLoop = await ctx.manager.getLoop(loop.config.id);
+        const originalSessionId = completedLoop!.state.session!.id;
+        await ctx.mockBackend!.deleteSession(originalSessionId);
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "Continue anyway",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(true);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+
+        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
+        expect(resumedLoop!.state.session!.id).not.toBe(originalSessionId);
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
+    test("plain chat follow-up is rejected for non-completed terminal loops", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+      });
+
+      try {
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Stopped Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+        loop.state.status = "stopped";
+        await saveLoop(loop);
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "Resume with context",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(false);
+        expect(followUpResult.error).toContain("status: stopped");
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
     test("restarts a pushed loop on the existing review branch", async () => {
       const ctx = await setupTestContext({
         initGit: true,

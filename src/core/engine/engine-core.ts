@@ -14,6 +14,7 @@
  */
 
 import type {
+  FollowUpPromptMode,
   LoopConfig,
   LoopState,
   Loop,
@@ -150,8 +151,12 @@ export class LoopEngine {
    * Set a pending prompt that will be used for the next iteration.
    * This overrides the config.prompt for one iteration only.
    */
-  setPendingPrompt(prompt: string, attachments: MessageImageAttachment[] = []): void {
-    this.updateState({ pendingPrompt: prompt });
+  setPendingPrompt(
+    prompt: string,
+    attachments: MessageImageAttachment[] = [],
+    promptMode: FollowUpPromptMode = "loop_context",
+  ): void {
+    this.updateState({ pendingPrompt: prompt, pendingPromptMode: promptMode });
     this.pendingPromptAttachments = [...attachments];
   }
 
@@ -159,7 +164,7 @@ export class LoopEngine {
    * Clear any pending prompt, reverting to the config.prompt.
    */
   clearPendingPrompt(): void {
-    this.updateState({ pendingPrompt: undefined });
+    this.updateState({ pendingPrompt: undefined, pendingPromptMode: undefined });
     this.pendingPromptAttachments = [];
   }
 
@@ -196,7 +201,7 @@ export class LoopEngine {
    * Clear all pending values (prompt and model).
    */
   clearPending(): void {
-    this.updateState({ pendingPrompt: undefined, pendingModel: undefined });
+    this.updateState({ pendingPrompt: undefined, pendingPromptMode: undefined, pendingModel: undefined });
     this.pendingPromptAttachments = [];
     // Emit event for UI update
     this.emitter.emit({
@@ -225,7 +230,7 @@ export class LoopEngine {
   }): Promise<void> {
     // Set the pending values first
     if (options.message !== undefined) {
-      this.updateState({ pendingPrompt: options.message });
+      this.updateState({ pendingPrompt: options.message, pendingPromptMode: "loop_context" });
       this.pendingPromptAttachments = [...(options.attachments ?? [])];
     } else if (options.attachments) {
       this.pendingPromptAttachments = [...options.attachments];
@@ -602,6 +607,74 @@ export class LoopEngine {
 
     // Run the loop
     await this.runLoop();
+  }
+
+  /**
+   * Run exactly one plain chat turn without applying normal loop completion-marker semantics.
+   */
+  async runSingleTurn(): Promise<void> {
+    if (this.loop.state.status !== "running") {
+      throw new Error(`Cannot run a single turn in status: ${this.loop.state.status}`);
+    }
+
+    if (this.isLoopRunning) {
+      log.warn("[LoopEngine] runSingleTurn: Loop is already running, ignoring duplicate call");
+      this.emitLog("warn", "Execution already in progress, ignoring duplicate single-turn call");
+      return;
+    }
+
+    this.resetRestartFlags();
+    this.isLoopRunning = true;
+
+    try {
+      this.emitLog("info", "Starting single-turn plain chat execution");
+      const result = await this.runIteration();
+
+      const currentStatus = this.loop.state.status as LoopState["status"];
+      if (this.aborted || currentStatus === "stopped") {
+        await this.triggerPersistence();
+        return;
+      }
+
+      if (result.outcome === "error") {
+        const message = result.error ?? "Unknown error";
+        this.emitLog("error", `Single-turn execution failed: ${message}`);
+        this.updateState({
+          status: "failed",
+          completedAt: createTimestamp(),
+          error: {
+            message,
+            iteration: this.loop.state.currentIteration,
+            timestamp: createTimestamp(),
+          },
+        });
+        this.emit({
+          type: "loop.error",
+          loopId: this.config.id,
+          error: message,
+          iteration: this.loop.state.currentIteration,
+          timestamp: createTimestamp(),
+        });
+        await this.triggerPersistence();
+        return;
+      }
+
+      this.emitLog("info", "Single-turn plain chat execution finished; waiting for manual user action");
+      this.updateState({
+        status: "stopped",
+        completedAt: createTimestamp(),
+        consecutiveErrors: undefined,
+      });
+      this.emit({
+        type: "loop.stopped",
+        loopId: this.config.id,
+        reason: "Plain chat turn finished",
+        timestamp: createTimestamp(),
+      });
+      await this.triggerPersistence();
+    } finally {
+      this.isLoopRunning = false;
+    }
   }
 
   // ---------------------------------------------------------------------------

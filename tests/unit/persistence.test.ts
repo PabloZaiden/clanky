@@ -1020,6 +1020,26 @@ describe("Persistence", () => {
       expect(loaded!.state.status).toBe("idle");
     });
 
+    test("saveLoop and loadLoop preserve pending prompt mode", async () => {
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+
+      await setupPersistence();
+
+      const testLoop = createTestLoop({
+        id: "pending-prompt-mode-loop",
+        name: "pending-prompt-mode-loop",
+      });
+      testLoop.state.pendingPrompt = "Answer directly";
+      testLoop.state.pendingPromptMode = "plain_chat";
+
+      await saveLoop(testLoop);
+      const loaded = await loadLoop("pending-prompt-mode-loop");
+
+      expect(loaded).not.toBeNull();
+      expect(loaded!.state.pendingPrompt).toBe("Answer directly");
+      expect(loaded!.state.pendingPromptMode).toBe("plain_chat");
+    });
+
     test("loadLoop normalizes legacy generic ralph commit scope", async () => {
       const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
 

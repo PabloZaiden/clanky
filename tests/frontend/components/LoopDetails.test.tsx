@@ -1701,6 +1701,42 @@ describe("loop action bar", () => {
     await waitFor(() => {
       expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
     });
+    expect(api.calls("/api/loops/:id/follow-up", "POST")[0]?.body).toMatchObject({
+      message: "Please revise this",
+      promptMode: "loop_context",
+    });
+  });
+
+  test("submits stopped loop follow-up with loop context", async () => {
+    const loop = createLoopWithStatus("stopped", {
+      config: { id: LOOP_ID, name: "Stopped Loop", prompt: "Finish task" },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+    api.post("/api/loops/:id/follow-up", () => ({ success: true }));
+
+    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Restart" })).toBeTruthy();
+    });
+
+    await user.type(getByRole("textbox", { name: "Loop message" }), "Resume with context");
+    await user.click(getByRole("button", { name: "Restart" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
+    });
+    expect(api.calls("/api/loops/:id/follow-up", "POST")[0]?.body).toMatchObject({
+      message: "Resume with context",
+      promptMode: "loop_context",
+    });
   });
 
   test("shows restart composer for completed loops and submits follow-up", async () => {
@@ -1728,6 +1764,10 @@ describe("loop action bar", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
+    });
+    expect(api.calls("/api/loops/:id/follow-up", "POST")[0]?.body).toMatchObject({
+      message: "Continue from the last result",
+      promptMode: "plain_chat",
     });
   });
 

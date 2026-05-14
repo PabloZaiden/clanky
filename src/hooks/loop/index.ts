@@ -13,6 +13,7 @@
 import { useEffect, useRef } from "react";
 import type { Loop, LoopEvent, UpdateLoopRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse, MessageData, ToolCallData, SshSession } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { FollowUpPromptMode } from "../../types/loop";
 import type { LogEntry } from "../../components/LogViewer";
 import { useLoopEvents } from "../useWebSocket";
 import { createLogger } from "../../lib/logger";
@@ -114,6 +115,7 @@ export interface UseLoopResult {
     message: string,
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
+    promptMode?: FollowUpPromptMode,
   ) => Promise<boolean>;
   /** Get or create the loop's linked SSH session */
   connectViaSsh: () => Promise<SshSession | null>;

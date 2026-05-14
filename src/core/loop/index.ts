@@ -7,14 +7,14 @@
  */
 
 // Re-export all public types
-export type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult, SeedPlanFilesOptions } from "./loop-types";
+export type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, SendFollowUpOptions, PushLoopResult, SeedPlanFilesOptions } from "./loop-types";
 export { getLoopWorkingDirectory } from "./loop-types";
 
 import type { LoopCtx } from "./context";
 import type { Loop, LoopConfig, LoopState } from "../../types/loop";
 import type { LoopEvent } from "../../types/events";
 import type { ModelConfig } from "../../types/loop";
-import type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
+import type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, SendFollowUpOptions, PushLoopResult } from "./loop-types";
 import type { SeedPlanFilesOptions } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
 import type { MessageImageAttachment } from "../../types/message-attachments";
@@ -208,7 +208,7 @@ export class LoopManager {
 
   async sendFollowUp(
     loopId: string,
-    options: { message: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
+    options: SendFollowUpOptions,
   ): Promise<SendFollowUpResult> {
     return sendFollowUpImpl(this.ctx, loopId, options);
   }
