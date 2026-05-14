@@ -1707,6 +1707,45 @@ describe("loop action bar", () => {
     });
   });
 
+  test("shows restart composer for pushed addressable loops and submits plain chat follow-up", async () => {
+    const loop = createLoopWithStatus("pushed", {
+      config: { id: LOOP_ID, name: "Pushed Loop" },
+      state: {
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+        },
+      },
+    });
+    api.get("/api/loops/:id", () => loop);
+    api.get("/api/loops/:id/diff", () => []);
+    api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
+    api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+    api.get("/api/models", () => []);
+    api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
+    api.get("/api/preferences/log-level", () => ({ level: "info" }));
+    api.post("/api/loops/:id/follow-up", () => ({ success: true }));
+
+    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Restart" })).toBeTruthy();
+    });
+
+    await user.type(getByRole("textbox", { name: "Loop message" }), "Please revise this");
+    await user.click(getByRole("button", { name: "Restart" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/loops/:id/follow-up", "POST")).toHaveLength(1);
+    });
+    expect(api.calls("/api/loops/:id/follow-up", "POST")[0]?.body).toMatchObject({
+      message: "Please revise this",
+      promptMode: "plain_chat",
+    });
+  });
+
   test("submits stopped loop follow-up with loop context", async () => {
     const loop = createLoopWithStatus("stopped", {
       config: { id: LOOP_ID, name: "Stopped Loop", prompt: "Finish task" },

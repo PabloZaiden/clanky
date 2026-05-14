@@ -328,6 +328,58 @@ describe("Review Mode", () => {
       }
     });
 
+    test("sends pushed-loop textbox follow-up as a plain chat turn in the existing session", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+        mockResponses: ["<promise>COMPLETE</promise>", "Here is a pushed plain response"],
+      });
+
+      try {
+        const remoteDir = join(ctx.dataDir, `remote-${Date.now()}.git`);
+        await Bun.$`git init --bare ${remoteDir}`.quiet();
+        await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
+        const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
+        await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
+
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Pushed Plain Chat Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+
+        await ctx.manager.startLoop(loop.config.id);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+        const completedLoop = await ctx.manager.getLoop(loop.config.id);
+        const originalSessionId = completedLoop!.state.session!.id;
+        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        expect(pushResult.success).toBe(true);
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "What happened after the push?",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(true);
+        expect(followUpResult.reviewCycle).toBeUndefined();
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+
+        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
+        expect(resumedLoop!.state.session!.id).toBe(originalSessionId);
+
+        const sentPrompts = ctx.mockBackend!.getSentPrompts();
+        const lastPrompt = sentPrompts[sentPrompts.length - 1]!;
+        expect(lastPrompt.parts[0]).toEqual({ type: "text", text: "What happened after the push?" });
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
     test("plain chat follow-up recreates the session when the persisted session expired", async () => {
       const ctx = await setupTestContext({
         initGit: true,

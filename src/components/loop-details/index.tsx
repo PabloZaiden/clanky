@@ -256,7 +256,7 @@ export function LoopDetails({
                   options.message,
                   options.model,
                   options.attachments,
-                  state.status === "completed" ? "plain_chat" : "loop_context",
+                  state.status === "completed" || state.status === "pushed" ? "plain_chat" : "loop_context",
                 );
               }
               return false;
