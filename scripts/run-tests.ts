@@ -114,7 +114,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/frontend/root",
     pattern: "tests/frontend/*.test.{ts,tsx,js,jsx}",
     shardCount: 1,
-    fileConcurrency: 2,
+    fileConcurrency: 1,
     argsPrefix: [
       "test",
       "--dots",
@@ -130,7 +130,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/frontend/components",
     pattern: "tests/frontend/components/**/*.test.{ts,tsx,js,jsx}",
     shardCount: 4,
-    fileConcurrency: 2,
+    fileConcurrency: 1,
     argsPrefix: [
       "test",
       "--dots",
@@ -146,7 +146,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/frontend/hooks",
     pattern: "tests/frontend/hooks/**/*.test.{ts,tsx,js,jsx}",
     shardCount: 2,
-    fileConcurrency: 2,
+    fileConcurrency: 1,
     argsPrefix: [
       "test",
       "--dots",
@@ -162,7 +162,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     label: "tests/frontend/scenarios",
     pattern: "tests/frontend/scenarios/**/*.test.{ts,tsx,js,jsx}",
     shardCount: 2,
-    fileConcurrency: 2,
+    fileConcurrency: 1,
     argsPrefix: [
       "test",
       "--dots",
