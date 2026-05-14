@@ -434,7 +434,7 @@ export function FileExplorerView({
       onClick={openRootPicker}
       aria-label="Change explorer root"
       title="Change explorer root"
-      className="w-9 px-0"
+      className="h-8 min-h-8 w-8 shrink-0 px-0"
       icon={<GearIcon size="h-4 w-4" />}
     >
       <span className="sr-only">Change explorer root</span>
