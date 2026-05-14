@@ -158,6 +158,70 @@ describe("run-tests helpers", () => {
     )).toBe(true);
   });
 
+  test("runTestBuckets serializes frontend buckets after parallel backend buckets", async () => {
+    const startedBuckets: string[] = [];
+    const finishedBuckets: string[] = [];
+    const unblockBackend = Promise.withResolvers<void>();
+    const buckets = [
+      {
+        id: "frontend-components-1",
+        label: "tests/frontend/components shard 1",
+        args: ["test", "--max-concurrency", "1", "tests/frontend/components/a.test.tsx"],
+        weight: 10,
+      },
+      {
+        id: "frontend-hooks-1",
+        label: "tests/frontend/hooks shard 1",
+        args: ["test", "--max-concurrency", "1", "tests/frontend/hooks/a.test.ts"],
+        weight: 9,
+      },
+      {
+        id: "unit-1",
+        label: "tests/unit shard 1",
+        args: ["test", "--max-concurrency", "2", "tests/unit/a.test.ts"],
+        weight: 8,
+      },
+      {
+        id: "api-1",
+        label: "tests/api shard 1",
+        args: ["test", "--max-concurrency", "2", "tests/api/a.test.ts"],
+        weight: 7,
+      },
+    ];
+
+    const exitCodePromise = runTestBuckets("all", { RALPHER_TEST_MAX_WORKERS: "2" }, {
+      buildBuckets: async () => buckets,
+      runBucket: async (bucket) => {
+        startedBuckets.push(bucket.id);
+        if (!bucket.id.startsWith("frontend-")) {
+          await unblockBackend.promise;
+        }
+        finishedBuckets.push(bucket.id);
+        return {
+          bucket,
+          exitCode: 0,
+          output: "",
+          elapsedMs: 1,
+        };
+      },
+      log: () => {},
+    });
+
+    await Bun.sleep(0);
+    expect(startedBuckets).toEqual(["unit-1", "api-1"]);
+
+    unblockBackend.resolve();
+    const exitCode = await exitCodePromise;
+
+    expect(exitCode).toBe(0);
+    expect(finishedBuckets).toEqual([
+      "unit-1",
+      "api-1",
+      "frontend-components-1",
+      "frontend-hooks-1",
+    ]);
+  });
+
   test("runTestBuckets fails when a retried bucket still fails", async () => {
     const logs: string[] = [];
     const bucket = {

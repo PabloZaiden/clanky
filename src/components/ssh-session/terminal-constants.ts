@@ -1,6 +1,6 @@
 import { FitAddon, init, Terminal } from "ghostty-web";
 
-export const TERMINAL_FONT_SIZE_PX = 12;
+export const TERMINAL_FONT_SIZE_PX = 16;
 export const TERMINAL_SYMBOL_FONT_FAMILIES = [
   "Liga SFMono Nerd Font",
   "MesloLGS NF",
@@ -21,13 +21,15 @@ export const TERMINAL_SYMBOL_FONT_FAMILIES = [
 ] as const;
 export const TERMINAL_BUNDLED_NERD_FONT_FAMILIES = ["Ralpher Terminal Nerd Font"] as const;
 export const TERMINAL_TEXT_FONT_FAMILIES = [
+  "Ralpher Terminal Nerd Font",
+  "JetBrainsMono Nerd Font Mono",
+  "JetBrainsMono Nerd Font",
   "SFMono-Regular",
   "SF Mono",
   "Menlo",
   "Monaco",
   "Consolas",
   "Liberation Mono",
-  "monospace",
 ] as const;
 export const TERMINAL_GLYPH_SAMPLE = "\ue62b\uf07b\uf15b\uf002";
 
@@ -36,16 +38,16 @@ function formatTerminalFontFamily(fontFamily: string) {
 }
 
 export function buildTerminalFontFamily(fontFamilies: readonly string[]) {
-  return fontFamilies.map((fontFamily) => formatTerminalFontFamily(fontFamily)).join(", ");
+  return [...new Set(fontFamilies)].map((fontFamily) => formatTerminalFontFamily(fontFamily)).join(", ");
 }
 
-// Prefer locally installed patched fonts so the browser terminal tracks the host's
-// native terminal appearance more closely. Keep Nerd Fonts only as fallbacks for
-// symbol/private-use glyphs so the main text shape stays closer to native macOS terminals.
+// Use one patched mono font for both text and symbols whenever possible. Mixing
+// system text fonts with Nerd Font fallbacks creates uneven cell metrics in TUIs.
 export const TERMINAL_FONT_FAMILY = buildTerminalFontFamily([
   ...TERMINAL_TEXT_FONT_FAMILIES,
   ...TERMINAL_SYMBOL_FONT_FAMILIES,
   ...TERMINAL_BUNDLED_NERD_FONT_FAMILIES,
+  "monospace",
 ]);
 export const TERMINAL_PADDING_X_PX = 2;
 export const TERMINAL_PADDING_BOTTOM_PX = 2;
@@ -122,7 +124,7 @@ export async function resolveTerminalFontFamily() {
   }
 
   await Promise.allSettled(
-    [...TERMINAL_SYMBOL_FONT_FAMILIES, ...TERMINAL_BUNDLED_NERD_FONT_FAMILIES].map((fontFamily) =>
+    [...TERMINAL_TEXT_FONT_FAMILIES, ...TERMINAL_SYMBOL_FONT_FAMILIES, ...TERMINAL_BUNDLED_NERD_FONT_FAMILIES].map((fontFamily) =>
       document.fonts.load(
         `${TERMINAL_FONT_SIZE_PX}px ${buildTerminalFontFamily([fontFamily])}`,
         TERMINAL_GLYPH_SAMPLE,
@@ -131,7 +133,7 @@ export async function resolveTerminalFontFamily() {
   );
   await document.fonts.ready;
 
-  const availableSymbolFonts = [...TERMINAL_SYMBOL_FONT_FAMILIES, ...TERMINAL_BUNDLED_NERD_FONT_FAMILIES]
+  const availableFonts = [...TERMINAL_TEXT_FONT_FAMILIES, ...TERMINAL_SYMBOL_FONT_FAMILIES, ...TERMINAL_BUNDLED_NERD_FONT_FAMILIES]
     .filter((fontFamily) =>
       document.fonts.check(
         `${TERMINAL_FONT_SIZE_PX}px ${buildTerminalFontFamily([fontFamily])}`,
@@ -140,8 +142,8 @@ export async function resolveTerminalFontFamily() {
     );
 
   return buildTerminalFontFamily([
-    ...TERMINAL_TEXT_FONT_FAMILIES,
-    ...availableSymbolFonts,
+    ...availableFonts,
+    "monospace",
   ]);
 }
 
