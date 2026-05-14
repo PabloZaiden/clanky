@@ -1756,8 +1756,11 @@ Updated line 3`;
       if (loop) {
         await updateLoopState(loopId, {
           ...loop.state,
+          status: "pushed",
           git: undefined, // Remove git state
         });
+        const { loopManager } = await import("../../src/core/loop-manager");
+        loopManager.resetForTesting();
       }
 
       // Try to mark as merged
@@ -1771,7 +1774,7 @@ Updated line 3`;
       expect(body.message).toContain("No git branch");
     });
 
-    test("marks a completed loop as merged and preserves merged status", async () => {
+    test("marks a pushed loop as merged and preserves merged status", async () => {
       // Create and complete a loop
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
@@ -1791,6 +1794,17 @@ Updated line 3`;
 
       // Wait for completion
       await waitForLoopCompletion(loopId);
+
+      const { updateLoopState, loadLoop } = await import("../../src/persistence/loops");
+      const completedLoop = await loadLoop(loopId);
+      if (completedLoop) {
+        await updateLoopState(loopId, {
+          ...completedLoop.state,
+          status: "pushed",
+        });
+        const { loopManager } = await import("../../src/core/loop-manager");
+        loopManager.resetForTesting();
+      }
 
       // Mark as merged
       const response = await fetch(`${baseUrl}/api/loops/${loopId}/mark-merged`, {

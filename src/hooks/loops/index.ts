@@ -29,7 +29,7 @@ export interface UseLoopsResult {
   updateLoop: (id: string, request: UpdateLoopRequest) => Promise<Loop | null>;
   /** Delete a loop */
   deleteLoop: (id: string) => Promise<boolean>;
-  /** Accept (merge) a loop's changes */
+  /** Accept a loop's committed changes locally */
   acceptLoop: (id: string) => Promise<AcceptLoopResult>;
   /** Push a loop's branch to remote */
   pushLoop: (id: string) => Promise<PushLoopResult>;

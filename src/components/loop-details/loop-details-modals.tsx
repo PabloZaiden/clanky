@@ -38,7 +38,6 @@ export function LoopDetailsModals({ loopName, state, actions }: LoopDetailsModal
         onClose={() => actions.setAcceptModal(false)}
         onAccept={actions.handleAccept}
         onPush={actions.handlePush}
-        restrictToAction={state.reviewMode?.completionAction}
       />
 
       <PurgeLoopModal
@@ -51,6 +50,17 @@ export function LoopDetailsModals({ loopName, state, actions }: LoopDetailsModal
         isOpen={actions.markMergedModal}
         onClose={() => actions.setMarkMergedModal(false)}
         onMarkMerged={actions.handleMarkMerged}
+      />
+
+      <ConfirmModal
+        isOpen={actions.closeLocalModal}
+        onClose={() => actions.setCloseLocalModal(false)}
+        onConfirm={actions.handleCloseLocal}
+        title="Close Local Loop?"
+        message="This keeps the local commits in place and disables further follow-up comments for this loop. No push or PR action will run."
+        confirmLabel="Close Local Loop"
+        cancelLabel="Cancel"
+        variant="primary"
       />
 
       <ManualCompleteLoopModal

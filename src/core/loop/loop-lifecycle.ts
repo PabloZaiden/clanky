@@ -194,8 +194,8 @@ export async function purgeLoopImpl(_ctx: LoopCtx, loopId: string): Promise<{ su
 
   const isDraft = loop.state.status === "draft";
 
-  if (!isDraft && loop.state.status !== "merged" && loop.state.status !== "pushed" && loop.state.status !== "deleted") {
-    return { success: false, error: `Cannot purge loop in status: ${loop.state.status}. Only draft, merged, pushed, or deleted loops can be purged.` };
+  if (!isDraft && loop.state.status !== "accepted_local" && loop.state.status !== "merged" && loop.state.status !== "pushed" && loop.state.status !== "deleted") {
+    return { success: false, error: `Cannot purge loop in status: ${loop.state.status}. Only draft, accepted_local, merged, pushed, or deleted loops can be purged.` };
   }
 
   try {
@@ -223,15 +223,7 @@ export async function purgeLoopImpl(_ctx: LoopCtx, loopId: string): Promise<{ su
           log.debug(`[LoopManager] purgeLoop: Removed worktree and pruned metadata for loop ${loopId}: ${worktreePath}`);
         }
 
-        if (!loop.config.useWorktree && loop.state.git?.workingBranch && loop.state.git.originalBranch) {
-          try {
-            await git.checkoutBranch(cleanupDirectory, loop.state.git.originalBranch);
-          } catch (error) {
-            log.debug(`[LoopManager] purgeLoop: Could not switch back to original branch: ${String(error)}`);
-          }
-        }
-
-        if (loop.state.git?.workingBranch) {
+        if (loop.config.useWorktree && loop.state.git?.workingBranch) {
           try {
             await git.deleteBranch(cleanupDirectory, loop.state.git.workingBranch);
             log.debug(`[LoopManager] purgeLoop: Deleted working branch for loop ${loopId}`);
@@ -240,17 +232,6 @@ export async function purgeLoopImpl(_ctx: LoopCtx, loopId: string): Promise<{ su
           }
         }
 
-        if (loop.state.reviewMode?.reviewBranches && loop.state.reviewMode.reviewBranches.length > 0) {
-          for (const branchName of loop.state.reviewMode.reviewBranches) {
-            if (branchName === loop.state.git?.workingBranch) continue;
-            try {
-              await git.deleteBranch(cleanupDirectory, branchName);
-              log.debug(`[LoopManager] purgeLoop: Cleaned up review branch: ${branchName}`);
-            } catch (error) {
-              log.debug(`[LoopManager] purgeLoop: Could not delete branch ${branchName}: ${String(error)}`);
-            }
-          }
-        }
       }
     } catch (error) {
       return { success: false, error: `Failed to clean up git state during purge: ${String(error)}` };
@@ -281,7 +262,7 @@ export async function markMergedImpl(ctx: LoopCtx, loopId: string): Promise<{ su
     return { success: false, error: "Loop not found" };
   }
 
-  const allowedStatuses = ["pushed", "merged", "completed", "max_iterations"];
+  const allowedStatuses = ["pushed", "merged"];
   if (!allowedStatuses.includes(loop.state.status)) {
     return {
       success: false,
@@ -324,6 +305,45 @@ export async function markMergedImpl(ctx: LoopCtx, loopId: string): Promise<{ su
     });
 
     log.info("Loop marked as merged", { loopId });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+export async function closeLocalLoopImpl(ctx: LoopCtx, loopId: string): Promise<{ success: boolean; error?: string }> {
+  log.info("Closing locally accepted loop", { loopId });
+  const loop = await ctx.getLoop(loopId);
+  if (!loop) {
+    return { success: false, error: "Loop not found" };
+  }
+
+  if (loop.state.status !== "accepted_local") {
+    return {
+      success: false,
+      error: `Cannot close local loop in status: ${loop.state.status}. Only locally accepted loops can be closed.`,
+    };
+  }
+
+  if (!loop.state.reviewMode?.addressable) {
+    log.info("Locally accepted loop already closed", { loopId });
+    return { success: true };
+  }
+
+  try {
+    assertValidTransition(loop.state.status, "accepted_local", "closeLocalLoop");
+    await updateLoopState(loopId, {
+      ...loop.state,
+      reviewMode: {
+        ...loop.state.reviewMode,
+        addressable: false,
+      },
+    });
+
+    await backendManager.disconnectLoop(loopId);
+    ctx.engines.delete(loopId);
+
+    log.info("Locally accepted loop closed", { loopId });
     return { success: true };
   } catch (error) {
     return { success: false, error: String(error) };

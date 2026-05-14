@@ -464,7 +464,6 @@ describe("loop grid rendering", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: [],
         },
       },
     });

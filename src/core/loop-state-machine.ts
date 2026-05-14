@@ -56,7 +56,7 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   waiting: new Set(["running", "completed", "stopped", "failed", "max_iterations", "deleted"]),
 
   // completed: successfully finished
-  // → merged: accepted (merged into original branch)
+  // → accepted_local: accepted without push
   // → pushed: pushed to remote
   // → deleted: discarded
   // → resolving_conflicts: push encountered merge conflicts
@@ -64,7 +64,7 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   // → idle: review comments restarting the loop
   // → stopped: jumpstart (engine.start accepts stopped)
   // → planning: jumpstart in planning mode
-  completed: new Set(["merged", "pushed", "deleted", "resolving_conflicts", "starting", "idle", "stopped", "planning"]),
+  completed: new Set(["accepted_local", "pushed", "deleted", "resolving_conflicts", "starting", "idle", "stopped", "planning"]),
 
   // stopped: manually stopped by user
   // → starting: restart via engine.start
@@ -82,13 +82,13 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   failed: new Set(["completed", "deleted", "stopped", "planning"]),
 
   // max_iterations: hit the iteration limit
-  // → merged: accepted
+  // → accepted_local: accepted without push
   // → pushed: pushed to remote
   // → deleted: discarded
   // → resolving_conflicts: push encountered conflicts
   // → stopped: jumpstart
   // → planning: jumpstart in planning mode
-  max_iterations: new Set(["merged", "pushed", "deleted", "resolving_conflicts", "stopped", "planning"]),
+  max_iterations: new Set(["accepted_local", "pushed", "deleted", "resolving_conflicts", "stopped", "planning"]),
 
   // resolving_conflicts: engine is resolving merge conflicts before push or execution
   // → starting: engine.start for conflict resolution
@@ -100,10 +100,17 @@ const TRANSITION_TABLE: Record<LoopStatus, ReadonlySet<LoopStatus>> = {
   // → deleted: delete during conflict resolution
   resolving_conflicts: new Set(["starting", "stopped", "failed", "pushed", "completed", "max_iterations", "deleted"]),
 
-  // merged: changes merged into original branch (final state, can receive reviews)
+  // accepted_local: commits kept locally without push (final state, can receive comments)
+  // → pushed: user later decides to push the local commits
+  // → resolving_conflicts: push encountered conflicts
   // → deleted: delete
   // → idle: review comments restarting the loop
-  merged: new Set(["deleted", "idle"]),
+  // → accepted_local: close local review loop by disabling addressability
+  accepted_local: new Set(["pushed", "deleted", "idle", "resolving_conflicts", "accepted_local"]),
+
+  // merged: pushed branch merged externally (final state)
+  // → deleted: delete
+  merged: new Set(["deleted"]),
 
   // pushed: branch pushed to remote (final state, can receive reviews)
   // → merged: branch merged externally

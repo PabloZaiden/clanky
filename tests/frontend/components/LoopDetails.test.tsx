@@ -59,7 +59,7 @@ function setupDefaultApi(loopOverrides?: Parameters<typeof createLoopWithStatus>
   api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
   // Actions (POST/PUT/DELETE)
-  api.post("/api/loops/:id/accept", () => ({ success: true, mergeCommit: "abc123" }));
+  api.post("/api/loops/:id/accept", () => ({ success: true }));
   api.post("/api/loops/:id/push", () => ({ success: true }));
   api.post("/api/loops/:id/stop", () => ({ success: true }));
   api.delete("/api/loops/:id", () => ({ success: true }));
@@ -394,7 +394,6 @@ describe("tab navigation", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 2,
-          reviewBranches: ["review-1", "review-2"],
         },
       },
     });
@@ -420,8 +419,6 @@ describe("tab navigation", () => {
     });
     expect(getByText("Yes")).toBeTruthy(); // Addressable: Yes
     expect(getByText("push")).toBeTruthy(); // Completion action: push
-    expect(getByText("review-1")).toBeTruthy();
-    expect(getByText("review-2")).toBeTruthy();
   });
 
   test("can switch to Actions tab", async () => {
@@ -845,7 +842,6 @@ describe("actions tab content", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: [],
         },
       },
     });
@@ -1067,7 +1063,6 @@ describe("actions tab content", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
       },
     });
@@ -1118,7 +1113,6 @@ describe("actions tab content", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
       },
     });
@@ -1169,7 +1163,6 @@ describe("actions tab content", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
       },
     });
@@ -1213,7 +1206,6 @@ describe("actions tab content", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1379,7 +1371,6 @@ describe("address comments modal", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: [],
         },
       },
     });
@@ -1677,15 +1668,14 @@ describe("loop action bar", () => {
     expect(queryByRole("textbox", { name: "Loop message" })).toBeNull();
   });
 
-  test("shows restart composer for addressable merged loops and submits follow-up", async () => {
-    const loop = createLoopWithStatus("merged", {
-      config: { id: LOOP_ID, name: "Merged Loop" },
+  test("shows restart composer for locally accepted addressable loops and submits follow-up", async () => {
+    const loop = createLoopWithStatus("accepted_local", {
+      config: { id: LOOP_ID, name: "Accepted Local Loop" },
       state: {
         reviewMode: {
           addressable: true,
-          completionAction: "merge",
+          completionAction: "local",
           reviewCycles: 0,
-          reviewBranches: ["merged-loop-a1b2c3d"],
         },
       },
     });
@@ -1874,7 +1864,6 @@ describe("actions tab comment history", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 2,
-          reviewBranches: [],
         },
       },
     });
@@ -1934,7 +1923,6 @@ describe("actions tab comment history", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
       },
     });
@@ -1968,7 +1956,6 @@ describe("actions tab comment history", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: [],
         },
       },
     });

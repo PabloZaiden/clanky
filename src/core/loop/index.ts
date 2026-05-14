@@ -27,7 +27,7 @@ import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, up
 import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
 import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
 import { seedPlanFilesImpl } from "./loop-seeded-plan";
-import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, manualCompleteLoopImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
+import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, closeLocalLoopImpl, manualCompleteLoopImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
 import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
 import {
@@ -160,6 +160,10 @@ export class LoopManager {
     return markMergedImpl(this.ctx, loopId);
   }
 
+  async closeLocalLoop(loopId: string): Promise<{ success: boolean; error?: string }> {
+    return closeLocalLoopImpl(this.ctx, loopId);
+  }
+
   async manualCompleteLoop(loopId: string): Promise<{ success: boolean; error?: string }> {
     return manualCompleteLoopImpl(this.ctx, loopId);
   }
@@ -258,9 +262,8 @@ export class LoopManager {
 
   async getReviewHistory(loopId: string): Promise<{ success: boolean; error?: string; history?: {
     addressable: boolean;
-    completionAction: "push" | "merge";
+    completionAction: "local" | "push";
     reviewCycles: number;
-    reviewBranches: string[];
   } }> {
     return getReviewHistoryImpl(this.ctx, loopId);
   }

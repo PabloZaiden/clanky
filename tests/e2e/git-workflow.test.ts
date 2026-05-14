@@ -231,7 +231,6 @@ describe("Git Workflow", () => {
       const result = await ctx.manager.acceptLoop(loop.config.id);
 
       expect(result.success).toBe(true);
-      expect(result.mergeCommit).toBeDefined();
 
       // Verify we're back on original branch
       const currentBranch = await ctx.git.getCurrentBranch(ctx.workDir);
@@ -245,7 +244,7 @@ describe("Git Workflow", () => {
       const updatedLoop = await ctx.manager.getLoop(loop.config.id);
       expect(updatedLoop?.state.reviewMode).toBeDefined();
       expect(updatedLoop?.state.reviewMode?.addressable).toBe(true);
-      expect(updatedLoop?.state.reviewMode?.completionAction).toBe("merge");
+      expect(updatedLoop?.state.reviewMode?.completionAction).toBe("local");
       expect(updatedLoop?.state.reviewMode?.reviewCycles).toBe(0);
 
       // Verify event was emitted
@@ -302,7 +301,7 @@ describe("Git Workflow", () => {
   });
 
   describe("Mark as Merged", () => {
-    test("marks loop as deleted without modifying main checkout", async () => {
+    test("rejects completed loops without push", async () => {
       const loop = await ctx.manager.createLoop({
         ...testModelFields,
         directory: ctx.workDir,
@@ -317,21 +316,18 @@ describe("Git Workflow", () => {
       await ctx.manager.startLoop(loop.config.id);
       await waitForEvent(ctx.events, "loop.completed");
 
-      // Mark as merged
+      // Mark as merged is only valid after push
       const result = await ctx.manager.markMerged(loop.config.id);
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
 
       // Main checkout stays on original branch (worktrees don't modify it)
       const currentBranch = await ctx.git.getCurrentBranch(ctx.workDir);
       expect(currentBranch).toBe(originalBranch);
 
-      // Verify loop status is now merged
+      // Verify loop status remains completed
       const finalLoop = await ctx.manager.getLoop(loop.config.id);
-      expect(finalLoop!.state.status).toBe("merged");
-
-      // Verify event was emitted
-      expect(countEvents(ctx.events, "loop.merged")).toBeGreaterThanOrEqual(1);
+      expect(finalLoop!.state.status).toBe("completed");
     });
 
     test("works for pushed loops", async () => {
@@ -345,20 +341,16 @@ describe("Git Workflow", () => {
       });
 
       const originalBranch = await ctx.git.getCurrentBranch(ctx.workDir);
+      const remoteDir = join(ctx.dataDir, "remote-mark-merged.git");
+      await Bun.$`git init --bare ${remoteDir}`.quiet();
+      await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
+      await Bun.$`git -C ${ctx.workDir} push origin ${originalBranch}`.quiet();
 
       await ctx.manager.startLoop(loop.config.id);
       await waitForEvent(ctx.events, "loop.completed");
 
-      // Get the working branch name
-      const loopAfterComplete = await ctx.manager.getLoop(loop.config.id);
-
-      // Push the loop (simulates pushing to remote, but no actual remote exists)
-      // For this test, we manually set status to pushed since there's no remote
-      const { updateLoopState } = await import("../../src/persistence/loops");
-      await updateLoopState(loop.config.id, {
-        ...loopAfterComplete!.state,
-        status: "pushed",
-      });
+      const pushResult = await ctx.manager.pushLoop(loop.config.id);
+      expect(pushResult.success).toBe(true);
 
       // Mark as merged
       const result = await ctx.manager.markMerged(loop.config.id);

@@ -555,7 +555,6 @@ describe("Persistence", () => {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: ["feature/repaired-pr-monitor-loop"],
       };
       repairedLoop.state.pullRequestMonitoring = {
         status: "open",
@@ -684,7 +683,6 @@ describe("Persistence", () => {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: ["feature/repaired-auto-pr-flow-loop"],
       };
       repairedLoop.state.automaticPrFlow = {
         enabled: true,
@@ -1170,7 +1168,6 @@ describe("Persistence", () => {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: ["feature/pr-monitor-loop"],
       };
       testLoop.state.pullRequestMonitoring = {
         status: "open",
@@ -1203,7 +1200,6 @@ describe("Persistence", () => {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: ["feature/automatic-pr-flow-loop"],
       };
       testLoop.state.automaticPrFlow = {
         enabled: true,

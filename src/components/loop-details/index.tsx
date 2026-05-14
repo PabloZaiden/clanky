@@ -51,7 +51,7 @@ export function LoopDetails({
 }: LoopDetailsProps) {
    const {
       loop, loading, error, messages, toolCalls, logs, gitChangeCounter,
-       accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
+        accept, push, updateBranch, remove, purge, markMerged, closeLocalLoop, manualCompleteLoop,
        stopLoop, setPending, sendFollowUp,
       getDiff, getPlan, getStatusFile, getPullRequestDestination,
       sendPlanFeedback, acceptPlan, discardPlan,
@@ -86,7 +86,7 @@ export function LoopDetails({
       });
      },
       toast,
-       accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
+        accept, push, updateBranch, remove, purge, markMerged, closeLocalLoop, manualCompleteLoop,
       addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
       fetchReviewComments: content.fetchReviewComments,
     });

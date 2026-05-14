@@ -23,7 +23,7 @@ export async function sendFollowUpImpl(
     return { success: false, error: "Loop not found" };
   }
 
-  if (loop.state.status === "pushed" || loop.state.status === "merged") {
+  if (loop.state.status === "pushed" || loop.state.status === "accepted_local") {
     return ctx.startFeedbackCycle(loopId, {
       prompt: message,
       model: options.model,

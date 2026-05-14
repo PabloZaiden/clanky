@@ -360,7 +360,6 @@ export function createLoopWithStatus(status: LoopStatus, overrides?: {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: [],
       };
       break;
     case "deleted":
@@ -559,11 +558,10 @@ export function createLoopErrorEvent(loopId: string, error = "Something went wro
   };
 }
 
-export function createLoopAcceptedEvent(loopId: string, mergeCommit = "abc123"): LoopEvent {
+export function createLoopAcceptedEvent(loopId: string): LoopEvent {
   return {
     type: "loop.accepted",
     loopId,
-    mergeCommit,
     timestamp: isoNow(),
   };
 }

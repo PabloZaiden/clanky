@@ -63,7 +63,7 @@ export interface UseLoopResult {
   remove: () => Promise<boolean>;
   /** Stop the active loop without deleting it */
   stopLoop: () => Promise<boolean>;
-  /** Accept (merge) the loop's changes */
+  /** Accept the loop's committed changes locally */
   accept: () => Promise<AcceptLoopResult>;
   /** Push the loop's branch to remote */
   push: () => Promise<PushLoopResult>;
@@ -71,10 +71,12 @@ export interface UseLoopResult {
   updateBranch: () => Promise<PushLoopResult>;
   /** Discard the loop's changes */
   discard: () => Promise<boolean>;
-  /** Purge the loop (permanently delete - only for merged/pushed/deleted loops) */
+  /** Purge the loop (permanently delete - only for accepted/pushed/merged/deleted loops) */
   purge: () => Promise<boolean>;
   /** Mark a loop as merged and sync with remote (only for final-state loops) */
   markMerged: () => Promise<boolean>;
+  /** Close a locally accepted loop without PR actions */
+  closeLocalLoop: () => Promise<boolean>;
   /** Promote a stopped or failed loop into completed status without resuming execution */
   manualCompleteLoop: () => Promise<boolean>;
   /** Set a pending prompt for the next iteration (only works when loop is running) */

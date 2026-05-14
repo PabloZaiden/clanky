@@ -9,8 +9,6 @@ import { createLogger } from "../lib/logger";
 
 const log = createLogger("LoopStatus");
 const MARK_MERGED_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
-  "completed",
-  "max_iterations",
   "pushed",
 ]);
 const MANUAL_COMPLETE_UI_ELIGIBLE_STATUSES: ReadonlySet<LoopStatus> = new Set([
@@ -50,6 +48,7 @@ export type LoopStatusPillKey =
   | "max_iterations"
   | "resolving_conflicts"
   | "merged"
+  | "accepted_local"
   | "pushed"
   | "deleted";
 
@@ -76,6 +75,7 @@ const LOOP_STATUS_PILLS: Record<LoopStatusPillKey, Omit<LoopStatusPill, "key">> 
   failed: { label: "Failed", variant: "failed" },
   max_iterations: { label: "Max Iterations", variant: "stopped" },
   resolving_conflicts: { label: "Resolving Conflicts", variant: "running" },
+  accepted_local: { label: "Accepted Local", variant: "completed" },
   merged: { label: "Merged", variant: "merged" },
   pushed: { label: "Pushed", variant: "pushed" },
   deleted: { label: "Deleted", variant: "deleted" },
@@ -130,7 +130,7 @@ export function getStatusLabel(status: LoopStatus, syncState?: LoopState["syncSt
 }
 
 /**
- * Check if a loop can be accepted (merged or pushed).
+ * Check if a loop can be accepted locally or pushed.
  * Only loops that completed successfully or hit max iterations
  * can have their changes accepted. Failed loops should be
  * reviewed manually or discarded.
@@ -142,11 +142,11 @@ export function canAccept(status: LoopStatus): boolean {
 }
 
 /**
- * Check if a loop is in a final state (merged, pushed, or deleted).
+ * Check if a loop is in a final state (accepted locally, merged, pushed, or deleted).
  * Only purge is allowed in final states.
  */
 export function isFinalState(status: LoopStatus): boolean {
-  const result = status === "merged" || status === "pushed" || status === "deleted";
+  const result = status === "accepted_local" || status === "merged" || status === "pushed" || status === "deleted";
   log.trace("isFinalState check", { status, result });
   return result;
 }
@@ -229,11 +229,11 @@ export function canSendTerminalFollowUp(status: LoopStatus, reviewModeAddressabl
 }
 
 /**
- * Check if a loop is awaiting feedback (pushed/merged but still addressable).
+ * Check if a loop is awaiting feedback (accepted locally or pushed but still addressable).
  * These loops are in a final state but can still receive reviewer comments.
  */
 export function isAwaitingFeedback(status: LoopStatus, reviewModeAddressable: boolean | undefined): boolean {
-  const result = (status === "merged" || status === "pushed") && reviewModeAddressable === true;
+  const result = (status === "accepted_local" || status === "pushed") && reviewModeAddressable === true;
   log.trace("isAwaitingFeedback check", { status, reviewModeAddressable, result });
   return result;
 }
@@ -246,7 +246,7 @@ export function isAwaitingFeedback(status: LoopStatus, reviewModeAddressable: bo
 export function isArchivedLoop(status: LoopStatus, reviewModeAddressable: boolean | undefined): boolean {
   const result =
     status === "deleted" ||
-    ((status === "merged" || status === "pushed") && !isAwaitingFeedback(status, reviewModeAddressable));
+    ((status === "accepted_local" || status === "merged" || status === "pushed") && !isAwaitingFeedback(status, reviewModeAddressable));
   log.trace("isArchivedLoop check", { status, reviewModeAddressable, result });
   return result;
 }

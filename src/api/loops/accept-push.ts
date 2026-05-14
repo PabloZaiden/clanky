@@ -1,10 +1,11 @@
 /**
  * Loop accept and push routes.
  *
- * - POST /api/loops/:id/accept       - Merge loop branch into original branch
+ * - POST /api/loops/:id/accept       - Accept committed loop changes locally
  * - POST /api/loops/:id/push         - Push loop branch to remote for PR workflow
  * - POST /api/loops/:id/update-branch - Sync pushed branch with base branch
  * - POST /api/loops/:id/mark-merged  - Mark an externally merged loop as merged
+ * - POST /api/loops/:id/close-local  - Close a locally accepted loop
  * - POST /api/loops/:id/manual-complete - Promote a stopped/failed loop to completed
  */
 
@@ -18,13 +19,13 @@ const log = createLogger("api:loops");
 export const loopsAcceptPushRoutes = {
   "/api/loops/:id/accept": {
     /**
-     * POST /api/loops/:id/accept - Accept and merge a completed loop.
+     * POST /api/loops/:id/accept - Accept a completed loop locally.
      *
-     * Merges the loop's working branch into the original branch.
+     * Leaves the loop's commits in the working branch without pushing.
      * Only works for loops in completed or max_iterations status.
-     * After merge, the loop status changes to `merged`.
+     * After accept, the loop status changes to `accepted_local`.
      *
-     * @returns AcceptResponse with success and mergeCommit SHA
+     * @returns AcceptResponse with success
      */
     async POST(req: Request & { params: { id: string } }): Promise<Response> {
       log.debug("POST /api/loops/:id/accept", { loopId: req.params.id });
@@ -38,10 +39,9 @@ export const loopsAcceptPushRoutes = {
         return errorResponse("accept_failed", result.error ?? "Unknown error", 400);
       }
 
-      log.info("POST /api/loops/:id/accept - Loop accepted", { loopId: req.params.id, mergeCommit: result.mergeCommit });
+      log.info("POST /api/loops/:id/accept - Loop accepted locally", { loopId: req.params.id });
       const response: AcceptResponse = {
         success: true,
-        mergeCommit: result.mergeCommit!,
       };
       return Response.json(response);
     },
@@ -140,6 +140,30 @@ export const loopsAcceptPushRoutes = {
           return errorResponse("not_found", "Loop not found", 404);
         }
         return errorResponse("mark_merged_failed", result.error ?? "Unknown error", 400);
+      }
+
+      return successResponse();
+    },
+  },
+
+  "/api/loops/:id/close-local": {
+    /**
+     * POST /api/loops/:id/close-local - Stop accepting follow-up comments locally.
+     *
+     * This is the local-only equivalent of ending PR review handling. It keeps
+     * the local commits intact, disables follow-up comments, and performs no git
+     * operations.
+     *
+     * @returns Success response
+     */
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const result = await loopManager.closeLocalLoop(req.params.id);
+
+      if (!result.success) {
+        if (result.error?.includes("not found")) {
+          return errorResponse("not_found", "Loop not found", 404);
+        }
+        return errorResponse("close_local_failed", result.error ?? "Unknown error", 400);
       }
 
       return successResponse();

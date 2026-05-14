@@ -93,7 +93,6 @@ export type AcceptPlanResult =
  */
 export interface AcceptLoopResult {
   success: boolean;
-  mergeCommit?: string;
   error?: string;
 }
 

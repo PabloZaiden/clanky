@@ -260,9 +260,9 @@ describe("error handling scenario", () => {
       expect(getByText("Finalize Loop")).toBeTruthy();
     });
 
-    // Click Accept & Merge
+    // Click Accept Local
     const mergeBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept & Merge"),
+      (b) => b.textContent?.includes("Accept Local"),
     );
     await user.click(mergeBtn!);
 

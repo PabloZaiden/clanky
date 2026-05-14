@@ -147,7 +147,7 @@ describe("Base Branch Invariant - Plan Mode", () => {
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
       expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
 
-      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
       expect(mergedLoop.state.git?.originalBranch).toBe(originalBranch);
 
       // Clean up

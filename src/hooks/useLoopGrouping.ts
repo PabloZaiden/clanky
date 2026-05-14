@@ -74,7 +74,7 @@ export function groupLoopsByStatus(loopsToGroup: Loop[]): StatusGroups {
     archived: loopsToGroup.filter((loop) => isArchivedLoop(loop.state.status, loop.state.reviewMode?.addressable)),
     other: loopsToGroup.filter(
       (loop) =>
-        !["draft", "running", "waiting", "starting", "completed", "merged", "pushed", "deleted", "planning"].includes(
+        !["draft", "running", "waiting", "starting", "completed", "accepted_local", "merged", "pushed", "deleted", "planning"].includes(
           loop.state.status
         )
     ),
