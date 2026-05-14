@@ -169,8 +169,6 @@ describe("SshSessionDetails", () => {
     expect(lastTerminalOptions).toEqual({
       fontSize: 16,
       fontFamily: "\"Ralpher Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
-      cursorBlink: true,
-      cursorStyle: "block",
       theme: expectedTerminalTheme,
     });
   });
@@ -193,7 +191,6 @@ describe("SshSessionDetails", () => {
     const terminalHost = lastTerminal!.element!;
     expect(terminalHost.style.caretColor).toBe("transparent");
     expect(terminalHost.classList.contains("caret-transparent")).toBe(true);
-    expect(terminalHost.classList.contains("terminal-modern-rendering")).toBe(true);
   });
 
   test("does not refocus the terminal after ghostty open already focused it", async () => {
@@ -232,8 +229,6 @@ describe("SshSessionDetails", () => {
     expect(lastTerminalOptions).toEqual({
       fontSize: 16,
       fontFamily: "\"Ralpher Terminal Nerd Font\", \"Liga SFMono Nerd Font\", monospace",
-      cursorBlink: true,
-      cursorStyle: "block",
       theme: expectedTerminalTheme,
     });
   });
@@ -257,7 +252,7 @@ describe("SshSessionDetails", () => {
     await act(async () => {
       ws.sendEventTo(terminalConnection, {
         type: "terminal.output",
-        data: "\u001b]11;?\u001b\\\u001b]12;?\u001b\\\u001b]4;0;?\u001b\\",
+        data: "\u001b]11;?\u001b\\\u001b]4;0;?\u001b\\",
       });
       ws.sendEventTo(terminalConnection, {
         type: "terminal.output",
@@ -269,7 +264,6 @@ describe("SshSessionDetails", () => {
     expect(lastTerminal!.writes.some((chunk) =>
       chunk.includes("\u001b]11;?")
       || chunk.includes("\u001b]10;?")
-      || chunk.includes("\u001b]12;?")
       || chunk.includes("\u001b]4;0;?")
       || chunk.includes("\u001b]4;2;?")
     )).toBe(false);
@@ -284,10 +278,6 @@ describe("SshSessionDetails", () => {
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
       data: "\u001b]11;rgb:1e/1e/1e\u001b\\",
-    }));
-    expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-      type: "terminal.input",
-      data: "\u001b]12;rgb:ae/af/ad\u001b\\",
     }));
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",

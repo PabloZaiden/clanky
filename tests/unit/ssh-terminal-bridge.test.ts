@@ -214,11 +214,6 @@ describe("SshTerminalBridge", () => {
     expect(command).toMatch(/cd .*\/workspaces\/example.*\|\| exit 1;/);
     expect(command).toMatch(/COLORTERM=.*truecolor.*;/);
     expect(command).toContain("export COLORTERM;");
-    expect(command).toMatch(/TERM_PROGRAM=.*Ghostty.*;/);
-    expect(command).toContain("export TERM_PROGRAM;");
-    expect(command).toContain("export TERM_PROGRAM_VERSION;");
-    expect(command).toContain("export LANG;");
-    expect(command).toContain("export LC_CTYPE;");
     expect(command).toContain("dtach -N \"$session_socket\" -Ez bash -lc");
     expect(command).toContain("dtach -a \"$session_socket\" -E -z -r winch");
     expect(command).toContain("tmux new-session \\; set-option destroy-unattached on;");
@@ -282,16 +277,8 @@ describe("SshTerminalBridge", () => {
   test("uses a fallback TERM when the server environment does not define one", async () => {
     const previousTerm = process.env["TERM"];
     const previousColorTerm = process.env["COLORTERM"];
-    const previousTermProgram = process.env["TERM_PROGRAM"];
-    const previousTermProgramVersion = process.env["TERM_PROGRAM_VERSION"];
-    const previousLang = process.env["LANG"];
-    const previousLcCtype = process.env["LC_CTYPE"];
     delete process.env["TERM"];
     delete process.env["COLORTERM"];
-    delete process.env["TERM_PROGRAM"];
-    delete process.env["TERM_PROGRAM_VERSION"];
-    delete process.env["LANG"];
-    delete process.env["LC_CTYPE"];
 
     try {
       const bridge = new SshTerminalBridge(session.config.id, {
@@ -303,10 +290,6 @@ describe("SshTerminalBridge", () => {
       expect(lastSpawnCommand?.[0]).toBe("ssh");
       expect(lastSpawnEnv?.["TERM"]).toBe("xterm-256color");
       expect(lastSpawnEnv?.["COLORTERM"]).toBe("truecolor");
-      expect(lastSpawnEnv?.["TERM_PROGRAM"]).toBe("Ghostty");
-      expect(lastSpawnEnv?.["TERM_PROGRAM_VERSION"]).toBe("1.0.0-ralpher");
-      expect(lastSpawnEnv?.["LANG"]).toBe("C.UTF-8");
-      expect(lastSpawnEnv?.["LC_CTYPE"]).toBe("C.UTF-8");
 
       await bridge.dispose();
     } finally {
@@ -319,26 +302,6 @@ describe("SshTerminalBridge", () => {
         delete process.env["COLORTERM"];
       } else {
         process.env["COLORTERM"] = previousColorTerm;
-      }
-      if (previousTermProgram === undefined) {
-        delete process.env["TERM_PROGRAM"];
-      } else {
-        process.env["TERM_PROGRAM"] = previousTermProgram;
-      }
-      if (previousTermProgramVersion === undefined) {
-        delete process.env["TERM_PROGRAM_VERSION"];
-      } else {
-        process.env["TERM_PROGRAM_VERSION"] = previousTermProgramVersion;
-      }
-      if (previousLang === undefined) {
-        delete process.env["LANG"];
-      } else {
-        process.env["LANG"] = previousLang;
-      }
-      if (previousLcCtype === undefined) {
-        delete process.env["LC_CTYPE"];
-      } else {
-        process.env["LC_CTYPE"] = previousLcCtype;
       }
     }
   });
@@ -358,38 +321,6 @@ describe("SshTerminalBridge", () => {
 
       expect(lastSpawnCommand?.[0]).toBe("ssh");
       expect(lastSpawnEnv?.["TERM"]).toBe("screen-256color");
-      expect(lastSpawnEnv?.["COLORTERM"]).toBe("truecolor");
-
-      await bridge.dispose();
-    } finally {
-      if (previousTerm === undefined) {
-        delete process.env["TERM"];
-      } else {
-        process.env["TERM"] = previousTerm;
-      }
-      if (previousColorTerm === undefined) {
-        delete process.env["COLORTERM"];
-      } else {
-        process.env["COLORTERM"] = previousColorTerm;
-      }
-    }
-  });
-
-  test("normalizes non-capable TERM values when opening the SSH terminal", async () => {
-    const previousTerm = process.env["TERM"];
-    const previousColorTerm = process.env["COLORTERM"];
-    process.env["TERM"] = "dumb";
-    delete process.env["COLORTERM"];
-
-    try {
-      const bridge = new SshTerminalBridge(session.config.id, {
-        onOutput: () => {},
-      });
-
-      await bridge.connect();
-
-      expect(lastSpawnCommand?.[0]).toBe("ssh");
-      expect(lastSpawnEnv?.["TERM"]).toBe("xterm-256color");
       expect(lastSpawnEnv?.["COLORTERM"]).toBe("truecolor");
 
       await bridge.dispose();

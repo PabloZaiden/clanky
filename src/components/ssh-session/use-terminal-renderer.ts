@@ -70,8 +70,6 @@ export function useTerminalRenderer({
         terminal = new Terminal({
           fontSize: TERMINAL_FONT_SIZE_PX,
           fontFamily: terminalFontFamily,
-          cursorBlink: true,
-          cursorStyle: "block",
           theme: TERMINAL_THEME,
         });
         fitAddon = new FitAddon();

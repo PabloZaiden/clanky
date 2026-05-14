@@ -8,13 +8,7 @@ import {
   buildPersistentSessionAttachCommand,
 } from "../ssh-persistent-session";
 import { buildShellBootstrapCommand } from "../ssh-shell-bootstrap";
-import {
-  DEFAULT_SSH_COLOR_TERM,
-  DEFAULT_SSH_TERM_PROGRAM,
-  DEFAULT_SSH_TERM_PROGRAM_VERSION,
-  normalizeSshLocale,
-  normalizeSshTerm,
-} from "../ssh-terminal-env";
+import { DEFAULT_SSH_COLOR_TERM, DEFAULT_SSH_TERM } from "../ssh-terminal-env";
 import {
   buildSshProcessConfig,
   type SshConnectionTarget,
@@ -72,20 +66,13 @@ function buildSessionStartupCommand(
 }
 
 function buildSpawnEnv(extraEnv?: Record<string, string>): NodeJS.ProcessEnv {
+  const configuredTerm = process.env["TERM"]?.trim();
   const configuredColorTerm = process.env["COLORTERM"]?.trim();
-  const configuredTermProgram = process.env["TERM_PROGRAM"]?.trim();
-  const configuredTermProgramVersion = process.env["TERM_PROGRAM_VERSION"]?.trim();
   return {
     ...process.env,
     ...extraEnv,
-    TERM: normalizeSshTerm(process.env["TERM"]),
+    TERM: configuredTerm && configuredTerm.length > 0 ? configuredTerm : DEFAULT_SSH_TERM,
     COLORTERM: configuredColorTerm && configuredColorTerm.length > 0 ? configuredColorTerm : DEFAULT_SSH_COLOR_TERM,
-    TERM_PROGRAM: configuredTermProgram && configuredTermProgram.length > 0 ? configuredTermProgram : DEFAULT_SSH_TERM_PROGRAM,
-    TERM_PROGRAM_VERSION: configuredTermProgramVersion && configuredTermProgramVersion.length > 0
-      ? configuredTermProgramVersion
-      : DEFAULT_SSH_TERM_PROGRAM_VERSION,
-    LANG: normalizeSshLocale(process.env["LANG"]),
-    LC_CTYPE: normalizeSshLocale(process.env["LC_CTYPE"] ?? process.env["LANG"]),
   };
 }
 

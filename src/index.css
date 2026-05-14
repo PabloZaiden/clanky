@@ -235,18 +235,4 @@
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
-
-  .terminal-modern-rendering {
-    font-family: "Ralpher Terminal Nerd Font", "JetBrainsMono Nerd Font Mono", "SFMono-Regular", "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    font-kerning: none;
-    font-feature-settings: "liga" 0, "calt" 0;
-    text-rendering: geometricPrecision;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    contain: strict;
-  }
-
-  .terminal-modern-rendering canvas {
-    display: block;
-  }
 }
