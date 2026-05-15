@@ -11,7 +11,7 @@ import type {
 } from "../types";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
-import { useAppEvents } from "./useAppEvents";
+import { isChatEvent, useAppEvents } from "./useAppEvents";
 
 const log = createLogger("useChats");
 
@@ -243,7 +243,7 @@ export function useChats(): UseChatsResult {
         void refreshChat(event.chatId);
         break;
     }
-  });
+  }, isChatEvent);
 
   useEffect(() => {
     void refresh();

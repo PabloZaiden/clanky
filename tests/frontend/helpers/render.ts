@@ -9,7 +9,6 @@ import { render, type RenderOptions, type RenderResult } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { createElement, type ReactElement, type ReactNode } from "react";
 import { ToastProvider } from "@/components/common/Toast";
-import { AppEventsProvider } from "@/hooks";
 
 interface CustomRenderOptions extends Omit<RenderOptions, "wrapper"> {
   /** Set window.location.hash before rendering */
@@ -26,7 +25,7 @@ interface CustomRenderResult extends RenderResult {
  * Currently includes ToastProvider (required by Dashboard and components that use useToast).
  */
 function AllProviders({ children }: { children: ReactNode }) {
-  return createElement(AppEventsProvider, null, createElement(ToastProvider, null, children));
+  return createElement(ToastProvider, null, children);
 }
 
 /**

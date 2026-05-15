@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { LoopEvent, ChatEvent, SshSessionEvent } from "../types";
 import {
   useWebSocket,
@@ -7,13 +7,12 @@ import {
 } from "./useWebSocket";
 
 type AppEvent = LoopEvent | ChatEvent | SshSessionEvent;
-type AppEventHandler<T extends AppEvent = AppEvent> = (event: T) => void;
+type AppEventHandler = (event: AppEvent) => void;
+type AppEventFilter<T extends AppEvent> = (event: AppEvent) => event is T;
 
 interface AppEventsContextValue {
-  events: AppEvent[];
   status: WebSocketConnectionStatus;
-  subscribe: <T extends AppEvent>(handler: AppEventHandler<T>) => () => void;
-  clearEvents: UseWebSocketResult<AppEvent>["clearEvents"];
+  subscribe: (handler: AppEventHandler) => () => void;
 }
 
 const AppEventsContext = createContext<AppEventsContextValue | null>(null);
@@ -36,25 +35,22 @@ function AppEventsProviderRoot({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const { events, status, clearEvents } = useWebSocket<AppEvent>({
+  const { status } = useWebSocket<AppEvent>({
     url: "/api/ws",
     onEvent: handleEvent,
   });
 
-  const subscribe = useCallback(<T extends AppEvent>(handler: AppEventHandler<T>) => {
-    const appHandler = handler as AppEventHandler;
-    handlersRef.current.add(appHandler);
+  const subscribe = useCallback((handler: AppEventHandler) => {
+    handlersRef.current.add(handler);
     return () => {
-      handlersRef.current.delete(appHandler);
+      handlersRef.current.delete(handler);
     };
   }, []);
 
   const value = useMemo<AppEventsContextValue>(() => ({
-    events,
     status,
     subscribe,
-    clearEvents,
-  }), [clearEvents, events, status, subscribe]);
+  }), [status, subscribe]);
 
   return (
     <AppEventsContext.Provider value={value}>
@@ -64,23 +60,43 @@ function AppEventsProviderRoot({ children }: { children: ReactNode }) {
 }
 
 export function useAppEvents<T extends AppEvent>(
-  onEvent?: AppEventHandler<T>,
+  onEvent?: (event: T) => void,
+  filter?: AppEventFilter<T>,
 ): { events: T[]; status: WebSocketConnectionStatus; clearEvents: UseWebSocketResult<AppEvent>["clearEvents"] } {
   const context = useContext(AppEventsContext);
+  const [events, setEvents] = useState<T[]>([]);
+  const clearEvents = useCallback(() => setEvents([]), []);
   if (!context) {
     throw new Error("useAppEvents must be used within AppEventsProvider");
   }
+  const { subscribe, status } = context;
 
   useEffect(() => {
-    if (!onEvent) {
-      return undefined;
-    }
-    return context.subscribe(onEvent);
-  }, [context, onEvent]);
+    return subscribe((event: AppEvent) => {
+      if (filter && !filter(event)) {
+        return;
+      }
+      const typedEvent = event as T;
+      setEvents((prev) => [...prev, typedEvent].slice(-1000));
+      onEvent?.(typedEvent);
+    });
+  }, [filter, onEvent, subscribe]);
 
   return {
-    events: context.events as T[],
-    status: context.status,
-    clearEvents: context.clearEvents,
+    events,
+    status,
+    clearEvents,
   };
+}
+
+export function isLoopEvent(event: AppEvent): event is LoopEvent {
+  return event.type.startsWith("loop.");
+}
+
+export function isChatEvent(event: AppEvent): event is ChatEvent {
+  return event.type.startsWith("chat.");
+}
+
+export function isSshSessionEvent(event: AppEvent): event is SshSessionEvent {
+  return event.type.startsWith("ssh_session.");
 }

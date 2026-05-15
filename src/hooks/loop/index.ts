@@ -15,7 +15,7 @@ import type { Loop, LoopEvent, UpdateLoopRequest, FileDiff, FileContentResponse,
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { FollowUpPromptMode } from "../../types/loop";
 import type { LogEntry } from "../../components/LogViewer";
-import { useAppEvents } from "../useAppEvents";
+import { isLoopEvent, useAppEvents } from "../useAppEvents";
 import { createLogger } from "../../lib/logger";
 import type {
   AcceptLoopResult,
@@ -169,7 +169,7 @@ export function useLoop(loopId: string): UseLoopResult {
     });
 
   // WebSocket subscription for real-time updates
-  const { events, status: connectionStatus, clearEvents } = useAppEvents<LoopEvent>(handleEvent);
+  const { events, status: connectionStatus, clearEvents } = useAppEvents<LoopEvent>(handleEvent, isLoopEvent);
 
   // Action callbacks
   const actions = useLoopActions({

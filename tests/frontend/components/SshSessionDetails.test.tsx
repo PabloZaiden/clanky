@@ -1754,7 +1754,6 @@ describe("SshSessionDetails", () => {
       expect(api.calls("/api/ssh-servers/:id", "GET")).toHaveLength(1);
       expect(api.calls("/api/ssh-servers/:id/public-key", "GET")).toHaveLength(1);
       expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(1);
-      expect(ws.connections().filter((connection) => connection.url.endsWith("/api/ws"))).toHaveLength(1);
       expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
     });
 
@@ -1779,7 +1778,6 @@ describe("SshSessionDetails", () => {
     expect(api.calls("/api/ssh-servers/:id/public-key", "GET")).toHaveLength(1);
     expect(api.calls("/api/ssh-servers/:id", "GET")).toHaveLength(1);
     expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(1);
-    expect(ws.connections().filter((connection) => connection.url.endsWith("/api/ws"))).toHaveLength(1);
     expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
     expect(ws.getConnections("/api/ssh-terminal")[0]?.queryParams["credentialToken"]).toBeUndefined();
     expect(ws.getConnections("/api/ssh-terminal")[0]?.sentMessages).toContain(

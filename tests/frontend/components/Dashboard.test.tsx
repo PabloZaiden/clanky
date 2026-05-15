@@ -11,10 +11,17 @@ import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor } from "../helpers/render";
 import { createLoopWithStatus, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
 import { Dashboard } from "@/components/Dashboard";
-import { ThemePreferenceProvider } from "@/hooks";
+import { AppEventsProvider, ThemePreferenceProvider } from "@/hooks";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
+
+function renderWithAppEvents(
+  ui: Parameters<typeof renderWithUser>[0],
+  options?: Parameters<typeof renderWithUser>[1],
+) {
+  return renderWithUser(<AppEventsProvider>{ui}</AppEventsProvider>, options);
+}
 
 /** Set up the default API routes Dashboard requires. */
 function setupDefaultApi() {
@@ -81,7 +88,7 @@ describe("ssh section", () => {
     });
 
     const onSelectSshSession: string[] = [];
-    const { getByLabelText, getByRole, user } = renderWithUser(
+    const { getByLabelText, getByRole, user } = renderWithAppEvents(
       <Dashboard onSelectSshSession={(sessionId) => onSelectSshSession.push(sessionId)} />,
     );
 
@@ -121,7 +128,7 @@ describe("ssh section", () => {
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => [session]);
 
-    const { getByRole, queryByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, queryByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: /SSH \(1\)/ })).toBeTruthy();
@@ -153,7 +160,7 @@ describe("ssh section", () => {
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => [session]);
 
-    const { getByRole, getByText, queryByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, getByText, queryByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: /SSH \(1\)/ })).toBeTruthy();
@@ -221,7 +228,7 @@ describe("ssh section", () => {
       state: { status: "ready" },
     }]);
 
-    const { getByRole, queryByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, queryByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: /SSH \(2\)/ })).toBeTruthy();
@@ -261,7 +268,7 @@ describe("ssh section", () => {
       });
     });
 
-    const { getByRole, getAllByLabelText, getByLabelText, getByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, getAllByLabelText, getByLabelText, getByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: /SSH \(1\)/ })).toBeTruthy();
@@ -340,7 +347,7 @@ describe("standalone ssh servers section", () => {
     }));
 
     const onSelectSshSession: string[] = [];
-    const { getByRole, queryByRole, user } = renderWithUser(
+    const { getByRole, queryByRole, user } = renderWithAppEvents(
       <Dashboard onSelectSshSession={(sessionId) => onSelectSshSession.push(sessionId)} />,
     );
 
@@ -387,7 +394,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [loop1, loop2]);
     api.get("/api/workspaces", () => [ws1, ws2]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Frontend")).toBeTruthy();
@@ -410,7 +417,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [loop]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("/home/user/my-project")).toBeTruthy();
@@ -430,7 +437,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [runningLoop, completedLoop]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Active (1)")).toBeTruthy();
@@ -447,7 +454,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [draftLoop]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Drafts (1)")).toBeTruthy();
@@ -471,7 +478,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [pushedLoop]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Awaiting Feedback (1)")).toBeTruthy();
@@ -486,7 +493,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [loop]);
     api.get("/api/workspaces", () => []);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Unassigned")).toBeTruthy();
@@ -502,7 +509,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [loop]);
     api.get("/api/workspaces", () => []);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Unassigned")).toBeTruthy();
@@ -525,7 +532,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [loop]);
     api.get("/api/workspaces", async () => await workspacesPromise);
 
-    const { queryByText } = renderWithUser(<Dashboard />);
+    const { queryByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(api.calls("/api/loops", "GET").length).toBe(1);
@@ -556,7 +563,7 @@ describe("loop grid rendering", () => {
     api.get("/api/workspaces", () => []);
     api.get("/api/ssh-sessions", () => [session]);
 
-    const { getByRole, getByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, getByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: /SSH \(1\)/ })).toBeTruthy();
@@ -590,7 +597,7 @@ describe("loop grid rendering", () => {
     api.get("/api/workspaces", async () => await workspacesPromise);
     api.get("/api/ssh-sessions", () => [session]);
 
-    const { getByRole, queryByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, queryByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: /SSH \(1\)/ })).toBeTruthy();
@@ -626,7 +633,7 @@ describe("loop grid rendering", () => {
     api.get("/api/loops", () => [mergedLoop]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Archived (1)")).toBeTruthy();
@@ -647,7 +654,7 @@ describe("loop card click navigation", () => {
     api.get("/api/workspaces", () => [workspace]);
 
     let selectedLoopId: string | undefined;
-    const { getByText, user } = renderWithUser(
+    const { getByText, user } = renderWithAppEvents(
       <Dashboard onSelectLoop={(id) => { selectedLoopId = id; }} />,
     );
 
@@ -670,7 +677,7 @@ describe("loop card click navigation", () => {
     api.get("/api/workspaces", () => [workspace]);
 
     let selectedLoopId: string | undefined;
-    const { getByText, user } = renderWithUser(
+    const { getByText, user } = renderWithAppEvents(
       <Dashboard onSelectLoop={(id) => { selectedLoopId = id; }} />,
     );
 
@@ -688,7 +695,7 @@ describe("loop card click navigation", () => {
 
 describe("create loop modal", () => {
   test("opens create loop modal when 'New Loop' is clicked", async () => {
-    const { getByRole, getByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, getByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "New Loop" })).toBeTruthy();
@@ -702,7 +709,7 @@ describe("create loop modal", () => {
   });
 
   test("closes create loop modal on cancel", async () => {
-    const { getByRole, getByText, queryByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, getByText, queryByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "New Loop" })).toBeTruthy();
@@ -748,7 +755,7 @@ describe("loop rename restrictions", () => {
     api.get("/api/loops", () => [loop]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Rename Me")).toBeTruthy();
@@ -763,7 +770,7 @@ describe("loop rename restrictions", () => {
 
 describe("app settings modal", () => {
   test("opens app settings modal when settings button is clicked", async () => {
-    const { getByTitle, getByText, user } = renderWithUser(
+    const { getByTitle, getByText, user } = renderWithAppEvents(
       <ThemePreferenceProvider>
         <Dashboard />
       </ThemePreferenceProvider>,
@@ -785,7 +792,7 @@ describe("app settings modal", () => {
 
 describe("create workspace modal", () => {
   test("opens create workspace modal when 'New Workspace' is clicked", async () => {
-    const { getByRole, user } = renderWithUser(<Dashboard />);
+    const { getByRole, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "New Workspace" })).toBeTruthy();
@@ -808,7 +815,7 @@ describe("empty workspaces section", () => {
     api.get("/api/loops", () => []);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Empty Workspaces")).toBeTruthy();
@@ -826,7 +833,7 @@ describe("error display", () => {
       throw { status: 500, body: { error: "server_error" } };
     });
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       // The useLoops hook sets an error string on failed fetch
@@ -853,7 +860,7 @@ describe("multiple status groups in same workspace", () => {
     api.get("/api/loops", () => [draft, running, completed]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Full Project")).toBeTruthy();
@@ -881,7 +888,7 @@ describe("multiple status groups in same workspace", () => {
     api.get("/api/loops", () => [r1, r2, r3]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByText } = renderWithUser(<Dashboard />);
+    const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Active (3)")).toBeTruthy();
@@ -910,7 +917,7 @@ describe("edit draft flow", () => {
     api.get("/api/loops", () => [draftLoop]);
     api.get("/api/workspaces", () => [workspace]);
 
-    const { getByRole, getByText, user } = renderWithUser(<Dashboard />);
+    const { getByRole, getByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Draft Task")).toBeTruthy();
@@ -948,7 +955,7 @@ describe("workspace settings modal", () => {
     api.get("/api/workspaces/:id", () => workspace);
     api.get("/api/workspaces/:id/status", () => ({ connected: true }));
 
-    const { getByText, user } = renderWithUser(<Dashboard />);
+    const { getByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
       expect(getByText("Settings Project")).toBeTruthy();

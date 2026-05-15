@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CreateSshSessionRequest, SshSession, SshSessionEvent, UpdateSshSessionRequest } from "../types";
 import { createLogger } from "../lib/logger";
-import { useAppEvents } from "./useAppEvents";
+import { isSshSessionEvent, useAppEvents } from "./useAppEvents";
 import { appFetch } from "../lib/public-path";
 
 export interface UseSshSessionsResult {
@@ -88,7 +88,7 @@ export function useSshSessions(): UseSshSessionsResult {
     }
   }, [refresh, refreshSession]);
 
-  useAppEvents<SshSessionEvent>(handleEvent);
+  useAppEvents<SshSessionEvent>(handleEvent, isSshSessionEvent);
 
   const createSession = useCallback(async (request: CreateSshSessionRequest): Promise<SshSession> => {
     try {

@@ -1296,10 +1296,10 @@ describe("connectionStatus", () => {
   });
 });
 
-// ─── WebSocket connects with loopId ──────────────────────────────────────────
+// ─── WebSocket connection sharing ────────────────────────────────────────────
 
 describe("WebSocket connection", () => {
-  test("creates loop-specific WebSocket connection with loopId query param", async () => {
+  test("uses the shared app event WebSocket without a loopId query param", async () => {
     setupLoop();
     const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
@@ -1308,5 +1308,6 @@ describe("WebSocket connection", () => {
 
     const loopConn = ws.getGlobalConnection();
     expect(loopConn).toBeDefined();
+    expect(ws.getLoopConnection(LOOP_ID)).toBeUndefined();
   });
 });

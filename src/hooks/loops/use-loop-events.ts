@@ -3,7 +3,7 @@
  */
 
 import type { Loop, LoopEvent } from "../../types";
-import { useAppEvents } from "../useAppEvents";
+import { isLoopEvent, useAppEvents } from "../useAppEvents";
 import { useRefreshOnReconnect } from "../useRefreshOnReconnect";
 
 interface UseLoopEventsOptions {
@@ -46,7 +46,7 @@ export function useLoopEvents({ refresh, refreshLoop, setLoops }: UseLoopEventsO
     }
   }
 
-  const { status } = useAppEvents<LoopEvent>(handleEvent);
+  const { status } = useAppEvents<LoopEvent>(handleEvent, isLoopEvent);
 
   useRefreshOnReconnect({
     status,
