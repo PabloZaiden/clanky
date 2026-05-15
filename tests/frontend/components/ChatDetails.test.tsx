@@ -1303,6 +1303,56 @@ describe("ChatDetails", () => {
     expect(getByText("Idle")).toBeTruthy();
   });
 
+  test("applies terminal chat status events even when content activity is newer", async () => {
+    api.get("/api/chats/:id", () => createChat({
+      state: {
+        id: CHAT_ID,
+        status: "streaming",
+        activeMessageId: "assistant-1",
+        lastActivityAt: "2025-01-01T00:00:04.000Z",
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    }));
+
+    const { getByText, queryByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Streaming")).toBeTruthy();
+      expect(getByText("Thinking…")).toBeTruthy();
+    });
+
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
+    expect(connection).toBeTruthy();
+
+    await act(async () => {
+      ws.sendEventTo(connection!, {
+        type: "chat.message",
+        chatId: CHAT_ID,
+        message: {
+          id: "assistant-1",
+          role: "assistant",
+          content: "Final response",
+          timestamp: "2025-01-01T00:00:04.000Z",
+        },
+        timestamp: "2025-01-01T00:00:10.000Z",
+      });
+      ws.sendEventTo(connection!, {
+        type: "chat.status",
+        chatId: CHAT_ID,
+        scope: "workspace",
+        status: "idle",
+        timestamp: "2025-01-01T00:00:05.000Z",
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Idle")).toBeTruthy();
+      expect(queryByText("Thinking…")).toBeNull();
+    });
+  });
+
   test("ignores stale cancellation errors after newer chat activity", async () => {
     api.get("/api/chats/:id", () => createChat({
       state: {

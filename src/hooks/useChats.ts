@@ -15,6 +15,7 @@ import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import { isChatEvent, useAppEvents } from "./useAppEvents";
 
 const log = createLogger("useChats");
+const TERMINAL_CHAT_STATUSES = new Set(["idle", "stopped", "failed"]);
 
 function sortChats(chats: Chat[]): Chat[] {
   return [...chats].sort((left, right) => {
@@ -255,6 +256,7 @@ export function useChats(): UseChatsResult {
       case "chat.status":
         setChats((prev) => updateChatState(prev, event.chatId, {
           status: event.status,
+          ...(TERMINAL_CHAT_STATUSES.has(event.status) ? { activeMessageId: undefined } : {}),
           ...(event.status === "failed" ? {} : { error: undefined }),
           lastActivityAt: event.timestamp,
         }));
