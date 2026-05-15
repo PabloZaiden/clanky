@@ -266,6 +266,7 @@ class BackendManager {
    */
   async resetWorkspaceConnection(workspaceId: string): Promise<void> {
     const state = this.connections.get(workspaceId);
+    this.clearCommandExecutorsForWorkspace(workspaceId);
 
     if (state) {
       // Abort all active subscriptions first
@@ -290,7 +291,6 @@ class BackendManager {
       // Remove from connections map
       this.connections.delete(workspaceId);
     }
-    this.clearCommandExecutorsForWorkspace(workspaceId);
 
     this.emitEvent({
       type: "server.reset",

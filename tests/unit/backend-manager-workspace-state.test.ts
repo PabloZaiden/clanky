@@ -120,6 +120,17 @@ describe("BackendManager workspace state hydration", () => {
     expect(workspaceExecutor).not.toBe(worktreeExecutor);
   });
 
+  test("resetWorkspaceConnection clears cached executors when test backend mode preserves state", async () => {
+    await createSshWorkspace();
+    await backendManager.getCommandExecutorAsync("workspace-ssh", "/workspaces/project");
+    backendManager.setBackendForTesting(new AcpBackend());
+
+    await backendManager.resetWorkspaceConnection("workspace-ssh");
+
+    const internals = backendManager as unknown as BackendManagerInternals;
+    expect(internals.commandExecutors.size).toBe(0);
+  });
+
   test("getCommandExecutorAsync refreshes stale default state to persisted SSH settings", async () => {
     await createSshWorkspace();
 
