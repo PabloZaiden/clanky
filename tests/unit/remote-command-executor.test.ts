@@ -1,7 +1,12 @@
 import { describe, expect, spyOn, test } from "bun:test";
 
 import { log } from "../../src/core/logger";
-import { buildSshRemoteShellCommand, CommandExecutorImpl } from "../../src/core/remote-command-executor";
+import { buildSshCommandArgs, buildSshRemoteShellCommand, CommandExecutorImpl } from "../../src/core/remote-command-executor";
+
+function getSshOptionValue(args: string[], optionName: string): string | undefined {
+  const prefix = `${optionName}=`;
+  return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+}
 
 describe("CommandExecutorImpl SSH spawn cwd", () => {
   test("builds a shell bootstrap that prefers zsh and falls back to bash/sh", () => {
@@ -40,6 +45,9 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
       expect(capturedCwd).toBe("/");
       expect(capturedCommand).toBeDefined();
       const commandTokens = capturedCommand ?? [];
+      expect(commandTokens).toContain("ControlMaster=auto");
+      expect(commandTokens).toContain("ControlPersist=60s");
+      expect(getSshOptionValue(commandTokens, "ControlPath")).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
       const scriptArg = commandTokens[commandTokens.indexOf("--") + 1];
       expect(typeof scriptArg).toBe("string");
       expect(scriptArg ?? "").toContain("sh -lc");
@@ -76,6 +84,8 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
       expect(result.success).toBe(false);
 
       const commandTokens = capturedCommand ?? [];
+      expect(commandTokens).toContain("ControlMaster=auto");
+      expect(commandTokens).toContain("ControlPersist=60s");
       const scriptArg = commandTokens[commandTokens.indexOf("--") + 1] ?? "";
       expect(scriptArg).toContain("sh -lc");
       expect(scriptArg).toContain('exec "$shell_path" -ilc');
@@ -155,8 +165,14 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
       const commandTokens = capturedCommand ?? [];
       expect(commandTokens[0]).toBe("sshpass");
       expect(commandTokens).toContain("-e");
+      const sshIndex = commandTokens.indexOf("ssh");
+      const controlMasterIndex = commandTokens.indexOf("ControlMaster=auto");
+      expect(sshIndex).toBeGreaterThanOrEqual(0);
+      expect(controlMasterIndex).toBeGreaterThan(sshIndex);
       expect(commandTokens).toContain("NumberOfPasswordPrompts=1");
       expect(commandTokens).toContain("PreferredAuthentications=password,keyboard-interactive");
+      expect(commandTokens).toContain("ControlPersist=60s");
+      expect(getSshOptionValue(commandTokens, "ControlPath")).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
       expect(commandTokens).not.toContain("top-secret");
       expect(capturedEnv?.["SSHPASS"]).toBe("top-secret");
     } finally {
@@ -189,6 +205,8 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
 
       const commandTokens = capturedCommand ?? [];
       expect(commandTokens[0]).toBe("ssh");
+      expect(commandTokens).toContain("ControlMaster=auto");
+      expect(commandTokens).toContain("ControlPersist=60s");
       expect(commandTokens).toContain("IdentityAgent=none");
       expect(commandTokens).toContain("IdentitiesOnly=yes");
       const identityFileIndex = commandTokens.indexOf("-i");
@@ -197,6 +215,62 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
     } finally {
       (Bun as unknown as { spawn: typeof Bun.spawn }).spawn = originalSpawn;
     }
+  });
+
+  test("builds stable scoped ControlPath values for compatible SSH details", () => {
+    const firstArgs = buildSshCommandArgs({
+      authMode: "batch",
+      port: 22,
+      target: "alice@remote.example.com",
+      identityFile: "/tmp/test-key",
+      connectionScope: "/workspaces/project",
+    });
+    const secondArgs = buildSshCommandArgs({
+      authMode: "batch",
+      port: 22,
+      target: "alice@remote.example.com",
+      identityFile: "/tmp/test-key",
+      connectionScope: "/workspaces/project",
+    });
+
+    expect(getSshOptionValue(firstArgs, "ControlPath")).toBe(getSshOptionValue(secondArgs, "ControlPath"));
+  });
+
+  test("changes ControlPath when reuse-sensitive SSH details change", () => {
+    const baseArgs = buildSshCommandArgs({
+      authMode: "batch",
+      port: 22,
+      target: "alice@remote.example.com",
+      identityFile: "/tmp/test-key",
+      connectionScope: "/workspaces/project",
+    });
+    const changedWorkspaceArgs = buildSshCommandArgs({
+      authMode: "batch",
+      port: 22,
+      target: "alice@remote.example.com",
+      identityFile: "/tmp/test-key",
+      connectionScope: "/workspaces/other-project",
+    });
+    const changedAuthArgs = buildSshCommandArgs({
+      authMode: "password",
+      port: 22,
+      target: "alice@remote.example.com",
+      identityFile: "/tmp/test-key",
+      connectionScope: "/workspaces/project",
+    });
+    const changedIdentityArgs = buildSshCommandArgs({
+      authMode: "batch",
+      port: 22,
+      target: "alice@remote.example.com",
+      identityFile: "/tmp/other-key",
+      connectionScope: "/workspaces/project",
+    });
+
+    const baseControlPath = getSshOptionValue(baseArgs, "ControlPath");
+    expect(baseControlPath).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
+    expect(getSshOptionValue(changedWorkspaceArgs, "ControlPath")).not.toBe(baseControlPath);
+    expect(getSshOptionValue(changedAuthArgs, "ControlPath")).not.toBe(baseControlPath);
+    expect(getSshOptionValue(changedIdentityArgs, "ControlPath")).not.toBe(baseControlPath);
   });
 
   test("returns promptly with exit code 130 when local execution is aborted", async () => {

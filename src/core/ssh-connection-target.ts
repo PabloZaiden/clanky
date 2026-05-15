@@ -24,6 +24,7 @@ export interface BuildSshProcessConfigOptions {
   target: SshConnectionTarget;
   remoteCommand?: string;
   extraArgs?: string[];
+  connectionScope?: string;
   passwordHandling?: "environment" | "argument";
   baseEnv?: NodeJS.ProcessEnv;
   env?: Record<string, string>;
@@ -92,6 +93,7 @@ export function buildSshProcessConfig(options: BuildSshProcessConfigOptions): Ss
       target: buildSshAuthority(options.target),
       remoteCommand: options.remoteCommand,
       identityFile: options.target.identityFile,
+      connectionScope: options.connectionScope,
     }),
   ];
 
