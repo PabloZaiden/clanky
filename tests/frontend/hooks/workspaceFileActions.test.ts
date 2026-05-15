@@ -32,7 +32,7 @@ afterEach(() => {
 });
 
 describe("server file explorer actions", () => {
-  test("limits concurrent metadata requests across file explorer targets", async () => {
+  test("limits concurrent workspace metadata requests", async () => {
     let activeRequests = 0;
     let maxActiveRequests = 0;
     const releaseRequestHandlers: Array<() => void> = [];
@@ -78,6 +78,55 @@ describe("server file explorer actions", () => {
     await Promise.all(requests);
 
     expect(maxActiveRequests).toBe(10);
+  });
+
+  test("aborts queued metadata requests before they start", async () => {
+    const releaseRequestHandlers: Array<() => void> = [];
+
+    api.get("/api/workspaces/:id/files/metadata", async (req) => {
+      await new Promise<void>((resolve) => {
+        releaseRequestHandlers.push(resolve);
+      });
+
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      return {
+        workspaceId: req.params["id"],
+        file: {
+          name: path.split("/").pop() ?? path,
+          path,
+          kind: "file",
+          size: 1,
+          modifiedAt: new Date().toISOString(),
+          versionToken: `token-${path}`,
+        },
+      };
+    });
+
+    const activeRequests = Array.from({ length: 10 }, (_value, index) =>
+      getFileExplorerFileMetadataApi(
+        { type: "workspace", id: "workspace-1" },
+        `src/active-${index}.ts`,
+      ));
+
+    while (api.calls("/api/workspaces/:id/files/metadata", "GET").length < 10) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    const controller = new AbortController();
+    const queuedRequest = getFileExplorerFileMetadataApi(
+      { type: "workspace", id: "workspace-1" },
+      "src/queued.ts",
+      { signal: controller.signal },
+    );
+    controller.abort();
+
+    await expect(queuedRequest).rejects.toThrow(/aborted/i);
+    expect(api.calls("/api/workspaces/:id/files/metadata", "GET")).toHaveLength(10);
+
+    while (releaseRequestHandlers.length > 0) {
+      releaseRequestHandlers.shift()?.();
+    }
+    await Promise.all(activeRequests);
   });
 
   test("sends the exchanged credential token when listing server files", async () => {

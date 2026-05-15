@@ -147,14 +147,41 @@ function getFileExplorerBasePath(target: FileExplorerTarget): string {
     : `/api/ssh-servers/${target.id}/files`;
 }
 
-async function runLimitedMetadataRequest<T>(request: () => Promise<T>): Promise<T> {
-  if (activeMetadataRequests >= MAX_CONCURRENT_METADATA_REQUESTS) {
-    await new Promise<void>((resolve) => {
-      queuedMetadataRequestStarters.push(resolve);
-    });
+function createAbortError(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+}
+
+async function acquireMetadataRequestSlot(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    throw createAbortError(signal);
   }
 
-  activeMetadataRequests += 1;
+  if (activeMetadataRequests < MAX_CONCURRENT_METADATA_REQUESTS) {
+    activeMetadataRequests += 1;
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const startQueuedRequest = () => {
+      signal?.removeEventListener("abort", abortQueuedRequest);
+      activeMetadataRequests += 1;
+      resolve();
+    };
+    const abortQueuedRequest = () => {
+      const index = queuedMetadataRequestStarters.indexOf(startQueuedRequest);
+      if (index >= 0) {
+        queuedMetadataRequestStarters.splice(index, 1);
+      }
+      reject(createAbortError(signal!));
+    };
+
+    signal?.addEventListener("abort", abortQueuedRequest, { once: true });
+    queuedMetadataRequestStarters.push(startQueuedRequest);
+  });
+}
+
+async function runLimitedMetadataRequest<T>(signal: AbortSignal | undefined, request: () => Promise<T>): Promise<T> {
+  await acquireMetadataRequestSlot(signal);
   try {
     return await request();
   } finally {
@@ -232,7 +259,7 @@ export async function getFileExplorerFileMetadataApi(
   path: string,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileMetadataResponse | SshServerFileMetadataResponse> {
-  return await runLimitedMetadataRequest(async () => {
+  return await runLimitedMetadataRequest(options?.signal, async () => {
     const searchParams = buildFileExplorerSearchParams(target, {
       path,
     }, options);
