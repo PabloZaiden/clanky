@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, memo } from "react";
+import { useEffect, useRef, useMemo, useState, memo } from "react";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
@@ -11,6 +11,9 @@ import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
 import { LogEntryItem } from "./log-entry-item";
+
+export const INITIAL_TRANSCRIPT_ENTRY_LIMIT = 100;
+export const TRANSCRIPT_ENTRY_CHUNK_SIZE = 100;
 
 export const ConversationViewer = memo(function ConversationViewer({
   messages,
@@ -35,6 +38,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   transcriptClassName,
 }: ConversationViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [renderedEntryLimit, setRenderedEntryLimit] = useState(INITIAL_TRANSCRIPT_ENTRY_LIMIT);
 
   useEffect(() => {
     if (autoScroll && containerRef.current) {
@@ -58,7 +62,7 @@ export const ConversationViewer = memo(function ConversationViewer({
     showResponseLogs,
   ]);
 
-  const entries = useMemo(() => {
+  const groupedEntries = useMemo(() => {
     const result: EntryBase[] = [];
 
     messages.forEach((msg) => {
@@ -120,11 +124,19 @@ export const ConversationViewer = memo(function ConversationViewer({
       result.push({ type: "log", data: logEntry, timestamp: logEntry.timestamp });
     });
 
-    result.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    return annotateDisplayEntries(groupConsecutiveToolEntries(result));
+    result.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    return groupConsecutiveToolEntries(result);
   }, [messages, toolCalls, logs, showSystemInfo, showReasoning, showTools, showAssistantMessages, showResponseLogs]);
 
-  const isEmpty = entries.length === 0;
+  const visibleEntryCount = Math.min(renderedEntryLimit, groupedEntries.length);
+  const hiddenEntryCount = Math.max(0, groupedEntries.length - visibleEntryCount);
+  const visibleEntries = useMemo(
+    () => annotateDisplayEntries(groupedEntries.slice(-visibleEntryCount)),
+    [groupedEntries, visibleEntryCount],
+  );
+  const olderEntryLoadCount = Math.min(TRANSCRIPT_ENTRY_CHUNK_SIZE, hiddenEntryCount);
+
+  const isEmpty = groupedEntries.length === 0;
   const resolvedSurfaceClassName = surfaceClassName ?? "bg-gray-50 dark:bg-[#171717]";
   const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
 
@@ -148,8 +160,19 @@ export const ConversationViewer = memo(function ConversationViewer({
         </div>
       ) : (
         <div className={resolvedTranscriptClassName} data-testid="conversation-transcript">
-          {entries.map((entry, index) => {
-            const spacingClass = getEntrySpacingClass(entry, entries[index - 1]);
+          {hiddenEntryCount > 0 && (
+            <div className="mb-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setRenderedEntryLimit((current) => current + TRANSCRIPT_ENTRY_CHUNK_SIZE)}
+                className="rounded-full border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 shadow-sm hover:border-gray-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-200 dark:hover:border-gray-600 dark:hover:bg-neutral-700"
+              >
+                Show {olderEntryLoadCount} older {olderEntryLoadCount === 1 ? "entry" : "entries"}
+              </button>
+            </div>
+          )}
+          {visibleEntries.map((entry, index) => {
+            const spacingClass = getEntrySpacingClass(entry, visibleEntries[index - 1]);
             if (entry.type === "message") {
               return (
                 <MessageEntry

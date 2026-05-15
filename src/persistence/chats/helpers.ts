@@ -141,14 +141,14 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     interruptRequested: row["interrupt_requested"] === 1 ? true : undefined,
   };
 
-  if (row["session_id"] !== null) {
+  if (row["session_id"] !== null && row["session_id"] !== undefined) {
     state.session = {
       id: row["session_id"] as string,
       serverUrl: (row["session_server_url"] as string | null) ?? undefined,
     };
   }
 
-  if (row["error_message"] !== null) {
+  if (row["error_message"] !== null && row["error_message"] !== undefined) {
     state.error = {
       message: row["error_message"] as string,
       timestamp: (row["error_timestamp"] as string | null) ?? new Date(0).toISOString(),
@@ -156,7 +156,12 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     };
   }
 
-  if (row["worktree_original_branch"] !== null && row["worktree_working_branch"] !== null) {
+  if (
+    row["worktree_original_branch"] !== null
+    && row["worktree_original_branch"] !== undefined
+    && row["worktree_working_branch"] !== null
+    && row["worktree_working_branch"] !== undefined
+  ) {
     state.worktree = {
       originalBranch: row["worktree_original_branch"] as string,
       workingBranch: row["worktree_working_branch"] as string,

@@ -9,6 +9,39 @@ import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
 
 const log = createLogger("persistence:chats");
 
+const CHAT_LIST_COLUMNS = [
+  "id",
+  "name",
+  "workspace_id",
+  "scope",
+  "loop_id",
+  "directory",
+  "created_at",
+  "updated_at",
+  "model_provider_id",
+  "model_model_id",
+  "model_variant",
+  "use_worktree",
+  "auto_approve_permissions",
+  "base_branch",
+  "mode",
+  "status",
+  "started_at",
+  "completed_at",
+  "last_activity_at",
+  "session_id",
+  "session_server_url",
+  "error_message",
+  "error_timestamp",
+  "error_code",
+  "worktree_original_branch",
+  "worktree_working_branch",
+  "worktree_path",
+  "pending_permission_requests",
+  "active_message_id",
+  "interrupt_requested",
+].join(", ");
+
 export async function saveChat(chat: Chat): Promise<void> {
   log.debug("Saving chat", { id: chat.config.id, name: chat.config.name, status: chat.state.status });
   const db = getDatabase();
@@ -55,14 +88,14 @@ export async function deleteChatsByLoopId(loopId: string): Promise<number> {
 
 export async function listChats(): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare("SELECT * FROM chats WHERE scope = 'workspace' ORDER BY created_at DESC")
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE scope = 'workspace' ORDER BY created_at DESC`)
     .all() as Record<string, unknown>[];
   return rows.map(rowToChat);
 }
 
 export async function listChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare("SELECT * FROM chats WHERE workspace_id = ? AND scope = 'workspace' ORDER BY created_at DESC")
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE workspace_id = ? AND scope = 'workspace' ORDER BY created_at DESC`)
     .all(workspaceId) as Record<string, unknown>[];
   return rows.map(rowToChat);
 }
