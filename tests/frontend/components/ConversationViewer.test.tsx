@@ -32,7 +32,7 @@ describe("ConversationViewer", () => {
     expect(queryByText("Transcript message 1")).toBeNull();
     expect(getByText(`Transcript message ${messages.length}`)).toBeInTheDocument();
 
-    await user.click(getByRole("button", { name: "Show 50 older entries" }));
+    await user.click(getByRole("button", { name: /show \d+ older entries/i }));
 
     expect(getByText("Transcript message 1")).toBeInTheDocument();
     expect(getByText(`Transcript message ${messages.length}`)).toBeInTheDocument();
