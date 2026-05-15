@@ -211,11 +211,11 @@ export const chatsRoutes = {
       }
 
       try {
-        const chat = await chatManager.sendMessage(req.params.id, {
+        await chatManager.sendMessage(req.params.id, {
           message: validation.data.message ?? undefined,
           attachments: validation.data.attachments,
         });
-        return Response.json(chat);
+        return successResponse({ chatId: req.params.id });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {

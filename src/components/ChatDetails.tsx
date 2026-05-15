@@ -401,8 +401,6 @@ export function ChatDetails({
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to send chat message"));
       }
-      const nextChat = (await response.json()) as Chat;
-      setChat(nextChat);
       setMessage("");
       setSelectedTemplate("");
       setAttachments([]);

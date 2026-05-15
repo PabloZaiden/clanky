@@ -120,28 +120,15 @@ afterEach(() => {
 describe("ChatDetails", () => {
   test("renders the transcript and sends a new message", async () => {
     const initialChat = createChat();
-    const updatedChat = createChat({
-      config: {
-        ...initialChat.config,
-        updatedAt: "2025-01-01T00:00:02.000Z",
-      },
-      state: {
-        ...initialChat.state,
-        status: "streaming",
-        messages: [
-          ...initialChat.state.messages,
-          {
-            id: "user-2",
-            role: "user",
-            content: "Please summarize the risk.",
-            timestamp: "2025-01-01T00:00:02.000Z",
-          },
-        ],
-      },
-    });
+    const newMessage = {
+      id: "user-2",
+      role: "user" as const,
+      content: "Please summarize the risk.",
+      timestamp: "2025-01-01T00:00:02.000Z",
+    };
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/messages", () => updatedChat, 200);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
 
     const { getByText, getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -154,6 +141,15 @@ describe("ChatDetails", () => {
 
     await user.type(composer, "Please summarize the risk.");
     await user.click(getByRole("button", { name: "Send" }));
+
+    act(() => {
+      ws.sendEvent({
+        type: "chat.message",
+        chatId: CHAT_ID,
+        message: newMessage,
+        timestamp: newMessage.timestamp,
+      });
+    });
 
     await waitFor(() => {
       expect(getByText("Please summarize the risk.")).toBeTruthy();
@@ -169,24 +165,9 @@ describe("ChatDetails", () => {
 
   test("fills the composer from the Project Analysis template and sends edited text", async () => {
     const initialChat = createChat({ state: { ...createChat().state, messages: [] } });
-    const updatedChat = createChat({
-      config: {
-        ...initialChat.config,
-        updatedAt: "2025-01-01T00:00:02.000Z",
-      },
-      state: {
-        ...initialChat.state,
-        messages: [{
-          id: "user-1",
-          role: "user",
-          content: "Analyze this entire project in detail.\n\nPlease include deployment notes.",
-          timestamp: "2025-01-01T00:00:02.000Z",
-        }],
-      },
-    });
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/messages", () => updatedChat, 200);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
 
     const { getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -507,23 +488,9 @@ describe("ChatDetails", () => {
 
   test("clears stale attachment errors after a successful send", async () => {
     const initialChat = createChat();
-    const updatedChat = createChat({
-      state: {
-        ...initialChat.state,
-        messages: [
-          ...initialChat.state.messages,
-          {
-            id: "user-2",
-            role: "user",
-            content: "Please summarize the risk.",
-            timestamp: "2025-01-01T00:00:02.000Z",
-          },
-        ],
-      },
-    });
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/messages", () => updatedChat, 200);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
 
     const { getByLabelText, getByRole, queryByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -920,25 +887,7 @@ describe("ChatDetails", () => {
       });
       return currentChat;
     }, 200);
-    api.post("/api/chats/:id/messages", () => createChat({
-      config: {
-        ...currentChat.config,
-        updatedAt: "2025-01-01T00:00:03.000Z",
-      },
-      state: {
-        ...currentChat.state,
-        status: "streaming",
-        messages: [
-          ...currentChat.state.messages,
-          {
-            id: "user-2",
-            role: "user",
-            content: "Use the new model",
-            timestamp: "2025-01-01T00:00:03.000Z",
-          },
-        ],
-      },
-    }), 200);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
 
     const { getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -1017,24 +966,9 @@ describe("ChatDetails", () => {
 
   test("submits the composer with Ctrl+Enter", async () => {
     const initialChat = createChat();
-    const updatedChat = createChat({
-      state: {
-        ...initialChat.state,
-        status: "streaming",
-        messages: [
-          ...initialChat.state.messages,
-          {
-            id: "user-2",
-            role: "user",
-            content: "Send on shortcut",
-            timestamp: "2025-01-01T00:00:02.000Z",
-          },
-        ],
-      },
-    });
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/messages", () => updatedChat, 200);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
 
     const { getByLabelText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -1061,23 +995,8 @@ describe("ChatDetails", () => {
         toolCalls: [],
       },
     });
-    const sentChat = createChat({
-      state: {
-        ...activeChat.state,
-        status: "streaming",
-        messages: [
-          {
-            id: "user-queued",
-            role: "user",
-            content: "Queued follow-up",
-            timestamp: "2025-01-01T00:00:06.000Z",
-          },
-        ],
-      },
-    });
-
     api.get("/api/chats/:id", () => activeChat);
-    api.post("/api/chats/:id/messages", () => sentChat, 200);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
 
     const { getByLabelText, getByRole, queryByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -1134,7 +1053,7 @@ describe("ChatDetails", () => {
   test("inserts a newline instead of submitting on plain Enter", async () => {
     const initialChat = createChat();
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/messages", () => initialChat, 200);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
 
     const { getByLabelText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -1150,7 +1069,7 @@ describe("ChatDetails", () => {
   test("switches to multiline sizing when content soft-wraps without an explicit newline", async () => {
     const initialChat = createChat();
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/messages", () => initialChat, 200);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
 
     const { getByLabelText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
