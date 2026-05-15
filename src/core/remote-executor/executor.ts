@@ -1,6 +1,9 @@
 /**
  * CommandExecutorImpl — executes commands either locally or over SSH.
- * Commands are queued to ensure only one runs at a time per executor instance.
+ * Local commands are queued to ensure only one runs at a time per executor
+ * instance. SSH commands let the first real command initialize ControlMaster,
+ * while concurrent commands wait for that first command and then run in
+ * parallel over the shared multiplexed connection.
  */
 
 import { mkdir, readdir } from "node:fs/promises";
@@ -13,6 +16,8 @@ import { buildSshRemoteShellCommand, buildSshCommandArgs } from "./ssh-helpers";
 
 const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+const sshControlMasterInitializers = new Map<string, Promise<CommandResult>>();
 
 export class CommandExecutorImpl implements CommandExecutor {
   private readonly provider: "local" | "ssh";
@@ -47,33 +52,35 @@ export class CommandExecutorImpl implements CommandExecutor {
 
   /**
    * Execute a shell command.
-   * Commands are queued and executed one at a time.
    */
   async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
     const cmdStr = `${command} ${args.join(" ")}`;
+    const executeCommand = async (): Promise<CommandResult> => {
+      const cwd = options?.cwd ?? this.directory;
+      const timeout = options?.timeout ?? this.defaultTimeoutMs;
+      const env = options?.env;
+      const signal = options?.signal;
+      const onStdoutChunk = options?.onStdoutChunk;
+      const onStderrChunk = options?.onStderrChunk;
+      const result = this.provider === "ssh"
+        ? await this.execSsh(command, args, cwd, timeout, env, signal, onStdoutChunk, onStderrChunk)
+        : await this.execLocal(command, args, cwd, timeout, env, signal, onStdoutChunk, onStderrChunk);
+
+      if (!result.success && options?.logFailures !== false) {
+        log.error(`${LOG_PREFIX} Command failed: ${cmdStr}`);
+        log.error(`${LOG_PREFIX}   exitCode: ${result.exitCode}`);
+        if (result.stderr) {
+          log.error(`${LOG_PREFIX}   stderr: ${result.stderr}`);
+        }
+      }
+      return result;
+    };
+
+    if (this.provider === "ssh") {
+      return await executeCommand();
+    }
 
     return new Promise<CommandResult>((resolve, reject) => {
-      const executeCommand = async (): Promise<CommandResult> => {
-        const cwd = options?.cwd ?? this.directory;
-        const timeout = options?.timeout ?? this.defaultTimeoutMs;
-        const env = options?.env;
-        const signal = options?.signal;
-        const onStdoutChunk = options?.onStdoutChunk;
-        const onStderrChunk = options?.onStderrChunk;
-        const result = this.provider === "ssh"
-          ? await this.execSsh(command, args, cwd, timeout, env, signal, onStdoutChunk, onStderrChunk)
-          : await this.execLocal(command, args, cwd, timeout, env, signal, onStdoutChunk, onStderrChunk);
-
-        if (!result.success && options?.logFailures !== false) {
-          log.error(`${LOG_PREFIX} Command failed: ${cmdStr}`);
-          log.error(`${LOG_PREFIX}   exitCode: ${result.exitCode}`);
-          if (result.stderr) {
-            log.error(`${LOG_PREFIX}   stderr: ${result.stderr}`);
-          }
-        }
-        return result;
-      };
-
       this.commandQueue.push({ execute: executeCommand, resolve, reject });
       void this.processQueue();
     });
@@ -285,6 +292,71 @@ export class CommandExecutorImpl implements CommandExecutor {
       );
     }
 
+    return await this.execBatchSshWithInitialGate(
+      sshTarget,
+      remoteShellCommand,
+      timeoutMs,
+      signal,
+      onStdoutChunk,
+      onStderrChunk,
+    );
+  }
+
+  private buildSshControlMasterInitializerKey(sshTarget: string): string {
+    return JSON.stringify({
+      host: this.host,
+      port: this.port,
+      target: sshTarget,
+      identityFile: this.identityFile ?? "",
+      connectionScope: this.directory,
+    });
+  }
+
+  private async execBatchSshWithInitialGate(
+    sshTarget: string,
+    remoteShellCommand: string,
+    timeoutMs: number,
+    signal?: AbortSignal,
+    onStdoutChunk?: (chunk: string) => void,
+    onStderrChunk?: (chunk: string) => void,
+  ): Promise<CommandResult> {
+    const initializerKey = this.buildSshControlMasterInitializerKey(sshTarget);
+    const initializer = sshControlMasterInitializers.get(initializerKey);
+    if (initializer) {
+      await initializer.catch(() => undefined);
+      return await this.execBatchSshCommand(
+        sshTarget,
+        remoteShellCommand,
+        timeoutMs,
+        signal,
+        onStdoutChunk,
+        onStderrChunk,
+      );
+    }
+
+    const currentCommand = this.execBatchSshCommand(
+      sshTarget,
+      remoteShellCommand,
+      timeoutMs,
+      signal,
+      onStdoutChunk,
+      onStderrChunk,
+    );
+    sshControlMasterInitializers.set(initializerKey, currentCommand);
+    currentCommand.finally(() => {
+      sshControlMasterInitializers.delete(initializerKey);
+    });
+    return await currentCommand;
+  }
+
+  private async execBatchSshCommand(
+    sshTarget: string,
+    remoteShellCommand: string,
+    timeoutMs: number,
+    signal?: AbortSignal,
+    onStdoutChunk?: (chunk: string) => void,
+    onStderrChunk?: (chunk: string) => void,
+  ): Promise<CommandResult> {
     return await this.execLocal(
       "ssh",
       buildSshCommandArgs({
