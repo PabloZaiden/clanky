@@ -11,6 +11,7 @@ import { serve, type Server } from "bun";
 import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
+import { loopManager } from "../../src/core/loop-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import packageJson from "../../package.json";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -462,6 +463,86 @@ describe("Loops CRUD API Integration", () => {
       expect(detail.state.logs).toEqual(logs);
       expect(detail.state.toolCalls).toEqual(toolCalls);
       expect(detail.state.planMode.planContent).toBe("Large plan content that should not be returned by the list endpoint");
+    });
+
+    test("lists active-engine loops without hydrating transcript payloads", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Keep active engine payload lightweight",
+          name: "Active Engine Summary Test",
+          planMode: true,
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+      const timestamp = new Date().toISOString();
+      const activeState = {
+        ...created.state,
+        status: "running" as const,
+        currentIteration: 1,
+        messages: [{
+          id: "active-message-1",
+          role: "assistant" as const,
+          content: "Active engine transcript content that should not be returned by the list endpoint",
+          timestamp,
+        }],
+        logs: [{
+          id: "active-log-1",
+          level: "agent" as const,
+          message: "Active engine log content that should not be returned by the list endpoint",
+          timestamp,
+        }],
+        toolCalls: [{
+          id: "active-tool-1",
+          name: "Read",
+          input: { filePath: "src/index.ts" },
+          output: { content: "Active engine tool output that should not be returned by the list endpoint" },
+          status: "completed" as const,
+          timestamp,
+        }],
+        planMode: {
+          active: true,
+          feedbackRounds: 1,
+          planContent: "Active engine plan content that should not be returned by the list endpoint",
+          planningFolderCleared: true,
+          isPlanReady: true,
+        },
+      };
+
+      const engineMap = (loopManager as unknown as {
+        engines: Map<string, { config: typeof created.config; state: typeof activeState }>;
+      }).engines;
+      engineMap.set(created.config.id as string, {
+        config: created.config,
+        state: activeState,
+      });
+
+      const listResponse = await fetch(`${baseUrl}/api/loops`);
+      expect(listResponse.status).toBe(200);
+      const listedLoops = await listResponse.json();
+      const listed = listedLoops.find((loop: { config: { id: string } }) => loop.config.id === created.config.id);
+      expect(listed).toBeDefined();
+      expect(listed.state.messages).toEqual([]);
+      expect(listed.state.logs).toEqual([]);
+      expect(listed.state.toolCalls).toEqual([]);
+      expect(listed.state.planMode.isPlanReady).toBe(true);
+      expect(listed.state.planMode.planContent).toBeUndefined();
+
+      const detailResponse = await fetch(`${baseUrl}/api/loops/${created.config.id}`);
+      expect(detailResponse.status).toBe(200);
+      const detail = await detailResponse.json();
+      expect(detail.state.messages).toEqual(activeState.messages);
+      expect(detail.state.logs).toEqual(activeState.logs);
+      expect(detail.state.toolCalls).toEqual(activeState.toolCalls);
+      expect(detail.state.planMode.planContent).toBe("Active engine plan content that should not be returned by the list endpoint");
     });
   });
 
