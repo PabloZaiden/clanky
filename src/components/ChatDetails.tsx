@@ -27,7 +27,7 @@ import {
 } from "./common";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
-import { useAvailableModels, useMarkdownPreference, useToast, useWebSocket } from "../hooks";
+import { useAppEvents, useAvailableModels, useMarkdownPreference, useToast } from "../hooks";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
@@ -282,10 +282,7 @@ export function ChatDetails({
     });
   }, [chatId]);
 
-  const { status: chatSocketStatus } = useWebSocket<ChatEvent>({
-    url: `/api/ws?chatId=${encodeURIComponent(chatId)}`,
-    onEvent: handleEvent,
-  });
+  const { status: chatSocketStatus } = useAppEvents<ChatEvent>(handleEvent);
 
   useEffect(() => {
     void refreshChat();

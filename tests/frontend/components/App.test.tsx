@@ -252,6 +252,41 @@ describe("App shell", () => {
     expect(queryByText("Interactive conversations.")).toBeNull();
   });
 
+  test("uses one global app event WebSocket across shell routes", async () => {
+    const workspace = createWorkspace({ id: "workspace-1", name: "Frontend" });
+    const loop = createLoop({
+      config: { id: "loop-1", name: "Fix navbar", workspaceId: "workspace-1" },
+      state: { id: "loop-1", status: "running" },
+    });
+    const chat = createChat({ config: { id: "chat-1", workspaceId: "workspace-1" } });
+    setupDefaultApi({ workspaces: [workspace], loops: [loop], chats: [chat] });
+
+    const { getByRole } = renderWithUser(<App />);
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(ws.getConnections("/api/ws")).toHaveLength(1);
+    });
+
+    window.location.hash = "#/loop/loop-1";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Fix navbar" })).toBeTruthy();
+    });
+    expect(ws.getConnections("/api/ws")).toHaveLength(1);
+    expect(ws.getConnections("/api/ws?loopId=loop-1")).toHaveLength(0);
+
+    window.location.hash = "#/chat/chat-1";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+    await waitFor(() => {
+      expect(getByRole("heading", { name: "Repo pairing" })).toBeTruthy();
+    });
+    expect(ws.getConnections("/api/ws")).toHaveLength(1);
+    expect(ws.getConnections("/api/ws?chatId=chat-1")).toHaveLength(0);
+  });
+
   test("wraps long server map and recent activity text inside the shell overview cards", async () => {
     const longServerName = `Server ${"super-long-hostname-".repeat(6)}`;
     const longAddress = `${"edge-node-".repeat(6)}example.internal`;
@@ -566,10 +601,10 @@ describe("App shell", () => {
 
     await waitFor(() => {
       const openLoopConnections = ws.connections().filter(
-        (connection) => connection.isOpen && !!connection.queryParams["loopId"],
+        (connection) => connection.isOpen && connection.url.includes("/api/ws") && !connection.url.includes("?"),
       );
       expect(openLoopConnections).toHaveLength(1);
-      expect(openLoopConnections[0]!.queryParams["loopId"]).toBe("loop-2");
+      expect(openLoopConnections[0]!.url).toContain("/api/ws");
     });
   });
 
@@ -634,10 +669,8 @@ describe("App shell", () => {
       expect(getByText("Ready when you are.")).toBeTruthy();
     });
 
-    const openChatConnections = ws.connections().filter(
-      (connection) => connection.isOpen && connection.queryParams["chatId"] === "chat-1",
-    );
-    expect(openChatConnections).toHaveLength(1);
+    expect(ws.getConnections("/api/ws")).toHaveLength(1);
+    expect(ws.getConnections("/api/ws?chatId=chat-1")).toHaveLength(0);
   });
 
   test("opens workspace settings from the workspace shell icon action", async () => {

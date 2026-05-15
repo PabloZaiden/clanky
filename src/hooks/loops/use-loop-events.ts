@@ -3,7 +3,7 @@
  */
 
 import type { Loop, LoopEvent } from "../../types";
-import { useGlobalEvents } from "../useWebSocket";
+import { useAppEvents } from "../useAppEvents";
 import { useRefreshOnReconnect } from "../useRefreshOnReconnect";
 
 interface UseLoopEventsOptions {
@@ -46,9 +46,7 @@ export function useLoopEvents({ refresh, refreshLoop, setLoops }: UseLoopEventsO
     }
   }
 
-  const { status } = useGlobalEvents<LoopEvent>({
-    onEvent: handleEvent,
-  });
+  const { status } = useAppEvents<LoopEvent>(handleEvent);
 
   useRefreshOnReconnect({
     status,

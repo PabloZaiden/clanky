@@ -16,6 +16,7 @@ import {
   createPersistedMessage,
   createPersistedToolCall,
 } from "../helpers/factories";
+import { AppEventsProvider } from "@/hooks";
 import { useLoop } from "@/hooks/useLoop";
 import type { Loop } from "@/types/loop";
 
@@ -60,7 +61,7 @@ async function waitForWs() {
 describe("initial fetch", () => {
   test("fetches loop on mount and sets loading to false", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     expect(result.current.loading).toBe(true);
 
@@ -76,7 +77,7 @@ describe("initial fetch", () => {
       throw new MockApiError(404, { message: "Loop not found" });
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
 
@@ -89,7 +90,7 @@ describe("initial fetch", () => {
       throw new MockApiError(500, { message: "Server error" });
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
 
@@ -117,7 +118,7 @@ describe("initial fetch", () => {
       },
     }));
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
 
@@ -148,7 +149,7 @@ describe("initial fetch", () => {
       },
     }));
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
 
@@ -169,7 +170,7 @@ describe("initial fetch", () => {
 describe("WebSocket event: loop.message", () => {
   test("accumulates messages from events", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -198,7 +199,7 @@ describe("WebSocket event: loop.message", () => {
 
   test("clears progress content when message arrives", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -241,7 +242,7 @@ describe("WebSocket event: loop.message", () => {
 
   test("finalizes the latest response log when an assistant message completes", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -296,7 +297,7 @@ describe("WebSocket event: loop.message", () => {
 
   test("preserves finalized response metadata when a later log update replaces the same response entry", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -375,7 +376,7 @@ describe("WebSocket event: loop.message", () => {
 describe("WebSocket event: loop.tool_call", () => {
   test("accumulates tool calls from events", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -405,7 +406,7 @@ describe("WebSocket event: loop.tool_call", () => {
 
   test("updates existing tool call by id", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -462,7 +463,7 @@ describe("WebSocket event: loop.tool_call", () => {
 describe("WebSocket event: loop.progress", () => {
   test("accumulates progress content", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -502,7 +503,7 @@ describe("WebSocket event: loop.progress", () => {
 describe("WebSocket event: loop.log", () => {
   test("adds log entries from events", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -527,7 +528,7 @@ describe("WebSocket event: loop.log", () => {
 
   test("updates existing log entry by id", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -570,7 +571,7 @@ describe("WebSocket event: loop.log", () => {
 describe("WebSocket events: git changes", () => {
   test("loop.iteration.end increments gitChangeCounter", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -594,7 +595,7 @@ describe("WebSocket events: git changes", () => {
 
   test("loop.git.commit increments gitChangeCounter", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -636,7 +637,7 @@ describe("WebSocket lifecycle events trigger refresh", () => {
       return callCount === 1 ? runningLoop : completedLoop;
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     expect(result.current.loop!.state.status).toBe("running");
@@ -677,15 +678,15 @@ describe("loop switching isolation", () => {
 
     const { result, rerender } = renderHook(
       ({ loopId }) => useLoop(loopId),
-      { initialProps: { loopId: LOOP_ID } },
+      { initialProps: { loopId: LOOP_ID }, wrapper: AppEventsProvider },
     );
 
     await waitForLoad(result);
     await waitFor(() => {
-      expect(ws.getLoopConnection(LOOP_ID)?.isOpen).toBe(true);
+      expect(ws.getGlobalConnection()?.isOpen).toBe(true);
     });
 
-    const oldConnection = ws.getLoopConnection(LOOP_ID)!;
+    const oldConnection = ws.getGlobalConnection()!;
 
     act(() => {
       oldConnection.instance.onmessage?.(
@@ -715,10 +716,10 @@ describe("loop switching isolation", () => {
 
     await waitFor(() => {
       const openLoopConnections = ws.connections().filter(
-        (connection) => connection.isOpen && !!connection.queryParams["loopId"],
+        (connection) => connection.isOpen && connection.url.includes("/api/ws") && !connection.url.includes("?"),
       );
       expect(openLoopConnections).toHaveLength(1);
-      expect(openLoopConnections[0]!.queryParams["loopId"]).toBe(secondLoopId);
+      expect(openLoopConnections[0]!.url).toContain("/api/ws");
     });
 
     await waitFor(() => {
@@ -768,7 +769,7 @@ describe("loop switching isolation", () => {
 
     const { result, rerender } = renderHook(
       ({ loopId }) => useLoop(loopId),
-      { initialProps: { loopId: LOOP_ID } },
+      { initialProps: { loopId: LOOP_ID }, wrapper: AppEventsProvider },
     );
 
     await waitForLoad(result);
@@ -811,7 +812,7 @@ describe("update", () => {
     const updated = createLoop({ config: { id: LOOP_ID, name: "New Name" }, state: { id: LOOP_ID } });
     api.patch("/api/loops/:id", () => updated);
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let success = false;
@@ -829,7 +830,7 @@ describe("update", () => {
       throw new MockApiError(400, { message: "Invalid name" });
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let success = false;
@@ -849,7 +850,7 @@ describe("remove", () => {
     setupLoop();
     api.delete("/api/loops/:id", () => ({ success: true }));
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
     expect(result.current.loop).not.toBeNull();
 
@@ -870,7 +871,7 @@ describe("purge", () => {
     setupLoop();
     api.post("/api/loops/:id/purge", () => ({ success: true }));
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let success = false;
@@ -894,7 +895,7 @@ describe("markMerged", () => {
       return { success: true };
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let success = false;
@@ -933,7 +934,7 @@ describe("markMerged", () => {
 
     const { result, rerender } = renderHook(
       ({ loopId }) => useLoop(loopId),
-      { initialProps: { loopId: LOOP_ID } },
+      { initialProps: { loopId: LOOP_ID }, wrapper: AppEventsProvider },
     );
     await waitForLoad(result);
 
@@ -972,7 +973,7 @@ describe("manualCompleteLoop", () => {
       return { success: true };
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let success = false;
@@ -996,7 +997,7 @@ describe("getDiff", () => {
     ];
     api.get("/api/loops/:id/diff", () => diffs);
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let diff: unknown[] = [];
@@ -1014,7 +1015,7 @@ describe("getDiff", () => {
       throw new MockApiError(400, { error: "no_git_branch", message: "No branch" });
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let diff: unknown[] = [];
@@ -1033,7 +1034,7 @@ describe("getPlan / getStatusFile", () => {
     setupLoop();
     api.get("/api/loops/:id/plan", () => ({ content: "# My Plan", exists: true }));
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let plan = { content: "", exists: false };
@@ -1049,7 +1050,7 @@ describe("getPlan / getStatusFile", () => {
     setupLoop();
     api.get("/api/loops/:id/status-file", () => ({ content: "In progress", exists: true }));
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
 
     let status = { content: "", exists: false };
@@ -1103,7 +1104,7 @@ describe("WebSocket event: loop.automatic_pr_flow.updated", () => {
       return requestCount === 1 ? initialLoop : updatedLoop;
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
     await waitForLoad(result);
     await waitForWs();
 
@@ -1130,7 +1131,7 @@ describe("WebSocket event: loop.automatic_pr_flow.updated", () => {
 describe("connectionStatus", () => {
   test("reflects WebSocket connection status", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
 
@@ -1215,7 +1216,7 @@ describe("connectionStatus", () => {
       return callCount === 1 ? initialLoop : recoveredLoop;
     });
 
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
@@ -1260,14 +1261,14 @@ describe("connectionStatus", () => {
       expect(result.current.toolCalls.some((tool) => tool.id === "tool-stale")).toBe(true);
     });
 
-    const connectionsForLoop = ws.connections().filter((connection) => connection.queryParams["loopId"] === LOOP_ID);
+    const connectionsForLoop = ws.connections().filter((connection) => connection.url.includes("/api/ws") && !connection.url.includes("?"));
     const initialConnection = connectionsForLoop[0]!;
     await act(async () => {
       initialConnection.instance.close(1006, "network lost");
     });
 
     await waitFor(() => {
-      const recoveredConnections = ws.connections().filter((connection) => connection.queryParams["loopId"] === LOOP_ID);
+      const recoveredConnections = ws.connections().filter((connection) => connection.url.includes("/api/ws") && !connection.url.includes("?"));
       expect(recoveredConnections.length).toBeGreaterThan(1);
     }, { timeout: 3000 });
     await waitFor(() => {
@@ -1300,12 +1301,12 @@ describe("connectionStatus", () => {
 describe("WebSocket connection", () => {
   test("creates loop-specific WebSocket connection with loopId query param", async () => {
     setupLoop();
-    const { result } = renderHook(() => useLoop(LOOP_ID));
+    const { result } = renderHook(() => useLoop(LOOP_ID), { wrapper: AppEventsProvider });
 
     await waitForLoad(result);
     await waitForWs();
 
-    const loopConn = ws.getLoopConnection(LOOP_ID);
+    const loopConn = ws.getGlobalConnection();
     expect(loopConn).toBeDefined();
   });
 });

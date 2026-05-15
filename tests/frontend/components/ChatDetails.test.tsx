@@ -1069,7 +1069,7 @@ describe("ChatDetails", () => {
     const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
 
     expect(connection).toBeTruthy();
 
@@ -1169,7 +1169,7 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1207,7 +1207,7 @@ describe("ChatDetails", () => {
     renderWithUser(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
-      expect(ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID)).toBeTruthy();
+      expect(ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"))).toBeTruthy();
     });
 
     expect(api.calls("/api/chats/:id/reconnect", "POST")).toHaveLength(0);
@@ -1231,7 +1231,7 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1284,7 +1284,7 @@ describe("ChatDetails", () => {
       expect(getByText("Streaming")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1319,7 +1319,7 @@ describe("ChatDetails", () => {
       expect(getByText("Idle")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1359,7 +1359,7 @@ describe("ChatDetails", () => {
       expect(getByText("Idle")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1394,7 +1394,7 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1456,7 +1456,7 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1546,7 +1546,7 @@ describe("ChatDetails", () => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1678,7 +1678,7 @@ describe("ChatDetails", () => {
       expect(getByText("Fresh transcript content")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
