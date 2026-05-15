@@ -176,6 +176,10 @@ async function acquireMetadataRequestSlot(signal?: AbortSignal): Promise<void> {
     };
 
     signal?.addEventListener("abort", abortQueuedRequest, { once: true });
+    if (signal?.aborted) {
+      abortQueuedRequest();
+      return;
+    }
     queuedMetadataRequestStarters.push(startQueuedRequest);
   });
 }
