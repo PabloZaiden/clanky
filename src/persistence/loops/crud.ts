@@ -9,6 +9,82 @@ import { loopToRow, rowToLoop, validateColumnNames } from "./helpers";
 
 const log = createLogger("persistence:loops");
 
+const LOOP_LIST_COLUMNS = [
+  "id",
+  "name",
+  "directory",
+  "prompt",
+  "created_at",
+  "updated_at",
+  "workspace_id",
+  "model_provider_id",
+  "model_model_id",
+  "model_variant",
+  "cheap_model",
+  "max_iterations",
+  "max_consecutive_errors",
+  "activity_timeout_seconds",
+  "stop_pattern",
+  "git_branch_prefix",
+  "git_commit_scope",
+  "base_branch",
+  "use_worktree",
+  "clear_planning_folder",
+  "plan_mode",
+  "auto_accept_plan",
+  "fully_autonomous",
+  "status",
+  "current_iteration",
+  "started_at",
+  "completed_at",
+  "last_activity_at",
+  "session_id",
+  "session_server_url",
+  "error_message",
+  "error_iteration",
+  "error_timestamp",
+  "git_original_branch",
+  "git_working_branch",
+  "git_commits",
+  "recent_iterations",
+  "consecutive_errors",
+  "pending_prompt",
+  "pending_prompt_mode",
+  "pending_model_provider_id",
+  "pending_model_model_id",
+  "pending_model_variant",
+  "plan_mode_active",
+  "plan_session_id",
+  "plan_server_url",
+  "plan_feedback_rounds",
+  "planning_folder_cleared",
+  "plan_is_ready",
+  "review_mode",
+  "pull_request_monitoring",
+  "automatic_pr_flow",
+  "fully_autonomous_pending",
+  "git_worktree_path",
+  "mode",
+].join(", ");
+
+export function createLoopListSnapshot(loop: Loop): Loop {
+  return {
+    config: loop.config,
+    state: {
+      ...loop.state,
+      logs: [],
+      messages: [],
+      toolCalls: [],
+      planMode: loop.state.planMode
+        ? {
+          ...loop.state.planMode,
+          planContent: undefined,
+        }
+        : undefined,
+    },
+  };
+}
+
 /**
  * Save a loop to the database.
  * Uses INSERT ... ON CONFLICT DO UPDATE (upsert) to avoid triggering
@@ -94,6 +170,24 @@ export async function listLoops(): Promise<Loop[]> {
 
   const loops = rows.map(rowToLoop);
   log.debug("Loops listed", { count: loops.length });
+  return loops;
+}
+
+/**
+ * List lightweight loop snapshots for collection endpoints.
+ *
+ * Excludes persisted transcript fields that are only needed by detail routes:
+ * logs, messages, tool calls, and plan content.
+ */
+export async function listLoopSummaries(): Promise<Loop[]> {
+  log.debug("Listing loop summaries");
+  const db = getDatabase();
+
+  const stmt = db.prepare(`SELECT ${LOOP_LIST_COLUMNS} FROM loops ORDER BY created_at DESC`);
+  const rows = stmt.all() as Record<string, unknown>[];
+
+  const loops = rows.map((row) => createLoopListSnapshot(rowToLoop(row)));
+  log.debug("Loop summaries listed", { count: loops.length });
   return loops;
 }
 

@@ -14,6 +14,8 @@ import { backendManager } from "../../src/core/backend-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import packageJson from "../../package.json";
 import { createMockBackend } from "../mocks/mock-backend";
+import { updateLoopState } from "../../src/persistence/loops";
+import type { LoopLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
 
 // Default test model for loop creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -380,6 +382,86 @@ describe("Loops CRUD API Integration", () => {
       const body = await response.json();
       expect(body.error).toBe("validation_error");
       expect(body.message).toContain("100");
+    });
+  });
+
+  describe("GET /api/loops", () => {
+    test("lists loops without hydrating transcript payloads", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Persist large loop content",
+          name: "Loop List Summary Test",
+          planMode: true,
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+      const timestamp = new Date().toISOString();
+      const messages: PersistedMessage[] = [{
+        id: "message-1",
+        role: "assistant",
+        content: "Large loop transcript content that should not be returned by the list endpoint",
+        timestamp,
+      }];
+      const logs: LoopLogEntry[] = [{
+        id: "log-1",
+        level: "agent",
+        message: "Large loop log content that should not be returned by the list endpoint",
+        timestamp,
+      }];
+      const toolCalls: PersistedToolCall[] = [{
+        id: "tool-1",
+        name: "Read",
+        input: { filePath: "src/index.ts" },
+        output: { content: "Large loop tool output that should not be returned by the list endpoint" },
+        status: "completed",
+        timestamp,
+      }];
+
+      const updated = await updateLoopState(created.config.id as string, {
+        ...created.state,
+        status: "planning",
+        currentIteration: 1,
+        messages,
+        logs,
+        toolCalls,
+        lastActivityAt: timestamp,
+        planMode: {
+          active: true,
+          feedbackRounds: 1,
+          planContent: "Large plan content that should not be returned by the list endpoint",
+          planningFolderCleared: true,
+          isPlanReady: true,
+        },
+      });
+      expect(updated).not.toBeNull();
+
+      const listResponse = await fetch(`${baseUrl}/api/loops`);
+      expect(listResponse.status).toBe(200);
+      const listedLoops = await listResponse.json();
+      const listed = listedLoops.find((loop: { config: { id: string } }) => loop.config.id === created.config.id);
+      expect(listed).toBeDefined();
+      expect(listed.state.messages).toEqual([]);
+      expect(listed.state.logs).toEqual([]);
+      expect(listed.state.toolCalls).toEqual([]);
+      expect(listed.state.planMode.isPlanReady).toBe(true);
+      expect(listed.state.planMode.planContent).toBeUndefined();
+
+      const detailResponse = await fetch(`${baseUrl}/api/loops/${created.config.id}`);
+      expect(detailResponse.status).toBe(200);
+      const detail = await detailResponse.json();
+      expect(detail.state.messages).toEqual(messages);
+      expect(detail.state.logs).toEqual(logs);
+      expect(detail.state.toolCalls).toEqual(toolCalls);
+      expect(detail.state.planMode.planContent).toBe("Large plan content that should not be returned by the list endpoint");
     });
   });
 

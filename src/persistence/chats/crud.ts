@@ -42,6 +42,18 @@ const CHAT_LIST_COLUMNS = [
   "interrupt_requested",
 ].join(", ");
 
+export function createChatListSnapshot(chat: Chat): Chat {
+  return {
+    config: chat.config,
+    state: {
+      ...chat.state,
+      messages: [],
+      logs: [],
+      toolCalls: [],
+    },
+  };
+}
+
 export async function saveChat(chat: Chat): Promise<void> {
   log.debug("Saving chat", { id: chat.config.id, name: chat.config.name, status: chat.state.status });
   const db = getDatabase();
@@ -87,17 +99,25 @@ export async function deleteChatsByLoopId(loopId: string): Promise<number> {
 }
 
 export async function listChats(): Promise<Chat[]> {
+  return listChatSummaries();
+}
+
+export async function listChatSummaries(): Promise<Chat[]> {
   const rows = getDatabase()
     .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE scope = 'workspace' ORDER BY created_at DESC`)
     .all() as Record<string, unknown>[];
-  return rows.map(rowToChat);
+  return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 
 export async function listChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
+  return listChatSummariesByWorkspace(workspaceId);
+}
+
+export async function listChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
   const rows = getDatabase()
     .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE workspace_id = ? AND scope = 'workspace' ORDER BY created_at DESC`)
     .all(workspaceId) as Record<string, unknown>[];
-  return rows.map(rowToChat);
+  return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 
 export async function getWorkspaceChatNameStats(

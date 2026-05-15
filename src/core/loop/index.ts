@@ -23,7 +23,7 @@ import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedb
 import { LoopEngine } from "../loop-engine";
 import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
 
-import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
+import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, getLoopSummariesImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
 import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
 import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
 import { seedPlanFilesImpl } from "./loop-seeded-plan";
@@ -115,6 +115,10 @@ export class LoopManager {
 
   async getAllLoops(): Promise<Loop[]> {
     return getAllLoopsImpl(this.ctx);
+  }
+
+  async getLoopSummaries(): Promise<Loop[]> {
+    return getLoopSummariesImpl(this.ctx);
   }
 
   async updateLoop(

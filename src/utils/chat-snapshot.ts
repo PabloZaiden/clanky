@@ -44,7 +44,11 @@ export function mergeChatSnapshot(current: Chat, incoming: Chat): Chat {
     },
     state: {
       ...incoming.state,
-      toolCalls: mergeToolCallRecords(current.state.toolCalls, incoming.state.toolCalls),
+      messages: incoming.state.messages.length > 0 ? incoming.state.messages : current.state.messages,
+      logs: incoming.state.logs.length > 0 ? incoming.state.logs : current.state.logs,
+      toolCalls: incoming.state.toolCalls.length > 0
+        ? mergeToolCallRecords(current.state.toolCalls, incoming.state.toolCalls)
+        : current.state.toolCalls,
     },
   };
 }
