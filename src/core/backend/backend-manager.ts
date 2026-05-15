@@ -36,6 +36,8 @@ class BackendManager {
   private connections = new Map<string, WorkspaceConnectionState>();
   /** Map of loop ID to its own dedicated backend connection */
   private loopConnections = new Map<string, LoopConnectionState>();
+  /** Map of workspace execution key to command executor. */
+  private commandExecutors = new Map<string, CommandExecutor>();
   private initialized = false;
   /** Custom executor factory for testing */
   private testExecutorFactory: CommandExecutorFactory | null = null;
@@ -100,10 +102,33 @@ class BackendManager {
       }
       state.backend = this.createBackendForSettings(settings);
       state.connectionError = null;
+      this.clearCommandExecutorsForWorkspace(workspaceId);
     }
 
+    if (JSON.stringify(state.settings) !== JSON.stringify(settings)) {
+      this.clearCommandExecutorsForWorkspace(workspaceId);
+    }
     state.settings = settings;
     return state;
+  }
+
+  private buildCommandExecutorCacheKey(workspaceId: string, directory: string, settings: ServerSettings): string {
+    const execution = deriveExecutionSettings(settings);
+    return JSON.stringify({
+      workspaceId,
+      directory,
+      provider: execution.provider,
+      sshTarget: execution.sshTarget ?? null,
+    });
+  }
+
+  private clearCommandExecutorsForWorkspace(workspaceId: string): void {
+    const keyPrefix = `{"workspaceId":"${workspaceId}"`;
+    for (const key of this.commandExecutors.keys()) {
+      if (key.startsWith(keyPrefix)) {
+        this.commandExecutors.delete(key);
+      }
+    }
   }
 
   /**
@@ -231,6 +256,7 @@ class BackendManager {
     if (state) {
       state.connectionError = null;
     }
+    this.clearCommandExecutorsForWorkspace(workspaceId);
   }
 
   /**
@@ -240,6 +266,7 @@ class BackendManager {
    */
   async resetWorkspaceConnection(workspaceId: string): Promise<void> {
     const state = this.connections.get(workspaceId);
+    this.clearCommandExecutorsForWorkspace(workspaceId);
 
     if (state) {
       // Abort all active subscriptions first
@@ -306,6 +333,7 @@ class BackendManager {
       this.connections.clear();
       this.loopConnections.clear();
     }
+    this.commandExecutors.clear();
 
     this.emitEvent({
       type: "server.reset",
@@ -653,6 +681,12 @@ class BackendManager {
     }
 
     const dir = directory ?? state.backend.getDirectory();
+    const cacheKey = this.buildCommandExecutorCacheKey(workspaceId, dir, state.settings);
+    const cachedExecutor = this.commandExecutors.get(cacheKey);
+    if (cachedExecutor) {
+      return cachedExecutor;
+    }
+
     const execution = deriveExecutionSettings(state.settings);
     const commandExecutorLogContext: Record<string, string | number> = {
       directory: dir,
@@ -662,7 +696,7 @@ class BackendManager {
       ...(execution.sshTarget?.username ? { user: execution.sshTarget.username } : {}),
     };
     log.debug(`[BackendManager] Creating CommandExecutor for workspace ${workspaceId}`, commandExecutorLogContext);
-    return new CommandExecutorImpl({
+    const executor = new CommandExecutorImpl({
       provider: execution.provider,
       directory: dir,
       host: execution.sshTarget?.host,
@@ -671,6 +705,8 @@ class BackendManager {
       password: execution.sshTarget?.password,
       identityFile: execution.sshTarget?.identityFile,
     });
+    this.commandExecutors.set(cacheKey, executor);
+    return executor;
   }
 
   /**
@@ -744,6 +780,7 @@ class BackendManager {
    */
   setExecutorFactoryForTesting(factory: CommandExecutorFactory): void {
     this.testExecutorFactory = factory;
+    this.commandExecutors.clear();
   }
 
   /**
@@ -761,6 +798,7 @@ class BackendManager {
   resetForTesting(): void {
     this.connections.clear();
     this.loopConnections.clear();
+    this.commandExecutors.clear();
     this.initialized = false;
     this.testExecutorFactory = null;
     this.isTestBackend = false;
