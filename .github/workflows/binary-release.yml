@@ -17,13 +17,13 @@ jobs:
           {
             "name": "ralpher",
             "asset_prefix": "ralpher",
-            "build_command": "cd apps/server && bun src/build.ts --target=$BUN_TARGET",
+            "build_command": "bun --cwd apps/server src/build.ts --target=$BUN_TARGET",
             "output_path": "apps/server/dist/ralpher-$RELEASE_TARGET"
           },
           {
             "name": "ralpher-cli",
             "asset_prefix": "ralpher-cli",
-            "build_command": "cd apps/cli && bun src/build.ts --target=$BUN_TARGET",
+            "build_command": "bun --cwd apps/cli src/build.ts --target=$BUN_TARGET",
             "output_path": "apps/cli/dist/ralpher-cli-$RELEASE_TARGET"
           }
         ]
