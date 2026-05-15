@@ -43,6 +43,7 @@ import type {
 } from "../types";
 
 const ACTIVE_CHAT_STATUSES = new Set(["starting", "streaming", "interrupting", "reconnecting"]);
+const TERMINAL_CHAT_STATUSES = new Set(["idle", "stopped", "failed"]);
 
 function getChatStatusLabel(status: Chat["state"]["status"]): string {
   switch (status) {
@@ -186,7 +187,11 @@ export function ChatDetails({
         case "chat.updated":
           return mergeChatSnapshot(current, event.chat);
         case "chat.status":
-          if (isStaleTerminalEvent(current, event.timestamp) && ACTIVE_CHAT_STATUSES.has(current.state.status)) {
+          if (
+            isStaleTerminalEvent(current, event.timestamp)
+            && ACTIVE_CHAT_STATUSES.has(current.state.status)
+            && !TERMINAL_CHAT_STATUSES.has(event.status)
+          ) {
             return current;
           }
           return {
@@ -194,6 +199,7 @@ export function ChatDetails({
             state: {
               ...current.state,
               status: event.status,
+              activeMessageId: TERMINAL_CHAT_STATUSES.has(event.status) ? undefined : current.state.activeMessageId,
               lastActivityAt: event.timestamp,
             },
           };
