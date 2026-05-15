@@ -160,7 +160,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
     requestSchema: UpdateLoopRequestSchema,
   },
   "/api/loops/:id/accept": {
-    description: "Merge a completed loop into its base branch.",
+    description: "Accept a completed loop locally without pushing.",
+  },
+  "/api/loops/:id/close-local": {
+    description: "Close a locally accepted loop without PR actions.",
   },
   "/api/loops/:id/push": {
     description: "Push a completed loop branch to the remote repository.",

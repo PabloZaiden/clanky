@@ -111,7 +111,7 @@ describe("Worktree Scenarios", () => {
       const { status: acceptStatus } = await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
       expect(acceptStatus).toBe(200);
 
-      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
+      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
       expect(worktreeDirectoryExists(worktreePath!)).toBe(true);
 
       // Purge — worktree should be removed

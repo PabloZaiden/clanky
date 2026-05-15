@@ -11,9 +11,12 @@ import { serve, type Server } from "bun";
 import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
+import { loopManager } from "../../src/core/loop-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import packageJson from "../../package.json";
 import { createMockBackend } from "../mocks/mock-backend";
+import { updateLoopState } from "../../src/persistence/loops";
+import type { LoopLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
 
 // Default test model for loop creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -380,6 +383,166 @@ describe("Loops CRUD API Integration", () => {
       const body = await response.json();
       expect(body.error).toBe("validation_error");
       expect(body.message).toContain("100");
+    });
+  });
+
+  describe("GET /api/loops", () => {
+    test("lists loops without hydrating transcript payloads", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Persist large loop content",
+          name: "Loop List Summary Test",
+          planMode: true,
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+      const timestamp = new Date().toISOString();
+      const messages: PersistedMessage[] = [{
+        id: "message-1",
+        role: "assistant",
+        content: "Large loop transcript content that should not be returned by the list endpoint",
+        timestamp,
+      }];
+      const logs: LoopLogEntry[] = [{
+        id: "log-1",
+        level: "agent",
+        message: "Large loop log content that should not be returned by the list endpoint",
+        timestamp,
+      }];
+      const toolCalls: PersistedToolCall[] = [{
+        id: "tool-1",
+        name: "Read",
+        input: { filePath: "src/index.ts" },
+        output: { content: "Large loop tool output that should not be returned by the list endpoint" },
+        status: "completed",
+        timestamp,
+      }];
+
+      const updated = await updateLoopState(created.config.id as string, {
+        ...created.state,
+        status: "planning",
+        currentIteration: 1,
+        messages,
+        logs,
+        toolCalls,
+        lastActivityAt: timestamp,
+        planMode: {
+          active: true,
+          feedbackRounds: 1,
+          planContent: "Large plan content that should not be returned by the list endpoint",
+          planningFolderCleared: true,
+          isPlanReady: true,
+        },
+      });
+      expect(updated).not.toBeNull();
+
+      const listResponse = await fetch(`${baseUrl}/api/loops`);
+      expect(listResponse.status).toBe(200);
+      const listedLoops = await listResponse.json();
+      const listed = listedLoops.find((loop: { config: { id: string } }) => loop.config.id === created.config.id);
+      expect(listed).toBeDefined();
+      expect(listed.state.messages).toEqual([]);
+      expect(listed.state.logs).toEqual([]);
+      expect(listed.state.toolCalls).toEqual([]);
+      expect(listed.state.planMode.isPlanReady).toBe(true);
+      expect(listed.state.planMode.planContent).toBeUndefined();
+
+      const detailResponse = await fetch(`${baseUrl}/api/loops/${created.config.id}`);
+      expect(detailResponse.status).toBe(200);
+      const detail = await detailResponse.json();
+      expect(detail.state.messages).toEqual(messages);
+      expect(detail.state.logs).toEqual(logs);
+      expect(detail.state.toolCalls).toEqual(toolCalls);
+      expect(detail.state.planMode.planContent).toBe("Large plan content that should not be returned by the list endpoint");
+    });
+
+    test("lists active-engine loops without hydrating transcript payloads", async () => {
+      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateLoopPayload,
+          workspaceId: testWorkspaceId,
+          prompt: "Keep active engine payload lightweight",
+          name: "Active Engine Summary Test",
+          planMode: true,
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+        }),
+      });
+
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+      const timestamp = new Date().toISOString();
+      const activeState = {
+        ...created.state,
+        status: "running" as const,
+        currentIteration: 1,
+        messages: [{
+          id: "active-message-1",
+          role: "assistant" as const,
+          content: "Active engine transcript content that should not be returned by the list endpoint",
+          timestamp,
+        }],
+        logs: [{
+          id: "active-log-1",
+          level: "agent" as const,
+          message: "Active engine log content that should not be returned by the list endpoint",
+          timestamp,
+        }],
+        toolCalls: [{
+          id: "active-tool-1",
+          name: "Read",
+          input: { filePath: "src/index.ts" },
+          output: { content: "Active engine tool output that should not be returned by the list endpoint" },
+          status: "completed" as const,
+          timestamp,
+        }],
+        planMode: {
+          active: true,
+          feedbackRounds: 1,
+          planContent: "Active engine plan content that should not be returned by the list endpoint",
+          planningFolderCleared: true,
+          isPlanReady: true,
+        },
+      };
+
+      const engineMap = (loopManager as unknown as {
+        engines: Map<string, { config: typeof created.config; state: typeof activeState }>;
+      }).engines;
+      engineMap.set(created.config.id as string, {
+        config: created.config,
+        state: activeState,
+      });
+
+      const listResponse = await fetch(`${baseUrl}/api/loops`);
+      expect(listResponse.status).toBe(200);
+      const listedLoops = await listResponse.json();
+      const listed = listedLoops.find((loop: { config: { id: string } }) => loop.config.id === created.config.id);
+      expect(listed).toBeDefined();
+      expect(listed.state.messages).toEqual([]);
+      expect(listed.state.logs).toEqual([]);
+      expect(listed.state.toolCalls).toEqual([]);
+      expect(listed.state.planMode.isPlanReady).toBe(true);
+      expect(listed.state.planMode.planContent).toBeUndefined();
+
+      const detailResponse = await fetch(`${baseUrl}/api/loops/${created.config.id}`);
+      expect(detailResponse.status).toBe(200);
+      const detail = await detailResponse.json();
+      expect(detail.state.messages).toEqual(activeState.messages);
+      expect(detail.state.logs).toEqual(activeState.logs);
+      expect(detail.state.toolCalls).toEqual(activeState.toolCalls);
+      expect(detail.state.planMode.planContent).toBe("Active engine plan content that should not be returned by the list endpoint");
     });
   });
 
@@ -1756,8 +1919,11 @@ Updated line 3`;
       if (loop) {
         await updateLoopState(loopId, {
           ...loop.state,
+          status: "pushed",
           git: undefined, // Remove git state
         });
+        const { loopManager } = await import("../../src/core/loop-manager");
+        loopManager.resetForTesting();
       }
 
       // Try to mark as merged
@@ -1771,7 +1937,7 @@ Updated line 3`;
       expect(body.message).toContain("No git branch");
     });
 
-    test("marks a completed loop as merged and preserves merged status", async () => {
+    test("marks a pushed loop as merged and preserves merged status", async () => {
       // Create and complete a loop
       const createResponse = await fetch(`${baseUrl}/api/loops`, {
         method: "POST",
@@ -1791,6 +1957,17 @@ Updated line 3`;
 
       // Wait for completion
       await waitForLoopCompletion(loopId);
+
+      const { updateLoopState, loadLoop } = await import("../../src/persistence/loops");
+      const completedLoop = await loadLoop(loopId);
+      if (completedLoop) {
+        await updateLoopState(loopId, {
+          ...completedLoop.state,
+          status: "pushed",
+        });
+        const { loopManager } = await import("../../src/core/loop-manager");
+        loopManager.resetForTesting();
+      }
 
       // Mark as merged
       const response = await fetch(`${baseUrl}/api/loops/${loopId}/mark-merged`, {

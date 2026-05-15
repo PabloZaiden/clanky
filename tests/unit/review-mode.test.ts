@@ -67,22 +67,18 @@ describe("Review Mode", () => {
         expect(completedLoop).not.toBeNull();
         expect(completedLoop!.state.git?.workingBranch).toBeDefined();
 
-        // Accept (merge) the loop
+        // Accept the loop locally
         const acceptResult = await ctx.manager.acceptLoop(loop.config.id);
         expect(acceptResult.success).toBe(true);
 
         // Verify review mode is initialized
         const acceptedLoop = await ctx.manager.getLoop(loop.config.id);
         expect(acceptedLoop).not.toBeNull();
-        expect(acceptedLoop!.state.status).toBe("merged");
+        expect(acceptedLoop!.state.status).toBe("accepted_local");
         expect(acceptedLoop!.state.reviewMode).toBeDefined();
         expect(acceptedLoop!.state.reviewMode!.addressable).toBe(true);
-        expect(acceptedLoop!.state.reviewMode!.completionAction).toBe("merge");
+        expect(acceptedLoop!.state.reviewMode!.completionAction).toBe("local");
         expect(acceptedLoop!.state.reviewMode!.reviewCycles).toBe(0);
-        // reviewBranches should contain the working branch after merge
-        expect(acceptedLoop!.state.reviewMode!.reviewBranches.length).toBe(1);
-        expect(acceptedLoop!.state.reviewMode!.reviewBranches[0]).not.toContain("ralph/");
-        expect(acceptedLoop!.state.reviewMode!.reviewBranches[0]).toMatch(/-[0-9a-f]{7}$/);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -169,8 +165,6 @@ describe("Review Mode", () => {
         expect(pushedLoop!.state.reviewMode!.addressable).toBe(true);
         expect(pushedLoop!.state.reviewMode!.completionAction).toBe("push");
         expect(pushedLoop!.state.reviewMode!.reviewCycles).toBe(0);
-        // For pushed loops, reviewBranches tracks the working branch
-        expect(pushedLoop!.state.reviewMode!.reviewBranches.length).toBe(1);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -286,6 +280,178 @@ describe("Review Mode", () => {
   });
 
   describe("sendFollowUp", () => {
+    test("sends completed-loop LogViewer follow-up as a plain chat turn in the existing session", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+        mockResponses: ["<promise>COMPLETE</promise>", "Here is a plain response without a marker"],
+      });
+
+      try {
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Plain Chat Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+
+        await ctx.manager.startLoop(loop.config.id);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+        const completedLoop = await ctx.manager.getLoop(loop.config.id);
+        const originalSessionId = completedLoop!.state.session!.id;
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "What did you just change?",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(true);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+
+        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
+        expect(resumedLoop!.state.session!.id).toBe(originalSessionId);
+        expect(resumedLoop!.state.currentIteration).toBe(2);
+
+        const sentPrompts = ctx.mockBackend!.getSentPrompts();
+        const lastPrompt = sentPrompts[sentPrompts.length - 1]!;
+        expect(lastPrompt.parts[0]).toEqual({ type: "text", text: "What did you just change?" });
+        const promptText = lastPrompt.parts[0]?.type === "text" ? lastPrompt.parts[0].text : "";
+        expect(promptText).not.toContain("Original Goal");
+        expect(promptText).not.toContain(".ralph-planning");
+        expect(promptText).not.toContain("<promise>COMPLETE</promise>");
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
+    test("sends pushed-loop textbox follow-up as a plain chat turn in the existing session", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+        mockResponses: ["<promise>COMPLETE</promise>", "Here is a pushed plain response"],
+      });
+
+      try {
+        const remoteDir = join(ctx.dataDir, `remote-${Date.now()}.git`);
+        await Bun.$`git init --bare ${remoteDir}`.quiet();
+        await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
+        const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
+        await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
+
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Pushed Plain Chat Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+
+        await ctx.manager.startLoop(loop.config.id);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+        const completedLoop = await ctx.manager.getLoop(loop.config.id);
+        const originalSessionId = completedLoop!.state.session!.id;
+        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        expect(pushResult.success).toBe(true);
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "What happened after the push?",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(true);
+        expect(followUpResult.reviewCycle).toBeUndefined();
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+
+        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
+        expect(resumedLoop!.state.session!.id).toBe(originalSessionId);
+
+        const sentPrompts = ctx.mockBackend!.getSentPrompts();
+        const lastPrompt = sentPrompts[sentPrompts.length - 1]!;
+        expect(lastPrompt.parts[0]).toEqual({ type: "text", text: "What happened after the push?" });
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
+    test("plain chat follow-up recreates the session when the persisted session expired", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+        mockResponses: ["<promise>COMPLETE</promise>", "Fresh session response"],
+      });
+
+      try {
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Expired Session Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+
+        await ctx.manager.startLoop(loop.config.id);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+        const completedLoop = await ctx.manager.getLoop(loop.config.id);
+        const originalSessionId = completedLoop!.state.session!.id;
+        await ctx.mockBackend!.deleteSession(originalSessionId);
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "Continue anyway",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(true);
+        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+
+        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
+        expect(resumedLoop!.state.session!.id).not.toBe(originalSessionId);
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
+    test("plain chat follow-up is rejected for non-completed terminal loops", async () => {
+      const ctx = await setupTestContext({
+        initGit: true,
+        initialFiles: {
+          "test.txt": "Initial content",
+        },
+      });
+
+      try {
+        const loop = await ctx.manager.createLoop({
+          ...testModelFields,
+          directory: ctx.workDir,
+          prompt: "Make changes",
+          name: "Stopped Loop",
+          planMode: false,
+          workspaceId: testWorkspaceId,
+        });
+        loop.state.status = "stopped";
+        await saveLoop(loop);
+
+        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+          message: "Resume with context",
+          promptMode: "plain_chat",
+        });
+
+        expect(followUpResult.success).toBe(false);
+        expect(followUpResult.error).toContain("status: stopped");
+      } finally {
+        await teardownTestContext(ctx);
+      }
+    });
+
     test("restarts a pushed loop on the existing review branch", async () => {
       const ctx = await setupTestContext({
         initGit: true,
@@ -365,7 +531,7 @@ describe("Review Mode", () => {
         expect(followUpResult.success).toBe(true);
         expect(followUpResult.reviewCycle).toBe(1);
         expect(followUpResult.branch).toBeDefined();
-        expect(followUpResult.branch).not.toBe(originalBranch);
+        expect(followUpResult.branch).toBe(originalBranch);
 
         await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
       } finally {
@@ -554,10 +720,8 @@ describe("Review Mode", () => {
         expect(result.success).toBe(true);
         expect(result.history).toBeDefined();
         expect(result.history!.addressable).toBe(true);
-        expect(result.history!.completionAction).toBe("merge");
+        expect(result.history!.completionAction).toBe("local");
         expect(result.history!.reviewCycles).toBe(0);
-        // reviewBranches should contain the working branch
-        expect(result.history!.reviewBranches.length).toBe(1);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -612,7 +776,7 @@ describe("Review Mode", () => {
   });
 
   describe("Completion Action Enforcement", () => {
-    test("acceptLoop rejects if loop was originally pushed", async () => {
+    test("acceptLoop allows local acceptance after a pushed review cycle", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -659,16 +823,15 @@ describe("Review Mode", () => {
         // Wait for the review cycle to complete
         await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
 
-        // Now try to accept (merge) - this should be rejected
+        // Now accept locally; review cycles can choose local or push each time
         const acceptResult = await ctx.manager.acceptLoop(loop.config.id);
-        expect(acceptResult.success).toBe(false);
-        expect(acceptResult.error).toContain("originally pushed");
+        expect(acceptResult.success).toBe(true);
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("pushLoop rejects if loop was originally merged", async () => {
+    test("pushLoop allows pushing after a locally accepted review cycle", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -703,7 +866,7 @@ describe("Review Mode", () => {
 
         // Verify it was merged
         const mergedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(mergedLoop!.state.reviewMode?.completionAction).toBe("merge");
+        expect(mergedLoop!.state.reviewMode?.completionAction).toBe("local");
 
         // Address comments to start a new review cycle
         const addressResult = await ctx.manager.addressReviewComments(
@@ -715,10 +878,9 @@ describe("Review Mode", () => {
         // Wait for the review cycle to complete
         await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
 
-        // Now try to push - this should be rejected
+        // Now push; review cycles can choose local or push each time
         const pushResult = await ctx.manager.pushLoop(loop.config.id);
-        expect(pushResult.success).toBe(false);
-        expect(pushResult.error).toContain("originally merged");
+        expect(pushResult.success).toBe(true);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -756,7 +918,7 @@ describe("Review Mode", () => {
 
         // Verify completionAction is now set
         const afterAccept = await ctx.manager.getLoop(loop.config.id);
-        expect(afterAccept!.state.reviewMode?.completionAction).toBe("merge");
+        expect(afterAccept!.state.reviewMode?.completionAction).toBe("local");
       } finally {
         await teardownTestContext(ctx);
       }

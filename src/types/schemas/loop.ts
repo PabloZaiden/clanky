@@ -207,4 +207,5 @@ export const FollowUpRequestSchema = z.object({
   }),
   model: ModelConfigSchema.nullable(),
   attachments: MessageImageAttachmentsSchema,
+  promptMode: z.enum(["loop_context", "plain_chat"]).optional(),
 });

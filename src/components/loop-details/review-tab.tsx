@@ -41,25 +41,6 @@ export function ReviewTab({ loop, labels, loadingComments, reviewComments, embed
               </div>
             </div>
 
-            {loop.state.reviewMode.reviewBranches.length > 0 && (
-              <div className="bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                  Review Branches
-                </h3>
-                <div className="space-y-2">
-                  {loop.state.reviewMode.reviewBranches.map((branch, index) => (
-                    <div
-                      key={index}
-                      className="flex min-w-0 items-center gap-2 text-sm font-mono text-gray-700 dark:text-gray-300"
-                    >
-                      <span className="text-gray-400">{index + 1}.</span>
-                      <span className="break-all">{branch}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Comment History */}
             <div className="bg-gray-50 dark:bg-neutral-900 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">

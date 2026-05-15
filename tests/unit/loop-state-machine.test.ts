@@ -29,6 +29,7 @@ const ALL_STATUSES: LoopStatus[] = [
   "max_iterations",
   "resolving_conflicts",
   "merged",
+  "accepted_local",
   "pushed",
   "deleted",
 ];
@@ -45,13 +46,14 @@ const EXPECTED_TRANSITIONS: Record<LoopStatus, LoopStatus[]> = {
   starting: ["running", "resolving_conflicts", "failed", "stopped", "deleted"],
   running: ["completed", "stopped", "failed", "max_iterations", "deleted"],
   waiting: ["running", "completed", "stopped", "failed", "max_iterations", "deleted"],
-  completed: ["merged", "pushed", "deleted", "resolving_conflicts", "starting", "idle", "stopped", "planning"],
+  completed: ["accepted_local", "pushed", "deleted", "resolving_conflicts", "starting", "idle", "stopped", "planning"],
   stopped: ["starting", "planning", "completed", "deleted", "stopped"],
   failed: ["completed", "deleted", "stopped", "planning"],
-  max_iterations: ["merged", "pushed", "deleted", "resolving_conflicts", "stopped", "planning"],
+  max_iterations: ["accepted_local", "pushed", "deleted", "resolving_conflicts", "stopped", "planning"],
   resolving_conflicts: ["starting", "stopped", "failed", "pushed", "completed", "max_iterations", "deleted"],
-  merged: ["deleted", "idle"],
-  pushed: ["merged", "deleted", "idle", "resolving_conflicts", "pushed"],
+  accepted_local: ["pushed", "deleted", "idle", "resolving_conflicts", "accepted_local"],
+  merged: ["deleted"],
+  pushed: ["merged", "deleted", "idle", "resolving_conflicts", "pushed", "starting"],
   deleted: ["stopped", "planning"],
 };
 
@@ -199,7 +201,7 @@ describe("loop-state-machine", () => {
     });
 
     test("no status can transition to itself except stopped and pushed", () => {
-      const selfTransitionAllowed = new Set<LoopStatus>(["stopped", "pushed"]);
+      const selfTransitionAllowed = new Set<LoopStatus>(["stopped", "accepted_local", "pushed"]);
       for (const status of ALL_STATUSES) {
         if (selfTransitionAllowed.has(status)) {
           // stopped → stopped: jumpstart re-enters stopped for restart

@@ -51,7 +51,7 @@ export function LoopDetails({
 }: LoopDetailsProps) {
    const {
       loop, loading, error, messages, toolCalls, logs, gitChangeCounter,
-       accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
+        accept, push, updateBranch, remove, purge, markMerged, closeLocalLoop, manualCompleteLoop,
        stopLoop, setPending, sendFollowUp,
       getDiff, getPlan, getStatusFile, getPullRequestDestination,
       sendPlanFeedback, acceptPlan, discardPlan,
@@ -86,7 +86,7 @@ export function LoopDetails({
       });
      },
       toast,
-       accept, push, updateBranch, remove, purge, markMerged, manualCompleteLoop,
+        accept, push, updateBranch, remove, purge, markMerged, closeLocalLoop, manualCompleteLoop,
       addressReviewComments, enablePullRequestAutoMerge, startAutomaticPrFlow, stopAutomaticPrFlow, acceptPlan, discardPlan, connectViaSsh, update,
       fetchReviewComments: content.fetchReviewComments,
     });
@@ -250,7 +250,17 @@ export function LoopDetails({
           onStop={isActive || isPlanning ? stopLoop : undefined}
           onSubmit={async (options) => {
             if (isPlanning) { if (options.message) { await sendPlanFeedback(options.message, options.attachments); return true; } return false; }
-            if (canTerminalFollowUp) { if (options.message) return await sendFollowUp(options.message, options.model, options.attachments); return false; }
+            if (canTerminalFollowUp) {
+              if (options.message) {
+                return await sendFollowUp(
+                  options.message,
+                  options.model,
+                  options.attachments,
+                  state.status === "completed" || state.status === "pushed" ? "plain_chat" : "loop_context",
+                );
+              }
+              return false;
+            }
             const result = await setPending(options);
             return result.success;
           }}

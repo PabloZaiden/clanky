@@ -38,8 +38,5 @@ export interface LoopCtx {
     loopId: string,
     options: { prompt: string; model?: ModelConfig; reviewCommentText?: string; attachments?: MessageImageAttachment[] },
   ): Promise<SendFollowUpResult>;
-  jumpstartLoop(
-    loopId: string,
-    options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
-  ): Promise<{ success: boolean; error?: string }>;
+  jumpstartLoop(loopId: string, options: { message?: string; model?: ModelConfig; attachments?: MessageImageAttachment[] }): Promise<{ success: boolean; error?: string }>;
 }

@@ -1,5 +1,5 @@
 /**
- * Git-related loop actions: accept (merge), push, update-branch, mark-merged.
+ * Git-related loop actions: accept local, push, update-branch, mark-merged.
  */
 
 import { apiCall, apiAction } from "./helpers";
@@ -9,7 +9,6 @@ import { apiCall, apiAction } from "./helpers";
  */
 export interface AcceptLoopResult {
   success: boolean;
-  mergeCommit?: string;
 }
 
 /**
@@ -23,15 +22,15 @@ export interface PushLoopResult {
 }
 
 /**
- * Accept (merge) a loop's changes via the API.
+ * Accept a loop's committed changes locally via the API.
  */
 export async function acceptLoopApi(loopId: string): Promise<AcceptLoopResult> {
-  const data = await apiCall<{ mergeCommit: string }>(
+  await apiCall<{ success: true }>(
     `/api/loops/${loopId}/accept`,
     { method: "POST" },
     "Accept loop",
   );
-  return { success: true, mergeCommit: data.mergeCommit };
+  return { success: true };
 }
 
 /**
@@ -75,4 +74,11 @@ export async function updateBranchApi(loopId: string): Promise<PushLoopResult> {
  */
 export async function markMergedApi(loopId: string): Promise<boolean> {
   return apiAction(`/api/loops/${loopId}/mark-merged`, "POST", "Mark loop as merged");
+}
+
+/**
+ * Close a locally accepted loop without performing PR or git operations.
+ */
+export async function closeLocalLoopApi(loopId: string): Promise<boolean> {
+  return apiAction(`/api/loops/${loopId}/close-local`, "POST", "Close local loop");
 }

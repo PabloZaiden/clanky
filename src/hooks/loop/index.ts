@@ -13,8 +13,9 @@
 import { useEffect, useRef } from "react";
 import type { Loop, LoopEvent, UpdateLoopRequest, FileDiff, FileContentResponse, PullRequestDestinationResponse, MessageData, ToolCallData, SshSession } from "../../types";
 import type { MessageImageAttachment } from "../../types/message-attachments";
+import type { FollowUpPromptMode } from "../../types/loop";
 import type { LogEntry } from "../../components/LogViewer";
-import { useLoopEvents } from "../useWebSocket";
+import { isLoopEvent, useAppEvents } from "../useAppEvents";
 import { createLogger } from "../../lib/logger";
 import type {
   AcceptLoopResult,
@@ -63,7 +64,7 @@ export interface UseLoopResult {
   remove: () => Promise<boolean>;
   /** Stop the active loop without deleting it */
   stopLoop: () => Promise<boolean>;
-  /** Accept (merge) the loop's changes */
+  /** Accept the loop's committed changes locally */
   accept: () => Promise<AcceptLoopResult>;
   /** Push the loop's branch to remote */
   push: () => Promise<PushLoopResult>;
@@ -71,10 +72,12 @@ export interface UseLoopResult {
   updateBranch: () => Promise<PushLoopResult>;
   /** Discard the loop's changes */
   discard: () => Promise<boolean>;
-  /** Purge the loop (permanently delete - only for merged/pushed/deleted loops) */
+  /** Purge the loop (permanently delete - only for accepted/pushed/merged/deleted loops) */
   purge: () => Promise<boolean>;
   /** Mark a loop as merged and sync with remote (only for final-state loops) */
   markMerged: () => Promise<boolean>;
+  /** Close a locally accepted loop without PR actions */
+  closeLocalLoop: () => Promise<boolean>;
   /** Promote a stopped or failed loop into completed status without resuming execution */
   manualCompleteLoop: () => Promise<boolean>;
   /** Set a pending prompt for the next iteration (only works when loop is running) */
@@ -112,6 +115,7 @@ export interface UseLoopResult {
     message: string,
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
+    promptMode?: FollowUpPromptMode,
   ) => Promise<boolean>;
   /** Get or create the loop's linked SSH session */
   connectViaSsh: () => Promise<SshSession | null>;
@@ -165,9 +169,7 @@ export function useLoop(loopId: string): UseLoopResult {
     });
 
   // WebSocket subscription for real-time updates
-  const { events, status: connectionStatus, clearEvents } = useLoopEvents<LoopEvent>(loopId, {
-    onEvent: handleEvent,
-  });
+  const { events, status: connectionStatus, clearEvents } = useAppEvents<LoopEvent>(handleEvent, isLoopEvent);
 
   // Action callbacks
   const actions = useLoopActions({

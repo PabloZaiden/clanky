@@ -7,9 +7,8 @@ export async function getReviewHistoryImpl(
   loopId: string
 ): Promise<{ success: boolean; error?: string; history?: {
   addressable: boolean;
-  completionAction: "push" | "merge";
+  completionAction: "local" | "push";
   reviewCycles: number;
-  reviewBranches: string[];
 } }> {
   const loop = await loadLoop(loopId);
   if (!loop) {
@@ -21,9 +20,8 @@ export async function getReviewHistoryImpl(
       success: true,
       history: {
         addressable: false,
-        completionAction: "push",
+        completionAction: "local",
         reviewCycles: 0,
-        reviewBranches: [],
       },
     };
   }
@@ -34,7 +32,6 @@ export async function getReviewHistoryImpl(
       addressable: loop.state.reviewMode.addressable,
       completionAction: loop.state.reviewMode.completionAction,
       reviewCycles: loop.state.reviewMode.reviewCycles,
-      reviewBranches: loop.state.reviewMode.reviewBranches,
     },
   };
 }

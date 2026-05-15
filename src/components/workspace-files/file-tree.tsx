@@ -2,6 +2,8 @@ import { memo, useMemo, type ReactNode } from "react";
 import type { WorkspaceFileNode } from "../../types";
 import { Button, RefreshIcon } from "../common";
 
+const explorerToolbarButtonClassName = "h-8 min-h-8 w-8 shrink-0 px-0";
+
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
     <svg
@@ -229,7 +231,7 @@ function WorkspaceFileTreeComponent({
           "border-b border-gray-200 dark:border-gray-800",
           collapsed
             ? "flex items-center justify-between gap-2 px-3 py-2 lg:h-full lg:flex-col lg:items-center lg:gap-2 lg:px-2 lg:py-3"
-            : "flex items-center justify-between px-3 py-2",
+            : "flex flex-col items-stretch gap-2 px-3 py-2",
         ].join(" ")}
       >
         {collapsed && (
@@ -237,12 +239,7 @@ function WorkspaceFileTreeComponent({
             Files
           </div>
         )}
-        {!collapsed && (
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Explorer</h2>
-          </div>
-        )}
-        <div className={collapsed ? "flex items-center gap-2 lg:flex-col" : "flex items-center gap-2"}>
+        <div className={collapsed ? "flex items-center gap-1.5 lg:flex-col" : "flex w-full items-center justify-between gap-1.5"}>
           {toolbarActions}
           <Button
             variant="ghost"
@@ -252,7 +249,7 @@ function WorkspaceFileTreeComponent({
             icon={<RefreshIcon size="h-4 w-4" />}
             aria-label="Refresh explorer"
             title="Refresh explorer"
-            className="w-9 px-0"
+            className={explorerToolbarButtonClassName}
           >
             <span className="sr-only">Refresh explorer</span>
           </Button>
@@ -264,7 +261,7 @@ function WorkspaceFileTreeComponent({
             aria-label={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
             aria-pressed={showHiddenFiles}
             title={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
-            className="w-9 px-0"
+            className={explorerToolbarButtonClassName}
             icon={<HiddenFilesIcon visible={showHiddenFiles} />}
           >
             <span className="sr-only">{showHiddenFiles ? "Hide hidden files" : "Show hidden files"}</span>
@@ -276,7 +273,7 @@ function WorkspaceFileTreeComponent({
             disabled={!canCopySelectedFilePath}
             aria-label="Copy selected file path"
             title="Copy selected file path"
-            className="w-9 px-0"
+            className={explorerToolbarButtonClassName}
             icon={<CopyPathIcon />}
           >
             <span className="sr-only">Copy selected file path</span>
@@ -288,7 +285,7 @@ function WorkspaceFileTreeComponent({
             disabled={!canDownloadSelectedFile}
             aria-label="Download selected file"
             title="Download selected file"
-            className="w-9 px-0"
+            className={explorerToolbarButtonClassName}
             icon={<DownloadIcon />}
           >
             <span className="sr-only">Download selected file</span>
@@ -299,7 +296,7 @@ function WorkspaceFileTreeComponent({
             onClick={onToggleCollapsed}
             aria-label={collapsed ? "Expand file explorer" : "Collapse file explorer"}
             title={collapsed ? "Expand file explorer" : "Collapse file explorer"}
-            className="w-9 px-0"
+            className={explorerToolbarButtonClassName}
             icon={<ExplorerToggleIcon collapsed={collapsed} />}
           >
             <span className="sr-only">{collapsed ? "Expand file explorer" : "Collapse file explorer"}</span>

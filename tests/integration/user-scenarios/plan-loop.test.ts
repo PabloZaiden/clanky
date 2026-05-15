@@ -521,11 +521,10 @@ describe("Plan + Loop User Scenarios", () => {
 
         const workingBranch = completedLoop.state.git!.workingBranch;
 
-        // Accept and merge the loop
+        // Accept the loop locally
         const { status: acceptStatus, body: acceptBody } = await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
         expect(acceptStatus).toBe(200);
         expect(acceptBody.success).toBe(true);
-        expect(acceptBody.mergeCommit).toBeDefined();
 
         // Verify we're back on original branch
         expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
@@ -534,13 +533,13 @@ describe("Plan + Loop User Scenarios", () => {
         expect(await branchExists(ctx.workDir, workingBranch)).toBe(true);
 
         // Verify final state
-        const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
-        assertLoopState(mergedLoop, { status: "merged" });
+        const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
+        assertLoopState(mergedLoop, { status: "accepted_local" });
         
         // Verify reviewMode was initialized
         expect(mergedLoop.state.reviewMode).toBeDefined();
         expect(mergedLoop.state.reviewMode?.addressable).toBe(true);
-        expect(mergedLoop.state.reviewMode?.completionAction).toBe("merge");
+        expect(mergedLoop.state.reviewMode?.completionAction).toBe("local");
       });
     });
 
@@ -644,13 +643,13 @@ describe("Plan + Loop User Scenarios", () => {
         expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
         expect(await branchExists(ctx.workDir, workingBranch)).toBe(true); // Branch kept for review mode
 
-        const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "merged");
-        assertLoopState(mergedLoop, { status: "merged" });
+        const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
+        assertLoopState(mergedLoop, { status: "accepted_local" });
         
         // Verify reviewMode was initialized
         expect(mergedLoop.state.reviewMode).toBeDefined();
         expect(mergedLoop.state.reviewMode?.addressable).toBe(true);
-        expect(mergedLoop.state.reviewMode?.completionAction).toBe("merge");
+        expect(mergedLoop.state.reviewMode?.completionAction).toBe("local");
       });
     });
 

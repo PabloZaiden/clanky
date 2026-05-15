@@ -201,6 +201,7 @@ export const crudRoutes = {
           const status = reason === "Workspace not found" ? 404 : 400;
           return errorResponse(errorCode, reason, status);
         }
+        await backendManager.resetWorkspaceConnection(id);
         log.info(`Deleted workspace: ${id}`);
         return Response.json({ success: true });
       } catch (error) {

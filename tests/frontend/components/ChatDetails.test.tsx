@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { fireEvent } from "@testing-library/react";
 import { DEFAULT_CHAT_INTERRUPT_REASON, type Chat } from "@/types";
 import { ChatDetails } from "@/components/ChatDetails";
+import { AppEventsProvider } from "@/hooks";
 import { getChatTemplateById } from "@/lib/chat-prompt-templates";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
@@ -19,6 +20,18 @@ const ws = createMockWebSocket();
 const imageAttachmentMocks = installImageAttachmentMocks();
 
 const CHAT_ID = "chat-1";
+
+function renderWithAppEvents(
+  ui: Parameters<typeof renderWithUser>[0],
+  options?: Parameters<typeof renderWithUser>[1],
+) {
+  const result = renderWithUser(<AppEventsProvider>{ui}</AppEventsProvider>, options);
+  return {
+    ...result,
+    rerender: (nextUi: Parameters<typeof renderWithUser>[0]) =>
+      result.rerender(<AppEventsProvider>{nextUi}</AppEventsProvider>),
+  };
+}
 
 function createChat(overrides?: Partial<Chat>): Chat {
   return {
@@ -130,7 +143,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/messages", () => updatedChat, 200);
 
-    const { getByText, getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText, getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
@@ -175,7 +188,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/messages", () => updatedChat, 200);
 
-    const { getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Repo pairing" })).toBeInTheDocument();
@@ -239,7 +252,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => pendingChat);
     api.post("/api/chats/:id/permissions/:requestId", () => approvedChat, 200);
 
-    const { getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, queryByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Allow" })).toBeInTheDocument();
@@ -283,7 +296,7 @@ describe("ChatDetails", () => {
         resolveReply = resolve;
       }), 200);
 
-    const { getByRole } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Allow" })).toBeInTheDocument();
@@ -353,7 +366,7 @@ describe("ChatDetails", () => {
       return params["id"] === "chat-1" ? newerChat : olderChat;
     });
 
-    const { getByText, queryByText, rerender } = renderWithUser(<ChatDetails chatId="chat-1" />);
+    const { getByText, queryByText, rerender } = renderWithAppEvents(<ChatDetails chatId="chat-1" />);
 
     await waitFor(() => {
       expect(getByText("Recent pairing")).toBeInTheDocument();
@@ -392,7 +405,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, queryByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "View screen.png" })).toBeInTheDocument();
@@ -432,7 +445,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => streamingChat);
     api.post("/api/chats/:id/interrupt", () => interruptedChat, 200);
 
-    const { getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Interrupt" })).toBeTruthy();
@@ -461,7 +474,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, queryByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
 
@@ -477,7 +490,7 @@ describe("ChatDetails", () => {
   test("prevents the send button from taking focus on press", async () => {
     api.get("/api/chats/:id", () => createChat());
 
-    const { getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Send" })).toBeTruthy();
@@ -512,7 +525,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/messages", () => updatedChat, 200);
 
-    const { getByLabelText, getByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, queryByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Send" })).toBeTruthy();
@@ -537,7 +550,7 @@ describe("ChatDetails", () => {
   test("revokes removed chat attachment previews once through shared cleanup", async () => {
     api.get("/api/chats/:id", () => createChat());
 
-    const { getByLabelText, getByRole, queryByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, queryByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Send" })).toBeTruthy();
@@ -575,7 +588,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.patch("/api/chats/:id", () => renamedChat, 200);
 
-    const { getByRole, getByLabelText, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByLabelText, getByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
@@ -624,7 +637,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/spawn-loop", () => spawnedLoop);
 
-    const { getByRole, user } = renderWithUser(
+    const { getByRole, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
         onOpenLoop={(loopId) => {
@@ -672,7 +685,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/spawn-loop-from-current-plan", () => spawnedLoop);
 
-    const { getByLabelText, getByRole, user } = renderWithUser(
+    const { getByLabelText, getByRole, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
         onOpenLoop={(loopId) => {
@@ -714,7 +727,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/spawn-loop-from-current-plan", () => spawnedLoop);
 
-    const { getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
@@ -738,7 +751,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/spawn-loop-from-current-plan", async () => await pendingSpawn.promise);
 
-    const { getByDisplayValue, getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByDisplayValue, getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
@@ -780,7 +793,7 @@ describe("ChatDetails", () => {
 
     api.get("/api/chats/:id", () => initialChat);
 
-    const { getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
@@ -807,7 +820,7 @@ describe("ChatDetails", () => {
       400,
     );
 
-    const { getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
@@ -850,7 +863,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByLabelText, getByRole, user } = renderWithUser(
+    const { getByLabelText, getByRole, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
         onOpenLoop={(loopId) => {
@@ -927,7 +940,7 @@ describe("ChatDetails", () => {
       },
     }), 200);
 
-    const { getByLabelText, getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     const modelSelect = await waitFor(() => {
       const select = getByLabelText("Model") as HTMLSelectElement;
@@ -972,7 +985,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/spawn-loop", () => spawnedLoop);
 
-    const { getByRole, rerender, user } = renderWithUser(
+    const { getByRole, rerender, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
         onOpenLoop={(loopId) => {
@@ -1023,7 +1036,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/messages", () => updatedChat, 200);
 
-    const { getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByLabelText("Message")).toBeTruthy();
@@ -1066,10 +1079,10 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => activeChat);
     api.post("/api/chats/:id/messages", () => sentChat, 200);
 
-    const { getByLabelText, getByRole, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, queryByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
 
     expect(connection).toBeTruthy();
 
@@ -1123,7 +1136,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/messages", () => initialChat, 200);
 
-    const { getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
 
@@ -1139,7 +1152,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => initialChat);
     api.post("/api/chats/:id/messages", () => initialChat, 200);
 
-    const { getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     const composer = await waitFor(() => getByLabelText("Message")) as HTMLTextAreaElement;
     mockComposerSoftWrap(composer, (value) => value.length >= 24);
@@ -1163,13 +1176,13 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1204,10 +1217,10 @@ describe("ChatDetails", () => {
     }));
     api.post("/api/chats/:id/reconnect", () => createChat(), 200);
 
-    renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
-      expect(ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID)).toBeTruthy();
+      expect(ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"))).toBeTruthy();
     });
 
     expect(api.calls("/api/chats/:id/reconnect", "POST")).toHaveLength(0);
@@ -1225,13 +1238,13 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText, queryByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1278,13 +1291,13 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Streaming")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1313,13 +1326,13 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Idle")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1353,13 +1366,13 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText, queryByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Idle")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1388,13 +1401,13 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText, queryByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1450,13 +1463,13 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, getByText, queryByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1540,13 +1553,13 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, getByRole, getByText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, getByRole, getByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1636,7 +1649,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText, queryByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("View src/persistence/auth.ts:20-330")).toBeTruthy();
@@ -1671,14 +1684,14 @@ describe("ChatDetails", () => {
     });
     api.get("/api/chats/:id", () => currentChat);
 
-    const { getByText, queryByText } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByText, queryByText } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByText("Repo pairing")).toBeTruthy();
       expect(getByText("Fresh transcript content")).toBeTruthy();
     });
 
-    const connection = ws.connections().find((item) => item.queryParams["chatId"] === CHAT_ID);
+    const connection = ws.connections().find((item) => item.url.includes("/api/ws") && !item.url.includes("?"));
     expect(connection).toBeTruthy();
 
     await act(async () => {
@@ -1726,7 +1739,7 @@ describe("ChatDetails", () => {
     api.delete("/api/chats/:id", () => ({ ok: true }), 200);
     let navigatedBack = false;
 
-    const { getByRole, getByText, user } = renderWithUser(
+    const { getByRole, getByText, user } = renderWithAppEvents(
       <ChatDetails chatId={CHAT_ID} onBack={() => {
         navigatedBack = true;
       }}
@@ -1779,7 +1792,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getToolGroupToggle(container)).toBeTruthy();
@@ -1827,7 +1840,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getToolGroupToggle(container)).toBeTruthy();
@@ -1872,7 +1885,7 @@ describe("ChatDetails", () => {
       },
     }));
 
-    const { container, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { container, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getToolGroupToggle(container)).toBeTruthy();
@@ -1900,7 +1913,7 @@ describe("ChatDetails", () => {
   test("keeps chat in the standard layout without focus mode controls", async () => {
     api.get("/api/chats/:id", () => createChat());
 
-    const { getByRole, getByText, queryByRole } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByText, queryByRole } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
@@ -1915,7 +1928,7 @@ describe("ChatDetails", () => {
     api.get("/api/chats/:id", () => createChat());
     let openedChatId = "";
 
-    const { getByRole, user } = renderWithUser(
+    const { getByRole, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
         onOpenCodeExplorer={(chatId: string) => {
@@ -1954,7 +1967,7 @@ describe("ChatDetails", () => {
 
     api.get("/api/chats/:id", () => longChat);
 
-    const { getByRole, getByText, queryByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByText, queryByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => getByText(longChat.config.name));
 
@@ -1976,7 +1989,7 @@ describe("ChatDetails", () => {
   test("opens rename from the header action menu", async () => {
     api.get("/api/chats/:id", () => createChat());
 
-    const { getByRole, getByLabelText, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, getByLabelText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
@@ -1991,7 +2004,7 @@ describe("ChatDetails", () => {
   test("disables code explorer actions when no code explorer handler is provided", async () => {
     api.get("/api/chats/:id", () => createChat());
 
-    const { getByRole, user } = renderWithUser(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();

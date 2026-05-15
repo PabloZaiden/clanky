@@ -60,12 +60,11 @@ describe("acceptLoopApi", () => {
   test("calls POST /api/loops/:id/accept and returns result", async () => {
     api.post(`/api/loops/${LOOP_ID}/accept`, () => ({
       success: true,
-      mergeCommit: "abc123def",
     }));
 
     const result = await acceptLoopApi(LOOP_ID);
 
-    expect(result).toEqual({ success: true, mergeCommit: "abc123def" });
+    expect(result).toEqual({ success: true });
     expect(api.calls(`/api/loops/${LOOP_ID}/accept`, "POST")).toHaveLength(1);
   });
 
@@ -302,6 +301,20 @@ describe("sendFollowUpApi", () => {
       message: "Please restart this",
       model: null,
       attachments: [SAMPLE_ATTACHMENT],
+      promptMode: "loop_context",
+    });
+  });
+
+  test("includes plain chat mode in the request body when requested", async () => {
+    api.post(`/api/loops/${LOOP_ID}/follow-up`, () => ({ success: true }));
+
+    await sendFollowUpApi(LOOP_ID, "Please answer directly", undefined, [], "plain_chat");
+
+    expect(api.calls(`/api/loops/${LOOP_ID}/follow-up`, "POST")[0]?.body).toEqual({
+      message: "Please answer directly",
+      model: null,
+      attachments: [],
+      promptMode: "plain_chat",
     });
   });
 });

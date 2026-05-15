@@ -618,7 +618,7 @@ export async function waitForPlanReady(
 export async function acceptLoopViaAPI(
   baseUrl: string,
   loopId: string
-): Promise<{ status: number; body: { success: boolean; mergeCommit?: string; error?: string; message?: string } }> {
+): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
   const response = await fetch(`${baseUrl}/api/loops/${loopId}/accept`, {
     method: "POST",
   });

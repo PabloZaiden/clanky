@@ -181,7 +181,9 @@ describe("CreateWorkspaceModal", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/provisioning-jobs", "POST")).toHaveLength(1);
-      expect(ws.getConnections("/api/ws")).toHaveLength(1);
+      expect(ws.connections().find(
+        (connection) => connection.queryParams["provisioningJobId"] === "job-1",
+      )).toBeDefined();
     });
 
     expect(onCreate).not.toHaveBeenCalled();
@@ -198,7 +200,7 @@ describe("CreateWorkspaceModal", () => {
       targetDirectory: null,
       workspaceId: null,
     });
-    expect(ws.getConnections("/api/ws")[0]?.queryParams["provisioningJobId"]).toBe("job-1");
+    expect(ws.connections().filter((connection) => connection.url.endsWith("/api/ws"))).toHaveLength(0);
   });
 
   test("wires accessible disclosure semantics for automatic advanced options", async () => {

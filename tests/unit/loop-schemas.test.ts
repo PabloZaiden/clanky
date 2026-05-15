@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CreateLoopRequestSchema,
+  FollowUpRequestSchema,
   GenerateLoopTitleRequestSchema,
   SetPendingRequestSchema,
   UpdateLoopRequestSchema,
@@ -66,6 +67,28 @@ describe("loop attachment schemas", () => {
     expect(UpdateLoopRequestSchema.safeParse({
       maxIterations: null,
     }).success).toBe(true);
+  });
+
+  test("validates optional follow-up prompt mode", () => {
+    expect(FollowUpRequestSchema.safeParse({
+      message: "Continue",
+      model: null,
+      attachments: [],
+    }).success).toBe(true);
+
+    expect(FollowUpRequestSchema.safeParse({
+      message: "Continue",
+      model: null,
+      attachments: [],
+      promptMode: "plain_chat",
+    }).success).toBe(true);
+
+    expect(FollowUpRequestSchema.safeParse({
+      message: "Continue",
+      model: null,
+      attachments: [],
+      promptMode: "unknown",
+    }).success).toBe(false);
   });
 
   test("rejects finite activity timeout values below the minimum", () => {

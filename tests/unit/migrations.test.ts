@@ -140,6 +140,15 @@ describe("migration infrastructure", () => {
       expect(getTableColumns(db, "loops")).toContain("cheap_model");
     });
 
+    test("adds pending prompt mode to loops", () => {
+      db.run("CREATE TABLE loops (id TEXT PRIMARY KEY)");
+
+      const applied = runMigrations(db);
+
+      expect(applied).toBe(migrations.length);
+      expect(getTableColumns(db, "loops")).toContain("pending_prompt_mode");
+    });
+
     test("creates auth device and refresh tables", () => {
       const applied = runMigrations(db);
 

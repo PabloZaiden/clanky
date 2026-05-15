@@ -555,7 +555,6 @@ describe("Persistence", () => {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: ["feature/repaired-pr-monitor-loop"],
       };
       repairedLoop.state.pullRequestMonitoring = {
         status: "open",
@@ -684,7 +683,6 @@ describe("Persistence", () => {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: ["feature/repaired-auto-pr-flow-loop"],
       };
       repairedLoop.state.automaticPrFlow = {
         enabled: true,
@@ -1022,6 +1020,26 @@ describe("Persistence", () => {
       expect(loaded!.state.status).toBe("idle");
     });
 
+    test("saveLoop and loadLoop preserve pending prompt mode", async () => {
+      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+
+      await setupPersistence();
+
+      const testLoop = createTestLoop({
+        id: "pending-prompt-mode-loop",
+        name: "pending-prompt-mode-loop",
+      });
+      testLoop.state.pendingPrompt = "Answer directly";
+      testLoop.state.pendingPromptMode = "plain_chat";
+
+      await saveLoop(testLoop);
+      const loaded = await loadLoop("pending-prompt-mode-loop");
+
+      expect(loaded).not.toBeNull();
+      expect(loaded!.state.pendingPrompt).toBe("Answer directly");
+      expect(loaded!.state.pendingPromptMode).toBe("plain_chat");
+    });
+
     test("loadLoop normalizes legacy generic ralph commit scope", async () => {
       const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
 
@@ -1170,7 +1188,6 @@ describe("Persistence", () => {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: ["feature/pr-monitor-loop"],
       };
       testLoop.state.pullRequestMonitoring = {
         status: "open",
@@ -1203,7 +1220,6 @@ describe("Persistence", () => {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
-        reviewBranches: ["feature/automatic-pr-flow-loop"],
       };
       testLoop.state.automaticPrFlow = {
         enabled: true,

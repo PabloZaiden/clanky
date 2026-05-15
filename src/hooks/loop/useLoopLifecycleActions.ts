@@ -1,6 +1,6 @@
 /**
  * Loop lifecycle actions for the useLoop hook.
- * Handles CRUD and state-transition operations: update, remove, stop, discard, purge, markMerged, manualCompleteLoop.
+ * Handles CRUD and state-transition operations: update, remove, stop, discard, purge, markMerged, closeLocalLoop, manualCompleteLoop.
  */
 
 import { useCallback } from "react";
@@ -10,6 +10,7 @@ import {
   discardLoopApi,
   purgeLoopApi,
   markMergedApi,
+  closeLocalLoopApi,
   manualCompleteLoopApi,
 } from "../loopActions";
 import { createLogger } from "../../lib/logger";
@@ -26,6 +27,7 @@ export interface UseLoopLifecycleActionsResult {
   discard: () => Promise<boolean>;
   purge: () => Promise<boolean>;
   markMerged: () => Promise<boolean>;
+  closeLocalLoop: () => Promise<boolean>;
   manualCompleteLoop: () => Promise<boolean>;
 }
 
@@ -213,6 +215,32 @@ export function useLoopLifecycleActions(
     }
   }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
 
+  const closeLocalLoop = useCallback(async (): Promise<boolean> => {
+    const actionLoopId = loopId;
+    const staleAction = ignoreStaleLoopAction("closeLocalLoop", actionLoopId, false);
+    if (staleAction !== null) {
+      return staleAction;
+    }
+    log.info("Closing locally accepted loop", { loopId: actionLoopId });
+    try {
+      await closeLocalLoopApi(actionLoopId);
+      await refresh();
+      if (!isActiveLoop(actionLoopId)) {
+        return false;
+      }
+      log.info("Locally accepted loop closed", { loopId: actionLoopId });
+      return true;
+    } catch (err) {
+      const staleError = ignoreStaleLoopError("closeLocalLoop", actionLoopId, false, err);
+      if (staleError !== null) {
+        return staleError;
+      }
+      log.error("Failed to close locally accepted loop", { loopId: actionLoopId, error: String(err) });
+      setError(String(err));
+      return false;
+    }
+  }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
+
   const manualCompleteLoop = useCallback(async (): Promise<boolean> => {
     const actionLoopId = loopId;
     const staleAction = ignoreStaleLoopAction("manualCompleteLoop", actionLoopId, false);
@@ -239,5 +267,5 @@ export function useLoopLifecycleActions(
     }
   }, [ignoreStaleLoopAction, ignoreStaleLoopError, isActiveLoop, loopId, refresh, setError]);
 
-  return { update, remove, stopLoop, discard, purge, markMerged, manualCompleteLoop };
+  return { update, remove, stopLoop, discard, purge, markMerged, closeLocalLoop, manualCompleteLoop };
 }

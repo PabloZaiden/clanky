@@ -9,7 +9,7 @@ import type { CreateLoopOptions } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
 import { createTimestamp } from "../../types/events";
 import { createInitialState, DEFAULT_LOOP_CONFIG } from "../../types/loop";
-import { saveLoop, loadLoop, listLoops } from "../../persistence/loops";
+import { createLoopListSnapshot, saveLoop, loadLoop, listLoops, listLoopSummaries } from "../../persistence/loops";
 import { setLastCheapModel, setLastModel } from "../../persistence/preferences";
 import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
@@ -165,6 +165,17 @@ export async function getAllLoopsImpl(ctx: LoopCtx): Promise<Loop[]> {
     const engine = ctx.engines.get(loop.config.id);
     if (engine) {
       return { config: engine.config, state: engine.state };
+    }
+    return loop;
+  });
+}
+
+export async function getLoopSummariesImpl(ctx: LoopCtx): Promise<Loop[]> {
+  const loops = await listLoopSummaries();
+  return loops.map((loop) => {
+    const engine = ctx.engines.get(loop.config.id);
+    if (engine) {
+      return createLoopListSnapshot({ config: engine.config, state: engine.state });
     }
     return loop;
   });

@@ -380,7 +380,6 @@ export async function pushAndFinalize(
         addressable: true,
         completionAction: "push" as const,
         reviewCycles: 0,
-        reviewBranches: [loop.state.git!.workingBranch],
       };
 
   assertValidTransition(loop.state.status, "pushed", caller);

@@ -8,7 +8,7 @@ import { DeviceApprovalScreen } from "./components/DeviceApprovalScreen";
 import { PasskeyAuthScreen } from "./components/PasskeyAuthScreen";
 import { getHashForShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
-import { ThemePreferenceProvider, usePasskeyAuth } from "./hooks";
+import { AppEventsProvider, ThemePreferenceProvider, usePasskeyAuth } from "./hooks";
 import "./index.css";
 
 const LOOP_FILES_HASH_PREFIX = "/loop-files/";
@@ -206,7 +206,11 @@ export function App() {
   } else if (deviceApprovalRoute) {
     content = <DeviceApprovalScreen userCode={deviceApprovalRoute.userCode} />;
   } else {
-    content = <AppShell route={route} onNavigate={navigateTo} passkeyAuth={passkeyAuth} />;
+    content = (
+      <AppEventsProvider>
+        <AppShell route={route} onNavigate={navigateTo} passkeyAuth={passkeyAuth} />
+      </AppEventsProvider>
+    );
   }
 
   return (

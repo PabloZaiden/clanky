@@ -7,37 +7,8 @@ import { backendManager } from "../backend-manager";
 import { GitService } from "../git-service";
 import { log } from "../logger";
 import { assertValidTransition } from "../loop-state-machine";
-import { buildReviewBranchName } from "../branch-name";
 import { saveLoop, updateLoopState } from "../../persistence/loops";
 import { startStatePersistenceImpl } from "./loop-execution";
-
-export async function setupMergedReviewWorktree(loop: Loop, git: GitService): Promise<string> {
-  const baseBranchName = loop.state.reviewMode!.reviewBranches[0] ?? loop.state.git!.workingBranch;
-  const reviewBranchName = buildReviewBranchName(
-    baseBranchName,
-    loop.state.reviewMode!.reviewCycles,
-  );
-
-  const worktreePath = `${loop.config.directory}/.ralph-worktrees/${loop.config.id}`;
-
-  const oldWorktreeExists = await git.worktreeExists(loop.config.directory, worktreePath);
-  if (oldWorktreeExists) {
-    await git.removeWorktree(loop.config.directory, worktreePath, { force: true });
-  }
-
-  await git.createWorktree(
-    loop.config.directory,
-    worktreePath,
-    reviewBranchName,
-    loop.state.git!.originalBranch
-  );
-
-  loop.state.git!.workingBranch = reviewBranchName;
-  loop.state.git!.worktreePath = worktreePath;
-  loop.state.reviewMode!.reviewBranches.push(reviewBranchName);
-
-  return reviewBranchName;
-}
 
 export async function transitionToFeedbackCycleAndStart(
   ctx: LoopCtx,

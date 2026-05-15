@@ -10,6 +10,7 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { createLoop, createLoopWithStatus } from "../helpers/factories";
+import { AppEventsProvider } from "@/hooks";
 import { useLoops } from "@/hooks/useLoops";
 import { DEFAULT_LOOP_CONFIG, type Loop } from "@/types/loop";
 import type { PurgeArchivedLoopsResult } from "@/hooks";
@@ -58,7 +59,7 @@ describe("initial fetch", () => {
     const loop = createLoop();
     setupLoopsList([loop]);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     expect(result.current.loading).toBe(true);
 
@@ -76,7 +77,7 @@ describe("initial fetch", () => {
       throw new MockApiError(500, { message: "Server error" });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -89,7 +90,7 @@ describe("initial fetch", () => {
   test("returns empty array when no loops exist", async () => {
     setupLoopsList([]);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -113,7 +114,7 @@ describe("WebSocket events", () => {
       return callCount === 1 ? [loop1] : [loop1, loop2];
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -145,7 +146,7 @@ describe("WebSocket events", () => {
     const loop2 = createLoop({ config: { id: "loop-2" }, state: { id: "loop-2" } });
     setupLoopsList([loop1, loop2]);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(2);
@@ -175,7 +176,7 @@ describe("WebSocket events", () => {
     setupLoopsList([loop]);
     api.get("/api/loops/:id", () => mergedLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -206,7 +207,7 @@ describe("WebSocket events", () => {
     // Mock for single-loop refresh
     api.get("/api/loops/:id", () => completedLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -239,7 +240,6 @@ describe("WebSocket events", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
       },
     });
@@ -251,7 +251,6 @@ describe("WebSocket events", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: [],
         },
         automaticPrFlow: {
           enabled: true,
@@ -268,7 +267,7 @@ describe("WebSocket events", () => {
     setupLoopsList([initialLoop]);
     api.get("/api/loops/:id", () => updatedLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -302,7 +301,7 @@ describe("WebSocket events", () => {
       return callCount === 1 ? [initialLoop] : [recoveredLoop];
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -338,7 +337,7 @@ describe("createLoop", () => {
     const newLoop = createLoop({ config: { id: "new-loop" } });
     api.post("/api/loops", () => newLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -382,7 +381,7 @@ describe("createLoop", () => {
       });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -412,7 +411,7 @@ describe("createLoop", () => {
       throw new MockApiError(400, { message: "Invalid model" });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -446,7 +445,7 @@ describe("updateLoop", () => {
     const updatedLoop = createLoop({ config: { id: "loop-1", prompt: "New prompt" }, state: { id: "loop-1" } });
     api.patch("/api/loops/:id", () => updatedLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -469,7 +468,7 @@ describe("updateLoop", () => {
       throw new MockApiError(404, { message: "Loop not found" });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -493,7 +492,7 @@ describe("deleteLoop", () => {
     setupLoopsList([loop]);
     api.delete("/api/loops/:id", () => ({ success: true }));
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -513,7 +512,7 @@ describe("deleteLoop", () => {
       throw new MockApiError(500, { message: "Delete failed" });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -534,28 +533,26 @@ describe("deleteLoop", () => {
 describe("acceptLoop", () => {
   test("calls acceptLoopApi and refreshes the loop", async () => {
     const loop = createLoopWithStatus("completed", { config: { id: "loop-1" }, state: { id: "loop-1" } });
-    const mergedLoop = createLoopWithStatus("merged", { config: { id: "loop-1" }, state: { id: "loop-1" } });
+    const acceptedLoop = createLoopWithStatus("accepted_local", { config: { id: "loop-1" }, state: { id: "loop-1" } });
     setupLoopsList([loop]);
 
     api.post("/api/loops/:id/accept", () => ({
       success: true,
-      mergeCommit: "abc123",
     }));
-    api.get("/api/loops/:id", () => mergedLoop);
+    api.get("/api/loops/:id", () => acceptedLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
     });
 
-    let acceptResult: { success: boolean; mergeCommit?: string } = { success: false };
+    let acceptResult: { success: boolean } = { success: false };
     await act(async () => {
       acceptResult = await result.current.acceptLoop("loop-1");
     });
 
     expect(acceptResult.success).toBe(true);
-    expect(acceptResult.mergeCommit).toBe("abc123");
   });
 
   test("returns success: false on error", async () => {
@@ -564,7 +561,7 @@ describe("acceptLoop", () => {
       throw new MockApiError(500, { message: "Merge conflict" });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -594,7 +591,7 @@ describe("pushLoop", () => {
     }));
     api.get("/api/loops/:id", () => pushedLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -621,7 +618,7 @@ describe("discardLoop", () => {
     api.post("/api/loops/:id/discard", () => ({ success: true }));
     api.get("/api/loops/:id", () => deletedLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -645,7 +642,7 @@ describe("purgeLoop", () => {
 
     api.post("/api/loops/:id/purge", () => ({ success: true }));
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -666,7 +663,7 @@ describe("purgeLoop", () => {
       throw new MockApiError(500, { message: "Purge failed" });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -707,7 +704,7 @@ describe("purgeArchivedWorkspaceLoops", () => {
       failures: [],
     }));
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(3);
@@ -736,7 +733,7 @@ describe("purgeArchivedWorkspaceLoops", () => {
       throw new MockApiError(500, { message: "Bulk purge failed" });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -775,7 +772,7 @@ describe("addressReviewComments", () => {
     }));
     api.get("/api/loops/:id", () => runningLoop);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);
@@ -796,7 +793,7 @@ describe("addressReviewComments", () => {
       throw new MockApiError(400, { message: "Not addressable" });
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -820,7 +817,7 @@ describe("getLoop", () => {
     const loop2 = createLoop({ config: { id: "loop-2" }, state: { id: "loop-2" } });
     setupLoopsList([loop1, loop2]);
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(2);
@@ -845,7 +842,7 @@ describe("refresh", () => {
       return callCount === 1 ? [loop1] : [loop1, loop2];
     });
 
-    const { result } = renderHook(() => useLoops());
+    const { result } = renderHook(() => useLoops(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loops).toHaveLength(1);

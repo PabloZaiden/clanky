@@ -3,7 +3,7 @@
  * Handles column validation, JSON serialization, and row mapping.
  */
 
-import type { Loop, LoopConfig, LoopState, ConsecutiveErrorTracker } from "../../types";
+import type { FollowUpPromptMode, Loop, LoopConfig, LoopState, ConsecutiveErrorTracker } from "../../types";
 import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
 import { normalizeCommitScope } from "../../utils/commit-scope";
 import { createLogger } from "../../core/logger";
@@ -61,6 +61,7 @@ export const ALLOWED_LOOP_COLUMNS = new Set([
   "tool_calls",
   "consecutive_errors",
   "pending_prompt",
+  "pending_prompt_mode",
   "pending_model_provider_id",
   "pending_model_model_id",
   "pending_model_variant",
@@ -144,6 +145,7 @@ export function loopToRow(loop: Loop): Record<string, unknown> {
     tool_calls: state.toolCalls ? JSON.stringify(state.toolCalls) : null,
     consecutive_errors: state.consecutiveErrors ? JSON.stringify(state.consecutiveErrors) : null,
     pending_prompt: state.pendingPrompt ?? null,
+    pending_prompt_mode: state.pendingPromptMode ?? null,
     pending_model_provider_id: state.pendingModel?.providerID ?? null,
     pending_model_model_id: state.pendingModel?.modelID ?? null,
     pending_model_variant: state.pendingModel?.variant ?? null,
@@ -312,6 +314,9 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
   if (row["pending_prompt"] !== null) {
     state.pendingPrompt = row["pending_prompt"] as string;
   }
+  if (row["pending_prompt_mode"] !== null && row["pending_prompt_mode"] !== undefined) {
+    state.pendingPromptMode = normalizePendingPromptMode(row["pending_prompt_mode"]);
+  }
   // Reconstruct pendingModel from provider/model columns
   if (row["pending_model_provider_id"] !== null && row["pending_model_model_id"] !== null) {
     state.pendingModel = {
@@ -359,4 +364,8 @@ export function rowToLoop(row: Record<string, unknown>): Loop {
   }
 
   return { config, state };
+}
+
+function normalizePendingPromptMode(value: unknown): FollowUpPromptMode | undefined {
+  return value === "loop_context" || value === "plain_chat" ? value : undefined;
 }

@@ -13,7 +13,7 @@ import { loadChat, updateChatState } from "../../src/persistence/chats";
 import { saveLoop } from "../../src/persistence/loops";
 import { backendManager } from "../../src/core/backend-manager";
 import { getPlanFilePath } from "../../src/lib/planning-files";
-import type { Loop } from "../../src/types";
+import type { Loop, LoopLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
 import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
@@ -217,6 +217,69 @@ describe("Chats API Integration", () => {
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.session.id).toBe(settled.state.session?.id);
     expect(reconnected.state.status).toBe("idle");
+  });
+
+  test("lists chats without hydrating transcript payloads", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Chat List Summary Test",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const timestamp = new Date().toISOString();
+    const messages: PersistedMessage[] = [{
+      id: "message-1",
+      role: "assistant",
+      content: "Large transcript content that should not be returned by the list endpoint",
+      timestamp,
+    }];
+    const logs: LoopLogEntry[] = [{
+      id: "log-1",
+      level: "agent",
+      message: "Large log content that should not be returned by the list endpoint",
+      timestamp,
+    }];
+    const toolCalls: PersistedToolCall[] = [{
+      id: "tool-1",
+      name: "Read",
+      input: { filePath: "src/index.ts" },
+      output: { content: "Large tool output that should not be returned by the list endpoint" },
+      status: "completed",
+      timestamp,
+    }];
+
+    const updated = await updateChatState(created.config.id as string, {
+      ...created.state,
+      messages,
+      logs,
+      toolCalls,
+      lastActivityAt: timestamp,
+    });
+    expect(updated).not.toBeNull();
+
+    const listResponse = await fetch(`${baseUrl}/api/chats?workspaceId=${testWorkspaceId}`);
+    expect(listResponse.status).toBe(200);
+    const listedChats = await listResponse.json();
+    const listed = listedChats.find((chat: { config: { id: string } }) => chat.config.id === created.config.id);
+    expect(listed).toBeDefined();
+    expect(listed.state.messages).toEqual([]);
+    expect(listed.state.logs).toEqual([]);
+    expect(listed.state.toolCalls).toEqual([]);
+
+    const detailResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}`);
+    expect(detailResponse.status).toBe(200);
+    const detail = await detailResponse.json();
+    expect(detail.state.messages).toEqual(messages);
+    expect(detail.state.logs).toEqual(logs);
+    expect(detail.state.toolCalls).toEqual(toolCalls);
   });
 
   test("replies to pending chat permission requests", async () => {

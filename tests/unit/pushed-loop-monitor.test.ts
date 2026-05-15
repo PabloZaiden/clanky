@@ -131,7 +131,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/auto-merge"],
         },
       },
     });
@@ -258,7 +257,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -350,7 +348,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -458,7 +455,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -552,7 +548,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         pullRequestMonitoring: {
           status: "open",
@@ -649,7 +644,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         pullRequestMonitoring: {
           status: "open",
@@ -747,7 +741,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         pullRequestMonitoring: {
           status: "open",
@@ -843,7 +836,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -931,7 +923,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1015,7 +1006,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1110,7 +1100,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1185,7 +1174,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1280,7 +1268,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 0,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1375,7 +1362,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1487,7 +1473,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1595,7 +1580,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1706,7 +1690,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,
@@ -1797,7 +1780,6 @@ describe("PushedLoopMonitor", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: ["feature/automatic-pr-flow"],
         },
         automaticPrFlow: {
           enabled: true,

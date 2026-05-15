@@ -93,14 +93,13 @@ describe("loop lifecycle scenario", () => {
     expect(getAllByText("Feature Loop").length).toBeGreaterThan(0);
   });
 
-  test("accept loop flow: click accept, confirm merge, loop status updates", async () => {
+  test("accept loop flow: click accept, confirm local accept, loop status updates", async () => {
     const loop = createLoopWithStatus("completed", {
       config: { id: LOOP_ID, name: "Accept Loop", directory: "/workspaces/my-project", workspaceId: "ws-1" },
     });
     setupApi(loop);
     api.post("/api/loops/:id/accept", () => ({
       success: true,
-      mergeCommit: "abc123def",
     }));
 
     const { getAllByText, getByText, getByRole, user } = renderWithUser(<App />);
@@ -119,13 +118,13 @@ describe("loop lifecycle scenario", () => {
     // Click Accept button
     await waitFor(() => {
       const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
       );
       expect(acceptBtn).toBeTruthy();
     });
 
     const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
     );
     await user.click(acceptBtn!);
 
@@ -134,9 +133,9 @@ describe("loop lifecycle scenario", () => {
       expect(getByText("Finalize Loop")).toBeTruthy();
     });
 
-    // Click "Accept & Merge" in the modal
+    // Click "Accept Locally" in the modal
     const mergeBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept & Merge"),
+      (b) => b.textContent?.includes("Accept Locally"),
     );
     expect(mergeBtn).toBeTruthy();
     await user.click(mergeBtn!);
@@ -243,13 +242,13 @@ describe("loop lifecycle scenario", () => {
     // Click Accept button to open AcceptLoopModal
     await waitFor(() => {
       const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+        (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
       );
       expect(acceptBtn).toBeTruthy();
     });
 
     const acceptBtn = Array.from(document.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("merge or push"),
+      (b) => b.textContent?.includes("Accept") && b.textContent?.includes("locally or push"),
     );
     await user.click(acceptBtn!);
 

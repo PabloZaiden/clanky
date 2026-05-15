@@ -86,6 +86,7 @@ export function buildSshSpawnConfig(workspace: Workspace, session: SshSession): 
   return buildSshProcessConfig({
     target,
     remoteCommand,
+    connectionScope: workspace.directory,
     extraArgs: ["-tt"],
     passwordHandling: "environment",
     baseEnv: buildSpawnEnv(),

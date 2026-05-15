@@ -206,7 +206,6 @@ describe("dashboard management scenario", () => {
           addressable: true,
           completionAction: "push",
           reviewCycles: 1,
-          reviewBranches: [],
         },
       },
     });

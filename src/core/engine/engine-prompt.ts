@@ -65,6 +65,10 @@ export function buildLoopPrompt(ctx: PromptBuildContext, _iteration: number): Pr
     return buildPlanModePrompt(ctx, model);
   }
 
+  if (ctx.state.pendingPromptMode === "plain_chat") {
+    return buildPlainChatPrompt(ctx, model);
+  }
+
   return buildExecutionPrompt(ctx, model);
 }
 
@@ -122,7 +126,7 @@ When the updated plan is ready, end your response with:
 
 <promise>PLAN_READY</promise>`;
 
-  ctx.updateState({ pendingPrompt: undefined });
+  ctx.updateState({ pendingPrompt: undefined, pendingPromptMode: undefined });
 
   return {
     parts: buildPromptParts(text, attachments),
@@ -146,6 +150,7 @@ function buildExecutionPrompt(ctx: PromptBuildContext, model: ModelConfig | unde
     });
     ctx.updateState({
       pendingPrompt: undefined,
+      pendingPromptMode: undefined,
     });
   } else if (ctx.state.currentIteration <= 1) {
     ctx.emitUserMessage(ctx.config.prompt, "initial-goal", attachments);
@@ -188,6 +193,28 @@ ${userMessageSection}${errorContext}
 
   return {
     parts: buildPromptParts(text, attachments),
+    model,
+  };
+}
+
+function buildPlainChatPrompt(ctx: PromptBuildContext, model: ModelConfig | undefined): PromptInput {
+  const userMessage = ctx.state.pendingPrompt;
+  if (!userMessage) {
+    throw new Error("Plain chat prompt requested without a pending message");
+  }
+
+  const attachments = consumePendingOrInitialAttachments(ctx);
+  ctx.emitUserMessage(userMessage, `plain-chat-${crypto.randomUUID()}`, attachments);
+  ctx.emitLog("info", "User sent a plain chat message", {
+    userMessage: userMessage.slice(0, 50) + (userMessage.length > 50 ? "..." : ""),
+  });
+  ctx.updateState({
+    pendingPrompt: undefined,
+    pendingPromptMode: undefined,
+  });
+
+  return {
+    parts: buildPromptParts(userMessage, attachments),
     model,
   };
 }

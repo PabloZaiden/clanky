@@ -7,14 +7,14 @@
  */
 
 // Re-export all public types
-export type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult, SeedPlanFilesOptions } from "./loop-types";
+export type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, SendFollowUpOptions, PushLoopResult, SeedPlanFilesOptions } from "./loop-types";
 export { getLoopWorkingDirectory } from "./loop-types";
 
 import type { LoopCtx } from "./context";
 import type { Loop, LoopConfig, LoopState } from "../../types/loop";
 import type { LoopEvent } from "../../types/events";
 import type { ModelConfig } from "../../types/loop";
-import type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, PushLoopResult } from "./loop-types";
+import type { CreateLoopOptions, StartLoopOptions, GenerateLoopTitleOptions, AcceptPlanOptions, AcceptPlanResult, AcceptLoopResult, SendFollowUpResult, SendFollowUpOptions, PushLoopResult } from "./loop-types";
 import type { SeedPlanFilesOptions } from "./loop-types";
 import type { PullRequestDestinationResponse } from "../../types/api";
 import type { MessageImageAttachment } from "../../types/message-attachments";
@@ -23,11 +23,11 @@ import type { AutomaticPrFlowExtractedFeedbackItem } from "../automatic-pr-feedb
 import { LoopEngine } from "../loop-engine";
 import { loopEventEmitter, SimpleEventEmitter } from "../event-emitter";
 
-import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
+import { createLoopImpl, generateLoopTitleImpl, getLoopImpl, getAllLoopsImpl, getLoopSummariesImpl, updateLoopImpl, getPullRequestDestinationImpl, saveLastUsedModelImpl, saveLastUsedCheapModelImpl, isRunningImpl, getRunningLoopStateImpl } from "./loop-crud";
 import { startLoopImpl, stopLoopImpl, startPlanModeImpl, startDraftImpl, recoverPlanningEngineImpl, startStatePersistenceImpl, validateMainCheckoutStartImpl, clearPlanningFilesImpl, ensureLoopBranchCheckedOutImpl } from "./loop-execution";
 import { sendPlanFeedbackImpl, acceptPlanImpl, discardPlanImpl } from "./loop-plan-mode";
 import { seedPlanFilesImpl } from "./loop-seeded-plan";
-import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, manualCompleteLoopImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
+import { deleteLoopImpl, discardLoopImpl, purgeLoopImpl, markMergedImpl, closeLocalLoopImpl, manualCompleteLoopImpl, shutdownImpl, forceResetAllImpl, resetForTestingImpl } from "./loop-lifecycle";
 import { acceptLoopImpl, pushLoopImpl, updateBranchImpl } from "./loop-git";
 import { setPendingPromptImpl, clearPendingPromptImpl, setPendingModelImpl, clearPendingModelImpl, clearPendingImpl, setPendingImpl, injectPendingImpl, sendFollowUpImpl, jumpstartLoopImpl } from "./loop-pending";
 import {
@@ -117,6 +117,10 @@ export class LoopManager {
     return getAllLoopsImpl(this.ctx);
   }
 
+  async getLoopSummaries(): Promise<Loop[]> {
+    return getLoopSummariesImpl(this.ctx);
+  }
+
   async updateLoop(
     loopId: string,
     updates: Partial<Omit<LoopConfig, "id" | "createdAt">>
@@ -158,6 +162,10 @@ export class LoopManager {
 
   async markMerged(loopId: string): Promise<{ success: boolean; error?: string }> {
     return markMergedImpl(this.ctx, loopId);
+  }
+
+  async closeLocalLoop(loopId: string): Promise<{ success: boolean; error?: string }> {
+    return closeLocalLoopImpl(this.ctx, loopId);
   }
 
   async manualCompleteLoop(loopId: string): Promise<{ success: boolean; error?: string }> {
@@ -204,7 +212,7 @@ export class LoopManager {
 
   async sendFollowUp(
     loopId: string,
-    options: { message: string; model?: ModelConfig; attachments?: MessageImageAttachment[] },
+    options: SendFollowUpOptions,
   ): Promise<SendFollowUpResult> {
     return sendFollowUpImpl(this.ctx, loopId, options);
   }
@@ -258,9 +266,8 @@ export class LoopManager {
 
   async getReviewHistory(loopId: string): Promise<{ success: boolean; error?: string; history?: {
     addressable: boolean;
-    completionAction: "push" | "merge";
+    completionAction: "local" | "push";
     reviewCycles: number;
-    reviewBranches: string[];
   } }> {
     return getReviewHistoryImpl(this.ctx, loopId);
   }

@@ -1,7 +1,7 @@
 /**
  * Action callbacks for the useLoop hook.
  * Thin compositor that aggregates focused sub-hooks by domain:
- * - useLoopLifecycleActions – update, remove, stop, discard, purge, markMerged, manualCompleteLoop
+ * - useLoopLifecycleActions – update, remove, stop, discard, purge, markMerged, closeLocalLoop, manualCompleteLoop
  * - useLoopGitActions       – accept, push, updateBranch
  * - useLoopPlanActions      – sendPlanFeedback, acceptPlan, discardPlan
  * - useLoopPendingActions   – setPendingPrompt, clearPendingPrompt, setPending, clearPending
@@ -10,6 +10,7 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import type { Loop, UpdateLoopRequest, SshSession } from "../../types";
+import type { FollowUpPromptMode } from "../../types/loop";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type {
   AcceptLoopResult,
@@ -51,6 +52,7 @@ export interface UseLoopActionsResult {
   discard: () => Promise<boolean>;
   purge: () => Promise<boolean>;
   markMerged: () => Promise<boolean>;
+  closeLocalLoop: () => Promise<boolean>;
   manualCompleteLoop: () => Promise<boolean>;
   setPendingPrompt: (prompt: string, attachments?: MessageImageAttachment[]) => Promise<boolean>;
   clearPendingPrompt: () => Promise<boolean>;
@@ -71,6 +73,7 @@ export interface UseLoopActionsResult {
     message: string,
     model?: { providerID: string; modelID: string },
     attachments?: MessageImageAttachment[],
+    promptMode?: FollowUpPromptMode,
   ) => Promise<boolean>;
   connectViaSsh: () => Promise<SshSession | null>;
 }
