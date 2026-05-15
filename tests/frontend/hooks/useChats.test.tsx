@@ -168,22 +168,19 @@ describe("useChats", () => {
     expect(interruptCalls[0]?.body).toEqual({ reason: DEFAULT_CHAT_INTERRUPT_REASON });
   });
 
-  test("refreshes standalone chats returned by event-driven status updates", async () => {
-    const workspaceChat = createChat();
-    const refreshedWorkspaceChat = createChat({
-      config: {
-        ...workspaceChat.config,
-        name: "Updated Workspace Chat",
-        updatedAt: "2025-01-01T00:00:02.000Z",
-      },
+  test("applies event-driven status updates without fetching full chat history", async () => {
+    const workspaceChat = createChat({
       state: {
-        ...workspaceChat.state,
-        status: "streaming",
+        ...createChat().state,
+        status: "failed",
+        error: {
+          message: "Previous failure",
+          timestamp: "2025-01-01T00:00:01.000Z",
+        },
       },
     });
 
     api.get("/api/chats", () => [workspaceChat]);
-    api.get("/api/chats/:id", () => refreshedWorkspaceChat);
 
     const { result } = renderHook(() => useChats(), { wrapper: AppEventsProvider });
 
@@ -206,7 +203,10 @@ describe("useChats", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.chats[0]?.config.name).toBe("Updated Workspace Chat");
+      expect(result.current.chats[0]?.state.status).toBe("streaming");
     });
+    expect(result.current.chats[0]?.state.error).toBeUndefined();
+    expect(result.current.chats[0]?.config.name).toBe("Repo pairing");
+    expect(api.calls("/api/chats/:id", "GET")).toHaveLength(0);
   });
 });

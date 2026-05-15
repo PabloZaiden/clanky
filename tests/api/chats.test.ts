@@ -196,6 +196,12 @@ describe("Chats API Integration", () => {
       }),
     });
     expect(sendResponse.status).toBe(200);
+    const sendData = await sendResponse.json();
+    expect(sendData).toEqual({
+      success: true,
+      chatId: created.config.id,
+    });
+    expect(sendData.state).toBeUndefined();
 
     const settled = await waitForChatIdle(created.config.id) as {
       state: {

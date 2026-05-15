@@ -3,6 +3,7 @@ import { createLogger } from "../lib/logger";
 import { appFetch } from "../lib/public-path";
 import type {
   Chat,
+  ChatError,
   ChatEvent,
   CreateChatRequest,
   InterruptChatRequest,
@@ -29,6 +30,22 @@ function upsertChat(chats: Chat[], chat: Chat): Chat[] {
   return sortChats(next);
 }
 
+function updateChatState(chats: Chat[], id: string, updates: Partial<Chat["state"]>): Chat[] {
+  return sortChats(chats.map((chat) => {
+    if (chat.config.id !== id) {
+      return chat;
+    }
+
+    return {
+      ...chat,
+      state: {
+        ...chat.state,
+        ...updates,
+      },
+    };
+  }));
+}
+
 async function parseError(response: Response, fallback: string): Promise<string> {
   try {
     const data = await response.json() as { message?: string; error?: string };
@@ -48,7 +65,7 @@ export interface UseChatsResult {
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
   updateChat: (id: string, request: UpdateChatRequest) => Promise<Chat | null>;
   deleteChat: (id: string) => Promise<boolean>;
-  sendMessage: (id: string, request: SendChatMessageRequest) => Promise<Chat | null>;
+  sendMessage: (id: string, request: SendChatMessageRequest) => Promise<boolean>;
   interruptChat: (id: string, request?: InterruptChatRequest) => Promise<Chat | null>;
   reconnectChat: (id: string) => Promise<Chat | null>;
 }
@@ -166,7 +183,7 @@ export function useChats(): UseChatsResult {
     }
   }, []);
 
-  const sendMessage = useCallback(async (id: string, request: SendChatMessageRequest): Promise<Chat | null> => {
+  const sendMessage = useCallback(async (id: string, request: SendChatMessageRequest): Promise<boolean> => {
     try {
       const response = await appFetch(`/api/chats/${id}/messages`, {
         method: "POST",
@@ -176,13 +193,11 @@ export function useChats(): UseChatsResult {
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to send chat message"));
       }
-      const chat = (await response.json()) as Chat;
-      setChats((prev) => upsertChat(prev, chat));
-      return chat;
+      return true;
     } catch (sendError) {
       log.error("Failed to send chat message", { chatId: id, error: String(sendError) });
       setError(String(sendError));
-      return null;
+      return false;
     }
   }, []);
 
@@ -238,10 +253,31 @@ export function useChats(): UseChatsResult {
         setChats((prev) => prev.filter((chat) => chat.config.id !== event.chatId));
         break;
       case "chat.status":
-      case "chat.interrupted":
-      case "chat.error":
-        void refreshChat(event.chatId);
+        setChats((prev) => updateChatState(prev, event.chatId, {
+          status: event.status,
+          ...(event.status === "failed" ? {} : { error: undefined }),
+          lastActivityAt: event.timestamp,
+        }));
         break;
+      case "chat.interrupted":
+        setChats((prev) => updateChatState(prev, event.chatId, {
+          status: "idle",
+          activeMessageId: undefined,
+          lastActivityAt: event.timestamp,
+        }));
+        break;
+      case "chat.error": {
+        const chatError: ChatError = {
+          message: event.message,
+          timestamp: event.timestamp,
+        };
+        setChats((prev) => updateChatState(prev, event.chatId, {
+          status: "failed",
+          error: chatError,
+          lastActivityAt: event.timestamp,
+        }));
+        break;
+      }
     }
   }, isChatEvent);
 
