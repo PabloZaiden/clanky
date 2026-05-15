@@ -11,6 +11,7 @@ export function buildSpawnConfig(workspace: Workspace, forward: PortForward): {
   const sshTarget = getSshConnectionTargetFromWorkspace(workspace);
   return buildSshProcessConfig({
     target: sshTarget,
+    connectionScope: workspace.directory,
     extraArgs: [
       "-N",
       "-T",

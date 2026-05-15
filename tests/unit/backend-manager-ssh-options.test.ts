@@ -3,6 +3,11 @@ import { describe, expect, test } from "bun:test";
 import { buildConnectionConfig } from "../../src/core/backend-manager";
 
 describe("buildConnectionConfig SSH command options", () => {
+  function getSshOptionValue(args: string[], optionName: string): string | undefined {
+    const prefix = `${optionName}=`;
+    return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+  }
+
   test("uses sshpass with non-interactive ssh options when password is set", () => {
     const config = buildConnectionConfig(
       {
@@ -26,6 +31,9 @@ describe("buildConnectionConfig SSH command options", () => {
     expect(args).toContain("ssh");
     expect(args).toContain("NumberOfPasswordPrompts=1");
     expect(args).toContain("PreferredAuthentications=password,keyboard-interactive");
+    expect(args).not.toContain("ControlMaster=auto");
+    expect(args).not.toContain("ControlPersist=60s");
+    expect(getSshOptionValue(args, "ControlPath")).toBeUndefined();
     expect(args).toContain("ConnectTimeout=10");
     expect(args).toContain("StrictHostKeyChecking=no");
     expect(args).toContain("UserKnownHostsFile=/dev/null");
@@ -54,6 +62,9 @@ describe("buildConnectionConfig SSH command options", () => {
 
     expect(config.command).toBe("ssh");
     expect(args).toContain("BatchMode=yes");
+    expect(args).toContain("ControlMaster=auto");
+    expect(args).toContain("ControlPersist=60s");
+    expect(getSshOptionValue(args, "ControlPath")).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
     expect(args).toContain("ConnectTimeout=10");
     expect(args).toContain("StrictHostKeyChecking=no");
     expect(args).toContain("UserKnownHostsFile=/dev/null");
@@ -81,11 +92,44 @@ describe("buildConnectionConfig SSH command options", () => {
     const args = config.args ?? [];
 
     expect(config.command).toBe("ssh");
+    expect(args).toContain("ControlMaster=auto");
+    expect(args).toContain("ControlPersist=60s");
     expect(args).toContain("IdentityAgent=none");
     expect(args).toContain("IdentitiesOnly=yes");
     const identityFileIndex = args.indexOf("-i");
     expect(identityFileIndex).toBeGreaterThanOrEqual(0);
     expect(args[identityFileIndex + 1]).toBe("/tmp/test-key");
+  });
+
+  test("scopes SSH ControlPath by workspace directory", () => {
+    const firstConfig = buildConnectionConfig(
+      {
+        agent: {
+          provider: "copilot",
+          transport: "ssh",
+          hostname: "remote.example.com",
+          port: 22,
+          username: "alice",
+        },
+      },
+      "/workspaces/project",
+    );
+    const secondConfig = buildConnectionConfig(
+      {
+        agent: {
+          provider: "copilot",
+          transport: "ssh",
+          hostname: "remote.example.com",
+          port: 22,
+          username: "alice",
+        },
+      },
+      "/workspaces/other-project",
+    );
+
+    expect(getSshOptionValue(firstConfig.args ?? [], "ControlPath")).not.toBe(
+      getSshOptionValue(secondConfig.args ?? [], "ControlPath"),
+    );
   });
 });
 
