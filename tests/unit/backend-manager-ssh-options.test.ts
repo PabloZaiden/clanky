@@ -31,9 +31,9 @@ describe("buildConnectionConfig SSH command options", () => {
     expect(args).toContain("ssh");
     expect(args).toContain("NumberOfPasswordPrompts=1");
     expect(args).toContain("PreferredAuthentications=password,keyboard-interactive");
-    expect(args).toContain("ControlMaster=auto");
-    expect(args).toContain("ControlPersist=60s");
-    expect(getSshOptionValue(args, "ControlPath")).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
+    expect(args).not.toContain("ControlMaster=auto");
+    expect(args).not.toContain("ControlPersist=60s");
+    expect(getSshOptionValue(args, "ControlPath")).toBeUndefined();
     expect(args).toContain("ConnectTimeout=10");
     expect(args).toContain("StrictHostKeyChecking=no");
     expect(args).toContain("UserKnownHostsFile=/dev/null");

@@ -166,13 +166,12 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
       expect(commandTokens[0]).toBe("sshpass");
       expect(commandTokens).toContain("-e");
       const sshIndex = commandTokens.indexOf("ssh");
-      const controlMasterIndex = commandTokens.indexOf("ControlMaster=auto");
       expect(sshIndex).toBeGreaterThanOrEqual(0);
-      expect(controlMasterIndex).toBeGreaterThan(sshIndex);
       expect(commandTokens).toContain("NumberOfPasswordPrompts=1");
       expect(commandTokens).toContain("PreferredAuthentications=password,keyboard-interactive");
-      expect(commandTokens).toContain("ControlPersist=60s");
-      expect(getSshOptionValue(commandTokens, "ControlPath")).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
+      expect(commandTokens).not.toContain("ControlMaster=auto");
+      expect(commandTokens).not.toContain("ControlPersist=60s");
+      expect(getSshOptionValue(commandTokens, "ControlPath")).toBeUndefined();
       expect(commandTokens).not.toContain("top-secret");
       expect(capturedEnv?.["SSHPASS"]).toBe("top-secret");
     } finally {
@@ -236,7 +235,7 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
     expect(getSshOptionValue(firstArgs, "ControlPath")).toBe(getSshOptionValue(secondArgs, "ControlPath"));
   });
 
-  test("changes ControlPath when reuse-sensitive SSH details change", () => {
+  test("changes ControlPath when reuse-sensitive batch SSH details change", () => {
     const baseArgs = buildSshCommandArgs({
       authMode: "batch",
       port: 22,
@@ -251,13 +250,6 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
       identityFile: "/tmp/test-key",
       connectionScope: "/workspaces/other-project",
     });
-    const changedAuthArgs = buildSshCommandArgs({
-      authMode: "password",
-      port: 22,
-      target: "alice@remote.example.com",
-      identityFile: "/tmp/test-key",
-      connectionScope: "/workspaces/project",
-    });
     const changedIdentityArgs = buildSshCommandArgs({
       authMode: "batch",
       port: 22,
@@ -269,8 +261,22 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
     const baseControlPath = getSshOptionValue(baseArgs, "ControlPath");
     expect(baseControlPath).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
     expect(getSshOptionValue(changedWorkspaceArgs, "ControlPath")).not.toBe(baseControlPath);
-    expect(getSshOptionValue(changedAuthArgs, "ControlPath")).not.toBe(baseControlPath);
     expect(getSshOptionValue(changedIdentityArgs, "ControlPath")).not.toBe(baseControlPath);
+  });
+
+  test("does not use SSH multiplexing for password auth", () => {
+    const args = buildSshCommandArgs({
+      authMode: "password",
+      port: 22,
+      target: "alice@remote.example.com",
+      connectionScope: "/workspaces/project",
+    });
+
+    expect(args).toContain("NumberOfPasswordPrompts=1");
+    expect(args).toContain("PreferredAuthentications=password,keyboard-interactive");
+    expect(args).not.toContain("ControlMaster=auto");
+    expect(args).not.toContain("ControlPersist=60s");
+    expect(getSshOptionValue(args, "ControlPath")).toBeUndefined();
   });
 
   test("returns promptly with exit code 130 when local execution is aborted", async () => {

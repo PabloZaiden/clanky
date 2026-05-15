@@ -63,6 +63,10 @@ export function buildSshMultiplexingArgs(options: {
   identityFile?: string;
   connectionScope?: string;
 }): string[] {
+  if (options.authMode === "password") {
+    return [];
+  }
+
   return [
     "-o",
     "ControlMaster=auto",
