@@ -11,7 +11,7 @@ import type {
 } from "../types";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeChatSnapshot } from "../utils/chat-snapshot";
-import { useGlobalEvents } from "./useWebSocket";
+import { isChatEvent, useAppEvents } from "./useAppEvents";
 
 const log = createLogger("useChats");
 
@@ -226,26 +226,24 @@ export function useChats(): UseChatsResult {
     }
   }, []);
 
-  useGlobalEvents<ChatEvent>({
-    onEvent: (event) => {
-      switch (event.type) {
-        case "chat.updated":
-          setChats((prev) => upsertChat(prev, event.chat));
-          break;
-        case "chat.created":
-          void refresh();
-          break;
-        case "chat.deleted":
-          setChats((prev) => prev.filter((chat) => chat.config.id !== event.chatId));
-          break;
-        case "chat.status":
-        case "chat.interrupted":
-        case "chat.error":
-          void refreshChat(event.chatId);
-          break;
-      }
-    },
-  });
+  useAppEvents<ChatEvent>((event) => {
+    switch (event.type) {
+      case "chat.updated":
+        setChats((prev) => upsertChat(prev, event.chat));
+        break;
+      case "chat.created":
+        void refresh();
+        break;
+      case "chat.deleted":
+        setChats((prev) => prev.filter((chat) => chat.config.id !== event.chatId));
+        break;
+      case "chat.status":
+      case "chat.interrupted":
+      case "chat.error":
+        void refreshChat(event.chatId);
+        break;
+    }
+  }, isChatEvent);
 
   useEffect(() => {
     void refresh();

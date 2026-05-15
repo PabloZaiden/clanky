@@ -243,7 +243,7 @@ describe("Events WebSocket API Integration", () => {
       ws.close();
     });
 
-    test("does not forward loop chat status events to unscoped subscribers", async () => {
+    test("forwards all chat status events to unscoped subscribers", async () => {
       const ws = new WebSocket(`${wsUrl}/api/ws`);
 
       await new Promise<void>((resolve) => {
@@ -286,8 +286,8 @@ describe("Events WebSocket API Integration", () => {
 
       expect(await receivedEvent).toMatchObject({
         type: "chat.status",
-        chatId: "workspace-chat",
-        scope: "workspace",
+        chatId: "loop-chat",
+        scope: "loop",
       });
 
       ws.close();

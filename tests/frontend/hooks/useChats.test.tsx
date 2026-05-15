@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { AppEventsProvider } from "@/hooks";
 import { useChats } from "@/hooks/useChats";
 import { DEFAULT_CHAT_INTERRUPT_REASON, type Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
@@ -83,7 +84,7 @@ describe("useChats", () => {
       currentChat,
     ]);
 
-    const { result } = renderHook(() => useChats());
+    const { result } = renderHook(() => useChats(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -152,7 +153,7 @@ describe("useChats", () => {
     api.get("/api/chats", () => [baseChat]);
     api.post("/api/chats/:id/interrupt", () => interruptedChat, 200);
 
-    const { result } = renderHook(() => useChats());
+    const { result } = renderHook(() => useChats(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -184,7 +185,7 @@ describe("useChats", () => {
     api.get("/api/chats", () => [workspaceChat]);
     api.get("/api/chats/:id", () => refreshedWorkspaceChat);
 
-    const { result } = renderHook(() => useChats());
+    const { result } = renderHook(() => useChats(), { wrapper: AppEventsProvider });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

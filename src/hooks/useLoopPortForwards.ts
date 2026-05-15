@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { PortForward, SshSessionEvent } from "../types";
-import { useGlobalEvents } from "./useWebSocket";
+import { isSshSessionEvent, useAppEvents } from "./useAppEvents";
 import {
   createLoopPortForwardApi,
   deleteLoopPortForwardApi,
@@ -73,9 +73,7 @@ export function useLoopPortForwards(loopId: string): UseLoopPortForwardsResult {
     void refresh();
   }, [loopId, refresh]);
 
-  useGlobalEvents<SshSessionEvent>({
-    onEvent: handleEvent,
-  });
+  useAppEvents<SshSessionEvent>(handleEvent, isSshSessionEvent);
 
   useEffect(() => {
     void refresh();

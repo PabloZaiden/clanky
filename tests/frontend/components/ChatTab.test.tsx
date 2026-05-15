@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { useToast } from "@/hooks";
+import { AppEventsProvider, useToast } from "@/hooks";
 import { ChatTab } from "@/components/loop-details/chat-tab";
 import type { Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
@@ -70,7 +70,9 @@ describe("ChatTab", () => {
     const { getByRole, getByText, user } = renderWithUser(
       <>
         <ToastTrigger />
-        <ChatTab loopId="loop-1" />
+        <AppEventsProvider>
+          <ChatTab loopId="loop-1" />
+        </AppEventsProvider>
       </>,
     );
 

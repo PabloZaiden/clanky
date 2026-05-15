@@ -2,7 +2,6 @@ import type { ServerWebSocket } from "bun";
 import { chatEventEmitter, loopEventEmitter, provisioningEventEmitter, sshSessionEventEmitter } from "../../core/event-emitter";
 import { createLogger } from "../../core/logger";
 import { sanitizeProvisioningEvent } from "../../lib/sensitive-data";
-import { isStandaloneChat } from "../../types/chat";
 import type { ChatEvent, LoopEvent, ProvisioningEvent, SshSessionEvent } from "../../types";
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
@@ -14,22 +13,6 @@ export const MAX_CONNECTIONS = 100;
 
 /** Set of active WebSocket connections for tracking and limit enforcement */
 export const activeConnections = new Set<ServerWebSocket<WebSocketData>>();
-
-function shouldForwardUnscopedChatEvent(event: ChatEvent): boolean {
-  switch (event.type) {
-    case "chat.created":
-      return isStandaloneChat(event.config);
-    case "chat.updated":
-      return isStandaloneChat(event.chat);
-    case "chat.status":
-    case "chat.interrupted":
-    case "chat.error":
-    case "chat.deleted":
-      return event.scope === "workspace";
-    default:
-      return true;
-  }
-}
 
 /**
  * Called when a WebSocket connection is opened.
@@ -148,10 +131,6 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
         if (chatId && event.chatId !== chatId) {
           return;
         }
-        if (shouldSubscribeToAllRuntimeEvents && !shouldForwardUnscopedChatEvent(event)) {
-          return;
-        }
-
         try {
           ws.send(JSON.stringify(event));
         } catch (sendError) {

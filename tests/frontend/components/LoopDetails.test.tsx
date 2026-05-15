@@ -15,6 +15,7 @@ import {
   createSshSession,
 } from "../helpers/factories";
 import { LoopDetails } from "@/components/LoopDetails";
+import { AppEventsProvider } from "@/hooks";
 import type { Chat } from "@/types";
 
 const api = createMockApi();
@@ -22,6 +23,18 @@ const ws = createMockWebSocket();
 
 const LOOP_ID = "loop-1";
 let openCalls: Array<{ url: string; target: string; features: string }> = [];
+
+function renderWithAppEvents(
+  ui: Parameters<typeof renderWithUser>[0],
+  options?: Parameters<typeof renderWithUser>[1],
+) {
+  const result = renderWithUser(<AppEventsProvider>{ui}</AppEventsProvider>, options);
+  return {
+    ...result,
+    rerender: (nextUi: Parameters<typeof renderWithUser>[0]) =>
+      result.rerender(<AppEventsProvider>{nextUi}</AppEventsProvider>),
+  };
+}
 let originalWindowOpen: typeof window.open;
 
 type LoopDetailsRenderResult = ReturnType<typeof renderWithUser>;
@@ -143,7 +156,7 @@ describe("loop not found", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Not found")).toBeTruthy();
@@ -161,7 +174,7 @@ describe("header display", () => {
     setupDefaultApi();
     let backCalled = false;
     const onBack = () => { backCalled = true; };
-    const { getByRole, user } = renderWithUser(
+    const { getByRole, user } = renderWithAppEvents(
       <LoopDetails loopId={LOOP_ID} onBack={onBack} />,
     );
 
@@ -179,7 +192,7 @@ describe("header display", () => {
 describe("tab navigation", () => {
   test("can switch to Info tab", async () => {
     setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -194,7 +207,7 @@ describe("tab navigation", () => {
 
   test("can switch to Prompt tab", async () => {
     setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -220,7 +233,7 @@ describe("tab navigation", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -269,7 +282,7 @@ describe("tab navigation", () => {
     });
     api.get("/api/chats/:id", () => loopChat);
 
-    const { getByRole, getByText, queryByRole, queryByTestId, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, getByText, queryByRole, queryByTestId, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -307,7 +320,7 @@ describe("tab navigation", () => {
 
   test("Plan tab shows message when no plan exists", async () => {
     setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -322,7 +335,7 @@ describe("tab navigation", () => {
 
   test("can switch to Diff tab", async () => {
     setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -352,7 +365,7 @@ describe("tab navigation", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -368,7 +381,7 @@ describe("tab navigation", () => {
 
   test("Actions tab does not show review section when review mode is not enabled", async () => {
     setupDefaultApi();
-    const { getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, queryByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -406,7 +419,7 @@ describe("tab navigation", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Review Loop")).toBeTruthy();
@@ -423,7 +436,7 @@ describe("tab navigation", () => {
 
   test("can switch to Actions tab", async () => {
     setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -443,7 +456,7 @@ describe("tab navigation", () => {
 describe("actions tab content", () => {
   test("running loop shows delete action", async () => {
     setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -484,7 +497,7 @@ describe("actions tab content", () => {
     }, 200);
 
     let selectedSessionId: string | null = null;
-    const { getByText, user } = renderWithUser(
+    const { getByText, user } = renderWithAppEvents(
       <LoopDetails loopId={LOOP_ID} onSelectSshSession={(sshSessionId) => { selectedSessionId = sshSessionId; }} />,
     );
 
@@ -514,7 +527,7 @@ describe("actions tab content", () => {
         },
       });
       const openedLoopFiles: string[] = [];
-      const { getByText, user } = renderWithUser(
+      const { getByText, user } = renderWithAppEvents(
         <LoopDetails
           loopId={LOOP_ID}
           onOpenLoopFiles={(loopId) => {
@@ -565,7 +578,7 @@ describe("actions tab content", () => {
         getByText,
         queryByText,
         user,
-      } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+      } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
       await waitFor(() => {
         expect(getByText("Test Loop")).toBeTruthy();
@@ -608,7 +621,7 @@ describe("actions tab content", () => {
       api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
       api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-      const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+      const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
       await waitFor(() => {
         expect(getByText("Deleted Loop")).toBeTruthy();
@@ -665,7 +678,7 @@ describe("actions tab content", () => {
         return loop;
       });
 
-      const { getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+      const { getByRole, getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
       await waitFor(() => {
         expect(getByText("Planning Loop")).toBeTruthy();
@@ -731,7 +744,7 @@ describe("actions tab content", () => {
         return loop;
       });
 
-      const { getByRole, getByText, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+      const { getByRole, getByText, queryByRole, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
       await waitFor(() => {
         expect(getByText("Accepted Plan Loop")).toBeTruthy();
@@ -770,7 +783,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Completed Loop")).toBeTruthy();
@@ -803,7 +816,7 @@ describe("actions tab content", () => {
       return { success: true };
     });
 
-    const { getByRole, getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, getByText, queryByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Stopped Loop")).toBeTruthy();
@@ -859,7 +872,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Pushed Loop")).toBeTruthy();
@@ -889,7 +902,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, queryByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Merged Loop")).toBeTruthy();
@@ -922,7 +935,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const renderResult = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(renderResult.getByText("Pushed Loop")).toBeTruthy();
@@ -949,7 +962,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const renderResult = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(renderResult.getByText("Pushed Loop")).toBeTruthy();
@@ -979,7 +992,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Pushed Loop")).toBeTruthy();
@@ -1029,7 +1042,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByRole, getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Pushed Loop")).toBeTruthy();
@@ -1087,7 +1100,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Pushed Loop")).toBeTruthy();
@@ -1137,7 +1150,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const renderResult = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(renderResult.getByText("Pushed Loop")).toBeTruthy();
@@ -1187,7 +1200,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const renderResult = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(renderResult.getByText("Pushed Loop")).toBeTruthy();
@@ -1233,7 +1246,7 @@ describe("actions tab content", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, queryByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, queryByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Pushed Loop")).toBeTruthy();
@@ -1254,7 +1267,7 @@ describe("actions tab content", () => {
 describe("delete modal", () => {
   test("opens delete modal from actions tab", async () => {
     setupDefaultApi();
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Test Loop")).toBeTruthy();
@@ -1294,7 +1307,7 @@ describe("accept modal", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Accept Loop")).toBeTruthy();
@@ -1335,7 +1348,7 @@ describe("purge modal", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Purge Loop")).toBeTruthy();
@@ -1383,7 +1396,7 @@ describe("address comments modal", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Comment Loop")).toBeTruthy();
@@ -1423,7 +1436,7 @@ describe("mark merged modal", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Merge Loop")).toBeTruthy();
@@ -1452,7 +1465,7 @@ describe("mark merged modal", () => {
 describe("loop rename restrictions", () => {
   test("does not expose rename controls from loop details", async () => {
     setupDefaultApi();
-    const { getByText, container } = renderWithUser(
+    const { getByText, container } = renderWithAppEvents(
       <LoopDetails loopId={LOOP_ID} />,
     );
 
@@ -1481,7 +1494,7 @@ describe("planning mode", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Planning Loop")).toBeTruthy();
@@ -1508,7 +1521,7 @@ describe("planning mode", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Planning")).toBeTruthy();
@@ -1538,7 +1551,7 @@ describe("planning mode", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, queryByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, queryByText } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Startup Planning Loop")).toBeTruthy();
@@ -1569,7 +1582,7 @@ describe("planning mode", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Broken Planning Loop")).toBeTruthy();
@@ -1602,7 +1615,7 @@ describe("planning mode", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Amber Indicator Loop")).toBeTruthy();
@@ -1624,7 +1637,7 @@ describe("planning mode", () => {
 describe("loop action bar", () => {
   test("shows action bar for active loops", async () => {
     setupDefaultApi();
-    const { getByRole } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("textbox", { name: "Loop message" })).toBeTruthy();
@@ -1633,7 +1646,7 @@ describe("loop action bar", () => {
 
   test("shows Stop for an empty active composer and calls the stop API", async () => {
     setupDefaultApi();
-    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Stop" })).toBeTruthy();
@@ -1659,7 +1672,7 @@ describe("loop action bar", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, queryByRole } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, queryByRole } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Merged Loop")).toBeTruthy();
@@ -1689,7 +1702,7 @@ describe("loop action bar", () => {
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
     api.post("/api/loops/:id/follow-up", () => ({ success: true }));
 
-    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
@@ -1728,7 +1741,7 @@ describe("loop action bar", () => {
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
     api.post("/api/loops/:id/follow-up", () => ({ success: true }));
 
-    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
@@ -1760,7 +1773,7 @@ describe("loop action bar", () => {
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
     api.post("/api/loops/:id/follow-up", () => ({ success: true }));
 
-    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
@@ -1792,7 +1805,7 @@ describe("loop action bar", () => {
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
     api.post("/api/loops/:id/follow-up", () => ({ success: true }));
 
-    const { getByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
@@ -1833,7 +1846,7 @@ describe("loop action bar", () => {
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
     api.post("/api/loops/:id/plan/feedback", () => ({ success: true }));
 
-    const { getByRole, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, queryByRole, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Send Feedback" })).toBeTruthy();
@@ -1872,7 +1885,7 @@ describe("error display", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Loop Error")).toBeTruthy();
@@ -1887,7 +1900,7 @@ describe("error display", () => {
 describe("log tab", () => {
   test("enters log focus mode while keeping the message composer available", async () => {
     setupDefaultApi();
-    const { getByRole, queryByRole, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByRole, queryByRole, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Enter focus mode" })).toBeInTheDocument();
@@ -1909,7 +1922,7 @@ describe("log tab", () => {
 
   test("restores log focus mode from localStorage on remount", async () => {
     setupDefaultApi();
-    const firstRender = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const firstRender = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(firstRender.getByRole("button", { name: "Enter focus mode" })).toBeInTheDocument();
@@ -1923,7 +1936,7 @@ describe("log tab", () => {
 
     firstRender.unmount();
 
-    const secondRender = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const secondRender = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(secondRender.getByRole("button", { name: "Exit focus mode" })).toBeInTheDocument();
@@ -1976,7 +1989,7 @@ describe("actions tab comment history", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Review Loop")).toBeTruthy();
@@ -2014,7 +2027,7 @@ describe("actions tab comment history", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const { getByText, user } = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const { getByText, user } = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(getByText("Review Loop")).toBeTruthy();
@@ -2065,7 +2078,7 @@ describe("actions tab comment history", () => {
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/preferences/log-level", () => ({ level: "info" }));
 
-    const renderResult = renderWithUser(<LoopDetails loopId={LOOP_ID} />);
+    const renderResult = renderWithAppEvents(<LoopDetails loopId={LOOP_ID} />);
 
     await waitFor(() => {
       expect(renderResult.getByText("Review Loop")).toBeTruthy();
