@@ -163,6 +163,36 @@ describe("ChatDetails", () => {
     });
   });
 
+  test("clears stale chat errors optimistically after sending a message", async () => {
+    const initialChat = createChat({
+      state: {
+        ...createChat().state,
+        status: "failed",
+        error: {
+          message: "Previous chat failure",
+          timestamp: "2025-01-01T00:00:01.000Z",
+        },
+      },
+    });
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
+
+    const { getByLabelText, getByRole, getByText, queryByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(queryByText("Previous chat failure")).toBeInTheDocument();
+    });
+
+    await user.type(getByLabelText("Message"), "Try again");
+    await user.click(getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(queryByText("Previous chat failure")).not.toBeInTheDocument();
+      expect(getByText("Starting")).toBeInTheDocument();
+    });
+  });
+
   test("fills the composer from the Project Analysis template and sends edited text", async () => {
     const initialChat = createChat({ state: { ...createChat().state, messages: [] } });
 

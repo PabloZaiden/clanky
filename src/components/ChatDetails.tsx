@@ -401,6 +401,18 @@ export function ChatDetails({
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to send chat message"));
       }
+      setChat((current) => current
+        ? {
+            ...current,
+            state: {
+              ...current.state,
+              status: "starting",
+              error: undefined,
+              activeMessageId: undefined,
+              interruptRequested: false,
+            },
+          }
+        : current);
       setMessage("");
       setSelectedTemplate("");
       setAttachments([]);

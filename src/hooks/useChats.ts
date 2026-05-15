@@ -255,6 +255,7 @@ export function useChats(): UseChatsResult {
       case "chat.status":
         setChats((prev) => updateChatState(prev, event.chatId, {
           status: event.status,
+          ...(event.status === "failed" ? {} : { error: undefined }),
           lastActivityAt: event.timestamp,
         }));
         break;
