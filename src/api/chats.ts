@@ -76,8 +76,8 @@ export const chatsRoutes = {
       const url = new URL(req.url);
       const workspaceId = url.searchParams.get("workspaceId");
       const chats = workspaceId
-        ? await chatManager.getChatsByWorkspace(workspaceId)
-        : await chatManager.getAllChats();
+        ? await chatManager.getChatSummariesByWorkspace(workspaceId)
+        : await chatManager.getChatSummaries();
       return Response.json(chats);
     },
 

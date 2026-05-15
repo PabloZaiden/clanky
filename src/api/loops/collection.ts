@@ -31,7 +31,7 @@ export const loopsCollectionRoutes = {
      */
     async GET(_req: Request): Promise<Response> {
       log.debug("GET /api/loops - Listing all loops");
-      const loops = await loopManager.getAllLoops();
+      const loops = await loopManager.getLoopSummaries();
       log.debug("GET /api/loops - Retrieved loops", { count: loops.length });
       return Response.json(loops);
     },

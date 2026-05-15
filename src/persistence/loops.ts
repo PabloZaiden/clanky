@@ -13,6 +13,8 @@ export {
   loadLoop,
   deleteLoop,
   listLoops,
+  listLoopSummaries,
+  createLoopListSnapshot,
   loopExists,
   updateLoopState,
   updateLoopConfig,

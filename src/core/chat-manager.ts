@@ -30,7 +30,9 @@ import {
   loadChat,
   loadLoopChat,
   listChats,
+  listChatSummaries,
   listChatsByWorkspace,
+  listChatSummariesByWorkspace,
   saveChat,
   deleteChat,
   updateChatConfig,
@@ -166,8 +168,16 @@ export class ChatManager {
     return (await listChats()).filter(isStandaloneChat);
   }
 
+  async getChatSummaries(): Promise<Chat[]> {
+    return (await listChatSummaries()).filter(isStandaloneChat);
+  }
+
   async getChatsByWorkspace(workspaceId: string): Promise<Chat[]> {
     return (await listChatsByWorkspace(workspaceId)).filter(isStandaloneChat);
+  }
+
+  async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
+    return (await listChatSummariesByWorkspace(workspaceId)).filter(isStandaloneChat);
   }
 
   async getLoopChat(loopId: string): Promise<Chat | null> {
