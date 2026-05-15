@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
-import { listServerFilesApi, writeServerFileApi } from "@/hooks/workspaceFileActions";
+import { getFileExplorerFileMetadataApi, listServerFilesApi, writeServerFileApi } from "@/hooks/workspaceFileActions";
 import { clearStoredSshServerCredential, storeSshServerPassword } from "@/lib/ssh-browser-credentials";
 import { createMockApi } from "../helpers/mock-api";
 
@@ -32,6 +32,54 @@ afterEach(() => {
 });
 
 describe("server file explorer actions", () => {
+  test("limits concurrent metadata requests across file explorer targets", async () => {
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    const releaseRequestHandlers: Array<() => void> = [];
+
+    api.get("/api/workspaces/:id/files/metadata", async (req) => {
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      await new Promise<void>((resolve) => {
+        releaseRequestHandlers.push(resolve);
+      });
+      activeRequests -= 1;
+
+      const path = new URL(req.url, "http://localhost").searchParams.get("path") ?? "";
+      return {
+        workspaceId: req.params["id"],
+        file: {
+          name: path.split("/").pop() ?? path,
+          path,
+          kind: "file",
+          size: 1,
+          modifiedAt: new Date().toISOString(),
+          versionToken: `token-${path}`,
+        },
+      };
+    });
+
+    const requests = Array.from({ length: 25 }, (_value, index) =>
+      getFileExplorerFileMetadataApi(
+        { type: "workspace", id: "workspace-1" },
+        `src/file-${index}.ts`,
+      ));
+
+    while (api.calls("/api/workspaces/:id/files/metadata", "GET").length < 25) {
+      while (releaseRequestHandlers.length > 0) {
+        releaseRequestHandlers.shift()?.();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    while (releaseRequestHandlers.length > 0) {
+      releaseRequestHandlers.shift()?.();
+    }
+
+    await Promise.all(requests);
+
+    expect(maxActiveRequests).toBe(10);
+  });
+
   test("sends the exchanged credential token when listing server files", async () => {
     api.get("/api/ssh-servers/:id/public-key", () => ({
       algorithm: "RSA-OAEP-256",

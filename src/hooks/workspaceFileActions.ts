@@ -29,6 +29,11 @@ interface ApiErrorBody {
   currentFile?: WorkspaceFileEntry | null;
 }
 
+const MAX_CONCURRENT_METADATA_REQUESTS = 10;
+
+let activeMetadataRequests = 0;
+const queuedMetadataRequestStarters: Array<() => void> = [];
+
 export interface WorkspaceFileRequestOptions {
   signal?: AbortSignal;
   startDirectory?: string;
@@ -142,6 +147,22 @@ function getFileExplorerBasePath(target: FileExplorerTarget): string {
     : `/api/ssh-servers/${target.id}/files`;
 }
 
+async function runLimitedMetadataRequest<T>(request: () => Promise<T>): Promise<T> {
+  if (activeMetadataRequests >= MAX_CONCURRENT_METADATA_REQUESTS) {
+    await new Promise<void>((resolve) => {
+      queuedMetadataRequestStarters.push(resolve);
+    });
+  }
+
+  activeMetadataRequests += 1;
+  try {
+    return await request();
+  } finally {
+    activeMetadataRequests -= 1;
+    queuedMetadataRequestStarters.shift()?.();
+  }
+}
+
 function buildFileExplorerSearchParams(
   target: FileExplorerTarget,
   values: Record<string, string>,
@@ -211,17 +232,19 @@ export async function getFileExplorerFileMetadataApi(
   path: string,
   options?: WorkspaceFileRequestOptions,
 ): Promise<WorkspaceFileMetadataResponse | SshServerFileMetadataResponse> {
-  const searchParams = buildFileExplorerSearchParams(target, {
-    path,
-  }, options);
-  const response = await appFetch(
-    `${getFileExplorerBasePath(target)}/metadata?${searchParams.toString()}`,
-    await buildFileExplorerRequestInit(target, options),
-  );
-  if (!response.ok) {
-    await parseWorkspaceFileError(response);
-  }
-  return await response.json() as WorkspaceFileMetadataResponse | SshServerFileMetadataResponse;
+  return await runLimitedMetadataRequest(async () => {
+    const searchParams = buildFileExplorerSearchParams(target, {
+      path,
+    }, options);
+    const response = await appFetch(
+      `${getFileExplorerBasePath(target)}/metadata?${searchParams.toString()}`,
+      await buildFileExplorerRequestInit(target, options),
+    );
+    if (!response.ok) {
+      await parseWorkspaceFileError(response);
+    }
+    return await response.json() as WorkspaceFileMetadataResponse | SshServerFileMetadataResponse;
+  });
 }
 
 export async function readFileExplorerImagePreviewApi(
