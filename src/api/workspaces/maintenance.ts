@@ -47,6 +47,14 @@ export const workspaceMaintenanceRoutes = {
           );
         }
 
+        if (!(await git.hasRemote(workspaceResult.directory))) {
+          return errorResponse(
+            "no_remote",
+            "Workspace has no git remote configured. Add an origin remote before pulling latest changes.",
+            409,
+          );
+        }
+
         await git.pullBranch(workspaceResult.directory, defaultBranch);
 
         log.info("Pulled latest changes for workspace", {

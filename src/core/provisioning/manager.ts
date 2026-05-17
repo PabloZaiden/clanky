@@ -32,6 +32,23 @@ function normalizeOptionalValue(value: string | undefined): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function validateNewRepositoryFolderName(name: string): void {
+  if (!/^[A-Za-z0-9._-]+$/.test(name) || name === "." || name === ".." || name.includes("..")) {
+    throw new ProvisioningFailedError(
+      "invalid_workspace_folder_name",
+      "prepare_directory",
+      "Workspace name can only contain letters, numbers, dots, underscores, and hyphens when creating a new repository",
+    );
+  }
+  if (name.startsWith("-") || name.startsWith(".")) {
+    throw new ProvisioningFailedError(
+      "invalid_workspace_folder_name",
+      "prepare_directory",
+      "Workspace name cannot start with a dot or hyphen when creating a new repository",
+    );
+  }
+}
+
 function buildDevboxArgs(
   command: "up" | "rebuild",
   options: {
@@ -68,12 +85,13 @@ export class ProvisioningManager {
           id: jobId,
           name: options.name.trim(),
           sshServerId: options.sshServerId.trim(),
-          repoUrl: options.repoUrl.trim(),
+          repoUrl: normalizeOptionalValue(options.repoUrl),
           basePath: options.basePath.trim(),
           devcontainerSubpath: normalizeOptionalValue(options.devcontainerSubpath),
           devboxTemplate: normalizeOptionalValue(options.devboxTemplate),
           provider: options.provider,
           mode,
+          createNewRepository: options.createNewRepository === true,
           targetDirectory: normalizeOptionalValue(options.targetDirectory),
           workspaceId: normalizeOptionalValue(options.workspaceId),
           createdAt: now,
@@ -185,17 +203,49 @@ export class ProvisioningManager {
       });
 
       setStep(record, this.maxLogEntries, "clone_repo", "Preparing repository checkout");
-      const repoName = extractRepoName(record.job.config.repoUrl);
-      const targetDirectory = pathPosix.join(record.job.config.basePath, repoName);
+      const targetDirectory = record.job.config.createNewRepository
+        ? pathPosix.join(record.job.config.basePath, record.job.config.name)
+        : pathPosix.join(record.job.config.basePath, extractRepoName(record.job.config.repoUrl ?? ""));
       this.updateState(record, { targetDirectory });
 
       const targetExists = await executor.directoryExists(targetDirectory);
-      if (!targetExists) {
+      if (record.job.config.createNewRepository) {
+        if (!record.job.config.devboxTemplate) {
+          throw new ProvisioningFailedError(
+            "missing_devbox_template",
+            "clone_repo",
+            "A devbox template is required when creating a workspace without an existing repository",
+          );
+        }
+        validateNewRepositoryFolderName(record.job.config.name);
+        if (targetExists) {
+          throw new ProvisioningFailedError(
+            "clone_conflict",
+            "clone_repo",
+            `Target directory already exists: ${targetDirectory}`,
+          );
+        }
+        await this.runCmd(record, executor, {
+          step: "clone_repo",
+          label: `Creating repository directory ${targetDirectory}`,
+          command: "mkdir",
+          args: ["-p", targetDirectory],
+        });
+        await this.runCmd(record, executor, {
+          step: "clone_repo",
+          label: `Initializing git repository in ${targetDirectory}`,
+          command: "git",
+          args: ["init", "-b", "main"],
+          cwd: targetDirectory,
+          errorCode: "git_init_failed",
+          errorMessage: "Failed to initialize git repository",
+        });
+      } else if (!targetExists) {
         await this.runCmd(record, executor, {
           step: "clone_repo",
           label: `Cloning repository into ${targetDirectory}`,
           command: "git",
-          args: ["clone", record.job.config.repoUrl, targetDirectory],
+            args: ["clone", record.job.config.repoUrl ?? "", targetDirectory],
           timeout: GIT_CLONE_TIMEOUT_MS,
           streamOutput: true,
           errorCode: "clone_failed",
@@ -228,7 +278,7 @@ export class ProvisioningManager {
           );
         }
 
-        if (normalizeRepoUrl(remoteUrlResult.stdout) !== normalizeRepoUrl(record.job.config.repoUrl)) {
+        if (normalizeRepoUrl(remoteUrlResult.stdout) !== normalizeRepoUrl(record.job.config.repoUrl ?? "")) {
           throw new ProvisioningFailedError(
             "clone_conflict",
             "clone_repo",

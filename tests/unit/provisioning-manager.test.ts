@@ -218,6 +218,87 @@ describe("ProvisioningManager", () => {
     ]);
   });
 
+  test("provisions a new workspace by initializing an empty git repository without a remote", async () => {
+    const server = await sshServerManager.createServer({
+      name: "New Repo Test",
+      address: "10.0.0.17",
+      username: "remote-user",
+      repositoriesBasePath: null,
+    });
+    const executor = new ProvisioningTestExecutor({
+      devboxStatusOutput: createDevboxStatusOutput({
+        workdir: "/workspaces/New_Workspace/devbox",
+      }),
+    });
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+    const manager = new ProvisioningManager(5_000, 500);
+    const started = await manager.startJob({
+      name: "New_Workspace",
+      sshServerId: server.config.id,
+      repoUrl: "",
+      basePath: "/workspaces",
+      devboxTemplate: "python",
+      provider: "copilot",
+      createNewRepository: true,
+    });
+
+    const snapshot = await waitForProvisioningStatus(manager, started.job.config.id, ["completed"]);
+    expect(snapshot.job.state.status).toBe("completed");
+    expect(snapshot.job.state.targetDirectory).toBe("/workspaces/New_Workspace");
+    expect(started.job.config.createNewRepository).toBe(true);
+    expect(started.job.config.repoUrl).toBeUndefined();
+
+    const workspace = await getWorkspace(snapshot.job.state.workspaceId!);
+    expect(workspace?.sourceDirectory).toBe("/workspaces/New_Workspace");
+    expect(workspace?.repoUrl).toBeUndefined();
+
+    expect(executor.calls.some((call) => call.command === "git" && call.args[0] === "clone")).toBe(false);
+    expect(executor.calls).toContainEqual({
+      command: "mkdir",
+      args: ["-p", "/workspaces/New_Workspace"],
+      cwd: "/",
+    });
+    expect(executor.calls).toContainEqual({
+      command: "git",
+      args: ["init", "-b", "main"],
+      cwd: "/workspaces/New_Workspace",
+    });
+    expect(executor.calls.find((call) => call.command === "devbox" && call.args[0] === "up")).toEqual({
+      command: "devbox",
+      args: ["up", "--template", "python"],
+      cwd: "/workspaces/New_Workspace",
+    });
+  });
+
+  test("rejects new repository provisioning when the target directory already exists", async () => {
+    const server = await sshServerManager.createServer({
+      name: "Existing Target Test",
+      address: "10.0.0.18",
+      username: "remote-user",
+      repositoriesBasePath: null,
+    });
+    const executor = new ProvisioningTestExecutor({
+      existingDirectories: ["/workspaces/New_Workspace"],
+    });
+    sshServerManager.setExecutorFactoryForTesting(() => executor);
+
+    const manager = new ProvisioningManager(5_000, 500);
+    const started = await manager.startJob({
+      name: "New_Workspace",
+      sshServerId: server.config.id,
+      repoUrl: "",
+      basePath: "/workspaces",
+      devboxTemplate: "python",
+      provider: "copilot",
+      createNewRepository: true,
+    });
+
+    const snapshot = await waitForProvisioningStatus(manager, started.job.config.id, ["failed"]);
+    expect(snapshot.job.state.error?.code).toBe("clone_conflict");
+    expect(executor.calls.some((call) => call.command === "git" && call.args[0] === "init")).toBe(false);
+  });
+
   test("rebuilds an existing devbox workspace without cloning", async () => {
     const server = await sshServerManager.createServer({
       name: "Rebuild Host",

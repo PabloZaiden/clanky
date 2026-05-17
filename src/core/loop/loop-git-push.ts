@@ -41,6 +41,13 @@ export async function pushLoopImpl(ctx: LoopCtx, loopId: string): Promise<PushLo
 
     await git.ensureMergeStrategy(worktreePath);
 
+    if (!(await git.hasRemote(loop.config.directory))) {
+      return {
+        success: false,
+        error: "Workspace has no git remote configured. Add an origin remote before pushing this loop.",
+      };
+    }
+
     const workingBranchConflictResult = await syncWorkingBranch(
       ctx, loopId, loop, git, baseBranch, worktreePath, workingBranch, "pushLoop"
     );
@@ -95,6 +102,13 @@ export async function updateBranchImpl(ctx: LoopCtx, loopId: string): Promise<Pu
     const workingBranch = loop.state.git.workingBranch;
 
     await git.ensureMergeStrategy(worktreePath);
+
+    if (!(await git.hasRemote(loop.config.directory))) {
+      return {
+        success: false,
+        error: "Workspace has no git remote configured. Add an origin remote before updating this loop branch.",
+      };
+    }
 
     const workingBranchConflictResult = await syncWorkingBranch(
       ctx, loopId, loop, git, baseBranch, worktreePath, workingBranch, "updateBranch"

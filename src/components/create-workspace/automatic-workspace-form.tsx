@@ -10,6 +10,8 @@ interface AutomaticWorkspaceFormProps {
   onServerIdChange: (id: string) => void;
   repoUrl: string;
   onRepoUrlChange: (url: string) => void;
+  createNewRepository: boolean;
+  onCreateNewRepositoryChange: (createNewRepository: boolean) => void;
   basePath: string;
   onBasePathChange: (path: string) => void;
   devcontainerSubpath: string;
@@ -37,6 +39,8 @@ export function AutomaticWorkspaceForm({
   onServerIdChange,
   repoUrl,
   onRepoUrlChange,
+  createNewRepository,
+  onCreateNewRepositoryChange,
   basePath,
   onBasePathChange,
   devcontainerSubpath,
@@ -104,9 +108,19 @@ export function AutomaticWorkspaceForm({
           value={repoUrl}
           onChange={(e) => onRepoUrlChange(e.target.value)}
           placeholder="git@github.com:owner/repo.git"
-          required
-          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 font-mono"
+          required={!createNewRepository}
+          disabled={createNewRepository}
+          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900 font-mono"
         />
+        <label className="mt-2 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={createNewRepository}
+            onChange={(e) => onCreateNewRepositoryChange(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <span>the repository doesn't exist yet</span>
+        </label>
       </div>
 
       <div>
@@ -213,7 +227,7 @@ export function AutomaticWorkspaceForm({
                 disabled={!serverId || templatesLoading}
                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:disabled:bg-neutral-900"
               >
-                <option value="">Use repository devcontainer (default)</option>
+                {!createNewRepository && <option value="">Use repository devcontainer (default)</option>}
                 {templatesLoading && <option value="" disabled>Loading templates...</option>}
                 {!templatesLoading && templates.map((template) => (
                   <option key={template.name} value={template.name}>
@@ -222,7 +236,9 @@ export function AutomaticWorkspaceForm({
                 ))}
               </select>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Optional. Choose a built-in devbox template instead of the repository devcontainer definition for this provisioning run.
+                {createNewRepository
+                  ? "Required because there is no repository devcontainer yet."
+                  : "Optional. Choose a built-in devbox template instead of the repository devcontainer definition for this provisioning run."}
               </p>
               {templatesError && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>

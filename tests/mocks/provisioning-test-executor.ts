@@ -63,7 +63,7 @@ export function createDevboxStatusOutput(overrides: Partial<DevboxStatusResult> 
 export class ProvisioningTestExecutor implements CommandExecutor {
   readonly calls: ExecCall[] = [];
   private readonly directories = new Set<string>();
-  private readonly gitRepos = new Map<string, { origin: string }>();
+  private readonly gitRepos = new Map<string, { origin?: string }>();
   private readonly files = new Map<string, string>();
 
   constructor(private readonly options: ProvisioningTestExecutorOptions = {}) {
@@ -126,6 +126,12 @@ export class ProvisioningTestExecutor implements CommandExecutor {
       return { success: true, stdout, stderr: "", exitCode: 0 };
     }
 
+    if (command === "git" && args[0] === "init") {
+      this.directories.add(cwd);
+      this.gitRepos.set(cwd, {});
+      return { success: true, stdout: "Initialized empty Git repository\n", stderr: "", exitCode: 0 };
+    }
+
     if (command === "git" && args[0] === "rev-parse" && args[1] === "--is-inside-work-tree") {
       const success = this.gitRepos.has(cwd);
       return {
@@ -138,7 +144,7 @@ export class ProvisioningTestExecutor implements CommandExecutor {
 
     if (command === "git" && args[0] === "remote" && args[1] === "get-url" && args[2] === "origin") {
       const repo = this.gitRepos.get(cwd);
-      if (!repo) {
+      if (!repo?.origin) {
         return {
           success: false,
           stdout: "",

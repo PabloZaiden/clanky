@@ -46,12 +46,13 @@ export interface ProvisioningJobConfig {
   id: string;
   name: string;
   sshServerId: string;
-  repoUrl: string;
+  repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;
   devboxTemplate?: string;
   provider: AgentProvider;
   mode?: ProvisioningJobMode;
+  createNewRepository?: boolean;
   /** For rebuild/restart mode: directory where the repo lives on the host */
   targetDirectory?: string;
   /** For rebuild/restart mode: existing workspace ID */

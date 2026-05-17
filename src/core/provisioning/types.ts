@@ -3,12 +3,13 @@ import type { AgentProvider, ProvisioningJob, ProvisioningJobMode, ProvisioningL
 export interface StartProvisioningJobOptions {
   name: string;
   sshServerId: string;
-  repoUrl: string;
+  repoUrl?: string;
   basePath: string;
   devcontainerSubpath?: string;
   devboxTemplate?: string;
   provider: AgentProvider;
   mode?: ProvisioningJobMode;
+  createNewRepository?: boolean;
   password?: string;
   /** For rebuild/restart mode: directory on the host where the repo lives */
   targetDirectory?: string;

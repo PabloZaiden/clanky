@@ -20,6 +20,7 @@ export interface StartProvisioningJobRequest {
   devcontainerSubpath: string | null;
   devboxTemplate: string | null;
   provider: AgentProvider;
+  createNewRepository?: boolean;
   password?: string;
   mode: "provision" | "rebuild" | "restart" | "arise";
   targetDirectory: string | null;
@@ -205,6 +206,7 @@ export function useProvisioningJob(): UseProvisioningJobResult {
           provider: request.provider,
           credentialToken: credentialToken ?? null,
           mode: request.mode,
+          createNewRepository: request.createNewRepository ?? false,
           targetDirectory: request.targetDirectory?.trim() ? request.targetDirectory.trim() : null,
           workspaceId: request.workspaceId?.trim() ? request.workspaceId.trim() : null,
         }),

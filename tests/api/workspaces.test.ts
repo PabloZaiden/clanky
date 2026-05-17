@@ -747,7 +747,7 @@ describe("Workspace API Integration", () => {
       }
     });
 
-    test("returns a generic message when pull latest fails with a git command error", async () => {
+    test("returns a clear message when pull latest is unavailable without a remote", async () => {
       const repos = await createPullTestRepos();
 
       try {
@@ -771,8 +771,8 @@ describe("Workspace API Integration", () => {
         expect(response.status).toBe(409);
 
         const data = await response.json();
-        expect(data.error).toBe("git_pull_failed");
-        expect(data.message).toBe("Unable to pull the latest changes from the remote repository.");
+        expect(data.error).toBe("no_remote");
+        expect(data.message).toBe("Workspace has no git remote configured. Add an origin remote before pulling latest changes.");
         expect(data.message).not.toContain(repos.originDir);
       } finally {
         await rm(repos.originDir, { recursive: true, force: true });
