@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModelInfo, PublicWorkspace } from "../../types";
 import type { QuickChatSettings } from "../../types/preferences";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "../../types/preferences";
-import { appFetch } from "../../lib/public-path";
 import { createLogger } from "../../lib/logger";
+import { fetchQuickChatModels } from "../../hooks/quick-chat-api";
 import {
   makeModelKey,
   ModelSelector,
@@ -19,15 +19,6 @@ function getModelKey(settings: QuickChatSettings): string {
     return "";
   }
   return makeModelKey(settings.model.providerID, settings.model.modelID, settings.model.variant);
-}
-
-async function parseModelFetchError(response: Response): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? "Failed to load models";
-  } catch {
-    return "Failed to load models";
-  }
 }
 
 export function QuickChatSettingsSection({
@@ -87,17 +78,11 @@ export function QuickChatSettingsSection({
       setModelsLoading(true);
       setModelsError(null);
       try {
-        const response = await appFetch(
-          `/api/models?directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`,
-          { signal: controller.signal },
-        );
+        const nextModels = await fetchQuickChatModels(workspace, { signal: controller.signal });
         if (controller.signal.aborted) {
           return;
         }
-        if (!response.ok) {
-          throw new Error(await parseModelFetchError(response));
-        }
-        setModels(await response.json() as ModelInfo[]);
+        setModels(nextModels);
       } catch (fetchError) {
         if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
           return;

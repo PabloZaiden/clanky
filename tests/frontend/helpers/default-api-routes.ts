@@ -59,8 +59,6 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
     status: "ok",
     version: "test",
   })),
-  defaultRoute("/api/loops", () => []),
-  defaultRoute("/api/chats", () => []),
   defaultRoute("/api/workspaces", () => []),
   defaultRoute("/api/workspaces/:id/server-settings/status", () => ({
     connected: false,

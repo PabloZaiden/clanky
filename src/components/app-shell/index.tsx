@@ -11,11 +11,10 @@ import {
   useToast,
   useWorkspaces,
 } from "../../hooks";
-import type { ModelInfo, PublicWorkspace } from "../../types";
 import type { QuickChatSettings } from "../../types/preferences";
-import { appFetch } from "../../lib/public-path";
 import { modelVariantExists } from "../ModelSelector";
 import type { UsePasskeyAuthResult } from "../../hooks";
+import { fetchQuickChatBaseBranch, fetchQuickChatModels } from "../../hooks/quick-chat-api";
 import { buildServerSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import { ShellSidebarNav } from "./shell-sidebar-nav";
 import { ShellMainContent } from "./shell-main-content";
@@ -27,55 +26,6 @@ import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
 import { useComposeState } from "./use-compose-state";
 
 export type { ShellRoute } from "./shell-types";
-
-interface BranchesResponse {
-  currentBranch?: string;
-}
-
-interface DefaultBranchResponse {
-  defaultBranch?: string;
-}
-
-async function parseQuickChatFetchError(response: Response, fallback: string): Promise<string> {
-  try {
-    const data = await response.json() as { message?: string; error?: string };
-    return data.message ?? data.error ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-async function fetchQuickChatModels(workspace: PublicWorkspace): Promise<ModelInfo[]> {
-  const response = await appFetch(
-    `/api/models?directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`,
-  );
-  if (!response.ok) {
-    throw new Error(await parseQuickChatFetchError(response, "Failed to load quick chat models"));
-  }
-  return await response.json() as ModelInfo[];
-}
-
-async function fetchQuickChatBaseBranch(workspace: PublicWorkspace): Promise<string> {
-  const query = `directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`;
-  const [defaultBranchResponse, branchesResponse] = await Promise.all([
-    appFetch(`/api/git/default-branch?${query}`),
-    appFetch(`/api/git/branches?${query}`),
-  ]);
-
-  const defaultBranch = defaultBranchResponse.ok
-    ? ((await defaultBranchResponse.json()) as DefaultBranchResponse).defaultBranch?.trim() ?? ""
-    : "";
-  const currentBranch = branchesResponse.ok
-    ? ((await branchesResponse.json()) as BranchesResponse).currentBranch?.trim() ?? ""
-    : "";
-  const baseBranch = defaultBranch || currentBranch;
-
-  if (!baseBranch) {
-    throw new Error("Could not determine a base branch for quick chat");
-  }
-
-  return baseBranch;
-}
 
 interface AppShellProps {
   route: import("./shell-types").ShellRoute;
@@ -206,6 +156,22 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     return null;
   }, [quickChatWorkspace, sidebarWorkspaceGroups]);
   const [quickChatCreating, setQuickChatCreating] = useState(false);
+  const quickChatUnavailableReason = useMemo(() => {
+    if (!quickChatSettings.settings.workspaceId) {
+      return "Choose a quick chat workspace in Settings first";
+    }
+    if (!quickChatWorkspace) {
+      return "The selected quick chat workspace no longer exists";
+    }
+    if (!quickChatSettings.settings.model) {
+      return "Choose a quick chat model in Settings first";
+    }
+    return null;
+  }, [
+    quickChatSettings.settings.model,
+    quickChatSettings.settings.workspaceId,
+    quickChatWorkspace,
+  ]);
 
   const shellLoading = chatsLoading || loopsLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
   const shellErrors = [chatsError, loopsError, sshSessionsError, sshServersError, workspaceError].filter(
@@ -369,7 +335,9 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         serverNodes={serverNodes}
         quickChatWorkspace={quickChatWorkspaceNode}
         quickChatLoading={quickChatSettings.loading || quickChatCreating}
+        quickChatUnavailableReason={quickChatUnavailableReason}
         onQuickChat={() => void handleQuickChat()}
+        onConfigureQuickChat={() => navigateWithinShell({ view: "settings" })}
         version={dashboardData.version ?? undefined}
         sidebarSearchFocusRequest={sidebarSearchFocusRequest}
       />

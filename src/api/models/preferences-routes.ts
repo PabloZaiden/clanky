@@ -33,6 +33,7 @@ import {
   getQuickChatSettings,
   setQuickChatSettings,
 } from "../../persistence/preferences";
+import { getWorkspace } from "../../persistence/workspaces";
 import {
   createLogger,
   setLogLevel as setBackendLogLevel,
@@ -383,6 +384,16 @@ export const preferencesRoutes = {
           workspaceId: result.data.workspaceId,
           model: result.data.model,
         };
+        if (settings.workspaceId) {
+          const workspace = await getWorkspace(settings.workspaceId);
+          if (!workspace) {
+            return errorResponse(
+              "workspace_not_found",
+              "Quick chat workspace does not exist",
+              404,
+            );
+          }
+        }
         await setQuickChatSettings(settings);
         return Response.json({ success: true, settings });
       } catch (error) {

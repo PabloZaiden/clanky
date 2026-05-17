@@ -125,7 +125,7 @@ describe("AppShell quick chat", () => {
     });
   });
 
-  test("fails gracefully without creating a chat when quick chat workspace is missing", async () => {
+  test("opens settings without creating a chat when quick chat workspace is missing", async () => {
     api.get("/api/workspaces", () => []);
     api.get("/api/preferences/quick-chat", () => ({
       workspaceId: "missing-workspace",
@@ -137,16 +137,15 @@ describe("AppShell quick chat", () => {
     }));
     const navigate = mock((_route: ShellRoute) => {});
 
-    const { findByText, getByRole, user } = renderWithUser(
+    const { getByRole, user } = renderWithUser(
       <AppEventsProvider>
         <AppShell route={{ view: "home" }} onNavigate={navigate} passkeyAuth={passkeyAuth} />
       </AppEventsProvider>,
     );
 
-    await user.click(await waitFor(() => getByRole("button", { name: "Start quick chat" })));
+    await user.click(await waitFor(() => getByRole("button", { name: "Configure quick chat" })));
 
-    expect(await findByText("The selected quick chat workspace no longer exists")).toBeInTheDocument();
     expect(api.calls("/api/chats", "POST")).toHaveLength(0);
-    expect(navigate).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith({ view: "settings" });
   });
 });

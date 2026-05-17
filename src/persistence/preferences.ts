@@ -22,6 +22,7 @@ import {
   type ThemePreference,
 } from "../types/preferences";
 import { CheapModelSelectionSchema } from "../types/schemas/model";
+import { normalizeQuickChatSettings } from "../types/schemas";
 import type { CheapModelSelection } from "../types";
 
 const log = createLogger("persistence:preferences");
@@ -358,42 +359,6 @@ export async function setThemePreference(theme: ThemePreference): Promise<void> 
     );
   }
   setPreference("themePreference", theme);
-}
-
-function normalizeQuickChatSettings(value: unknown): QuickChatSettings {
-  if (!value || typeof value !== "object") {
-    return DEFAULT_QUICK_CHAT_SETTINGS;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  const workspaceId = typeof candidate["workspaceId"] === "string"
-    ? candidate["workspaceId"].trim()
-    : "";
-  const modelCandidate = candidate["model"];
-  const model = modelCandidate && typeof modelCandidate === "object"
-    ? modelCandidate as Record<string, unknown>
-    : null;
-
-  if (!model) {
-    return { workspaceId, model: null };
-  }
-
-  const providerID = typeof model["providerID"] === "string" ? model["providerID"].trim() : "";
-  const modelID = typeof model["modelID"] === "string" ? model["modelID"].trim() : "";
-  const variant = typeof model["variant"] === "string" ? model["variant"] : "";
-
-  if (!providerID || !modelID) {
-    return { workspaceId, model: null };
-  }
-
-  return {
-    workspaceId,
-    model: {
-      providerID,
-      modelID,
-      variant,
-    },
-  };
 }
 
 export async function getQuickChatSettings(): Promise<QuickChatSettings> {

@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { THEME_PREFERENCES } from "@ralpher/shared";
+import { DEFAULT_QUICK_CHAT_SETTINGS, THEME_PREFERENCES, type QuickChatSettings } from "@ralpher/shared";
 import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
 
 /**
@@ -68,7 +68,17 @@ export const SetThemePreferenceRequestSchema = z.object({
   }),
 });
 
-export const SetQuickChatSettingsRequestSchema = z.object({
+export const QuickChatSettingsSchema = z.object({
   workspaceId: z.string().trim().default(""),
   model: ModelConfigSchema.nullable().default(null),
 });
+
+export const SetQuickChatSettingsRequestSchema = QuickChatSettingsSchema;
+
+export function normalizeQuickChatSettings(value: unknown): QuickChatSettings {
+  const validation = QuickChatSettingsSchema.safeParse(value);
+  if (!validation.success) {
+    return DEFAULT_QUICK_CHAT_SETTINGS;
+  }
+  return validation.data;
+}

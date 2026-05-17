@@ -5,26 +5,9 @@ import {
   DEFAULT_QUICK_CHAT_SETTINGS,
   type QuickChatSettings,
 } from "../types/preferences";
-import { ModelConfigSchema } from "../types/schemas/model";
+import { normalizeQuickChatSettings } from "../types/schemas";
 
 const log = createLogger("useQuickChatSettings");
-
-function normalizeQuickChatSettings(value: unknown): QuickChatSettings {
-  if (!value || typeof value !== "object") {
-    return DEFAULT_QUICK_CHAT_SETTINGS;
-  }
-
-  const candidate = value as Record<string, unknown>;
-  const workspaceId = typeof candidate["workspaceId"] === "string"
-    ? candidate["workspaceId"].trim()
-    : "";
-  const modelValidation = ModelConfigSchema.nullable().safeParse(candidate["model"] ?? null);
-
-  return {
-    workspaceId,
-    model: modelValidation.success ? modelValidation.data : null,
-  };
-}
 
 async function parsePreferenceError(response: Response, fallback: string): Promise<string> {
   try {
@@ -50,32 +33,42 @@ export function useQuickChatSettings(): UseQuickChatSettingsResult {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     abortControllerRef.current?.abort();
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    const isActiveRequest = () => abortControllerRef.current === controller && requestIdRef.current === requestId;
 
     try {
       setLoading(true);
       setError(null);
       const response = await appFetch("/api/preferences/quick-chat", { signal: controller.signal });
-      if (controller.signal.aborted) {
+      if (controller.signal.aborted || !isActiveRequest()) {
         return;
       }
       if (!response.ok) {
         throw new Error(await parsePreferenceError(response, "Failed to load quick chat settings"));
       }
-      setSettings(normalizeQuickChatSettings(await response.json()));
+      const nextSettings = normalizeQuickChatSettings(await response.json());
+      if (controller.signal.aborted || !isActiveRequest()) {
+        return;
+      }
+      setSettings(nextSettings);
     } catch (refreshError) {
       if (refreshError instanceof DOMException && refreshError.name === "AbortError") {
+        return;
+      }
+      if (!isActiveRequest()) {
         return;
       }
       log.warn("Failed to load quick chat settings", { error: String(refreshError) });
       setError(String(refreshError));
       setSettings(DEFAULT_QUICK_CHAT_SETTINGS);
     } finally {
-      if (!controller.signal.aborted) {
+      if (!controller.signal.aborted && isActiveRequest()) {
         setLoading(false);
       }
     }

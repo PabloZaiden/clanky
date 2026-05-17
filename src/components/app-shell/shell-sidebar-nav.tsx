@@ -32,7 +32,9 @@ interface ShellSidebarNavProps {
   serverNodes: SidebarServerNode[];
   quickChatWorkspace: SidebarWorkspaceNode | null;
   quickChatLoading: boolean;
+  quickChatUnavailableReason: string | null;
   onQuickChat: () => void;
+  onConfigureQuickChat: () => void;
   version: string | undefined;
   sidebarSearchFocusRequest: number;
 }
@@ -113,7 +115,9 @@ export function ShellSidebarNav({
   serverNodes,
   quickChatWorkspace,
   quickChatLoading,
+  quickChatUnavailableReason,
   onQuickChat,
+  onConfigureQuickChat,
   version,
   sidebarSearchFocusRequest,
 }: ShellSidebarNavProps) {
@@ -364,6 +368,9 @@ export function ShellSidebarNav({
     || (searchResults?.chats.length ?? 0) > 0
     || (searchResults?.sshSessions.length ?? 0) > 0
     || (searchResults?.sshServers.length ?? 0) > 0;
+  const quickChatButtonLabel = quickChatUnavailableReason
+    ? "Configure quick chat"
+    : "Start quick chat";
 
   return (
     <aside
@@ -389,10 +396,10 @@ export function ShellSidebarNav({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onQuickChat}
+              onClick={quickChatUnavailableReason ? onConfigureQuickChat : onQuickChat}
               disabled={quickChatLoading}
-              aria-label="Start quick chat"
-              title="Start quick chat"
+              aria-label={quickChatButtonLabel}
+              title={quickChatUnavailableReason ?? quickChatButtonLabel}
               className={iconButtonDefault}
             >
               <ChatIcon size="h-5 w-5" />
@@ -638,7 +645,7 @@ export function ShellSidebarNav({
           <>
             {quickChatWorkspace && (
               <SidebarTreeSection
-                title="Quick chats"
+                title="Quick chat workspace"
               >
                 <SidebarTreeItem
                   active={isWorkspaceActive(quickChatWorkspace.workspace.id)}
@@ -656,7 +663,7 @@ export function ShellSidebarNav({
                     indentLevel: 2,
                   })
                 ) : (
-                  <EmptySection message="No quick chats in this workspace yet." indentLevel={1} />
+                  <EmptySection message="No chats in this quick chat workspace yet." indentLevel={1} />
                 )}
               </SidebarTreeSection>
             )}
@@ -881,10 +888,12 @@ export function ShellSidebarNav({
           </>
         )}
 
-        <div className="flex items-center justify-between gap-3 px-1">
-          <div className="min-w-0 text-[11px] leading-4 text-gray-400 dark:text-gray-500">
-            {version ? `v${version}` : ""}
-          </div>
+        <div className={["flex items-center gap-3 px-1", version ? "justify-between" : "justify-end"].join(" ")}>
+          {version && (
+            <div className="min-w-0 text-[11px] leading-4 text-gray-400 dark:text-gray-500">
+              v{version}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => window.location.reload()}
