@@ -10,6 +10,14 @@
   font-display: block;
 }
 
+@font-face {
+  font-family: "JetBrainsMono Nerd Font Mono";
+  src: url("./assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
 @layer base {
   :root {
     @apply bg-gray-100 text-gray-900 font-sans;

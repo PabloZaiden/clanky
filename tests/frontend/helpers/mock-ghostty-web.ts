@@ -15,15 +15,28 @@ export class MockTerminal {
   modes: Record<number, boolean> = {};
   selectionText = "";
   wasmTerm = {};
+  options: Record<string, unknown> | null = null;
   renderer: {
+    __ralpherFontMetricsInstalled?: boolean;
+    ctx: CanvasRenderingContext2D;
+    fontSize: number;
+    fontFamily: string;
+    metrics: { width: number; height: number; baseline: number };
+    theme: { selectionBackground: string };
+    measureFont: () => { width: number; height: number; baseline: number };
+    renderCellBackground: () => void;
+    rgbToCSS: (red: number, green: number, blue: number) => string;
+    isInSelection: () => boolean;
     getCanvas: () => HTMLCanvasElement;
     getMetrics: () => { width: number; height: number; baseline: number };
+    renderCellText: (_cell?: unknown, _column?: number, _row?: number) => void;
     remeasureFont: () => void;
     resize: () => void;
     render: () => void;
   } | null = null;
 
   constructor(options?: Record<string, unknown>) {
+    this.options = options ?? null;
     lastMockTerminal = this;
     lastMockTerminalOptions = options ?? null;
   }
@@ -78,9 +91,26 @@ export class MockTerminal {
     canvas.addEventListener("wheel", (event) => {
       this.wheelHandler?.(event as WheelEvent);
     });
+    const context = canvas.getContext("2d") ?? {
+      fillStyle: "",
+      globalAlpha: 1,
+      save() {},
+      restore() {},
+      fillRect() {},
+    } as unknown as CanvasRenderingContext2D;
     this.renderer = {
+      ctx: context,
+      fontSize: typeof this.options?.["fontSize"] === "number" ? this.options["fontSize"] : 16,
+      fontFamily: typeof this.options?.["fontFamily"] === "string" ? this.options["fontFamily"] : "monospace",
+      metrics: { width: 10, height: 20, baseline: 16 },
+      theme: { selectionBackground: "#264f78" },
+      measureFont: () => ({ width: 10, height: 20, baseline: 16 }),
+      renderCellBackground: () => {},
+      rgbToCSS: (red: number, green: number, blue: number) => `rgb(${red}, ${green}, ${blue})`,
+      isInSelection: () => false,
       getCanvas: () => canvas,
       getMetrics: () => ({ width: 10, height: 20, baseline: 16 }),
+      renderCellText: () => {},
       remeasureFont: () => {},
       resize: () => {},
       render: () => {},

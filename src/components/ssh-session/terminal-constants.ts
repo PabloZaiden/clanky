@@ -41,8 +41,8 @@ export function buildTerminalFontFamily(fontFamilies: readonly string[]) {
   return [...new Set(fontFamilies)].map((fontFamily) => formatTerminalFontFamily(fontFamily)).join(", ");
 }
 
-// Use one patched mono font for both text and symbols whenever possible. Mixing
-// system text fonts with Nerd Font fallbacks creates uneven cell metrics in TUIs.
+// Keep terminal text and symbols on one patched mono font whenever possible.
+// Mixing a text font with Nerd Font fallbacks changes glyph metrics per cell.
 export const TERMINAL_FONT_FAMILY = buildTerminalFontFamily([
   ...TERMINAL_TEXT_FONT_FAMILIES,
   ...TERMINAL_SYMBOL_FONT_FAMILIES,
@@ -133,18 +133,7 @@ export async function resolveTerminalFontFamily() {
   );
   await document.fonts.ready;
 
-  const availableFonts = [...TERMINAL_TEXT_FONT_FAMILIES, ...TERMINAL_SYMBOL_FONT_FAMILIES, ...TERMINAL_BUNDLED_NERD_FONT_FAMILIES]
-    .filter((fontFamily) =>
-      document.fonts.check(
-        `${TERMINAL_FONT_SIZE_PX}px ${buildTerminalFontFamily([fontFamily])}`,
-        TERMINAL_GLYPH_SAMPLE,
-      )
-    );
-
-  return buildTerminalFontFamily([
-    ...availableFonts,
-    "monospace",
-  ]);
+  return TERMINAL_FONT_FAMILY;
 }
 
 export async function remeasureTerminalFont(terminal: Terminal, fitAddon: FitAddon | null) {

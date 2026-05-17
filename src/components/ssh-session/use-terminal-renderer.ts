@@ -12,6 +12,7 @@ import {
   TERMINAL_FONT_SIZE_PX,
   TERMINAL_THEME,
 } from "./terminal-constants";
+import { installTerminalFontMetricsPatch } from "./terminal-font-metrics";
 import { installTerminalMouseHandlers } from "./terminal-mouse";
 
 interface UseTerminalRendererParams {
@@ -75,6 +76,7 @@ export function useTerminalRenderer({
         fitAddon = new FitAddon();
         terminal.loadAddon(fitAddon);
         terminal.open(terminalContainerRef.current);
+        installTerminalFontMetricsPatch(terminal);
         fitAddon.observeResize();
         terminalRef.current = terminal;
         fitAddonRef.current = fitAddon;

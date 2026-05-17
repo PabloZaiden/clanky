@@ -151,7 +151,7 @@ describe("SshSessionDetails", () => {
     });
   });
 
-  test("initializes the terminal with the configured ghostty-web font size and without xterm-specific rendering tweaks", async () => {
+  test("initializes ghostty-web with the bundled mono font and metrics patch", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Terminal Rendering" } }),
     );
@@ -171,9 +171,10 @@ describe("SshSessionDetails", () => {
       fontFamily: "\"Ralpher Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
       theme: expectedTerminalTheme,
     });
+    expect(lastTerminal?.renderer?.__ralpherFontMetricsInstalled).toBe(true);
   });
 
-  test("hides the browser caret on the contenteditable terminal host", async () => {
+  test("hides the browser caret on the terminal host", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Hidden Browser Caret" } }),
     );
@@ -210,7 +211,7 @@ describe("SshSessionDetails", () => {
     expect(lastTerminal?.focusCalls).toBe(1);
   });
 
-  test("prefers local Nerd fonts over the bundled fallback font when available", async () => {
+  test("keeps the bundled mono font first even when local Nerd fonts are available", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Local Font Preference" } }),
     );
@@ -228,7 +229,7 @@ describe("SshSessionDetails", () => {
 
     expect(lastTerminalOptions).toEqual({
       fontSize: 16,
-      fontFamily: "\"Ralpher Terminal Nerd Font\", \"Liga SFMono Nerd Font\", monospace",
+      fontFamily: "\"Ralpher Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
       theme: expectedTerminalTheme,
     });
   });
