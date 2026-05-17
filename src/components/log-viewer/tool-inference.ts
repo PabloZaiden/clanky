@@ -14,6 +14,7 @@ export type InferredToolKind =
   | "web_fetch"
   | "todo"
   | "skill"
+  | "rubber_duck"
   | "unknown";
 
 export interface ToolMeta {
@@ -415,6 +416,10 @@ export function inferToolKind(tool: ToolCallData): InferredToolKind {
     return "todo";
   }
 
+  if (getStringField(input, "agent_type") === "rubber-duck") {
+    return "rubber_duck";
+  }
+
   if (typeof input["patchText"] === "string" && input["patchText"].startsWith("*** Begin Patch")) {
     return "apply_patch";
   }
@@ -570,6 +575,17 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, conte
       const skill = input ? getStringField(input, "skill") : undefined;
       return `Load skill ${skill ?? "unknown"}`;
     }
+    case "rubber_duck": {
+      const description = input ? getStringField(input, "description") : undefined;
+      const name = input ? getStringField(input, "name") : undefined;
+      if (description) {
+        return `Rubber duck: ${description}`;
+      }
+      if (name) {
+        return `Rubber duck: ${name}`;
+      }
+      return "Rubber duck agent";
+    }
     case "unknown": {
       const storedName = getStoredName(tool);
       return storedName ? `General tool: ${storedName}` : "Unknown tool";
@@ -601,6 +617,7 @@ export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "
     case "web_fetch":
     case "todo":
     case "skill":
+    case "rubber_duck":
       return "text";
     case "sql":
     case "github_mcp":
@@ -897,6 +914,29 @@ function buildSkillDetails(input: Record<string, unknown>, tool: ToolCallData): 
   };
 }
 
+function buildRubberDuckDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
+  const rows: ToolDetailRow[] = [];
+  appendRow(rows, "Description", getStringField(input, "description"));
+  appendRow(rows, "Agent type", getStringField(input, "agent_type"));
+  appendRow(rows, "Name", getStringField(input, "name"));
+
+  const prompt = getStringField(input, "prompt");
+  const outputText = getTextFromOutput(tool.output);
+  const outputBlocks: ToolDetailBlock[] = outputText
+    ? [{ type: "text", title: "Output", content: outputText }]
+    : tool.output !== undefined
+      ? [{ type: "json", title: "Output", value: tool.output }]
+      : [];
+
+  return {
+    inputBlocks: [
+      ...(rows.length > 0 ? [{ type: "rows", rows } satisfies ToolDetailBlock] : []),
+      ...(prompt ? [{ type: "text", title: "Prompt", content: prompt } satisfies ToolDetailBlock] : []),
+    ],
+    outputBlocks,
+  };
+}
+
 function buildTodoDetails(input: Record<string, unknown>, tool: ToolCallData): StructuredToolDetails {
   const todos = Array.isArray(input["todos"]) ? input["todos"] : [];
   const todoItems = todos
@@ -959,6 +999,8 @@ export function getStructuredToolDetails(tool: ToolCallData, context: ToolMetaCo
       return buildTodoDetails(tool.input, tool);
     case "skill":
       return buildSkillDetails(tool.input, tool);
+    case "rubber_duck":
+      return buildRubberDuckDetails(tool.input, tool);
     case "unknown":
       return null;
   }
