@@ -1,9 +1,9 @@
 import { createInterface } from "node:readline";
 import {
   getAuthorizedHeaders,
-  getValidatedCredentials,
+  getCliRequestAuthContext,
+  type CliRequestAuthContext,
   type StatusCommandOptions,
-  type StoredCliCredentials,
 } from "./cli-auth";
 
 const WS_READY_STATE_CLOSING = 2;
@@ -49,7 +49,7 @@ export interface CliWsCloseResult {
 }
 
 export interface CliWsConnection {
-  credentials: StoredCliCredentials;
+  authContext: CliRequestAuthContext;
   socket: CliWebSocketLike;
   url: string;
   closePromise: Promise<CliWsCloseResult>;
@@ -211,15 +211,17 @@ export async function connectWsCommand(
   dependencies: Pick<CliWsDependencies, "createSocket" | "err" | "fetchFn" | "now">,
 ): Promise<CliWsConnection | null> {
   const err = dependencies.err ?? console.error;
-  const credentials = await getValidatedCredentials({ baseUrl: command.baseUrl }, dependencies);
-  if (!credentials) {
+  const authContext = await getCliRequestAuthContext({ baseUrl: command.baseUrl }, dependencies);
+  if (!authContext) {
     err("Not logged in.");
     return null;
   }
 
-  const url = buildWebSocketUrl(credentials.baseUrl, command);
-  const headers = getAuthorizedHeaders(credentials);
-  headers.set("origin", new URL(credentials.baseUrl).origin);
+  const url = buildWebSocketUrl(authContext.baseUrl, command);
+  const headers = authContext.kind === "bearer"
+    ? getAuthorizedHeaders(authContext.credentials)
+    : new Headers();
+  headers.set("origin", new URL(authContext.baseUrl).origin);
 
   const createSocket = dependencies.createSocket ?? createDefaultSocket;
   const socket = createSocket(url, { headers });
@@ -228,7 +230,7 @@ export async function connectWsCommand(
   await waitForSocketOpen(socket);
 
   return {
-    credentials,
+    authContext,
     socket,
     url,
     closePromise,

@@ -1,8 +1,8 @@
 import { hostname } from "os";
 import { formatRalpherVersion, RALPHER_VERSION } from "../version";
 import {
+  getCliRequestAuthContext,
   getAuthorizedHeaders,
-  getValidatedCredentials,
   normalizeBaseUrlValue,
   normalizeCookieHeaderValue,
   refreshStoredCredentials,
@@ -10,7 +10,7 @@ import {
   runStatusCommand,
   type AuthCommandOptions,
   type StatusCommandOptions,
-  type StoredCliCredentials,
+  type CliRequestAuthContext,
 } from "./auth";
 import {
   findApiEndpoint,
@@ -280,13 +280,15 @@ async function runApiCommand(
     return 1;
   }
 
-  let credentials = await getValidatedCredentials({}, dependencies);
-  if (!credentials) {
+  let authContext = await getCliRequestAuthContext({}, dependencies);
+  if (!authContext) {
     out("Not logged in.");
     return 1;
   }
 
-  const requestHeaders = getAuthorizedHeaders(credentials);
+  const requestHeaders = authContext.kind === "bearer"
+    ? getAuthorizedHeaders(authContext.credentials)
+    : new Headers();
   let requestBody: string | undefined;
   if (command.payload !== undefined) {
     try {
@@ -298,10 +300,12 @@ async function runApiCommand(
   }
   requestHeaders.set("accept", "application/json");
 
-  const sendRequest = async (activeCredentials: StoredCliCredentials): Promise<Response> => {
-    const requestUrl = `${activeCredentials.baseUrl}${endpointPath}`;
-    const headers = getAuthorizedHeaders(activeCredentials, requestHeaders);
-    headers.set("origin", activeCredentials.baseUrl);
+  const sendRequest = async (activeAuthContext: CliRequestAuthContext): Promise<Response> => {
+    const requestUrl = `${activeAuthContext.baseUrl}${endpointPath}`;
+    const headers = activeAuthContext.kind === "bearer"
+      ? getAuthorizedHeaders(activeAuthContext.credentials, requestHeaders)
+      : new Headers(requestHeaders);
+    headers.set("origin", activeAuthContext.baseUrl);
     return await dependencies.fetchFn(requestUrl, {
       method: command.method,
       headers,
@@ -309,15 +313,19 @@ async function runApiCommand(
     });
   };
 
-  let response = await sendRequest(credentials);
-  if (response.status === 401) {
-    const refreshedCredentials = await refreshStoredCredentials(credentials, dependencies);
+  let response = await sendRequest(authContext);
+  if (response.status === 401 && authContext.kind === "bearer") {
+    const refreshedCredentials = await refreshStoredCredentials(authContext.credentials, dependencies);
     if (!refreshedCredentials) {
       out("Stored credentials are invalid.");
       return 1;
     }
-    credentials = refreshedCredentials;
-    response = await sendRequest(credentials);
+    authContext = {
+      kind: "bearer",
+      credentials: refreshedCredentials,
+      baseUrl: refreshedCredentials.baseUrl,
+    };
+    response = await sendRequest(authContext);
   }
 
   const parsed = await readApiResponse(response);

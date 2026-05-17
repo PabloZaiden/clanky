@@ -61,6 +61,15 @@ function createFetchMock(
   }) as typeof fetch;
 }
 
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json",
+    },
+  });
+}
+
 function createInputLines(lines: string[]): AsyncIterable<string> & { close: () => void } {
   let closed = false;
 
@@ -184,6 +193,101 @@ describe("cli websocket helpers", () => {
     expect((capturedHeaders as Headers).get("authorization")).toBe("Bearer access-token-1");
     expect((capturedHeaders as Headers).get("cookie")).toBe("authentik_proxy=proxy-cookie");
     expect((capturedHeaders as Headers).get("origin")).toBe("https://example.test");
+  });
+
+  test("connectWsCommand connects anonymously to eligible localhost server", async () => {
+    const socket = new FakeWebSocket();
+    const requests: string[] = [];
+    let capturedUrl = "";
+    let capturedHeaders: HeadersInit | undefined;
+
+    const connection = await connectWsCommand({
+      loopId: "loop-1",
+    }, createWsDependencies({
+      fetchFn: createFetchMock(async (input: string | URL | Request) => {
+        requests.push(String(input));
+        if (String(input) === "http://localhost:3000/api/auth/status") {
+          return jsonResponse(200, {
+            authenticated: true,
+            authKind: "anonymous",
+            subject: null,
+            clientId: null,
+            scope: null,
+          });
+        }
+        throw new Error(`Unexpected fetch to ${String(input)}`);
+      }),
+      createSocket: (url, options) => {
+        capturedUrl = url;
+        capturedHeaders = options.headers;
+        queueMicrotask(() => {
+          socket.readyState = 1;
+          socket.emit("open");
+        });
+        return socket;
+      },
+    }));
+
+    expect(connection).not.toBeNull();
+    expect(connection?.authContext.kind).toBe("anonymous-local");
+    expect(requests).toEqual(["http://localhost:3000/api/auth/status"]);
+    expect(capturedUrl).toBe("ws://localhost:3000/api/ws?loopId=loop-1");
+    expect(capturedHeaders).toBeInstanceOf(Headers);
+    expect((capturedHeaders as Headers).get("authorization")).toBeNull();
+    expect((capturedHeaders as Headers).get("origin")).toBe("http://localhost:3000");
+  });
+
+  test("connectWsCommand does not probe non-localhost anonymous mode without credentials", async () => {
+    const stderr: string[] = [];
+    let fetchCalled = false;
+    let socketCreated = false;
+
+    const connection = await connectWsCommand({
+      baseUrl: "http://example.test",
+    }, createWsDependencies({
+      err: (message: string) => stderr.push(message),
+      fetchFn: createFetchMock(async () => {
+        fetchCalled = true;
+        throw new Error("non-localhost anonymous auth should not be probed");
+      }),
+      createSocket: () => {
+        socketCreated = true;
+        return new FakeWebSocket();
+      },
+    }));
+
+    expect(connection).toBeNull();
+    expect(fetchCalled).toBe(false);
+    expect(socketCreated).toBe(false);
+    expect(stderr).toEqual(["Not logged in."]);
+  });
+
+  test("connectWsCommand does not connect anonymously when localhost requires auth", async () => {
+    const stderr: string[] = [];
+    let socketCreated = false;
+
+    const connection = await connectWsCommand({
+      baseUrl: "http://127.0.0.1:3000",
+    }, createWsDependencies({
+      err: (message: string) => stderr.push(message),
+      fetchFn: createFetchMock(async (input: string | URL | Request) => {
+        if (String(input) === "http://127.0.0.1:3000/api/auth/status") {
+          return jsonResponse(401, {
+            error: "authentication_required",
+            message: "Passkey authentication is required",
+          });
+        }
+        throw new Error(`Unexpected fetch to ${String(input)}`);
+      }),
+      createSocket: () => {
+        socketCreated = true;
+        return new FakeWebSocket();
+      },
+    }));
+
+    expect(connection).toBeNull();
+    expect(socketCreated).toBe(false);
+    expect(stderr).toEqual(["Not logged in."]);
   });
 
   test("runWsCommand bridges stdout payloads and stdin websocket messages", async () => {

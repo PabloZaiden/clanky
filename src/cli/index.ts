@@ -15,6 +15,7 @@ export {
 
 export {
   getAuthorizedHeaders,
+  getCliRequestAuthContext,
   getTokenErrorMessage,
   getValidatedCredentials,
   loadStoredCliCredentials,
@@ -25,6 +26,7 @@ export {
   runStatusCommand,
   saveStoredCliCredentials,
   type AuthCommandOptions,
+  type CliRequestAuthContext,
   type StatusCommandOptions,
   type StoredCliCredentials,
 } from "./auth";

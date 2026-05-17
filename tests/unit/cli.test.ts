@@ -636,6 +636,25 @@ describe("ralpher cli", () => {
     });
   });
 
+  test("status remains login-focused when localhost anonymous mode is available", async () => {
+    const output: string[] = [];
+    let fetchCalled = false;
+
+    const exitCode = await runCli(["status", "http://localhost:3000"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async () => {
+        fetchCalled = true;
+        throw new Error("status should not probe anonymous auth without stored credentials");
+      }),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(fetchCalled).toBe(false);
+    expect(output).toEqual(["Not logged in."]);
+  });
+
   test("concurrent credential validation shares one refresh result and stores its rotated refresh token", async () => {
     const expiredCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
@@ -967,6 +986,100 @@ describe("ralpher cli", () => {
         status: "running",
       }),
     ]);
+  });
+
+  test("api sends anonymous requests to eligible localhost server without stored credentials", async () => {
+    const output: string[] = [];
+    const requests: Array<{
+      url: string;
+      method: string;
+      authorization?: string | null;
+      origin?: string | null;
+    }> = [];
+
+    const exitCode = await runCli(["api", "health", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+          authorization: init?.headers instanceof Headers
+            ? init.headers.get("authorization")
+            : init?.headers && "authorization" in init.headers
+              ? String(init.headers["authorization"])
+              : null,
+          origin: init?.headers instanceof Headers
+            ? init.headers.get("origin")
+            : init?.headers && "origin" in init.headers
+              ? String(init.headers["origin"])
+              : null,
+        });
+
+        if (String(input) === "http://localhost:3000/api/auth/status") {
+          return jsonResponse(200, {
+            authenticated: true,
+            authKind: "anonymous",
+            subject: null,
+            clientId: null,
+            scope: null,
+          });
+        }
+        if (String(input) === "http://localhost:3000/api/health") {
+          return jsonResponse(200, { ok: true });
+        }
+        throw new Error(`Unexpected fetch to ${String(input)}`);
+      }),
+    });
+
+    expect(exitCode).toBe(0);
+    expect(requests).toEqual([
+      {
+        url: "http://localhost:3000/api/auth/status",
+        method: "GET",
+        authorization: null,
+        origin: "http://localhost:3000",
+      },
+      {
+        url: "http://localhost:3000/api/health",
+        method: "GET",
+        authorization: null,
+        origin: "http://localhost:3000",
+      },
+    ]);
+    expect(output).toEqual([
+      apiCommandOutput({
+        code: 200,
+        text: "OK",
+        ok: true,
+      }, { ok: true }),
+    ]);
+  });
+
+  test("api does not use anonymous localhost mode when auth status requires login", async () => {
+    const output: string[] = [];
+    const requests: string[] = [];
+
+    const exitCode = await runCli(["api", "health", "--method", "GET"], {
+      out: (message: string) => output.push(message),
+      err: (message: string) => output.push(`ERR:${message}`),
+      now: () => new Date("2026-04-21T17:15:00.000Z"),
+      fetchFn: createFetchMock(async (input: string | URL | Request) => {
+        requests.push(String(input));
+        if (String(input) === "http://localhost:3000/api/auth/status") {
+          return jsonResponse(401, {
+            error: "authentication_required",
+            message: "Passkey authentication is required",
+          });
+        }
+        throw new Error(`Unexpected fetch to ${String(input)}`);
+      }),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(requests).toEqual(["http://localhost:3000/api/auth/status"]);
+    expect(output).toEqual(["Not logged in."]);
   });
 
   test("api wraps plain-text responses in a JSON envelope", async () => {
