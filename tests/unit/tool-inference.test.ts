@@ -2,14 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { getStructuredToolDetails, getToolMeta, getToolSummary, inferToolKind } from "../../src/components/log-viewer/tool-inference";
 import type { ToolCallData } from "../../src/types";
 
-function createToolCall(input: unknown): ToolCallData {
-  return {
+function createToolCall(input: unknown, output?: unknown): ToolCallData {
+  const tool: ToolCallData = {
     id: "tool-1",
     name: "edit",
     input,
     status: "completed",
     timestamp: "2026-04-23T00:00:00.000Z",
   };
+
+  if (output !== undefined) {
+    tool.output = output;
+  }
+
+  return tool;
 }
 
 describe("apply_patch tool inference", () => {
@@ -187,6 +193,81 @@ describe("OpenCode tool inference fallbacks", () => {
           "Task one (pending / high)",
           "Task two (completed / medium)",
         ],
+      },
+    ]);
+  });
+});
+
+describe("rubber duck agent tool inference", () => {
+  test("renders screenshot-shaped rubber duck input as structured details", () => {
+    const tool = createToolCall({
+      description: "Critique fix plan",
+      agent_type: "rubber-duck",
+      name: "quick-chat-review-duck",
+      prompt: "We are in repo /workspaces/ralpher. Critique the fix plan.",
+    });
+
+    expect(inferToolKind(tool)).toBe("rubber_duck");
+    expect(getToolMeta(tool)).toEqual({
+      kind: "rubber_duck",
+      summary: "Rubber duck: Critique fix plan",
+      outputLabel: "Output",
+      outputType: "text",
+    });
+    expect(getStructuredToolDetails(tool)?.inputBlocks).toEqual([
+      {
+        type: "rows",
+        rows: [
+          { label: "Description", value: "Critique fix plan" },
+          { label: "Agent type", value: "rubber-duck" },
+          { label: "Name", value: "quick-chat-review-duck" },
+        ],
+      },
+      {
+        type: "text",
+        title: "Prompt",
+        content: "We are in repo /workspaces/ralpher. Critique the fix plan.",
+      },
+    ]);
+  });
+
+  test("preserves rubber duck text output", () => {
+    const tool = createToolCall(
+      {
+        agent_type: "rubber-duck",
+        name: "review-duck",
+        prompt: "Review this plan.",
+      },
+      {
+        output: "The plan should include an edge-case test.",
+      },
+    );
+
+    expect(getToolMeta(tool).summary).toBe("Rubber duck: review-duck");
+    expect(getStructuredToolDetails(tool)?.outputBlocks).toEqual([
+      {
+        type: "text",
+        title: "Output",
+        content: "The plan should include an edge-case test.",
+      },
+    ]);
+  });
+
+  test("preserves rubber duck structured output when no text field exists", () => {
+    const structuredOutput = { findings: [{ severity: "medium", message: "Add coverage." }] };
+    const tool = createToolCall(
+      {
+        agent_type: "rubber-duck",
+        prompt: "Review this plan.",
+      },
+      structuredOutput,
+    );
+
+    expect(getStructuredToolDetails(tool)?.outputBlocks).toEqual([
+      {
+        type: "json",
+        title: "Output",
+        value: structuredOutput,
       },
     ]);
   });
