@@ -209,4 +209,45 @@ describe("useChats", () => {
     expect(result.current.chats[0]?.config.name).toBe("Repo pairing");
     expect(api.calls("/api/chats/:id", "GET")).toHaveLength(0);
   });
+
+  test("promotes starting chats to streaming when assistant activity arrives", async () => {
+    const workspaceChat = createChat({
+      state: {
+        ...createChat().state,
+        status: "starting",
+        lastActivityAt: "2025-01-01T00:00:01.000Z",
+      },
+    });
+
+    api.get("/api/chats", () => [workspaceChat]);
+
+    const { result } = renderHook(() => useChats(), { wrapper: AppEventsProvider });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(ws.connections().length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "chat.message",
+        chatId: workspaceChat.config.id,
+        message: {
+          id: "assistant-1",
+          role: "assistant",
+          content: "Streaming response",
+          timestamp: "2025-01-01T00:00:02.000Z",
+        },
+        timestamp: "2025-01-01T00:00:03.000Z",
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.chats[0]?.state.status).toBe("streaming");
+    });
+    expect(result.current.chats[0]?.state.lastActivityAt).toBe("2025-01-01T00:00:03.000Z");
+  });
 });

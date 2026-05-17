@@ -11,7 +11,7 @@ import type {
   UpdateChatRequest,
 } from "../types";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
-import { mergeChatSnapshot } from "../utils/chat-snapshot";
+import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { isChatEvent, useAppEvents } from "./useAppEvents";
 
 const log = createLogger("useChats");
@@ -42,6 +42,23 @@ function updateChatState(chats: Chat[], id: string, updates: Partial<Chat["state
       state: {
         ...chat.state,
         ...updates,
+      },
+    };
+  }));
+}
+
+function updateChatStreamingActivity(chats: Chat[], id: string, timestamp: string): Chat[] {
+  return sortChats(chats.map((chat) => {
+    if (chat.config.id !== id) {
+      return chat;
+    }
+
+    return {
+      ...chat,
+      state: {
+        ...chat.state,
+        status: getStreamingActivityStatus(chat.state.status),
+        lastActivityAt: timestamp,
       },
     };
   }));
@@ -260,6 +277,16 @@ export function useChats(): UseChatsResult {
           ...(event.status === "failed" ? {} : { error: undefined }),
           lastActivityAt: event.timestamp,
         }));
+        break;
+      case "chat.message":
+        if (event.message.role === "assistant") {
+          setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
+        }
+        break;
+      case "chat.log":
+      case "chat.tool_call":
+      case "chat.tool_call.extra":
+        setChats((prev) => updateChatStreamingActivity(prev, event.chatId, event.timestamp));
         break;
       case "chat.interrupted":
         setChats((prev) => updateChatState(prev, event.chatId, {

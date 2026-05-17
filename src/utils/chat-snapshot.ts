@@ -68,3 +68,7 @@ export function mergeChatSnapshot(current: Chat, incoming: Chat): Chat {
 export function mergeChatSummarySnapshot(current: Chat, incoming: Chat): Chat {
   return mergeChatSnapshotByKind(current, incoming, "summary");
 }
+
+export function getStreamingActivityStatus(status: Chat["state"]["status"]): Chat["state"]["status"] {
+  return status === "starting" ? "streaming" : status;
+}
