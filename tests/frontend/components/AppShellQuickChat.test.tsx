@@ -48,11 +48,14 @@ function installSuccessfulQuickChatApi() {
   }));
 }
 
-function installBlockingQuickChatPreflightApi() {
-  const never = () => new Promise(() => {});
-  api.get("/api/models", never);
-  api.get("/api/git/default-branch", never);
-  api.get("/api/git/branches", never);
+function installUnexpectedQuickChatPreflightApi() {
+  const unexpectedPreflight = (endpoint: string) => () => {
+    throw new Error(`Quick chat should not call ${endpoint} before creating the chat`);
+  };
+
+  api.get("/api/models", unexpectedPreflight("/api/models"));
+  api.get("/api/git/default-branch", unexpectedPreflight("/api/git/default-branch"));
+  api.get("/api/git/branches", unexpectedPreflight("/api/git/branches"));
 }
 
 describe("AppShell quick chat", () => {
@@ -67,7 +70,7 @@ describe("AppShell quick chat", () => {
 
   test("creates a quick chat with configured workspace, model, and worktree without waiting for preflight", async () => {
     installSuccessfulQuickChatApi();
-    installBlockingQuickChatPreflightApi();
+    installUnexpectedQuickChatPreflightApi();
     api.post("/api/chats", (req) => ({
       config: {
         id: "chat-created",
