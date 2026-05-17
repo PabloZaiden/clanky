@@ -199,7 +199,7 @@ describe("OpenCode tool inference fallbacks", () => {
 });
 
 describe("rubber duck agent tool inference", () => {
-  test("renders screenshot-shaped rubber duck input as structured details", () => {
+  test("renders rubber duck schema input as structured details", () => {
     const tool = createToolCall({
       description: "Critique fix plan",
       agent_type: "rubber-duck",
