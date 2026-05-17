@@ -89,6 +89,7 @@ export {
   SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
   SetThemePreferenceRequestSchema,
+  SetQuickChatSettingsRequestSchema,
 } from "./preferences";
 
 // SSH session schemas

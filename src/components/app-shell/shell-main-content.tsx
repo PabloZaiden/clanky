@@ -2,6 +2,7 @@ import type { Chat, Loop, SshSession, Workspace } from "../../types";
 import type { CreateSshSessionRequest } from "../../types/api";
 import type { SshServer } from "../../types/ssh-server";
 import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/workspace";
+import type { QuickChatSettings } from "../../types/preferences";
 import type { WorkspaceGroup } from "../../hooks/useLoopGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
@@ -90,6 +91,11 @@ interface ShellMainContentProps {
   // Dashboard data
   dashboardData: UseDashboardDataResult;
   passkeyAuth: UsePasskeyAuthResult;
+  quickChatSettings: QuickChatSettings;
+  quickChatSettingsLoading: boolean;
+  quickChatSettingsSaving: boolean;
+  quickChatSettingsError: string | null;
+  updateQuickChatSettings: (settings: QuickChatSettings) => Promise<QuickChatSettings | null>;
 
   // Compose state
   composeActionState: CreateLoopFormActionState | null;
@@ -140,6 +146,11 @@ function renderMainContent(props: ShellMainContentProps) {
     pullLatestChanges,
     dashboardData,
     passkeyAuth,
+    quickChatSettings,
+    quickChatSettingsLoading,
+    quickChatSettingsSaving,
+    quickChatSettingsError,
+    updateQuickChatSettings,
     createChat,
     workspaceSettings,
     exportConfig,
@@ -560,6 +571,13 @@ function renderMainContent(props: ShellMainContentProps) {
           onImportConfig={importConfig}
           configSaving={workspacesSaving}
           passkeyAuthStatus={passkeyAuth.status}
+          workspaces={workspaces}
+          workspacesLoading={workspacesLoading}
+          quickChatSettings={quickChatSettings}
+          quickChatSettingsLoading={quickChatSettingsLoading}
+          quickChatSettingsSaving={quickChatSettingsSaving}
+          quickChatSettingsError={quickChatSettingsError}
+          onUpdateQuickChatSettings={updateQuickChatSettings}
           registeringPasskey={passkeyAuth.registering}
           loggingOutPasskey={passkeyAuth.loggingOut}
           removingPasskey={passkeyAuth.removingPasskey}

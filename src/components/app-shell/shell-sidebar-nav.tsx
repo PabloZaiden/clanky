@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { CodeIcon, GearIcon, RefreshIcon, SidebarIcon } from "../common";
+import { ChatIcon, CodeIcon, GearIcon, RefreshIcon, SidebarIcon } from "../common";
 import { getShellRouteUrl, getShellShortcutTitle, isModifiedNavigationClick } from "./shell-navigation";
 import { EmptySection, ShellSection, SidebarTreeItem, SidebarTreeSection } from "./shell-sidebar";
 import {
@@ -30,6 +30,9 @@ interface ShellSidebarNavProps {
   toggleNodeCollapsed: (collapseKey: string) => void;
   workspaceGroups: SidebarWorkspaceGroupNode[];
   serverNodes: SidebarServerNode[];
+  quickChatWorkspace: SidebarWorkspaceNode | null;
+  quickChatLoading: boolean;
+  onQuickChat: () => void;
   version: string | undefined;
   sidebarSearchFocusRequest: number;
 }
@@ -108,6 +111,9 @@ export function ShellSidebarNav({
   toggleNodeCollapsed,
   workspaceGroups,
   serverNodes,
+  quickChatWorkspace,
+  quickChatLoading,
+  onQuickChat,
   version,
   sidebarSearchFocusRequest,
 }: ShellSidebarNavProps) {
@@ -203,6 +209,29 @@ export function ShellSidebarNav({
         onClick={(event) => handleSidebarItemClick(event, {
           view: "loop",
           loopId: loopNode.loop.config.id,
+        })}
+      />
+    ));
+  }
+
+  function renderChatNodes({
+    chatNodes,
+    indentLevel = 3,
+  }: {
+    chatNodes: SidebarChatNode[];
+    indentLevel?: number;
+  }) {
+    return chatNodes.map((chatNode) => (
+      <SidebarTreeItem
+        key={chatNode.chat.config.id}
+        active={isChatActive(chatNode.chat.config.id)}
+        title={chatNode.title}
+        badge={chatNode.badge}
+        badgeVariant={chatNode.badgeVariant}
+        indentLevel={indentLevel}
+        onClick={(event) => handleSidebarItemClick(event, {
+          view: "chat",
+          chatId: chatNode.chat.config.id,
         })}
       />
     ));
@@ -360,12 +389,13 @@ export function ShellSidebarNav({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => window.location.reload()}
-              aria-label="Reload page"
-              title="Reload page"
+              onClick={onQuickChat}
+              disabled={quickChatLoading}
+              aria-label="Start quick chat"
+              title="Start quick chat"
               className={iconButtonDefault}
             >
-              <RefreshIcon size="h-5 w-5" />
+              <ChatIcon size="h-5 w-5" />
             </button>
             <button
               type="button"
@@ -606,6 +636,31 @@ export function ShellSidebarNav({
           )
         ) : (
           <>
+            {quickChatWorkspace && (
+              <SidebarTreeSection
+                title="Quick chats"
+              >
+                <SidebarTreeItem
+                  active={isWorkspaceActive(quickChatWorkspace.workspace.id)}
+                  title={quickChatWorkspace.workspace.name}
+                  subtitle={quickChatWorkspace.workspace.directory}
+                  indentLevel={1}
+                  onClick={(event) => handleSidebarItemClick(event, {
+                    view: "workspace",
+                    workspaceId: quickChatWorkspace.workspace.id,
+                  })}
+                />
+                {quickChatWorkspace.chats.length > 0 ? (
+                  renderChatNodes({
+                    chatNodes: quickChatWorkspace.chats,
+                    indentLevel: 2,
+                  })
+                ) : (
+                  <EmptySection message="No quick chats in this workspace yet." indentLevel={1} />
+                )}
+              </SidebarTreeSection>
+            )}
+
             <ShellSection
               title="Workspaces"
               actionLabel="New"
@@ -714,20 +769,7 @@ export function ShellSidebarNav({
                                 onToggle={hasChatChildren ? () => toggleNodeCollapsed(chatsCollapseKey) : undefined}
                                 indentLevel={2}
                               >
-                                {workspaceNode.chats.map((chatNode) => (
-                                  <SidebarTreeItem
-                                    key={chatNode.chat.config.id}
-                                    active={isChatActive(chatNode.chat.config.id)}
-                                    title={chatNode.title}
-                                    badge={chatNode.badge}
-                                    badgeVariant={chatNode.badgeVariant}
-                                    indentLevel={3}
-                                    onClick={(event) => handleSidebarItemClick(event, {
-                                      view: "chat",
-                                      chatId: chatNode.chat.config.id,
-                                    })}
-                                  />
-                                ))}
+                                {renderChatNodes({ chatNodes: workspaceNode.chats })}
                               </SidebarTreeSection>
 
                               <SidebarTreeSection
@@ -839,9 +881,20 @@ export function ShellSidebarNav({
           </>
         )}
 
-        {version && (
-          <div className="px-1 text-[11px] leading-4 text-gray-400 dark:text-gray-500">v{version}</div>
-        )}
+        <div className="flex items-center justify-between gap-3 px-1">
+          <div className="min-w-0 text-[11px] leading-4 text-gray-400 dark:text-gray-500">
+            {version ? `v${version}` : ""}
+          </div>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            aria-label="Reload page"
+            title="Reload page"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-500 dark:hover:bg-neutral-800 dark:hover:text-gray-100"
+          >
+            <RefreshIcon size="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </aside>
   );

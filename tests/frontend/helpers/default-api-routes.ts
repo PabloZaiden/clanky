@@ -45,6 +45,22 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   defaultRoute("/api/git/github-repository-url", () => ({
     url: null,
   })),
+  defaultRoute("/api/config", () => ({
+    remoteOnly: false,
+    publicBasePath: null,
+    passkeyAuth: {
+      passkeyConfigured: false,
+      passkeyDisabled: false,
+      passkeyRequired: false,
+      authenticated: false,
+    },
+  })),
+  defaultRoute("/api/health", () => ({
+    status: "ok",
+    version: "test",
+  })),
+  defaultRoute("/api/loops", () => []),
+  defaultRoute("/api/chats", () => []),
   defaultRoute("/api/workspaces", () => []),
   defaultRoute("/api/workspaces/:id/server-settings/status", () => ({
     connected: false,
@@ -95,6 +111,10 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   })),
   defaultRoute("/api/preferences/theme", () => ({
     theme: "system",
+  })),
+  defaultRoute("/api/preferences/quick-chat", () => ({
+    workspaceId: "",
+    model: null,
   })),
   defaultRoute("/api/auth/issuer", () => ({
     canonicalIssuer: null,

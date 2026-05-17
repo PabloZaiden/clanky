@@ -15,8 +15,10 @@ import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
 import {
   DEFAULT_THEME_PREFERENCE,
+  DEFAULT_QUICK_CHAT_SETTINGS,
   THEME_PREFERENCES,
   type DashboardViewMode,
+  type QuickChatSettings,
   type ThemePreference,
 } from "../types/preferences";
 import { CheapModelSelectionSchema } from "../types/schemas/model";
@@ -80,6 +82,8 @@ export interface UserPreferences {
   dashboardViewMode?: DashboardViewMode;
   /** Visual theme preference (defaults to "system") */
   themePreference?: ThemePreference;
+  /** Quick chat workspace/model settings */
+  quickChatSettings?: QuickChatSettings;
 }
 
 /**
@@ -354,4 +358,67 @@ export async function setThemePreference(theme: ThemePreference): Promise<void> 
     );
   }
   setPreference("themePreference", theme);
+}
+
+function normalizeQuickChatSettings(value: unknown): QuickChatSettings {
+  if (!value || typeof value !== "object") {
+    return DEFAULT_QUICK_CHAT_SETTINGS;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const workspaceId = typeof candidate["workspaceId"] === "string"
+    ? candidate["workspaceId"].trim()
+    : "";
+  const modelCandidate = candidate["model"];
+  const model = modelCandidate && typeof modelCandidate === "object"
+    ? modelCandidate as Record<string, unknown>
+    : null;
+
+  if (!model) {
+    return { workspaceId, model: null };
+  }
+
+  const providerID = typeof model["providerID"] === "string" ? model["providerID"].trim() : "";
+  const modelID = typeof model["modelID"] === "string" ? model["modelID"].trim() : "";
+  const variant = typeof model["variant"] === "string" ? model["variant"] : "";
+
+  if (!providerID || !modelID) {
+    return { workspaceId, model: null };
+  }
+
+  return {
+    workspaceId,
+    model: {
+      providerID,
+      modelID,
+      variant,
+    },
+  };
+}
+
+export async function getQuickChatSettings(): Promise<QuickChatSettings> {
+  log.debug("Getting quick chat settings preference");
+  const quickChatSettingsJson = getPreference("quickChatSettings");
+  if (!quickChatSettingsJson) {
+    log.trace("Quick chat settings preference not set, using default");
+    return DEFAULT_QUICK_CHAT_SETTINGS;
+  }
+
+  try {
+    return normalizeQuickChatSettings(JSON.parse(quickChatSettingsJson));
+  } catch (error) {
+    log.warn("Failed to parse quick chat settings preference", {
+      error: String(error),
+    });
+    return DEFAULT_QUICK_CHAT_SETTINGS;
+  }
+}
+
+export async function setQuickChatSettings(settings: QuickChatSettings): Promise<void> {
+  const normalized = normalizeQuickChatSettings(settings);
+  log.debug("Setting quick chat settings preference", {
+    workspaceId: normalized.workspaceId,
+    hasModel: normalized.model !== null,
+  });
+  setPreference("quickChatSettings", JSON.stringify(normalized));
 }

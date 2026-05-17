@@ -67,3 +67,8 @@ export const SetThemePreferenceRequestSchema = z.object({
     error: "theme must be 'light', 'dark', or 'system'",
   }),
 });
+
+export const SetQuickChatSettingsRequestSchema = z.object({
+  workspaceId: z.string().trim().default(""),
+  model: ModelConfigSchema.nullable().default(null),
+});

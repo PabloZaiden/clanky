@@ -4,6 +4,9 @@
 
 import { Button, Modal } from "../common";
 import type { PasskeyAuthStatusResponse } from "../../types/api";
+import type { PublicWorkspace } from "../../types/workspace";
+import type { QuickChatSettings } from "../../types/preferences";
+import { DEFAULT_QUICK_CHAT_SETTINGS } from "../../types/preferences";
 import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/workspace";
 import { DisplaySettingsSection } from "./display-settings-section";
 import { DeveloperSettingsSection } from "./developer-settings-section";
@@ -11,6 +14,7 @@ import { ImportExportSection } from "./import-export-section";
 import { DangerZoneSection } from "./danger-zone-section";
 import { PasskeyAuthSection } from "./passkey-auth-section";
 import { TokenAuthSection } from "./token-auth-section";
+import { QuickChatSettingsSection } from "./quick-chat-settings-section";
 
 export interface AppSettingsPanelProps {
   /** Callback to reset all settings (destructive - deletes database) */
@@ -37,6 +41,20 @@ export interface AppSettingsPanelProps {
   removingPasskey?: boolean;
   /** Whether passkey status is refreshing */
   refreshingPasskeyAuth?: boolean;
+  /** Workspaces available for quick chat configuration */
+  workspaces?: PublicWorkspace[];
+  /** Whether workspaces are loading */
+  workspacesLoading?: boolean;
+  /** Current quick chat settings */
+  quickChatSettings?: QuickChatSettings;
+  /** Whether quick chat settings are loading */
+  quickChatSettingsLoading?: boolean;
+  /** Whether quick chat settings are saving */
+  quickChatSettingsSaving?: boolean;
+  /** Quick chat settings error */
+  quickChatSettingsError?: string | null;
+  /** Callback to update quick chat settings */
+  onUpdateQuickChatSettings?: (settings: QuickChatSettings) => Promise<QuickChatSettings | null>;
   /** Callback to register a passkey */
   onRegisterPasskey?: (name?: string) => Promise<boolean>;
   /** Callback to log out the current browser passkey session */
@@ -66,6 +84,13 @@ export function AppSettingsPanel({
   loggingOutPasskey = false,
   removingPasskey = false,
   refreshingPasskeyAuth = false,
+  workspaces = [],
+  workspacesLoading = false,
+  quickChatSettings = DEFAULT_QUICK_CHAT_SETTINGS,
+  quickChatSettingsLoading = false,
+  quickChatSettingsSaving = false,
+  quickChatSettingsError = null,
+  onUpdateQuickChatSettings,
   onRegisterPasskey,
   onLogoutPasskey,
   onRemovePasskey,
@@ -73,6 +98,17 @@ export function AppSettingsPanel({
   return (
     <div className="space-y-6">
       <DisplaySettingsSection />
+      {onUpdateQuickChatSettings ? (
+        <QuickChatSettingsSection
+          workspaces={workspaces}
+          workspacesLoading={workspacesLoading}
+          settings={quickChatSettings}
+          loading={quickChatSettingsLoading}
+          saving={quickChatSettingsSaving}
+          error={quickChatSettingsError}
+          onUpdate={onUpdateQuickChatSettings}
+        />
+      ) : null}
       <DeveloperSettingsSection />
       {passkeyAuthStatus ? (
         <PasskeyAuthSection

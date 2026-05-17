@@ -37,3 +37,17 @@ export const RESOLVED_THEMES = ["light", "dark"] as const;
  * Actual theme rendered by the UI.
  */
 export type ResolvedTheme = typeof RESOLVED_THEMES[number];
+
+export interface QuickChatSettings {
+  workspaceId: string;
+  model: {
+    providerID: string;
+    modelID: string;
+    variant: string;
+  } | null;
+}
+
+export const DEFAULT_QUICK_CHAT_SETTINGS: QuickChatSettings = {
+  workspaceId: "",
+  model: null,
+};

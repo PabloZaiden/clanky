@@ -200,11 +200,15 @@ function SidebarHarness({
   navigateWithinShell,
   workspaceGroups: workspaceGroupsOverride,
   serverNodes: serverNodesOverride,
+  quickChatWorkspace,
+  onQuickChat,
 }: {
   route?: ShellRoute;
   navigateWithinShell?: (route: ShellRoute) => void;
   workspaceGroups?: ReturnType<typeof createSidebarData>["workspaceGroups"];
   serverNodes?: ReturnType<typeof createSidebarData>["serverNodes"];
+  quickChatWorkspace?: ReturnType<typeof createSidebarData>["workspaceGroups"][number]["workspaces"][number] | null;
+  onQuickChat?: () => void;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const { workspaceGroups, serverNodes } = createSidebarData();
@@ -220,6 +224,9 @@ function SidebarHarness({
       toggleNodeCollapsed={(key) => setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? false) }))}
       workspaceGroups={workspaceGroupsOverride ?? workspaceGroups}
       serverNodes={serverNodesOverride ?? serverNodes}
+      quickChatWorkspace={quickChatWorkspace ?? null}
+      quickChatLoading={false}
+      onQuickChat={onQuickChat ?? mock(() => {})}
       version="test"
       sidebarSearchFocusRequest={0}
     />
@@ -595,6 +602,50 @@ describe("ShellSidebarNav", () => {
       "title",
       "New SSH session (Ctrl/Cmd+Shift+S)",
     );
+  });
+
+  test("uses the header quick chat action and footer reload action", async () => {
+    const onQuickChat = mock(() => {});
+    const originalReload = window.location.reload;
+    const reload = mock(() => {});
+    Object.defineProperty(window.location, "reload", {
+      configurable: true,
+      value: reload,
+    });
+
+    try {
+      const { getByRole, user } = renderWithUser(<SidebarHarness onQuickChat={onQuickChat} />);
+
+      await user.click(getByRole("button", { name: "Start quick chat" }));
+      expect(onQuickChat).toHaveBeenCalledTimes(1);
+
+      await user.click(getByRole("button", { name: "Reload page" }));
+      expect(reload).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(window.location, "reload", {
+        configurable: true,
+        value: originalReload,
+      });
+    }
+  });
+
+  test("pins the quick chat workspace with only chats before the regular workspaces", async () => {
+    const { workspaceGroups } = createSidebarData();
+    const quickChatWorkspace = workspaceGroups[0]!.workspaces.find(
+      (workspaceNode) => workspaceNode.workspace.id === "workspace-1",
+    )!;
+    const { getAllByText, getByLabelText, queryByText, user } = renderWithUser(
+      <SidebarHarness quickChatWorkspace={quickChatWorkspace} />,
+    );
+
+    expect(getAllByText("Quick chats")).toHaveLength(1);
+    expect(getAllByText("Workspace Chat")).toHaveLength(2);
+    expect(getAllByText("Feature Loop")).toHaveLength(1);
+    expect(getAllByText("Loop SSH Session")).toHaveLength(2);
+
+    await user.type(getByLabelText("Search sidebar"), "workspace chat");
+
+    expect(queryByText("Quick chats")).not.toBeInTheDocument();
   });
 
   test("hides empty workspace groups", () => {

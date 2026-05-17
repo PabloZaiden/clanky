@@ -5,11 +5,16 @@ import {
   useLoopGrouping,
   useLoops,
   useProvisioningJob,
+  useQuickChatSettings,
   useSshServers,
   useSshSessions,
   useToast,
   useWorkspaces,
 } from "../../hooks";
+import type { ModelInfo, PublicWorkspace } from "../../types";
+import type { QuickChatSettings } from "../../types/preferences";
+import { appFetch } from "../../lib/public-path";
+import { modelVariantExists } from "../ModelSelector";
 import type { UsePasskeyAuthResult } from "../../hooks";
 import { buildServerSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import { ShellSidebarNav } from "./shell-sidebar-nav";
@@ -22,6 +27,55 @@ import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
 import { useComposeState } from "./use-compose-state";
 
 export type { ShellRoute } from "./shell-types";
+
+interface BranchesResponse {
+  currentBranch?: string;
+}
+
+interface DefaultBranchResponse {
+  defaultBranch?: string;
+}
+
+async function parseQuickChatFetchError(response: Response, fallback: string): Promise<string> {
+  try {
+    const data = await response.json() as { message?: string; error?: string };
+    return data.message ?? data.error ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+async function fetchQuickChatModels(workspace: PublicWorkspace): Promise<ModelInfo[]> {
+  const response = await appFetch(
+    `/api/models?directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`,
+  );
+  if (!response.ok) {
+    throw new Error(await parseQuickChatFetchError(response, "Failed to load quick chat models"));
+  }
+  return await response.json() as ModelInfo[];
+}
+
+async function fetchQuickChatBaseBranch(workspace: PublicWorkspace): Promise<string> {
+  const query = `directory=${encodeURIComponent(workspace.directory)}&workspaceId=${encodeURIComponent(workspace.id)}`;
+  const [defaultBranchResponse, branchesResponse] = await Promise.all([
+    appFetch(`/api/git/default-branch?${query}`),
+    appFetch(`/api/git/branches?${query}`),
+  ]);
+
+  const defaultBranch = defaultBranchResponse.ok
+    ? ((await defaultBranchResponse.json()) as DefaultBranchResponse).defaultBranch?.trim() ?? ""
+    : "";
+  const currentBranch = branchesResponse.ok
+    ? ((await branchesResponse.json()) as BranchesResponse).currentBranch?.trim() ?? ""
+    : "";
+  const baseBranch = defaultBranch || currentBranch;
+
+  if (!baseBranch) {
+    throw new Error("Could not determine a base branch for quick chat");
+  }
+
+  return baseBranch;
+}
 
 interface AppShellProps {
   route: import("./shell-types").ShellRoute;
@@ -77,6 +131,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     exportConfig,
     importConfig,
   } = useWorkspaces();
+  const quickChatSettings = useQuickChatSettings();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
   const { workspaceGroups } = useLoopGrouping(loops, workspaces, !workspacesLoading);
@@ -134,6 +189,23 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     }),
     [servers, sessions, sessionsByServerId, workspaces],
   );
+  const quickChatWorkspace = useMemo(
+    () => workspaces.find((workspace) => workspace.id === quickChatSettings.settings.workspaceId) ?? null,
+    [quickChatSettings.settings.workspaceId, workspaces],
+  );
+  const quickChatWorkspaceNode = useMemo(() => {
+    if (!quickChatWorkspace) {
+      return null;
+    }
+    for (const group of sidebarWorkspaceGroups) {
+      const workspaceNode = group.workspaces.find((node) => node.workspace.id === quickChatWorkspace.id);
+      if (workspaceNode) {
+        return workspaceNode;
+      }
+    }
+    return null;
+  }, [quickChatWorkspace, sidebarWorkspaceGroups]);
+  const [quickChatCreating, setQuickChatCreating] = useState(false);
 
   const shellLoading = chatsLoading || loopsLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
   const shellErrors = [chatsError, loopsError, sshSessionsError, sshServersError, workspaceError].filter(
@@ -215,6 +287,66 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusSidebarSearch, navigateWithinShell]);
 
+  const handleQuickChat = useCallback(async () => {
+    if (quickChatSettings.loading || quickChatCreating) {
+      return;
+    }
+
+    const settings: QuickChatSettings = quickChatSettings.settings;
+    if (!settings.workspaceId) {
+      toast.error("Choose a quick chat workspace in Settings first");
+      return;
+    }
+    if (!quickChatWorkspace) {
+      toast.error("The selected quick chat workspace no longer exists");
+      return;
+    }
+    if (!settings.model) {
+      toast.error("Choose a quick chat model in Settings first");
+      return;
+    }
+
+    setQuickChatCreating(true);
+    try {
+      try {
+        const models = await fetchQuickChatModels(quickChatWorkspace);
+        if (!modelVariantExists(models, settings.model.providerID, settings.model.modelID, settings.model.variant)) {
+          toast.error("The selected quick chat model is not available for this workspace");
+          return;
+        }
+      } catch (modelError) {
+        toast.error(String(modelError));
+        return;
+      }
+
+      const baseBranch = await fetchQuickChatBaseBranch(quickChatWorkspace);
+      const chat = await createChat({
+        workspaceId: quickChatWorkspace.id,
+        model: settings.model,
+        useWorktree: true,
+        autoApprovePermissions: true,
+        baseBranch,
+      });
+      if (!chat) {
+        toast.error("Failed to create quick chat");
+        return;
+      }
+      navigateWithinShell({ view: "chat", chatId: chat.config.id });
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setQuickChatCreating(false);
+    }
+  }, [
+    createChat,
+    navigateWithinShell,
+    quickChatCreating,
+    quickChatSettings.loading,
+    quickChatSettings.settings,
+    quickChatWorkspace,
+    toast,
+  ]);
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-gray-100 text-gray-950 dark:bg-neutral-950 dark:text-gray-100">
       <div
@@ -235,6 +367,9 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         toggleNodeCollapsed={sidebar.toggleNodeCollapsed}
         workspaceGroups={sidebarWorkspaceGroups}
         serverNodes={serverNodes}
+        quickChatWorkspace={quickChatWorkspaceNode}
+        quickChatLoading={quickChatSettings.loading || quickChatCreating}
+        onQuickChat={() => void handleQuickChat()}
         version={dashboardData.version ?? undefined}
         sidebarSearchFocusRequest={sidebarSearchFocusRequest}
       />
@@ -281,6 +416,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         importConfig={importConfig}
         dashboardData={dashboardData}
         passkeyAuth={passkeyAuth}
+        quickChatSettings={quickChatSettings.settings}
+        quickChatSettingsLoading={quickChatSettings.loading}
+        quickChatSettingsSaving={quickChatSettings.saving}
+        quickChatSettingsError={quickChatSettings.error}
+        updateQuickChatSettings={quickChatSettings.updateSettings}
         composeActionState={composeState.composeActionState}
         setComposeActionState={composeState.setComposeActionState}
         handleLoopSubmit={composeState.handleLoopSubmit}

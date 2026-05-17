@@ -30,6 +30,8 @@ import {
   setDashboardViewMode,
   getThemePreference,
   setThemePreference,
+  getQuickChatSettings,
+  setQuickChatSettings,
 } from "../../persistence/preferences";
 import {
   createLogger,
@@ -49,6 +51,7 @@ import {
   SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
   SetThemePreferenceRequestSchema,
+  SetQuickChatSettingsRequestSchema,
 } from "../../types/schemas";
 
 const log = createLogger("api:preferences");
@@ -358,6 +361,32 @@ export const preferencesRoutes = {
         return Response.json({ success: true, theme: result.data.theme });
       } catch (error) {
         logPreferenceSaveFailure("theme", error);
+        return errorResponse("save_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/preferences/quick-chat": {
+    async GET(): Promise<Response> {
+      const settings = await getQuickChatSettings();
+      return Response.json(settings);
+    },
+
+    async PUT(req: Request): Promise<Response> {
+      const result = await parseAndValidate(SetQuickChatSettingsRequestSchema, req);
+      if (!result.success) {
+        return result.response;
+      }
+
+      try {
+        const settings = {
+          workspaceId: result.data.workspaceId,
+          model: result.data.model,
+        };
+        await setQuickChatSettings(settings);
+        return Response.json({ success: true, settings });
+      } catch (error) {
+        logPreferenceSaveFailure("quick-chat", error);
         return errorResponse("save_failed", String(error), 500);
       }
     },
