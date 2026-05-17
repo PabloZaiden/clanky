@@ -250,4 +250,88 @@ describe("useChats", () => {
     });
     expect(result.current.chats[0]?.state.lastActivityAt).toBe("2025-01-01T00:00:03.000Z");
   });
+
+  test("ignores stale streaming activity when status and activity timestamp do not change", async () => {
+    const workspaceChat = createChat({
+      state: {
+        ...createChat().state,
+        status: "streaming",
+        lastActivityAt: "2025-01-01T00:00:05.000Z",
+      },
+    });
+
+    api.get("/api/chats", () => [workspaceChat]);
+
+    const { result } = renderHook(() => useChats(), { wrapper: AppEventsProvider });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(ws.connections().length).toBeGreaterThan(0);
+    });
+
+    const currentChats = result.current.chats;
+
+    act(() => {
+      ws.sendEvent({
+        type: "chat.log",
+        chatId: workspaceChat.config.id,
+        log: {
+          id: "log-1",
+          level: "info",
+          message: "Older activity",
+          timestamp: "2025-01-01T00:00:04.000Z",
+        },
+        timestamp: "2025-01-01T00:00:04.000Z",
+      });
+    });
+
+    expect(result.current.chats).toBe(currentChats);
+    expect(result.current.chats[0]?.state.status).toBe("streaming");
+    expect(result.current.chats[0]?.state.lastActivityAt).toBe("2025-01-01T00:00:05.000Z");
+  });
+
+  test("promotes stale starting activity without lowering last activity time", async () => {
+    const workspaceChat = createChat({
+      state: {
+        ...createChat().state,
+        status: "starting",
+        lastActivityAt: "2025-01-01T00:00:05.000Z",
+      },
+    });
+
+    api.get("/api/chats", () => [workspaceChat]);
+
+    const { result } = renderHook(() => useChats(), { wrapper: AppEventsProvider });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    await waitFor(() => {
+      expect(ws.connections().length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "chat.tool_call",
+        chatId: workspaceChat.config.id,
+        tool: {
+          id: "tool-1",
+          name: "Read",
+          input: { filePath: "src/hooks/useChats.ts" },
+          status: "completed",
+          timestamp: "2025-01-01T00:00:04.000Z",
+        },
+        timestamp: "2025-01-01T00:00:04.000Z",
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.chats[0]?.state.status).toBe("streaming");
+    });
+    expect(result.current.chats[0]?.state.lastActivityAt).toBe("2025-01-01T00:00:05.000Z");
+  });
 });

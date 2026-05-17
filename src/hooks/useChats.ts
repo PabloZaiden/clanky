@@ -47,21 +47,37 @@ function updateChatState(chats: Chat[], id: string, updates: Partial<Chat["state
   }));
 }
 
+function isActivityTimestampIncrease(currentTimestamp: string | undefined, nextTimestamp: string): boolean {
+  return currentTimestamp === undefined || nextTimestamp.localeCompare(currentTimestamp) > 0;
+}
+
 function updateChatStreamingActivity(chats: Chat[], id: string, timestamp: string): Chat[] {
-  return sortChats(chats.map((chat) => {
+  let changed = false;
+  const nextChats = chats.map((chat) => {
     if (chat.config.id !== id) {
       return chat;
     }
 
+    const nextStatus = getStreamingActivityStatus(chat.state.status);
+    const shouldPromoteStatus = nextStatus !== chat.state.status;
+    const shouldUpdateActivity = isActivityTimestampIncrease(chat.state.lastActivityAt, timestamp);
+
+    if (!shouldPromoteStatus && !shouldUpdateActivity) {
+      return chat;
+    }
+
+    changed = true;
     return {
       ...chat,
       state: {
         ...chat.state,
-        status: getStreamingActivityStatus(chat.state.status),
-        lastActivityAt: timestamp,
+        status: nextStatus,
+        lastActivityAt: shouldUpdateActivity ? timestamp : chat.state.lastActivityAt,
       },
     };
-  }));
+  });
+
+  return changed ? nextChats : chats;
 }
 
 async function parseError(response: Response, fallback: string): Promise<string> {
