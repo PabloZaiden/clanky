@@ -654,7 +654,7 @@ describe("ShellSidebarNav", () => {
     expect(onQuickChat).not.toHaveBeenCalled();
   });
 
-  test("pins the quick chat workspace with only chats before the regular workspaces", async () => {
+  test("pins quick chats before the regular workspaces without showing the workspace", async () => {
     const { workspaceGroups } = createSidebarData();
     const quickChatWorkspace = workspaceGroups[0]!.workspaces.find(
       (workspaceNode) => workspaceNode.workspace.id === "workspace-1",
@@ -663,14 +663,17 @@ describe("ShellSidebarNav", () => {
       <SidebarHarness quickChatWorkspace={quickChatWorkspace} />,
     );
 
-    expect(getAllByText("Quick chat workspace")).toHaveLength(1);
+    expect(getAllByText("Quick chats")).toHaveLength(1);
+    expect(queryByText("Quick chat workspace")).not.toBeInTheDocument();
     expect(getAllByText("Workspace Chat")).toHaveLength(2);
+    expect(getAllByText("Workspace 1")).toHaveLength(1);
+    expect(getAllByText("/workspaces/workspace-1")).toHaveLength(1);
     expect(getAllByText("Feature Loop")).toHaveLength(1);
     expect(getAllByText("Loop SSH Session")).toHaveLength(2);
 
     await user.type(getByLabelText("Search sidebar"), "workspace chat");
 
-    expect(queryByText("Quick chat workspace")).not.toBeInTheDocument();
+    expect(queryByText("Quick chats")).not.toBeInTheDocument();
   });
 
   test("keeps footer reload right aligned when the version is absent", () => {
