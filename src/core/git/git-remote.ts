@@ -20,6 +20,15 @@ export async function getRemoteUrl(
   return result.stdout.trim();
 }
 
+export async function hasRemote(
+  executor: CommandExecutor,
+  directory: string,
+  remote = "origin",
+): Promise<boolean> {
+  const result = await runGitCommand(executor, directory, ["remote", "get-url", remote]);
+  return result.success && result.stdout.trim().length > 0;
+}
+
 export async function pushBranch(
   executor: CommandExecutor,
   directory: string,
@@ -40,8 +49,7 @@ export async function fetchBranch(
   branchName: string,
   remote = "origin"
 ): Promise<boolean> {
-  const remoteResult = await runGitCommand(executor, directory, ["remote", "get-url", remote]);
-  if (!remoteResult.success) {
+  if (!(await hasRemote(executor, directory, remote))) {
     log.debug(`[GitService] No remote '${remote}' configured, skipping fetch`);
     return false;
   }
@@ -68,8 +76,7 @@ export async function pull(
   branchName?: string,
   remote = "origin"
 ): Promise<boolean> {
-  const remoteResult = await runGitCommand(executor, directory, ["remote", "get-url", remote]);
-  if (!remoteResult.success) {
+  if (!(await hasRemote(executor, directory, remote))) {
     log.debug(`[GitService] No remote '${remote}' configured, skipping pull`);
     return false;
   }

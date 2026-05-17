@@ -149,6 +149,21 @@ async function isGhAvailable(executor: CommandExecutor, directory: string): Prom
   return result.success;
 }
 
+async function getGitHubOriginRemoteUrl(
+  directory: string,
+  git: PullRequestNavigationGitService,
+): Promise<string> {
+  if (!(await git.hasRemote(directory, "origin"))) {
+    throw new Error(NO_GITHUB_REMOTE_REASON);
+  }
+
+  const remoteUrl = await git.getRemoteUrl(directory, "origin");
+  if (!parseRepositoryCoordinates(remoteUrl)) {
+    throw new Error(NO_GITHUB_REMOTE_REASON);
+  }
+  return remoteUrl;
+}
+
 function parsePullRequestView(stdout: string): PullRequestView | null {
   const trimmed = stdout.trim();
   if (!trimmed) {
@@ -418,10 +433,7 @@ export async function ensureAutomaticPrFlowPullRequest(
     throw new Error(GH_UNAVAILABLE_REASON);
   }
 
-  const remoteUrl = await git.getRemoteUrl(directory, "origin");
-  if (!parseRepositoryCoordinates(remoteUrl)) {
-    throw new Error(NO_GITHUB_REMOTE_REASON);
-  }
+  await getGitHubOriginRemoteUrl(directory, git);
 
   const existingPullRequest = await getExistingPullRequest(workingBranch, directory, executor);
   if (existingPullRequest) {
@@ -473,10 +485,7 @@ export async function enableExistingPullRequestAutoMerge(
     throw new Error(GH_UNAVAILABLE_REASON);
   }
 
-  const remoteUrl = await git.getRemoteUrl(directory, "origin");
-  if (!parseRepositoryCoordinates(remoteUrl)) {
-    throw new Error(NO_GITHUB_REMOTE_REASON);
-  }
+  await getGitHubOriginRemoteUrl(directory, git);
 
   const existingPullRequest = await getExistingPullRequest(workingBranch, directory, executor);
   if (!existingPullRequest) {
@@ -596,11 +605,8 @@ export async function fetchAutomaticPrFlowSnapshot(
     throw new Error(GH_UNAVAILABLE_REASON);
   }
 
-  const remoteUrl = await git.getRemoteUrl(directory, "origin");
-  const coordinates = parseRepositoryCoordinates(remoteUrl);
-  if (!coordinates) {
-    throw new Error(NO_GITHUB_REMOTE_REASON);
-  }
+  const remoteUrl = await getGitHubOriginRemoteUrl(directory, git);
+  const coordinates = parseRepositoryCoordinates(remoteUrl)!;
 
   const result = await executor.exec(
     "gh",

@@ -26,6 +26,8 @@ export interface UseWorkspaceCreateResult {
   setAutomaticServerId: (id: string) => void;
   automaticRepoUrl: string;
   setAutomaticRepoUrl: (url: string) => void;
+  automaticCreateNewRepository: boolean;
+  setAutomaticCreateNewRepository: (createNewRepository: boolean) => void;
   automaticBasePath: string;
   setAutomaticBasePath: (path: string) => void;
   automaticDevcontainerSubpath: string;
@@ -73,6 +75,7 @@ export function useWorkspaceCreate({
   const [workspaceCreateSubmitting, setWorkspaceCreateSubmitting] = useState(false);
   const [automaticServerId, setAutomaticServerId] = useState("");
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
+  const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
   const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
   const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
@@ -113,6 +116,7 @@ export function useWorkspaceCreate({
     setWorkspaceCreateSubmitting(false);
     setAutomaticServerId(servers[0]?.config.id ?? "");
     setAutomaticRepoUrl("");
+    setAutomaticCreateNewRepository(false);
     setAutomaticBasePath("/workspaces");
     setAutomaticDevcontainerSubpath("");
     setAutomaticDevboxTemplate("");
@@ -174,7 +178,8 @@ export function useWorkspaceCreate({
     setWorkspaceCreateMode("automatic");
     setWorkspaceName(config.name);
     setAutomaticServerId(config.sshServerId);
-    setAutomaticRepoUrl(config.repoUrl);
+    setAutomaticRepoUrl(config.repoUrl ?? "");
+    setAutomaticCreateNewRepository(config.createNewRepository ?? false);
     setAutomaticBasePath(config.basePath);
     setAutomaticDevcontainerSubpath(config.devcontainerSubpath ?? "");
     setAutomaticDevboxTemplate(config.devboxTemplate ?? "");
@@ -194,21 +199,30 @@ export function useWorkspaceCreate({
       }
 
       if (workspaceCreateMode === "automatic") {
-        if (!automaticServerId.trim() || !automaticRepoUrl.trim() || !automaticBasePath.trim()) {
-          toast.error("Saved SSH server, repository URL, and remote base path are required.");
+        if (!automaticServerId.trim() || !automaticBasePath.trim()) {
+          toast.error("Saved SSH server and remote base path are required.");
+          return;
+        }
+        if (!automaticCreateNewRepository && !automaticRepoUrl.trim()) {
+          toast.error("Repository URL is required.");
+          return;
+        }
+        if (automaticCreateNewRepository && !automaticDevboxTemplate.trim()) {
+          toast.error("Devbox template is required when the repository doesn't exist yet.");
           return;
         }
 
         const snapshot = await provisioning.startJob({
           name,
           sshServerId: automaticServerId,
-          repoUrl: automaticRepoUrl.trim(),
+          repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
           basePath: automaticBasePath.trim(),
           devcontainerSubpath: automaticDevboxTemplate.trim()
             ? null
             : automaticDevcontainerSubpath.trim() || null,
           devboxTemplate: automaticDevboxTemplate.trim() || null,
           provider: automaticProvider,
+          createNewRepository: automaticCreateNewRepository,
           password: automaticPassword,
           mode: "provision",
           targetDirectory: null,
@@ -263,6 +277,8 @@ export function useWorkspaceCreate({
     setAutomaticServerId,
     automaticRepoUrl,
     setAutomaticRepoUrl,
+    automaticCreateNewRepository,
+    setAutomaticCreateNewRepository,
     automaticBasePath,
     setAutomaticBasePath,
     automaticDevcontainerSubpath,

@@ -31,7 +31,7 @@ export type {
 
 // Sub-module imports
 import { isGitRepo, getCurrentBranch, getLocalBranches, getDefaultBranch, verifyBranch, hasUncommittedChanges, getChangedFiles, branchExists, hasStagedChanges, isAncestor, getConflictedFiles } from "./git-repo-query";
-import { getRemoteUrl as getRemoteUrlRemote, pushBranch, fetchBranch, pull, pullBranch } from "./git-remote";
+import { getRemoteUrl as getRemoteUrlRemote, hasRemote as hasRemoteRemote, pushBranch, fetchBranch, pull, pullBranch } from "./git-remote";
 import { assertValidBranchName, createBranch, checkoutBranch, deleteBranch, ensureBranch } from "./git-branch";
 import { stageAll, commit, getLastCommitMessage } from "./git-commit";
 import { stash, stashPop } from "./git-stash";
@@ -164,6 +164,10 @@ export class GitService {
 
   async getRemoteUrl(directory: string, remote = "origin"): Promise<string> {
     return getRemoteUrlRemote(this.executor, directory, remote);
+  }
+
+  async hasRemote(directory: string, remote = "origin"): Promise<boolean> {
+    return hasRemoteRemote(this.executor, directory, remote);
   }
 
   async verifyBranch(directory: string, expectedBranch: string): Promise<BranchVerificationResult> {

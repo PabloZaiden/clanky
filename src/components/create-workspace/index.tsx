@@ -64,8 +64,10 @@ export function CreateWorkspaceModal({
     automaticBasePath: string;
     automaticDevcontainerSubpath: string;
     automaticDevboxTemplate: string;
+    automaticCreateNewRepository: boolean;
     automaticProvider: AgentProvider;
   } | null>(null);
+  const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
 
   // Workspace form state
   const [name, setName] = useState("");
@@ -73,6 +75,7 @@ export function CreateWorkspaceModal({
   const [mode, setMode] = useState<"manual" | "automatic">("manual");
   const [automaticServerId, setAutomaticServerId] = useState("");
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("");
+  const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
   const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
   const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState("");
@@ -111,6 +114,7 @@ export function CreateWorkspaceModal({
     setDirectory("");
     setAutomaticServerId(registeredSshServers[0]?.config.id ?? "");
     setAutomaticRepoUrl("");
+    setAutomaticCreateNewRepository(false);
     setAutomaticBasePath("/workspaces");
     setAutomaticDevcontainerSubpath("");
     setAutomaticDevboxTemplate("");
@@ -152,18 +156,20 @@ export function CreateWorkspaceModal({
         automaticBasePath: automaticBasePath.trim(),
         automaticDevcontainerSubpath: automaticDevcontainerSubpath.trim(),
         automaticDevboxTemplate: automaticDevboxTemplate.trim(),
+        automaticCreateNewRepository,
         automaticProvider,
       };
       const snapshot = await provisioning.startJob({
         name: name.trim(),
         sshServerId: automaticServerId,
-        repoUrl: automaticRepoUrl.trim(),
+        repoUrl: automaticCreateNewRepository ? "" : automaticRepoUrl.trim(),
         basePath: automaticBasePath.trim(),
         devcontainerSubpath: automaticDevboxTemplate.trim()
           ? null
           : automaticDevcontainerSubpath.trim() || null,
         devboxTemplate: automaticDevboxTemplate.trim() || null,
         provider: automaticProvider,
+        createNewRepository: automaticCreateNewRepository,
         password: automaticPassword,
         mode: "provision",
         targetDirectory: null,
@@ -238,10 +244,21 @@ export function CreateWorkspaceModal({
     serverId: automaticServerId,
     password: automaticPassword,
   });
+  useEffect(() => {
+    if (!automaticCreateNewRepository || automaticDevboxTemplate || templatesLoading) {
+      return;
+    }
+    const firstTemplate = templates[0]?.name;
+    if (firstTemplate) {
+      autoSelectedDevboxTemplateRef.current = firstTemplate;
+      setAutomaticDevboxTemplate(firstTemplate);
+    }
+  }, [automaticCreateNewRepository, automaticDevboxTemplate, templates, templatesLoading]);
   const isAutomaticValid = isNameValid
     && automaticServerId.trim().length > 0
-    && automaticRepoUrl.trim().length > 0
-    && automaticBasePath.trim().length > 0;
+    && (automaticCreateNewRepository || automaticRepoUrl.trim().length > 0)
+    && automaticBasePath.trim().length > 0
+    && (!automaticCreateNewRepository || automaticDevboxTemplate.trim().length > 0);
   const isManualValid = isNameValid && isDirectoryValid && isServerSettingsValid;
   const isValid = mode === "automatic" ? isAutomaticValid : isManualValid;
   const provisioningStatus = provisioning.snapshot?.job.state.status;
@@ -259,7 +276,8 @@ export function CreateWorkspaceModal({
     const values = config ? {
       name: config.name,
       automaticServerId: config.sshServerId,
-      automaticRepoUrl: config.repoUrl,
+      automaticRepoUrl: config.repoUrl ?? "",
+      automaticCreateNewRepository: config.createNewRepository ?? false,
       automaticBasePath: config.basePath,
       automaticDevcontainerSubpath: config.devcontainerSubpath ?? "",
       automaticDevboxTemplate: config.devboxTemplate ?? "",
@@ -271,6 +289,7 @@ export function CreateWorkspaceModal({
       setName(values.name);
       setAutomaticServerId(values.automaticServerId);
       setAutomaticRepoUrl(values.automaticRepoUrl);
+      setAutomaticCreateNewRepository(values.automaticCreateNewRepository);
       setAutomaticBasePath(values.automaticBasePath);
       setAutomaticDevcontainerSubpath(values.automaticDevcontainerSubpath);
       setAutomaticDevboxTemplate(values.automaticDevboxTemplate);
@@ -355,12 +374,27 @@ export function CreateWorkspaceModal({
               }}
               repoUrl={automaticRepoUrl}
               onRepoUrlChange={setAutomaticRepoUrl}
+              createNewRepository={automaticCreateNewRepository}
+              onCreateNewRepositoryChange={(createNewRepository) => {
+                setAutomaticCreateNewRepository(createNewRepository);
+                if (
+                  !createNewRepository
+                  && autoSelectedDevboxTemplateRef.current
+                  && automaticDevboxTemplate === autoSelectedDevboxTemplateRef.current
+                ) {
+                  setAutomaticDevboxTemplate("");
+                }
+                autoSelectedDevboxTemplateRef.current = null;
+              }}
               basePath={automaticBasePath}
               onBasePathChange={setAutomaticBasePath}
               devcontainerSubpath={automaticDevcontainerSubpath}
               onDevcontainerSubpathChange={setAutomaticDevcontainerSubpath}
               devboxTemplate={automaticDevboxTemplate}
-              onDevboxTemplateChange={setAutomaticDevboxTemplate}
+              onDevboxTemplateChange={(template) => {
+                autoSelectedDevboxTemplateRef.current = null;
+                setAutomaticDevboxTemplate(template);
+              }}
               provider={automaticProvider}
               onProviderChange={setAutomaticProvider}
               password={automaticPassword}

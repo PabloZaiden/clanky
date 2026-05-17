@@ -197,6 +197,7 @@ describe("CreateWorkspaceModal", () => {
       provider: "copilot",
       credentialToken: null,
       mode: "provision",
+      createNewRepository: false,
       targetDirectory: null,
       workspaceId: null,
     });
@@ -277,6 +278,68 @@ describe("CreateWorkspaceModal", () => {
       provider: "copilot",
       credentialToken: null,
       mode: "provision",
+      createNewRepository: false,
+      targetDirectory: null,
+      workspaceId: null,
+    });
+  });
+
+  test("submits automatic provisioning for a repository that does not exist yet", async () => {
+    const startedSnapshot = {
+      ...createSnapshot("running"),
+      job: {
+        ...createSnapshot("running").job,
+        config: {
+          ...createSnapshot("running").job.config,
+          repoUrl: "",
+          devboxTemplate: "python",
+          createNewRepository: true,
+        },
+      },
+    };
+    api.post("/api/provisioning-jobs", () => startedSnapshot);
+    api.get("/api/provisioning-jobs/:id", () => startedSnapshot);
+
+    const { getByLabelText, getByRole, user } = renderWithUser(
+      <CreateWorkspaceModal
+        isOpen={true}
+        onClose={() => {}}
+        onCreate={mock(async () => true)}
+        registeredSshServers={registeredSshServers}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Automatic" }));
+    await user.type(getByLabelText("Workspace Name *"), "New_Workspace");
+    const repoUrlInput = getByLabelText("Git Repository URL *");
+    const newRepositoryCheckbox = getByLabelText("Create a new repository (the repository doesn't exist yet)");
+    expect(newRepositoryCheckbox).not.toBeChecked();
+
+    await user.click(newRepositoryCheckbox);
+    expect(repoUrlInput).toBeDisabled();
+    await user.click(getAdvancedOptionsButton());
+
+    await waitFor(() => {
+      expect(getAutomaticDevboxTemplateSelect().value).toBe("python");
+    });
+
+    await user.click(getByRole("button", { name: "Start Provisioning" }));
+
+    await waitFor(() => {
+      expect(api.calls("/api/provisioning-jobs", "POST")).toHaveLength(1);
+    });
+
+    expect(api.calls("/api/provisioning-jobs", "POST")[0]?.body).toEqual({
+      name: "New_Workspace",
+      sshServerId: "server-1",
+      repoUrl: "",
+      basePath: "/workspaces",
+      devcontainerSubpath: null,
+      devboxTemplate: "python",
+      provider: "copilot",
+      credentialToken: null,
+      mode: "provision",
+      createNewRepository: true,
       targetDirectory: null,
       workspaceId: null,
     });
@@ -450,6 +513,7 @@ describe("CreateWorkspaceModal", () => {
       provider: "copilot",
       credentialToken: null,
       mode: "provision",
+      createNewRepository: false,
       targetDirectory: null,
       workspaceId: null,
     });

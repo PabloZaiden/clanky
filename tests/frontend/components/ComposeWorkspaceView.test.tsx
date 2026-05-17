@@ -62,6 +62,7 @@ function ComposeWorkspaceViewHarness({
   const [workspaceServerSettingsValid, setWorkspaceServerSettingsValid] = useState(true);
   const [automaticServerId, setAutomaticServerId] = useState("");
   const [automaticRepoUrl, setAutomaticRepoUrl] = useState("git@github.com:owner/repo.git");
+  const [automaticCreateNewRepository, setAutomaticCreateNewRepository] = useState(false);
   const [automaticBasePath, setAutomaticBasePath] = useState("/workspaces");
   const [automaticDevcontainerSubpath, setAutomaticDevcontainerSubpath] = useState("");
   const [automaticDevboxTemplate, setAutomaticDevboxTemplate] = useState(initialTemplate);
@@ -91,6 +92,8 @@ function ComposeWorkspaceViewHarness({
         setAutomaticServerId,
         automaticRepoUrl,
         setAutomaticRepoUrl,
+        automaticCreateNewRepository,
+        setAutomaticCreateNewRepository,
         automaticBasePath,
         setAutomaticBasePath,
         automaticDevcontainerSubpath,

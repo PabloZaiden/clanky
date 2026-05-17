@@ -13,6 +13,7 @@ export { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
 export interface PullRequestNavigationGitService {
   getDefaultBranch(directory: string): Promise<string>;
   getRemoteUrl(directory: string, remote?: string): Promise<string>;
+  hasRemote(directory: string, remote?: string): Promise<boolean>;
 }
 
 const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the loop environment.";
