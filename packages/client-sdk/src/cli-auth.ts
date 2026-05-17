@@ -5,6 +5,7 @@ import { z } from "zod";
 import { formatCookieHeader, parseCookieHeader } from "./http-cookies";
 
 const DEFAULT_SCOPE = "";
+const DEFAULT_LOCAL_BASE_URL = "http://localhost:3000";
 const CLI_STATE_DIRECTORY = ".ralpher";
 const CLI_CREDENTIALS_FILE = "cli-auth.json";
 const inFlightRefreshes = new Map<string, Promise<StoredCliCredentials | null>>();
@@ -64,6 +65,17 @@ const StoredCliCredentialsSchema = z.object({
 
 export type StoredCliCredentials = z.infer<typeof StoredCliCredentialsSchema>;
 
+export type CliRequestAuthContext =
+  | {
+    kind: "bearer";
+    credentials: StoredCliCredentials;
+    baseUrl: string;
+  }
+  | {
+    kind: "anonymous-local";
+    baseUrl: string;
+  };
+
 export interface CliAuthDependencies {
   fetchFn: typeof fetch;
   sleep: (ms: number) => Promise<void>;
@@ -82,6 +94,11 @@ function getRequestUrl(input: string | URL | Request): string {
     return input.url;
   }
   return String(input);
+}
+
+function isLocalhostBaseUrl(baseUrl: string): boolean {
+  const { hostname } = new URL(baseUrl);
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
 }
 
 export function normalizeBaseUrlValue(rawValue: string): string {
@@ -490,6 +507,55 @@ export async function getValidatedCredentials(
   }
 
   return await refreshStoredCredentials(storedCredentials, dependencies, command.baseUrl);
+}
+
+async function probeAnonymousLocalAuthStatus(
+  baseUrl: string,
+  dependencies: {
+    fetchFn: typeof fetch;
+  },
+): Promise<boolean> {
+  if (!isLocalhostBaseUrl(baseUrl)) {
+    return false;
+  }
+
+  const { response, body } = await requestJson(
+    dependencies.fetchFn,
+    `${baseUrl}/api/auth/status`,
+  );
+  if (!response.ok) {
+    return false;
+  }
+
+  const parsed = AuthStatusResponseSchema.safeParse(body);
+  return parsed.success && parsed.data.authKind === "anonymous";
+}
+
+export async function getCliRequestAuthContext(
+  command: StatusCommandOptions,
+  dependencies: {
+    fetchFn: typeof fetch;
+    now: () => Date;
+  },
+): Promise<CliRequestAuthContext | null> {
+  const credentials = await getValidatedCredentials(command, dependencies);
+  if (credentials) {
+    return {
+      kind: "bearer",
+      credentials,
+      baseUrl: credentials.baseUrl,
+    };
+  }
+
+  const baseUrl = command.baseUrl ?? DEFAULT_LOCAL_BASE_URL;
+  if (!await probeAnonymousLocalAuthStatus(baseUrl, dependencies)) {
+    return null;
+  }
+
+  return {
+    kind: "anonymous-local",
+    baseUrl,
+  };
 }
 
 async function probeAuthStatus(

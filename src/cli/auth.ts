@@ -1,5 +1,6 @@
 export {
   getAuthorizedHeaders,
+  getCliRequestAuthContext,
   getTokenErrorMessage,
   getValidatedCredentials,
   loadStoredCliCredentials,
@@ -11,6 +12,7 @@ export {
   saveStoredCliCredentials,
   type AuthCommandOptions,
   type CliAuthDependencies,
+  type CliRequestAuthContext,
   type CliStatusDependencies,
   type StatusCommandOptions,
   type StoredCliCredentials,
