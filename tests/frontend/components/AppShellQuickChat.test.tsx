@@ -46,21 +46,16 @@ function installSuccessfulQuickChatApi() {
       variant: "",
     },
   }));
-  api.get("/api/models", () => [
-    {
-      providerID: "copilot",
-      providerName: "Copilot",
-      modelID: "gpt-5.5",
-      modelName: "GPT-5.5",
-      connected: true,
-      variants: [""],
-    },
-  ]);
-  api.get("/api/git/default-branch", () => ({ defaultBranch: "main" }));
-  api.get("/api/git/branches", () => ({
-    currentBranch: "feature",
-    branches: [{ name: "feature", current: true }],
-  }));
+}
+
+function installUnexpectedQuickChatPreflightApi() {
+  const unexpectedPreflight = (endpoint: string) => () => {
+    throw new Error(`Quick chat should not call ${endpoint} before creating the chat`);
+  };
+
+  api.get("/api/models", unexpectedPreflight("/api/models"));
+  api.get("/api/git/default-branch", unexpectedPreflight("/api/git/default-branch"));
+  api.get("/api/git/branches", unexpectedPreflight("/api/git/branches"));
 }
 
 describe("AppShell quick chat", () => {
@@ -73,8 +68,9 @@ describe("AppShell quick chat", () => {
     api.uninstall();
   });
 
-  test("creates a quick chat with configured workspace, model, and worktree", async () => {
+  test("creates a quick chat with configured workspace, model, and worktree without waiting for preflight", async () => {
     installSuccessfulQuickChatApi();
+    installUnexpectedQuickChatPreflightApi();
     api.post("/api/chats", (req) => ({
       config: {
         id: "chat-created",
@@ -84,7 +80,6 @@ describe("AppShell quick chat", () => {
         model: (req.body as { model: unknown }).model,
         useWorktree: true,
         autoApprovePermissions: true,
-        baseBranch: "main",
         createdAt: "2026-05-17T00:00:00.000Z",
         updatedAt: "2026-05-17T00:00:00.000Z",
         mode: "chat",
@@ -121,8 +116,10 @@ describe("AppShell quick chat", () => {
       },
       useWorktree: true,
       autoApprovePermissions: true,
-      baseBranch: "main",
     });
+    expect(api.calls("/api/models", "GET")).toHaveLength(0);
+    expect(api.calls("/api/git/default-branch", "GET")).toHaveLength(0);
+    expect(api.calls("/api/git/branches", "GET")).toHaveLength(0);
   });
 
   test("opens settings without creating a chat when quick chat workspace is missing", async () => {

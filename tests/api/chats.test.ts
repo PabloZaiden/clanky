@@ -225,6 +225,26 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("creates chats without an explicit base branch", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Chat Without Base Branch",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    expect(created.config.name).toBe("Chat Without Base Branch");
+    expect(created.config.workspaceId).toBe(testWorkspaceId);
+    expect(created.config.useWorktree).toBe(true);
+    expect(created.config.baseBranch).toBeUndefined();
+  });
+
   test("lists chats without hydrating transcript payloads", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",

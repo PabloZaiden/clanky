@@ -15,7 +15,7 @@ export const CreateChatRequestSchema = z.object({
   model: ModelConfigSchema,
   useWorktree: z.boolean({ error: "useWorktree is required and must be a boolean (true or false)" }),
   autoApprovePermissions: z.boolean().default(true),
-  baseBranch: z.string().min(1, "baseBranch is required"),
+  baseBranch: z.string().min(1, "baseBranch must be non-empty when provided").optional(),
 });
 
 export const UpdateChatRequestSchema = z.object({
