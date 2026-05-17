@@ -2627,6 +2627,45 @@ describe("StopPatternDetector", () => {
       expect(engine.state.status).toBe("completed");
     });
 
+    test("uses the latest post-tool response segment when completion payload is empty", async () => {
+      const loop = createTestLoop({
+        maxIterations: Number.POSITIVE_INFINITY,
+        stopPattern: "RALPHER_DONE_MARKER$",
+      });
+      const backend = createEventSequenceBackend((push, end) => {
+        push({ type: "message.start", messageId: "msg-1" });
+        push({ type: "message.delta", content: "I’m checking the repo first." });
+        push({ type: "tool.start", toolCallId: "tool-1", toolName: "read", input: { path: "README.md" } });
+        push({ type: "tool.complete", toolCallId: "tool-1", toolName: "read", output: "README contents" });
+        push({ type: "message.delta", content: "I made the change." });
+        push({ type: "tool.start", toolCallId: "tool-2", toolName: "edit", input: { path: "README.md" } });
+        push({ type: "tool.complete", toolCallId: "tool-2", toolName: "edit", output: "ok" });
+        push({ type: "message.delta", content: "Done. RALPHER_DONE_MARKER" });
+        push({ type: "message.complete", content: "" });
+        end();
+      });
+
+      const engine = new LoopEngine({
+        loop,
+        backend,
+        gitService,
+        eventEmitter: emitter,
+      });
+
+      await engine.start();
+
+      const assistantMessages = engine.state.messages.filter((message) => message.role === "assistant");
+      expect(assistantMessages.map((message) => message.content)).toEqual(["Done. RALPHER_DONE_MARKER"]);
+
+      const responseLogs = engine.state.logs.filter((log) => log.details?.["logKind"] === "response");
+      expect(responseLogs.map((log) => log.details?.["responseContent"])).toEqual([
+        "I’m checking the repo first.",
+        "I made the change.",
+        "Done. RALPHER_DONE_MARKER",
+      ]);
+      expect(engine.state.status).toBe("completed");
+    });
+
     test("starts fresh reasoning log after message.complete", async () => {
       // Use 2 iterations: first completes, second triggers new reasoning
       const loop = createTestLoop({ maxIterations: 2 });
