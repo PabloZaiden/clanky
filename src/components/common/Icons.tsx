@@ -30,6 +30,24 @@ export function CodeIcon({ className = "", size = "h-4 w-4" }: IconProps) {
   );
 }
 
+export function ChatIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M7 8h10M7 12h6m-8 8 3.5-3.5H18a3 3 0 003-3V7a3 3 0 00-3-3H6a3 3 0 00-3 3v6.5a3 3 0 003 3h.5L5 20z"
+      />
+    </svg>
+  );
+}
+
 /**
  * Edit/Pencil icon for rename and edit actions.
  */

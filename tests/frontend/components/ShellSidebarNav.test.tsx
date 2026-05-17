@@ -200,11 +200,21 @@ function SidebarHarness({
   navigateWithinShell,
   workspaceGroups: workspaceGroupsOverride,
   serverNodes: serverNodesOverride,
+  quickChatWorkspace,
+  quickChatUnavailableReason,
+  onQuickChat,
+  onConfigureQuickChat,
+  version,
 }: {
   route?: ShellRoute;
   navigateWithinShell?: (route: ShellRoute) => void;
   workspaceGroups?: ReturnType<typeof createSidebarData>["workspaceGroups"];
   serverNodes?: ReturnType<typeof createSidebarData>["serverNodes"];
+  quickChatWorkspace?: ReturnType<typeof createSidebarData>["workspaceGroups"][number]["workspaces"][number] | null;
+  quickChatUnavailableReason?: string | null;
+  onQuickChat?: () => void;
+  onConfigureQuickChat?: () => void;
+  version?: string;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const { workspaceGroups, serverNodes } = createSidebarData();
@@ -220,7 +230,12 @@ function SidebarHarness({
       toggleNodeCollapsed={(key) => setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? false) }))}
       workspaceGroups={workspaceGroupsOverride ?? workspaceGroups}
       serverNodes={serverNodesOverride ?? serverNodes}
-      version="test"
+      quickChatWorkspace={quickChatWorkspace ?? null}
+      quickChatLoading={false}
+      quickChatUnavailableReason={quickChatUnavailableReason ?? null}
+      onQuickChat={onQuickChat ?? mock(() => {})}
+      onConfigureQuickChat={onConfigureQuickChat ?? mock(() => {})}
+      version={version}
       sidebarSearchFocusRequest={0}
     />
   );
@@ -595,6 +610,74 @@ describe("ShellSidebarNav", () => {
       "title",
       "New SSH session (Ctrl/Cmd+Shift+S)",
     );
+  });
+
+  test("uses the header quick chat action and footer reload action", async () => {
+    const onQuickChat = mock(() => {});
+    const originalReload = window.location.reload;
+    const reload = mock(() => {});
+    Object.defineProperty(window.location, "reload", {
+      configurable: true,
+      value: reload,
+    });
+
+    try {
+      const { getByRole, user } = renderWithUser(<SidebarHarness onQuickChat={onQuickChat} />);
+
+      await user.click(getByRole("button", { name: "Start quick chat" }));
+      expect(onQuickChat).toHaveBeenCalledTimes(1);
+
+      await user.click(getByRole("button", { name: "Reload page" }));
+      expect(reload).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(window.location, "reload", {
+        configurable: true,
+        value: originalReload,
+      });
+    }
+  });
+
+  test("routes incomplete quick chat settings to Settings from the header button", async () => {
+    const onQuickChat = mock(() => {});
+    const onConfigureQuickChat = mock(() => {});
+    const { getByRole, user } = renderWithUser(
+      <SidebarHarness
+        quickChatUnavailableReason="Choose a quick chat workspace in Settings first"
+        onQuickChat={onQuickChat}
+        onConfigureQuickChat={onConfigureQuickChat}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Configure quick chat" }));
+
+    expect(onConfigureQuickChat).toHaveBeenCalledTimes(1);
+    expect(onQuickChat).not.toHaveBeenCalled();
+  });
+
+  test("pins the quick chat workspace with only chats before the regular workspaces", async () => {
+    const { workspaceGroups } = createSidebarData();
+    const quickChatWorkspace = workspaceGroups[0]!.workspaces.find(
+      (workspaceNode) => workspaceNode.workspace.id === "workspace-1",
+    )!;
+    const { getAllByText, getByLabelText, queryByText, user } = renderWithUser(
+      <SidebarHarness quickChatWorkspace={quickChatWorkspace} />,
+    );
+
+    expect(getAllByText("Quick chat workspace")).toHaveLength(1);
+    expect(getAllByText("Workspace Chat")).toHaveLength(2);
+    expect(getAllByText("Feature Loop")).toHaveLength(1);
+    expect(getAllByText("Loop SSH Session")).toHaveLength(2);
+
+    await user.type(getByLabelText("Search sidebar"), "workspace chat");
+
+    expect(queryByText("Quick chat workspace")).not.toBeInTheDocument();
+  });
+
+  test("keeps footer reload right aligned when the version is absent", () => {
+    const { getByRole, queryByText } = renderWithUser(<SidebarHarness version={undefined} />);
+
+    expect(queryByText(/^vtest$/)).not.toBeInTheDocument();
+    expect(getByRole("button", { name: "Reload page" })).toBeInTheDocument();
   });
 
   test("hides empty workspace groups", () => {
