@@ -67,6 +67,7 @@ export function CreateWorkspaceModal({
     automaticCreateNewRepository: boolean;
     automaticProvider: AgentProvider;
   } | null>(null);
+  const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
 
   // Workspace form state
   const [name, setName] = useState("");
@@ -249,6 +250,7 @@ export function CreateWorkspaceModal({
     }
     const firstTemplate = templates[0]?.name;
     if (firstTemplate) {
+      autoSelectedDevboxTemplateRef.current = firstTemplate;
       setAutomaticDevboxTemplate(firstTemplate);
     }
   }, [automaticCreateNewRepository, automaticDevboxTemplate, templates, templatesLoading]);
@@ -375,16 +377,24 @@ export function CreateWorkspaceModal({
               createNewRepository={automaticCreateNewRepository}
               onCreateNewRepositoryChange={(createNewRepository) => {
                 setAutomaticCreateNewRepository(createNewRepository);
-                if (createNewRepository && !automaticDevboxTemplate && templates[0]?.name) {
-                  setAutomaticDevboxTemplate(templates[0].name);
+                if (
+                  !createNewRepository
+                  && autoSelectedDevboxTemplateRef.current
+                  && automaticDevboxTemplate === autoSelectedDevboxTemplateRef.current
+                ) {
+                  setAutomaticDevboxTemplate("");
                 }
+                autoSelectedDevboxTemplateRef.current = null;
               }}
               basePath={automaticBasePath}
               onBasePathChange={setAutomaticBasePath}
               devcontainerSubpath={automaticDevcontainerSubpath}
               onDevcontainerSubpathChange={setAutomaticDevcontainerSubpath}
               devboxTemplate={automaticDevboxTemplate}
-              onDevboxTemplateChange={setAutomaticDevboxTemplate}
+              onDevboxTemplateChange={(template) => {
+                autoSelectedDevboxTemplateRef.current = null;
+                setAutomaticDevboxTemplate(template);
+              }}
               provider={automaticProvider}
               onProviderChange={setAutomaticProvider}
               password={automaticPassword}

@@ -203,6 +203,9 @@ export class ProvisioningManager {
       });
 
       setStep(record, this.maxLogEntries, "clone_repo", "Preparing repository checkout");
+      if (record.job.config.createNewRepository) {
+        validateNewRepositoryFolderName(record.job.config.name);
+      }
       const targetDirectory = record.job.config.createNewRepository
         ? pathPosix.join(record.job.config.basePath, record.job.config.name)
         : pathPosix.join(record.job.config.basePath, extractRepoName(record.job.config.repoUrl ?? ""));
@@ -217,7 +220,6 @@ export class ProvisioningManager {
             "A devbox template is required when creating a workspace without an existing repository",
           );
         }
-        validateNewRepositoryFolderName(record.job.config.name);
         if (targetExists) {
           throw new ProvisioningFailedError(
             "clone_conflict",
@@ -245,7 +247,7 @@ export class ProvisioningManager {
           step: "clone_repo",
           label: `Cloning repository into ${targetDirectory}`,
           command: "git",
-            args: ["clone", record.job.config.repoUrl ?? "", targetDirectory],
+          args: ["clone", record.job.config.repoUrl ?? "", targetDirectory],
           timeout: GIT_CLONE_TIMEOUT_MS,
           streamOutput: true,
           errorCode: "clone_failed",

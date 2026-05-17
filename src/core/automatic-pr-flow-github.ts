@@ -153,18 +153,15 @@ async function getGitHubOriginRemoteUrl(
   directory: string,
   git: PullRequestNavigationGitService,
 ): Promise<string> {
-  try {
-    const remoteUrl = await git.getRemoteUrl(directory, "origin");
-    if (!parseRepositoryCoordinates(remoteUrl)) {
-      throw new Error(NO_GITHUB_REMOTE_REASON);
-    }
-    return remoteUrl;
-  } catch (error) {
-    if (String(error).includes("Failed to get remote URL")) {
-      throw new Error(NO_GITHUB_REMOTE_REASON);
-    }
-    throw error;
+  if (!(await git.hasRemote(directory, "origin"))) {
+    throw new Error(NO_GITHUB_REMOTE_REASON);
   }
+
+  const remoteUrl = await git.getRemoteUrl(directory, "origin");
+  if (!parseRepositoryCoordinates(remoteUrl)) {
+    throw new Error(NO_GITHUB_REMOTE_REASON);
+  }
+  return remoteUrl;
 }
 
 function parsePullRequestView(stdout: string): PullRequestView | null {
@@ -609,10 +606,7 @@ export async function fetchAutomaticPrFlowSnapshot(
   }
 
   const remoteUrl = await getGitHubOriginRemoteUrl(directory, git);
-  const coordinates = parseRepositoryCoordinates(remoteUrl);
-  if (!coordinates) {
-    throw new Error(NO_GITHUB_REMOTE_REASON);
-  }
+  const coordinates = parseRepositoryCoordinates(remoteUrl)!;
 
   const result = await executor.exec(
     "gh",

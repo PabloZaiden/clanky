@@ -64,6 +64,10 @@ class StubGitService implements PullRequestNavigationGitService {
   async getRemoteUrl(_directory: string, _remote = "origin"): Promise<string> {
     return this.remoteUrl;
   }
+
+  async hasRemote(_directory: string, _remote = "origin"): Promise<boolean> {
+    return this.remoteUrl.trim().length > 0;
+  }
 }
 
 describe("pull request navigation", () => {

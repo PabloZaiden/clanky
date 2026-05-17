@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
@@ -71,6 +71,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     handleTestWorkspaceConnection,
     handleBackToAutomaticWorkspaceForm,
   } = workspaceCreate;
+  const autoSelectedDevboxTemplateRef = useRef<string | null>(null);
 
   const workspaceCreateFormId = "workspace-create-form";
   const provisioningStatus = provisioning.snapshot?.job.state.status;
@@ -96,6 +97,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
     }
     const firstTemplate = templates[0]?.name;
     if (firstTemplate) {
+      autoSelectedDevboxTemplateRef.current = firstTemplate;
       setAutomaticDevboxTemplate(firstTemplate);
     }
   }, [automaticCreateNewRepository, automaticDevboxTemplate, setAutomaticDevboxTemplate, templates, templatesLoading]);
@@ -313,14 +315,20 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   type="checkbox"
                   checked={automaticCreateNewRepository}
                   onChange={(event) => {
-                    setAutomaticCreateNewRepository(event.target.checked);
-                    if (event.target.checked && !automaticDevboxTemplate && templates[0]?.name) {
-                      setAutomaticDevboxTemplate(templates[0].name);
+                    const createNewRepository = event.target.checked;
+                    setAutomaticCreateNewRepository(createNewRepository);
+                    if (
+                      !createNewRepository
+                      && autoSelectedDevboxTemplateRef.current
+                      && automaticDevboxTemplate === autoSelectedDevboxTemplateRef.current
+                    ) {
+                      setAutomaticDevboxTemplate("");
                     }
+                    autoSelectedDevboxTemplateRef.current = null;
                   }}
                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span>the repository doesn't exist yet</span>
+                <span>Create a new repository (the repository doesn't exist yet)</span>
               </label>
 
               <InlineField
@@ -410,7 +418,10 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                       <select
                         id="automatic-devbox-template"
                         value={automaticDevboxTemplate}
-                        onChange={(event) => setAutomaticDevboxTemplate(event.target.value)}
+                        onChange={(event) => {
+                          autoSelectedDevboxTemplateRef.current = null;
+                          setAutomaticDevboxTemplate(event.target.value);
+                        }}
                         disabled={!automaticServerId || templatesLoading}
                         className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700 dark:disabled:bg-neutral-900"
                       >

@@ -119,7 +119,7 @@ export function AutomaticWorkspaceForm({
             onChange={(e) => onCreateNewRepositoryChange(e.target.checked)}
             className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
           />
-          <span>the repository doesn't exist yet</span>
+          <span>Create a new repository (the repository doesn't exist yet)</span>
         </label>
       </div>
 

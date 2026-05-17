@@ -312,7 +312,7 @@ describe("CreateWorkspaceModal", () => {
     await user.click(getByRole("button", { name: "Automatic" }));
     await user.type(getByLabelText("Workspace Name *"), "New_Workspace");
     const repoUrlInput = getByLabelText("Git Repository URL *");
-    const newRepositoryCheckbox = getByLabelText("the repository doesn't exist yet");
+    const newRepositoryCheckbox = getByLabelText("Create a new repository (the repository doesn't exist yet)");
     expect(newRepositoryCheckbox).not.toBeChecked();
 
     await user.click(newRepositoryCheckbox);
