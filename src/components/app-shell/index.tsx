@@ -22,6 +22,7 @@ import { isEditableShortcutTarget } from "./use-sidebar";
 import { useWorkspaceCreate } from "./use-workspace-create";
 import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
 import { useComposeState } from "./use-compose-state";
+import { Modal } from "../common";
 
 export type { ShellRoute } from "./shell-types";
 
@@ -383,6 +384,24 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         provisioning={provisioning}
         toast={toast}
       />
+
+      <Modal
+        isOpen={quickChatCreating}
+        onClose={() => {}}
+        title="Creating quick chat"
+        description="Your quick chat is being prepared."
+        size="sm"
+        showCloseButton={false}
+        closeOnOverlayClick={false}
+      >
+        <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+          <span
+            className="inline-block h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-gray-400 border-t-transparent dark:border-gray-500"
+            aria-hidden="true"
+          />
+          <span>Creating a new quick chat...</span>
+        </div>
+      </Modal>
     </div>
   );
 }

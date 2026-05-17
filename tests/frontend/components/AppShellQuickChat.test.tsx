@@ -4,7 +4,7 @@ import type { ShellRoute } from "@/components/AppShell";
 import { AppEventsProvider, type UsePasskeyAuthResult } from "@/hooks";
 import { createWorkspace } from "../helpers/factories";
 import { createMockApi } from "../helpers/mock-api";
-import { renderWithUser, waitFor } from "../helpers/render";
+import { act, renderWithUser, waitFor } from "../helpers/render";
 
 const api = createMockApi();
 
@@ -120,6 +120,68 @@ describe("AppShell quick chat", () => {
     expect(api.calls("/api/models", "GET")).toHaveLength(0);
     expect(api.calls("/api/git/default-branch", "GET")).toHaveLength(0);
     expect(api.calls("/api/git/branches", "GET")).toHaveLength(0);
+  });
+
+  test("shows a blocking loading dialog while quick chat creation is pending", async () => {
+    installSuccessfulQuickChatApi();
+    const pendingChat = Promise.withResolvers<unknown>();
+    api.post("/api/chats", () => pendingChat.promise);
+    const navigate = mock((_route: ShellRoute) => {});
+
+    const { getByRole, queryByRole } = renderWithUser(
+      <AppEventsProvider>
+        <AppShell route={{ view: "home" }} onNavigate={navigate} passkeyAuth={passkeyAuth} />
+      </AppEventsProvider>,
+    );
+
+    const quickChatButton = await waitFor(() => getByRole("button", { name: "Start quick chat" }));
+    act(() => {
+      quickChatButton.click();
+    });
+
+    await waitFor(() => {
+      expect(getByRole("dialog", { name: "Creating quick chat" })).toBeInTheDocument();
+      expect(quickChatButton).toBeDisabled();
+    });
+    expect(api.calls("/api/chats", "POST")).toHaveLength(1);
+
+    const chat = {
+      config: {
+        id: "chat-created",
+        name: "Quick Chat",
+        workspaceId: "workspace-quick",
+        directory: "/workspaces/quick",
+        model: {
+          providerID: "copilot",
+          modelID: "gpt-5.5",
+          variant: "",
+        },
+        useWorktree: true,
+        autoApprovePermissions: true,
+        createdAt: "2026-05-17T00:00:00.000Z",
+        updatedAt: "2026-05-17T00:00:00.000Z",
+        mode: "chat",
+        scope: "workspace",
+      },
+      state: {
+        id: "chat-created",
+        status: "idle",
+        messages: [],
+        logs: [],
+        toolCalls: [],
+      },
+    };
+
+    await act(async () => {
+      pendingChat.resolve(chat);
+      await pendingChat.promise;
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(queryByRole("dialog", { name: "Creating quick chat" })).not.toBeInTheDocument();
+      expect(navigate).toHaveBeenCalledWith({ view: "chat", chatId: "chat-created" });
+    });
   });
 
   test("opens settings without creating a chat when quick chat workspace is missing", async () => {

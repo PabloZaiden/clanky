@@ -645,25 +645,15 @@ export function ShellSidebarNav({
           <>
             {quickChatWorkspace && (
               <SidebarTreeSection
-                title="Quick chat workspace"
+                title="Quick chats"
               >
-                <SidebarTreeItem
-                  active={isWorkspaceActive(quickChatWorkspace.workspace.id)}
-                  title={quickChatWorkspace.workspace.name}
-                  subtitle={quickChatWorkspace.workspace.directory}
-                  indentLevel={1}
-                  onClick={(event) => handleSidebarItemClick(event, {
-                    view: "workspace",
-                    workspaceId: quickChatWorkspace.workspace.id,
-                  })}
-                />
                 {quickChatWorkspace.chats.length > 0 ? (
                   renderChatNodes({
                     chatNodes: quickChatWorkspace.chats,
-                    indentLevel: 2,
+                    indentLevel: 1,
                   })
                 ) : (
-                  <EmptySection message="No chats in this quick chat workspace yet." indentLevel={1} />
+                  <EmptySection message="No quick chats yet." indentLevel={1} />
                 )}
               </SidebarTreeSection>
             )}
