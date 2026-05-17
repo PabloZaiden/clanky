@@ -156,6 +156,7 @@ function handleMessageComplete(
 }
 
 function handleToolStart(event: AgentEvent & { type: "tool.start" }, ctx: IterationContext, toolCtx: ToolProcessingContext): void {
+  ctx.responseContent = "";
   ctx.currentResponseLogId = null;
   ctx.currentResponseLogContent = "";
   ctx.currentReasoningLogId = null;
