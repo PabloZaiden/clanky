@@ -24,6 +24,20 @@ describe("CreateChatRequestSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  test("accepts chat creation without a base branch", () => {
+    const result = CreateChatRequestSchema.safeParse({
+      workspaceId: "ws-1",
+      model: {
+        providerID: "copilot",
+        modelID: "gpt-5.4",
+        variant: "",
+      },
+      useWorktree: true,
+    });
+
+    expect(result.success).toBe(true);
+  });
+
   test("accepts omitted and blank chat names for generated titles", () => {
     const basePayload = {
       workspaceId: "ws-1",

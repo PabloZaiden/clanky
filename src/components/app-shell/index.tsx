@@ -12,9 +12,7 @@ import {
   useWorkspaces,
 } from "../../hooks";
 import type { QuickChatSettings } from "../../types/preferences";
-import { modelVariantExists } from "../ModelSelector";
 import type { UsePasskeyAuthResult } from "../../hooks";
-import { fetchQuickChatBaseBranch, fetchQuickChatModels } from "../../hooks/quick-chat-api";
 import { buildServerSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import { ShellSidebarNav } from "./shell-sidebar-nav";
 import { ShellMainContent } from "./shell-main-content";
@@ -274,24 +272,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
 
     setQuickChatCreating(true);
     try {
-      try {
-        const models = await fetchQuickChatModels(quickChatWorkspace);
-        if (!modelVariantExists(models, settings.model.providerID, settings.model.modelID, settings.model.variant)) {
-          toast.error("The selected quick chat model is not available for this workspace");
-          return;
-        }
-      } catch (modelError) {
-        toast.error(String(modelError));
-        return;
-      }
-
-      const baseBranch = await fetchQuickChatBaseBranch(quickChatWorkspace);
       const chat = await createChat({
         workspaceId: quickChatWorkspace.id,
         model: settings.model,
         useWorktree: true,
         autoApprovePermissions: true,
-        baseBranch,
       });
       if (!chat) {
         toast.error("Failed to create quick chat");
