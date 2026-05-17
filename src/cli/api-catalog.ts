@@ -38,6 +38,7 @@ import {
   SetLastModelRequestSchema,
   SetLogLevelRequestSchema,
   SetMarkdownRenderingRequestSchema,
+  SetQuickChatSettingsRequestSchema,
   SetThemePreferenceRequestSchema,
   SetPendingRequestSchema,
   SshCredentialExchangeRequestSchema,
@@ -409,6 +410,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/preferences/theme": {
     description: "Persist the preferred application theme.",
     requestSchema: SetThemePreferenceRequestSchema,
+  },
+  "/api/preferences/quick-chat": {
+    description: "Persist quick chat workspace and model preferences.",
+    requestSchema: SetQuickChatSettingsRequestSchema,
   },
   "/api/ssh-servers": {
     description: "List or create standalone SSH servers.",

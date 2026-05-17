@@ -5,12 +5,16 @@ import {
   useLoopGrouping,
   useLoops,
   useProvisioningJob,
+  useQuickChatSettings,
   useSshServers,
   useSshSessions,
   useToast,
   useWorkspaces,
 } from "../../hooks";
+import type { QuickChatSettings } from "../../types/preferences";
+import { modelVariantExists } from "../ModelSelector";
 import type { UsePasskeyAuthResult } from "../../hooks";
+import { fetchQuickChatBaseBranch, fetchQuickChatModels } from "../../hooks/quick-chat-api";
 import { buildServerSidebarNodes, buildWorkspaceSidebarGroups } from "./shell-types";
 import { ShellSidebarNav } from "./shell-sidebar-nav";
 import { ShellMainContent } from "./shell-main-content";
@@ -77,6 +81,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     exportConfig,
     importConfig,
   } = useWorkspaces();
+  const quickChatSettings = useQuickChatSettings();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
   const { workspaceGroups } = useLoopGrouping(loops, workspaces, !workspacesLoading);
@@ -134,6 +139,39 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     }),
     [servers, sessions, sessionsByServerId, workspaces],
   );
+  const quickChatWorkspace = useMemo(
+    () => workspaces.find((workspace) => workspace.id === quickChatSettings.settings.workspaceId) ?? null,
+    [quickChatSettings.settings.workspaceId, workspaces],
+  );
+  const quickChatWorkspaceNode = useMemo(() => {
+    if (!quickChatWorkspace) {
+      return null;
+    }
+    for (const group of sidebarWorkspaceGroups) {
+      const workspaceNode = group.workspaces.find((node) => node.workspace.id === quickChatWorkspace.id);
+      if (workspaceNode) {
+        return workspaceNode;
+      }
+    }
+    return null;
+  }, [quickChatWorkspace, sidebarWorkspaceGroups]);
+  const [quickChatCreating, setQuickChatCreating] = useState(false);
+  const quickChatUnavailableReason = useMemo(() => {
+    if (!quickChatSettings.settings.workspaceId) {
+      return "Choose a quick chat workspace in Settings first";
+    }
+    if (!quickChatWorkspace) {
+      return "The selected quick chat workspace no longer exists";
+    }
+    if (!quickChatSettings.settings.model) {
+      return "Choose a quick chat model in Settings first";
+    }
+    return null;
+  }, [
+    quickChatSettings.settings.model,
+    quickChatSettings.settings.workspaceId,
+    quickChatWorkspace,
+  ]);
 
   const shellLoading = chatsLoading || loopsLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
   const shellErrors = [chatsError, loopsError, sshSessionsError, sshServersError, workspaceError].filter(
@@ -215,6 +253,66 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusSidebarSearch, navigateWithinShell]);
 
+  const handleQuickChat = useCallback(async () => {
+    if (quickChatSettings.loading || quickChatCreating) {
+      return;
+    }
+
+    const settings: QuickChatSettings = quickChatSettings.settings;
+    if (!settings.workspaceId) {
+      toast.error("Choose a quick chat workspace in Settings first");
+      return;
+    }
+    if (!quickChatWorkspace) {
+      toast.error("The selected quick chat workspace no longer exists");
+      return;
+    }
+    if (!settings.model) {
+      toast.error("Choose a quick chat model in Settings first");
+      return;
+    }
+
+    setQuickChatCreating(true);
+    try {
+      try {
+        const models = await fetchQuickChatModels(quickChatWorkspace);
+        if (!modelVariantExists(models, settings.model.providerID, settings.model.modelID, settings.model.variant)) {
+          toast.error("The selected quick chat model is not available for this workspace");
+          return;
+        }
+      } catch (modelError) {
+        toast.error(String(modelError));
+        return;
+      }
+
+      const baseBranch = await fetchQuickChatBaseBranch(quickChatWorkspace);
+      const chat = await createChat({
+        workspaceId: quickChatWorkspace.id,
+        model: settings.model,
+        useWorktree: true,
+        autoApprovePermissions: true,
+        baseBranch,
+      });
+      if (!chat) {
+        toast.error("Failed to create quick chat");
+        return;
+      }
+      navigateWithinShell({ view: "chat", chatId: chat.config.id });
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setQuickChatCreating(false);
+    }
+  }, [
+    createChat,
+    navigateWithinShell,
+    quickChatCreating,
+    quickChatSettings.loading,
+    quickChatSettings.settings,
+    quickChatWorkspace,
+    toast,
+  ]);
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-gray-100 text-gray-950 dark:bg-neutral-950 dark:text-gray-100">
       <div
@@ -235,6 +333,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         toggleNodeCollapsed={sidebar.toggleNodeCollapsed}
         workspaceGroups={sidebarWorkspaceGroups}
         serverNodes={serverNodes}
+        quickChatWorkspace={quickChatWorkspaceNode}
+        quickChatLoading={quickChatSettings.loading || quickChatCreating}
+        quickChatUnavailableReason={quickChatUnavailableReason}
+        onQuickChat={() => void handleQuickChat()}
+        onConfigureQuickChat={() => navigateWithinShell({ view: "settings" })}
         version={dashboardData.version ?? undefined}
         sidebarSearchFocusRequest={sidebarSearchFocusRequest}
       />
@@ -281,6 +384,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         importConfig={importConfig}
         dashboardData={dashboardData}
         passkeyAuth={passkeyAuth}
+        quickChatSettings={quickChatSettings.settings}
+        quickChatSettingsLoading={quickChatSettings.loading}
+        quickChatSettingsSaving={quickChatSettings.saving}
+        quickChatSettingsError={quickChatSettings.error}
+        updateQuickChatSettings={quickChatSettings.updateSettings}
         composeActionState={composeState.composeActionState}
         setComposeActionState={composeState.setComposeActionState}
         handleLoopSubmit={composeState.handleLoopSubmit}
