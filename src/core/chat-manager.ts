@@ -8,7 +8,7 @@
  */
 
 import type { Backend, PromptInput, AgentEvent } from "../backends/types";
-import type { Chat, ChatConfig, ChatStatus, Loop, LoopLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
+import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Loop, LoopLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
 import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
@@ -150,14 +150,25 @@ export class ChatManager {
       state: createInitialChatState(id),
     };
 
-    await saveChat(chat);
+    const preparedChat = !isLoopChat(chat) && chat.config.useWorktree
+      ? {
+          ...chat,
+          state: {
+            ...chat.state,
+            worktree: await this.prepareWorktreeState(chat),
+            lastActivityAt: chat.state.lastActivityAt ?? createTimestamp(),
+          },
+        }
+      : chat;
+
+    await saveChat(preparedChat);
     this.emitter.emit({
       type: "chat.created",
       chatId: id,
-      config: chat.config,
+      config: preparedChat.config,
       timestamp: now,
     });
-    return chat;
+    return preparedChat;
   }
 
   async getChat(chatId: string): Promise<Chat | null> {
@@ -886,6 +897,23 @@ export class ChatManager {
       return chat;
     }
 
+    const nextWorktreeState = await this.prepareWorktreeState(chat);
+    if (
+      chat.state.worktree?.originalBranch === nextWorktreeState.originalBranch
+      && chat.state.worktree?.workingBranch === nextWorktreeState.workingBranch
+      && chat.state.worktree?.worktreePath === nextWorktreeState.worktreePath
+    ) {
+      return chat;
+    }
+
+    return this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      worktree: nextWorktreeState,
+      lastActivityAt: chat.state.lastActivityAt ?? createTimestamp(),
+    });
+  }
+
+  private async prepareWorktreeState(chat: Chat): Promise<ChatWorktreeState> {
     const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
     const git = GitService.withExecutor(executor);
     const originalBranch = chat.state.worktree?.originalBranch
@@ -918,24 +946,11 @@ export class ChatManager {
       }
     }
 
-    const nextWorktreeState = {
+    return {
       originalBranch,
       workingBranch,
       worktreePath,
     };
-    if (
-      chat.state.worktree?.originalBranch === nextWorktreeState.originalBranch
-      && chat.state.worktree?.workingBranch === nextWorktreeState.workingBranch
-      && chat.state.worktree?.worktreePath === nextWorktreeState.worktreePath
-    ) {
-      return chat;
-    }
-
-    return this.updateChatStateAndReturn(chat, {
-      ...chat.state,
-      worktree: nextWorktreeState,
-      lastActivityAt: chat.state.lastActivityAt ?? createTimestamp(),
-    });
   }
 
   private async cleanupWorktree(chat: Chat): Promise<void> {
