@@ -1,4 +1,5 @@
-import { FitAddon, init, Terminal } from "ghostty-web";
+import type { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
 
 export const TERMINAL_FONT_SIZE_PX = 16;
 export const TERMINAL_SYMBOL_FONT_FAMILIES = [
@@ -52,15 +53,12 @@ export const TERMINAL_FONT_FAMILY = buildTerminalFontFamily([
 export const TERMINAL_PADDING_X_PX = 2;
 export const TERMINAL_PADDING_BOTTOM_PX = 2;
 export const TERMINAL_PADDING_TOP_PX = 4;
+export const TERMINAL_SCROLLBACK_LINES = 10_000;
 export const TERMINAL_OSC_QUERY_SEQUENCE_START = "\u001b]";
 export const TERMINAL_OSC_STRING_TERMINATOR = "\u001b\\";
 export const TERMINAL_OSC_BELL_TERMINATOR = "\u0007";
 export const TERMINAL_OSC_C1_TERMINATOR = "\u009c";
 export const MAX_PENDING_OSC_COLOR_QUERY_BYTES = 4 * 1024;
-export const TERMINAL_MOUSE_BUTTON_MODE = 1000;
-export const TERMINAL_MOUSE_DRAG_MODE = 1002;
-export const TERMINAL_MOUSE_ANY_MOTION_MODE = 1003;
-export const TERMINAL_MOUSE_SGR_MODE = 1006;
 export const TERMINAL_THEME = {
   background: "#1e1e1e",
   foreground: "#d4d4d4",
@@ -105,19 +103,6 @@ export const TERMINAL_ANSI_PALETTE = [
   TERMINAL_THEME.brightWhite,
 ] as const;
 
-let ghosttyInitPromise: Promise<void> | null = null;
-
-export function initializeGhosttyWeb(): Promise<void> {
-  if (!ghosttyInitPromise) {
-    ghosttyInitPromise = init().catch((error) => {
-      ghosttyInitPromise = null;
-      throw error;
-    });
-  }
-
-  return ghosttyInitPromise;
-}
-
 export async function resolveTerminalFontFamily() {
   if (typeof document === "undefined" || !("fonts" in document)) {
     return TERMINAL_FONT_FAMILY;
@@ -147,23 +132,16 @@ export async function resolveTerminalFontFamily() {
   ]);
 }
 
-export async function remeasureTerminalFont(terminal: Terminal, fitAddon: FitAddon | null) {
-  if (typeof document === "undefined" || !("fonts" in document) || !terminal.renderer || !terminal.wasmTerm) {
+export async function refreshTerminalFont(terminal: Terminal, fitAddon: FitAddon | null) {
+  if (typeof document === "undefined" || !("fonts" in document)) {
     return;
   }
 
   await document.fonts.ready;
-  terminal.renderer.remeasureFont();
-
-  const nextDimensions = fitAddon?.proposeDimensions();
-  if (
-    nextDimensions &&
-    (nextDimensions.cols !== terminal.cols || nextDimensions.rows !== terminal.rows)
-  ) {
-    terminal.resize(nextDimensions.cols, nextDimensions.rows);
+  terminal.options.fontFamily = await resolveTerminalFontFamily();
+  fitAddon?.fit();
+  if (terminal.rows <= 0) {
     return;
   }
-
-  terminal.renderer.resize(terminal.cols, terminal.rows);
-  terminal.renderer.render(terminal.wasmTerm, true, terminal.getViewportY());
+  terminal.refresh(0, terminal.rows - 1);
 }

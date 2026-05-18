@@ -3,7 +3,8 @@
  */
 
 import { useCallback } from "react";
-import type { FitAddon, Terminal } from "ghostty-web";
+import type { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
 import type { SendTerminalPayloadFn } from "./use-ssh-sender";
 
 interface UseTerminalResizeParams {

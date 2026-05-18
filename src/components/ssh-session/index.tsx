@@ -3,7 +3,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FitAddon, Terminal } from "ghostty-web";
+import type { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
 import { Button, ConfirmModal, EditIcon, StatusBadge } from "../common";
 import { useSshSession, useToast } from "../../hooks";
 import { RenameSshSessionModal } from "../RenameSshSessionModal";

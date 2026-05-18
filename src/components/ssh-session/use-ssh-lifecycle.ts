@@ -3,7 +3,7 @@
  */
 
 import { useCallback, useEffect } from "react";
-import type { Terminal } from "ghostty-web";
+import type { Terminal } from "@xterm/xterm";
 import { appWebSocketUrl } from "../../lib/public-path";
 import type { SshSessionKind } from "../../hooks/useSshSession";
 

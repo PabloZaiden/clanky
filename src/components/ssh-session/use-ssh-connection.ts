@@ -4,7 +4,8 @@
  */
 
 import type React from "react";
-import type { FitAddon, Terminal } from "ghostty-web";
+import type { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
 import type { SshSessionKind } from "../../hooks/useSshSession";
 import { useSshSocketState } from "./use-ssh-socket-state";
 import { useSshSender } from "./use-ssh-sender";

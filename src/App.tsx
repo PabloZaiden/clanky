@@ -9,6 +9,7 @@ import { PasskeyAuthScreen } from "./components/PasskeyAuthScreen";
 import { getHashForShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
 import { AppEventsProvider, ThemePreferenceProvider, usePasskeyAuth } from "./hooks";
+import "@xterm/xterm/css/xterm.css";
 import "./index.css";
 
 const LOOP_FILES_HASH_PREFIX = "/loop-files/";
