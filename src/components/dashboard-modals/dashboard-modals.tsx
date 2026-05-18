@@ -91,7 +91,7 @@ export interface DashboardModalsProps {
   archivedLoopCount: number;
   workspaceLoopCount: number;
   purgeArchivedWorkspaceLoops: (workspaceId: string) => Promise<PurgeArchivedLoopsResult>;
-  onDeleteWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
+  onDeleteWorkspace: (workspaceId: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   refreshWorkspaces: () => Promise<void>;
   remoteOnly: boolean;
 

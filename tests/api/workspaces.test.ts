@@ -11,9 +11,11 @@ import { serve, type Server } from "bun";
 import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
+import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { loopManager } from "../../src/core/loop-manager";
+import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
 
 // Default test model for loop creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -129,6 +131,7 @@ describe("Workspace API Integration", () => {
 
     // Reset backend manager
     backendManager.resetForTesting();
+    sshServerManager.setExecutorFactoryForTesting(null);
 
     // Cleanup temp directories
     await rm(testDataDir, { recursive: true, force: true });
@@ -145,6 +148,8 @@ describe("Workspace API Integration", () => {
     const db = getDatabase();
     db.run("DELETE FROM loops WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
+    db.run("DELETE FROM ssh_servers");
+    sshServerManager.setExecutorFactoryForTesting(null);
   });
 
   describe("GET /api/workspaces", () => {
@@ -630,6 +635,136 @@ describe("Workspace API Integration", () => {
       } finally {
         resetSpy.mockRestore();
       }
+    });
+
+    test("deletes auto-provisioned server directory when requested", async () => {
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-source-"));
+      await Bun.write(join(sourceDirectory, "README.md"), "# Auto\n");
+      const sshServer = await sshServerManager.createServer({
+        name: "Source Server",
+        address: "127.0.0.1",
+        username: "tester",
+        repositoriesBasePath: null,
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+
+      await createWorkspace({
+        id: "auto-delete-workspace",
+        name: "Auto Delete Workspace",
+        directory: testWorkDir,
+        serverSettings: makeServerSettings(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sourceDirectory,
+        sshServerId: sshServer.config.id,
+        basePath: tmpdir(),
+        repoUrl: "git@example.com:test/repo.git",
+        provider: "opencode",
+      });
+
+      const response = await fetch(`${baseUrl}/api/workspaces/auto-delete-workspace`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteServerDirectory: true }),
+      });
+
+      expect(response.ok).toBe(true);
+      expect(await Bun.file(join(sourceDirectory, "README.md")).exists()).toBe(false);
+      expect(await getWorkspace("auto-delete-workspace")).toBeNull();
+    });
+
+    test("preserves auto-provisioned server directory when option is false", async () => {
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-preserve-"));
+      await Bun.write(join(sourceDirectory, "README.md"), "# Auto\n");
+      const sshServer = await sshServerManager.createServer({
+        name: "Preserve Server",
+        address: "127.0.0.1",
+        username: "tester",
+        repositoriesBasePath: null,
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+
+      await createWorkspace({
+        id: "auto-preserve-workspace",
+        name: "Auto Preserve Workspace",
+        directory: testWorkDir,
+        serverSettings: makeServerSettings(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sourceDirectory,
+        sshServerId: sshServer.config.id,
+        basePath: tmpdir(),
+        repoUrl: "git@example.com:test/repo.git",
+        provider: "opencode",
+      });
+
+      const response = await fetch(`${baseUrl}/api/workspaces/auto-preserve-workspace`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteServerDirectory: false }),
+      });
+
+      expect(response.ok).toBe(true);
+      expect(await Bun.file(join(sourceDirectory, "README.md")).exists()).toBe(true);
+      expect(await getWorkspace("auto-preserve-workspace")).toBeNull();
+      await rm(sourceDirectory, { recursive: true, force: true });
+    });
+
+    test("preserves workspace record when server directory deletion fails", async () => {
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-fail-"));
+      const sshServer = await sshServerManager.createServer({
+        name: "Failure Server",
+        address: "127.0.0.1",
+        username: "tester",
+        repositoriesBasePath: null,
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => ({
+        async directoryExists() {
+          return true;
+        },
+        async exec() {
+          return { success: false, stdout: "", stderr: "permission denied", exitCode: 1 };
+        },
+        async fileExists() {
+          return false;
+        },
+        async readFile() {
+          return null;
+        },
+        async listDirectory() {
+          return [];
+        },
+        async writeFile() {
+          return false;
+        },
+      }));
+
+      await createWorkspace({
+        id: "auto-fail-workspace",
+        name: "Auto Fail Workspace",
+        directory: testWorkDir,
+        serverSettings: makeServerSettings(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sourceDirectory,
+        sshServerId: sshServer.config.id,
+        basePath: tmpdir(),
+        repoUrl: "git@example.com:test/repo.git",
+        provider: "opencode",
+      });
+
+      const response = await fetch(`${baseUrl}/api/workspaces/auto-fail-workspace`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteServerDirectory: true }),
+      });
+
+      expect(response.ok).toBe(false);
+      expect(response.status).toBe(500);
+      const body = await response.json() as { message: string };
+      expect(body.message).toContain("permission denied");
+      expect(await getWorkspace("auto-fail-workspace")).not.toBeNull();
+      await rm(sourceDirectory, { recursive: true, force: true });
     });
 
     test("returns 404 for non-existent id", async () => {

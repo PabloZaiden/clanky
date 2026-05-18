@@ -20,6 +20,7 @@ import type { z } from "zod";
 
 // Re-export schema-derived types for convenience
 export type { WorkspaceConfig, WorkspaceExportData, WorkspaceImportRequest } from "./schemas";
+export type { DeleteWorkspaceRequest } from "./schemas";
 
 /**
  * A workspace represents a directory that contains Ralph Loops.

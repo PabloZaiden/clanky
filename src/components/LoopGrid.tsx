@@ -3,7 +3,7 @@
  * Supports both card grid and row list view modes.
  */
 
-import type { Loop, SshServer } from "../types";
+import type { DeleteWorkspaceRequest, Loop, SshServer } from "../types";
 import type { StatusGroups, WorkspaceGroup } from "../hooks/useLoopGrouping";
 import type { DashboardViewMode } from "../types/preferences";
 import { WorkspaceHeader, StatusSections, UnassignedSection, EmptyWorkspacesSection } from "./loop-grid";
@@ -20,7 +20,7 @@ export interface LoopGridProps {
   onSelectLoop?: (loopId: string) => void;
   onEditDraft: (loopId: string) => void;
   onOpenWorkspaceSettings: (workspaceId: string) => void;
-  onDeleteWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
+  onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
 }
 
 export function LoopGrid({

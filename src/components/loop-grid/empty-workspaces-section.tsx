@@ -1,16 +1,21 @@
 import { useState } from "react";
-import type { Workspace, SshServer } from "../../types";
+import type { DeleteWorkspaceRequest, Workspace, SshServer } from "../../types";
 import type { WorkspaceGroup } from "../../hooks/useLoopGrouping";
 import { getServerLabel } from "../../types/settings";
 import { ConfirmModal } from "../common";
 import { useToast } from "../../hooks";
+import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { WorkspaceGearIcon } from "./workspace-gear-icon";
 
 export interface EmptyWorkspacesSectionProps {
   workspaceGroups: WorkspaceGroup[];
   registeredSshServers: readonly SshServer[];
   onOpenWorkspaceSettings: (workspaceId: string) => void;
-  onDeleteWorkspace: (workspaceId: string) => Promise<{ success: boolean; error?: string }>;
+  onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
+}
+
+function canDeleteProvisionedServerDirectory(workspace: Workspace): boolean {
+  return Boolean(workspace.sourceDirectory?.trim() && workspace.sshServerId?.trim() && workspace.basePath?.trim());
 }
 
 /** Renders the "Empty Workspaces" section with delete confirmation */
@@ -23,6 +28,7 @@ export function EmptyWorkspacesSection({
   const toast = useToast();
   const [deleteWorkspace, setDeleteWorkspace] = useState<Workspace | null>(null);
   const [deletingWorkspace, setDeletingWorkspace] = useState(false);
+  const [deleteServerDirectory, setDeleteServerDirectory] = useState(true);
 
   const emptyGroups = workspaceGroups.filter((g) => g.loops.length === 0);
   if (emptyGroups.length === 0) return null;
@@ -55,7 +61,10 @@ export function EmptyWorkspacesSection({
               <WorkspaceGearIcon />
             </button>
             <button
-              onClick={() => setDeleteWorkspace(workspace)}
+              onClick={() => {
+                setDeleteWorkspace(workspace);
+                setDeleteServerDirectory(true);
+              }}
               className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
               title="Delete empty workspace"
             >
@@ -74,7 +83,14 @@ export function EmptyWorkspacesSection({
           if (!deleteWorkspace) return;
           setDeletingWorkspace(true);
           try {
-            const result = await onDeleteWorkspace(deleteWorkspace.id);
+            const options: DeleteWorkspaceRequest = {};
+            if (deleteServerDirectory && canDeleteProvisionedServerDirectory(deleteWorkspace)) {
+              options.deleteServerDirectory = true;
+              if (deleteWorkspace.sshServerId) {
+                options.credentialToken = await getStoredSshCredentialToken(deleteWorkspace.sshServerId);
+              }
+            }
+            const result = await onDeleteWorkspace(deleteWorkspace.id, options);
             if (!result.success) {
               toast.error(result.error || "Failed to delete workspace");
             }
@@ -88,7 +104,22 @@ export function EmptyWorkspacesSection({
         confirmLabel="Delete"
         loading={deletingWorkspace}
         variant="danger"
-      />
+      >
+        {deleteWorkspace?.sourceDirectory && canDeleteProvisionedServerDirectory(deleteWorkspace) && (
+          <label className="mt-4 flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={deleteServerDirectory}
+              onChange={(event) => setDeleteServerDirectory(event.currentTarget.checked)}
+              className="mt-1"
+            />
+            <span>
+              Also delete the server directory{" "}
+              <span className="font-mono break-all">{deleteWorkspace.sourceDirectory}</span>
+            </span>
+          </label>
+        )}
+      </ConfirmModal>
     </div>
   );
 }

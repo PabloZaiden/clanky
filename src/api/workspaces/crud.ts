@@ -7,9 +7,9 @@ import {
   createWorkspace,
   listWorkspaces,
   updateWorkspace,
-  deleteWorkspace,
 } from "../../persistence/workspaces";
 import { backendManager } from "../../core/backend-manager";
+import { deleteWorkspaceWithOptions } from "../../core/workspace-deletion";
 import { createLogger } from "../../core/logger";
 import { areServerSettingsEqual, getDefaultServerSettings } from "../../types/settings";
 import type { Workspace } from "../../types/workspace";
@@ -21,6 +21,7 @@ import {
 import { sanitizeWorkspace, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import {
   CreateWorkspaceRequestSchema,
+  DeleteWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
 } from "../../types/schemas";
 
@@ -192,8 +193,17 @@ export const crudRoutes = {
     async DELETE(req: Request & { params: { id: string } }) {
       const { id } = req.params;
       log.debug("DELETE /api/workspaces/:id", { workspaceId: id });
+      const validation = await parseAndValidate(DeleteWorkspaceRequestSchema, req, {
+        allowEmptyBody: true,
+        emptyBodyValue: {},
+      });
+
+      if (!validation.success) {
+        return validation.response;
+      }
+
       try {
-        const result = await deleteWorkspace(id);
+        const result = await deleteWorkspaceWithOptions(id, validation.data);
         if (!result.success) {
           log.warn("DELETE /api/workspaces/:id - Failed", { workspaceId: id, reason: result.reason });
           const reason = result.reason ?? "Delete failed";

@@ -5,15 +5,20 @@
 import { useState } from "react";
 import { Button, ConfirmModal } from "../common";
 import { useToast } from "../../hooks";
-import type { Workspace } from "../../types/workspace";
+import type { DeleteWorkspaceRequest, Workspace } from "../../types/workspace";
+import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { TrashIcon } from "./icons";
 
 interface DeleteWorkspaceSectionProps {
   workspace: Workspace;
-  onDeleteWorkspace: () => Promise<{ success: boolean; error?: string }>;
+  onDeleteWorkspace: (options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   workspaceLoopCount: number;
   saving: boolean;
   onDeleted?: () => void;
+}
+
+function canDeleteProvisionedServerDirectory(workspace: Workspace): boolean {
+  return Boolean(workspace.sourceDirectory?.trim() && workspace.sshServerId?.trim() && workspace.basePath?.trim());
 }
 
 export function DeleteWorkspaceSection({
@@ -26,13 +31,22 @@ export function DeleteWorkspaceSection({
   const toast = useToast();
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteServerDirectory, setDeleteServerDirectory] = useState(true);
+  const canDeleteServerDirectory = canDeleteProvisionedServerDirectory(workspace);
 
   const disabled = saving || deleting || workspaceLoopCount > 0;
 
   async function handleDelete() {
     setDeleting(true);
     try {
-      const result = await onDeleteWorkspace();
+      const options: DeleteWorkspaceRequest = {};
+      if (deleteServerDirectory && canDeleteServerDirectory) {
+        options.deleteServerDirectory = true;
+        if (workspace.sshServerId) {
+          options.credentialToken = await getStoredSshCredentialToken(workspace.sshServerId);
+        }
+      }
+      const result = await onDeleteWorkspace(options);
       setShowConfirm(false);
       if (!result.success) {
         toast.error(result.error || "Failed to delete workspace");
@@ -64,7 +78,10 @@ export function DeleteWorkspaceSection({
           type="button"
           variant="danger"
           size="sm"
-          onClick={() => setShowConfirm(true)}
+          onClick={() => {
+            setDeleteServerDirectory(true);
+            setShowConfirm(true);
+          }}
           loading={deleting}
           disabled={disabled}
         >
@@ -78,11 +95,30 @@ export function DeleteWorkspaceSection({
         onClose={() => setShowConfirm(false)}
         onConfirm={handleDelete}
         title="Delete Workspace"
-        message={`Are you sure you want to delete workspace "${workspace.name}"? This only removes it from Ralpher and does not delete files on disk.`}
+        message={
+          canDeleteServerDirectory
+            ? `Are you sure you want to delete workspace "${workspace.name}"? This removes it from Ralpher.`
+            : `Are you sure you want to delete workspace "${workspace.name}"? This only removes it from Ralpher and does not delete files on disk.`
+        }
         confirmLabel="Delete"
         loading={deleting}
         variant="danger"
-      />
+      >
+        {canDeleteServerDirectory && workspace.sourceDirectory && (
+          <label className="mt-4 flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={deleteServerDirectory}
+              onChange={(event) => setDeleteServerDirectory(event.currentTarget.checked)}
+              className="mt-1"
+            />
+            <span>
+              Also delete the server directory{" "}
+              <span className="font-mono break-all">{workspace.sourceDirectory}</span>
+            </span>
+          </label>
+        )}
+      </ConfirmModal>
     </div>
   );
 }
