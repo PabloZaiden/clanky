@@ -6,8 +6,8 @@ import { act, renderWithUser, waitFor } from "../helpers/render";
 import {
   lastMockTerminal as lastTerminal,
   lastMockTerminalOptions as lastTerminalOptions,
-  resetGhosttyWebMockState,
-} from "../helpers/mock-ghostty-web";
+  resetXtermMockState,
+} from "../helpers/mock-xterm";
 import { SshSessionDetails } from "@/components/SshSessionDetails";
 import { clearStoredSshServerCredential } from "@/lib/ssh-browser-credentials";
 
@@ -88,7 +88,7 @@ describe("SshSessionDetails", () => {
     ws.reset();
     ws.install();
     clearStoredSshServerCredential("server-1");
-    resetGhosttyWebMockState();
+    resetXtermMockState();
     clipboardWrites = [];
     restoreDocumentFonts();
     // Default to non-focus mode for tests that don't specifically test focus mode,
@@ -151,7 +151,7 @@ describe("SshSessionDetails", () => {
     });
   });
 
-  test("initializes the terminal with the configured ghostty-web font size and without xterm-specific rendering tweaks", async () => {
+  test("initializes xterm with the configured font, theme, and scrollback", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Terminal Rendering" } }),
     );
@@ -170,10 +170,13 @@ describe("SshSessionDetails", () => {
       fontSize: 16,
       fontFamily: "\"Ralpher Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
       theme: expectedTerminalTheme,
+      scrollback: 10000,
+      cursorBlink: true,
+      cursorStyle: "block",
     });
   });
 
-  test("hides the browser caret on the contenteditable terminal host", async () => {
+  test("hides the browser caret on the terminal container", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Hidden Browser Caret" } }),
     );
@@ -188,12 +191,12 @@ describe("SshSessionDetails", () => {
       expect(lastTerminal?.element).not.toBeUndefined();
     });
 
-    const terminalHost = lastTerminal!.element!;
-    expect(terminalHost.style.caretColor).toBe("transparent");
-    expect(terminalHost.classList.contains("caret-transparent")).toBe(true);
+    const terminalContainer = lastTerminal!.element!.parentElement!;
+    expect(terminalContainer.style.caretColor).toBe("transparent");
+    expect(terminalContainer.classList.contains("caret-transparent")).toBe(true);
   });
 
-  test("does not refocus the terminal after ghostty open already focused it", async () => {
+  test("focuses the terminal after opening xterm", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Initial Focus" } }),
     );
@@ -230,6 +233,9 @@ describe("SshSessionDetails", () => {
       fontSize: 16,
       fontFamily: "\"Ralpher Terminal Nerd Font\", \"Liga SFMono Nerd Font\", monospace",
       theme: expectedTerminalTheme,
+      scrollback: 10000,
+      cursorBlink: true,
+      cursorStyle: "block",
     });
   });
 
@@ -360,121 +366,6 @@ describe("SshSessionDetails", () => {
     expect(renameCalls[0]?.body).toEqual({ name: "SSH After Rename" });
   });
 
-  test("forwards wheel events as SGR mouse input when terminal mouse tracking is enabled", async () => {
-    api.get("/api/ssh-sessions/:id", (req) =>
-      createSshSession({ config: { id: req.params["id"]!, name: "SSH Mouse Wheel" } }),
-    );
-
-    const { getByText } = renderWithUser(
-      <SshSessionDetails sshSessionId="ssh-mouse-wheel-1" onBack={() => {}} />,
-    );
-
-    await waitFor(() => {
-      expect(getByText("SSH Mouse Wheel")).toBeTruthy();
-      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
-      expect(lastTerminal?.canvas).not.toBeNull();
-    });
-
-    lastTerminal!.mouseTracking = true;
-    lastTerminal!.modes[1000] = true;
-    lastTerminal!.modes[1006] = true;
-
-    const terminalConnection = ws.getConnections("/api/ssh-terminal")[0]!;
-    await act(async () => {
-      ws.sendEventTo(terminalConnection, {
-        type: "terminal.connected",
-        sshSessionId: "ssh-mouse-wheel-1",
-      });
-    });
-
-    await act(async () => {
-      const event = new WheelEvent("wheel", {
-        deltaY: 120,
-        bubbles: true,
-        cancelable: true,
-      });
-      Object.defineProperties(event, {
-        clientX: {
-          configurable: true,
-          value: 100,
-        },
-        clientY: {
-          configurable: true,
-          value: 40,
-        },
-      });
-      lastTerminal!.canvas!.dispatchEvent(event);
-    });
-
-    expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-      type: "terminal.input",
-      data: "\u001b[<65;11;3M",
-    }));
-  });
-
-  test("forwards click press and release as SGR mouse input when terminal mouse tracking is enabled", async () => {
-    api.get("/api/ssh-sessions/:id", (req) =>
-      createSshSession({ config: { id: req.params["id"]!, name: "SSH Mouse Click" } }),
-    );
-
-    const { getByText } = renderWithUser(
-      <SshSessionDetails sshSessionId="ssh-mouse-click-1" onBack={() => {}} />,
-    );
-
-    await waitFor(() => {
-      expect(getByText("SSH Mouse Click")).toBeTruthy();
-      expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
-      expect(lastTerminal?.canvas).not.toBeNull();
-    });
-
-    lastTerminal!.mouseTracking = true;
-    lastTerminal!.modes[1000] = true;
-    lastTerminal!.modes[1006] = true;
-
-    const terminalConnection = ws.getConnections("/api/ssh-terminal")[0]!;
-    await act(async () => {
-      ws.sendEventTo(terminalConnection, {
-        type: "terminal.connected",
-        sshSessionId: "ssh-mouse-click-1",
-      });
-    });
-
-    await act(async () => {
-      lastTerminal!.canvas!.dispatchEvent(new MouseEvent("mousedown", {
-        button: 0,
-        buttons: 1,
-        clientX: 30,
-        clientY: 20,
-        bubbles: true,
-        cancelable: true,
-      }));
-      lastTerminal!.canvas!.dispatchEvent(new MouseEvent("mouseup", {
-        button: 0,
-        buttons: 0,
-        clientX: 30,
-        clientY: 20,
-        bubbles: true,
-        cancelable: true,
-      }));
-      lastTerminal!.canvas!.dispatchEvent(new MouseEvent("click", {
-        button: 0,
-        clientX: 30,
-        clientY: 20,
-        bubbles: true,
-        cancelable: true,
-      }));
-    });
-
-    expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-      type: "terminal.input",
-      data: "\u001b[<0;4;2M",
-    }));
-    expect(terminalConnection.sentMessages).toContain(JSON.stringify({
-      type: "terminal.input",
-      data: "\u001b[<0;4;2m",
-    }));
-  });
-
   test("sends BackTab for physical Shift+Tab instead of collapsing it into plain Tab", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Shift Tab" } }),
@@ -498,7 +389,7 @@ describe("SshSessionDetails", () => {
       });
     });
 
-    const handled = lastTerminal!.keyHandler!(
+    const shouldProcess = lastTerminal!.keyHandler!(
       new KeyboardEvent("keydown", {
         key: "Tab",
         code: "Tab",
@@ -508,7 +399,7 @@ describe("SshSessionDetails", () => {
       }),
     );
 
-    expect(handled).toBe(true);
+    expect(shouldProcess).toBe(false);
     expect(terminalConnection.sentMessages).toContain(JSON.stringify({
       type: "terminal.input",
       data: "\u001b[Z",
@@ -2174,7 +2065,7 @@ describe("SshSessionDetails", () => {
 
     // Unmount and re-render — should start in normal mode (preference was persisted)
     unmount();
-    resetGhosttyWebMockState();
+    resetXtermMockState();
 
     const { queryByText: queryByText2, getByText: getByText2 } = renderWithUser(
       <SshSessionDetails sshSessionId="ssh-focus-3" onBack={() => {}} />,
@@ -2251,10 +2142,10 @@ describe("SshSessionDetails", () => {
     try {
       await waitFor(() => {
         expect(lastTerminal).not.toBeNull();
-        expect(lastTerminal?.canvas).not.toBeNull();
+        expect(lastTerminal?.element).not.toBeNull();
       });
 
-      const terminalContainer = lastTerminal!.canvas!.parentElement;
+      const terminalContainer = lastTerminal!.element!.parentElement;
       expect(terminalContainer).not.toBeNull();
 
       const terminalWrapper = terminalContainer!.parentElement;

@@ -10,15 +10,19 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, expect, mock } from "bun:test";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { resolveDefaultApiRoute } from "./helpers/default-api-routes";
-import { MockFitAddon, MockTerminal, resetGhosttyWebMockState } from "./helpers/mock-ghostty-web";
+import { MockFitAddon, MockTerminal, MockWebglAddon, resetXtermMockState } from "./helpers/mock-xterm";
 
 // Extend Bun's expect with jest-dom matchers (toBeInTheDocument, toHaveTextContent, etc.)
 expect.extend(matchers);
 
-mock.module("ghostty-web", () => ({
-  init: async () => {},
+mock.module("@xterm/xterm", () => ({
   Terminal: MockTerminal,
+}));
+mock.module("@xterm/addon-fit", () => ({
   FitAddon: MockFitAddon,
+}));
+mock.module("@xterm/addon-webgl", () => ({
+  WebglAddon: MockWebglAddon,
 }));
 
 // Register happy-dom globals (window, document, navigator, etc.)
@@ -158,7 +162,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   globalThis.fetch = frontendFetchGuard;
   window.fetch = frontendFetchGuard;
-  resetGhosttyWebMockState();
+  resetXtermMockState();
 });
 
 // Reset location before each test so pathname-based public base path inference
@@ -170,5 +174,5 @@ beforeEach(() => {
   window.sessionStorage.clear();
   globalThis.fetch = frontendFetchGuard;
   window.fetch = frontendFetchGuard;
-  resetGhosttyWebMockState();
+  resetXtermMockState();
 });

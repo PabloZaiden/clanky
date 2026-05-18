@@ -7,25 +7,16 @@ export class MockTerminal {
   writes: string[] = [];
   focusCalls = 0;
   element: HTMLDivElement | null = null;
-  canvas: HTMLCanvasElement | null = null;
   textarea: HTMLTextAreaElement | null = null;
-  wheelHandler: ((event: WheelEvent) => boolean) | undefined;
   keyHandler: ((event: KeyboardEvent) => boolean) | undefined;
-  mouseTracking = false;
-  modes: Record<number, boolean> = {};
   selectionText = "";
-  wasmTerm = {};
-  renderer: {
-    getCanvas: () => HTMLCanvasElement;
-    getMetrics: () => { width: number; height: number; baseline: number };
-    remeasureFont: () => void;
-    resize: () => void;
-    render: () => void;
-  } | null = null;
+  refreshCalls: Array<{ start: number; end: number }> = [];
+  options: Record<string, unknown>;
 
   constructor(options?: Record<string, unknown>) {
     lastMockTerminal = this;
     lastMockTerminalOptions = options ?? null;
+    this.options = { ...(options ?? {}) };
   }
 
   loadAddon(addon: { activate?: (terminal: MockTerminal) => void }) {
@@ -37,30 +28,14 @@ export class MockTerminal {
       return;
     }
 
-    this.element = parent;
-    parent.setAttribute("tabindex", "0");
-    parent.setAttribute("contenteditable", "true");
-    parent.setAttribute("role", "textbox");
-    parent.setAttribute("aria-label", "Terminal input");
-    parent.setAttribute("aria-multiline", "true");
-
-    const canvas = document.createElement("canvas");
-    Object.defineProperty(canvas, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({
-        left: 0,
-        top: 0,
-        right: 800,
-        bottom: 480,
-        width: 800,
-        height: 480,
-        x: 0,
-        y: 0,
-        toJSON: () => null,
-      }),
-    });
-    parent.appendChild(canvas);
-    this.canvas = canvas;
+    const element = document.createElement("div");
+    element.className = "xterm";
+    element.setAttribute("tabindex", "0");
+    element.setAttribute("role", "textbox");
+    element.setAttribute("aria-label", "Terminal input");
+    element.setAttribute("aria-multiline", "true");
+    parent.appendChild(element);
+    this.element = element;
 
     const textarea = document.createElement("textarea");
     textarea.setAttribute("tabindex", "0");
@@ -72,20 +47,8 @@ export class MockTerminal {
     textarea.style.height = "1px";
     textarea.style.opacity = "0";
     textarea.style.clipPath = "inset(50%)";
-    parent.appendChild(textarea);
+    element.appendChild(textarea);
     this.textarea = textarea;
-
-    canvas.addEventListener("wheel", (event) => {
-      this.wheelHandler?.(event as WheelEvent);
-    });
-    this.renderer = {
-      getCanvas: () => canvas,
-      getMetrics: () => ({ width: 10, height: 20, baseline: 16 }),
-      remeasureFont: () => {},
-      resize: () => {},
-      render: () => {},
-    };
-    this.focus();
   }
 
   focus() {
@@ -109,6 +72,10 @@ export class MockTerminal {
 
   getViewportY() {
     return 0;
+  }
+
+  refresh(start: number, end: number) {
+    this.refreshCalls.push({ start, end });
   }
 
   onData(handler: (data: string) => void) {
@@ -138,20 +105,8 @@ export class MockTerminal {
     };
   }
 
-  attachCustomWheelEventHandler(handler?: (event: WheelEvent) => boolean) {
-    this.wheelHandler = handler;
-  }
-
   attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean) {
     this.keyHandler = handler;
-  }
-
-  getMode(mode: number) {
-    return this.modes[mode] ?? false;
-  }
-
-  hasMouseTracking() {
-    return this.mouseTracking;
   }
 
   getSelection() {
@@ -176,13 +131,10 @@ export class MockTerminal {
     this.dataHandler = null;
     this.resizeHandler = null;
     this.selectionChangeHandler = null;
-    this.canvas?.remove();
     this.textarea?.remove();
-    this.canvas = null;
+    this.element?.remove();
     this.textarea = null;
     this.element = null;
-    this.renderer = null;
-    this.wheelHandler = undefined;
     this.keyHandler = undefined;
   }
 }
@@ -208,8 +160,37 @@ export class MockFitAddon {
 
 export let lastMockTerminal: MockTerminal | null = null;
 export let lastMockTerminalOptions: Record<string, unknown> | null = null;
+export let lastMockWebglAddon: MockWebglAddon | null = null;
 
-export function resetGhosttyWebMockState(): void {
+export class MockWebglAddon {
+  contextLossHandler: (() => void) | null = null;
+  activatedTerminal: MockTerminal | null = null;
+  disposeCalls = 0;
+
+  constructor() {
+    lastMockWebglAddon = this;
+  }
+
+  activate(terminal: MockTerminal) {
+    this.activatedTerminal = terminal;
+  }
+
+  onContextLoss(handler: () => void) {
+    this.contextLossHandler = handler;
+    return {
+      dispose: () => {
+        this.contextLossHandler = null;
+      },
+    };
+  }
+
+  dispose() {
+    this.disposeCalls += 1;
+  }
+}
+
+export function resetXtermMockState(): void {
   lastMockTerminal = null;
   lastMockTerminalOptions = null;
+  lastMockWebglAddon = null;
 }

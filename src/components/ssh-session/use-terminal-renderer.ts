@@ -1,18 +1,19 @@
 /**
- * Hook for initializing and managing the Ghostty terminal renderer in the DOM.
+ * Hook for initializing and managing the xterm.js terminal renderer in the DOM.
  */
 
 import { useEffect } from "react";
 import type React from "react";
-import { FitAddon, Terminal } from "ghostty-web";
+import { Terminal, type IDisposable } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import {
-  initializeGhosttyWeb,
-  remeasureTerminalFont,
+  refreshTerminalFont,
   resolveTerminalFontFamily,
   TERMINAL_FONT_SIZE_PX,
+  TERMINAL_SCROLLBACK_LINES,
   TERMINAL_THEME,
 } from "./terminal-constants";
-import { installTerminalMouseHandlers } from "./terminal-mouse";
 
 interface UseTerminalRendererParams {
   sessionConfigId: string | undefined;
@@ -50,7 +51,46 @@ export function useTerminalRenderer({
     let dataDisposable: { dispose(): void } | null = null;
     let resizeDisposable: { dispose(): void } | null = null;
     let selectionDisposable: { dispose(): void } | null = null;
-    let removeMouseHandlers: (() => void) | null = null;
+    let webglAddon: WebglAddon | null = null;
+    let webglContextLossDisposable: IDisposable | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let resizeAnimationFrame: number | null = null;
+
+    function queueFit() {
+      if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
+        syncTerminalSize({ fit: true });
+        return;
+      }
+      if (resizeAnimationFrame !== null) {
+        window.cancelAnimationFrame(resizeAnimationFrame);
+      }
+      resizeAnimationFrame = window.requestAnimationFrame(() => {
+        resizeAnimationFrame = null;
+        if (!disposed && terminalRef.current === terminal) {
+          syncTerminalSize({ fit: true });
+        }
+      });
+    }
+
+    function loadWebglRenderer(nextTerminal: Terminal) {
+      if (typeof WebGL2RenderingContext === "undefined") {
+        return;
+      }
+      try {
+        webglAddon = new WebglAddon();
+        webglContextLossDisposable = webglAddon.onContextLoss(() => {
+          webglAddon?.dispose();
+          webglAddon = null;
+        });
+        nextTerminal.loadAddon(webglAddon);
+      } catch (error) {
+        console.warn(`Terminal WebGL renderer unavailable, using default renderer: ${String(error)}`);
+        webglContextLossDisposable?.dispose();
+        webglContextLossDisposable = null;
+        webglAddon?.dispose();
+        webglAddon = null;
+      }
+    }
 
     async function setupTerminal() {
       if (!terminalContainerRef.current || terminalRef.current) {
@@ -58,10 +98,6 @@ export function useTerminalRenderer({
       }
 
       try {
-        await initializeGhosttyWeb();
-        if (disposed || !terminalContainerRef.current || terminalRef.current) {
-          return;
-        }
         const terminalFontFamily = await resolveTerminalFontFamily();
         if (disposed || !terminalContainerRef.current || terminalRef.current) {
           return;
@@ -71,15 +107,19 @@ export function useTerminalRenderer({
           fontSize: TERMINAL_FONT_SIZE_PX,
           fontFamily: terminalFontFamily,
           theme: TERMINAL_THEME,
+          scrollback: TERMINAL_SCROLLBACK_LINES,
+          cursorBlink: true,
+          cursorStyle: "block",
         });
         fitAddon = new FitAddon();
         terminal.loadAddon(fitAddon);
         terminal.open(terminalContainerRef.current);
-        fitAddon.observeResize();
+        loadWebglRenderer(terminal);
         terminalRef.current = terminal;
         fitAddonRef.current = fitAddon;
         syncTerminalSelectionState();
         flushPendingOutput();
+        terminal.focus();
 
         dataDisposable = terminal.onData((data: string) => {
           void sendTerminalKeystroke(data);
@@ -91,17 +131,21 @@ export function useTerminalRenderer({
           syncTerminalSelectionState();
         });
         terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-          if (event.key !== "Tab" || !event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) {
-            return false;
+          if (
+            event.type !== "keydown"
+            || event.key !== "Tab"
+            || !event.shiftKey
+            || event.ctrlKey
+            || event.altKey
+            || event.metaKey
+          ) {
+            return true;
           }
           void sendTerminalInput("\u001b[Z", { notifyOnFailure: false });
-          return true;
+          return false;
         });
-        removeMouseHandlers = installTerminalMouseHandlers({
-          terminal,
-          container: terminalContainerRef.current,
-          sendInput: (data: string) => sendTerminalInput(data, { notifyOnFailure: false }),
-        });
+        resizeObserver = new ResizeObserver(queueFit);
+        resizeObserver.observe(terminalContainerRef.current);
 
         syncTerminalSize({ fit: true });
         if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
@@ -116,7 +160,7 @@ export function useTerminalRenderer({
         if (terminalReadyRef.current) {
           syncTerminalSize();
         }
-        void remeasureTerminalFont(terminal, fitAddon);
+        void refreshTerminalFont(terminal, fitAddon);
       } catch (error) {
         if (!disposed) {
           showErrorToast(`Failed to initialize the terminal renderer: ${String(error)}`);
@@ -128,7 +172,12 @@ export function useTerminalRenderer({
 
     return () => {
       disposed = true;
-      removeMouseHandlers?.();
+      if (resizeAnimationFrame !== null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(resizeAnimationFrame);
+      }
+      resizeObserver?.disconnect();
+      webglContextLossDisposable?.dispose();
+      webglAddon?.dispose();
       dataDisposable?.dispose();
       resizeDisposable?.dispose();
       selectionDisposable?.dispose();

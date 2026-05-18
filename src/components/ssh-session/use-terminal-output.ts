@@ -3,7 +3,7 @@
  */
 
 import { useCallback } from "react";
-import type { Terminal } from "ghostty-web";
+import type { Terminal } from "@xterm/xterm";
 import { MAX_PENDING_OSC_COLOR_QUERY_BYTES } from "./terminal-constants";
 import { parseTerminalOscColorQueries } from "./terminal-osc";
 

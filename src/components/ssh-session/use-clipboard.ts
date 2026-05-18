@@ -4,7 +4,7 @@
 
 import { useCallback, useState } from "react";
 import type React from "react";
-import type { Terminal } from "ghostty-web";
+import type { Terminal } from "@xterm/xterm";
 
 interface UseClipboardParams {
   terminalRef: React.MutableRefObject<Terminal | null>;
