@@ -140,5 +140,8 @@ export async function refreshTerminalFont(terminal: Terminal, fitAddon: FitAddon
   await document.fonts.ready;
   terminal.options.fontFamily = await resolveTerminalFontFamily();
   fitAddon?.fit();
+  if (terminal.rows <= 0) {
+    return;
+  }
   terminal.refresh(0, terminal.rows - 1);
 }

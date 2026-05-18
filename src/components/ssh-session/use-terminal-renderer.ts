@@ -54,6 +54,7 @@ export function useTerminalRenderer({
     let webglAddon: WebglAddon | null = null;
     let webglContextLossDisposable: IDisposable | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let removeResizeListener: (() => void) | null = null;
     let resizeAnimationFrame: number | null = null;
 
     function queueFit() {
@@ -144,8 +145,13 @@ export function useTerminalRenderer({
           void sendTerminalInput("\u001b[Z", { notifyOnFailure: false });
           return false;
         });
-        resizeObserver = new ResizeObserver(queueFit);
-        resizeObserver.observe(terminalContainerRef.current);
+        if (typeof ResizeObserver === "undefined") {
+          window.addEventListener("resize", queueFit);
+          removeResizeListener = () => window.removeEventListener("resize", queueFit);
+        } else {
+          resizeObserver = new ResizeObserver(queueFit);
+          resizeObserver.observe(terminalContainerRef.current);
+        }
 
         syncTerminalSize({ fit: true });
         if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
@@ -176,6 +182,7 @@ export function useTerminalRenderer({
         window.cancelAnimationFrame(resizeAnimationFrame);
       }
       resizeObserver?.disconnect();
+      removeResizeListener?.();
       webglContextLossDisposable?.dispose();
       webglAddon?.dispose();
       dataDisposable?.dispose();
