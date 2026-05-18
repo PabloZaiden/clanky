@@ -193,6 +193,45 @@ describe("ChatDetails", () => {
     });
   });
 
+  test("shows streaming when assistant content arrives after the status event was missed", async () => {
+    const initialChat = createChat();
+
+    api.get("/api/chats/:id", () => initialChat);
+    api.post("/api/chats/:id/messages", () => ({ success: true, chatId: CHAT_ID }), 200);
+
+    const { getByLabelText, getByRole, getByText, queryByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
+
+    await waitFor(() => {
+      expect(getByText("Idle")).toBeInTheDocument();
+    });
+
+    await user.type(getByLabelText("Message"), "Please summarize the risk.");
+    await user.click(getByRole("button", { name: "Send" }));
+
+    await waitFor(() => {
+      expect(getByText("Starting")).toBeInTheDocument();
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "chat.message",
+        chatId: CHAT_ID,
+        message: {
+          id: "assistant-2",
+          role: "assistant",
+          content: "The main risk is stale UI state.",
+          timestamp: "2025-01-01T00:00:03.000Z",
+        },
+        timestamp: "2025-01-01T00:00:04.000Z",
+      });
+    });
+
+    await waitFor(() => {
+      expect(getByText("Streaming")).toBeInTheDocument();
+    });
+    expect(queryByText("Starting")).not.toBeInTheDocument();
+  });
+
   test("fills the composer from the Project Analysis template and sends edited text", async () => {
     const initialChat = createChat({ state: { ...createChat().state, messages: [] } });
 

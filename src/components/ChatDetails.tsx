@@ -28,7 +28,7 @@ import {
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { isChatEvent, useAppEvents, useAvailableModels, useMarkdownPreference, useToast } from "../hooks";
-import { mergeChatSnapshot } from "../utils/chat-snapshot";
+import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
 import { getHashForShellRoute } from "./app-shell/shell-navigation";
@@ -208,6 +208,9 @@ export function ChatDetails({
             ...current,
             state: {
               ...current.state,
+              status: event.message.role === "assistant"
+                ? getStreamingActivityStatus(current.state.status)
+                : current.state.status,
               lastActivityAt: event.timestamp,
               messages: upsertById(current.state.messages as MessageData[], event.message),
             },
@@ -217,6 +220,7 @@ export function ChatDetails({
             ...current,
             state: {
               ...current.state,
+              status: getStreamingActivityStatus(current.state.status),
               lastActivityAt: event.timestamp,
               toolCalls: upsertById(
                 current.state.toolCalls as ToolCallData[],
@@ -232,6 +236,7 @@ export function ChatDetails({
             ...current,
             state: {
               ...current.state,
+              status: getStreamingActivityStatus(current.state.status),
               lastActivityAt: event.timestamp,
               toolCalls: (current.state.toolCalls as ToolCallData[]).map((toolCall) => (
                 toolCall.id === event.toolId
@@ -245,6 +250,7 @@ export function ChatDetails({
             ...current,
             state: {
               ...current.state,
+              status: getStreamingActivityStatus(current.state.status),
               lastActivityAt: event.timestamp,
               logs: upsertById(current.state.logs as LoopLogEntry[], event.log),
             },
