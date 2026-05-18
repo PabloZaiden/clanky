@@ -103,6 +103,13 @@ export async function updateWorkspace(
   return getWorkspace(id);
 }
 
+export async function countWorkspaceLoops(id: string): Promise<number> {
+  const db = getDatabase();
+  const loopCountStmt = db.prepare("SELECT COUNT(*) as count FROM loops WHERE workspace_id = ?");
+  const loopCountRow = loopCountStmt.get(id) as { count: number };
+  return loopCountRow.count;
+}
+
 /**
  * Delete a workspace by ID.
  * Only succeeds if the workspace has no associated loops.
@@ -119,14 +126,13 @@ export async function deleteWorkspace(id: string): Promise<{ success: boolean; r
     return { success: false, reason: "Workspace not found" };
   }
 
-  const loopCountStmt = db.prepare("SELECT COUNT(*) as count FROM loops WHERE workspace_id = ?");
-  const loopCountRow = loopCountStmt.get(id) as { count: number };
+  const loopCount = await countWorkspaceLoops(id);
 
-  if (loopCountRow.count > 0) {
-    log.warn("Cannot delete workspace with loops", { id, loopCount: loopCountRow.count });
+  if (loopCount > 0) {
+    log.warn("Cannot delete workspace with loops", { id, loopCount });
     return {
       success: false,
-      reason: `Workspace has ${loopCountRow.count} loop(s). Delete all loops first.`,
+      reason: `Workspace has ${loopCount} loop(s). Delete all loops first.`,
     };
   }
 

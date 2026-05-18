@@ -209,6 +209,7 @@ export interface ConfirmModalProps {
   onConfirm: () => void;
   title: string;
   message: string;
+  children?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   loading?: boolean;
@@ -221,6 +222,7 @@ export function ConfirmModal({
   onConfirm,
   title,
   message,
+  children,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   loading = false,
@@ -248,6 +250,7 @@ export function ConfirmModal({
       }
     >
       <p className="text-gray-600 dark:text-gray-300">{message}</p>
+      {children}
     </Modal>
   );
 }

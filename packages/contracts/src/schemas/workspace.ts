@@ -82,6 +82,14 @@ export const UpdateWorkspaceRequestSchema = z.object({
 });
 
 /**
+ * Schema for DeleteWorkspaceRequest - DELETE /api/workspaces/:id
+ */
+export const DeleteWorkspaceRequestSchema = z.object({
+  deleteServerDirectory: z.boolean().optional(),
+  credentialToken: z.string().optional().nullable(),
+});
+
+/**
  * Schema for testing connection without a workspace - POST /api/server-settings/test
  */
 export const TestConnectionRequestSchema = z.object({
@@ -127,3 +135,4 @@ export type ServerSettings = z.infer<typeof ServerSettingsSchema>;
 export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
 export type WorkspaceExportData = z.infer<typeof WorkspaceExportSchema>;
 export type WorkspaceImportRequest = z.infer<typeof WorkspaceImportRequestSchema>;
+export type DeleteWorkspaceRequest = z.infer<typeof DeleteWorkspaceRequestSchema>;

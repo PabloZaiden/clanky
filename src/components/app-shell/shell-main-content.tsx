@@ -81,7 +81,7 @@ interface ShellMainContentProps {
     password?: string,
   ) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
-  deleteWorkspace: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteWorkspace: (id: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   pullLatestChanges: (
     id: string,
   ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;

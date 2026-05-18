@@ -20,6 +20,7 @@ import { assertValidTransition, isActiveStatus } from "../loop-state-machine";
 import { normalizeBranchPrefix } from "../branch-name";
 import { resolvePullRequestDestination } from "../pull-request-navigation";
 import { resolveEffectiveCheapModel } from "../cheap-model";
+import { isWorkspaceDeletionInProgress } from "../workspace-deletion";
 import { getLoopWorkingDirectory, type GenerateLoopTitleOptions } from "./loop-types";
 import { handleFullyAutonomousCompletionImpl } from "./loop-fully-autonomous";
 
@@ -34,6 +35,9 @@ export async function createLoopImpl(ctx: LoopCtx, options: CreateLoopOptions): 
 
   if (!name) {
     throw new Error("Loop name is required");
+  }
+  if (isWorkspaceDeletionInProgress(options.workspaceId)) {
+    throw new Error("Workspace deletion is in progress");
   }
 
   log.debug("createLoop - Input", {
