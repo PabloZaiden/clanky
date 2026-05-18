@@ -1745,6 +1745,32 @@ describe("ChatManager", () => {
     ]);
   });
 
+  test("creates worktree-backed standalone chats with an established worktree immediately", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      initGit: true,
+    });
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Quick Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+
+    const persisted = await loadChat(chat.config.id);
+    const expectedWorktreePath = `${context.workDir}/.ralph-worktrees/${chat.config.id}`;
+
+    expect(chat.config.useWorktree).toBe(true);
+    expect(chat.state.worktree?.originalBranch).toBeString();
+    expect(chat.state.worktree?.workingBranch).toContain("chat-quick-chat-");
+    expect(chat.state.worktree?.worktreePath).toBe(expectedWorktreePath);
+    expect(persisted?.state.worktree?.worktreePath).toBe(expectedWorktreePath);
+    expect(await context.git.worktreeExists(context.workDir, expectedWorktreePath)).toBe(true);
+  });
+
   test("auto-approves chat permission requests when enabled", async () => {
     context = await setupTestContext({
       useMockBackend: true,

@@ -243,6 +243,14 @@ describe("Chats API Integration", () => {
     expect(created.config.workspaceId).toBe(testWorkspaceId);
     expect(created.config.useWorktree).toBe(true);
     expect(created.config.baseBranch).toBeUndefined();
+
+    const expectedWorktreePath = `${testWorkDir}/.ralph-worktrees/${created.config.id}`;
+    expect(created.state.worktree?.originalBranch).toBe("main");
+    expect(created.state.worktree?.workingBranch).toContain("chat-chat-without-base-branch-");
+    expect(created.state.worktree?.worktreePath).toBe(expectedWorktreePath);
+
+    const persisted = await loadChat(created.config.id);
+    expect(persisted?.state.worktree?.worktreePath).toBe(expectedWorktreePath);
   });
 
   test("lists chats without hydrating transcript payloads", async () => {
