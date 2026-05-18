@@ -65,6 +65,7 @@ export {
   AgentSettingsSchema,
   ServerSettingsSchema,
   CreateWorkspaceRequestSchema,
+  DeleteWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
   TestConnectionRequestSchema,
   WorkspaceConfigSchema,
@@ -77,6 +78,7 @@ export {
   type WorkspaceConfig,
   type WorkspaceExportData,
   type WorkspaceImportRequest,
+  type DeleteWorkspaceRequest,
 } from "./workspace";
 
 // Preferences schemas

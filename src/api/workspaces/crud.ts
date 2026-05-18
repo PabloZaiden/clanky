@@ -7,9 +7,9 @@ import {
   createWorkspace,
   listWorkspaces,
   updateWorkspace,
-  deleteWorkspace,
 } from "../../persistence/workspaces";
 import { backendManager } from "../../core/backend-manager";
+import { deleteWorkspaceWithOptions } from "../../core/workspace-deletion";
 import { createLogger } from "../../core/logger";
 import { areServerSettingsEqual, getDefaultServerSettings } from "../../types/settings";
 import type { Workspace } from "../../types/workspace";
@@ -21,10 +21,19 @@ import {
 import { sanitizeWorkspace, shouldIncludeSensitiveData } from "../../lib/sensitive-data";
 import {
   CreateWorkspaceRequestSchema,
+  DeleteWorkspaceRequestSchema,
   UpdateWorkspaceRequestSchema,
 } from "../../types/schemas";
 
 const log = createLogger("api:workspaces");
+
+function mapDeleteWorkspaceError(error: unknown): Response {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("credential token")) {
+    return errorResponse("invalid_credential_token", message, 400);
+  }
+  return errorResponse("delete_failed", `Failed to delete workspace: ${message}`, 500);
+}
 
 export const crudRoutes = {
   /**
@@ -192,8 +201,17 @@ export const crudRoutes = {
     async DELETE(req: Request & { params: { id: string } }) {
       const { id } = req.params;
       log.debug("DELETE /api/workspaces/:id", { workspaceId: id });
+      const validation = await parseAndValidate(DeleteWorkspaceRequestSchema, req, {
+        allowEmptyBody: true,
+        emptyBodyValue: {},
+      });
+
+      if (!validation.success) {
+        return validation.response;
+      }
+
       try {
-        const result = await deleteWorkspace(id);
+        const result = await deleteWorkspaceWithOptions(id, validation.data);
         if (!result.success) {
           log.warn("DELETE /api/workspaces/:id - Failed", { workspaceId: id, reason: result.reason });
           const reason = result.reason ?? "Delete failed";
@@ -206,7 +224,7 @@ export const crudRoutes = {
         return Response.json({ success: true });
       } catch (error) {
         log.error("Failed to delete workspace:", String(error));
-        return errorResponse("delete_failed", `Failed to delete workspace: ${String(error)}`, 500);
+        return mapDeleteWorkspaceError(error);
       }
     },
   },

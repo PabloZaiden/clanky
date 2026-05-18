@@ -8,6 +8,7 @@ import type {
   PublicWorkspace,
   Workspace,
   CreateWorkspaceRequest,
+  DeleteWorkspaceRequest,
   WorkspaceImportResult,
   WorkspaceExportData,
 } from "../types/workspace";
@@ -30,7 +31,7 @@ export interface UseWorkspacesResult {
   /** Update a workspace */
   updateWorkspace: (id: string, name: string) => Promise<Workspace | null>;
   /** Delete a workspace (only if it has no loops) */
-  deleteWorkspace: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteWorkspace: (id: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   /** Pull latest changes for the workspace default branch */
   pullLatestChanges: (
     id: string,
@@ -142,12 +143,17 @@ export function useWorkspaces(): UseWorkspacesResult {
   }, [fetchWorkspaces]);
 
   // Delete a workspace
-  const deleteWorkspace = useCallback(async (id: string): Promise<{ success: boolean; error?: string }> => {
+  const deleteWorkspace = useCallback(async (
+    id: string,
+    options: DeleteWorkspaceRequest = {},
+  ): Promise<{ success: boolean; error?: string }> => {
     try {
       setSaving(true);
       setError(null);
       const response = await appFetch(`/api/workspaces/${id}`, {
         method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
       });
 
       if (!response.ok) {

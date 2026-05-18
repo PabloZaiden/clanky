@@ -12,7 +12,7 @@ interface WorkspaceSettingsViewProps {
   workspaceSettings: UseWorkspaceSettingsShellResult;
   dashboardData: UseDashboardDataResult;
   refreshWorkspaces: () => Promise<void>;
-  deleteWorkspace: (id: string) => Promise<{ success: boolean; error?: string }>;
+  deleteWorkspace: (id: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   navigateWithinShell: (route: ShellRoute) => void;
   shellHeaderOffsetClassName: string;
 }
@@ -93,7 +93,7 @@ export function WorkspaceSettingsView({
             }
             onDeleteWorkspace={
               workspaceSettingsWorkspaceId
-                ? async () => await deleteWorkspace(workspaceSettingsWorkspaceId)
+                ? async (options) => await deleteWorkspace(workspaceSettingsWorkspaceId, options)
                 : undefined
             }
             purgeableLoopCount={selectedWorkspaceArchivedLoopCount}

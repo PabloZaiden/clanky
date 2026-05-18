@@ -3,7 +3,7 @@
  */
 
 import type { ServerSettings, ConnectionStatus } from "../../types/settings";
-import type { Workspace } from "../../types/workspace";
+import type { DeleteWorkspaceRequest, Workspace } from "../../types/workspace";
 import type { PurgeArchivedLoopsResult } from "../../hooks";
 
 export interface WorkspaceSettingsModalProps {
@@ -22,7 +22,7 @@ export interface WorkspaceSettingsModalProps {
   /** Callback to purge the workspace loops covered by the terminal-state settings action */
   onPurgeArchivedLoops?: () => Promise<PurgeArchivedLoopsResult>;
   /** Callback to delete the workspace */
-  onDeleteWorkspace?: () => Promise<{ success: boolean; error?: string }>;
+  onDeleteWorkspace?: (options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   /** Number of purgeable loops shown in the terminal-state section */
   purgeableLoopCount?: number;
   /** Total number of loops still assigned to the selected workspace */
@@ -52,7 +52,7 @@ export interface WorkspaceSettingsFormProps {
   /** Callback to purge the workspace loops covered by the terminal-state settings action */
   onPurgeArchivedLoops?: () => Promise<PurgeArchivedLoopsResult>;
   /** Callback to delete the workspace */
-  onDeleteWorkspace?: () => Promise<{ success: boolean; error?: string }>;
+  onDeleteWorkspace?: (options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   /** Number of purgeable loops shown in the terminal-state section */
   purgeableLoopCount?: number;
   /** Total number of loops still assigned to the selected workspace */
