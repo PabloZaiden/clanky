@@ -673,6 +673,42 @@ describe("Workspace API Integration", () => {
       expect(await getWorkspace("auto-delete-workspace")).toBeNull();
     });
 
+    test("accepts auto-provisioned base paths with trailing slashes", async () => {
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-source-"));
+      await Bun.write(join(sourceDirectory, "README.md"), "# Auto\n");
+      const sshServer = await sshServerManager.createServer({
+        name: "Trailing Slash Source Server",
+        address: "127.0.0.1",
+        username: "tester",
+        repositoriesBasePath: null,
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+
+      await createWorkspace({
+        id: "auto-delete-trailing-base-workspace",
+        name: "Auto Delete Trailing Base Workspace",
+        directory: testWorkDir,
+        serverSettings: makeServerSettings(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sourceDirectory,
+        sshServerId: sshServer.config.id,
+        basePath: `${tmpdir()}/`,
+        repoUrl: "git@example.com:test/repo.git",
+        provider: "opencode",
+      });
+
+      const response = await fetch(`${baseUrl}/api/workspaces/auto-delete-trailing-base-workspace`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteServerDirectory: true }),
+      });
+
+      expect(response.ok).toBe(true);
+      expect(await Bun.file(join(sourceDirectory, "README.md")).exists()).toBe(false);
+      expect(await getWorkspace("auto-delete-trailing-base-workspace")).toBeNull();
+    });
+
     test("preserves auto-provisioned server directory when option is false", async () => {
       const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-preserve-"));
       await Bun.write(join(sourceDirectory, "README.md"), "# Auto\n");
@@ -764,6 +800,99 @@ describe("Workspace API Integration", () => {
       const body = await response.json() as { message: string };
       expect(body.message).toContain("permission denied");
       expect(await getWorkspace("auto-fail-workspace")).not.toBeNull();
+      await rm(sourceDirectory, { recursive: true, force: true });
+    });
+
+    test("preserves workspace record when server directory existence check fails", async () => {
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-exists-fail-"));
+      const sshServer = await sshServerManager.createServer({
+        name: "Existence Failure Server",
+        address: "127.0.0.1",
+        username: "tester",
+        repositoriesBasePath: null,
+      });
+      sshServerManager.setExecutorFactoryForTesting(() => ({
+        async directoryExists() {
+          throw new Error("ssh connection lost");
+        },
+        async exec() {
+          return { success: true, stdout: "", stderr: "", exitCode: 0 };
+        },
+        async fileExists() {
+          return false;
+        },
+        async readFile() {
+          return null;
+        },
+        async listDirectory() {
+          return [];
+        },
+        async writeFile() {
+          return false;
+        },
+      }));
+
+      await createWorkspace({
+        id: "auto-exists-fail-workspace",
+        name: "Auto Exists Fail Workspace",
+        directory: testWorkDir,
+        serverSettings: makeServerSettings(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sourceDirectory,
+        sshServerId: sshServer.config.id,
+        basePath: tmpdir(),
+        repoUrl: "git@example.com:test/repo.git",
+        provider: "opencode",
+      });
+
+      const response = await fetch(`${baseUrl}/api/workspaces/auto-exists-fail-workspace`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteServerDirectory: true }),
+      });
+
+      expect(response.status).toBe(500);
+      const body = await response.json() as { message: string };
+      expect(body.message).toContain("ssh connection lost");
+      expect(await getWorkspace("auto-exists-fail-workspace")).not.toBeNull();
+      await rm(sourceDirectory, { recursive: true, force: true });
+    });
+
+    test("returns invalid credential token errors for auto-provisioned server directory deletion", async () => {
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-token-fail-"));
+      const sshServer = await sshServerManager.createServer({
+        name: "Credential Token Failure Server",
+        address: "127.0.0.1",
+        username: "tester",
+        repositoriesBasePath: null,
+      });
+
+      await createWorkspace({
+        id: "auto-token-fail-workspace",
+        name: "Auto Token Fail Workspace",
+        directory: testWorkDir,
+        serverSettings: makeServerSettings(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sourceDirectory,
+        sshServerId: sshServer.config.id,
+        basePath: tmpdir(),
+        repoUrl: "git@example.com:test/repo.git",
+        provider: "opencode",
+      });
+
+      const response = await fetch(`${baseUrl}/api/workspaces/auto-token-fail-workspace`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteServerDirectory: true, credentialToken: "missing-token" }),
+      });
+
+      expect(response.status).toBe(400);
+      const body = await response.json() as { error: string; message: string };
+      expect(body.error).toBe("invalid_credential_token");
+      expect(body.message).toContain("SSH credential token");
+      expect(await getWorkspace("auto-token-fail-workspace")).not.toBeNull();
       await rm(sourceDirectory, { recursive: true, force: true });
     });
 

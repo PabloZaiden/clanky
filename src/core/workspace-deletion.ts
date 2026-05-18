@@ -1,11 +1,12 @@
-import { posix as pathPosix } from "node:path";
 import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace, countWorkspaceLoops } from "../persistence/workspaces";
 import type { Workspace } from "../types/workspace";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { sshServerManager } from "./ssh-server-manager";
 import { createLogger } from "./logger";
+import { isAutoProvisionedWorkspace, isSafeProvisionedDirectory } from "../lib/workspace-deletion-safety";
 
 const log = createLogger("core:workspace-deletion");
+const workspaceDeletionLocks = new Set<string>();
 
 export interface DeleteWorkspaceOptions {
   deleteServerDirectory?: boolean;
@@ -17,33 +18,10 @@ export interface DeleteWorkspaceResult {
   reason?: string;
 }
 
-export function isAutoProvisionedWorkspace(workspace: Workspace): boolean {
-  const sourceDirectory = workspace.sourceDirectory?.trim();
-  const basePath = workspace.basePath?.trim();
-  return Boolean(
-    sourceDirectory
-      && workspace.sshServerId?.trim()
-      && basePath
-      && isSafeProvisionedDirectory(sourceDirectory, basePath),
-  );
-}
+export { isAutoProvisionedWorkspace, isSafeProvisionedDirectory };
 
-function isSafeProvisionedDirectory(sourceDirectory: string, basePath: string): boolean {
-  if (!sourceDirectory.startsWith("/") || !basePath.startsWith("/")) {
-    return false;
-  }
-  if (sourceDirectory.split("/").includes("..") || basePath.split("/").includes("..")) {
-    return false;
-  }
-  const normalizedSource = pathPosix.normalize(sourceDirectory);
-  const normalizedBase = pathPosix.normalize(basePath);
-  if (normalizedSource === "/" || normalizedBase === "/" || normalizedSource === normalizedBase) {
-    return false;
-  }
-  if (!normalizedSource.startsWith(`${normalizedBase}/`)) {
-    return false;
-  }
-  return normalizedSource.split("/").filter(Boolean).length >= 2;
+export function isWorkspaceDeletionInProgress(workspaceId: string): boolean {
+  return workspaceDeletionLocks.has(workspaceId);
 }
 
 async function deleteProvisionedServerDirectory(workspace: Workspace, credentialToken?: string | null): Promise<void> {
@@ -79,6 +57,10 @@ export async function deleteWorkspaceWithOptions(
   id: string,
   options: DeleteWorkspaceOptions = {},
 ): Promise<DeleteWorkspaceResult> {
+  if (workspaceDeletionLocks.has(id)) {
+    return { success: false, reason: "Workspace deletion is already in progress" };
+  }
+
   const workspace = await getWorkspace(id);
   if (!workspace) {
     return { success: false, reason: "Workspace not found" };
@@ -92,15 +74,27 @@ export async function deleteWorkspaceWithOptions(
     };
   }
 
-  if (options.deleteServerDirectory) {
-    if (!isAutoProvisionedWorkspace(workspace)) {
+  workspaceDeletionLocks.add(id);
+  try {
+    if ((await countWorkspaceLoops(id)) > 0) {
       return {
         success: false,
-        reason: "Workspace is not an auto-provisioned workspace with a safe server directory",
+        reason: "Workspace has loop(s). Delete all loops first.",
       };
     }
-    await deleteProvisionedServerDirectory(workspace, options.credentialToken);
-  }
 
-  return await deleteWorkspaceRecord(id);
+    if (options.deleteServerDirectory) {
+      if (!isAutoProvisionedWorkspace(workspace)) {
+        return {
+          success: false,
+          reason: "Workspace is not an auto-provisioned workspace with a safe server directory",
+        };
+      }
+      await deleteProvisionedServerDirectory(workspace, options.credentialToken);
+    }
+
+    return await deleteWorkspaceRecord(id);
+  } finally {
+    workspaceDeletionLocks.delete(id);
+  }
 }

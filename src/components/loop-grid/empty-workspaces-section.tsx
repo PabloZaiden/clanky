@@ -5,6 +5,7 @@ import { getServerLabel } from "../../types/settings";
 import { ConfirmModal } from "../common";
 import { useToast } from "../../hooks";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
+import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
 import { WorkspaceGearIcon } from "./workspace-gear-icon";
 
 export interface EmptyWorkspacesSectionProps {
@@ -12,10 +13,6 @@ export interface EmptyWorkspacesSectionProps {
   registeredSshServers: readonly SshServer[];
   onOpenWorkspaceSettings: (workspaceId: string) => void;
   onDeleteWorkspace: (workspaceId: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-}
-
-function canDeleteProvisionedServerDirectory(workspace: Workspace): boolean {
-  return Boolean(workspace.sourceDirectory?.trim() && workspace.sshServerId?.trim() && workspace.basePath?.trim());
 }
 
 /** Renders the "Empty Workspaces" section with delete confirmation */
@@ -84,7 +81,7 @@ export function EmptyWorkspacesSection({
           setDeletingWorkspace(true);
           try {
             const options: DeleteWorkspaceRequest = {};
-            if (deleteServerDirectory && canDeleteProvisionedServerDirectory(deleteWorkspace)) {
+            if (deleteServerDirectory && isAutoProvisionedWorkspace(deleteWorkspace)) {
               options.deleteServerDirectory = true;
               if (deleteWorkspace.sshServerId) {
                 options.credentialToken = await getStoredSshCredentialToken(deleteWorkspace.sshServerId);
@@ -105,7 +102,7 @@ export function EmptyWorkspacesSection({
         loading={deletingWorkspace}
         variant="danger"
       >
-        {deleteWorkspace?.sourceDirectory && canDeleteProvisionedServerDirectory(deleteWorkspace) && (
+        {deleteWorkspace?.sourceDirectory && isAutoProvisionedWorkspace(deleteWorkspace) && (
           <label className="mt-4 flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
             <input
               type="checkbox"

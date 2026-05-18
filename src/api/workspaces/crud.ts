@@ -27,6 +27,14 @@ import {
 
 const log = createLogger("api:workspaces");
 
+function mapDeleteWorkspaceError(error: unknown): Response {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("credential token")) {
+    return errorResponse("invalid_credential_token", message, 400);
+  }
+  return errorResponse("delete_failed", `Failed to delete workspace: ${message}`, 500);
+}
+
 export const crudRoutes = {
   /**
    * GET /api/workspaces - List all workspaces
@@ -216,7 +224,7 @@ export const crudRoutes = {
         return Response.json({ success: true });
       } catch (error) {
         log.error("Failed to delete workspace:", String(error));
-        return errorResponse("delete_failed", `Failed to delete workspace: ${String(error)}`, 500);
+        return mapDeleteWorkspaceError(error);
       }
     },
   },

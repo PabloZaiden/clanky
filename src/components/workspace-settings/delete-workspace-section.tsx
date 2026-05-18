@@ -7,6 +7,7 @@ import { Button, ConfirmModal } from "../common";
 import { useToast } from "../../hooks";
 import type { DeleteWorkspaceRequest, Workspace } from "../../types/workspace";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
+import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";
 import { TrashIcon } from "./icons";
 
 interface DeleteWorkspaceSectionProps {
@@ -15,10 +16,6 @@ interface DeleteWorkspaceSectionProps {
   workspaceLoopCount: number;
   saving: boolean;
   onDeleted?: () => void;
-}
-
-function canDeleteProvisionedServerDirectory(workspace: Workspace): boolean {
-  return Boolean(workspace.sourceDirectory?.trim() && workspace.sshServerId?.trim() && workspace.basePath?.trim());
 }
 
 export function DeleteWorkspaceSection({
@@ -32,7 +29,7 @@ export function DeleteWorkspaceSection({
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteServerDirectory, setDeleteServerDirectory] = useState(true);
-  const canDeleteServerDirectory = canDeleteProvisionedServerDirectory(workspace);
+  const canDeleteServerDirectory = isAutoProvisionedWorkspace(workspace);
 
   const disabled = saving || deleting || workspaceLoopCount > 0;
 

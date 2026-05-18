@@ -194,14 +194,14 @@ export function DashboardModals(props: DashboardModalsProps) {
           }
           return await props.purgeArchivedWorkspaceLoops(props.workspaceSettingsModal.workspaceId);
         }}
-        onDeleteWorkspace={async () => {
+        onDeleteWorkspace={async (options) => {
           if (!props.workspaceSettingsModal.workspaceId) {
             return {
               success: false,
               error: "Workspace settings are unavailable right now.",
             };
           }
-          return await props.onDeleteWorkspace(props.workspaceSettingsModal.workspaceId);
+          return await props.onDeleteWorkspace(props.workspaceSettingsModal.workspaceId, options);
         }}
         purgeableLoopCount={props.archivedLoopCount}
         workspaceLoopCount={props.workspaceLoopCount}

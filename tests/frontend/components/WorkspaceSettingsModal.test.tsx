@@ -599,6 +599,31 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
     expect(queryByRole("checkbox", { name: /Also delete the server directory/ })).toBeNull();
   });
 
+  test("does not show server directory deletion option for unsafe auto-provisioning paths", async () => {
+    api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
+    const onDeleteWorkspace = mock(() => Promise.resolve({ success: true }));
+
+    const { getByRole, queryByRole, user } = renderWithUser(
+      <WorkspaceSettingsModal
+        {...defaultProps()}
+        workspace={makeWorkspace({
+          sourceDirectory: "relative/repo",
+          sshServerId: "ssh-server-1",
+          basePath: "/workspaces",
+        })}
+        onDeleteWorkspace={onDeleteWorkspace}
+      />
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "Delete Workspace" })).toBeInTheDocument();
+    });
+
+    await user.click(getByRole("button", { name: "Delete Workspace" }));
+
+    expect(queryByRole("checkbox", { name: /Also delete the server directory/ })).toBeNull();
+  });
+
   test("shows the delete failure and keeps the modal open when deletion is rejected", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
     const onClose = mock();
