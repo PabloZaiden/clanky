@@ -720,6 +720,34 @@ describe("ShellSidebarNav", () => {
     expect(queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  test("suppresses the native context menu inside the custom context menu", () => {
+    const { getAllByText, getByRole } = renderWithUser(<SidebarHarness />);
+    const [workspaceLabel] = getAllByText("Workspace 1");
+    expect(workspaceLabel).toBeDefined();
+    openContextMenuForButton(getByTextButton(workspaceLabel!));
+
+    const documentContextMenu = mock((_event: Event) => {});
+    document.addEventListener("contextmenu", documentContextMenu);
+    try {
+      let defaultPrevented = false;
+      act(() => {
+        const event = new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 30,
+          clientY: 40,
+        });
+        getByRole("menu").dispatchEvent(event);
+        defaultPrevented = event.defaultPrevented;
+      });
+
+      expect(defaultPrevented).toBe(true);
+      expect(documentContextMenu).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("contextmenu", documentContextMenu);
+    }
+  });
+
   test("opens SSH server context menu from search results with detail actions plus settings last", async () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
     const { getAllByRole, getByLabelText, getByRole, getByText, user } = renderWithUser(

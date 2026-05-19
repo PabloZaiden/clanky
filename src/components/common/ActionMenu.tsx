@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { HamburgerIcon } from "./Icons";
@@ -257,6 +258,11 @@ export function ContextMenu({
     item.onClick();
   };
 
+  const handleContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
     <div
       ref={menuRef}
@@ -264,6 +270,7 @@ export function ContextMenu({
       role="menu"
       aria-label={ariaLabel}
       aria-orientation="vertical"
+      onContextMenu={handleContextMenu}
       style={style}
     >
       <ActionMenuItems items={items} onItemClick={handleItemClick} />
