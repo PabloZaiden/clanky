@@ -5,8 +5,8 @@ import type { Chat } from "@/types/chat";
 import type { SshServer, SshServerSession } from "@/types/ssh-server";
 import { ShellSidebarNav } from "@/components/app-shell/shell-sidebar-nav";
 import { buildServerSidebarNodes, buildWorkspaceSidebarGroups, type ShellRoute } from "@/components/app-shell/shell-types";
-import { createLoop, createSshSession, createWorkspace } from "../helpers/factories";
-import { renderWithUser, waitFor } from "../helpers/render";
+import { createLoop, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
+import { act, renderWithUser, waitFor } from "../helpers/render";
 
 function createChat(overrides?: {
   config?: Partial<Chat["config"]>;
@@ -92,11 +92,14 @@ function createSidebarData() {
       name: "Workspace 1",
       directory: "/workspaces/workspace-1",
       sshServerId: "server-1",
+      repoUrl: "git@github.com:owner/workspace-1.git",
+      serverSettings: createServerSettings({ mode: "connect" }),
     }),
     createWorkspace({
       id: "workspace-2",
       name: "Workspace 2",
       directory: "/workspaces/workspace-2",
+      repoUrl: "https://example.com/workspace-2.git",
     }),
   ];
   const loops = [
@@ -204,6 +207,8 @@ function SidebarHarness({
   quickChatUnavailableReason,
   onQuickChat,
   onConfigureQuickChat,
+  pullLatestWorkspaceChanges,
+  pullingLatestWorkspaceIds,
   version,
 }: {
   route?: ShellRoute;
@@ -214,6 +219,8 @@ function SidebarHarness({
   quickChatUnavailableReason?: string | null;
   onQuickChat?: () => void;
   onConfigureQuickChat?: () => void;
+  pullLatestWorkspaceChanges?: (workspaceId: string) => Promise<void>;
+  pullingLatestWorkspaceIds?: ReadonlySet<string>;
   version?: string;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -237,6 +244,8 @@ function SidebarHarness({
       onConfigureQuickChat={onConfigureQuickChat ?? mock(() => {})}
       version={version}
       sidebarSearchFocusRequest={0}
+      pullLatestWorkspaceChanges={pullLatestWorkspaceChanges ?? mock(async () => {})}
+      pullingLatestWorkspaceIds={pullingLatestWorkspaceIds ?? new Set()}
     />
   );
 }
@@ -654,6 +663,118 @@ describe("ShellSidebarNav", () => {
     expect(onQuickChat).not.toHaveBeenCalled();
   });
 
+  test("opens workspace context menu with detail actions plus settings last", async () => {
+    const navigateWithinShell = mock((_route: ShellRoute) => {});
+    const pullLatestWorkspaceChanges = mock(async (_workspaceId: string) => {});
+    const { getAllByRole, getAllByText, getByRole, queryByRole, user } = renderWithUser(
+      <SidebarHarness
+        navigateWithinShell={navigateWithinShell}
+        pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
+      />,
+    );
+    const [workspaceLabel] = getAllByText("Workspace 1");
+    expect(workspaceLabel).toBeDefined();
+    const defaultPrevented = openContextMenuForButton(getByTextButton(workspaceLabel!));
+
+    expect(defaultPrevented).toBe(true);
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "New Loop",
+      "New Chat",
+      "Open code explorer",
+      "Pull Latest Changes",
+      "Open in GitHub",
+      "New SSH Session",
+      "Workspace Settings",
+    ]);
+
+    await user.click(getByRole("menuitem", { name: "New Loop" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-1" });
+    expect(queryByRole("menu")).not.toBeInTheDocument();
+
+    openContextMenuForButton(getByTextButton(workspaceLabel!));
+    await user.click(getByRole("menuitem", { name: "Pull Latest Changes" }));
+    expect(pullLatestWorkspaceChanges).toHaveBeenCalledWith("workspace-1");
+
+    openContextMenuForButton(getByTextButton(workspaceLabel!));
+    await user.click(getByRole("menuitem", { name: "Workspace Settings" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "workspace-settings", workspaceId: "workspace-1" });
+  });
+
+  test("omits conditional workspace context actions when unavailable and closes on Escape", async () => {
+    const { getAllByRole, getAllByText, queryByRole, user } = renderWithUser(<SidebarHarness />);
+    const [workspaceLabel] = getAllByText("Workspace 2");
+    expect(workspaceLabel).toBeDefined();
+
+    openContextMenuForButton(getByTextButton(workspaceLabel!));
+
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "New Loop",
+      "New Chat",
+      "Open code explorer",
+      "Pull Latest Changes",
+      "Workspace Settings",
+    ]);
+
+    await user.keyboard("{Escape}");
+
+    expect(queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  test("suppresses the native context menu inside the custom context menu", () => {
+    const { getAllByText, getByRole } = renderWithUser(<SidebarHarness />);
+    const [workspaceLabel] = getAllByText("Workspace 1");
+    expect(workspaceLabel).toBeDefined();
+    openContextMenuForButton(getByTextButton(workspaceLabel!));
+
+    const documentContextMenu = mock((_event: Event) => {});
+    document.addEventListener("contextmenu", documentContextMenu);
+    try {
+      let defaultPrevented = false;
+      act(() => {
+        const event = new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 30,
+          clientY: 40,
+        });
+        getByRole("menu").dispatchEvent(event);
+        defaultPrevented = event.defaultPrevented;
+      });
+
+      expect(defaultPrevented).toBe(true);
+      expect(documentContextMenu).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("contextmenu", documentContextMenu);
+    }
+  });
+
+  test("opens SSH server context menu from search results with detail actions plus settings last", async () => {
+    const navigateWithinShell = mock((_route: ShellRoute) => {});
+    const { getAllByRole, getByLabelText, getByRole, getByText, user } = renderWithUser(
+      <SidebarHarness navigateWithinShell={navigateWithinShell} />,
+    );
+
+    await user.type(getByLabelText("Search sidebar"), "server 1");
+    openContextMenuForButton(getByTextButton(getByText("Server 1")));
+
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Open code explorer",
+      "New Session",
+      "SSH Server Settings",
+    ]);
+
+    await user.click(getByRole("menuitem", { name: "New Session" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({
+      view: "compose",
+      kind: "ssh-session",
+      scopeId: "server-1",
+    });
+
+    openContextMenuForButton(getByTextButton(getByText("Server 1")));
+    await user.click(getByRole("menuitem", { name: "SSH Server Settings" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "ssh-server-settings", serverId: "server-1" });
+  });
+
   test("pins quick chats before the regular workspaces without showing the workspace", async () => {
     const { workspaceGroups } = createSidebarData();
     const quickChatWorkspace = workspaceGroups[0]!.workspaces.find(
@@ -892,4 +1013,19 @@ function getByTextButton(node: HTMLElement): HTMLButtonElement {
   const button = node.closest("button");
   expect(button).not.toBeNull();
   return button as HTMLButtonElement;
+}
+
+function openContextMenuForButton(button: HTMLButtonElement): boolean {
+  let defaultPrevented = false;
+  act(() => {
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 24,
+      clientY: 32,
+    });
+    button.dispatchEvent(event);
+    defaultPrevented = event.defaultPrevented;
+  });
+  return defaultPrevented;
 }
