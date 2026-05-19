@@ -82,9 +82,8 @@ interface ShellMainContentProps {
   ) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
   deleteWorkspace: (id: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-  pullLatestChanges: (
-    id: string,
-  ) => Promise<{ success: boolean; defaultBranch?: string; currentBranch?: string; error?: string }>;
+  pullLatestWorkspaceChanges: (id: string) => Promise<void>;
+  pullingLatestWorkspaceIds: ReadonlySet<string>;
   exportConfig: () => Promise<WorkspaceExportData | null>;
   importConfig: (data: WorkspaceExportData) => Promise<WorkspaceImportResult | null>;
 
@@ -143,7 +142,8 @@ function renderMainContent(props: ShellMainContentProps) {
     purgeLoop,
     deleteServer,
     deleteWorkspace,
-    pullLatestChanges,
+    pullLatestWorkspaceChanges,
+    pullingLatestWorkspaceIds,
     dashboardData,
     passkeyAuth,
     quickChatSettings,
@@ -318,7 +318,10 @@ function renderMainContent(props: ShellMainContentProps) {
         onOpenSettings={() =>
           navigateWithinShell({ view: "workspace-settings", workspaceId: selectedWorkspace.id })
         }
-        onPullLatestChanges={async () => await pullLatestChanges(selectedWorkspace.id)}
+        onPullLatestChanges={() => {
+          void pullLatestWorkspaceChanges(selectedWorkspace.id);
+        }}
+        pullingLatestChanges={pullingLatestWorkspaceIds.has(selectedWorkspace.id)}
         onNavigate={navigateWithinShell}
       />
     );

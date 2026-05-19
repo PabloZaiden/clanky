@@ -1,8 +1,9 @@
 import type { SshServer, SshServerSession } from "../../types";
-import { ActionMenu, Badge, Button, GearIcon, type ActionMenuItem } from "../common";
+import { ActionMenu, Badge, Button, GearIcon } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel, SummaryCard } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
+import { buildSshServerActionItems } from "./shell-action-items";
 
 export function SshServerView({
   server,
@@ -17,16 +18,7 @@ export function SshServerView({
   onNavigate: (route: ShellRoute) => void;
   onOpenSettings: () => void;
 }) {
-  const actionItems: ActionMenuItem[] = [
-    {
-      label: "Open code explorer",
-      onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "server", serverId: server.config.id } }),
-    },
-    {
-      label: "New Session",
-      onClick: () => onNavigate({ view: "compose", kind: "ssh-session", scopeId: server.config.id }),
-    },
-  ];
+  const actionItems = buildSshServerActionItems({ server, onNavigate });
 
   return (
     <ShellPanel

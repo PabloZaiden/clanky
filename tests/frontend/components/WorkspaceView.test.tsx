@@ -29,6 +29,7 @@ describe("WorkspaceView", () => {
           registeredSshServers={[]}
           onOpenSettings={() => {}}
           onPullLatestChanges={async () => ({ success: true })}
+          pullingLatestChanges={false}
           onNavigate={() => {}}
         />,
       );
@@ -69,6 +70,7 @@ describe("WorkspaceView", () => {
         registeredSshServers={[]}
         onOpenSettings={() => {}}
         onPullLatestChanges={async () => ({ success: true })}
+        pullingLatestChanges={false}
         onNavigate={() => {}}
       />,
     );
@@ -109,6 +111,7 @@ describe("WorkspaceView", () => {
         registeredSshServers={[]}
         onOpenSettings={() => {}}
         onPullLatestChanges={async () => ({ success: true })}
+        pullingLatestChanges={false}
         onNavigate={() => {}}
       />,
     );
@@ -133,10 +136,10 @@ describe("WorkspaceView", () => {
         relatedSessions={[]}
         registeredSshServers={[]}
         onOpenSettings={() => {}}
-        onPullLatestChanges={async () => {
+        onPullLatestChanges={() => {
           callCount += 1;
-          return { success: true, defaultBranch: "main" };
         }}
+        pullingLatestChanges={false}
         onNavigate={() => {}}
       />,
     );
@@ -144,23 +147,16 @@ describe("WorkspaceView", () => {
     await user.click(getByRole("button", { name: "Workspace actions for Frontend" }));
     await user.click(getByRole("menuitem", { name: "Pull Latest Changes" }));
 
-    await waitFor(() => {
-      expect(callCount).toBe(1);
-    });
-
-    await waitFor(() => {
-      const toast = getByRole("alert");
-      expect(toast.textContent).toContain("Pulled latest changes for \"main\".");
-      expect(toast.getAttribute("data-toast-variant")).toBe("success");
-    });
+    expect(callCount).toBe(1);
   });
 
-  test("shows an error toast when pull latest fails", async () => {
+  test("disables the pull latest action while pending", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
       name: "Frontend",
       directory: "/workspaces/frontend",
     });
+    let callCount = 0;
 
     const { getByRole, user } = renderWithUser(
       <WorkspaceView
@@ -170,21 +166,19 @@ describe("WorkspaceView", () => {
         relatedSessions={[]}
         registeredSshServers={[]}
         onOpenSettings={() => {}}
-        onPullLatestChanges={async () => ({
-          success: false,
-          error: "Git pull failed",
-        })}
+        onPullLatestChanges={() => {
+          callCount += 1;
+        }}
+        pullingLatestChanges
         onNavigate={() => {}}
       />,
     );
 
     await user.click(getByRole("button", { name: "Workspace actions for Frontend" }));
-    await user.click(getByRole("menuitem", { name: "Pull Latest Changes" }));
+    const pullItem = getByRole("menuitem", { name: "Pulling Latest Changes..." }) as HTMLButtonElement;
 
-    await waitFor(() => {
-      const toast = getByRole("alert");
-      expect(toast.textContent).toContain("Git pull failed");
-      expect(toast.getAttribute("data-toast-variant")).toBe("error");
-    });
+    expect(pullItem.disabled).toBe(true);
+    await user.click(pullItem);
+    expect(callCount).toBe(0);
   });
 });

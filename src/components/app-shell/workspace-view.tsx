@@ -1,5 +1,3 @@
-import { useState } from "react";
-import { useToast } from "../../hooks";
 import type { Chat, SshServer, Workspace } from "../../types";
 import { findRegisteredSshServer } from "../../types/settings";
 import type { useChats, useLoops, useSshSessions } from "../../hooks";
@@ -9,7 +7,6 @@ import {
   Button,
   GearIcon,
   StatusBadge,
-  type ActionMenuItem,
   getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
@@ -17,6 +14,7 @@ import {
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
+import { buildWorkspaceActionItems } from "./shell-action-items";
 
 function getWorkspaceHeaderServerLabel(
   workspace: Workspace,
@@ -43,6 +41,7 @@ export function WorkspaceView({
   headerOffsetClassName,
   onOpenSettings,
   onPullLatestChanges,
+  pullingLatestChanges,
   onNavigate,
 }: {
   workspace: Workspace;
@@ -52,16 +51,10 @@ export function WorkspaceView({
   registeredSshServers: readonly SshServer[];
   headerOffsetClassName?: string;
   onOpenSettings: () => void;
-  onPullLatestChanges: () => Promise<{
-    success: boolean;
-    defaultBranch?: string;
-    currentBranch?: string;
-    error?: string;
-  }>;
+  onPullLatestChanges: () => void;
+  pullingLatestChanges: boolean;
   onNavigate: (route: ShellRoute) => void;
 }) {
-  const toast = useToast();
-  const [pullingLatestChanges, setPullingLatestChanges] = useState(false);
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
   const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
@@ -73,63 +66,14 @@ export function WorkspaceView({
   const hasActivity = activityLoops.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
   const activityRowClassName = "flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800";
   const historyDescription = "Merged and deleted loops from this workspace.";
-  async function handlePullLatestChanges() {
-    if (pullingLatestChanges) {
-      return;
-    }
-
-    setPullingLatestChanges(true);
-
-    try {
-      const result = await onPullLatestChanges();
-      if (!result.success) {
-        toast.error(result.error ?? "Failed to pull latest changes");
-        return;
-      }
-
-      const branchLabel = result.defaultBranch ?? result.currentBranch ?? "the default branch";
-      toast.success(`Pulled latest changes for "${branchLabel}".`);
-    } catch (error) {
-      toast.error(String(error));
-    } finally {
-      setPullingLatestChanges(false);
-    }
-  }
-
-  const createActionItems: ActionMenuItem[] = [
-    {
-      label: "New Loop",
-      onClick: () => onNavigate({ view: "compose", kind: "loop", scopeId: workspace.id }),
-    },
-    {
-      label: "New Chat",
-      onClick: () => onNavigate({ view: "compose", kind: "chat", scopeId: workspace.id }),
-    },
-    {
-      label: "Open code explorer",
-      onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "workspace", workspaceId: workspace.id } }),
-    },
-    {
-      id: "pull-latest-changes",
-      label: pullingLatestChanges ? "Pulling Latest Changes..." : "Pull Latest Changes",
-      onClick: () => {
-        void handlePullLatestChanges();
-      },
-      disabled: pullingLatestChanges,
-    },
-    ...(githubUrl
-      ? [{
-          label: "Open in GitHub",
-          onClick: () => window.open(githubUrl, "_blank", "noopener,noreferrer"),
-        }]
-      : []),
-    ...(workspaceSshEnabled
-      ? [{
-          label: "New SSH Session",
-          onClick: () => onNavigate({ view: "compose", kind: "ssh-session", scopeId: workspace.id }),
-        }]
-      : []),
-  ];
+  const createActionItems = buildWorkspaceActionItems({
+    workspace,
+    githubUrl,
+    pullingLatestChanges,
+    onNavigate,
+    onPullLatestChanges,
+    onOpenGitHub: (url) => window.open(url, "_blank", "noopener,noreferrer"),
+  });
 
   function renderLoopRow(loop: ReturnType<typeof useLoops>["loops"][number]) {
     const route: ShellRoute = { view: "loop", loopId: loop.config.id };

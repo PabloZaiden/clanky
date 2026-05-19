@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useChats,
   useDashboardData,
@@ -88,6 +88,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const sidebar = useSidebar(route, onNavigate);
   const { navigateWithinShell, showSidebar } = sidebar;
   const [sidebarSearchFocusRequest, setSidebarSearchFocusRequest] = useState(0);
+  const pullingLatestWorkspaceIdsRef = useRef<Set<string>>(new Set());
+  const [pullingLatestWorkspaceIds, setPullingLatestWorkspaceIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const focusSidebarSearch = useCallback(() => {
     showSidebar();
@@ -109,6 +111,31 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     workspaceGroups,
     purgeArchivedWorkspaceLoops,
   });
+
+  const pullLatestWorkspaceChanges = useCallback(async (workspaceId: string) => {
+    if (pullingLatestWorkspaceIdsRef.current.has(workspaceId)) {
+      return;
+    }
+
+    pullingLatestWorkspaceIdsRef.current.add(workspaceId);
+    setPullingLatestWorkspaceIds(new Set(pullingLatestWorkspaceIdsRef.current));
+
+    try {
+      const result = await pullLatestChanges(workspaceId);
+      if (!result.success) {
+        toast.error(result.error ?? "Failed to pull latest changes");
+        return;
+      }
+
+      const branchLabel = result.defaultBranch ?? result.currentBranch ?? "the default branch";
+      toast.success(`Pulled latest changes for "${branchLabel}".`);
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      pullingLatestWorkspaceIdsRef.current.delete(workspaceId);
+      setPullingLatestWorkspaceIds(new Set(pullingLatestWorkspaceIdsRef.current));
+    }
+  }, [pullLatestChanges, toast]);
 
   const composeState = useComposeState({
     route,
@@ -326,6 +353,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         onConfigureQuickChat={() => navigateWithinShell({ view: "settings" })}
         version={dashboardData.version ?? undefined}
         sidebarSearchFocusRequest={sidebarSearchFocusRequest}
+        pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
+        pullingLatestWorkspaceIds={pullingLatestWorkspaceIds}
       />
 
       <ShellMainContent
@@ -365,7 +394,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         updateServer={updateServer}
         deleteServer={deleteServer}
         deleteWorkspace={deleteWorkspace}
-        pullLatestChanges={pullLatestChanges}
+        pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
+        pullingLatestWorkspaceIds={pullingLatestWorkspaceIds}
         exportConfig={exportConfig}
         importConfig={importConfig}
         dashboardData={dashboardData}
