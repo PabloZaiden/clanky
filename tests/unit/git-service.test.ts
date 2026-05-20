@@ -768,7 +768,30 @@ describe("GitService", () => {
 
       try {
         await expect(git.pull("/repo")).resolves.toBe(false);
-        expect(errorSpy).not.toHaveBeenCalled();
+        const getUrlErrorLogs = errorSpy.mock.calls.filter(([message]) =>
+          String(message).includes("git remote get-url origin")
+        );
+        expect(getUrlErrorLogs).toEqual([]);
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+
+    test("logs an error when the remote probe fails unexpectedly", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: not a git repository\n",
+          exitCode: 128,
+        },
+      ]);
+      const git = new GitService(executor);
+      const errorSpy = spyOn(log, "error");
+
+      try {
+        await expect(git.pull("/repo")).resolves.toBe(false);
+        expect(errorSpy).toHaveBeenCalledWith("[GitService] Command failed: git remote get-url origin");
       } finally {
         errorSpy.mockRestore();
       }
