@@ -1745,7 +1745,7 @@ describe("ChatManager", () => {
     ]);
   });
 
-  test("creates worktree-backed standalone chats with an established worktree immediately", async () => {
+  test("creates worktree-backed standalone chats with an established worktree when no remote is configured", async () => {
     context = await setupTestContext({
       useMockBackend: true,
       initGit: true,
@@ -1763,6 +1763,7 @@ describe("ChatManager", () => {
     const persisted = await loadChat(chat.config.id);
     const expectedWorktreePath = `${context.workDir}/.ralph-worktrees/${chat.config.id}`;
 
+    expect(await context.git.hasRemote(context.workDir)).toBe(false);
     expect(chat.config.useWorktree).toBe(true);
     expect(chat.state.worktree?.originalBranch).toBeString();
     expect(chat.state.worktree?.workingBranch).toContain("chat-quick-chat-");

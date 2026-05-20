@@ -2,12 +2,13 @@
  * Unit tests for GitService.
  */
 
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, spyOn } from "bun:test";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
 import { GitService, BranchMismatchError, GitCommandError } from "../../src/core/git-service";
+import { log } from "../../src/core/logger";
 import { cleanupTempGitRepository, createTempGitRepository } from "../helpers/git-fixtures";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
@@ -751,6 +752,26 @@ describe("GitService", () => {
       expect(getCommandCalls(executor)).toEqual([
         ["git", "-C", "/repo", "remote", "get-url", "origin"],
       ]);
+    });
+
+    test("does not log an error for the expected missing remote probe", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: false,
+          stdout: "",
+          stderr: "error: No such remote 'origin'\n",
+          exitCode: 2,
+        },
+      ]);
+      const git = new GitService(executor);
+      const errorSpy = spyOn(log, "error");
+
+      try {
+        await expect(git.pull("/repo")).resolves.toBe(false);
+        expect(errorSpy).not.toHaveBeenCalled();
+      } finally {
+        errorSpy.mockRestore();
+      }
     });
 
     test("returns false when remote branch does not exist", async () => {

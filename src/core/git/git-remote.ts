@@ -25,7 +25,9 @@ export async function hasRemote(
   directory: string,
   remote = "origin",
 ): Promise<boolean> {
-  const result = await runGitCommand(executor, directory, ["remote", "get-url", remote]);
+  const result = await runGitCommand(executor, directory, ["remote", "get-url", remote], {
+    allowFailure: true,
+  });
   return result.success && result.stdout.trim().length > 0;
 }
 
