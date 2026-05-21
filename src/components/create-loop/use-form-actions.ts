@@ -95,7 +95,11 @@ export function useFormActions({
 
   const isSubmitting = loading || submitting || generatingTitle;
 
-  const canSaveDraft = !!selectedWorkspaceId && !!prompt.trim() && !!name.trim() && !isSubmitting;
+  const canSaveDraft =
+    !!selectedWorkspaceId &&
+    !!prompt.trim() &&
+    (!isEditing || !!name.trim()) &&
+    !isSubmitting;
   const canSubmit =
     !!selectedWorkspaceId &&
     !!prompt.trim() &&
@@ -127,13 +131,13 @@ export function useFormActions({
       if (!currentPrompt.trim()) return;
       if (!asDraft && !selectedModel) return;
       if (!asDraft && !selectedModelEnabled) return;
-      if ((asDraft || isEditing) && !currentName.trim()) return;
+      if (isEditing && !currentName.trim()) return;
 
       setSubmitting(true);
 
       try {
         let finalName = currentName.trim();
-        if (!finalName && !asDraft && !isEditing) {
+        if (!finalName && !isEditing) {
           const generatedTitle = await generateTitle();
           finalName = generatedTitle?.trim() ?? nameRef.current.trim();
         }
