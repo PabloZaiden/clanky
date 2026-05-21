@@ -354,7 +354,7 @@ describe("CreateLoopForm", () => {
       expect(input.required).toBe(false);
       expect(input.getAttribute("aria-required")).toBe("false");
       expect(
-        getByText("You can leave the title blank when first creating a loop, or let AI suggest one from the current prompt. A title is required for drafts and edits.")
+        getByText("You can leave the title blank when first creating or saving a draft, or let AI suggest one from the current prompt. A title is required for edits.")
       ).toBeInTheDocument();
     });
 
@@ -378,7 +378,7 @@ describe("CreateLoopForm", () => {
       expect(input.required).toBe(true);
       expect(input.getAttribute("aria-required")).toBe("true");
       expect(
-        getByText("A title is required for drafts and edits. You can still let AI suggest one from the current prompt.")
+        getByText("A title is required when editing. You can still let AI suggest one from the current prompt.")
       ).toBeInTheDocument();
     });
 
@@ -838,7 +838,7 @@ describe("CreateLoopForm", () => {
       });
 
       expect(getByRole("button", { name: "Create" })).toBeEnabled();
-      expect(getByRole("button", { name: "Save as Draft" })).toBeDisabled();
+      expect(getByRole("button", { name: "Save as Draft" })).toBeEnabled();
     });
 
     test("create auto-generates a missing title before submitting", async () => {
@@ -1173,6 +1173,22 @@ describe("CreateLoopForm", () => {
       expect(getByRole("button", { name: "Save as Draft" })).toBeDisabled();
     });
 
+    test("Save as Draft is disabled for a blank title when title generation is unavailable", async () => {
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            workspaces: testWorkspaces(),
+            models: [],
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Draft");
+
+      expect(getByRole("button", { name: "Save as Draft" })).toBeDisabled();
+    });
+
     test("calls onSubmit with draft=true", async () => {
       const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
 
@@ -1207,6 +1223,42 @@ describe("CreateLoopForm", () => {
 
       const req = onSubmit.mock.calls[0]?.[0] as CreateLoopRequest;
       expect(req.draft).toBe(true);
+    });
+
+    test("save as draft auto-generates a missing title before submitting", async () => {
+      api.post("/api/loops/title", () => ({ title: "Generated Draft Title" }));
+      const onSubmit = mock(async (_req: CreateLoopFormSubmitRequest) => true);
+
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            onSubmit,
+            workspaces: testWorkspaces(),
+            models: connectedModels(),
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Draft");
+
+      await waitFor(() => {
+        expect((getByLabelText("Model") as HTMLSelectElement).value).not.toBe("");
+        expect(getByRole("button", { name: "Save as Draft" })).toBeEnabled();
+      });
+
+      await user.click(getByRole("button", { name: "Save as Draft" }));
+
+      await waitFor(() => {
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+      });
+
+      expect(api.calls("/api/loops/title", "POST").length).toBe(1);
+      expect((getByLabelText(/Title/) as HTMLInputElement).value).toBe("Generated Draft Title");
+
+      const req = onSubmit.mock.calls[0]?.[0] as CreateLoopFormSubmitRequest;
+      expect(req.draft).toBe(true);
+      expect(req.name).toBe("Generated Draft Title");
     });
 
     test("saves a draft without a selected model", async () => {
