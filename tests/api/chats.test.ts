@@ -280,6 +280,34 @@ describe("Chats API Integration", () => {
     expect(quickChat.config.model).toEqual(unavailableModel);
   });
 
+  test("creates configured quick chats without preparing a worktree before responding", async () => {
+    await setQuickChatSettings({
+      workspaceId: testWorkspaceId,
+      model: testModel,
+    });
+
+    const quickResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Deferred Worktree Quick Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        quick: true,
+      }),
+    });
+
+    expect(quickResponse.status).toBe(201);
+    const quickChat = await quickResponse.json();
+    expect(quickChat.config.useWorktree).toBe(true);
+    expect(quickChat.config.skipBaseBranchSync).toBe(true);
+    expect(quickChat.state.worktree).toBeUndefined();
+
+    const persisted = await loadChat(quickChat.config.id);
+    expect(persisted?.state.worktree).toBeUndefined();
+  });
+
   test("creates chats without an explicit base branch", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
