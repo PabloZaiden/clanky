@@ -378,7 +378,7 @@ describe("CreateLoopForm", () => {
       expect(input.required).toBe(true);
       expect(input.getAttribute("aria-required")).toBe("true");
       expect(
-        getByText("A title is required for drafts and edits. You can still let AI suggest one from the current prompt.")
+        getByText("A title is required when editing. You can still let AI suggest one from the current prompt.")
       ).toBeInTheDocument();
     });
 
@@ -1170,6 +1170,22 @@ describe("CreateLoopForm", () => {
       const { getByRole } = renderWithUser(
         <CreateLoopForm {...defaultProps()} />
       );
+      expect(getByRole("button", { name: "Save as Draft" })).toBeDisabled();
+    });
+
+    test("Save as Draft is disabled for a blank title when title generation is unavailable", async () => {
+      const { getByLabelText, getByRole, user } = renderWithUser(
+        <CreateLoopForm
+          {...defaultProps({
+            workspaces: testWorkspaces(),
+            models: [],
+          })}
+        />
+      );
+
+      await user.selectOptions(getByLabelText("Workspace *") as HTMLSelectElement, "ws-1");
+      await setInputValue(user, getByLabelText(/Prompt/) as HTMLTextAreaElement, "Draft");
+
       expect(getByRole("button", { name: "Save as Draft" })).toBeDisabled();
     });
 

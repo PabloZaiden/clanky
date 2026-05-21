@@ -95,23 +95,25 @@ export function useFormActions({
 
   const isSubmitting = loading || submitting || generatingTitle;
 
+  const hasName = !!name.trim();
+  const canAutoGenerateTitle =
+    !!selectedWorkspaceId &&
+    !!prompt.trim() &&
+    !!selectedModel &&
+    selectedModelEnabled &&
+    !isSubmitting;
   const canSaveDraft =
     !!selectedWorkspaceId &&
     !!prompt.trim() &&
-    (!isEditing || !!name.trim()) &&
+    (isEditing ? hasName : hasName || canAutoGenerateTitle) &&
     !isSubmitting;
   const canSubmit =
     !!selectedWorkspaceId &&
     !!prompt.trim() &&
     selectedModelEnabled &&
     !isSubmitting &&
-    (isEditing ? !!name.trim() : true);
-  const canGenerateTitle =
-    !!selectedWorkspaceId &&
-    !!prompt.trim() &&
-    !!selectedModel &&
-    selectedModelEnabled &&
-    !isSubmitting;
+    (isEditing ? hasName : true);
+  const canGenerateTitle = canAutoGenerateTitle;
 
   const handleSubmit = useCallback(
     async (e: FormEvent, asDraft = false) => {
@@ -131,6 +133,7 @@ export function useFormActions({
       if (!currentPrompt.trim()) return;
       if (!asDraft && !selectedModel) return;
       if (!asDraft && !selectedModelEnabled) return;
+      if (!currentName.trim() && !isEditing && (!selectedModel || !selectedModelEnabled)) return;
       if (isEditing && !currentName.trim()) return;
 
       setSubmitting(true);
