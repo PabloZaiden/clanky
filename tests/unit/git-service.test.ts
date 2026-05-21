@@ -884,7 +884,7 @@ describe("GitService", () => {
       await expect(git.pull("/repo")).resolves.toBe(true);
       expect(getCommandCalls(executor)).toEqual([
         ["git", "-C", "/repo", "remote", "get-url", "origin"],
-        ["git", "-C", "/repo", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "-C", "/repo", "symbolic-ref", "--short", "HEAD"],
         ["git", "-C", "/repo", "fetch", "origin", "feature/current"],
         ["git", "-C", "/repo", "merge", "--ff-only", "origin/feature/current"],
       ]);
@@ -1145,7 +1145,7 @@ describe("GitService", () => {
         ["git", "-C", "/repo", "symbolic-ref", "refs/remotes/origin/HEAD"],
         ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
         ["git", "-C", "/repo", "rev-parse", "--verify", "master"],
-        ["git", "-C", "/repo", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "-C", "/repo", "symbolic-ref", "--short", "HEAD"],
       ]);
     });
 

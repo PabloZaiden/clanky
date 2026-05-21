@@ -1772,6 +1772,33 @@ describe("ChatManager", () => {
     expect(await context.git.worktreeExists(context.workDir, expectedWorktreePath)).toBe(true);
   });
 
+  test("creates worktree-backed standalone chats in a repository with no commits or remote", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      initGit: false,
+    });
+    await Bun.$`git init`.cwd(context.workDir).quiet();
+    await Bun.$`git config user.email "test@test.com"`.cwd(context.workDir).quiet();
+    await Bun.$`git config user.name "Test User"`.cwd(context.workDir).quiet();
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Unborn Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: true,
+      ...testModelFields,
+    });
+
+    const expectedWorktreePath = `${context.workDir}/.ralph-worktrees/${chat.config.id}`;
+
+    expect(await context.git.hasRemote(context.workDir)).toBe(false);
+    expect(chat.state.worktree?.originalBranch).toBeString();
+    expect(chat.state.worktree?.workingBranch).toContain("chat-unborn-chat-");
+    expect(chat.state.worktree?.worktreePath).toBe(expectedWorktreePath);
+    expect(await context.git.worktreeExists(context.workDir, expectedWorktreePath)).toBe(true);
+  });
+
   test("auto-approves chat permission requests when enabled", async () => {
     context = await setupTestContext({
       useMockBackend: true,

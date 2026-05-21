@@ -20,9 +20,26 @@ export async function createWorktree(
   await executor.exec("mkdir", ["-p", worktreePath]);
   await executor.exec("rmdir", [worktreePath]);
 
-  const args = ["worktree", "add", worktreePath, "-b", branchName];
+  let args = ["worktree", "add", worktreePath, "-b", branchName];
   if (baseBranch) {
-    args.push(baseBranch);
+    const baseBranchResult = await runGitCommand(
+      executor,
+      repoDirectory,
+      ["rev-parse", "--verify", baseBranch],
+      { allowFailure: true }
+    );
+    const currentBranchResult = await runGitCommand(
+      executor,
+      repoDirectory,
+      ["symbolic-ref", "--short", "HEAD"],
+      { allowFailure: true }
+    );
+
+    if (!baseBranchResult.success && currentBranchResult.stdout.trim() === baseBranch) {
+      args = ["worktree", "add", "--orphan", "-b", branchName, worktreePath];
+    } else {
+      args.push(baseBranch);
+    }
   }
 
   const result = await runGitCommand(executor, repoDirectory, args);
