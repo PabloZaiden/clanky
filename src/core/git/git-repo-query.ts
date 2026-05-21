@@ -16,6 +16,12 @@ export async function isGitRepo(executor: CommandExecutor, directory: string): P
 }
 
 export async function getCurrentBranch(executor: CommandExecutor, directory: string): Promise<string> {
+  const symbolicArgs = ["symbolic-ref", "--short", "HEAD"];
+  const symbolicResult = await runGitCommand(executor, directory, symbolicArgs, { allowFailure: true });
+  if (symbolicResult.success && symbolicResult.stdout.trim()) {
+    return symbolicResult.stdout.trim();
+  }
+
   const args = ["rev-parse", "--abbrev-ref", "HEAD"];
   const result = await runGitCommand(executor, directory, args);
   if (!result.success) {

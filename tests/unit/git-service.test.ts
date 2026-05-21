@@ -884,7 +884,7 @@ describe("GitService", () => {
       await expect(git.pull("/repo")).resolves.toBe(true);
       expect(getCommandCalls(executor)).toEqual([
         ["git", "-C", "/repo", "remote", "get-url", "origin"],
-        ["git", "-C", "/repo", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "-C", "/repo", "symbolic-ref", "--short", "HEAD"],
         ["git", "-C", "/repo", "fetch", "origin", "feature/current"],
         ["git", "-C", "/repo", "merge", "--ff-only", "origin/feature/current"],
       ]);
@@ -918,6 +918,147 @@ describe("GitService", () => {
         ["git", "-C", "/repo", "remote", "get-url", "origin"],
         ["git", "-C", "/repo", "fetch", "origin", "main"],
         ["git", "-C", "/repo", "merge", "--ff-only", "origin/main"],
+      ]);
+    });
+  });
+
+  describe("createWorktree", () => {
+    test("does not inspect current branch when base branch verifies", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: ".git/info/exclude\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "abc123\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
+
+      await expect(
+        git.createWorktree("/repo", "/repo/.ralph-worktrees/chat", "chat-branch", "main")
+      ).resolves.toBeUndefined();
+
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "rev-parse", "--git-path", "info/exclude"],
+        ["mkdir", "-p", "/repo/.git/info"],
+        [
+          "sh",
+          "-c",
+          "cat > \"/repo/.git/info/exclude\" << 'EXCLUDE_EOF'\n# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n.ralph-worktrees\n.ralph-planning\nEXCLUDE_EOF",
+        ],
+        ["mkdir", "-p", "/repo/.ralph-worktrees/chat"],
+        ["rmdir", "/repo/.ralph-worktrees/chat"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
+        ["git", "-C", "/repo", "worktree", "add", "/repo/.ralph-worktrees/chat", "-b", "chat-branch", "main"],
+      ]);
+    });
+
+    test("checks unborn HEAD only when base branch verification fails", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: ".git/info/exclude\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: Needed a single revision\n",
+          exitCode: 128,
+        },
+        {
+          success: true,
+          stdout: "main\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
+
+      await expect(
+        git.createWorktree("/repo", "/repo/.ralph-worktrees/chat", "chat-branch", "main")
+      ).resolves.toBeUndefined();
+
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "rev-parse", "--git-path", "info/exclude"],
+        ["mkdir", "-p", "/repo/.git/info"],
+        [
+          "sh",
+          "-c",
+          "cat > \"/repo/.git/info/exclude\" << 'EXCLUDE_EOF'\n# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n.ralph-worktrees\n.ralph-planning\nEXCLUDE_EOF",
+        ],
+        ["mkdir", "-p", "/repo/.ralph-worktrees/chat"],
+        ["rmdir", "/repo/.ralph-worktrees/chat"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
+        ["git", "-C", "/repo", "symbolic-ref", "--short", "HEAD"],
+        ["git", "-C", "/repo", "worktree", "add", "--orphan", "-b", "chat-branch", "/repo/.ralph-worktrees/chat"],
       ]);
     });
   });
@@ -1145,7 +1286,7 @@ describe("GitService", () => {
         ["git", "-C", "/repo", "symbolic-ref", "refs/remotes/origin/HEAD"],
         ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
         ["git", "-C", "/repo", "rev-parse", "--verify", "master"],
-        ["git", "-C", "/repo", "rev-parse", "--abbrev-ref", "HEAD"],
+        ["git", "-C", "/repo", "symbolic-ref", "--short", "HEAD"],
       ]);
     });
 
