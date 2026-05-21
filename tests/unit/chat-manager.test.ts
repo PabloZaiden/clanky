@@ -2072,7 +2072,7 @@ describe("ChatManager", () => {
     }
   });
 
-  test("can defer worktree creation until the chat sends its first message", async () => {
+  test("waits for deferred worktree preparation when the chat sends its first message", async () => {
     context = await setupTestContext({
       useMockBackend: true,
       mockResponses: ["Hello from deferred quick chat"],
@@ -2080,6 +2080,7 @@ describe("ChatManager", () => {
 
     const calls: string[] = [];
     let worktreeExists = false;
+    const createWorktreeGate = Promise.withResolvers<void>();
     const withExecutorSpy = spyOn(GitService, "withExecutor");
     withExecutorSpy.mockImplementation((_executor) => createChatGitServiceMock({
       worktreeExists: async () => worktreeExists,
@@ -2093,7 +2094,9 @@ describe("ChatManager", () => {
       },
       branchExists: async () => false,
       createWorktree: async (_directory: string, _worktreePath: string, branchName: string, originalBranch: string) => {
-        calls.push(`createWorktree:${branchName}:${originalBranch}`);
+        calls.push(`createWorktree:start:${branchName}:${originalBranch}`);
+        await createWorktreeGate.promise;
+        calls.push(`createWorktree:end:${branchName}:${originalBranch}`);
         worktreeExists = true;
       },
     }));
@@ -2115,13 +2118,22 @@ describe("ChatManager", () => {
       expect(chat.config.skipBaseBranchSync).toBe(true);
       expect(chat.state.worktree).toBeUndefined();
 
-      const started = await manager.sendMessage(chat.config.id, {
+      await waitForValue(
+        () => calls.find((call) => call.startsWith("createWorktree:start:")),
+        5000,
+        "background worktree preparation to start",
+      );
+
+      const startedPromise = manager.sendMessage(chat.config.id, {
         message: "Say hello",
       });
+      createWorktreeGate.resolve();
+      const started = await startedPromise;
 
       expect(started.state.status).toBe("streaming");
       expect(calls).toEqual([
-        `createWorktree:chat-deferred-quick-chat-${chat.config.id.slice(0, 8)}:main`,
+        `createWorktree:start:chat-deferred-quick-chat-${chat.config.id.slice(0, 8)}:main`,
+        `createWorktree:end:chat-deferred-quick-chat-${chat.config.id.slice(0, 8)}:main`,
       ]);
       expect(context.mockBackend?.getDirectory()).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
     } finally {

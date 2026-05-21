@@ -101,6 +101,7 @@ function buildGeneratedChatName(projectName: string, nextSuffix: number): string
 export class ChatManager {
   private readonly activeStreams = new Map<string, ActiveChatStream>();
   private readonly activeStreamGenerations = new Map<string, number>();
+  private readonly pendingWorktreePreparations = new Map<string, Promise<Chat>>();
 
   constructor(private readonly emitter: SimpleEventEmitter<ChatEvent> = chatEventEmitter) {}
 
@@ -175,6 +176,9 @@ export class ChatManager {
       config: preparedChat.config,
       timestamp: now,
     });
+    if (!shouldPrepareWorktreeOnCreate && !isLoopChat(preparedChat) && preparedChat.config.useWorktree) {
+      this.prepareWorktreeInBackground(preparedChat);
+    }
     return preparedChat;
   }
 
@@ -904,6 +908,39 @@ export class ChatManager {
       return chat;
     }
 
+    const pendingPreparation = this.pendingWorktreePreparations.get(chat.config.id);
+    if (pendingPreparation) {
+      return pendingPreparation;
+    }
+
+    return this.prepareAndPersistWorktree(chat);
+  }
+
+  private prepareWorktreeInBackground(chat: Chat): void {
+    void this.prepareAndPersistWorktree(chat).catch((error) => {
+      log.warn("[ChatManager] Deferred chat worktree preparation failed", {
+        chatId: chat.config.id,
+        error: String(error),
+      });
+    });
+  }
+
+  private prepareAndPersistWorktree(chat: Chat): Promise<Chat> {
+    const existing = this.pendingWorktreePreparations.get(chat.config.id);
+    if (existing) {
+      return existing;
+    }
+
+    const preparation = this.doPrepareAndPersistWorktree(chat).finally(() => {
+      if (this.pendingWorktreePreparations.get(chat.config.id) === preparation) {
+        this.pendingWorktreePreparations.delete(chat.config.id);
+      }
+    });
+    this.pendingWorktreePreparations.set(chat.config.id, preparation);
+    return preparation;
+  }
+
+  private async doPrepareAndPersistWorktree(chat: Chat): Promise<Chat> {
     const nextWorktreeState = await this.prepareWorktreeState(chat, {
       syncBaseBranch: !chat.config.skipBaseBranchSync,
     });
