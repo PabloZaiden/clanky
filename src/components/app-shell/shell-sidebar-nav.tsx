@@ -12,6 +12,8 @@ import { getShellRouteUrl, getShellShortcutTitle, isModifiedNavigationClick } fr
 import { EmptySection, ShellSection, SidebarTreeItem, SidebarTreeSection } from "./shell-sidebar";
 import {
   type SidebarChatNode,
+  type SidebarActiveWorkItem,
+  buildActiveWorkSidebarItems,
   getSidebarGroupCollapseKey,
   getSidebarSectionCollapseKey,
   getSidebarServerCollapseKey,
@@ -104,6 +106,11 @@ function matchesSearchText(label: string, query: string): boolean {
 
 function getSidebarSessionId(sessionNode: SidebarWorkspaceSessionNode | SidebarServerSessionNode): string {
   return "session" in sessionNode ? sessionNode.session.config.id : sessionNode.id;
+}
+
+function getActiveWorkSessionSubtitle(item: Extract<SidebarActiveWorkItem, { kind: "ssh-session" }>): string {
+  const { workspaceName, sessionNode } = item;
+  return `${workspaceName} · ${sessionNode.subtitle}`;
 }
 
 function SearchResultsSection({
@@ -371,6 +378,10 @@ export function ShellSidebarNav({
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
   const visibleWorkspaceGroups = workspaceGroups.filter((group) => group.workspaces.length > 0);
+  const activeWorkItems = useMemo(
+    () => buildActiveWorkSidebarItems(workspaceGroups),
+    [workspaceGroups],
+  );
   const sidebarToggleLabel = sidebarOpen
     ? "Close sidebar"
     : !isDesktopShellViewport()
@@ -784,6 +795,64 @@ export function ShellSidebarNav({
                 ) : (
                   <EmptySection message="No quick chats yet." indentLevel={1} />
                 )}
+              </SidebarTreeSection>
+            )}
+
+            {activeWorkItems.length > 0 && (
+              <SidebarTreeSection title="Active Work">
+                {activeWorkItems.map((item) => {
+                  if (item.kind === "loop") {
+                    return (
+                      <SidebarTreeItem
+                        key={item.key}
+                        active={isLoopActive(item.loopNode.loop.config.id)}
+                        title={item.loopNode.title}
+                        subtitle={item.workspaceName}
+                        badge={item.loopNode.badge}
+                        badgeVariant={item.loopNode.badgeVariant}
+                        indentLevel={1}
+                        onClick={(event) => handleSidebarItemClick(event, {
+                          view: "loop",
+                          loopId: item.loopNode.loop.config.id,
+                        })}
+                      />
+                    );
+                  }
+
+                  if (item.kind === "chat") {
+                    return (
+                      <SidebarTreeItem
+                        key={item.key}
+                        active={isChatActive(item.chatNode.chat.config.id)}
+                        title={item.chatNode.title}
+                        subtitle={item.workspaceName}
+                        badge={item.chatNode.badge}
+                        badgeVariant={item.chatNode.badgeVariant}
+                        indentLevel={1}
+                        onClick={(event) => handleSidebarItemClick(event, {
+                          view: "chat",
+                          chatId: item.chatNode.chat.config.id,
+                        })}
+                      />
+                    );
+                  }
+
+                  return (
+                    <SidebarTreeItem
+                      key={item.key}
+                      active={route.view === "ssh" && route.sshSessionId === item.sessionNode.session.config.id}
+                      title={item.sessionNode.title}
+                      subtitle={getActiveWorkSessionSubtitle(item)}
+                      badge={item.sessionNode.badge}
+                      badgeVariant={item.sessionNode.badgeVariant}
+                      indentLevel={1}
+                      onClick={(event) => handleSidebarItemClick(event, {
+                        view: "ssh",
+                        sshSessionId: item.sessionNode.session.config.id,
+                      })}
+                    />
+                  );
+                })}
               </SidebarTreeSection>
             )}
 
