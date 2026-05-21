@@ -18,8 +18,8 @@ export function TitleField({
   required = false,
 }: TitleFieldProps) {
   const helperText = required
-    ? "A title is required for drafts and edits. You can still let AI suggest one from the current prompt."
-    : "You can leave the title blank when first creating a loop, or let AI suggest one from the current prompt. A title is required for drafts and edits.";
+    ? "A title is required when editing. You can still let AI suggest one from the current prompt."
+    : "You can leave the title blank when first creating or saving a draft, or let AI suggest one from the current prompt. A title is required for edits.";
 
   return (
     <div>
