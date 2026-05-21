@@ -626,8 +626,15 @@ describe("ShellSidebarNav", () => {
 
     const [activeButtonLabel] = getAllByText("Active");
     expect(activeButtonLabel).toBeDefined();
-    await user.click(getByTextButton(activeButtonLabel!));
-    expect(queryAllByText("Workspace 1").length).toBeGreaterThan(0);
+    const activeButton = getByTextButton(activeButtonLabel!);
+    expect(activeButton).toHaveAttribute("aria-expanded", "true");
+    expect(getSidebarButtonByTextAndSubtitle(getAllByText("Workspace 1"), "/workspaces/workspace-1")).toBeInTheDocument();
+
+    await user.click(activeButton);
+    expect(activeButton).toHaveAttribute("aria-expanded", "false");
+    expect(
+      querySidebarButtonByTextAndSubtitle(queryAllByText("Workspace 1"), "/workspaces/workspace-1"),
+    ).not.toBeInTheDocument();
 
     await user.click(getByRole("button", { name: "New Workspaces" }));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "workspace" });
@@ -1067,13 +1074,17 @@ function getByTextButton(node: HTMLElement): HTMLButtonElement {
 }
 
 function getSidebarButtonByTextAndSubtitle(nodes: HTMLElement[], subtitle: string): HTMLButtonElement {
-  const button = nodes
+  const button = querySidebarButtonByTextAndSubtitle(nodes, subtitle);
+  expect(button).toBeDefined();
+  return button!;
+}
+
+function querySidebarButtonByTextAndSubtitle(nodes: HTMLElement[], subtitle: string): HTMLButtonElement | null {
+  return nodes
     .map((node) => node.closest("button"))
     .find((candidate): candidate is HTMLButtonElement =>
       candidate instanceof HTMLButtonElement && (candidate.textContent ?? "").includes(subtitle)
-    );
-  expect(button).toBeDefined();
-  return button!;
+    ) ?? null;
 }
 
 function openContextMenuForButton(button: HTMLButtonElement): boolean {
