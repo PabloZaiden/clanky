@@ -922,6 +922,147 @@ describe("GitService", () => {
     });
   });
 
+  describe("createWorktree", () => {
+    test("does not inspect current branch when base branch verifies", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: ".git/info/exclude\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "abc123\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
+
+      await expect(
+        git.createWorktree("/repo", "/repo/.ralph-worktrees/chat", "chat-branch", "main")
+      ).resolves.toBeUndefined();
+
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "rev-parse", "--git-path", "info/exclude"],
+        ["mkdir", "-p", "/repo/.git/info"],
+        [
+          "sh",
+          "-c",
+          "cat > \"/repo/.git/info/exclude\" << 'EXCLUDE_EOF'\n# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n.ralph-worktrees\n.ralph-planning\nEXCLUDE_EOF",
+        ],
+        ["mkdir", "-p", "/repo/.ralph-worktrees/chat"],
+        ["rmdir", "/repo/.ralph-worktrees/chat"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
+        ["git", "-C", "/repo", "worktree", "add", "/repo/.ralph-worktrees/chat", "-b", "chat-branch", "main"],
+      ]);
+    });
+
+    test("checks unborn HEAD only when base branch verification fails", async () => {
+      const executor = new ScriptedCommandExecutor([
+        {
+          success: true,
+          stdout: ".git/info/exclude\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: false,
+          stdout: "",
+          stderr: "fatal: Needed a single revision\n",
+          exitCode: 128,
+        },
+        {
+          success: true,
+          stdout: "main\n",
+          stderr: "",
+          exitCode: 0,
+        },
+        {
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        },
+      ]);
+      const git = new GitService(executor);
+
+      await expect(
+        git.createWorktree("/repo", "/repo/.ralph-worktrees/chat", "chat-branch", "main")
+      ).resolves.toBeUndefined();
+
+      expect(getCommandCalls(executor)).toEqual([
+        ["git", "-C", "/repo", "rev-parse", "--git-path", "info/exclude"],
+        ["mkdir", "-p", "/repo/.git/info"],
+        [
+          "sh",
+          "-c",
+          "cat > \"/repo/.git/info/exclude\" << 'EXCLUDE_EOF'\n# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n.ralph-worktrees\n.ralph-planning\nEXCLUDE_EOF",
+        ],
+        ["mkdir", "-p", "/repo/.ralph-worktrees/chat"],
+        ["rmdir", "/repo/.ralph-worktrees/chat"],
+        ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
+        ["git", "-C", "/repo", "symbolic-ref", "--short", "HEAD"],
+        ["git", "-C", "/repo", "worktree", "add", "--orphan", "-b", "chat-branch", "/repo/.ralph-worktrees/chat"],
+      ]);
+    });
+  });
+
   describe("SSH host key auto-accept", () => {
     test("retries push by extending an existing GIT_SSH_COMMAND and persisting known hosts in git dir", async () => {
       const executor = new ScriptedCommandExecutor([

@@ -28,17 +28,22 @@ export async function createWorktree(
       ["rev-parse", "--verify", baseBranch],
       { allowFailure: true }
     );
-    const currentBranchResult = await runGitCommand(
-      executor,
-      repoDirectory,
-      ["symbolic-ref", "--short", "HEAD"],
-      { allowFailure: true }
-    );
 
-    if (!baseBranchResult.success && currentBranchResult.stdout.trim() === baseBranch) {
-      args = ["worktree", "add", "--orphan", "-b", branchName, worktreePath];
-    } else {
+    if (baseBranchResult.success) {
       args.push(baseBranch);
+    } else {
+      const currentBranchResult = await runGitCommand(
+        executor,
+        repoDirectory,
+        ["symbolic-ref", "--short", "HEAD"],
+        { allowFailure: true }
+      );
+
+      if (currentBranchResult.stdout.trim() === baseBranch) {
+        args = ["worktree", "add", "--orphan", "-b", branchName, worktreePath];
+      } else {
+        args.push(baseBranch);
+      }
     }
   }
 
