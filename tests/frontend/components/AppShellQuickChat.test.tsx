@@ -116,6 +116,7 @@ describe("AppShell quick chat", () => {
       },
       useWorktree: true,
       autoApprovePermissions: true,
+      quick: true,
     });
     expect(api.calls("/api/models", "GET")).toHaveLength(0);
     expect(api.calls("/api/git/default-branch", "GET")).toHaveLength(0);

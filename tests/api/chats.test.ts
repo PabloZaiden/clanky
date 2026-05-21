@@ -11,6 +11,7 @@ import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { loadChat, updateChatState } from "../../src/persistence/chats";
 import { saveLoop } from "../../src/persistence/loops";
+import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { backendManager } from "../../src/core/backend-manager";
 import { getPlanFilePath } from "../../src/lib/planning-files";
 import type { Loop, LoopLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
@@ -223,6 +224,60 @@ describe("Chats API Integration", () => {
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.session.id).toBe(settled.state.session?.id);
     expect(reconnected.state.status).toBe("idle");
+  });
+
+  test("allows model validation bypass only for saved quick chat settings", async () => {
+    const unavailableModel = { providerID: "missing-provider", modelID: "missing-model", variant: "" };
+
+    const standardResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Unavailable Standard Chat",
+        workspaceId: testWorkspaceId,
+        model: unavailableModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(standardResponse.status).toBe(400);
+    expect((await standardResponse.json()).error).toBe("provider_not_found");
+
+    const mismatchedQuickResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Mismatched Quick Chat",
+        workspaceId: testWorkspaceId,
+        model: unavailableModel,
+        useWorktree: false,
+        baseBranch: "main",
+        quick: true,
+      }),
+    });
+    expect(mismatchedQuickResponse.status).toBe(400);
+    expect((await mismatchedQuickResponse.json()).error).toBe("quick_chat_model_mismatch");
+
+    await setQuickChatSettings({
+      workspaceId: testWorkspaceId,
+      model: unavailableModel,
+    });
+
+    const quickResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Configured Quick Chat",
+        workspaceId: testWorkspaceId,
+        model: unavailableModel,
+        useWorktree: false,
+        baseBranch: "main",
+        quick: true,
+      }),
+    });
+    expect(quickResponse.status).toBe(201);
+    const quickChat = await quickResponse.json();
+    expect(quickChat.config.model).toEqual(unavailableModel);
   });
 
   test("creates chats without an explicit base branch", async () => {
