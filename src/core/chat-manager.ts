@@ -86,6 +86,7 @@ export interface CreateChatOptions {
   autoApprovePermissions?: boolean;
   baseBranch?: string;
   directory?: string;
+  syncBaseBranch?: boolean;
 }
 
 function buildGeneratedChatName(projectName: string, nextSuffix: number): string {
@@ -155,7 +156,9 @@ export class ChatManager {
           ...chat,
           state: {
             ...chat.state,
-            worktree: await this.prepareWorktreeState(chat),
+            worktree: await this.prepareWorktreeState(chat, {
+              syncBaseBranch: options.syncBaseBranch ?? true,
+            }),
             lastActivityAt: chat.state.lastActivityAt ?? createTimestamp(),
           },
         }
@@ -913,7 +916,10 @@ export class ChatManager {
     });
   }
 
-  private async prepareWorktreeState(chat: Chat): Promise<ChatWorktreeState> {
+  private async prepareWorktreeState(
+    chat: Chat,
+    options: { syncBaseBranch?: boolean } = {},
+  ): Promise<ChatWorktreeState> {
     const executor = await backendManager.getCommandExecutorAsync(chat.config.workspaceId, chat.config.directory);
     const git = GitService.withExecutor(executor);
     const originalBranch = chat.state.worktree?.originalBranch
@@ -926,17 +932,19 @@ export class ChatManager {
 
     const worktreeExists = await git.worktreeExists(chat.config.directory, worktreePath);
     if (!worktreeExists) {
-      await syncMainCheckoutBeforeWorktree({
-        git,
-        directory: chat.config.directory,
-        baseBranch: originalBranch,
-        onInfo: (message: string) => {
-          log.info(`[ChatManager] ${message}`);
-        },
-        onDebug: (message: string) => {
-          log.debug(`[ChatManager] ${message}`);
-        },
-      });
+      if (options.syncBaseBranch ?? true) {
+        await syncMainCheckoutBeforeWorktree({
+          git,
+          directory: chat.config.directory,
+          baseBranch: originalBranch,
+          onInfo: (message: string) => {
+            log.info(`[ChatManager] ${message}`);
+          },
+          onDebug: (message: string) => {
+            log.debug(`[ChatManager] ${message}`);
+          },
+        });
+      }
 
       const branchExists = await git.branchExists(chat.config.directory, workingBranch);
       if (branchExists) {

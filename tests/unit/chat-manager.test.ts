@@ -2014,6 +2014,53 @@ describe("ChatManager", () => {
     }
   });
 
+  test("can skip syncing the main checkout before creating a new chat worktree", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the chat backend"],
+    });
+
+    const calls: string[] = [];
+    let worktreeExists = false;
+    const withExecutorSpy = spyOn(GitService, "withExecutor");
+    withExecutorSpy.mockImplementation(() => ({
+      worktreeExists: async () => worktreeExists,
+      getCurrentBranch: async () => "feature/current",
+      checkoutBranch: async (_directory: string, branch: string) => {
+        calls.push(`checkout:${branch}`);
+      },
+      pull: async (_directory: string, branch?: string) => {
+        calls.push(`pull:${branch}`);
+        return true;
+      },
+      branchExists: async () => false,
+      createWorktree: async (_directory: string, _worktreePath: string, branchName: string, originalBranch: string) => {
+        calls.push(`createWorktree:${branchName}:${originalBranch}`);
+        worktreeExists = true;
+      },
+    }) as unknown as GitService);
+
+    try {
+      const manager = new ChatManager();
+      const chat = await manager.createChat({
+        name: "Quick Chat",
+        workspaceId: testWorkspaceId,
+        directory: context.workDir,
+        useWorktree: true,
+        baseBranch: "main",
+        syncBaseBranch: false,
+        ...testModelFields,
+      });
+
+      expect(calls).toEqual([
+        `createWorktree:chat-quick-chat-${chat.config.id.slice(0, 8)}:main`,
+      ]);
+      expect(chat.state.worktree?.worktreePath).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+    } finally {
+      withExecutorSpy.mockRestore();
+    }
+  });
+
   test("checks out the selected branch for non-worktree chats without creating a managed chat branch", async () => {
     context = await setupTestContext({
       useMockBackend: true,

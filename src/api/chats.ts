@@ -93,17 +93,19 @@ export const chatsRoutes = {
         return workspace;
       }
 
-      const modelValidation = await isModelEnabled(
-        workspace.id,
-        workspace.directory,
-        body.model.providerID,
-        body.model.modelID,
-      );
-      if (!modelValidation.enabled) {
-        return errorResponse(
-          modelValidation.errorCode ?? "model_not_enabled",
-          modelValidation.error ?? "The selected model is not available",
+      if (!body.quick) {
+        const modelValidation = await isModelEnabled(
+          workspace.id,
+          workspace.directory,
+          body.model.providerID,
+          body.model.modelID,
         );
+        if (!modelValidation.enabled) {
+          return errorResponse(
+            modelValidation.errorCode ?? "model_not_enabled",
+            modelValidation.error ?? "The selected model is not available",
+          );
+        }
       }
 
       try {
@@ -117,6 +119,7 @@ export const chatsRoutes = {
           autoApprovePermissions: body.autoApprovePermissions,
           baseBranch: body.baseBranch,
           directory: workspace.directory,
+          syncBaseBranch: !body.quick,
         });
         return Response.json(chat, { status: 201 });
       } catch (error) {

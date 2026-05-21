@@ -225,6 +225,40 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("skips model validation when creating a quick chat", async () => {
+    const unavailableModel = { providerID: "missing-provider", modelID: "missing-model", variant: "" };
+
+    const standardResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Unavailable Standard Chat",
+        workspaceId: testWorkspaceId,
+        model: unavailableModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(standardResponse.status).toBe(400);
+    expect((await standardResponse.json()).error).toBe("provider_not_found");
+
+    const quickResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Unavailable Quick Chat",
+        workspaceId: testWorkspaceId,
+        model: unavailableModel,
+        useWorktree: false,
+        baseBranch: "main",
+        quick: true,
+      }),
+    });
+    expect(quickResponse.status).toBe(201);
+    const quickChat = await quickResponse.json();
+    expect(quickChat.config.model).toEqual(unavailableModel);
+  });
+
   test("creates chats without an explicit base branch", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",

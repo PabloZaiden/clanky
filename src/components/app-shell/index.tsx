@@ -305,6 +305,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         model: settings.model,
         useWorktree: true,
         autoApprovePermissions: true,
+        quick: true,
       });
       if (!chat) {
         toast.error("Failed to create quick chat");
