@@ -148,7 +148,7 @@ export const chatsRoutes = {
           baseBranch: body.baseBranch,
           directory: workspace.directory,
           syncBaseBranch: !body.quick,
-          prepareWorktree: !body.quick,
+          prepareWorktreeOnCreate: !body.quick,
         });
         return Response.json(chat, { status: 201 });
       } catch (error) {

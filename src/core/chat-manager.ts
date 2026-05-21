@@ -87,7 +87,7 @@ export interface CreateChatOptions {
   baseBranch?: string;
   directory?: string;
   syncBaseBranch?: boolean;
-  prepareWorktree?: boolean;
+  prepareWorktreeOnCreate?: boolean;
 }
 
 function buildGeneratedChatName(projectName: string, nextSuffix: number): string {
@@ -153,7 +153,9 @@ export class ChatManager {
       state: createInitialChatState(id),
     };
 
-    const preparedChat = !isLoopChat(chat) && chat.config.useWorktree && (options.prepareWorktree ?? true)
+    const shouldPrepareWorktreeOnCreate =
+      !isLoopChat(chat) && chat.config.useWorktree && (options.prepareWorktreeOnCreate ?? true);
+    const preparedChat = shouldPrepareWorktreeOnCreate
       ? {
           ...chat,
           state: {
