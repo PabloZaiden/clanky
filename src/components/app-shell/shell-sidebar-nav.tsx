@@ -378,9 +378,15 @@ export function ShellSidebarNav({
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
   const visibleWorkspaceGroups = workspaceGroups.filter((group) => group.workspaces.length > 0);
+  const quickChatIds = useMemo(
+    () => new Set(quickChatWorkspace?.chats.map((chatNode) => chatNode.chat.config.id) ?? []),
+    [quickChatWorkspace],
+  );
   const activeWorkItems = useMemo(
-    () => buildActiveWorkSidebarItems(workspaceGroups),
-    [workspaceGroups],
+    () => buildActiveWorkSidebarItems(workspaceGroups).filter(
+      (item) => item.kind !== "chat" || !quickChatIds.has(item.chatNode.chat.config.id),
+    ),
+    [quickChatIds, workspaceGroups],
   );
   const sidebarToggleLabel = sidebarOpen
     ? "Close sidebar"
@@ -577,7 +583,7 @@ export function ShellSidebarNav({
       <div className="flex-1 space-y-6 overflow-y-auto px-3 py-4 dark-scrollbar">
         <div>
           <label htmlFor="shell-sidebar-search" className="sr-only">
-            Search sidebar
+            Search
           </label>
           <input
             id="shell-sidebar-search"
@@ -585,8 +591,8 @@ export function ShellSidebarNav({
             ref={searchInputRef}
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search sidebar"
-            title={getShellShortcutTitle("sidebar-search", "Search sidebar")}
+            placeholder="Search"
+            title={getShellShortcutTitle("sidebar-search", "Search")}
             className={searchInputClassName}
           />
         </div>
