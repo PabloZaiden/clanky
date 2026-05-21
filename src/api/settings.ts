@@ -18,7 +18,10 @@ import { deleteAndReinitializeDatabase } from "../persistence/database";
 import { createLogger } from "../core/logger";
 import { getPublicBasePathFromForwardedPrefix } from "../utils/public-base-path";
 import { getPasskeyAuthStatus } from "../core/passkey-auth";
-import { errorResponse } from "./helpers";
+import { listWorkspaces } from "../persistence/workspaces";
+import { loopManager } from "../core/loop-manager";
+import { purgeArchivedWorkspaceLoops } from "./workspaces/archived-loop-purge";
+import { errorResponse, successResponse } from "./helpers";
 
 const log = createLogger("api:settings");
 
@@ -98,6 +101,63 @@ export const settingsRoutes = {
       } catch (error) {
         log.error("Failed to reset all settings", { error: String(error) });
         return errorResponse("reset_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/settings/purge-terminal-loops": {
+    /**
+     * POST /api/settings/purge-terminal-loops - Purge terminal-state loops across all workspaces.
+     *
+     * This is a DESTRUCTIVE operation that permanently deletes loops in terminal states
+     * while leaving workspaces, sessions, and preferences intact.
+     */
+    async POST(): Promise<Response> {
+      log.warn("POST /api/settings/purge-terminal-loops - Purging terminal-state loops across all workspaces");
+
+      try {
+        const [workspaces, loops] = await Promise.all([
+          listWorkspaces(),
+          loopManager.getAllLoops(),
+        ]);
+
+        const workspacesResults = [];
+        for (const workspace of workspaces) {
+          workspacesResults.push(await purgeArchivedWorkspaceLoops(workspace.id, loops));
+        }
+
+        const totalArchived = workspacesResults.reduce((total, result) => total + result.totalArchived, 0);
+        const purgedCount = workspacesResults.reduce((total, result) => total + result.purgedCount, 0);
+        const purgedLoopIds = workspacesResults.flatMap((result) => result.purgedLoopIds);
+        const failures = workspacesResults.flatMap((result) =>
+          result.failures.map((failure) => ({
+            workspaceId: result.workspaceId,
+            ...failure,
+          })),
+        );
+
+        log.info("POST /api/settings/purge-terminal-loops - Completed", {
+          workspaceCount: workspaces.length,
+          totalArchived,
+          purgedCount,
+          failureCount: failures.length,
+        });
+
+        return successResponse({
+          totalWorkspaces: workspaces.length,
+          totalArchived,
+          purgedCount,
+          purgedLoopIds,
+          failures,
+          workspaces: workspacesResults,
+        });
+      } catch (error) {
+        log.error("Failed to purge terminal-state loops across all workspaces", { error: String(error) });
+        return errorResponse(
+          "purge_terminal_loops_failed",
+          `Failed to purge terminal-state loops: ${String(error)}`,
+          500,
+        );
       }
     },
   },

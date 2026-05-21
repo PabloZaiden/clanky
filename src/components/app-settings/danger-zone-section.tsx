@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../common";
-import { useCountdownReload } from "../../hooks";
+import { useCountdownReload, type PurgeTerminalLoopsResult } from "../../hooks";
 import { RemovePasskeySection } from "./remove-passkey-section";
 
 /** The exact phrase the user must type to confirm a full reset. */
@@ -13,6 +13,8 @@ export interface DangerZoneSectionProps {
   resetting?: boolean;
   onKillServer?: () => Promise<boolean>;
   killingServer?: boolean;
+  onPurgeTerminalLoops?: () => Promise<PurgeTerminalLoopsResult | null>;
+  purgingTerminalLoops?: boolean;
   passkeyConfigured?: boolean;
   removingPasskey?: boolean;
   onRemovePasskey?: () => Promise<boolean>;
@@ -23,6 +25,8 @@ export function DangerZoneSection({
   resetting = false,
   onKillServer,
   killingServer = false,
+  onPurgeTerminalLoops,
+  purgingTerminalLoops = false,
   passkeyConfigured = false,
   removingPasskey = false,
   onRemovePasskey,
@@ -31,6 +35,9 @@ export function DangerZoneSection({
   const [showResetTextConfirm, setShowResetTextConfirm] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState("");
   const [showKillConfirm, setShowKillConfirm] = useState(false);
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
+  const [purgeResult, setPurgeResult] = useState<PurgeTerminalLoopsResult | null>(null);
+  const [purgeError, setPurgeError] = useState(false);
   const [serverKilled, setServerKilled] = useState(false);
   const [killError, setKillError] = useState(false);
   const [dangerZoneExpanded, setDangerZoneExpanded] = useState(false);
@@ -49,7 +56,7 @@ export function DangerZoneSection({
     }
   }, [showResetTextConfirm]);
 
-  if (!onResetAll && !onKillServer && !passkeyConfigured) return null;
+  if (!onResetAll && !onKillServer && !onPurgeTerminalLoops && !passkeyConfigured) return null;
 
   return (
     <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
@@ -64,6 +71,9 @@ export function DangerZoneSection({
                 setShowResetTextConfirm(false);
                 setResetConfirmText("");
                 setShowKillConfirm(false);
+                setShowPurgeConfirm(false);
+                setPurgeResult(null);
+                setPurgeError(false);
                 setKillError(false);
               }
               return !v;
@@ -156,9 +166,89 @@ export function DangerZoneSection({
               </div>
             )}
 
+            {onPurgeTerminalLoops && (
+              <div className={onKillServer ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}>
+                <p className="text-sm text-red-600 dark:text-red-400 mb-3">
+                  Permanently delete all loops in a terminal state across every workspace. This applies to merged, pushed, and deleted loops and cannot be undone.
+                </p>
+                {purgeResult && (
+                  <div className={`mb-3 rounded px-2 py-1 text-sm ${
+                    purgeResult.failures.length > 0
+                      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                      : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                  }`}>
+                    {purgeResult.totalArchived === 0
+                      ? "No terminal-state loops were found across all workspaces."
+                      : purgeResult.failures.length > 0
+                        ? `Purged ${purgeResult.purgedCount} of ${purgeResult.totalArchived} terminal-state loops across ${purgeResult.totalWorkspaces} workspaces.`
+                        : `Purged ${purgeResult.purgedCount} terminal-state loops across ${purgeResult.totalWorkspaces} workspaces.`}
+                    {purgeResult.failures.length > 0 && (
+                      <div className="mt-1 text-xs">
+                        Failed loop IDs: {purgeResult.failures.map((failure) => failure.loopId).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {purgeError && (
+                  <div className="mb-3 text-sm text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 rounded px-2 py-1">
+                    Failed to purge terminal-state loops. Please try again.
+                  </div>
+                )}
+                {!showPurgeConfirm ? (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
+                    onClick={() => {
+                      setPurgeResult(null);
+                      setPurgeError(false);
+                      setShowPurgeConfirm(true);
+                    }}
+                    disabled={resetting || killingServer || purgingTerminalLoops}
+                  >
+                    Purge terminal-state loops
+                  </Button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm text-red-600 dark:text-red-400">Are you sure?</span>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      onClick={async () => {
+                        setPurgeError(false);
+                        const result = await onPurgeTerminalLoops();
+                        setShowPurgeConfirm(false);
+                        if (result) {
+                          setPurgeResult(result);
+                        } else {
+                          setPurgeError(true);
+                        }
+                      }}
+                      loading={purgingTerminalLoops}
+                    >
+                      Yes, purge loops
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowPurgeConfirm(false);
+                        setPurgeError(false);
+                      }}
+                      disabled={purgingTerminalLoops}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Reset All Settings */}
             {onResetAll && (
-              <div className={`space-y-3 ${onKillServer ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}`}>
+              <div className={`space-y-3 ${onKillServer || onPurgeTerminalLoops ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}`}>
                 <p className="text-sm text-red-600 dark:text-red-400">
                   This will delete all loops, sessions, workspaces, and preferences. This action cannot be undone.
                 </p>
@@ -262,7 +352,7 @@ export function DangerZoneSection({
               </div>
             )}
             {passkeyConfigured && (
-              <div className={onKillServer || onResetAll ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}>
+              <div className={onKillServer || onPurgeTerminalLoops || onResetAll ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}>
                 <RemovePasskeySection
                   removingPasskey={removingPasskey}
                   onRemovePasskey={onRemovePasskey}

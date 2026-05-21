@@ -14,6 +14,7 @@ import {
   deleteLoopApi,
   purgeLoopApi,
   purgeArchivedWorkspaceLoopsApi,
+  purgeTerminalLoopsApi,
   getLoopSshSessionApi,
   getOrCreateLoopSshSessionApi,
   manualCompleteLoopApi,
@@ -234,6 +235,63 @@ describe("purgeArchivedWorkspaceLoopsApi", () => {
     });
 
     await expect(purgeArchivedWorkspaceLoopsApi("ws-1")).rejects.toThrow("Bulk purge failed");
+  });
+});
+
+describe("purgeTerminalLoopsApi", () => {
+  test("calls POST /api/settings/purge-terminal-loops and returns aggregate summary", async () => {
+    api.post("/api/settings/purge-terminal-loops", () => ({
+      success: true,
+      totalWorkspaces: 2,
+      totalArchived: 3,
+      purgedCount: 2,
+      purgedLoopIds: ["loop-1", "loop-2"],
+      failures: [{ workspaceId: "ws-2", loopId: "loop-3", error: "permission denied" }],
+      workspaces: [
+        {
+          workspaceId: "ws-1",
+          totalArchived: 2,
+          purgedCount: 2,
+          purgedLoopIds: ["loop-1", "loop-2"],
+          failures: [],
+        },
+        {
+          workspaceId: "ws-2",
+          totalArchived: 1,
+          purgedCount: 0,
+          purgedLoopIds: [],
+          failures: [{ loopId: "loop-3", error: "permission denied" }],
+        },
+      ],
+    }));
+
+    const result = await purgeTerminalLoopsApi();
+
+    expect(result).toEqual({
+      success: true,
+      totalWorkspaces: 2,
+      totalArchived: 3,
+      purgedCount: 2,
+      purgedLoopIds: ["loop-1", "loop-2"],
+      failures: [{ workspaceId: "ws-2", loopId: "loop-3", error: "permission denied" }],
+      workspaces: [
+        {
+          workspaceId: "ws-1",
+          totalArchived: 2,
+          purgedCount: 2,
+          purgedLoopIds: ["loop-1", "loop-2"],
+          failures: [],
+        },
+        {
+          workspaceId: "ws-2",
+          totalArchived: 1,
+          purgedCount: 0,
+          purgedLoopIds: [],
+          failures: [{ loopId: "loop-3", error: "permission denied" }],
+        },
+      ],
+    });
+    expect(api.calls("/api/settings/purge-terminal-loops", "POST")).toHaveLength(1);
   });
 });
 

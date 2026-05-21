@@ -108,4 +108,36 @@ describe("AppSettingsPanel", () => {
       });
     });
   });
+
+  test("confirms global terminal-state purge and reports the result", async () => {
+      const purgeCalls: string[] = [];
+      const { getByText, user } = renderWithUser(
+        <ThemePreferenceProvider>
+          <AppSettingsPanel
+            onPurgeTerminalLoops={async () => {
+              purgeCalls.push("purged");
+              return {
+                success: true,
+                totalWorkspaces: 2,
+                totalArchived: 3,
+                purgedCount: 2,
+                purgedLoopIds: ["loop-1", "loop-2"],
+                failures: [{ workspaceId: "ws-2", loopId: "loop-3", error: "permission denied" }],
+                workspaces: [],
+              };
+            }}
+          />
+        </ThemePreferenceProvider>,
+      );
+
+      await user.click(getByText("Danger Zone"));
+      await user.click(getByText("Purge terminal-state loops"));
+      await user.click(getByText("Yes, purge loops"));
+
+      await waitFor(() => {
+        expect(purgeCalls).toEqual(["purged"]);
+        expect(getByText("Purged 2 of 3 terminal-state loops across 2 workspaces.")).toBeInTheDocument();
+        expect(getByText("Failed loop IDs: loop-3")).toBeInTheDocument();
+    });
+  });
 });

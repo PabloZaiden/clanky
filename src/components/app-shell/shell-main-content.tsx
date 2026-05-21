@@ -570,6 +570,14 @@ function renderMainContent(props: ShellMainContentProps) {
           resetting={dashboardData.appSettingsResetting}
           onKillServer={dashboardData.killServer}
           killingServer={dashboardData.appSettingsKilling}
+          onPurgeTerminalLoops={async () => {
+            const result = await dashboardData.purgeTerminalLoops();
+            if (result) {
+              await refreshLoops();
+            }
+            return result;
+          }}
+          purgingTerminalLoops={dashboardData.appSettingsPurgingTerminalLoops}
           onExportConfig={exportConfig}
           onImportConfig={importConfig}
           configSaving={workspacesSaving}

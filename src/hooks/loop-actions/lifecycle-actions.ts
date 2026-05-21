@@ -14,6 +14,22 @@ export interface PurgeArchivedLoopsResult {
   failures: Array<{ loopId: string; error: string }>;
 }
 
+export interface PurgeTerminalLoopsResult {
+  success: boolean;
+  totalWorkspaces: number;
+  totalArchived: number;
+  purgedCount: number;
+  purgedLoopIds: string[];
+  failures: Array<{ workspaceId: string; loopId: string; error: string }>;
+  workspaces: Array<{
+    workspaceId: string;
+    totalArchived: number;
+    purgedCount: number;
+    purgedLoopIds: string[];
+    failures: Array<{ loopId: string; error: string }>;
+  }>;
+}
+
 /**
  * Stop an active loop without deleting it.
  */
@@ -88,5 +104,20 @@ export async function purgeArchivedWorkspaceLoopsApi(workspaceId: string): Promi
     purgedCount: data.purgedCount,
     purgedLoopIds: data.purgedLoopIds,
     failures: data.failures,
+  };
+}
+
+/**
+ * Purge all archived loops across every workspace via the API.
+ */
+export async function purgeTerminalLoopsApi(): Promise<PurgeTerminalLoopsResult> {
+  const data = await apiCall<Omit<PurgeTerminalLoopsResult, "success">>(
+    "/api/settings/purge-terminal-loops",
+    { method: "POST" },
+    "Purge terminal-state loops",
+  );
+  return {
+    success: true,
+    ...data,
   };
 }
