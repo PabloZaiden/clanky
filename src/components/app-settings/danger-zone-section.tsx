@@ -169,7 +169,7 @@ export function DangerZoneSection({
             {onPurgeTerminalLoops && (
               <div className={onKillServer ? "pt-4 border-t border-red-200 dark:border-red-800" : ""}>
                 <p className="text-sm text-red-600 dark:text-red-400 mb-3">
-                  Permanently delete all loops in a terminal state across every workspace. This applies to merged, pushed, and deleted loops and cannot be undone.
+                  Permanently delete archived terminal loops across every workspace. This applies to deleted loops and to merged, pushed, or accepted-local loops that are no longer awaiting feedback; addressable pushed and accepted-local loops are kept.
                 </p>
                 {purgeResult && (
                   <div className={`mb-3 rounded px-2 py-1 text-sm ${

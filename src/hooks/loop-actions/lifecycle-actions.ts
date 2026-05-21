@@ -117,7 +117,7 @@ export async function purgeTerminalLoopsApi(): Promise<PurgeTerminalLoopsResult>
     "Purge terminal-state loops",
   );
   return {
-    success: true,
     ...data,
+    success: true,
   };
 }

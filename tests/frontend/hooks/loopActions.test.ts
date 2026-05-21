@@ -293,6 +293,22 @@ describe("purgeTerminalLoopsApi", () => {
     });
     expect(api.calls("/api/settings/purge-terminal-loops", "POST")).toHaveLength(1);
   });
+
+  test("keeps local success true when the response body includes a success field", async () => {
+    api.post("/api/settings/purge-terminal-loops", () => ({
+      success: false,
+      totalWorkspaces: 1,
+      totalArchived: 0,
+      purgedCount: 0,
+      purgedLoopIds: [],
+      failures: [],
+      workspaces: [],
+    }));
+
+    const result = await purgeTerminalLoopsApi();
+
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("loop SSH session APIs", () => {
