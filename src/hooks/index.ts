@@ -66,6 +66,7 @@ export {
   purgeLoopApi,
   manualCompleteLoopApi,
   purgeArchivedWorkspaceLoopsApi,
+  purgeTerminalLoopsApi,
   getLoopSshSessionApi,
   getOrCreateLoopSshSessionApi,
   setPendingPromptApi,
@@ -84,6 +85,7 @@ export {
   type AddressCommentsResult,
   type SetPendingResult,
   type PurgeArchivedLoopsResult,
+  type PurgeTerminalLoopsResult,
 } from "./loopActions";
 export {
   getSshServerApi,

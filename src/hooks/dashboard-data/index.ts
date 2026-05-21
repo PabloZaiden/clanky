@@ -44,8 +44,10 @@ export interface UseDashboardDataResult {
   // App settings
   appSettingsResetting: boolean;
   appSettingsKilling: boolean;
+  appSettingsPurgingTerminalLoops: boolean;
   resetAllSettings: () => Promise<boolean>;
   killServer: () => Promise<boolean>;
+  purgeTerminalLoops: () => Promise<import("../loopActions").PurgeTerminalLoopsResult | null>;
 
   // Workspace change handler
   handleWorkspaceChange: (workspaceId: string | null, directory: string) => void;
@@ -102,8 +104,10 @@ export function useDashboardData(): UseDashboardDataResult {
     defaultBranch: workspaceBranches.defaultBranch,
     appSettingsResetting: appConfig.appSettingsResetting,
     appSettingsKilling: appConfig.appSettingsKilling,
+    appSettingsPurgingTerminalLoops: appConfig.appSettingsPurgingTerminalLoops,
     resetAllSettings: appConfig.resetAllSettings,
     killServer: appConfig.killServer,
+    purgeTerminalLoops: appConfig.purgeTerminalLoops,
     handleWorkspaceChange,
     resetCreateModalState,
   };

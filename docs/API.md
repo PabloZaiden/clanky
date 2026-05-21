@@ -1592,7 +1592,7 @@ Delete a workspace.
 
 Purge all archived loops for a workspace.
 
-Only loops in archived states for the target workspace are processed. The response includes both successful purges and per-loop failures.
+Only loops matching the archived-loop predicate for the target workspace are processed. Archived loops are deleted loops, plus merged, pushed, or accepted-local loops that are no longer awaiting feedback. Pushed or accepted-local loops that remain addressable for reviewer feedback are not purged. The response includes both successful purges and per-loop failures.
 
 **Response**
 
@@ -1998,6 +1998,42 @@ Delete database and reinitialize. This is a destructive operation that deletes a
   "message": "All settings have been reset. Database recreated."
 }
 ```
+
+#### POST /api/settings/purge-terminal-loops
+
+Permanently delete archived terminal loops across every workspace. This is a destructive operation that deletes loop data only; workspaces, sessions, and preferences are preserved.
+
+The endpoint uses the same archived-loop predicate as the workspace purge endpoint: deleted loops are purged, and merged, pushed, or accepted-local loops are purged only when they are no longer awaiting feedback. Pushed or accepted-local loops that remain addressable for reviewer feedback are not purged, so not every pushed loop is deleted.
+
+**Response**
+
+```json
+{
+  "success": true,
+  "totalWorkspaces": 2,
+  "totalArchived": 3,
+  "purgedCount": 2,
+  "purgedLoopIds": ["loop-1", "loop-2"],
+  "failures": [
+    { "workspaceId": "workspace-2", "loopId": "loop-3", "error": "permission denied" }
+  ],
+  "workspaces": [
+    {
+      "workspaceId": "workspace-1",
+      "totalArchived": 2,
+      "purgedCount": 2,
+      "purgedLoopIds": ["loop-1", "loop-2"],
+      "failures": []
+    }
+  ]
+}
+```
+
+**Errors**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 500 | `purge_terminal_loops_failed` | Failed to purge terminal-state loops |
 
 ---
 

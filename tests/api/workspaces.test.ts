@@ -2016,6 +2016,111 @@ describe("Workspace API Integration", () => {
     });
   });
 
+  describe("POST /api/settings/purge-terminal-loops", () => {
+    test("purges archived loops across all workspaces and reports partial failures", async () => {
+      const testWorkDirA = await mkdtemp(join(tmpdir(), "ralpher-global-purge-a-"));
+      const testWorkDirB = await mkdtemp(join(tmpdir(), "ralpher-global-purge-b-"));
+
+      try {
+        await Bun.$`git init ${testWorkDirA}`.quiet();
+        await Bun.$`git init ${testWorkDirB}`.quiet();
+
+        const createWorkspaceAResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Global Purge Workspace A",
+            directory: testWorkDirA,
+            serverSettings: makeServerSettings(),
+          }),
+        });
+        const createWorkspaceBResponse = await fetch(`${baseUrl}/api/workspaces`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "Global Purge Workspace B",
+            directory: testWorkDirB,
+            serverSettings: makeServerSettings(),
+          }),
+        });
+        expect(createWorkspaceAResponse.ok).toBe(true);
+        expect(createWorkspaceBResponse.ok).toBe(true);
+        const workspaceA = await createWorkspaceAResponse.json();
+        const workspaceB = await createWorkspaceBResponse.json();
+
+        const originalGetAllLoops = loopManager.getAllLoops;
+        const originalPurgeLoop = loopManager.purgeLoop;
+        const purgedIds: string[] = [];
+
+        loopManager.getAllLoops = async () => [
+          {
+            config: { id: "loop-a-deleted", workspaceId: workspaceA.id },
+            state: { status: "deleted" },
+          } as any,
+          {
+            config: { id: "loop-a-running", workspaceId: workspaceA.id },
+            state: { status: "running" },
+          } as any,
+          {
+            config: { id: "loop-b-pushed", workspaceId: workspaceB.id },
+            state: { status: "pushed", reviewMode: { addressable: false } },
+          } as any,
+          {
+            config: { id: "loop-b-feedback", workspaceId: workspaceB.id },
+            state: { status: "pushed", reviewMode: { addressable: true } },
+          } as any,
+        ];
+        loopManager.purgeLoop = async (loopId: string) => {
+          purgedIds.push(loopId);
+          if (loopId === "loop-b-pushed") {
+            return { success: false, error: "branch protected" };
+          }
+          return { success: true };
+        };
+
+        try {
+          const response = await fetch(`${baseUrl}/api/settings/purge-terminal-loops`, {
+            method: "POST",
+          });
+          expect(response.ok).toBe(true);
+          const body = await response.json();
+
+          expect(body.success).toBe(true);
+          expect(body.totalWorkspaces).toBeGreaterThanOrEqual(2);
+          expect(body.totalArchived).toBe(2);
+          expect(body.purgedCount).toBe(1);
+          expect(body.purgedLoopIds).toEqual(["loop-a-deleted"]);
+          expect(body.failures).toEqual([
+            { workspaceId: workspaceB.id, loopId: "loop-b-pushed", error: "branch protected" },
+          ]);
+          expect(body.workspaces).toEqual(expect.arrayContaining([
+            {
+              workspaceId: workspaceA.id,
+              totalArchived: 1,
+              purgedCount: 1,
+              purgedLoopIds: ["loop-a-deleted"],
+              failures: [],
+            },
+            {
+              workspaceId: workspaceB.id,
+              totalArchived: 1,
+              purgedCount: 0,
+              purgedLoopIds: [],
+              failures: [{ loopId: "loop-b-pushed", error: "branch protected" }],
+            },
+          ]));
+          expect(purgedIds).toEqual(["loop-a-deleted", "loop-b-pushed"]);
+        } finally {
+          loopManager.getAllLoops = originalGetAllLoops;
+          loopManager.purgeLoop = originalPurgeLoop;
+        }
+      } finally {
+        await rm(testWorkDirA, { recursive: true, force: true });
+        await rm(testWorkDirB, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("Export/Import", () => {
     describe("GET /api/workspaces/export", () => {
       test("returns valid export format with version 1 and empty workspaces", async () => {
