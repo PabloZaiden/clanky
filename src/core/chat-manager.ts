@@ -143,6 +143,7 @@ export class ChatManager {
         },
         useWorktree: scope === "loop" ? false : (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree),
         autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
+        skipBaseBranchSync: options.syncBaseBranch === false,
         baseBranch: options.baseBranch,
         createdAt: now,
         updatedAt: now,
@@ -900,7 +901,9 @@ export class ChatManager {
       return chat;
     }
 
-    const nextWorktreeState = await this.prepareWorktreeState(chat);
+    const nextWorktreeState = await this.prepareWorktreeState(chat, {
+      syncBaseBranch: !chat.config.skipBaseBranchSync,
+    });
     if (
       chat.state.worktree?.originalBranch === nextWorktreeState.originalBranch
       && chat.state.worktree?.workingBranch === nextWorktreeState.workingBranch

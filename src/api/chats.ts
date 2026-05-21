@@ -29,6 +29,7 @@ import {
 import { requireWorkspace, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { isModelEnabled } from "./models";
+import { getQuickChatSettings } from "../persistence/preferences";
 
 const log = createLogger("api:chats");
 
@@ -70,6 +71,28 @@ function mapChatUpdates(body: Partial<ChatConfig>): Partial<Omit<ChatConfig, "id
   return updates;
 }
 
+async function validateQuickChatRequestModel(body: {
+  workspaceId: string;
+  model: { providerID: string; modelID: string; variant?: string };
+}): Promise<Response | null> {
+  const quickChatSettings = await getQuickChatSettings();
+  const configuredModel = quickChatSettings.model;
+  if (
+    quickChatSettings.workspaceId !== body.workspaceId
+    || !configuredModel
+    || configuredModel.providerID !== body.model.providerID
+    || configuredModel.modelID !== body.model.modelID
+    || configuredModel.variant !== (body.model.variant ?? "")
+  ) {
+    return errorResponse(
+      "quick_chat_model_mismatch",
+      "Quick chat requests must use the saved quick chat workspace and model settings",
+      400,
+    );
+  }
+  return null;
+}
+
 export const chatsRoutes = {
   "/api/chats": {
     async GET(req: Request): Promise<Response> {
@@ -93,7 +116,12 @@ export const chatsRoutes = {
         return workspace;
       }
 
-      if (!body.quick) {
+      if (body.quick) {
+        const quickChatValidation = await validateQuickChatRequestModel(body);
+        if (quickChatValidation) {
+          return quickChatValidation;
+        }
+      } else {
         const modelValidation = await isModelEnabled(
           workspace.id,
           workspace.directory,

@@ -30,6 +30,7 @@ export interface ChatConfig {
   model: ModelConfig;
   useWorktree: boolean;
   autoApprovePermissions?: boolean;
+  skipBaseBranchSync?: boolean;
   baseBranch?: string;
   createdAt: string;
   updatedAt: string;

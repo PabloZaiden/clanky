@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getWorkspaceChatNameStats, loadLoopChat, saveChat } from "../../src/persistence/chats";
+import { getWorkspaceChatNameStats, loadChat, loadLoopChat, saveChat } from "../../src/persistence/chats";
 import { createInitialChatState, type Chat } from "../../src/types/chat";
 import {
   setupTestContext,
@@ -102,5 +102,15 @@ describe("chat persistence", () => {
       standaloneChatCount: 4,
       maxGeneratedSuffix: 4,
     });
+  });
+
+  test("persists skipBaseBranchSync on chat config", async () => {
+    const chat = createChat({ id: "skip-sync-chat" });
+    chat.config.skipBaseBranchSync = true;
+
+    await saveChat(chat);
+
+    const loaded = await loadChat("skip-sync-chat");
+    expect(loaded?.config.skipBaseBranchSync).toBe(true);
   });
 });

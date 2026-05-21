@@ -22,6 +22,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "model_variant",
   "use_worktree",
   "auto_approve_permissions",
+  "skip_base_branch_sync",
   "base_branch",
   "mode",
   "status",
@@ -77,6 +78,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     model_variant: config.model.variant ?? null,
     use_worktree: config.useWorktree ? 1 : 0,
     auto_approve_permissions: config.autoApprovePermissions === false ? 0 : 1,
+    skip_base_branch_sync: config.skipBaseBranchSync ? 1 : 0,
     base_branch: config.baseBranch ?? null,
     mode: config.mode,
     status: state.status,
@@ -119,6 +121,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     autoApprovePermissions: row["auto_approve_permissions"] === undefined
       || row["auto_approve_permissions"] === null
       || row["auto_approve_permissions"] === 1,
+    skipBaseBranchSync: row["skip_base_branch_sync"] === 1,
     baseBranch: (row["base_branch"] as string | null) ?? undefined,
     createdAt: row["created_at"] as string,
     updatedAt: row["updated_at"] as string,

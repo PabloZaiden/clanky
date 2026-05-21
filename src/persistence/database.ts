@@ -232,6 +232,7 @@ function createTables(database: Database): void {
         model_variant TEXT,
         use_worktree INTEGER NOT NULL DEFAULT 1,
         auto_approve_permissions INTEGER NOT NULL DEFAULT 1,
+        skip_base_branch_sync INTEGER NOT NULL DEFAULT 0,
         base_branch TEXT,
         mode TEXT NOT NULL DEFAULT 'chat',
         status TEXT NOT NULL DEFAULT 'idle',
@@ -618,6 +619,9 @@ function ensureChatSchema(database: Database): void {
   }
   if (!columns.some((column) => column.name === "pending_permission_requests")) {
     database.run("ALTER TABLE chats ADD COLUMN pending_permission_requests TEXT");
+  }
+  if (!columns.some((column) => column.name === "skip_base_branch_sync")) {
+    database.run("ALTER TABLE chats ADD COLUMN skip_base_branch_sync INTEGER NOT NULL DEFAULT 0");
   }
 }
 

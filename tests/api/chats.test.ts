@@ -11,6 +11,7 @@ import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { loadChat, updateChatState } from "../../src/persistence/chats";
 import { saveLoop } from "../../src/persistence/loops";
+import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { backendManager } from "../../src/core/backend-manager";
 import { getPlanFilePath } from "../../src/lib/planning-files";
 import type { Loop, LoopLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
@@ -225,7 +226,7 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
-  test("skips model validation when creating a quick chat", async () => {
+  test("allows model validation bypass only for saved quick chat settings", async () => {
     const unavailableModel = { providerID: "missing-provider", modelID: "missing-model", variant: "" };
 
     const standardResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -242,11 +243,31 @@ describe("Chats API Integration", () => {
     expect(standardResponse.status).toBe(400);
     expect((await standardResponse.json()).error).toBe("provider_not_found");
 
+    const mismatchedQuickResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Mismatched Quick Chat",
+        workspaceId: testWorkspaceId,
+        model: unavailableModel,
+        useWorktree: false,
+        baseBranch: "main",
+        quick: true,
+      }),
+    });
+    expect(mismatchedQuickResponse.status).toBe(400);
+    expect((await mismatchedQuickResponse.json()).error).toBe("quick_chat_model_mismatch");
+
+    await setQuickChatSettings({
+      workspaceId: testWorkspaceId,
+      model: unavailableModel,
+    });
+
     const quickResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: "Unavailable Quick Chat",
+        name: "Configured Quick Chat",
         workspaceId: testWorkspaceId,
         model: unavailableModel,
         useWorktree: false,

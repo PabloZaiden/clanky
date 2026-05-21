@@ -1624,6 +1624,7 @@ type ChatManagerInternals = {
   activeStreamGenerations: Map<string, number>;
   activeStreams: Map<string, { generation: number }>;
   loadChatIfAvailable: (chatId: string) => Promise<Awaited<ReturnType<typeof loadChat>> | null>;
+  ensureWorktree: (chat: NonNullable<Awaited<ReturnType<typeof loadChat>>>) => Promise<NonNullable<Awaited<ReturnType<typeof loadChat>>>>;
 };
 
 describe("ChatManager", () => {
@@ -2055,7 +2056,61 @@ describe("ChatManager", () => {
       expect(calls).toEqual([
         `createWorktree:chat-quick-chat-${chat.config.id.slice(0, 8)}:main`,
       ]);
+      expect(chat.config.skipBaseBranchSync).toBe(true);
       expect(chat.state.worktree?.worktreePath).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+    } finally {
+      withExecutorSpy.mockRestore();
+    }
+  });
+
+  test("reuses persisted skip-base-branch-sync when recreating a missing chat worktree", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from the chat backend"],
+    });
+
+    const calls: string[] = [];
+    let worktreeExists = false;
+    const withExecutorSpy = spyOn(GitService, "withExecutor");
+    withExecutorSpy.mockImplementation(() => ({
+      worktreeExists: async () => worktreeExists,
+      getCurrentBranch: async () => "feature/current",
+      checkoutBranch: async (_directory: string, branch: string) => {
+        calls.push(`checkout:${branch}`);
+      },
+      pull: async (_directory: string, branch?: string) => {
+        calls.push(`pull:${branch}`);
+        return true;
+      },
+      branchExists: async () => false,
+      createWorktree: async (_directory: string, _worktreePath: string, branchName: string, originalBranch: string) => {
+        calls.push(`createWorktree:${branchName}:${originalBranch}`);
+        worktreeExists = true;
+      },
+    }) as unknown as GitService);
+
+    try {
+      const manager = new ChatManager();
+      const chat = await manager.createChat({
+        name: "Quick Chat",
+        workspaceId: testWorkspaceId,
+        directory: context.workDir,
+        useWorktree: true,
+        baseBranch: "main",
+        syncBaseBranch: false,
+        ...testModelFields,
+      });
+
+      worktreeExists = false;
+      const loaded = await loadChat(chat.config.id);
+      expect(loaded?.config.skipBaseBranchSync).toBe(true);
+
+      await (manager as unknown as ChatManagerInternals).ensureWorktree(loaded!);
+
+      expect(calls).toEqual([
+        `createWorktree:chat-quick-chat-${chat.config.id.slice(0, 8)}:main`,
+        `createWorktree:chat-quick-chat-${chat.config.id.slice(0, 8)}:main`,
+      ]);
     } finally {
       withExecutorSpy.mockRestore();
     }

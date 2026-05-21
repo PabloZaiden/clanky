@@ -280,6 +280,7 @@ describe("migration infrastructure", () => {
       expect(columns).toContain("loop_id");
       expect(columns).toContain("auto_approve_permissions");
       expect(columns).toContain("pending_permission_requests");
+      expect(columns).toContain("skip_base_branch_sync");
     });
 
     test("creates chat indexes even when chats table already exists", () => {
