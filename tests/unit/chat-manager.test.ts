@@ -26,6 +26,15 @@ import { setupTestContext, teardownTestContext, testModelFields, testWorkspaceId
 
 let context: TestContext | undefined;
 
+type ChatGitServiceMock = Pick<
+  GitService,
+  "worktreeExists" | "getCurrentBranch" | "checkoutBranch" | "pull" | "branchExists" | "createWorktree"
+>;
+
+function createChatGitServiceMock(methods: ChatGitServiceMock): GitService {
+  return Object.assign(Object.create(GitService.prototype), methods) as GitService;
+}
+
 async function waitForChat(
   chatId: string,
   predicate: (chat: NonNullable<Awaited<ReturnType<typeof loadChat>>>) => boolean,
@@ -1971,7 +1980,7 @@ describe("ChatManager", () => {
     const calls: string[] = [];
     let worktreeExists = false;
     const withExecutorSpy = spyOn(GitService, "withExecutor");
-    withExecutorSpy.mockImplementation(() => ({
+    withExecutorSpy.mockImplementation((_executor) => createChatGitServiceMock({
       worktreeExists: async () => worktreeExists,
       getCurrentBranch: async () => "feature/current",
       checkoutBranch: async (_directory: string, branch: string) => {
@@ -1986,7 +1995,7 @@ describe("ChatManager", () => {
         calls.push(`createWorktree:${branchName}:${originalBranch}`);
         worktreeExists = true;
       },
-    }) as unknown as GitService);
+    }));
 
     try {
       const manager = new ChatManager();
@@ -2024,7 +2033,7 @@ describe("ChatManager", () => {
     const calls: string[] = [];
     let worktreeExists = false;
     const withExecutorSpy = spyOn(GitService, "withExecutor");
-    withExecutorSpy.mockImplementation(() => ({
+    withExecutorSpy.mockImplementation((_executor) => createChatGitServiceMock({
       worktreeExists: async () => worktreeExists,
       getCurrentBranch: async () => "feature/current",
       checkoutBranch: async (_directory: string, branch: string) => {
@@ -2039,7 +2048,7 @@ describe("ChatManager", () => {
         calls.push(`createWorktree:${branchName}:${originalBranch}`);
         worktreeExists = true;
       },
-    }) as unknown as GitService);
+    }));
 
     try {
       const manager = new ChatManager();
@@ -2063,6 +2072,75 @@ describe("ChatManager", () => {
     }
   });
 
+  test("waits for deferred worktree preparation when the chat sends its first message", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+      mockResponses: ["Hello from deferred quick chat"],
+    });
+
+    const calls: string[] = [];
+    let worktreeExists = false;
+    const createWorktreeGate = Promise.withResolvers<void>();
+    const withExecutorSpy = spyOn(GitService, "withExecutor");
+    withExecutorSpy.mockImplementation((_executor) => createChatGitServiceMock({
+      worktreeExists: async () => worktreeExists,
+      getCurrentBranch: async () => "feature/current",
+      checkoutBranch: async (_directory: string, branch: string) => {
+        calls.push(`checkout:${branch}`);
+      },
+      pull: async (_directory: string, branch?: string) => {
+        calls.push(`pull:${branch}`);
+        return true;
+      },
+      branchExists: async () => false,
+      createWorktree: async (_directory: string, _worktreePath: string, branchName: string, originalBranch: string) => {
+        calls.push(`createWorktree:start:${branchName}:${originalBranch}`);
+        await createWorktreeGate.promise;
+        calls.push(`createWorktree:end:${branchName}:${originalBranch}`);
+        worktreeExists = true;
+      },
+    }));
+
+    try {
+      const manager = new ChatManager();
+      const chat = await manager.createChat({
+        name: "Deferred Quick Chat",
+        workspaceId: testWorkspaceId,
+        directory: context.workDir,
+        useWorktree: true,
+        baseBranch: "main",
+        syncBaseBranch: false,
+        prepareWorktreeOnCreate: false,
+        ...testModelFields,
+      });
+
+      expect(calls).toEqual([]);
+      expect(chat.config.skipBaseBranchSync).toBe(true);
+      expect(chat.state.worktree).toBeUndefined();
+
+      await waitForValue(
+        () => calls.find((call) => call.startsWith("createWorktree:start:")),
+        5000,
+        "background worktree preparation to start",
+      );
+
+      const startedPromise = manager.sendMessage(chat.config.id, {
+        message: "Say hello",
+      });
+      createWorktreeGate.resolve();
+      const started = await startedPromise;
+
+      expect(started.state.status).toBe("streaming");
+      expect(calls).toEqual([
+        `createWorktree:start:chat-deferred-quick-chat-${chat.config.id.slice(0, 8)}:main`,
+        `createWorktree:end:chat-deferred-quick-chat-${chat.config.id.slice(0, 8)}:main`,
+      ]);
+      expect(context.mockBackend?.getDirectory()).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+    } finally {
+      withExecutorSpy.mockRestore();
+    }
+  });
+
   test("reuses persisted skip-base-branch-sync when recreating a missing chat worktree", async () => {
     context = await setupTestContext({
       useMockBackend: true,
@@ -2072,7 +2150,7 @@ describe("ChatManager", () => {
     const calls: string[] = [];
     let worktreeExists = false;
     const withExecutorSpy = spyOn(GitService, "withExecutor");
-    withExecutorSpy.mockImplementation(() => ({
+    withExecutorSpy.mockImplementation((_executor) => createChatGitServiceMock({
       worktreeExists: async () => worktreeExists,
       getCurrentBranch: async () => "feature/current",
       checkoutBranch: async (_directory: string, branch: string) => {
@@ -2087,7 +2165,7 @@ describe("ChatManager", () => {
         calls.push(`createWorktree:${branchName}:${originalBranch}`);
         worktreeExists = true;
       },
-    }) as unknown as GitService);
+    }));
 
     try {
       const manager = new ChatManager();
