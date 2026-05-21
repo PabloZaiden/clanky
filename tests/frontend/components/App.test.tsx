@@ -506,7 +506,7 @@ describe("App shell", () => {
       expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
     });
 
-    const searchInput = getByLabelText("Search sidebar");
+    const searchInput = getByLabelText("Search");
     searchInput.focus();
     fireEvent.keyDown(searchInput, { key: "e", metaKey: true, shiftKey: true });
 
@@ -532,7 +532,7 @@ describe("App shell", () => {
       fireEvent.keyDown(window, { key: "f", metaKey: true, shiftKey: true });
 
       await waitFor(() => {
-        const searchInput = getByLabelText("Search sidebar");
+        const searchInput = getByLabelText("Search");
         expect(document.activeElement).toBe(searchInput);
         expect(getByRole("button", { name: "Hide sidebar" })).toBeTruthy();
       });
@@ -1145,7 +1145,7 @@ describe("App shell", () => {
         throw new Error("Expected sidebar element to exist");
       }
 
-      fireEvent.keyDown(getByLabelText("Search sidebar"), { key: "b", metaKey: true });
+      fireEvent.keyDown(getByLabelText("Search"), { key: "b", metaKey: true });
 
       expect(sidebar).not.toHaveAttribute("hidden");
       expect(getByLabelText("Hide sidebar")).toBeTruthy();

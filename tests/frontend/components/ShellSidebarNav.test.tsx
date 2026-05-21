@@ -667,7 +667,7 @@ describe("ShellSidebarNav", () => {
 
     expect(getByRole("button", { name: "Open code explorer" })).toHaveAttribute("title", "Code explorer (Ctrl/Cmd+Shift+E)");
     expect(getByRole("button", { name: "Open settings" })).toHaveAttribute("title", "Settings (Ctrl/Cmd+Shift+,)");
-    expect(getByLabelText("Search sidebar")).toHaveAttribute("title", "Search sidebar (Ctrl/Cmd+Shift+F)");
+    expect(getByLabelText("Search")).toHaveAttribute("title", "Search (Ctrl/Cmd+Shift+F)");
     expect(getAllByRole("button", { name: "New Loops" })[0]).toHaveAttribute("title", "New loop (Ctrl/Cmd+Shift+L)");
     expect(getAllByRole("button", { name: "New Chats" })[0]).toHaveAttribute("title", "New chat (Ctrl/Cmd+Shift+C)");
     expect(getAllByRole("button", { name: "New SSH sessions" })[0]).toHaveAttribute(
@@ -812,7 +812,7 @@ describe("ShellSidebarNav", () => {
       <SidebarHarness navigateWithinShell={navigateWithinShell} />,
     );
 
-    await user.type(getByLabelText("Search sidebar"), "server 1");
+    await user.type(getByLabelText("Search"), "server 1");
     openContextMenuForButton(getByTextButton(getByText("Server 1")));
 
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
@@ -844,13 +844,13 @@ describe("ShellSidebarNav", () => {
 
     expect(getAllByText("Quick chats")).toHaveLength(1);
     expect(queryByText("Quick chat workspace")).not.toBeInTheDocument();
-    expect(getAllByText("Workspace Chat")).toHaveLength(3);
+    expect(getAllByText("Workspace Chat")).toHaveLength(2);
     expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
     expect(getAllByText("/workspaces/workspace-1")).toHaveLength(1);
     expect(getAllByText("Feature Loop")).toHaveLength(2);
     expect(getAllByText("Loop SSH Session")).toHaveLength(3);
 
-    await user.type(getByLabelText("Search sidebar"), "workspace chat");
+    await user.type(getByLabelText("Search"), "workspace chat");
 
     expect(queryByText("Quick chats")).not.toBeInTheDocument();
   });
@@ -900,7 +900,7 @@ describe("ShellSidebarNav", () => {
 
   test("trims the search input and matches workspace section results without a submit step", async () => {
     const { getAllByText, getByLabelText, getByText, queryByRole, user } = renderWithUser(<SidebarHarness />);
-    const searchInput = getByLabelText("Search sidebar");
+    const searchInput = getByLabelText("Search");
 
     await user.type(searchInput, "  worksp  ");
 
@@ -1005,7 +1005,7 @@ describe("ShellSidebarNav", () => {
     const { getAllByRole, getByLabelText, user } = renderWithUser(
       <SidebarHarness workspaceGroups={workspaceGroups} serverNodes={serverNodes} />,
     );
-    const searchInput = getByLabelText("Search sidebar");
+    const searchInput = getByLabelText("Search");
 
     await user.type(searchInput, "shared");
 
@@ -1021,7 +1021,7 @@ describe("ShellSidebarNav", () => {
 
   test("omits empty filtered sections and restores the default tree when the query is cleared", async () => {
     const { getAllByRole, getByLabelText, getByText, user } = renderWithUser(<SidebarHarness />);
-    const searchInput = getByLabelText("Search sidebar") as HTMLInputElement;
+    const searchInput = getByLabelText("Search") as HTMLInputElement;
 
     await user.type(searchInput, "feature");
 
