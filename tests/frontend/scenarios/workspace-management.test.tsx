@@ -402,7 +402,7 @@ describe("workspace management scenario", () => {
       expect(getByText("Workspaces map")).toBeTruthy();
     });
 
-    await user.click(getAllByText("Existing Project")[0]!);
+    await user.click(getWorkspaceSidebarButton(getAllByText("Existing Project")));
     await waitFor(() => {
       expect(window.location.hash).toBe("#/workspace/ws-1");
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
@@ -500,7 +500,7 @@ describe("workspace management scenario", () => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
     });
 
-    await user.click(getAllByText("Existing Project")[0]!);
+    await user.click(getWorkspaceSidebarButton(getAllByText("Existing Project")));
     await waitFor(() => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
@@ -546,7 +546,7 @@ describe("workspace management scenario", () => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
     });
 
-    await user.click(getAllByText("Existing Project")[0]!);
+    await user.click(getWorkspaceSidebarButton(getAllByText("Existing Project")));
     await waitFor(() => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
@@ -580,7 +580,7 @@ describe("workspace management scenario", () => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
     });
 
-    await user.click(getAllByText("Existing Project")[0]!);
+    await user.click(getWorkspaceSidebarButton(getAllByText("Existing Project")));
     await waitFor(() => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
@@ -631,7 +631,7 @@ describe("workspace management scenario", () => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
     });
 
-    await user.click(getAllByText("Existing Project")[0]!);
+    await user.click(getWorkspaceSidebarButton(getAllByText("Existing Project")));
     await waitFor(() => {
       expect(getByRole("heading", { name: "Activity" })).toBeTruthy();
     });
@@ -669,7 +669,7 @@ describe("workspace management scenario", () => {
       expect(getAllByText("Existing Project").length).toBeGreaterThan(0);
     });
 
-    await user.click(getAllByText("Existing Project")[0]!);
+    await user.click(getWorkspaceSidebarButton(getAllByText("Existing Project")));
     await waitFor(() => {
       expect(getByRole("heading", { name: "Existing Project" })).toBeTruthy();
     });
@@ -692,3 +692,13 @@ describe("workspace management scenario", () => {
     expect(sessionRow?.querySelector("span.shrink-0")).toBeTruthy();
   });
 });
+
+function getWorkspaceSidebarButton(nodes: HTMLElement[]): HTMLButtonElement {
+  const button = nodes
+    .map((node) => node.closest("button"))
+    .find((candidate): candidate is HTMLButtonElement =>
+      candidate instanceof HTMLButtonElement && (candidate.textContent ?? "").includes(WORKSPACE.directory)
+    );
+  expect(button).toBeDefined();
+  return button!;
+}

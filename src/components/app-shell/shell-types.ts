@@ -76,6 +76,26 @@ export interface SidebarServerNode {
   sessions: SidebarServerSessionNode[];
 }
 
+export type SidebarActiveWorkItem =
+  | {
+      kind: "loop";
+      key: string;
+      workspaceName: string;
+      loopNode: SidebarLoopNode;
+    }
+  | {
+      kind: "chat";
+      key: string;
+      workspaceName: string;
+      chatNode: SidebarChatNode;
+    }
+  | {
+      kind: "ssh-session";
+      key: string;
+      workspaceName: string;
+      sessionNode: SidebarWorkspaceSessionNode;
+    };
+
 export type CodeExplorerTarget =
   | {
       contentType: "workspace";
@@ -328,6 +348,53 @@ export function buildWorkspaceSidebarGroups({
       title: "Inactive",
       workspaces: workspaceNodes.filter((workspaceNode) => !workspaceNode.hasActivity),
     },
+  ];
+}
+
+export function buildActiveWorkSidebarItems(
+  workspaceGroups: SidebarWorkspaceGroupNode[],
+): SidebarActiveWorkItem[] {
+  const loopItems: SidebarActiveWorkItem[] = [];
+  const chatItems: SidebarActiveWorkItem[] = [];
+  const sessionItems: SidebarActiveWorkItem[] = [];
+
+  for (const group of workspaceGroups) {
+    for (const workspaceNode of group.workspaces) {
+      const workspaceName = workspaceNode.workspace.name;
+
+      for (const loopNode of workspaceNode.loops) {
+        loopItems.push({
+          kind: "loop",
+          key: `loop:${loopNode.loop.config.id}`,
+          workspaceName,
+          loopNode,
+        });
+      }
+
+      for (const chatNode of workspaceNode.chats) {
+        chatItems.push({
+          kind: "chat",
+          key: `chat:${chatNode.chat.config.id}`,
+          workspaceName,
+          chatNode,
+        });
+      }
+
+      for (const sessionNode of workspaceNode.sshSessions) {
+        sessionItems.push({
+          kind: "ssh-session",
+          key: `ssh-session:${sessionNode.session.config.id}`,
+          workspaceName,
+          sessionNode,
+        });
+      }
+    }
+  }
+
+  return [
+    ...loopItems,
+    ...chatItems,
+    ...sessionItems,
   ];
 }
 
