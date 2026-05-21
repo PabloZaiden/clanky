@@ -515,6 +515,9 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/settings/reset-all": {
     description: "Reset all persisted settings and recreate the database.",
   },
+  "/api/settings/purge-terminal-loops": {
+    description: "Purge terminal-state loops across all workspaces.",
+  },
   "/api/server/kill": {
     description: "Shut down the Ralpher server process.",
   },

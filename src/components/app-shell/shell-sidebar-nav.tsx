@@ -1,9 +1,19 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
-import { ChatIcon, CodeIcon, GearIcon, RefreshIcon, SidebarIcon } from "../common";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import {
+  ChatIcon,
+  CodeIcon,
+  ContextMenu,
+  GearIcon,
+  RefreshIcon,
+  SidebarIcon,
+  type ContextMenuPosition,
+} from "../common";
 import { getShellRouteUrl, getShellShortcutTitle, isModifiedNavigationClick } from "./shell-navigation";
 import { EmptySection, ShellSection, SidebarTreeItem, SidebarTreeSection } from "./shell-sidebar";
 import {
   type SidebarChatNode,
+  type SidebarActiveWorkItem,
+  buildActiveWorkSidebarItems,
   getSidebarGroupCollapseKey,
   getSidebarSectionCollapseKey,
   getSidebarServerCollapseKey,
@@ -19,6 +29,8 @@ import {
   type SidebarWorkspaceSessionNode,
   isDesktopShellViewport,
 } from "./shell-types";
+import { buildSshServerActionItems, buildWorkspaceActionItems } from "./shell-action-items";
+import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
 
 interface ShellSidebarNavProps {
   route: ShellRoute;
@@ -37,6 +49,8 @@ interface ShellSidebarNavProps {
   onConfigureQuickChat: () => void;
   version: string | undefined;
   sidebarSearchFocusRequest: number;
+  pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
+  pullingLatestWorkspaceIds: ReadonlySet<string>;
 }
 
 const iconButtonBase =
@@ -74,12 +88,29 @@ interface SidebarSearchResults {
   sshServers: SidebarServerNode[];
 }
 
+type SidebarContextMenuState =
+  | {
+      kind: "workspace";
+      workspace: SidebarWorkspaceNode["workspace"];
+      position: ContextMenuPosition;
+    }
+  | {
+      kind: "ssh-server";
+      server: SidebarServerNode["server"];
+      position: ContextMenuPosition;
+    };
+
 function matchesSearchText(label: string, query: string): boolean {
   return query.length > 0 && label.toLowerCase().includes(query);
 }
 
 function getSidebarSessionId(sessionNode: SidebarWorkspaceSessionNode | SidebarServerSessionNode): string {
   return "session" in sessionNode ? sessionNode.session.config.id : sessionNode.id;
+}
+
+function getActiveWorkSessionSubtitle(item: Extract<SidebarActiveWorkItem, { kind: "ssh-session" }>): string {
+  const { workspaceName, sessionNode } = item;
+  return `${workspaceName} · ${sessionNode.subtitle}`;
 }
 
 function SearchResultsSection({
@@ -103,6 +134,80 @@ function SearchResultsSection({
   );
 }
 
+function WorkspaceSidebarContextMenu({
+  workspace,
+  position,
+  onClose,
+  onNavigate,
+  pullLatestWorkspaceChanges,
+  pullingLatestWorkspaceIds,
+}: {
+  workspace: SidebarWorkspaceNode["workspace"];
+  position: ContextMenuPosition;
+  onClose: () => void;
+  onNavigate: (route: ShellRoute) => void;
+  pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
+  pullingLatestWorkspaceIds: ReadonlySet<string>;
+}) {
+  const githubUrl = useWorkspaceGitHubUrl(workspace);
+  const items = buildWorkspaceActionItems({
+    workspace,
+    githubUrl,
+    pullingLatestChanges: pullingLatestWorkspaceIds.has(workspace.id),
+    onNavigate,
+    onPullLatestChanges: () => {
+      void pullLatestWorkspaceChanges(workspace.id);
+    },
+    onOpenGitHub: (url) => window.open(url, "_blank", "noopener,noreferrer"),
+  });
+
+  return (
+    <ContextMenu
+      ariaLabel={`Workspace actions for ${workspace.name}`}
+      position={position}
+      onClose={onClose}
+      items={[
+        ...items,
+        {
+          id: "workspace-settings",
+          label: "Workspace Settings",
+          onClick: () => onNavigate({ view: "workspace-settings", workspaceId: workspace.id }),
+        },
+      ]}
+    />
+  );
+}
+
+function SshServerSidebarContextMenu({
+  server,
+  position,
+  onClose,
+  onNavigate,
+}: {
+  server: SidebarServerNode["server"];
+  position: ContextMenuPosition;
+  onClose: () => void;
+  onNavigate: (route: ShellRoute) => void;
+}) {
+  const items = buildSshServerActionItems({ server, onNavigate });
+
+  return (
+    <ContextMenu
+      ariaLabel={`SSH server actions for ${server.config.name}`}
+      position={position}
+      onClose={onClose}
+      items={[
+        ...items,
+        {
+          id: "ssh-server-settings",
+          label: "SSH Server Settings",
+          onClick: () => onNavigate({ view: "ssh-server-settings", serverId: server.config.id }),
+        },
+      ]}
+    />
+  );
+}
+
 export function ShellSidebarNav({
   route,
   sidebarOpen,
@@ -120,10 +225,14 @@ export function ShellSidebarNav({
   onConfigureQuickChat,
   version,
   sidebarSearchFocusRequest,
+  pullLatestWorkspaceChanges,
+  pullingLatestWorkspaceIds,
 }: ShellSidebarNavProps) {
   const [searchInput, setSearchInput] = useState("");
+  const [contextMenu, setContextMenu] = useState<SidebarContextMenuState | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchQuery = searchInput.trim().toLowerCase();
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
   useEffect(() => {
     if (sidebarSearchFocusRequest <= 0 || sidebarCollapsed) {
@@ -134,12 +243,37 @@ export function ShellSidebarNav({
   }, [sidebarCollapsed, sidebarSearchFocusRequest]);
 
   function handleSidebarItemClick(event: MouseEvent<HTMLButtonElement>, nextRoute: ShellRoute) {
+    closeContextMenu();
     if (isModifiedNavigationClick(event)) {
       window.open(getShellRouteUrl(nextRoute), "_blank", "noopener,noreferrer");
       return;
     }
 
     navigateWithinShell(nextRoute);
+  }
+
+  function openWorkspaceContextMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    workspace: SidebarWorkspaceNode["workspace"],
+  ) {
+    event.preventDefault();
+    setContextMenu({
+      kind: "workspace",
+      workspace,
+      position: { x: event.clientX, y: event.clientY },
+    });
+  }
+
+  function openServerContextMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    server: SidebarServerNode["server"],
+  ) {
+    event.preventDefault();
+    setContextMenu({
+      kind: "ssh-server",
+      server,
+      position: { x: event.clientX, y: event.clientY },
+    });
   }
 
   function isWorkspaceActive(workspaceId: string): boolean {
@@ -244,6 +378,16 @@ export function ShellSidebarNav({
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
   const visibleWorkspaceGroups = workspaceGroups.filter((group) => group.workspaces.length > 0);
+  const quickChatIds = useMemo(
+    () => new Set(quickChatWorkspace?.chats.map((chatNode) => chatNode.chat.config.id) ?? []),
+    [quickChatWorkspace],
+  );
+  const activeWorkItems = useMemo(
+    () => buildActiveWorkSidebarItems(workspaceGroups).filter(
+      (item) => item.kind !== "chat" || !quickChatIds.has(item.chatNode.chat.config.id),
+    ),
+    [quickChatIds, workspaceGroups],
+  );
   const sidebarToggleLabel = sidebarOpen
     ? "Close sidebar"
     : !isDesktopShellViewport()
@@ -439,7 +583,7 @@ export function ShellSidebarNav({
       <div className="flex-1 space-y-6 overflow-y-auto px-3 py-4 dark-scrollbar">
         <div>
           <label htmlFor="shell-sidebar-search" className="sr-only">
-            Search sidebar
+            Search
           </label>
           <input
             id="shell-sidebar-search"
@@ -447,8 +591,8 @@ export function ShellSidebarNav({
             ref={searchInputRef}
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search sidebar"
-            title={getShellShortcutTitle("sidebar-search", "Search sidebar")}
+            placeholder="Search"
+            title={getShellShortcutTitle("sidebar-search", "Search")}
             className={searchInputClassName}
           />
         </div>
@@ -468,6 +612,7 @@ export function ShellSidebarNav({
                           view: "workspace",
                           workspaceId: workspaceNode.workspace.id,
                         })}
+                        onContextMenu={(event) => openWorkspaceContextMenu(event, workspaceNode.workspace)}
                       />
                       {(workspaceNode.loops.length > 0 || workspaceNode.historyLoops.length > 0) && (
                         <SidebarTreeSection title="Loops" indentLevel={1}>
@@ -613,6 +758,7 @@ export function ShellSidebarNav({
                           view: "ssh-server",
                           serverId: serverNode.server.config.id,
                         })}
+                        onContextMenu={(event) => openServerContextMenu(event, serverNode.server)}
                       />
                       {serverNode.sessions.length > 0 && (
                         <SidebarTreeSection title="Sessions" indentLevel={1}>
@@ -655,6 +801,64 @@ export function ShellSidebarNav({
                 ) : (
                   <EmptySection message="No quick chats yet." indentLevel={1} />
                 )}
+              </SidebarTreeSection>
+            )}
+
+            {activeWorkItems.length > 0 && (
+              <SidebarTreeSection title="Active Work">
+                {activeWorkItems.map((item) => {
+                  if (item.kind === "loop") {
+                    return (
+                      <SidebarTreeItem
+                        key={item.key}
+                        active={isLoopActive(item.loopNode.loop.config.id)}
+                        title={item.loopNode.title}
+                        subtitle={item.workspaceName}
+                        badge={item.loopNode.badge}
+                        badgeVariant={item.loopNode.badgeVariant}
+                        indentLevel={1}
+                        onClick={(event) => handleSidebarItemClick(event, {
+                          view: "loop",
+                          loopId: item.loopNode.loop.config.id,
+                        })}
+                      />
+                    );
+                  }
+
+                  if (item.kind === "chat") {
+                    return (
+                      <SidebarTreeItem
+                        key={item.key}
+                        active={isChatActive(item.chatNode.chat.config.id)}
+                        title={item.chatNode.title}
+                        subtitle={item.workspaceName}
+                        badge={item.chatNode.badge}
+                        badgeVariant={item.chatNode.badgeVariant}
+                        indentLevel={1}
+                        onClick={(event) => handleSidebarItemClick(event, {
+                          view: "chat",
+                          chatId: item.chatNode.chat.config.id,
+                        })}
+                      />
+                    );
+                  }
+
+                  return (
+                    <SidebarTreeItem
+                      key={item.key}
+                      active={route.view === "ssh" && route.sshSessionId === item.sessionNode.session.config.id}
+                      title={item.sessionNode.title}
+                      subtitle={getActiveWorkSessionSubtitle(item)}
+                      badge={item.sessionNode.badge}
+                      badgeVariant={item.sessionNode.badgeVariant}
+                      indentLevel={1}
+                      onClick={(event) => handleSidebarItemClick(event, {
+                        view: "ssh",
+                        sshSessionId: item.sessionNode.session.config.id,
+                      })}
+                    />
+                  );
+                })}
               </SidebarTreeSection>
             )}
 
@@ -720,6 +924,7 @@ export function ShellSidebarNav({
                               view: "workspace",
                               workspaceId: workspaceNode.workspace.id,
                             })}
+                            onContextMenu={(event) => openWorkspaceContextMenu(event, workspaceNode.workspace)}
                           />
                           {!isNodeCollapsed(workspaceCollapseKey) && (
                             <div className="space-y-1">
@@ -827,17 +1032,18 @@ export function ShellSidebarNav({
                   );
                   return (
                     <div key={serverNode.key} className="space-y-1">
-                        <SidebarTreeItem
-                          active={isServerActive(serverNode.server.config.id)}
-                          title={serverNode.server.config.name}
-                          subtitle={`${serverNode.server.config.username}@${serverNode.server.config.address}`}
-                          indentLevel={1}
-                          collapsed={isNodeCollapsed(serverCollapseKey)}
-                          onToggle={() => toggleNodeCollapsed(serverCollapseKey)}
+                      <SidebarTreeItem
+                        active={isServerActive(serverNode.server.config.id)}
+                        title={serverNode.server.config.name}
+                        subtitle={`${serverNode.server.config.username}@${serverNode.server.config.address}`}
+                        indentLevel={1}
+                        collapsed={isNodeCollapsed(serverCollapseKey)}
+                        onToggle={() => toggleNodeCollapsed(serverCollapseKey)}
                         onClick={(event) => handleSidebarItemClick(event, {
                           view: "ssh-server",
                           serverId: serverNode.server.config.id,
                         })}
+                        onContextMenu={(event) => openServerContextMenu(event, serverNode.server)}
                       />
                       {!isNodeCollapsed(serverCollapseKey) && (
                         <SidebarTreeSection
@@ -894,6 +1100,24 @@ export function ShellSidebarNav({
             <RefreshIcon size="h-4 w-4" />
           </button>
         </div>
+        {contextMenu?.kind === "workspace" && (
+          <WorkspaceSidebarContextMenu
+            workspace={contextMenu.workspace}
+            position={contextMenu.position}
+            onClose={closeContextMenu}
+            onNavigate={navigateWithinShell}
+            pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
+            pullingLatestWorkspaceIds={pullingLatestWorkspaceIds}
+          />
+        )}
+        {contextMenu?.kind === "ssh-server" && (
+          <SshServerSidebarContextMenu
+            server={contextMenu.server}
+            position={contextMenu.position}
+            onClose={closeContextMenu}
+            onNavigate={navigateWithinShell}
+          />
+        )}
       </div>
     </aside>
   );

@@ -25,8 +25,23 @@ export async function hasRemote(
   directory: string,
   remote = "origin",
 ): Promise<boolean> {
-  const result = await runGitCommand(executor, directory, ["remote", "get-url", remote]);
+  const args = ["remote", "get-url", remote];
+  const result = await runGitCommand(executor, directory, args, {
+    allowFailure: true,
+  });
+  if (!result.success && !isMissingRemoteError(result.stderr, remote)) {
+    log.error(`[GitService] Command failed: git ${args.join(" ")}`);
+    log.error(`[GitService]   exitCode: ${result.exitCode}`);
+    log.error(`[GitService]   stderr: ${result.stderr || "(empty)"}`);
+    if (result.stdout) {
+      log.error(`[GitService]   stdout: ${result.stdout.slice(0, 300)}${result.stdout.length > 300 ? "..." : ""}`);
+    }
+  }
   return result.success && result.stdout.trim().length > 0;
+}
+
+function isMissingRemoteError(stderr: string, remote: string): boolean {
+  return stderr.includes(`No such remote '${remote}'`) || stderr.includes(`No such remote: ${remote}`);
 }
 
 export async function pushBranch(

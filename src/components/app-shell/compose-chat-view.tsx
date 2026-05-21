@@ -156,6 +156,7 @@ export function ComposeChatView({
         useWorktree,
         autoApprovePermissions,
         baseBranch: baseBranch.trim() || currentBranch.trim(),
+        quick: false,
       });
       if (!chat) {
         toast.error("Failed to create chat");

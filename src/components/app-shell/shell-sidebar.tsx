@@ -165,6 +165,7 @@ export function SidebarTreeItem({
   badgeVariant = "default",
   indentLevel = 0,
   onClick,
+  onContextMenu,
   collapsed,
   onToggle,
 }: {
@@ -175,6 +176,7 @@ export function SidebarTreeItem({
   badgeVariant?: BadgeVariant;
   indentLevel?: number;
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  onContextMenu?: (event: MouseEvent<HTMLButtonElement>) => void;
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
@@ -198,6 +200,7 @@ export function SidebarTreeItem({
       <button
         type="button"
         onClick={onClick}
+        onContextMenu={onContextMenu}
         className={[
           "flex min-w-0 flex-1 items-center justify-between rounded-xl border py-2 pr-3 text-left transition",
           active

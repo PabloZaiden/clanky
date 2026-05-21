@@ -7,6 +7,7 @@ import type { AppConfig, HealthResponse } from "../../types";
 import { appFetch, setConfiguredPublicBasePath } from "../../lib/public-path";
 import { useToast } from "../useToast";
 import { createLogger } from "../../lib/logger";
+import { purgeTerminalLoopsApi, type PurgeTerminalLoopsResult } from "../loopActions";
 
 const log = createLogger("useAppConfig");
 
@@ -15,8 +16,10 @@ export interface UseAppConfigResult {
   version: string | null;
   appSettingsResetting: boolean;
   appSettingsKilling: boolean;
+  appSettingsPurgingTerminalLoops: boolean;
   resetAllSettings: () => Promise<boolean>;
   killServer: () => Promise<boolean>;
+  purgeTerminalLoops: () => Promise<PurgeTerminalLoopsResult | null>;
 }
 
 export function useAppConfig(): UseAppConfigResult {
@@ -26,6 +29,7 @@ export function useAppConfig(): UseAppConfigResult {
   const [version, setVersion] = useState<string | null>(null);
   const [appSettingsResetting, setAppSettingsResetting] = useState(false);
   const [appSettingsKilling, setAppSettingsKilling] = useState(false);
+  const [appSettingsPurgingTerminalLoops, setAppSettingsPurgingTerminalLoops] = useState(false);
 
   useEffect(() => {
     appFetch("/api/config")
@@ -85,5 +89,27 @@ export function useAppConfig(): UseAppConfigResult {
     }
   }, []);
 
-  return { remoteOnly, version, appSettingsResetting, appSettingsKilling, resetAllSettings, killServer };
+  const purgeTerminalLoops = useCallback(async (): Promise<PurgeTerminalLoopsResult | null> => {
+    setAppSettingsPurgingTerminalLoops(true);
+    try {
+      return await purgeTerminalLoopsApi();
+    } catch (error) {
+      log.error("Failed to purge terminal-state loops:", error);
+      toast.error("Failed to purge terminal-state loops");
+      return null;
+    } finally {
+      setAppSettingsPurgingTerminalLoops(false);
+    }
+  }, [toast]);
+
+  return {
+    remoteOnly,
+    version,
+    appSettingsResetting,
+    appSettingsKilling,
+    appSettingsPurgingTerminalLoops,
+    resetAllSettings,
+    killServer,
+    purgeTerminalLoops,
+  };
 }

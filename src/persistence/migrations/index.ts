@@ -412,6 +412,20 @@ export const migrations: Migration[] = [
       db.run("ALTER TABLE loops ADD COLUMN pending_prompt_mode TEXT");
     },
   },
+  {
+    version: 15,
+    name: "add_chat_skip_base_branch_sync",
+    up: (db) => {
+      if (!tableExists(db, "chats")) {
+        return;
+      }
+      const columns = getTableColumns(db, "chats");
+      if (columns.includes("skip_base_branch_sync")) {
+        return;
+      }
+      db.run("ALTER TABLE chats ADD COLUMN skip_base_branch_sync INTEGER NOT NULL DEFAULT 0");
+    },
+  },
 ];
 
 /**

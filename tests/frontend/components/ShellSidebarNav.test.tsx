@@ -4,9 +4,14 @@ import { useState } from "react";
 import type { Chat } from "@/types/chat";
 import type { SshServer, SshServerSession } from "@/types/ssh-server";
 import { ShellSidebarNav } from "@/components/app-shell/shell-sidebar-nav";
-import { buildServerSidebarNodes, buildWorkspaceSidebarGroups, type ShellRoute } from "@/components/app-shell/shell-types";
-import { createLoop, createSshSession, createWorkspace } from "../helpers/factories";
-import { renderWithUser, waitFor } from "../helpers/render";
+import {
+  buildActiveWorkSidebarItems,
+  buildServerSidebarNodes,
+  buildWorkspaceSidebarGroups,
+  type ShellRoute,
+} from "@/components/app-shell/shell-types";
+import { createLoop, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
+import { act, renderWithUser, waitFor } from "../helpers/render";
 
 function createChat(overrides?: {
   config?: Partial<Chat["config"]>;
@@ -92,11 +97,14 @@ function createSidebarData() {
       name: "Workspace 1",
       directory: "/workspaces/workspace-1",
       sshServerId: "server-1",
+      repoUrl: "git@github.com:owner/workspace-1.git",
+      serverSettings: createServerSettings({ mode: "connect" }),
     }),
     createWorkspace({
       id: "workspace-2",
       name: "Workspace 2",
       directory: "/workspaces/workspace-2",
+      repoUrl: "https://example.com/workspace-2.git",
     }),
   ];
   const loops = [
@@ -204,6 +212,8 @@ function SidebarHarness({
   quickChatUnavailableReason,
   onQuickChat,
   onConfigureQuickChat,
+  pullLatestWorkspaceChanges,
+  pullingLatestWorkspaceIds,
   version,
 }: {
   route?: ShellRoute;
@@ -214,6 +224,8 @@ function SidebarHarness({
   quickChatUnavailableReason?: string | null;
   onQuickChat?: () => void;
   onConfigureQuickChat?: () => void;
+  pullLatestWorkspaceChanges?: (workspaceId: string) => Promise<void>;
+  pullingLatestWorkspaceIds?: ReadonlySet<string>;
   version?: string;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -237,6 +249,8 @@ function SidebarHarness({
       onConfigureQuickChat={onConfigureQuickChat ?? mock(() => {})}
       version={version}
       sidebarSearchFocusRequest={0}
+      pullLatestWorkspaceChanges={pullLatestWorkspaceChanges ?? mock(async () => {})}
+      pullingLatestWorkspaceIds={pullingLatestWorkspaceIds ?? new Set()}
     />
   );
 }
@@ -245,13 +259,56 @@ describe("ShellSidebarNav", () => {
   test("renders the workspace and server trees with active and inactive groups", () => {
     const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
 
+    expect(getByText("Active Work")).toBeInTheDocument();
     expect(getByText("Active")).toBeInTheDocument();
     expect(getByText("Inactive")).toBeInTheDocument();
-    expect(getAllByText("Workspace 1")).toHaveLength(1);
+    expect(getAllByText("Workspace 1").length).toBeGreaterThan(0);
     expect(getByText("Workspace 2")).toBeInTheDocument();
-    expect(getAllByText("Feature Loop")).toHaveLength(1);
+    expect(getAllByText("Feature Loop").length).toBeGreaterThan(0);
     expect(getByText("Server 1")).toBeInTheDocument();
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
+  });
+
+  test("builds active work from workspace groups without quick chat input", () => {
+    const { workspaceGroups } = createSidebarData();
+
+    expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => {
+      if (item.kind === "loop") {
+        return `${item.kind}:${item.loopNode.title}:${item.workspaceName}`;
+      }
+      if (item.kind === "chat") {
+        return `${item.kind}:${item.chatNode.title}:${item.workspaceName}`;
+      }
+      return `${item.kind}:${item.sessionNode.title}:${item.workspaceName}`;
+    })).toEqual([
+      "loop:Feature Loop:Workspace 1",
+      "loop:Loop With SSH:Workspace 1",
+      "loop:Completed Loop:Workspace 1",
+      "chat:Workspace Chat:Workspace 1",
+      "ssh-session:Workspace SSH:Workspace 1",
+      "ssh-session:Loop SSH Session:Workspace 1",
+    ]);
+  });
+
+  test("renders active work as a non-collapsible section with workspace context and navigation", async () => {
+    const navigateWithinShell = mock((_route: ShellRoute) => {});
+    const { getAllByText, getByText, queryByRole, user } = renderWithUser(
+      <SidebarHarness navigateWithinShell={navigateWithinShell} />,
+    );
+
+    expect(getByText("Active Work").closest("button")).toBeNull();
+    expect(queryByRole("button", { name: "Collapse Active Work" })).not.toBeInTheDocument();
+    expect(queryByRole("button", { name: "Collapse Active Work section" })).not.toBeInTheDocument();
+    expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
+
+    await user.click(getByTextButton(getAllByText("Feature Loop")[0]!));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "loop", loopId: "loop-1" });
+
+    await user.click(getByTextButton(getAllByText("Workspace Chat")[0]!));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "chat", chatId: "chat-1" });
+
+    await user.click(getByTextButton(getAllByText("Workspace SSH")[0]!));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "ssh", sshSessionId: "workspace-session-2" });
   });
 
   test("keeps empty parent rows expandable when they expose nested action sections", () => {
@@ -325,7 +382,7 @@ describe("ShellSidebarNav", () => {
   test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {
     const { getAllByText, queryAllByText } = renderWithUser(<SidebarHarness />);
 
-    expect(getAllByText("Loop SSH Session")).toHaveLength(2);
+    expect(getAllByText("Loop SSH Session")).toHaveLength(3);
     expect(queryAllByText("Expand Loop With SSH")).toHaveLength(0);
   });
 
@@ -406,9 +463,9 @@ describe("ShellSidebarNav", () => {
     const { getAllByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
 
     expect(getAllByText("History")).toHaveLength(1);
-    expect(getAllByText("Pushed Loop")).toHaveLength(1);
+    expect(getAllByText("Pushed Loop")).toHaveLength(2);
     expect(getAllByText("Merged Loop")).toHaveLength(1);
-    expect(getAllByText("Completed Loop")).toHaveLength(1);
+    expect(getAllByText("Completed Loop")).toHaveLength(2);
   });
 
   test("nests history inside loops so collapsing loops hides the whole history branch", async () => {
@@ -451,12 +508,12 @@ describe("ShellSidebarNav", () => {
     );
 
     expect(getAllByText("History")).toHaveLength(1);
-    expect(getAllByText("Feature Loop")).toHaveLength(1);
+    expect(getAllByText("Feature Loop")).toHaveLength(2);
     expect(getAllByText("Merged Loop")).toHaveLength(1);
 
     await user.click(getByTextButton(getAllByText("Loops")[0]!));
 
-    expect(queryByText("Feature Loop")).not.toBeInTheDocument();
+    expect(getAllByText("Feature Loop")).toHaveLength(1);
     expect(queryByText("History")).not.toBeInTheDocument();
     expect(queryByText("Merged Loop")).not.toBeInTheDocument();
   });
@@ -565,12 +622,19 @@ describe("ShellSidebarNav", () => {
       <SidebarHarness navigateWithinShell={navigateWithinShell} />,
     );
 
-    expect(getAllByText("Workspace 1")).toHaveLength(1);
+    expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
 
     const [activeButtonLabel] = getAllByText("Active");
     expect(activeButtonLabel).toBeDefined();
-    await user.click(getByTextButton(activeButtonLabel!));
-    expect(queryAllByText("Workspace 1")).toHaveLength(0);
+    const activeButton = getByTextButton(activeButtonLabel!);
+    expect(activeButton).toHaveAttribute("aria-expanded", "true");
+    expect(getSidebarButtonByTextAndSubtitle(getAllByText("Workspace 1"), "/workspaces/workspace-1")).toBeInTheDocument();
+
+    await user.click(activeButton);
+    expect(activeButton).toHaveAttribute("aria-expanded", "false");
+    expect(
+      querySidebarButtonByTextAndSubtitle(queryAllByText("Workspace 1"), "/workspaces/workspace-1"),
+    ).not.toBeInTheDocument();
 
     await user.click(getByRole("button", { name: "New Workspaces" }));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "workspace" });
@@ -603,7 +667,7 @@ describe("ShellSidebarNav", () => {
 
     expect(getByRole("button", { name: "Open code explorer" })).toHaveAttribute("title", "Code explorer (Ctrl/Cmd+Shift+E)");
     expect(getByRole("button", { name: "Open settings" })).toHaveAttribute("title", "Settings (Ctrl/Cmd+Shift+,)");
-    expect(getByLabelText("Search sidebar")).toHaveAttribute("title", "Search sidebar (Ctrl/Cmd+Shift+F)");
+    expect(getByLabelText("Search")).toHaveAttribute("title", "Search (Ctrl/Cmd+Shift+F)");
     expect(getAllByRole("button", { name: "New Loops" })[0]).toHaveAttribute("title", "New loop (Ctrl/Cmd+Shift+L)");
     expect(getAllByRole("button", { name: "New Chats" })[0]).toHaveAttribute("title", "New chat (Ctrl/Cmd+Shift+C)");
     expect(getAllByRole("button", { name: "New SSH sessions" })[0]).toHaveAttribute(
@@ -654,6 +718,121 @@ describe("ShellSidebarNav", () => {
     expect(onQuickChat).not.toHaveBeenCalled();
   });
 
+  test("opens workspace context menu with detail actions plus settings last", async () => {
+    const navigateWithinShell = mock((_route: ShellRoute) => {});
+    const pullLatestWorkspaceChanges = mock(async (_workspaceId: string) => {});
+    const { getAllByRole, getAllByText, getByRole, queryByRole, user } = renderWithUser(
+      <SidebarHarness
+        navigateWithinShell={navigateWithinShell}
+        pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
+      />,
+    );
+    const workspaceButton = getSidebarButtonByTextAndSubtitle(
+      getAllByText("Workspace 1"),
+      "/workspaces/workspace-1",
+    );
+    const defaultPrevented = openContextMenuForButton(workspaceButton);
+
+    expect(defaultPrevented).toBe(true);
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "New Loop",
+      "New Chat",
+      "Open code explorer",
+      "Pull Latest Changes",
+      "Open in GitHub",
+      "New SSH Session",
+      "Workspace Settings",
+    ]);
+
+    await user.click(getByRole("menuitem", { name: "New Loop" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-1" });
+    expect(queryByRole("menu")).not.toBeInTheDocument();
+
+    openContextMenuForButton(workspaceButton);
+    await user.click(getByRole("menuitem", { name: "Pull Latest Changes" }));
+    expect(pullLatestWorkspaceChanges).toHaveBeenCalledWith("workspace-1");
+
+    openContextMenuForButton(workspaceButton);
+    await user.click(getByRole("menuitem", { name: "Workspace Settings" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "workspace-settings", workspaceId: "workspace-1" });
+  });
+
+  test("omits conditional workspace context actions when unavailable and closes on Escape", async () => {
+    const { getAllByRole, getAllByText, queryByRole, user } = renderWithUser(<SidebarHarness />);
+    openContextMenuForButton(getSidebarButtonByTextAndSubtitle(
+      getAllByText("Workspace 2"),
+      "/workspaces/workspace-2",
+    ));
+
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "New Loop",
+      "New Chat",
+      "Open code explorer",
+      "Pull Latest Changes",
+      "Workspace Settings",
+    ]);
+
+    await user.keyboard("{Escape}");
+
+    expect(queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  test("suppresses the native context menu inside the custom context menu", () => {
+    const { getAllByText, getByRole } = renderWithUser(<SidebarHarness />);
+    openContextMenuForButton(getSidebarButtonByTextAndSubtitle(
+      getAllByText("Workspace 1"),
+      "/workspaces/workspace-1",
+    ));
+
+    const documentContextMenu = mock((_event: Event) => {});
+    document.addEventListener("contextmenu", documentContextMenu);
+    try {
+      let defaultPrevented = false;
+      act(() => {
+        const event = new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: 30,
+          clientY: 40,
+        });
+        getByRole("menu").dispatchEvent(event);
+        defaultPrevented = event.defaultPrevented;
+      });
+
+      expect(defaultPrevented).toBe(true);
+      expect(documentContextMenu).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("contextmenu", documentContextMenu);
+    }
+  });
+
+  test("opens SSH server context menu from search results with detail actions plus settings last", async () => {
+    const navigateWithinShell = mock((_route: ShellRoute) => {});
+    const { getAllByRole, getByLabelText, getByRole, getByText, user } = renderWithUser(
+      <SidebarHarness navigateWithinShell={navigateWithinShell} />,
+    );
+
+    await user.type(getByLabelText("Search"), "server 1");
+    openContextMenuForButton(getByTextButton(getByText("Server 1")));
+
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Open code explorer",
+      "New Session",
+      "SSH Server Settings",
+    ]);
+
+    await user.click(getByRole("menuitem", { name: "New Session" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({
+      view: "compose",
+      kind: "ssh-session",
+      scopeId: "server-1",
+    });
+
+    openContextMenuForButton(getByTextButton(getByText("Server 1")));
+    await user.click(getByRole("menuitem", { name: "SSH Server Settings" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "ssh-server-settings", serverId: "server-1" });
+  });
+
   test("pins quick chats before the regular workspaces without showing the workspace", async () => {
     const { workspaceGroups } = createSidebarData();
     const quickChatWorkspace = workspaceGroups[0]!.workspaces.find(
@@ -666,12 +845,12 @@ describe("ShellSidebarNav", () => {
     expect(getAllByText("Quick chats")).toHaveLength(1);
     expect(queryByText("Quick chat workspace")).not.toBeInTheDocument();
     expect(getAllByText("Workspace Chat")).toHaveLength(2);
-    expect(getAllByText("Workspace 1")).toHaveLength(1);
+    expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
     expect(getAllByText("/workspaces/workspace-1")).toHaveLength(1);
-    expect(getAllByText("Feature Loop")).toHaveLength(1);
-    expect(getAllByText("Loop SSH Session")).toHaveLength(2);
+    expect(getAllByText("Feature Loop")).toHaveLength(2);
+    expect(getAllByText("Loop SSH Session")).toHaveLength(3);
 
-    await user.type(getByLabelText("Search sidebar"), "workspace chat");
+    await user.type(getByLabelText("Search"), "workspace chat");
 
     expect(queryByText("Quick chats")).not.toBeInTheDocument();
   });
@@ -721,7 +900,7 @@ describe("ShellSidebarNav", () => {
 
   test("trims the search input and matches workspace section results without a submit step", async () => {
     const { getAllByText, getByLabelText, getByText, queryByRole, user } = renderWithUser(<SidebarHarness />);
-    const searchInput = getByLabelText("Search sidebar");
+    const searchInput = getByLabelText("Search");
 
     await user.type(searchInput, "  worksp  ");
 
@@ -826,7 +1005,7 @@ describe("ShellSidebarNav", () => {
     const { getAllByRole, getByLabelText, user } = renderWithUser(
       <SidebarHarness workspaceGroups={workspaceGroups} serverNodes={serverNodes} />,
     );
-    const searchInput = getByLabelText("Search sidebar");
+    const searchInput = getByLabelText("Search");
 
     await user.type(searchInput, "shared");
 
@@ -842,7 +1021,7 @@ describe("ShellSidebarNav", () => {
 
   test("omits empty filtered sections and restores the default tree when the query is cleared", async () => {
     const { getAllByRole, getByLabelText, getByText, user } = renderWithUser(<SidebarHarness />);
-    const searchInput = getByLabelText("Search sidebar") as HTMLInputElement;
+    const searchInput = getByLabelText("Search") as HTMLInputElement;
 
     await user.type(searchInput, "feature");
 
@@ -892,4 +1071,33 @@ function getByTextButton(node: HTMLElement): HTMLButtonElement {
   const button = node.closest("button");
   expect(button).not.toBeNull();
   return button as HTMLButtonElement;
+}
+
+function getSidebarButtonByTextAndSubtitle(nodes: HTMLElement[], subtitle: string): HTMLButtonElement {
+  const button = querySidebarButtonByTextAndSubtitle(nodes, subtitle);
+  expect(button).toBeDefined();
+  return button!;
+}
+
+function querySidebarButtonByTextAndSubtitle(nodes: HTMLElement[], subtitle: string): HTMLButtonElement | null {
+  return nodes
+    .map((node) => node.closest("button"))
+    .find((candidate): candidate is HTMLButtonElement =>
+      candidate instanceof HTMLButtonElement && (candidate.textContent ?? "").includes(subtitle)
+    ) ?? null;
+}
+
+function openContextMenuForButton(button: HTMLButtonElement): boolean {
+  let defaultPrevented = false;
+  act(() => {
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 24,
+      clientY: 32,
+    });
+    button.dispatchEvent(event);
+    defaultPrevented = event.defaultPrevented;
+  });
+  return defaultPrevented;
 }
