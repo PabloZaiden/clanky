@@ -373,6 +373,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         servers={servers}
         sessionsByServerId={sessionsByServerId}
         workspaceGroups={workspaceGroups}
+        sidebarWorkspaceGroups={sidebarWorkspaceGroups}
         workspacesLoading={workspacesLoading}
         workspacesSaving={workspacesSaving}
         workspaceError={workspaceError}

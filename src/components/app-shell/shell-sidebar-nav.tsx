@@ -789,18 +789,14 @@ export function ShellSidebarNav({
           )
         ) : (
           <>
-            {quickChatWorkspace && (
+            {quickChatWorkspace && quickChatWorkspace.chats.length > 0 && (
               <SidebarTreeSection
                 title="Quick chats"
               >
-                {quickChatWorkspace.chats.length > 0 ? (
-                  renderChatNodes({
-                    chatNodes: quickChatWorkspace.chats,
-                    indentLevel: 1,
-                  })
-                ) : (
-                  <EmptySection message="No quick chats yet." indentLevel={1} />
-                )}
+                {renderChatNodes({
+                  chatNodes: quickChatWorkspace.chats,
+                  indentLevel: 1,
+                })}
               </SidebarTreeSection>
             )}
 

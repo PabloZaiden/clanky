@@ -11,10 +11,12 @@ import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor, within } from "../helpers/render";
 import {
   createLoopWithStatus,
+  createSshSession,
   createWorkspace,
   createModelInfo,
 } from "../helpers/factories";
 import { App } from "@/App";
+import type { Chat } from "@/types";
 
 const api = createMockApi();
 const ws = createMockWebSocket();
@@ -31,11 +33,49 @@ const WORKSPACE_B = createWorkspace({
   directory: "/workspaces/beta",
 });
 
+function createChat(overrides?: {
+  config?: Partial<Chat["config"]>;
+  state?: Partial<Chat["state"]>;
+}): Chat {
+  return {
+    config: {
+      id: overrides?.config?.id ?? "chat-1",
+      name: overrides?.config?.name ?? "Workspace Chat",
+      workspaceId: overrides?.config?.workspaceId ?? "ws-a",
+      directory: overrides?.config?.directory ?? "/workspaces/alpha",
+      model: {
+        providerID: "github",
+        modelID: "gpt-5.4",
+        variant: "",
+      },
+      useWorktree: true,
+      baseBranch: "main",
+      createdAt: "2026-04-16T10:00:00.000Z",
+      updatedAt: "2026-04-16T10:00:00.000Z",
+      mode: "chat",
+      ...overrides?.config,
+      scope: overrides?.config?.scope ?? "workspace",
+      loopId: overrides?.config?.loopId,
+    },
+    state: {
+      id: overrides?.state?.id ?? overrides?.config?.id ?? "chat-1",
+      status: overrides?.state?.status ?? "idle",
+      messages: [],
+      logs: [],
+      toolCalls: [],
+      ...overrides?.state,
+    },
+  };
+}
+
 function setupBaseApi() {
   api.get("/api/config", () => ({ remoteOnly: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
   api.get("/api/ssh-sessions", () => []);
+  api.get("/api/ssh-sessions/:id", (req) => createSshSession({ config: { id: req.params["id"]! } }));
   api.get("/api/ssh-servers", () => []);
+  api.get("/api/chats", () => []);
+  api.get("/api/chats/:id", (req) => createChat({ config: { id: req.params["id"]! } }));
   api.get("/api/preferences/last-model", () => null);
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
   api.get("/api/preferences/last-directory", () => null);
@@ -77,7 +117,7 @@ afterEach(() => {
 // ─── Dashboard management scenarios ──────────────────────────────────────────
 
 describe("dashboard management scenario", () => {
-  test("overview shows active and recently finished loops, server maps, and the workspaces map", async () => {
+  test("overview shows active work, server maps, and the workspaces map", async () => {
     setupBaseApi();
 
     const runningLoop = createLoopWithStatus("running", {
@@ -103,20 +143,20 @@ describe("dashboard management scenario", () => {
     });
 
     expect(getAllByText("Project Beta").length).toBeGreaterThan(0);
-    expect(getByText("Server maps")).toBeTruthy();
+    expect(getByRole("heading", { name: "Server maps" })).toBeTruthy();
     expect(getByText("Workspaces map")).toBeTruthy();
 
-    const recentActivityHeading = getByRole("heading", { name: "Recent activity" });
+    const activeWorkHeading = getByRole("heading", { name: "Active Work" });
     const serverMapsHeading = getByRole("heading", { name: "Server maps" });
     const workspacesMapHeading = getByRole("heading", { name: "Workspaces map" });
-    const recentActivityCard = getByTestId("recent-activity-card");
+    const activeWorkCard = getByTestId("active-work-card");
 
-    expect(within(recentActivityCard).getByText("Running Task")).toBeTruthy();
-    expect(within(recentActivityCard).getByText("Done Task")).toBeTruthy();
-    expect(within(recentActivityCard).getByText("Pushed Task")).toBeTruthy();
-    expect(within(recentActivityCard).getByText("Draft Task")).toBeTruthy();
+    expect(within(activeWorkCard).getByText("Running Task")).toBeTruthy();
+    expect(within(activeWorkCard).getByText("Done Task")).toBeTruthy();
+    expect(within(activeWorkCard).getByText("Pushed Task")).toBeTruthy();
+    expect(within(activeWorkCard).getByText("Draft Task")).toBeTruthy();
 
-    expect(recentActivityHeading.compareDocumentPosition(serverMapsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activeWorkHeading.compareDocumentPosition(serverMapsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(serverMapsHeading.compareDocumentPosition(workspacesMapHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -156,7 +196,7 @@ describe("dashboard management scenario", () => {
     api.get("/api/loops/:id", () => loop);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
 
-    const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
+    const { getAllByText, getByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getAllByText("Round Trip").length).toBeGreaterThan(0);
@@ -172,8 +212,8 @@ describe("dashboard management scenario", () => {
     await waitFor(() => {
       expect(getByRole("button", { name: /ralpher/i })).toBeTruthy();
       expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-      expect(getByText("Recent activity")).toBeTruthy();
-      expect(getByText("Server maps")).toBeTruthy();
+      expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Server maps" })).toBeTruthy();
     });
   });
 
@@ -220,7 +260,7 @@ describe("dashboard management scenario", () => {
     });
   });
 
-  test("recent activity keeps completed and pushed loops visible while omitting other terminal states", async () => {
+  test("active work keeps sidebar-active loops visible while omitting history loops", async () => {
     setupBaseApi();
 
     const runningLoop = createLoopWithStatus("running", {
@@ -248,83 +288,55 @@ describe("dashboard management scenario", () => {
     const { getByRole, getByTestId } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Recent activity" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
     });
 
-    const recentActivityCard = getByTestId("recent-activity-card");
+    const activeWorkCard = getByTestId("active-work-card");
 
     await waitFor(() => {
-      expect(within(recentActivityCard).getByText("Visible Running")).toBeTruthy();
-      expect(within(recentActivityCard).getByText("Visible Planning")).toBeTruthy();
-      expect(within(recentActivityCard).getByText("Visible Completed")).toBeTruthy();
-      expect(within(recentActivityCard).getByText("Visible Pushed")).toBeTruthy();
+      expect(within(activeWorkCard).getByText("Visible Running")).toBeTruthy();
+      expect(within(activeWorkCard).getByText("Visible Planning")).toBeTruthy();
+      expect(within(activeWorkCard).getByText("Visible Completed")).toBeTruthy();
+      expect(within(activeWorkCard).getByText("Visible Pushed")).toBeTruthy();
     });
 
-    expect(within(recentActivityCard).queryByText("Hidden Failed")).toBeNull();
-    expect(within(recentActivityCard).queryByText("Hidden Merged")).toBeNull();
+    expect(within(activeWorkCard).queryByText("Hidden Failed")).toBeNull();
+    expect(within(activeWorkCard).queryByText("Hidden Merged")).toBeNull();
   });
 
-  test("recent activity is ordered by latest activity instead of loop creation time", async () => {
+  test("active work mirrors sidebar item categories and ordering", async () => {
     setupBaseApi();
 
-    const oldestCreatedMostRecentActivity = createLoopWithStatus("completed", {
-      config: {
-        id: "loop-most-recent-activity",
-        name: "Most Recent Activity",
-        directory: "/workspaces/alpha",
-        workspaceId: "ws-a",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      },
-      state: {
-        completedAt: "2026-01-03T00:00:00.000Z",
-        lastActivityAt: "2026-01-05T00:00:00.000Z",
-      },
+    const loop = createLoopWithStatus("running", {
+      config: { id: "loop-active-work", name: "Loop Work", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const newestCreatedOlderActivity = createLoopWithStatus("running", {
-      config: {
-        id: "loop-newer-created",
-        name: "Newer Created",
-        directory: "/workspaces/alpha",
-        workspaceId: "ws-a",
-        createdAt: "2026-01-04T00:00:00.000Z",
-        updatedAt: "2026-01-04T00:00:00.000Z",
-      },
-      state: {
-        lastActivityAt: "2026-01-04T12:00:00.000Z",
-      },
-    });
-    const fallbackUpdatedAtLoop = createLoopWithStatus("draft", {
-      config: {
-        id: "loop-fallback-updated",
-        name: "Fallback Updated",
-        directory: "/workspaces/alpha",
-        workspaceId: "ws-a",
-        createdAt: "2026-01-02T00:00:00.000Z",
-        updatedAt: "2026-01-04T06:00:00.000Z",
-      },
+    const chat = createChat({ config: { id: "chat-active-work", name: "Chat Work", workspaceId: "ws-a" } });
+    const session = createSshSession({
+      config: { id: "ssh-active-work", name: "Terminal Work", workspaceId: "ws-a", directory: "/workspaces/alpha" },
     });
 
-    api.get("/api/loops", () => [newestCreatedOlderActivity, fallbackUpdatedAtLoop, oldestCreatedMostRecentActivity]);
+    api.get("/api/loops", () => [loop]);
+    api.get("/api/chats", () => [chat]);
+    api.get("/api/ssh-sessions", () => [session]);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
 
     const { getByTestId } = renderWithUser(<App />);
 
-    const recentActivityCard = await waitFor(() => getByTestId("recent-activity-card"));
+    const activeWorkCard = await waitFor(() => getByTestId("active-work-card"));
 
     await waitFor(() => {
-      expect(within(recentActivityCard).getByRole("button", { name: /Most Recent Activity/ })).toBeTruthy();
-      expect(within(recentActivityCard).getByRole("button", { name: /Newer Created/ })).toBeTruthy();
-      expect(within(recentActivityCard).getByRole("button", { name: /Fallback Updated/ })).toBeTruthy();
+      expect(within(activeWorkCard).getByRole("button", { name: /Loop Work/ })).toBeTruthy();
+      expect(within(activeWorkCard).getByRole("button", { name: /Chat Work/ })).toBeTruthy();
+      expect(within(activeWorkCard).getByRole("button", { name: /Terminal Work/ })).toBeTruthy();
     });
 
-    const labels = within(recentActivityCard)
+    const labels = within(activeWorkCard)
       .getAllByRole("button")
       .map((button) => button.textContent ?? "");
 
-    expect(labels[0]).toContain("Most Recent Activity");
-    expect(labels[1]).toContain("Newer Created");
-    expect(labels[2]).toContain("Fallback Updated");
+    expect(labels[0]).toContain("Loop Work");
+    expect(labels[1]).toContain("Chat Work");
+    expect(labels[2]).toContain("Terminal Work");
   });
 
   test("overview omits removed shell summary cards", async () => {
@@ -336,10 +348,10 @@ describe("dashboard management scenario", () => {
     ]);
     api.get("/api/workspaces", () => [WORKSPACE_A, WORKSPACE_B]);
 
-    const { getByText, queryByText } = renderWithUser(<App />);
+    const { getByRole, getByText, queryByText } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByText("Recent activity")).toBeTruthy();
+      expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
       expect(getByText("Server maps")).toBeTruthy();
       expect(getByText("Workspaces map")).toBeTruthy();
     });
