@@ -378,15 +378,9 @@ export function ShellSidebarNav({
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
   const visibleWorkspaceGroups = workspaceGroups.filter((group) => group.workspaces.length > 0);
-  const quickChatIds = useMemo(
-    () => new Set(quickChatWorkspace?.chats.map((chatNode) => chatNode.chat.config.id) ?? []),
-    [quickChatWorkspace],
-  );
   const activeWorkItems = useMemo(
-    () => buildActiveWorkSidebarItems(workspaceGroups).filter(
-      (item) => item.kind !== "chat" || !quickChatIds.has(item.chatNode.chat.config.id),
-    ),
-    [quickChatIds, workspaceGroups],
+    () => buildActiveWorkSidebarItems(workspaceGroups, { quickChatWorkspace }),
+    [quickChatWorkspace, workspaceGroups],
   );
   const sidebarToggleLabel = sidebarOpen
     ? "Close sidebar"

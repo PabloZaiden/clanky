@@ -339,6 +339,44 @@ describe("dashboard management scenario", () => {
     expect(labels[2]).toContain("Terminal Work");
   });
 
+  test("active work excludes chats pinned to the quick chat workspace", async () => {
+    setupBaseApi();
+
+    const loop = createLoopWithStatus("running", {
+      config: { id: "loop-quick-chat-filter", name: "Loop Work", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    });
+    const quickChat = createChat({
+      config: { id: "chat-quick-chat-filter", name: "Quick Chat Work", workspaceId: "ws-a" },
+    });
+    const session = createSshSession({
+      config: { id: "ssh-quick-chat-filter", name: "Terminal Work", workspaceId: "ws-a", directory: "/workspaces/alpha" },
+    });
+
+    api.get("/api/preferences/quick-chat", () => ({
+      workspaceId: "ws-a",
+      model: {
+        providerID: "github",
+        modelID: "gpt-5.4",
+        variant: "",
+      },
+    }));
+    api.get("/api/loops", () => [loop]);
+    api.get("/api/chats", () => [quickChat]);
+    api.get("/api/ssh-sessions", () => [session]);
+    api.get("/api/workspaces", () => [WORKSPACE_A]);
+
+    const { getByTestId } = renderWithUser(<App />);
+
+    const activeWorkCard = await waitFor(() => getByTestId("active-work-card"));
+
+    await waitFor(() => {
+      expect(within(activeWorkCard).getByRole("button", { name: /Loop Work/ })).toBeTruthy();
+      expect(within(activeWorkCard).getByRole("button", { name: /Terminal Work/ })).toBeTruthy();
+    });
+
+    expect(within(activeWorkCard).queryByRole("button", { name: /Quick Chat Work/ })).toBeNull();
+  });
+
   test("overview omits removed shell summary cards", async () => {
     setupBaseApi();
     api.get("/api/loops", () => [

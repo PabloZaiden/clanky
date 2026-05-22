@@ -6,6 +6,7 @@ import {
   buildActiveWorkSidebarItems,
   type ShellRoute,
   type SidebarActiveWorkItem,
+  type SidebarWorkspaceNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
@@ -49,6 +50,7 @@ export function OverviewView({
   sessionsByServerId,
   workspaceGroups,
   sidebarWorkspaceGroups,
+  quickChatWorkspace,
   headerOffsetClassName,
   onNavigate,
 }: {
@@ -56,12 +58,13 @@ export function OverviewView({
   sessionsByServerId: Record<string, SshServerSession[]>;
   workspaceGroups: ReturnType<typeof useLoopGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
+  quickChatWorkspace: SidebarWorkspaceNode | null;
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
 }) {
   const activeWorkItems = useMemo(
-    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups),
-    [sidebarWorkspaceGroups],
+    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { quickChatWorkspace }),
+    [quickChatWorkspace, sidebarWorkspaceGroups],
   );
   const serverMapItems = useMemo(() => {
     return servers.map((server) => ({
