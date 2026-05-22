@@ -375,8 +375,8 @@ export function SshSessionDetails({
         onConfirm={() => void handleDelete()}
         title="Delete SSH session?"
         message={hasPersistentSession
-          ? "This removes the Ralpher session metadata and attempts to stop the remote persistent session."
-          : "This removes the saved Ralpher session metadata. Direct SSH mode does not keep a remote persistent session."}
+          ? "This removes the Clanky session metadata and attempts to stop the remote persistent session."
+          : "This removes the saved Clanky session metadata. Direct SSH mode does not keep a remote persistent session."}
         confirmLabel="Delete"
         loading={false}
       />

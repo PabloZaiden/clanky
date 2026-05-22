@@ -6,11 +6,11 @@ import {
   getCodeExplorerOptionGroups,
   getCodeExplorerOptions,
   getCodeExplorerTargetId,
-  getLoopCodeExplorerRootDirectory,
+  getTaskCodeExplorerRootDirectory,
   resolveCodeExplorerTarget,
 } from "@/components/app-shell/code-explorer-targets";
 import {
-  createLoopWithStatus,
+  createTaskWithStatus,
   createSshSession,
   createWorkspace,
 } from "../helpers/factories";
@@ -36,7 +36,7 @@ function createChat(overrides?: {
       mode: "chat",
       ...overrides?.config,
       scope: overrides?.config?.scope ?? "workspace",
-      loopId: overrides?.config?.loopId,
+      taskId: overrides?.config?.taskId,
     },
     state: {
       id: "chat-1",
@@ -83,7 +83,7 @@ function createSshServerSession(serverId: string, id = "standalone-1"): SshServe
       sshServerId: serverId,
       connectionMode: "dtach",
       useTmux: true,
-      remoteSessionName: `ralpher-${id}`,
+      remoteSessionName: `clanky-${id}`,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     },
@@ -94,10 +94,10 @@ function createSshServerSession(serverId: string, id = "standalone-1"): SshServe
 }
 
 describe("code explorer target helpers", () => {
-  test("derives effective loop and chat root directories from worktrees", () => {
-    const loop = createLoopWithStatus("running", {
+  test("derives effective task and chat root directories from worktrees", () => {
+    const task = createTaskWithStatus("running", {
       config: {
-        id: "loop-1",
+        id: "task-1",
         directory: "/workspaces/project",
       },
       state: {
@@ -105,7 +105,7 @@ describe("code explorer target helpers", () => {
           originalBranch: "main",
           workingBranch: "feature/code-explorer",
           commits: [],
-          worktreePath: "/workspaces/project/.ralph-worktrees/loop-1",
+          worktreePath: "/workspaces/project/.clanky-worktrees/task-1",
         },
       },
     });
@@ -119,19 +119,19 @@ describe("code explorer target helpers", () => {
         worktree: {
           originalBranch: "main",
           workingBranch: "chat/code-explorer",
-          worktreePath: "/workspaces/project/.ralph-worktrees/chat-1",
+          worktreePath: "/workspaces/project/.clanky-worktrees/chat-1",
         },
       },
     });
 
-    expect(getLoopCodeExplorerRootDirectory(loop)).toBe("/workspaces/project/.ralph-worktrees/loop-1");
-    expect(getChatCodeExplorerRootDirectory(chat)).toBe("/workspaces/project/.ralph-worktrees/chat-1");
+    expect(getTaskCodeExplorerRootDirectory(task)).toBe("/workspaces/project/.clanky-worktrees/task-1");
+    expect(getChatCodeExplorerRootDirectory(chat)).toBe("/workspaces/project/.clanky-worktrees/chat-1");
   });
 
-  test("falls back to configured loop and chat directories when worktrees are missing", () => {
-    const loop = createLoopWithStatus("running", {
+  test("falls back to configured task and chat directories when worktrees are missing", () => {
+    const task = createTaskWithStatus("running", {
       config: {
-        id: "loop-1",
+        id: "task-1",
         directory: "/workspaces/project",
       },
       state: {
@@ -155,20 +155,20 @@ describe("code explorer target helpers", () => {
       },
     });
 
-    expect(getLoopCodeExplorerRootDirectory(loop)).toBe("/workspaces/project");
+    expect(getTaskCodeExplorerRootDirectory(task)).toBe("/workspaces/project");
     expect(getChatCodeExplorerRootDirectory(chat)).toBe("/workspaces/project/chat-dir");
   });
 
-  test("builds target options across workspaces, loops, servers, and chats", () => {
+  test("builds target options across workspaces, tasks, servers, and chats", () => {
     const workspace = createWorkspace({
       id: "workspace-1",
       name: "Frontend",
       directory: "/workspaces/frontend",
     });
-    const loop = createLoopWithStatus("idle", {
+    const task = createTaskWithStatus("idle", {
       config: {
-        id: "loop-1",
-        name: "Lint Loop",
+        id: "task-1",
+        name: "Lint Task",
         workspaceId: workspace.id,
         directory: workspace.directory,
       },
@@ -185,13 +185,13 @@ describe("code explorer target helpers", () => {
 
     const options = getCodeExplorerOptions({
       workspaces: [workspace],
-      loops: [loop],
+      tasks: [task],
       chats: [chat],
       servers: [server],
     });
 
-    expect(options.map((option) => option.kind)).toEqual(["workspace", "loop", "server", "chat"]);
-    expect(options.map((option) => option.label)).toEqual(["Frontend", "Lint Loop", "Build Server", "Review Chat"]);
+    expect(options.map((option) => option.kind)).toEqual(["workspace", "task", "server", "chat"]);
+    expect(options.map((option) => option.label)).toEqual(["Frontend", "Lint Task", "Build Server", "Review Chat"]);
   });
 
   test("groups target options by type with stable labels and order", () => {
@@ -200,10 +200,10 @@ describe("code explorer target helpers", () => {
       name: "Frontend",
       directory: "/workspaces/frontend",
     });
-    const loop = createLoopWithStatus("idle", {
+    const task = createTaskWithStatus("idle", {
       config: {
-        id: "loop-1",
-        name: "Lint Loop",
+        id: "task-1",
+        name: "Lint Task",
         workspaceId: workspace.id,
         directory: workspace.directory,
       },
@@ -220,20 +220,20 @@ describe("code explorer target helpers", () => {
 
     const groupedOptions = getCodeExplorerOptionGroups(getCodeExplorerOptions({
       workspaces: [workspace],
-      loops: [loop],
+      tasks: [task],
       chats: [chat],
       servers: [server],
     }));
 
     expect(groupedOptions.map((group) => group.label)).toEqual([
       "Workspaces",
-      "Loops",
+      "Tasks",
       "SSH servers",
       "Chats",
     ]);
     expect(groupedOptions.map((group) => group.options.map((option) => option.label))).toEqual([
       ["Frontend"],
-      ["Lint Loop"],
+      ["Lint Task"],
       ["Build Server"],
       ["Review Chat"],
     ]);
@@ -241,7 +241,7 @@ describe("code explorer target helpers", () => {
 
   test("returns stable ids for every code explorer target type", () => {
     expect(getCodeExplorerTargetId({ contentType: "workspace", workspaceId: "workspace-1" })).toBe("workspace-1");
-    expect(getCodeExplorerTargetId({ contentType: "loop", loopId: "loop-1" })).toBe("loop-1");
+    expect(getCodeExplorerTargetId({ contentType: "task", taskId: "task-1" })).toBe("task-1");
     expect(getCodeExplorerTargetId({ contentType: "server", serverId: "server-1" })).toBe("server-1");
     expect(getCodeExplorerTargetId({ contentType: "chat", chatId: "chat-1" })).toBe("chat-1");
   });
@@ -282,7 +282,7 @@ describe("code explorer target helpers", () => {
         worktree: {
           originalBranch: "main",
           workingBranch: "chat/review",
-          worktreePath: `${workspace.directory}/.ralph-worktrees/chat-1`,
+          worktreePath: `${workspace.directory}/.clanky-worktrees/chat-1`,
         },
       },
     });
@@ -290,7 +290,7 @@ describe("code explorer target helpers", () => {
     const resolved = resolveCodeExplorerTarget({
       target: { contentType: "chat", chatId: chat.config.id },
       workspaces: [workspace],
-      loops: [],
+      tasks: [],
       chats: [chat],
       servers: [],
       sessions: [workspaceSession],
@@ -307,10 +307,10 @@ describe("code explorer target helpers", () => {
     expect(resolved?.target).toEqual({
       type: "workspace",
       id: workspace.id,
-      startDirectory: `${workspace.directory}/.ralph-worktrees/chat-1`,
+      startDirectory: `${workspace.directory}/.clanky-worktrees/chat-1`,
     });
     expect(resolved?.sessions).toHaveLength(1);
-    expect(resolved?.buildRoute(`${workspace.directory}/.ralph-worktrees/chat-1`)).toEqual({
+    expect(resolved?.buildRoute(`${workspace.directory}/.clanky-worktrees/chat-1`)).toEqual({
       view: "code-explorer",
       target: { contentType: "chat", chatId: chat.config.id, startDirectory: undefined },
     });
@@ -321,7 +321,7 @@ describe("code explorer target helpers", () => {
     const resolved = resolveCodeExplorerTarget({
       target: { contentType: "server", serverId: server.config.id },
       workspaces: [],
-      loops: [],
+      tasks: [],
       chats: [],
       servers: [server],
       sessions: [],

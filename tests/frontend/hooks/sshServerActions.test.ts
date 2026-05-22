@@ -34,7 +34,7 @@ describe("createStandaloneSshSessionApi", () => {
           name: "Deploy shell",
           connectionMode: "direct",
           useTmux: false,
-          remoteSessionName: "ralpher-standalone-1",
+          remoteSessionName: "clanky-standalone-1",
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },

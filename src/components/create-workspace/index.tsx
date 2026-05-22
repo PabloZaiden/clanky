@@ -30,7 +30,7 @@ export interface CreateWorkspaceModalProps {
   creating?: boolean;
   /** Error message from workspace creation */
   error?: string | null;
-  /** Whether remote-only mode is enabled (RALPHER_REMOTE_ONLY) */
+  /** Whether remote-only mode is enabled (CLANKY_REMOTE_ONLY) */
   remoteOnly?: boolean;
   /** Registered standalone SSH servers available for hostname selection */
   registeredSshServers?: SshServer[];

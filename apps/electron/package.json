@@ -1,13 +1,13 @@
 {
-  "name": "@ralpher/electron",
+  "name": "@clanky/electron",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "bunx tsc -p tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
-    "@ralpher/client-sdk": "workspace:*",
-    "@ralpher/contracts": "workspace:*",
-    "@ralpher/shared": "workspace:*"
+    "@clanky/client-sdk": "workspace:*",
+    "@clanky/contracts": "workspace:*",
+    "@clanky/shared": "workspace:*"
   }
 }

@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { LoopEvent, ChatEvent, SshSessionEvent } from "../types";
+import type { TaskEvent, ChatEvent, SshSessionEvent } from "../types";
 import {
   useWebSocket,
   type UseWebSocketResult,
   type WebSocketConnectionStatus,
 } from "./useWebSocket";
 
-type AppEvent = LoopEvent | ChatEvent | SshSessionEvent;
+type AppEvent = TaskEvent | ChatEvent | SshSessionEvent;
 type AppEventHandler = (event: AppEvent) => void;
 type AppEventFilter<T extends AppEvent> = (event: AppEvent) => event is T;
 
@@ -89,8 +89,8 @@ export function useAppEvents<T extends AppEvent>(
   };
 }
 
-export function isLoopEvent(event: AppEvent): event is LoopEvent {
-  return event.type.startsWith("loop.");
+export function isTaskEvent(event: AppEvent): event is TaskEvent {
+  return event.type.startsWith("task.");
 }
 
 export function isChatEvent(event: AppEvent): event is ChatEvent {

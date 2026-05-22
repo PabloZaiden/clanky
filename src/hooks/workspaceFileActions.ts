@@ -131,7 +131,7 @@ async function buildFileExplorerRequestInit(
 
   if (target.type === "server") {
     const credentialToken = await requireFileExplorerServerCredentialToken(target.id);
-    headers.set("x-ralpher-ssh-credential-token", credentialToken);
+    headers.set("x-clanky-ssh-credential-token", credentialToken);
   }
 
   return {

@@ -20,9 +20,9 @@ export const TERMINAL_SYMBOL_FONT_FAMILIES = [
   "Symbols Nerd Font Mono",
   "Symbols Nerd Font",
 ] as const;
-export const TERMINAL_BUNDLED_NERD_FONT_FAMILIES = ["Ralpher Terminal Nerd Font"] as const;
+export const TERMINAL_BUNDLED_NERD_FONT_FAMILIES = ["Clanky Terminal Nerd Font"] as const;
 export const TERMINAL_TEXT_FONT_FAMILIES = [
-  "Ralpher Terminal Nerd Font",
+  "Clanky Terminal Nerd Font",
   "JetBrainsMono Nerd Font Mono",
   "JetBrainsMono Nerd Font",
   "SFMono-Regular",

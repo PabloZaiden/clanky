@@ -1,8 +1,8 @@
 /**
- * Workspace type definitions for Ralph Loops Management System.
+ * Workspace type definitions for Clanky Tasks Management System.
  * 
- * Workspaces represent directories that contain Ralph Loops.
- * Each workspace has a unique directory path and can contain multiple loops.
+ * Workspaces represent directories that contain Clanky Tasks.
+ * Each workspace has a unique directory path and can contain multiple tasks.
  * 
  * Request types for validated endpoints are derived from Zod schemas,
  * making the schemas the single source of truth for both runtime validation
@@ -14,10 +14,10 @@
 import type { AgentProvider, ServerSettings } from "./settings";
 
 /**
- * A workspace represents a directory that contains Ralph Loops.
+ * A workspace represents a directory that contains Clanky Tasks.
  * 
- * Workspaces provide a way to group loops by directory and allow
- * for simplified loop creation via workspace selection.
+ * Workspaces provide a way to group tasks by directory and allow
+ * for simplified task creation via workspace selection.
  * Each workspace has its own server settings for independent operation.
  */
 export interface Workspace {

@@ -14,10 +14,10 @@ import { backendManager } from "../../src/core/backend-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { loopManager } from "../../src/core/loop-manager";
+import { taskManager } from "../../src/core/task-manager";
 import { createWorkspace, getWorkspace } from "../../src/persistence/workspaces";
 
-// Default test model for loop creation (model is now required)
+// Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 
 function makeServerSettings(overrides?: {
@@ -63,9 +63,9 @@ describe("Workspace API Integration", () => {
     cloneDir: string;
     defaultBranch: string;
   }> {
-    const originDir = await mkdtemp(join(tmpdir(), "ralpher-pull-origin-"));
-    const sourceDir = await mkdtemp(join(tmpdir(), "ralpher-pull-source-"));
-    const cloneParentDir = await mkdtemp(join(tmpdir(), "ralpher-pull-clone-parent-"));
+    const originDir = await mkdtemp(join(tmpdir(), "clanky-pull-origin-"));
+    const sourceDir = await mkdtemp(join(tmpdir(), "clanky-pull-source-"));
+    const cloneParentDir = await mkdtemp(join(tmpdir(), "clanky-pull-clone-parent-"));
     const cloneDir = join(cloneParentDir, "workspace");
 
     await Bun.$`git init --bare ${originDir}`.quiet();
@@ -94,11 +94,11 @@ describe("Workspace API Integration", () => {
 
   beforeAll(async () => {
     // Create temp directories
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-api-workspace-test-data-"));
-    testWorkDir = await mkdtemp(join(tmpdir(), "ralpher-api-workspace-test-work-"));
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-api-workspace-test-data-"));
+    testWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-workspace-test-work-"));
 
     // Set env var for persistence before importing modules
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     // Ensure directories exist
     await ensureDataDirectories();
@@ -138,15 +138,15 @@ describe("Workspace API Integration", () => {
     await rm(testWorkDir, { recursive: true, force: true });
 
     // Clear env
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
   // Clean up workspaces before each test
   beforeEach(async () => {
     const { getDatabase } = await import("../../src/persistence/database");
-    // Clear the workspaces and loops tables
+    // Clear the workspaces and tasks tables
     const db = getDatabase();
-    db.run("DELETE FROM loops WHERE workspace_id IS NOT NULL");
+    db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
     db.run("DELETE FROM ssh_servers");
     sshServerManager.setExecutorFactoryForTesting(null);
@@ -160,7 +160,7 @@ describe("Workspace API Integration", () => {
       expect(data).toEqual([]);
     });
 
-    test("returns list of workspaces with loop counts", async () => {
+    test("returns list of workspaces with task counts", async () => {
       // Create a workspace first
       const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
@@ -587,7 +587,7 @@ describe("Workspace API Integration", () => {
   });
 
   describe("DELETE /api/workspaces/:id", () => {
-    test("deletes workspace with no loops", async () => {
+    test("deletes workspace with no tasks", async () => {
       // Create a workspace
       const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
@@ -638,7 +638,7 @@ describe("Workspace API Integration", () => {
     });
 
     test("deletes auto-provisioned server directory when requested", async () => {
-      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-source-"));
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "clanky-auto-source-"));
       await Bun.write(join(sourceDirectory, "README.md"), "# Auto\n");
       const sshServer = await sshServerManager.createServer({
         name: "Source Server",
@@ -674,7 +674,7 @@ describe("Workspace API Integration", () => {
     });
 
     test("accepts auto-provisioned base paths with trailing slashes", async () => {
-      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-source-"));
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "clanky-auto-source-"));
       await Bun.write(join(sourceDirectory, "README.md"), "# Auto\n");
       const sshServer = await sshServerManager.createServer({
         name: "Trailing Slash Source Server",
@@ -710,7 +710,7 @@ describe("Workspace API Integration", () => {
     });
 
     test("preserves auto-provisioned server directory when option is false", async () => {
-      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-preserve-"));
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "clanky-auto-preserve-"));
       await Bun.write(join(sourceDirectory, "README.md"), "# Auto\n");
       const sshServer = await sshServerManager.createServer({
         name: "Preserve Server",
@@ -747,7 +747,7 @@ describe("Workspace API Integration", () => {
     });
 
     test("preserves workspace record when server directory deletion fails", async () => {
-      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-fail-"));
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "clanky-auto-fail-"));
       const sshServer = await sshServerManager.createServer({
         name: "Failure Server",
         address: "127.0.0.1",
@@ -804,7 +804,7 @@ describe("Workspace API Integration", () => {
     });
 
     test("preserves workspace record when server directory existence check fails", async () => {
-      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-exists-fail-"));
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "clanky-auto-exists-fail-"));
       const sshServer = await sshServerManager.createServer({
         name: "Existence Failure Server",
         address: "127.0.0.1",
@@ -860,7 +860,7 @@ describe("Workspace API Integration", () => {
     });
 
     test("returns invalid credential token errors for auto-provisioned server directory deletion", async () => {
-      const sourceDirectory = await mkdtemp(join(tmpdir(), "ralpher-auto-token-fail-"));
+      const sourceDirectory = await mkdtemp(join(tmpdir(), "clanky-auto-token-fail-"));
       const sshServer = await sshServerManager.createServer({
         name: "Credential Token Failure Server",
         address: "127.0.0.1",
@@ -1046,14 +1046,14 @@ describe("Workspace API Integration", () => {
     });
   });
 
-  describe("Loop creation with workspaceId", () => {
-    test("creates a loop using workspaceId and touches the workspace", async () => {
+  describe("Task creation with workspaceId", () => {
+    test("creates a task using workspaceId and touches the workspace", async () => {
       // Step 1: Create a workspace
       const workspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Loop Test Workspace",
+          name: "Task Test Workspace",
           directory: testWorkDir,
         serverSettings: makeServerSettings(),
         }),
@@ -1065,17 +1065,17 @@ describe("Workspace API Integration", () => {
       // Wait a bit to ensure timestamp difference
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      // Step 2: Create a loop using the workspaceId (draft to avoid git operations)
-      const loopResponse = await fetch(`${baseUrl}/api/loops`, {
+      // Step 2: Create a task using the workspaceId (draft to avoid git operations)
+      const taskResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId: workspace.id,
-          prompt: "Test prompt for loop creation",
-          name: "Test Loop",
+          prompt: "Test prompt for task creation",
+          name: "Test Task",
           attachments: [],
           model: testModel,
-          cheapModel: { mode: "same-as-loop" },
+          cheapModel: { mode: "same-as-task" },
           maxIterations: null,
           maxConsecutiveErrors: 10,
           activityTimeoutSeconds: 300,
@@ -1090,13 +1090,13 @@ describe("Workspace API Integration", () => {
           draft: true,
         }),
       });
-      expect(loopResponse.ok).toBe(true);
-      const loop = await loopResponse.json();
+      expect(taskResponse.ok).toBe(true);
+      const task = await taskResponse.json();
 
-      // Verify the loop was created with the workspace's directory
-      expect(loop.config.directory).toBe(testWorkDir);
-      expect(loop.config.workspaceId).toBe(workspace.id);
-      expect(loop.state.status).toBe("draft");
+      // Verify the task was created with the workspace's directory
+      expect(task.config.directory).toBe(testWorkDir);
+      expect(task.config.workspaceId).toBe(workspace.id);
+      expect(task.state.status).toBe("draft");
 
       // Step 3: Verify the workspace was touched (updatedAt should be updated)
       const updatedWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}`);
@@ -1108,17 +1108,17 @@ describe("Workspace API Integration", () => {
 
     });
 
-    test("fails when creating loop with non-existent workspaceId", async () => {
-      const response = await fetch(`${baseUrl}/api/loops`, {
+    test("fails when creating task with non-existent workspaceId", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId: "non-existent-workspace-id",
           prompt: "Test prompt",
-          name: "Test Loop",
+          name: "Test Task",
           attachments: [],
           model: testModel,
-          cheapModel: { mode: "same-as-loop" },
+          cheapModel: { mode: "same-as-task" },
           maxIterations: null,
           maxConsecutiveErrors: 10,
           activityTimeoutSeconds: 300,
@@ -1140,8 +1140,8 @@ describe("Workspace API Integration", () => {
       expect(data.error).toBe("workspace_not_found");
     });
 
-    test("fails when creating loop without workspaceId", async () => {
-      const response = await fetch(`${baseUrl}/api/loops`, {
+    test("fails when creating task without workspaceId", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1319,7 +1319,7 @@ describe("Workspace API Integration", () => {
       });
 
       test("does not emit a reset event when submitted server settings are unchanged", async () => {
-        const { loopEventEmitter } = await import("../../src/core/event-emitter");
+        const { taskEventEmitter } = await import("../../src/core/event-emitter");
 
         const initialSettings = makeServerSettings({
           mode: "connect",
@@ -1339,7 +1339,7 @@ describe("Workspace API Integration", () => {
         const workspace = await createResponse.json();
 
         const events: Array<{ type: string; workspaceId?: string }> = [];
-        const unsubscribe = loopEventEmitter.subscribe((event) => {
+        const unsubscribe = taskEventEmitter.subscribe((event) => {
           const eventType = (event as { type: string }).type;
           if (eventType === "server.reset") {
             events.push(event as { type: string; workspaceId?: string });
@@ -1629,7 +1629,7 @@ describe("Workspace API Integration", () => {
 
       test("resets connection when serverSettings are updated via PUT /api/workspaces/:id", async () => {
         // Import the event emitter to capture events
-        const { loopEventEmitter } = await import("../../src/core/event-emitter");
+        const { taskEventEmitter } = await import("../../src/core/event-emitter");
         
         // Create a workspace
         const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -1644,9 +1644,9 @@ describe("Workspace API Integration", () => {
         const workspace = await createResponse.json();
 
         // Set up event listener to capture the server.reset event
-        // Cast event to any since server.reset is not in the LoopEvent type union
+        // Cast event to any since server.reset is not in the TaskEvent type union
         const events: Array<{ type: string; workspaceId?: string }> = [];
-        const unsubscribe = loopEventEmitter.subscribe((event) => {
+        const unsubscribe = taskEventEmitter.subscribe((event) => {
           const eventType = (event as { type: string }).type;
           if (eventType === "server.reset") {
             events.push(event as { type: string; workspaceId?: string });
@@ -1684,7 +1684,7 @@ describe("Workspace API Integration", () => {
 
       test("does NOT emit a reset event when only name is updated", async () => {
         // Import the event emitter to capture events
-        const { loopEventEmitter } = await import("../../src/core/event-emitter");
+        const { taskEventEmitter } = await import("../../src/core/event-emitter");
         
         // Create a workspace
         const createResponse = await fetch(`${baseUrl}/api/workspaces`, {
@@ -1699,9 +1699,9 @@ describe("Workspace API Integration", () => {
         const workspace = await createResponse.json();
 
         // Set up event listener to capture the server.reset event
-        // Cast event to any since server.reset is not in the LoopEvent type union
+        // Cast event to any since server.reset is not in the TaskEvent type union
         const events: Array<{ type: string; workspaceId?: string }> = [];
-        const unsubscribe = loopEventEmitter.subscribe((event) => {
+        const unsubscribe = taskEventEmitter.subscribe((event) => {
           const eventType = (event as { type: string }).type;
           if (eventType === "server.reset") {
             events.push(event as { type: string; workspaceId?: string });
@@ -1730,7 +1730,7 @@ describe("Workspace API Integration", () => {
       });
 
       test("does NOT emit a reset event when submitted server settings are unchanged", async () => {
-        const { loopEventEmitter } = await import("../../src/core/event-emitter");
+        const { taskEventEmitter } = await import("../../src/core/event-emitter");
 
         const originalSettings = makeServerSettings({
           mode: "connect",
@@ -1750,7 +1750,7 @@ describe("Workspace API Integration", () => {
         const workspace = await createResponse.json();
 
         const events: Array<{ type: string; workspaceId?: string }> = [];
-        const unsubscribe = loopEventEmitter.subscribe((event) => {
+        const unsubscribe = taskEventEmitter.subscribe((event) => {
           const eventType = (event as { type: string }).type;
           if (eventType === "server.reset") {
             events.push(event as { type: string; workspaceId?: string });
@@ -1781,7 +1781,7 @@ describe("Workspace API Integration", () => {
     describe("Workspace settings isolation", () => {
       test("updating one workspace settings does not affect another workspace", async () => {
         // Create two separate git repositories
-        const testWorkDir2 = await mkdtemp(join(tmpdir(), "ralpher-api-workspace-test-work2-"));
+        const testWorkDir2 = await mkdtemp(join(tmpdir(), "clanky-api-workspace-test-work2-"));
         await Bun.$`git init ${testWorkDir2}`.quiet();
         await Bun.$`git -C ${testWorkDir2} config user.email "test@test.com"`.quiet();
         await Bun.$`git -C ${testWorkDir2} config user.name "Test User"`.quiet();
@@ -1881,8 +1881,8 @@ describe("Workspace API Integration", () => {
     });
   });
 
-  describe("POST /api/workspaces/:id/archived-loops/purge", () => {
-    test("purges only archived loops for the selected workspace", async () => {
+  describe("POST /api/workspaces/:id/archived-tasks/purge", () => {
+    test("purges only archived tasks for the selected workspace", async () => {
       const createWorkspaceResponse = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1895,35 +1895,35 @@ describe("Workspace API Integration", () => {
       expect(createWorkspaceResponse.ok).toBe(true);
       const workspace = await createWorkspaceResponse.json();
 
-      const originalGetAllLoops = loopManager.getAllLoops;
-      const originalPurgeLoop = loopManager.purgeLoop;
+      const originalGetAllTasks = taskManager.getAllTasks;
+      const originalPurgeTask = taskManager.purgeTask;
 
       const purgedIds: string[] = [];
-      loopManager.getAllLoops = async () => [
+      taskManager.getAllTasks = async () => [
         {
-          config: { id: "loop-archived-1", workspaceId: workspace.id },
+          config: { id: "task-archived-1", workspaceId: workspace.id },
           state: { status: "deleted" },
         } as any,
         {
-          config: { id: "loop-archived-2", workspaceId: workspace.id },
+          config: { id: "task-archived-2", workspaceId: workspace.id },
           state: { status: "pushed", reviewMode: { addressable: false } },
         } as any,
         {
-          config: { id: "loop-feedback", workspaceId: workspace.id },
+          config: { id: "task-feedback", workspaceId: workspace.id },
           state: { status: "pushed", reviewMode: { addressable: true } },
         } as any,
         {
-          config: { id: "loop-other-workspace", workspaceId: "ws-other" },
+          config: { id: "task-other-workspace", workspaceId: "ws-other" },
           state: { status: "deleted" },
         } as any,
       ];
-      loopManager.purgeLoop = async (loopId: string) => {
-        purgedIds.push(loopId);
+      taskManager.purgeTask = async (taskId: string) => {
+        purgedIds.push(taskId);
         return { success: true };
       };
 
       try {
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/archived-loops/purge`, {
+        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/archived-tasks/purge`, {
           method: "POST",
         });
         expect(response.ok).toBe(true);
@@ -1933,12 +1933,12 @@ describe("Workspace API Integration", () => {
         expect(body.workspaceId).toBe(workspace.id);
         expect(body.totalArchived).toBe(2);
         expect(body.purgedCount).toBe(2);
-        expect(body.purgedLoopIds).toEqual(["loop-archived-1", "loop-archived-2"]);
+        expect(body.purgedTaskIds).toEqual(["task-archived-1", "task-archived-2"]);
         expect(body.failures).toEqual([]);
-        expect(purgedIds).toEqual(["loop-archived-1", "loop-archived-2"]);
+        expect(purgedIds).toEqual(["task-archived-1", "task-archived-2"]);
       } finally {
-        loopManager.getAllLoops = originalGetAllLoops;
-        loopManager.purgeLoop = originalPurgeLoop;
+        taskManager.getAllTasks = originalGetAllTasks;
+        taskManager.purgeTask = originalPurgeTask;
       }
     });
 
@@ -1955,29 +1955,29 @@ describe("Workspace API Integration", () => {
       expect(createWorkspaceResponse.ok).toBe(true);
       const workspace = await createWorkspaceResponse.json();
 
-      const originalGetAllLoops = loopManager.getAllLoops;
-      const originalPurgeLoop = loopManager.purgeLoop;
+      const originalGetAllTasks = taskManager.getAllTasks;
+      const originalPurgeTask = taskManager.purgeTask;
 
       let activePurges = 0;
       let maxConcurrentPurges = 0;
-      const archivedLoopIds = ["loop-1", "loop-2", "loop-3", "loop-4", "loop-5", "loop-6"];
+      const archivedTaskIds = ["task-1", "task-2", "task-3", "task-4", "task-5", "task-6"];
 
-      loopManager.getAllLoops = async () => archivedLoopIds.map((loopId) => ({
-        config: { id: loopId, workspaceId: workspace.id },
+      taskManager.getAllTasks = async () => archivedTaskIds.map((taskId) => ({
+        config: { id: taskId, workspaceId: workspace.id },
         state: { status: "deleted" },
       })) as any;
 
-      loopManager.purgeLoop = async (loopId: string) => {
+      taskManager.purgeTask = async (taskId: string) => {
         activePurges++;
         maxConcurrentPurges = Math.max(maxConcurrentPurges, activePurges);
-        await new Promise((resolve) => setTimeout(resolve, loopId === "loop-1" ? 10 : 1));
+        await new Promise((resolve) => setTimeout(resolve, taskId === "task-1" ? 10 : 1));
         activePurges--;
 
-        if (loopId === "loop-3") {
+        if (taskId === "task-3") {
           return { success: false, error: "permission denied" };
         }
 
-        if (loopId === "loop-5") {
+        if (taskId === "task-5") {
           throw new Error("remote executor disconnected");
         }
 
@@ -1985,7 +1985,7 @@ describe("Workspace API Integration", () => {
       };
 
       try {
-        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/archived-loops/purge`, {
+        const response = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/archived-tasks/purge`, {
           method: "POST",
         });
         expect(response.ok).toBe(true);
@@ -1995,20 +1995,20 @@ describe("Workspace API Integration", () => {
         expect(body.workspaceId).toBe(workspace.id);
         expect(body.totalArchived).toBe(6);
         expect(body.purgedCount).toBe(4);
-        expect(body.purgedLoopIds).toEqual(["loop-1", "loop-2", "loop-4", "loop-6"]);
+        expect(body.purgedTaskIds).toEqual(["task-1", "task-2", "task-4", "task-6"]);
         expect(body.failures).toEqual([
-          { loopId: "loop-3", error: "permission denied" },
-          { loopId: "loop-5", error: "Error: remote executor disconnected" },
+          { taskId: "task-3", error: "permission denied" },
+          { taskId: "task-5", error: "Error: remote executor disconnected" },
         ]);
         expect(maxConcurrentPurges).toBeLessThanOrEqual(4);
       } finally {
-        loopManager.getAllLoops = originalGetAllLoops;
-        loopManager.purgeLoop = originalPurgeLoop;
+        taskManager.getAllTasks = originalGetAllTasks;
+        taskManager.purgeTask = originalPurgeTask;
       }
     });
 
     test("returns 404 for a missing workspace", async () => {
-      const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id/archived-loops/purge`, {
+      const response = await fetch(`${baseUrl}/api/workspaces/non-existent-id/archived-tasks/purge`, {
         method: "POST",
       });
 
@@ -2016,10 +2016,10 @@ describe("Workspace API Integration", () => {
     });
   });
 
-  describe("POST /api/settings/purge-terminal-loops", () => {
-    test("purges archived loops across all workspaces and reports partial failures", async () => {
-      const testWorkDirA = await mkdtemp(join(tmpdir(), "ralpher-global-purge-a-"));
-      const testWorkDirB = await mkdtemp(join(tmpdir(), "ralpher-global-purge-b-"));
+  describe("POST /api/settings/purge-terminal-tasks", () => {
+    test("purges archived tasks across all workspaces and reports partial failures", async () => {
+      const testWorkDirA = await mkdtemp(join(tmpdir(), "clanky-global-purge-a-"));
+      const testWorkDirB = await mkdtemp(join(tmpdir(), "clanky-global-purge-b-"));
 
       try {
         await Bun.$`git init ${testWorkDirA}`.quiet();
@@ -2048,38 +2048,38 @@ describe("Workspace API Integration", () => {
         const workspaceA = await createWorkspaceAResponse.json();
         const workspaceB = await createWorkspaceBResponse.json();
 
-        const originalGetAllLoops = loopManager.getAllLoops;
-        const originalPurgeLoop = loopManager.purgeLoop;
+        const originalGetAllTasks = taskManager.getAllTasks;
+        const originalPurgeTask = taskManager.purgeTask;
         const purgedIds: string[] = [];
 
-        loopManager.getAllLoops = async () => [
+        taskManager.getAllTasks = async () => [
           {
-            config: { id: "loop-a-deleted", workspaceId: workspaceA.id },
+            config: { id: "task-a-deleted", workspaceId: workspaceA.id },
             state: { status: "deleted" },
           } as any,
           {
-            config: { id: "loop-a-running", workspaceId: workspaceA.id },
+            config: { id: "task-a-running", workspaceId: workspaceA.id },
             state: { status: "running" },
           } as any,
           {
-            config: { id: "loop-b-pushed", workspaceId: workspaceB.id },
+            config: { id: "task-b-pushed", workspaceId: workspaceB.id },
             state: { status: "pushed", reviewMode: { addressable: false } },
           } as any,
           {
-            config: { id: "loop-b-feedback", workspaceId: workspaceB.id },
+            config: { id: "task-b-feedback", workspaceId: workspaceB.id },
             state: { status: "pushed", reviewMode: { addressable: true } },
           } as any,
         ];
-        loopManager.purgeLoop = async (loopId: string) => {
-          purgedIds.push(loopId);
-          if (loopId === "loop-b-pushed") {
+        taskManager.purgeTask = async (taskId: string) => {
+          purgedIds.push(taskId);
+          if (taskId === "task-b-pushed") {
             return { success: false, error: "branch protected" };
           }
           return { success: true };
         };
 
         try {
-          const response = await fetch(`${baseUrl}/api/settings/purge-terminal-loops`, {
+          const response = await fetch(`${baseUrl}/api/settings/purge-terminal-tasks`, {
             method: "POST",
           });
           expect(response.ok).toBe(true);
@@ -2089,30 +2089,30 @@ describe("Workspace API Integration", () => {
           expect(body.totalWorkspaces).toBeGreaterThanOrEqual(2);
           expect(body.totalArchived).toBe(2);
           expect(body.purgedCount).toBe(1);
-          expect(body.purgedLoopIds).toEqual(["loop-a-deleted"]);
+          expect(body.purgedTaskIds).toEqual(["task-a-deleted"]);
           expect(body.failures).toEqual([
-            { workspaceId: workspaceB.id, loopId: "loop-b-pushed", error: "branch protected" },
+            { workspaceId: workspaceB.id, taskId: "task-b-pushed", error: "branch protected" },
           ]);
           expect(body.workspaces).toEqual(expect.arrayContaining([
             {
               workspaceId: workspaceA.id,
               totalArchived: 1,
               purgedCount: 1,
-              purgedLoopIds: ["loop-a-deleted"],
+              purgedTaskIds: ["task-a-deleted"],
               failures: [],
             },
             {
               workspaceId: workspaceB.id,
               totalArchived: 1,
               purgedCount: 0,
-              purgedLoopIds: [],
-              failures: [{ loopId: "loop-b-pushed", error: "branch protected" }],
+              purgedTaskIds: [],
+              failures: [{ taskId: "task-b-pushed", error: "branch protected" }],
             },
           ]));
-          expect(purgedIds).toEqual(["loop-a-deleted", "loop-b-pushed"]);
+          expect(purgedIds).toEqual(["task-a-deleted", "task-b-pushed"]);
         } finally {
-          loopManager.getAllLoops = originalGetAllLoops;
-          loopManager.purgeLoop = originalPurgeLoop;
+          taskManager.getAllTasks = originalGetAllTasks;
+          taskManager.purgeTask = originalPurgeTask;
         }
       } finally {
         await rm(testWorkDirA, { recursive: true, force: true });
@@ -2134,7 +2134,7 @@ describe("Workspace API Integration", () => {
 
       test("returns redacted exports by default and full exports with sensitive=true", async () => {
         // Create two workspaces with different settings
-        const testWorkDir2 = await mkdtemp(join(tmpdir(), "ralpher-api-ws-export-"));
+        const testWorkDir2 = await mkdtemp(join(tmpdir(), "clanky-api-ws-export-"));
         await Bun.$`git init ${testWorkDir2}`.quiet();
         await Bun.$`git -C ${testWorkDir2} config user.email "test@test.com"`.quiet();
         await Bun.$`git -C ${testWorkDir2} config user.name "Test User"`.quiet();
@@ -2206,8 +2206,8 @@ describe("Workspace API Integration", () => {
     describe("POST /api/workspaces/import", () => {
       test("creates workspaces from valid payload (directories must be valid git repos)", async () => {
         // Create two real git repo directories for import
-        const importDir1 = await mkdtemp(join(tmpdir(), "ralpher-api-import-1-"));
-        const importDir2 = await mkdtemp(join(tmpdir(), "ralpher-api-import-2-"));
+        const importDir1 = await mkdtemp(join(tmpdir(), "clanky-api-import-1-"));
+        const importDir2 = await mkdtemp(join(tmpdir(), "clanky-api-import-2-"));
         await Bun.$`git init ${importDir1}`.quiet();
         await Bun.$`git -C ${importDir1} config user.email "test@test.com"`.quiet();
         await Bun.$`git -C ${importDir1} config user.name "Test User"`.quiet();
@@ -2298,7 +2298,7 @@ describe("Workspace API Integration", () => {
 
       test("fails validation for directories that are not git repos", async () => {
         // Create a real directory that is NOT a git repo
-        const nonGitDir = await mkdtemp(join(tmpdir(), "ralpher-api-import-nongit-"));
+        const nonGitDir = await mkdtemp(join(tmpdir(), "clanky-api-import-nongit-"));
 
         try {
           const importPayload = {
@@ -2344,7 +2344,7 @@ describe("Workspace API Integration", () => {
         });
 
         // Create a valid git repo for the "new" entry
-        const importDir = await mkdtemp(join(tmpdir(), "ralpher-api-import-mix-"));
+        const importDir = await mkdtemp(join(tmpdir(), "clanky-api-import-mix-"));
         await Bun.$`git init ${importDir}`.quiet();
         await Bun.$`git -C ${importDir} config user.email "test@test.com"`.quiet();
         await Bun.$`git -C ${importDir} config user.name "Test User"`.quiet();

@@ -13,7 +13,7 @@ import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { RALPHER_OPTIMIZATION_VERSION } from "../../src/core/agents-md-optimizer";
+import { CLANKY_OPTIMIZATION_VERSION } from "../../src/core/agents-md-optimizer";
 
 describe("AGENTS.md API Integration", () => {
   let testDataDir: string;
@@ -23,11 +23,11 @@ describe("AGENTS.md API Integration", () => {
 
   beforeAll(async () => {
     // Create temp directories
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-api-agentsmd-test-data-"));
-    testWorkDir = await mkdtemp(join(tmpdir(), "ralpher-api-agentsmd-test-work-"));
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-api-agentsmd-test-data-"));
+    testWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-agentsmd-test-work-"));
 
     // Set env var for persistence
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
     await ensureDataDirectories();
 
     // Initialize git repo
@@ -55,14 +55,14 @@ describe("AGENTS.md API Integration", () => {
     backendManager.resetForTesting();
     await rm(testDataDir, { recursive: true, force: true });
     await rm(testWorkDir, { recursive: true, force: true });
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
   // Clean up workspaces before each test and remove AGENTS.md
   beforeEach(async () => {
     const { getDatabase } = await import("../../src/persistence/database");
     const db = getDatabase();
-    db.run("DELETE FROM loops WHERE workspace_id IS NOT NULL");
+    db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
 
     // Remove AGENTS.md if it exists
@@ -110,7 +110,7 @@ describe("AGENTS.md API Integration", () => {
     test("returns status for workspace with plain AGENTS.md", async () => {
       const workspaceId = await createTestWorkspace();
 
-      // Create an AGENTS.md without Ralpher optimization
+      // Create an AGENTS.md without Clanky optimization
       await writeFile(join(testWorkDir, "AGENTS.md"), "# My Project\n\nGuidelines here.\n");
 
       const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/agents-md`);
@@ -129,7 +129,7 @@ describe("AGENTS.md API Integration", () => {
       // Create an already-optimized AGENTS.md
       await writeFile(
         join(testWorkDir, "AGENTS.md"),
-        `# My Project\n\n<!-- ralpher-optimized-v${RALPHER_OPTIMIZATION_VERSION} -->\n## Agentic Workflow\n`
+        `# My Project\n\n<!-- clanky-optimized-v${CLANKY_OPTIMIZATION_VERSION} -->\n## Agentic Workflow\n`
       );
 
       const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/agents-md`);
@@ -160,9 +160,9 @@ describe("AGENTS.md API Integration", () => {
       expect(data.fileExists).toBe(false);
       expect(data.currentContent).toBe("");
       expect(data.analysis.isOptimized).toBe(false);
-      expect(data.proposedContent).toContain("<!-- ralpher-optimized-v");
+      expect(data.proposedContent).toContain("<!-- clanky-optimized-v");
       expect(data.proposedContent).toContain("## Agentic Workflow");
-      expect(data.ralpherSection).toContain("## Agentic Workflow");
+      expect(data.clankySection).toContain("## Agentic Workflow");
     });
 
     test("returns preview for workspace with existing AGENTS.md", async () => {
@@ -178,7 +178,7 @@ describe("AGENTS.md API Integration", () => {
       expect(data.fileExists).toBe(true);
       expect(data.currentContent).toContain("# My Project");
       expect(data.proposedContent).toContain("# My Project");
-      expect(data.proposedContent).toContain("<!-- ralpher-optimized-v");
+      expect(data.proposedContent).toContain("<!-- clanky-optimized-v");
     });
 
     test("returns 404 for non-existent workspace", async () => {
@@ -201,13 +201,13 @@ describe("AGENTS.md API Integration", () => {
 
       expect(data.success).toBe(true);
       expect(data.alreadyOptimized).toBe(false);
-      expect(data.content).toContain("<!-- ralpher-optimized-v");
+      expect(data.content).toContain("<!-- clanky-optimized-v");
       expect(data.content).toContain("## Agentic Workflow");
 
       // Verify the file was actually written
       const agentsMdPath = join(testWorkDir, "AGENTS.md");
       const fileContent = await Bun.file(agentsMdPath).text();
-      expect(fileContent).toContain("<!-- ralpher-optimized-v");
+      expect(fileContent).toContain("<!-- clanky-optimized-v");
     });
 
     test("appends optimization to existing AGENTS.md", async () => {
@@ -224,17 +224,17 @@ describe("AGENTS.md API Integration", () => {
       expect(data.success).toBe(true);
       expect(data.alreadyOptimized).toBe(false);
       expect(data.content).toContain("# My Project");
-      expect(data.content).toContain("<!-- ralpher-optimized-v");
+      expect(data.content).toContain("<!-- clanky-optimized-v");
 
       // Verify the file on disk
       const fileContent = await Bun.file(join(testWorkDir, "AGENTS.md")).text();
       expect(fileContent).toContain("# My Project");
-      expect(fileContent).toContain("<!-- ralpher-optimized-v");
+      expect(fileContent).toContain("<!-- clanky-optimized-v");
     });
 
     test("returns alreadyOptimized when current version present", async () => {
       const workspaceId = await createTestWorkspace();
-      const optimizedContent = `# My Project\n\n<!-- ralpher-optimized-v${RALPHER_OPTIMIZATION_VERSION} -->\n## Agentic Workflow — Planning & Progress Tracking\n\nContent.\n`;
+      const optimizedContent = `# My Project\n\n<!-- clanky-optimized-v${CLANKY_OPTIMIZATION_VERSION} -->\n## Agentic Workflow — Planning & Progress Tracking\n\nContent.\n`;
       await writeFile(join(testWorkDir, "AGENTS.md"), optimizedContent);
 
       const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/agents-md/optimize`, {
@@ -271,7 +271,7 @@ describe("AGENTS.md API Integration", () => {
 
       // Verify only one marker exists
       const fileContent = await Bun.file(join(testWorkDir, "AGENTS.md")).text();
-      const markerCount = (fileContent.match(/<!-- ralpher-optimized-v/g) || []).length;
+      const markerCount = (fileContent.match(/<!-- clanky-optimized-v/g) || []).length;
       expect(markerCount).toBe(1);
     });
 

@@ -1,6 +1,6 @@
 /**
  * Integration tests for the "Update Branch" feature.
- * Tests syncing a pushed loop's working branch with the base branch
+ * Tests syncing a pushed task's working branch with the base branch
  * and re-pushing via the API endpoint.
  */
 
@@ -10,13 +10,13 @@ import { join } from "path";
 import {
   setupTestServer,
   teardownTestServer,
-  createLoopViaAPI,
-  waitForLoopStatus,
-  pushLoopViaAPI,
+  createTaskViaAPI,
+  waitForTaskStatus,
+  pushTaskViaAPI,
   updateBranchViaAPI,
   type TestServerContext,
 } from "./helpers";
-import type { Loop } from "../../../src/types/loop";
+import type { Task } from "../../../src/types/task";
 
 describe("Update Branch User Scenarios", () => {
   describe("Already Up To Date", () => {
@@ -25,7 +25,7 @@ describe("Update Branch User Scenarios", () => {
     beforeAll(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          // Initial loop iteration → COMPLETE
+          // Initial task iteration → COMPLETE
           "<promise>COMPLETE</promise>",
         ],
         withPlanningDir: true,
@@ -38,37 +38,37 @@ describe("Update Branch User Scenarios", () => {
     });
 
     test("update-branch re-pushes when base branch has no new commits", async () => {
-      // Create and complete initial loop
-      const { body } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create and complete initial task
+      const { body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Implement a feature",
         planMode: false,
       });
-      const loop = body as Loop;
+      const task = body as Task;
 
       // Wait for completion
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
+      await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
 
-      // Push the loop
-      const { status: pushStatus, body: pushBody } = await pushLoopViaAPI(ctx.baseUrl, loop.config.id);
+      // Push the task
+      const { status: pushStatus, body: pushBody } = await pushTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(pushStatus).toBe(200);
       expect(pushBody.success).toBe(true);
 
-      // Verify loop is pushed
-      const pushedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "pushed");
-      expect(pushedLoop.state.reviewMode).toBeDefined();
-      expect(pushedLoop.state.reviewMode?.addressable).toBe(true);
-      expect(pushedLoop.state.reviewMode?.completionAction).toBe("push");
+      // Verify task is pushed
+      const pushedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "pushed");
+      expect(pushedTask.state.reviewMode).toBeDefined();
+      expect(pushedTask.state.reviewMode?.addressable).toBe(true);
+      expect(pushedTask.state.reviewMode?.completionAction).toBe("push");
 
       // Update branch — no changes on base, should be "already_up_to_date"
-      const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, task.config.id);
       expect(updateStatus).toBe(200);
       expect(updateBody.success).toBe(true);
       expect(updateBody.syncStatus).toBe("already_up_to_date");
       expect(updateBody.remoteBranch).toBeDefined();
 
-      // Verify loop remains in pushed status with reviewMode preserved
-      const afterUpdate = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "pushed");
+      // Verify task remains in pushed status with reviewMode preserved
+      const afterUpdate = await waitForTaskStatus(ctx.baseUrl, task.config.id, "pushed");
       expect(afterUpdate.state.reviewMode).toBeDefined();
       expect(afterUpdate.state.reviewMode?.addressable).toBe(true);
       expect(afterUpdate.state.reviewMode?.completionAction).toBe("push");
@@ -81,7 +81,7 @@ describe("Update Branch User Scenarios", () => {
     beforeAll(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          // Initial loop iteration → COMPLETE
+          // Initial task iteration → COMPLETE
           "<promise>COMPLETE</promise>",
         ],
         withPlanningDir: true,
@@ -95,19 +95,19 @@ describe("Update Branch User Scenarios", () => {
     });
 
     test("update-branch merges and re-pushes when base branch has non-conflicting changes", async () => {
-      // Create and complete initial loop
-      const { body } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create and complete initial task
+      const { body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Implement a feature",
         planMode: false,
       });
-      const loop = body as Loop;
+      const task = body as Task;
 
       // Wait for completion and push
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
-      const { body: pushBody } = await pushLoopViaAPI(ctx.baseUrl, loop.config.id);
+      await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      const { body: pushBody } = await pushTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(pushBody.success).toBe(true);
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "pushed");
+      await waitForTaskStatus(ctx.baseUrl, task.config.id, "pushed");
 
       // Add a non-conflicting commit to the base branch on the remote
       // (simulate another developer pushing to the base branch)
@@ -125,14 +125,14 @@ describe("Update Branch User Scenarios", () => {
       }
 
       // Update branch — should merge cleanly and re-push
-      const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, task.config.id);
       expect(updateStatus).toBe(200);
       expect(updateBody.success).toBe(true);
       expect(updateBody.syncStatus).toBe("clean");
       expect(updateBody.remoteBranch).toBeDefined();
 
-      // Verify loop remains in pushed status
-      const afterUpdate = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "pushed");
+      // Verify task remains in pushed status
+      const afterUpdate = await waitForTaskStatus(ctx.baseUrl, task.config.id, "pushed");
       expect(afterUpdate.state.status).toBe("pushed");
       expect(afterUpdate.state.reviewMode?.addressable).toBe(true);
       expect(afterUpdate.state.reviewMode?.completionAction).toBe("push");
@@ -145,7 +145,7 @@ describe("Update Branch User Scenarios", () => {
     beforeAll(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          // Initial loop iteration → COMPLETE
+          // Initial task iteration → COMPLETE
           "<promise>COMPLETE</promise>",
         ],
         withPlanningDir: true,
@@ -157,25 +157,25 @@ describe("Update Branch User Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("update-branch rejects non-pushed loop", async () => {
-      // Create and complete loop but don't push
-      const { body } = await createLoopViaAPI(ctx.baseUrl, {
+    test("update-branch rejects non-pushed task", async () => {
+      // Create and complete task but don't push
+      const { body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Do something",
         planMode: false,
       });
-      const loop = body as Loop;
+      const task = body as Task;
 
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
+      await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
 
-      // Try to update-branch on a completed (not pushed) loop — returns 400
-      const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, loop.config.id);
+      // Try to update-branch on a completed (not pushed) task — returns 400
+      const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, task.config.id);
       expect(updateStatus).toBe(400);
       expect(updateBody.error).toBe("update_branch_failed");
-      expect(updateBody.message).toContain("Cannot update branch for loop in status");
+      expect(updateBody.message).toContain("Cannot update branch for task in status");
     });
 
-    test("update-branch rejects non-existent loop", async () => {
+    test("update-branch rejects non-existent task", async () => {
       const { status: updateStatus, body: updateBody } = await updateBranchViaAPI(ctx.baseUrl, "non-existent-id");
       expect(updateStatus).toBe(404);
       expect(updateBody.error).toBe("not_found");

@@ -1,6 +1,6 @@
-# Ralpher API Reference
+# Clanky API Reference
 
-This document describes the REST API for the Ralpher Loop Management System.
+This document describes the REST API for the Clanky Task Management System.
 
 ## Base URL
 
@@ -8,50 +8,50 @@ This document describes the REST API for the Ralpher Loop Management System.
 http://localhost:3000/api
 ```
 
-The port can be configured via the `RALPHER_PORT` environment variable, and the bind host can be configured via `RALPHER_HOST`.
+The port can be configured via the `CLANKY_PORT` environment variable, and the bind host can be configured via `CLANKY_HOST`.
 
 ## Authentication
 
-By default, the API does not require application-level credentials. In production deployments, Ralpher is still expected to run behind a reverse proxy that enforces authentication and authorization.
+By default, the API does not require application-level credentials. In production deployments, Clanky is still expected to run behind a reverse proxy that enforces authentication and authorization.
 
-When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `RALPHER_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
+When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `CLANKY_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
 
-`ralpher-cli auth` uses the device flow endpoints, `ralpher-cli status` validates stored bearer credentials through `GET /api/auth/status`, `ralpher-cli api` sends authenticated REST calls with those stored tokens, `ralpher-cli ws` opens authenticated websocket sessions against `/api/ws`, `ralpher-cli schema` exposes discoverability metadata for catalogued endpoints, and `ralpher-cli update` checks or installs published Ralpher release binaries from GitHub Releases.
+`clanky-cli auth` uses the device flow endpoints, `clanky-cli status` validates stored bearer credentials through `GET /api/auth/status`, `clanky-cli api` sends authenticated REST calls with those stored tokens, `clanky-cli ws` opens authenticated websocket sessions against `/api/ws`, `clanky-cli schema` exposes discoverability metadata for catalogued endpoints, and `clanky-cli update` checks or installs published Clanky release binaries from GitHub Releases.
 
 ## CLI discovery helpers
 
-The standalone `ralpher-cli` binary exposes API discovery directly:
+The standalone `clanky-cli` binary exposes API discovery directly:
 
 ```bash
 # Start the embedded local server
-ralpher
+clanky
 
 # Print the installed CLI version
-ralpher-cli version
+clanky-cli version
 
 # Check whether a newer published binary is available
-ralpher-cli update --check
+clanky-cli update --check
 
 # Update the installed release binaries in place
-ralpher-cli update
+clanky-cli update
 
 # Authenticate against a server
-ralpher-cli auth http://localhost:3000
+clanky-cli auth http://localhost:3000
 
 # List discoverable endpoints
-ralpher-cli api
+clanky-cli api
 
 # Invoke an authenticated API request (prints one JSON object)
-ralpher-cli api loops/my-loop --method GET
+clanky-cli api tasks/my-task --method GET
 
 # Inspect the schema metadata for an endpoint
-ralpher-cli schema auth/device
+clanky-cli schema auth/device
 
 # Stream websocket events over stdio
-ralpher-cli ws --loop-id my-loop
+clanky-cli ws --task-id my-task
 ```
 
-`ralpher-cli help` includes the same version banner shown by `ralpher-cli version`, which makes it easier to confirm the client version while browsing the built-in command list. `ralpher-cli update` currently supports only the published Linux and macOS release binaries, updates `ralpher-cli` plus a sibling `ralpher` binary when one is installed beside it, prints progress while release metadata and downloads are in flight, and should not be used from a Bun source checkout. If a present `ralpher` binary cannot be replaced because it is in use or not writable, the command emits a warning for that sibling update and still completes the `ralpher-cli` update. `ralpher-cli api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `ralpher-cli ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
+`clanky-cli help` includes the same version banner shown by `clanky-cli version`, which makes it easier to confirm the client version while browsing the built-in command list. `clanky-cli update` currently supports only the published Linux and macOS release binaries, updates `clanky-cli` plus a sibling `clanky` binary when one is installed beside it, prints progress while release metadata and downloads are in flight, and should not be used from a Bun source checkout. If a present `clanky` binary cannot be replaced because it is in use or not writable, the command emits a warning for that sibling update and still completes the `clanky-cli` update. `clanky-cli api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `clanky-cli ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
 
 Example CLI output:
 
@@ -63,7 +63,7 @@ Example CLI output:
     "ok": true
   },
   "response": {
-    "id": "my-loop",
+    "id": "my-task",
     "status": "running"
   }
 }
@@ -82,7 +82,7 @@ All responses are JSON. Successful responses return the requested data directly.
 
 ## ACP Agent Runtime Architecture
 
-Ralpher runs agent interactions through ACP JSON-RPC and supports two providers:
+Clanky runs agent interactions through ACP JSON-RPC and supports two providers:
 
 - `opencode` (CLI command: `opencode acp`)
 - `copilot` (CLI command: `copilot --yolo --acp`)
@@ -92,7 +92,7 @@ Agent transport is configured per workspace:
 1. **Local ACP** (`stdio`): provider CLI is launched on the local host.
 2. **Remote ACP** (`ssh`): provider CLI is launched over SSH on the target workspace host.
 
-When `RALPHER_MOCK_ACP=true`, local `stdio` workspaces use Ralpher's built-in fake ACP runtime instead of launching the provider CLI. This is intended for testing and exercises ACP flows such as initialization, authentication, session lifecycle, prompt streaming, tool events, permission requests, question flows, config updates, file-system requests, terminal requests, and cancellation.
+When `CLANKY_MOCK_ACP=true`, local `stdio` workspaces use Clanky's built-in fake ACP runtime instead of launching the provider CLI. This is intended for testing and exercises ACP flows such as initialization, authentication, session lifecycle, prompt streaming, tool events, permission requests, question flows, config updates, file-system requests, terminal requests, and cancellation.
 
 This agent channel handles sessions, prompts, streaming updates, tool events, and permission/question requests.
 
@@ -106,9 +106,9 @@ All API endpoints that perform deterministic server-side operations (git command
 
 This execution channel is decoupled from ACP streaming/provider internals. The following operations use deterministic command execution:
 
-- Git operations (`/api/git/branches`, loop git operations)
+- Git operations (`/api/git/branches`, task git operations)
 - File existence checks (`/api/check-planning-dir`)
-- File reads (`/api/loops/:id/plan`, `/api/loops/:id/status-file`)
+- File reads (`/api/tasks/:id/plan`, `/api/tasks/:id/status-file`)
 - Directory listings
 
 ## Endpoints
@@ -146,19 +146,19 @@ This endpoint is protected by the normal application-auth layer, so unauthentica
 {
   "authenticated": true,
   "authKind": "bearer",
-  "subject": "ralpher-user",
-  "clientId": "ralpher-cli",
+  "subject": "clanky-user",
+  "clientId": "clanky-cli",
   "scope": ""
 }
 ```
 
 ---
 
-### Loops CRUD
+### Tasks CRUD
 
-#### GET /api/loops
+#### GET /api/tasks
 
-List all loops.
+List all tasks.
 
 **Query Parameters**
 
@@ -172,7 +172,7 @@ List all loops.
   {
     "config": {
       "id": "uuid",
-      "name": "My Loop",
+      "name": "My Task",
       "directory": "/path/to/project",
       "prompt": "Implement feature X",
       "createdAt": "2026-01-20T10:00:00.000Z",
@@ -193,22 +193,22 @@ List all loops.
 ]
 ```
 
-#### POST /api/loops
+#### POST /api/tasks
 
-Create a new loop.
+Create a new task.
 
 **Request Body**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Loop name shown in the UI. The dashboard can generate a suggested name with `POST /api/loops/title`, but the final value is submitted by the client. |
-| `workspaceId` | string | Yes | ID of the workspace to create the loop in |
+| `name` | string | Yes | Task name shown in the UI. The dashboard can generate a suggested name with `POST /api/tasks/title`, but the final value is submitted by the client. |
+| `workspaceId` | string | Yes | ID of the workspace to create the task in |
 | `prompt` | string | Yes | Task prompt/PRD (non-empty) |
 | `model` | object | Yes | Model selection |
 | `model.providerID` | string | Yes | Provider ID (e.g., "anthropic") |
 | `model.modelID` | string | Yes | Model ID (e.g., "claude-sonnet-4-20250514") |
 | `model.variant` | string | No | Model variant (e.g., "thinking") |
-| `useWorktree` | boolean | Yes | Whether to run the loop in a dedicated git worktree |
+| `useWorktree` | boolean | Yes | Whether to run the task in a dedicated git worktree |
 | `planMode` | boolean | Yes | Start in plan creation mode |
 | `planModeAutoReply` | boolean | No | Whether planning-mode ACP questions should be auto-answered instead of waiting for a manual reply (default: `true`) |
 | `maxIterations` | number | No | Maximum iterations (unlimited if not set) |
@@ -217,9 +217,9 @@ Create a new loop.
 | `stopPattern` | string | No | Completion regex (default: `<promise>COMPLETE</promise>$`) |
 | `git` | object | No | Git configuration |
 | `git.branchPrefix` | string | No | Optional prefix prepended before the generated `title-hash` branch name (default: empty string). Non-empty values are normalized to git-safe path segments and stored with a trailing `/`. |
-| `git.commitScope` | string | No | Optional Conventional Commit scope override (default: empty string). When provided, use a meaningful module, section, or topic such as `"auth"` or `"api"`. Leave it empty to generate scope-less commits. Generic placeholder values such as `"ralph"` are treated as empty. The deprecated `git.commitPrefix` is still accepted and converted the same way. |
-| `baseBranch` | string | No | Base branch to create the loop from (default: auto-detected default branch) |
-| `clearPlanningFolder` | boolean | No | Clear .ralph-planning folder before starting (default: false) |
+| `git.commitScope` | string | No | Optional Conventional Commit scope override (default: empty string). When provided, use a meaningful module, section, or topic such as `"auth"` or `"api"`. Leave it empty to generate scope-less commits. Generic placeholder values such as `"clanky"` are treated as empty. The deprecated `git.commitPrefix` is still accepted and converted the same way. |
+| `baseBranch` | string | No | Base branch to create the task from (default: auto-detected default branch) |
+| `clearPlanningFolder` | boolean | No | Clear .clanky-planning folder before starting (default: false) |
 | `draft` | boolean | No | Save as draft without starting (default: false) |
 
 **Example Request**
@@ -240,15 +240,15 @@ Create a new loop.
 }
 ```
 
-Use `POST /api/loops/title` if you want Ralpher to suggest a name from the prompt before calling this endpoint.
+Use `POST /api/tasks/title` if you want Clanky to suggest a name from the prompt before calling this endpoint.
 
 **Response**
 
-Returns the created loop object with status `201 Created`.
+Returns the created task object with status `201 Created`.
 
-- If `draft: true`, the loop is saved with status `draft` and no git branch is created
-- If `planMode: true`, the loop starts in `planning` status
-- Otherwise, the loop is started immediately and returns with status `running`
+- If `draft: true`, the task is saved with status `draft` and no git branch is created
+- If `planMode: true`, the task starts in `planning` status
+- Otherwise, the task is started immediately and returns with status `running`
 
 **Errors**
 
@@ -260,13 +260,13 @@ Returns the created loop object with status `201 Created`.
 | 400 | `provider_not_found` | The specified provider was not found |
 | 400 | `model_not_found` | The specified model was not found on the provider |
 | 404 | `workspace_not_found` | Workspace not found for the given workspaceId |
-| 500 | `start_failed` | Loop created but failed to start (normal mode) |
-| 500 | `start_plan_failed` | Loop created but failed to start plan mode |
-| 500 | `create_failed` | Loop creation failed |
+| 500 | `start_failed` | Task created but failed to start (normal mode) |
+| 500 | `start_plan_failed` | Task created but failed to start plan mode |
+| 500 | `create_failed` | Task creation failed |
 
-#### POST /api/loops/title
+#### POST /api/tasks/title
 
-Generate a suggested loop title from a prompt and workspace context.
+Generate a suggested task title from a prompt and workspace context.
 
 **Request Body**
 
@@ -293,29 +293,29 @@ Generate a suggested loop title from a prompt and workspace context.
 | 400 | `validation_error` | Missing or invalid request fields |
 | 500 | `title_generation_failed` | Failed to generate a title |
 
-#### GET /api/loops/:id
+#### GET /api/tasks/:id
 
-Get a specific loop by ID.
+Get a specific task by ID.
 
 **Response**
 
-Returns the loop object.
+Returns the task object.
 
 **Errors**
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 
-#### PATCH /api/loops/:id
+#### PATCH /api/tasks/:id
 
-Update a loop's configuration. Cannot be used on running or starting loops — stop the loop first.
+Update a task's configuration. Cannot be used on running or starting tasks — stop the task first.
 
 **Request Body**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `name` | string | Update the loop name |
+| `name` | string | Update the task name |
 | `directory` | string | Update working directory |
 | `prompt` | string | Update prompt |
 | `model` | object | Update model |
@@ -324,7 +324,7 @@ Update a loop's configuration. Cannot be used on running or starting loops — s
 | `activityTimeoutSeconds` | number \| null | Update activity timeout (`null` clears it to unlimited) |
 | `stopPattern` | string | Update stop pattern |
 | `baseBranch` | string | Update base branch |
-| `useWorktree` | boolean | Update worktree usage before the loop has started |
+| `useWorktree` | boolean | Update worktree usage before the task has started |
 | `clearPlanningFolder` | boolean | Update clear planning folder flag |
 | `planMode` | boolean | Update plan mode flag |
 | `planModeAutoReply` | boolean | Update whether planning-mode ACP questions auto-answer |
@@ -332,7 +332,7 @@ Update a loop's configuration. Cannot be used on running or starting loops — s
 
 **Response**
 
-Returns the updated loop object.
+Returns the updated task object.
 
 **Errors**
 
@@ -340,14 +340,14 @@ Returns the updated loop object.
 |--------|-------|-------------|
 | 400 | `validation_error` | Invalid fields (e.g., empty name) |
 | 400 | `invalid_json` | Request body is not valid JSON |
-| 404 | `not_found` | Loop not found |
-| 409 | `base_branch_immutable` | Cannot change base branch after loop has started |
-| 409 | `use_worktree_immutable` | Cannot change worktree usage after loop has started |
+| 404 | `not_found` | Task not found |
+| 409 | `base_branch_immutable` | Cannot change base branch after task has started |
+| 409 | `use_worktree_immutable` | Cannot change worktree usage after task has started |
 | 500 | `update_failed` | Update operation failed |
 
-#### PUT /api/loops/:id
+#### PUT /api/tasks/:id
 
-Update a draft loop's configuration. Only works for loops in `draft` status.
+Update a draft task's configuration. Only works for tasks in `draft` status.
 
 **Request Body**
 
@@ -355,23 +355,23 @@ Same fields as PATCH.
 
 **Response**
 
-Returns the updated loop object.
+Returns the updated task object.
 
 **Errors**
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 400 | `not_draft` | Only draft loops can be updated via PUT |
+| 400 | `not_draft` | Only draft tasks can be updated via PUT |
 | 400 | `validation_error` | Invalid fields (e.g., empty name) |
 | 400 | `invalid_json` | Request body is not valid JSON |
-| 404 | `not_found` | Loop not found |
-| 409 | `base_branch_immutable` | Cannot change base branch after loop has started |
-| 409 | `use_worktree_immutable` | Cannot change worktree usage after loop has started |
+| 404 | `not_found` | Task not found |
+| 409 | `base_branch_immutable` | Cannot change base branch after task has started |
+| 409 | `use_worktree_immutable` | Cannot change worktree usage after task has started |
 | 500 | `update_failed` | Update operation failed |
 
-#### DELETE /api/loops/:id
+#### DELETE /api/tasks/:id
 
-Delete a loop.
+Delete a task.
 
 **Response**
 
@@ -385,17 +385,17 @@ Delete a loop.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 
 ---
 
-### Loop Control
+### Task Control
 
-Loops are automatically started when created (unless `draft: true`). The following endpoints control loop lifecycle after creation.
+Tasks are automatically started when created (unless `draft: true`). The following endpoints control task lifecycle after creation.
 
-#### POST /api/loops/:id/draft/start
+#### POST /api/tasks/:id/draft/start
 
-Start a draft loop. Transitions the loop from `draft` status to either `planning` or `running`.
+Start a draft task. Transitions the task from `draft` status to either `planning` or `running`.
 
 **Request Body**
 
@@ -405,22 +405,22 @@ Start a draft loop. Transitions the loop from `draft` status to either `planning
 
 **Response**
 
-Returns the updated loop object.
+Returns the updated task object.
 
 **Errors**
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `not_draft` | Loop is not in draft status |
+| 404 | `not_found` | Task not found |
+| 400 | `not_draft` | Task is not in draft status |
 | 400 | `validation_error` | Request body must contain planMode boolean |
 | 400 | `invalid_json` | Request body is not valid JSON |
-| 500 | `start_failed` | Failed to start loop (normal mode) |
+| 500 | `start_failed` | Failed to start task (normal mode) |
 | 500 | `start_plan_failed` | Failed to start plan mode |
 
-#### POST /api/loops/:id/accept
+#### POST /api/tasks/:id/accept
 
-Accept a completed loop and merge its branch.
+Accept a completed task and merge its branch.
 
 **Response**
 
@@ -435,12 +435,12 @@ Accept a completed loop and merge its branch.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `accept_failed` | Cannot accept (e.g., loop still running) |
+| 404 | `not_found` | Task not found |
+| 400 | `accept_failed` | Cannot accept (e.g., task still running) |
 
-#### POST /api/loops/:id/push
+#### POST /api/tasks/:id/push
 
-Push a completed loop's branch to remote for PR workflow.
+Push a completed task's branch to remote for PR workflow.
 
 **Response**
 
@@ -479,29 +479,29 @@ Note: When `syncStatus` is `"conflicts_being_resolved"`, the `remoteBranch` fiel
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `push_failed` | Cannot push (e.g., loop still running or no remote) |
+| 404 | `not_found` | Task not found |
+| 400 | `push_failed` | Cannot push (e.g., task still running or no remote) |
 
-#### POST /api/loops/:id/update-branch
+#### POST /api/tasks/:id/update-branch
 
-Update a pushed loop's branch by syncing it with the latest base branch and re-pushing if possible.
+Update a pushed task's branch by syncing it with the latest base branch and re-pushing if possible.
 
-If the sync is clean, the loop remains in `pushed` status and the updated branch is pushed immediately. If conflicts are detected, Ralpher starts the conflict-resolution flow and auto-pushes when that flow completes.
+If the sync is clean, the task remains in `pushed` status and the updated branch is pushed immediately. If conflicts are detected, Clanky starts the conflict-resolution flow and auto-pushes when that flow completes.
 
 **Response**
 
-Uses the same response shape as `POST /api/loops/:id/push`.
+Uses the same response shape as `POST /api/tasks/:id/push`.
 
 **Errors**
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 | 400 | `update_branch_failed` | Cannot update the pushed branch |
 
-#### POST /api/loops/:id/discard
+#### POST /api/tasks/:id/discard
 
-Discard a loop and delete its git branch.
+Discard a task and delete its git branch.
 
 **Response**
 
@@ -515,12 +515,12 @@ Discard a loop and delete its git branch.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 | 400 | `discard_failed` | Cannot discard |
 
-#### POST /api/loops/:id/purge
+#### POST /api/tasks/:id/purge
 
-Permanently delete a merged or deleted loop from storage.
+Permanently delete a merged or deleted task from storage.
 
 **Response**
 
@@ -534,12 +534,12 @@ Permanently delete a merged or deleted loop from storage.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `purge_failed` | Cannot purge (loop not in final state) |
+| 404 | `not_found` | Task not found |
+| 400 | `purge_failed` | Cannot purge (task not in final state) |
 
-#### GET /api/loops/:id/ssh-session
+#### GET /api/tasks/:id/ssh-session
 
-Get the persistent SSH session linked to a loop.
+Get the persistent SSH session linked to a task.
 
 **Response**
 
@@ -549,13 +549,13 @@ Returns the SSH session object.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop or linked SSH session not found |
-| 400 | `invalid_session_configuration` | Loop cannot open an SSH session with its current transport/setup |
+| 404 | `not_found` | Task or linked SSH session not found |
+| 400 | `invalid_session_configuration` | Task cannot open an SSH session with its current transport/setup |
 | 500 | `ssh_session_error` | Failed to read SSH session data |
 
-#### POST /api/loops/:id/ssh-session
+#### POST /api/tasks/:id/ssh-session
 
-Create or reuse the persistent SSH session linked to a loop.
+Create or reuse the persistent SSH session linked to a task.
 
 **Response**
 
@@ -565,13 +565,13 @@ Returns the SSH session object.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `invalid_session_configuration` | Loop cannot open an SSH session with its current transport/setup |
+| 404 | `not_found` | Task not found |
+| 400 | `invalid_session_configuration` | Task cannot open an SSH session with its current transport/setup |
 | 500 | `ssh_session_error` | Failed to create the SSH session |
 
-#### GET /api/loops/:id/port-forwards
+#### GET /api/tasks/:id/port-forwards
 
-List all port forwards associated with a loop.
+List all port forwards associated with a task.
 
 **Response**
 
@@ -581,12 +581,12 @@ Returns an array of port-forward objects.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 | 500 | `port_forward_error` | Failed to list port forwards |
 
-#### POST /api/loops/:id/port-forwards
+#### POST /api/tasks/:id/port-forwards
 
-Create a new port forward for a loop's SSH-backed workspace.
+Create a new port forward for a task's SSH-backed workspace.
 
 **Request Body**
 
@@ -604,14 +604,14 @@ Returns the created port-forward object with status `201 Created`.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 | 409 | `duplicate_port_forward` | The same remote port is already being forwarded for this workspace |
-| 400 | `invalid_port_forward_configuration` | The loop cannot create a port forward with its current transport/setup |
+| 400 | `invalid_port_forward_configuration` | The task cannot create a port forward with its current transport/setup |
 | 500 | `port_forward_error` | Failed to create the port forward |
 
-#### DELETE /api/loops/:id/port-forwards/:forwardId
+#### DELETE /api/tasks/:id/port-forwards/:forwardId
 
-Delete a loop port forward.
+Delete a task port forward.
 
 **Response**
 
@@ -628,13 +628,13 @@ Delete a loop port forward.
 | 404 | `not_found` | Port forward not found |
 | 500 | `port_forward_error` | Failed to delete the port forward |
 
-#### POST /api/loops/:id/mark-merged
+#### POST /api/tasks/:id/mark-merged
 
-Mark a loop as externally merged and transition it to `deleted`.
+Mark a task as externally merged and transition it to `deleted`.
 
-This is useful when a loop branch was merged outside Ralpher (for example through a hosted pull-request flow) and you want to clean up the loop state without performing an in-app merge. In worktree-backed flows, branch/worktree cleanup remains part of the normal discard/purge lifecycle.
+This is useful when a task branch was merged outside Clanky (for example through a hosted pull-request flow) and you want to clean up the task state without performing an in-app merge. In worktree-backed flows, branch/worktree cleanup remains part of the normal discard/purge lifecycle.
 
-Only works for loops in final states (pushed, merged, completed, max_iterations, deleted).
+Only works for tasks in final states (pushed, merged, completed, max_iterations, deleted).
 
 **Response**
 
@@ -648,20 +648,20 @@ Only works for loops in final states (pushed, merged, completed, max_iterations,
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `mark_merged_failed` | Cannot mark as merged (e.g., loop is still running) |
+| 404 | `not_found` | Task not found |
+| 400 | `mark_merged_failed` | Cannot mark as merged (e.g., task is still running) |
 
 ---
 
 ### Pending Values
 
-Set or clear pending message and/or model for the next iteration. This is the primary way to interact with running loops.
+Set or clear pending message and/or model for the next iteration. This is the primary way to interact with running tasks.
 
-#### POST /api/loops/:id/pending
+#### POST /api/tasks/:id/pending
 
-Set pending message and/or model for next iteration. By default (`immediate: true`), running ACP-backed loops prefer staying on the active session and applying the pending values on the very next iteration without interrupting the current turn. If the backend cannot support that flow, it falls back to interrupting the current iteration. Set `immediate: false` to wait for the current iteration to complete naturally.
+Set pending message and/or model for next iteration. By default (`immediate: true`), running ACP-backed tasks prefer staying on the active session and applying the pending values on the very next iteration without interrupting the current turn. If the backend cannot support that flow, it falls back to interrupting the current iteration. Set `immediate: false` to wait for the current iteration to complete naturally.
 
-Works for active loops (running, waiting, planning, starting) and can also jumpstart loops in supported stopped states (completed, stopped, failed, max_iterations).
+Works for active tasks (running, waiting, planning, starting) and can also jumpstart tasks in supported stopped states (completed, stopped, failed, max_iterations).
 
 **Request Body**
 
@@ -669,7 +669,7 @@ Works for active loops (running, waiting, planning, starting) and can also jumps
 |-------|------|----------|-------------|
 | `message` | string | No | Message to queue for next iteration |
 | `model` | object | No | Model change: `{ providerID, modelID }` |
-| `immediate` | boolean | No | If true (default), prefer queueing on the active ACP session for running loops and fall back to interruption when unsupported. If false, wait for the current iteration to complete. |
+| `immediate` | boolean | No | If true (default), prefer queueing on the active ACP session for running tasks and fall back to interruption when unsupported. If false, wait for the current iteration to complete. |
 
 At least one of `message` or `model` must be provided.
 
@@ -687,10 +687,10 @@ At least one of `message` or `model` must be provided.
 |--------|-------|-------------|
 | 400 | `validation_error` | Neither message nor model provided, or message is empty |
 | 400 | `model_not_enabled` | The selected model is not available |
-| 404 | `not_found` | Loop not found |
-| 409 | `not_running` | Loop is not in an active or jumpstart-eligible state |
+| 404 | `not_found` | Task not found |
+| 409 | `not_running` | Task is not in an active or jumpstart-eligible state |
 
-#### DELETE /api/loops/:id/pending
+#### DELETE /api/tasks/:id/pending
 
 Clear all pending values (message and model).
 
@@ -706,16 +706,16 @@ Clear all pending values (message and model).
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 409 | `not_running` | Loop is not in an active state |
+| 404 | `not_found` | Task not found |
+| 409 | `not_running` | Task is not in an active state |
 
 ---
 
 ### Pending Prompt (Legacy)
 
-Modify the prompt for the next iteration while a loop is running.
+Modify the prompt for the next iteration while a task is running.
 
-#### PUT /api/loops/:id/pending-prompt
+#### PUT /api/tasks/:id/pending-prompt
 
 Set the pending prompt for the next iteration.
 
@@ -739,11 +739,11 @@ Set the pending prompt for the next iteration.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 409 | `not_running` | Loop is not running |
+| 404 | `not_found` | Task not found |
+| 409 | `not_running` | Task is not running |
 | 400 | `validation_error` | Prompt is empty |
 
-#### DELETE /api/loops/:id/pending-prompt
+#### DELETE /api/tasks/:id/pending-prompt
 
 Clear the pending prompt.
 
@@ -759,16 +759,16 @@ Clear the pending prompt.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 409 | `not_running` | Loop is not running |
+| 404 | `not_found` | Task not found |
+| 409 | `not_running` | Task is not running |
 
 ---
 
-### Loop Data
+### Task Data
 
-#### GET /api/loops/:id/diff
+#### GET /api/tasks/:id/diff
 
-Get the git diff for a loop's changes.
+Get the git diff for a task's changes.
 
 **Response**
 
@@ -795,14 +795,14 @@ Get the git diff for a loop's changes.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `no_git_branch` | No git branch was created for this loop |
-| 400 | `no_worktree` | Loop has no worktree path |
+| 404 | `not_found` | Task not found |
+| 400 | `no_git_branch` | No git branch was created for this task |
+| 400 | `no_worktree` | Task has no worktree path |
 | 500 | `diff_failed` | Diff operation failed |
 
-#### GET /api/loops/:id/plan
+#### GET /api/tasks/:id/plan
 
-Get the contents of `.ralph-planning/plan.md` from the loop's worktree directory.
+Get the contents of `.clanky-planning/plan.md` from the task's worktree directory.
 
 **Response**
 
@@ -817,12 +817,12 @@ Get the contents of `.ralph-planning/plan.md` from the loop's worktree directory
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `no_worktree` | Loop has no worktree path |
+| 404 | `not_found` | Task not found |
+| 400 | `no_worktree` | Task has no worktree path |
 
-#### GET /api/loops/:id/status-file
+#### GET /api/tasks/:id/status-file
 
-Get the contents of `.ralph-planning/status.md` from the loop's worktree directory.
+Get the contents of `.clanky-planning/status.md` from the task's worktree directory.
 
 **Response**
 
@@ -837,14 +837,14 @@ Get the contents of `.ralph-planning/status.md` from the loop's worktree directo
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
-| 400 | `no_worktree` | Loop has no worktree path |
+| 404 | `not_found` | Task not found |
+| 400 | `no_worktree` | Task has no worktree path |
 
-#### GET /api/loops/:id/pull-request
+#### GET /api/tasks/:id/pull-request
 
-Get pull-request navigation metadata for a loop.
+Get pull-request navigation metadata for a task.
 
-Returns an existing GitHub pull-request URL, a compare URL for creating a pull request, or a disabled state when Ralpher cannot determine a safe destination.
+Returns an existing GitHub pull-request URL, a compare URL for creating a pull request, or a disabled state when Clanky cannot determine a safe destination.
 
 **Response (existing pull request)**
 
@@ -872,7 +872,7 @@ Returns an existing GitHub pull-request URL, a compare URL for creating a pull r
 {
   "enabled": false,
   "destinationType": "disabled",
-  "disabledReason": "GitHub CLI is not available in the loop environment."
+  "disabledReason": "GitHub CLI is not available in the task environment."
 }
 ```
 
@@ -880,11 +880,11 @@ Returns an existing GitHub pull-request URL, a compare URL for creating a pull r
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 
-#### GET /api/loops/:id/comments
+#### GET /api/tasks/:id/comments
 
-Get all review comments for a loop.
+Get all review comments for a task.
 
 **Response**
 
@@ -894,7 +894,7 @@ Get all review comments for a loop.
   "comments": [
     {
       "id": "uuid",
-      "loopId": "loop-uuid",
+      "taskId": "task-uuid",
       "reviewCycle": 1,
       "commentText": "Please fix the error handling in the auth module",
       "createdAt": "2026-01-25T10:00:00.000Z",
@@ -909,7 +909,7 @@ Get all review comments for a loop.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 
 ---
 
@@ -917,7 +917,7 @@ Get all review comments for a loop.
 
 Plan mode allows reviewing and refining a plan before execution begins.
 
-#### POST /api/loops/:id/plan/feedback
+#### POST /api/tasks/:id/plan/feedback
 
 Send feedback to refine the plan during planning phase.
 
@@ -941,21 +941,21 @@ Send feedback to refine the plan during planning phase.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 409 | `not_running` | Loop is not running or not found |
-| 400 | `not_planning` | Loop is not in planning status |
+| 409 | `not_running` | Task is not running or not found |
+| 400 | `not_planning` | Task is not in planning status |
 | 400 | `validation_error` | Feedback is empty |
 
-#### POST /api/loops/:id/plan/accept
+#### POST /api/tasks/:id/plan/accept
 
 Accept the plan and either start autonomous execution or hand the work off to SSH.
 
-The request body is optional. When omitted, Ralpher uses the default acceptance behavior.
+The request body is optional. When omitted, Clanky uses the default acceptance behavior.
 
 **Request Body**
 
 ```json
 {
-  "mode": "start_loop"
+  "mode": "start_task"
 }
 ```
 
@@ -964,7 +964,7 @@ The request body is optional. When omitted, Ralpher uses the default acceptance 
 ```json
 {
   "success": true,
-  "mode": "start_loop"
+  "mode": "start_task"
 }
 ```
 
@@ -977,11 +977,11 @@ When the accepted plan is handed off directly to SSH:
   "sshSession": {
     "config": {
       "id": "ssh-uuid",
-      "name": "Loop Shell",
+      "name": "Task Shell",
       "workspaceId": "ws-abc123",
-      "loopId": "abc-123",
+      "taskId": "abc-123",
       "directory": "/path/to/project",
-      "remoteSessionName": "ralpher-abc-123",
+      "remoteSessionName": "clanky-abc-123",
       "createdAt": "2026-01-20T10:00:00.000Z",
       "updatedAt": "2026-01-20T10:00:00.000Z"
     },
@@ -996,11 +996,11 @@ When the accepted plan is handed off directly to SSH:
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 409 | `not_running` | Loop is not running |
-| 400 | `not_planning` | Loop is not in planning status |
+| 409 | `not_running` | Task is not running |
+| 400 | `not_planning` | Task is not in planning status |
 | 400 | `plan_not_ready` | Plan is not ready yet (still generating) |
 
-#### POST /api/loops/:id/plan/question/answer
+#### POST /api/tasks/:id/plan/question/answer
 
 Answer a pending planning-mode question that requires manual input.
 
@@ -1030,13 +1030,13 @@ Each outer array item corresponds to a question. Each inner array contains the s
 | Status | Error | Description |
 |--------|-------|-------------|
 | 409 | `no_pending_plan_question` | There is no question waiting for an answer |
-| 400 | `not_planning` | Loop is not in planning status |
+| 400 | `not_planning` | Task is not in planning status |
 | 400 | `invalid_question_answer` | Answers do not match the question shape/options |
 | 500 | `answer_plan_question_failed` | Failed to submit the answer |
 
-#### POST /api/loops/:id/plan/discard
+#### POST /api/tasks/:id/plan/discard
 
-Discard the plan and delete the loop.
+Discard the plan and delete the task.
 
 **Response**
 
@@ -1050,17 +1050,17 @@ Discard the plan and delete the loop.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 
 ---
 
 ### Review Comments
 
-After a loop is pushed or merged, reviewers can submit comments that the loop will address.
+After a task is pushed or merged, reviewers can submit comments that the task will address.
 
-#### POST /api/loops/:id/address-comments
+#### POST /api/tasks/:id/address-comments
 
-Start addressing reviewer comments. Creates a new review cycle and restarts the loop.
+Start addressing reviewer comments. Creates a new review cycle and restarts the task.
 
 **Request Body**
 
@@ -1085,13 +1085,13 @@ Start addressing reviewer comments. Creates a new review cycle and restarts the 
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 | 400 | `validation_error` | Comments field is required/empty |
-| 409 | `already_running` | Loop is already running |
+| 409 | `already_running` | Task is already running |
 
-#### GET /api/loops/:id/review-history
+#### GET /api/tasks/:id/review-history
 
-Get the review history for a loop, including past review cycles.
+Get the review history for a task, including past review cycles.
 
 **Response**
 
@@ -1111,13 +1111,13 @@ Get the review history for a loop, including past review cycles.
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 404 | `not_found` | Loop not found |
+| 404 | `not_found` | Task not found |
 
-#### POST /api/loops/:id/follow-up
+#### POST /api/tasks/:id/follow-up
 
 Start a new follow-up cycle from a restartable terminal state.
 
-For pushed or merged loops, this starts a review-feedback cycle. For other restartable loop states, it queues the message and restarts the work on the existing loop.
+For pushed or merged tasks, this starts a review-feedback cycle. For other restartable task states, it queues the message and restarts the work on the existing task.
 
 **Request Body**
 
@@ -1149,8 +1149,8 @@ The `model` override is optional and applies to the restarted follow-up work.
 | 400 | `provider_not_found` | The selected provider does not exist for the workspace |
 | 400 | `model_not_found` | The selected model does not exist on the provider |
 | 400 | `model_not_enabled` | The selected model provider is not connected |
-| 400 | `invalid_state` | The loop cannot accept follow-up work in its current state |
-| 404 | `not_found` | Loop not found |
+| 400 | `invalid_state` | The task cannot accept follow-up work in its current state |
+| 404 | `not_found` | Task not found |
 
 ---
 
@@ -1333,7 +1333,7 @@ Get the server log level preference.
 | `level` | Current active log level |
 | `defaultLevel` | Default log level ("info") |
 | `availableLevels` | All valid log level names |
-| `isFromEnv` | Whether the log level was set via `RALPHER_LOG_LEVEL` environment variable |
+| `isFromEnv` | Whether the log level was set via `CLANKY_LOG_LEVEL` environment variable |
 
 #### PUT /api/preferences/log-level
 
@@ -1423,13 +1423,13 @@ Get application configuration based on environment.
 ```json
 {
   "remoteOnly": false,
-  "publicBasePath": "/ralpher"
+  "publicBasePath": "/clanky"
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `remoteOnly` | If true, local `stdio` transport is disabled and only `ssh` transport is allowed (set via RALPHER_REMOTE_ONLY env var) |
+| `remoteOnly` | If true, local `stdio` transport is disabled and only `ssh` transport is allowed (set via CLANKY_REMOTE_ONLY env var) |
 | `publicBasePath` | Optional base path inferred from reverse-proxy `X-Forwarded-Prefix` headers |
 
 ---
@@ -1438,7 +1438,7 @@ Get application configuration based on environment.
 
 #### GET /api/check-planning-dir
 
-Check if a directory has a `.ralph-planning` folder with files.
+Check if a directory has a `.clanky-planning` folder with files.
 
 **Query Parameters**
 
@@ -1480,7 +1480,7 @@ Check if a directory has a `.ralph-planning` folder with files.
 
 ### Workspaces
 
-Workspaces represent project directories managed by Ralpher. Each workspace has its own server connection settings and can have multiple loops.
+Workspaces represent project directories managed by Clanky. Each workspace has its own server connection settings and can have multiple tasks.
 
 #### GET /api/workspaces
 
@@ -1588,11 +1588,11 @@ Delete a workspace.
 | 404 | `workspace_not_found` | Workspace not found |
 | 400 | `delete_failed` | Cannot delete workspace |
 
-#### POST /api/workspaces/:id/archived-loops/purge
+#### POST /api/workspaces/:id/archived-tasks/purge
 
-Purge all archived loops for a workspace.
+Purge all archived tasks for a workspace.
 
-Only loops matching the archived-loop predicate for the target workspace are processed. Archived loops are deleted loops, plus merged, pushed, or accepted-local loops that are no longer awaiting feedback. Pushed or accepted-local loops that remain addressable for reviewer feedback are not purged. The response includes both successful purges and per-loop failures.
+Only tasks matching the archived-task predicate for the target workspace are processed. Archived tasks are deleted tasks, plus merged, pushed, or accepted-local tasks that are no longer awaiting feedback. Pushed or accepted-local tasks that remain addressable for reviewer feedback are not purged. The response includes both successful purges and per-task failures.
 
 **Response**
 
@@ -1602,11 +1602,11 @@ Only loops matching the archived-loop predicate for the target workspace are pro
   "workspaceId": "ws-abc123",
   "totalArchived": 3,
   "purgedCount": 2,
-  "purgedLoopIds": ["loop-1", "loop-2"],
+  "purgedTaskIds": ["task-1", "task-2"],
   "failures": [
     {
-      "loopId": "loop-3",
-      "error": "Cannot purge loop in current state"
+      "taskId": "task-3",
+      "error": "Cannot purge task in current state"
     }
   ]
 }
@@ -1617,7 +1617,7 @@ Only loops matching the archived-loop predicate for the target workspace are pro
 | Status | Error | Description |
 |--------|-------|-------------|
 | 404 | `workspace_not_found` | Workspace not found |
-| 500 | `purge_archived_failed` | Failed to purge archived loops for the workspace |
+| 500 | `purge_archived_failed` | Failed to purge archived tasks for the workspace |
 
 #### GET /api/workspaces/export
 
@@ -1687,7 +1687,7 @@ Import workspace configurations from JSON. Each workspace's directory is validat
 
 ### AGENTS.md Optimization
 
-Manage the workspace's `AGENTS.md` file, which provides AI coding agent guidelines. Ralpher can append an optimization section to improve agent performance with Ralph Loops.
+Manage the workspace's `AGENTS.md` file, which provides AI coding agent guidelines. Clanky can append an optimization section to improve agent performance with Clanky Tasks.
 
 #### GET /api/workspaces/:id/agents-md
 
@@ -1711,7 +1711,7 @@ Get the current AGENTS.md content and optimization status for a workspace.
 |-------|-------------|
 | `content` | File contents (empty string if file doesn't exist) |
 | `fileExists` | Whether the AGENTS.md file exists in the workspace |
-| `analysis.isOptimized` | Whether the file already has a Ralpher optimization section |
+| `analysis.isOptimized` | Whether the file already has a Clanky optimization section |
 | `analysis.currentVersion` | Version of the existing optimization, or `null` |
 | `analysis.updateAvailable` | Whether a newer optimization version is available |
 
@@ -1738,7 +1738,7 @@ Preview what the optimized AGENTS.md would look like without writing changes.
     "updateAvailable": true
   },
   "fileExists": true,
-  "ralpherSection": "## Agentic Workflow — Planning & Progress Tracking\n..."
+  "clankySection": "## Agentic Workflow — Planning & Progress Tracking\n..."
 }
 ```
 
@@ -1748,7 +1748,7 @@ Preview what the optimized AGENTS.md would look like without writing changes.
 | `proposedContent` | What the file would look like after optimization |
 | `analysis` | Current optimization state |
 | `fileExists` | Whether the file currently exists |
-| `ralpherSection` | The Ralpher section that would be added or updated |
+| `clankySection` | The Clanky section that would be added or updated |
 
 **Errors**
 
@@ -1760,7 +1760,7 @@ Preview what the optimized AGENTS.md would look like without writing changes.
 
 #### POST /api/workspaces/:id/agents-md/optimize
 
-Apply the Ralpher optimization to the workspace's AGENTS.md file. If the file already has an optimization section at the current version, returns without changes.
+Apply the Clanky optimization to the workspace's AGENTS.md file. If the file already has an optimization section at the current version, returns without changes.
 
 **Response (optimization applied)**
 
@@ -1830,7 +1830,7 @@ Provider runtime command is derived from `agent.provider`:
 - `opencode` → `opencode acp`
 - `copilot` → `copilot --yolo --acp`
 
-If `RALPHER_MOCK_ACP=true`, local `stdio` launches use the built-in mock ACP runtime regardless of the selected provider so end-to-end tests can exercise ACP transport behavior without an external agent CLI.
+If `CLANKY_MOCK_ACP=true`, local `stdio` launches use the built-in mock ACP runtime regardless of the selected provider so end-to-end tests can exercise ACP transport behavior without an external agent CLI.
 
 #### GET /api/workspaces/:id/server-settings
 
@@ -1988,7 +1988,7 @@ Test a server connection without requiring a workspace. Useful for validating co
 
 #### POST /api/settings/reset-all
 
-Delete database and reinitialize. This is a destructive operation that deletes all loops, workspaces, sessions, and preferences. The database is recreated fresh with all migrations applied.
+Delete database and reinitialize. This is a destructive operation that deletes all tasks, workspaces, sessions, and preferences. The database is recreated fresh with all migrations applied.
 
 **Response**
 
@@ -1999,11 +1999,11 @@ Delete database and reinitialize. This is a destructive operation that deletes a
 }
 ```
 
-#### POST /api/settings/purge-terminal-loops
+#### POST /api/settings/purge-terminal-tasks
 
-Permanently delete archived terminal loops across every workspace. This is a destructive operation that deletes loop data only; workspaces, sessions, and preferences are preserved.
+Permanently delete archived terminal tasks across every workspace. This is a destructive operation that deletes task data only; workspaces, sessions, and preferences are preserved.
 
-The endpoint uses the same archived-loop predicate as the workspace purge endpoint: deleted loops are purged, and merged, pushed, or accepted-local loops are purged only when they are no longer awaiting feedback. Pushed or accepted-local loops that remain addressable for reviewer feedback are not purged, so not every pushed loop is deleted.
+The endpoint uses the same archived-task predicate as the workspace purge endpoint: deleted tasks are purged, and merged, pushed, or accepted-local tasks are purged only when they are no longer awaiting feedback. Pushed or accepted-local tasks that remain addressable for reviewer feedback are not purged, so not every pushed task is deleted.
 
 **Response**
 
@@ -2013,16 +2013,16 @@ The endpoint uses the same archived-loop predicate as the workspace purge endpoi
   "totalWorkspaces": 2,
   "totalArchived": 3,
   "purgedCount": 2,
-  "purgedLoopIds": ["loop-1", "loop-2"],
+  "purgedTaskIds": ["task-1", "task-2"],
   "failures": [
-    { "workspaceId": "workspace-2", "loopId": "loop-3", "error": "permission denied" }
+    { "workspaceId": "workspace-2", "taskId": "task-3", "error": "permission denied" }
   ],
   "workspaces": [
     {
       "workspaceId": "workspace-1",
       "totalArchived": 2,
       "purgedCount": 2,
-      "purgedLoopIds": ["loop-1", "loop-2"],
+      "purgedTaskIds": ["task-1", "task-2"],
       "failures": []
     }
   ]
@@ -2033,7 +2033,7 @@ The endpoint uses the same archived-loop predicate as the workspace purge endpoi
 
 | Status | Error | Description |
 |--------|-------|-------------|
-| 500 | `purge_terminal_loops_failed` | Failed to purge terminal-state loops |
+| 500 | `purge_terminal_tasks_failed` | Failed to purge terminal-state tasks |
 
 ---
 
@@ -2279,7 +2279,7 @@ Delete a standalone SSH server session.
 
 ### Provisioning
 
-Provisioning jobs create or reuse a remote workspace by cloning a repository onto a registered standalone SSH server, preparing the environment, and creating the resulting workspace in Ralpher.
+Provisioning jobs create or reuse a remote workspace by cloning a repository onto a registered standalone SSH server, preparing the environment, and creating the resulting workspace in Clanky.
 
 #### POST /api/provisioning-jobs
 
@@ -2289,7 +2289,7 @@ Create a provisioning job.
 
 ```json
 {
-  "name": "ralpher-demo",
+  "name": "clanky-demo",
   "sshServerId": "ssh-server-uuid",
   "repoUrl": "https://github.com/example/repo.git",
   "basePath": "/workspaces",
@@ -2309,7 +2309,7 @@ Returns the created provisioning job snapshot with status `201 Created`.
   "job": {
     "config": {
       "id": "prov-uuid",
-      "name": "ralpher-demo",
+      "name": "clanky-demo",
       "sshServerId": "ssh-server-uuid",
       "repoUrl": "https://github.com/example/repo.git",
       "basePath": "/workspaces",
@@ -2474,13 +2474,13 @@ Get the default branch for a git repository (e.g., "main" or "master").
 
 #### WS /api/ws
 
-WebSocket endpoint for real-time event streaming. Supports optional loop and SSH-session filtering.
+WebSocket endpoint for real-time event streaming. Supports optional task and SSH-session filtering.
 
 **Query Parameters**
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `loopId` | No | Filter events to a specific loop |
+| `taskId` | No | Filter events to a specific task |
 | `chatId` | No | Filter chat events to a specific chat |
 | `sshSessionId` | No | Filter SSH session events to a specific workspace-backed SSH session |
 | `sshServerSessionId` | No | Filter SSH session events to a specific standalone SSH server session |
@@ -2490,7 +2490,7 @@ WebSocket endpoint for real-time event streaming. Supports optional loop and SSH
 
 ```
 ws://localhost:3000/api/ws              # All events
-ws://localhost:3000/api/ws?loopId=abc   # Events for loop "abc" only
+ws://localhost:3000/api/ws?taskId=abc   # Events for task "abc" only
 ws://localhost:3000/api/ws?sshSessionId=ssh-123
 wss://example.com/api/ws                # Secure WebSocket
 ```
@@ -2498,27 +2498,27 @@ wss://example.com/api/ws                # Secure WebSocket
 **CLI bridge example**
 
 ```bash
-# Connect using stored CLI credentials and stream one loop only
-ralpher-cli ws --loop-id abc-123
+# Connect using stored CLI credentials and stream one task only
+clanky-cli ws --task-id abc-123
 
 # Override the base URL explicitly
-ralpher-cli ws https://example.com/ralpher --provisioning-job-id job-42
+clanky-cli ws https://example.com/clanky --provisioning-job-id job-42
 ```
 
-`ralpher-cli ws` uses the same stored bearer token and cookie state as `ralpher-cli status` and `ralpher-cli api`. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination.
+`clanky-cli ws` uses the same stored bearer token and cookie state as `clanky-cli status` and `clanky-cli api`. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination.
 
 **Connection Message**
 
 Upon successful connection, the server sends a confirmation:
 
 ```json
-{"type":"connected","loopId":null}
+{"type":"connected","taskId":null}
 ```
 
-If `loopId` was specified:
+If `taskId` was specified:
 
 ```json
-{"type":"connected","loopId":"abc-123"}
+{"type":"connected","taskId":"abc-123"}
 ```
 
 **Event Types**
@@ -2527,33 +2527,33 @@ Each event is a JSON object with a `type` field:
 
 | Event Type | Description |
 |------------|-------------|
-| `loop.created` | New loop was created |
-| `loop.started` | Loop execution started |
-| `loop.iteration.start` | Iteration began |
-| `loop.iteration.end` | Iteration completed |
-| `loop.message` | AI message received |
-| `loop.tool_call` | Tool was invoked |
-| `loop.progress` | Streaming text delta |
-| `loop.log` | Application log entry |
-| `loop.git.commit` | Git commit made |
-| `loop.completed` | Loop finished successfully |
-| `loop.ssh_handoff` | Plan was accepted by opening an SSH session instead of starting autonomous execution |
-| `loop.stopped` | Loop was stopped manually |
-| `loop.session_aborted` | AI session was aborted |
-| `loop.error` | Error occurred |
-| `loop.deleted` | Loop was deleted |
-| `loop.accepted` | Branch was merged |
-| `loop.pushed` | Branch was pushed to remote |
-| `loop.discarded` | Branch was deleted |
-| `loop.sync.started` | Branch sync with base started |
-| `loop.sync.clean` | Branch sync completed cleanly |
-| `loop.sync.conflicts` | Merge conflicts detected during sync |
-| `loop.plan.ready` | Plan is ready for review (planning mode) |
-| `loop.plan.feedback` | Feedback was sent on plan |
-| `loop.plan.accepted` | Plan was accepted, execution starting |
-| `loop.plan.discarded` | Plan was discarded, loop deleted |
-| `loop.todo.updated` | TODO list was updated |
-| `loop.pending.updated` | Pending message/model was updated |
+| `task.created` | New task was created |
+| `task.started` | Task execution started |
+| `task.iteration.start` | Iteration began |
+| `task.iteration.end` | Iteration completed |
+| `task.message` | AI message received |
+| `task.tool_call` | Tool was invoked |
+| `task.progress` | Streaming text delta |
+| `task.log` | Application log entry |
+| `task.git.commit` | Git commit made |
+| `task.completed` | Task finished successfully |
+| `task.ssh_handoff` | Plan was accepted by opening an SSH session instead of starting autonomous execution |
+| `task.stopped` | Task was stopped manually |
+| `task.session_aborted` | AI session was aborted |
+| `task.error` | Error occurred |
+| `task.deleted` | Task was deleted |
+| `task.accepted` | Branch was merged |
+| `task.pushed` | Branch was pushed to remote |
+| `task.discarded` | Branch was deleted |
+| `task.sync.started` | Branch sync with base started |
+| `task.sync.clean` | Branch sync completed cleanly |
+| `task.sync.conflicts` | Merge conflicts detected during sync |
+| `task.plan.ready` | Plan is ready for review (planning mode) |
+| `task.plan.feedback` | Feedback was sent on plan |
+| `task.plan.accepted` | Plan was accepted, execution starting |
+| `task.plan.discarded` | Plan was discarded, task deleted |
+| `task.todo.updated` | TODO list was updated |
+| `task.pending.updated` | Pending message/model was updated |
 | `ssh_session.created` | SSH session was created |
 | `ssh_session.updated` | SSH session metadata was updated |
 | `ssh_session.deleted` | SSH session was deleted |
@@ -2578,15 +2578,15 @@ Send a ping message to receive a pong response:
 **Example Events**
 
 ```json
-{"type":"loop.iteration.start","loopId":"abc-123","iteration":3,"timestamp":"2026-01-20T10:15:00.000Z"}
+{"type":"task.iteration.start","taskId":"abc-123","iteration":3,"timestamp":"2026-01-20T10:15:00.000Z"}
 
-{"type":"loop.log","loopId":"abc-123","id":"log-1","level":"info","message":"Sending prompt to AI","timestamp":"2026-01-20T10:15:01.000Z"}
+{"type":"task.log","taskId":"abc-123","id":"log-1","level":"info","message":"Sending prompt to AI","timestamp":"2026-01-20T10:15:01.000Z"}
 
-{"type":"loop.tool_call","loopId":"abc-123","iteration":3,"tool":{"id":"tc-1","name":"Write","input":{"path":"/src/foo.ts"},"status":"running"},"timestamp":"2026-01-20T10:15:05.000Z"}
+{"type":"task.tool_call","taskId":"abc-123","iteration":3,"tool":{"id":"tc-1","name":"Write","input":{"path":"/src/foo.ts"},"status":"running"},"timestamp":"2026-01-20T10:15:05.000Z"}
 
-{"type":"loop.plan.ready","loopId":"abc-123","planContent":"# Plan\n\n## Goals\n...","timestamp":"2026-01-20T10:16:00.000Z"}
+{"type":"task.plan.ready","taskId":"abc-123","planContent":"# Plan\n\n## Goals\n...","timestamp":"2026-01-20T10:16:00.000Z"}
 
-{"type":"loop.todo.updated","loopId":"abc-123","todos":[{"id":"1","content":"Implement feature","status":"in_progress"}],"timestamp":"2026-01-20T10:17:00.000Z"}
+{"type":"task.todo.updated","taskId":"abc-123","todos":[{"id":"1","content":"Implement feature","status":"in_progress"}],"timestamp":"2026-01-20T10:17:00.000Z"}
 ```
 
 **JavaScript Example**
@@ -2637,19 +2637,19 @@ The terminal socket emits events such as `terminal.connected`, `terminal.output`
 
 #### Forwarded Port Proxy Routes
 
-Active loop port forwards are exposed through browser-facing proxy routes:
+Active task port forwards are exposed through browser-facing proxy routes:
 
-- `GET /loop/:loopId/port/:forwardId`
-- `GET /loop/:loopId/port/:forwardId/*`
+- `GET /task/:taskId/port/:forwardId`
+- `GET /task/:taskId/port/:forwardId/*`
 - WebSocket upgrades on the same paths
 
-These routes proxy HTTP and WebSocket traffic to the loop's forwarded remote service and rewrite absolute paths/redirects so browser apps can run under the loop-scoped prefix.
+These routes proxy HTTP and WebSocket traffic to the task's forwarded remote service and rewrite absolute paths/redirects so browser apps can run under the task-scoped prefix.
 
 ---
 
 ## Data Types
 
-### Loop Status
+### Task Status
 
 | Status | Description |
 |--------|-------------|
@@ -2681,7 +2681,7 @@ Note: Only `deleted` is a true terminal state (no further transitions possible).
 
 ### Log Levels
 
-Log levels used in `loop.log` events:
+Log levels used in `task.log` events:
 
 | Level | Description |
 |-------|-------------|
@@ -2704,26 +2704,26 @@ Log levels used in `loop.log` events:
 
 | Outcome | Description |
 |---------|-------------|
-| `continue` | Iteration complete, loop continues |
-| `complete` | Stop pattern matched, loop complete |
+| `continue` | Iteration complete, task continues |
+| `complete` | Stop pattern matched, task complete |
 | `error` | Error occurred during iteration |
 | `plan_ready` | Plan created and ready for review (planning mode) |
 
 ### Commit Message Format
 
-Ralpher generates commit messages following the [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification:
+Clanky generates commit messages following the [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification:
 
 ```
 type: description
 type(scope): description
 ```
 
-Ralpher defaults to scope-less commit messages. When `git.commitScope` is set, it should name a meaningful module, section, or topic touched by the change. Generic placeholder values such as `"ralph"` are omitted. Valid types: `feat`, `fix`, `refactor`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `perf`, `revert`.
+Clanky defaults to scope-less commit messages. When `git.commitScope` is set, it should name a meaningful module, section, or topic touched by the change. Generic placeholder values such as `"clanky"` are omitted. Valid types: `feat`, `fix`, `refactor`, `docs`, `style`, `test`, `build`, `ci`, `chore`, `perf`, `revert`.
 
 Examples:
 - `feat: add JWT authentication endpoint`
 - `fix(auth): handle token expiration edge case`
-- `chore(api): update loop creation request docs`
+- `chore(api): update task creation request docs`
 
 ### TODO Item
 
@@ -2738,13 +2738,13 @@ Examples:
 
 ## Examples
 
-### Create a Loop
+### Create a Task
 
-Loops are automatically started upon creation (unless `draft: true`).
+Tasks are automatically started upon creation (unless `draft: true`).
 
 ```bash
-# Create a loop (starts automatically)
-curl -X POST http://localhost:3000/api/loops \
+# Create a task (starts automatically)
+curl -X POST http://localhost:3000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "name": "implement-jwt-authentication",
@@ -2758,16 +2758,16 @@ curl -X POST http://localhost:3000/api/loops \
 # Response: {"config":{"id":"abc-123",...},"state":{"status":"running",...}}
 
 # Watch events via WebSocket (use wscat or similar)
-wscat -c ws://localhost:3000/api/ws?loopId=abc-123
+wscat -c ws://localhost:3000/api/ws?taskId=abc-123
 ```
 
-### Create a Draft Loop
+### Create a Draft Task
 
-Draft loops are saved without starting. You can edit them before starting.
+Draft tasks are saved without starting. You can edit them before starting.
 
 ```bash
-# Create a draft loop
-curl -X POST http://localhost:3000/api/loops \
+# Create a draft task
+curl -X POST http://localhost:3000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "name": "implement-jwt-authentication",
@@ -2782,25 +2782,25 @@ curl -X POST http://localhost:3000/api/loops \
 # Response: {"config":{"id":"abc-123",...},"state":{"status":"draft",...}}
 
 # Later, update the draft
-curl -X PUT http://localhost:3000/api/loops/abc-123 \
+curl -X PUT http://localhost:3000/api/tasks/abc-123 \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "Implement JWT-based authentication with refresh tokens"
   }'
 
 # Start the draft
-curl -X POST http://localhost:3000/api/loops/abc-123/draft/start \
+curl -X POST http://localhost:3000/api/tasks/abc-123/draft/start \
   -H "Content-Type: application/json" \
   -d '{"planMode": false}'
 ```
 
-### Create a Loop with Plan Mode
+### Create a Task with Plan Mode
 
 Plan mode lets you review and refine the plan before execution.
 
 ```bash
-# Create a loop in plan mode
-curl -X POST http://localhost:3000/api/loops \
+# Create a task in plan mode
+curl -X POST http://localhost:3000/api/tasks \
   -H "Content-Type: application/json" \
   -d '{
     "name": "refactor-auth-module",
@@ -2814,47 +2814,47 @@ curl -X POST http://localhost:3000/api/loops \
 # Response: {"config":{"id":"abc-123",...},"state":{"status":"planning",...}}
 
 # Send feedback on the plan
-curl -X POST http://localhost:3000/api/loops/abc-123/plan/feedback \
+curl -X POST http://localhost:3000/api/tasks/abc-123/plan/feedback \
   -H "Content-Type: application/json" \
   -d '{"feedback": "Also consider adding error handling for token expiration"}'
 
 # Accept the plan and start execution
-curl -X POST http://localhost:3000/api/loops/abc-123/plan/accept
+curl -X POST http://localhost:3000/api/tasks/abc-123/plan/accept
 ```
 
 ### Modify Next Iteration Prompt
 
 ```bash
-# While loop is running, set a pending prompt
-curl -X PUT http://localhost:3000/api/loops/abc-123/pending-prompt \
+# While task is running, set a pending prompt
+curl -X PUT http://localhost:3000/api/tasks/abc-123/pending-prompt \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Continue, but also add unit tests for the auth module"}'
 ```
 
-### Accept Completed Loop
+### Accept Completed Task
 
 ```bash
-# After loop completes, review and accept
-curl -X POST http://localhost:3000/api/loops/abc-123/accept
+# After task completes, review and accept
+curl -X POST http://localhost:3000/api/tasks/abc-123/accept
 # Response: {"success":true,"mergeCommit":"def456..."}
 ```
 
 ### Address Reviewer Comments
 
-After pushing a loop, you can address reviewer comments:
+After pushing a task, you can address reviewer comments:
 
 ```bash
-# Push the loop first
-curl -X POST http://localhost:3000/api/loops/abc-123/push
+# Push the task first
+curl -X POST http://localhost:3000/api/tasks/abc-123/push
 # Response: {"success":true,"remoteBranch":"add-dark-mode-toggle-a1b2c3d","syncStatus":"clean"}
 
 # Later, address reviewer comments
-curl -X POST http://localhost:3000/api/loops/abc-123/address-comments \
+curl -X POST http://localhost:3000/api/tasks/abc-123/address-comments \
   -H "Content-Type: application/json" \
   -d '{"comments": "Please fix the type errors and add error handling"}'
 # Response: {"success":true,"reviewCycle":1,"branch":"add-dark-mode-toggle-a1b2c3d-review-1"}
 
 # Get review history
-curl http://localhost:3000/api/loops/abc-123/review-history
+curl http://localhost:3000/api/tasks/abc-123/review-history
 # Response: {"success":true,"history":{"addressable":true,"completionAction":"push","reviewCycles":1,"reviewBranches":[]}}
 ```

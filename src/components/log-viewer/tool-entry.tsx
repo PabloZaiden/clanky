@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo, useState } from "react";
 import type { ToolCallData } from "../../types";
 import { getDiffFileStatusPresentation } from "../common/diff-file-status";
 import { ImageViewerModal } from "../ImageViewerModal";
-import { DiffPatchViewer } from "../loop-details/diff-patch-viewer";
+import { DiffPatchViewer } from "../task-details/diff-patch-viewer";
 import { HighlightedJsonBlock } from "./highlighted-json-block";
 import { LazyDetails } from "./lazy-details";
 import { formatTime } from "./utils";

@@ -11,10 +11,10 @@ import { createMockApi, MockApiError } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor } from "../helpers/render";
 import {
-  createLoopWithStatus,
+  createTaskWithStatus,
   createWorkspace,
   createModelInfo,
-  createLoopError,
+  createTaskError,
 } from "../helpers/factories";
 import { App } from "@/App";
 
@@ -42,10 +42,10 @@ function setupBaseApi() {
   }));
   api.get("/api/git/default-branch", () => ({ defaultBranch: "main" }));
   api.get("/api/check-planning-dir", () => ({ warning: null }));
-  api.get("/api/loops/:id/diff", () => []);
-  api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-  api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-  api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
+  api.get("/api/tasks/:id/diff", () => []);
+  api.get("/api/tasks/:id/plan", () => ({ exists: false, content: "" }));
+  api.get("/api/tasks/:id/status-file", () => ({ exists: false, content: "" }));
+  api.get("/api/tasks/:id/comments", () => ({ success: true, comments: [] }));
   api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
 }
 
@@ -86,53 +86,53 @@ afterEach(() => {
 // ─── Error handling scenarios ────────────────────────────────────────────────
 
 describe("error handling scenario", () => {
-  async function navigateToLoopRoute(loopId: string) {
+  async function navigateToTaskRoute(taskId: string) {
     await act(async () => {
-      window.location.hash = `#/loop/${loopId}`;
+      window.location.hash = `#/task/${taskId}`;
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
   }
 
-  test("failed loop shows error message on loop card", async () => {
+  test("failed task shows error message on task card", async () => {
     setupBaseApi();
 
-    const failedLoop = createLoopWithStatus("failed", {
-      config: { id: "fail-1", name: "Failed Loop", directory: "/workspaces/my-project", workspaceId: "ws-1" },
+    const failedTask = createTaskWithStatus("failed", {
+      config: { id: "fail-1", name: "Failed Task", directory: "/workspaces/my-project", workspaceId: "ws-1" },
       state: {
-        error: createLoopError({ message: "Process crashed unexpectedly" }),
+        error: createTaskError({ message: "Process crashed unexpectedly" }),
       },
     });
 
-    api.get("/api/loops", () => [failedLoop]);
+    api.get("/api/tasks", () => [failedTask]);
     api.get("/api/workspaces", () => [WORKSPACE]);
 
     const { getAllByText } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Failed Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Failed Task").length).toBeGreaterThan(0);
     });
 
     // Status badge shows "Failed"
     expect(getAllByText("Failed").length).toBeGreaterThan(0);
   });
 
-  test("loop details shows error state for failed loops", async () => {
+  test("task details shows error state for failed tasks", async () => {
     setupBaseApi();
 
-    const failedLoop = createLoopWithStatus("failed", {
+    const failedTask = createTaskWithStatus("failed", {
       config: { id: "fail-detail-1", name: "Detail Failure", directory: "/workspaces/my-project", workspaceId: "ws-1" },
       state: {
-        error: createLoopError({ message: "API rate limit exceeded" }),
+        error: createTaskError({ message: "API rate limit exceeded" }),
       },
     });
 
-    api.get("/api/loops", () => [failedLoop]);
-    api.get("/api/loops/:id", () => failedLoop);
+    api.get("/api/tasks", () => [failedTask]);
+    api.get("/api/tasks/:id", () => failedTask);
     api.get("/api/workspaces", () => [WORKSPACE]);
 
     const { getAllByText } = renderWithUser(<App />);
 
-    await navigateToLoopRoute("fail-detail-1");
+    await navigateToTaskRoute("fail-detail-1");
 
     await waitFor(() => {
       expect(getAllByText("Detail Failure").length).toBeGreaterThan(0);
@@ -144,31 +144,31 @@ describe("error handling scenario", () => {
     });
   });
 
-  test("loop not found shows error page", async () => {
+  test("task not found shows error page", async () => {
     setupBaseApi();
 
-    api.get("/api/loops", () => []);
-    api.get("/api/loops/:id", () => {
-      throw new MockApiError(404, { error: "not_found", message: "Loop not found" });
+    api.get("/api/tasks", () => []);
+    api.get("/api/tasks/:id", () => {
+      throw new MockApiError(404, { error: "not_found", message: "Task not found" });
     });
     api.get("/api/workspaces", () => [WORKSPACE]);
 
     const { getByText } = renderWithUser(<App />);
 
-    await navigateToLoopRoute("nonexistent-loop");
+    await navigateToTaskRoute("nonexistent-task");
 
     await waitFor(() => {
-      expect(document.body.textContent).toContain("Loop not found");
+      expect(document.body.textContent).toContain("Task not found");
     });
-    expect(getByText("Loop not found")).toBeTruthy();
+    expect(getByText("Task not found")).toBeTruthy();
   });
 
-  test("create loop with 409 uncommitted changes shows conflict modal", async () => {
+  test("create task with 409 uncommitted changes shows conflict modal", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => [WORKSPACE]);
     api.post(
-      "/api/loops",
+      "/api/tasks",
       () => ({
         error: "uncommitted_changes",
         message: "Directory has uncommitted changes.",
@@ -180,14 +180,14 @@ describe("error handling scenario", () => {
     const { getByRole, getByLabelText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
-    const loopsNewButton = getSectionActionButton("Loops");
-    expect(loopsNewButton).toBeTruthy();
-    await user.click(loopsNewButton!);
+    const tasksNewButton = getSectionActionButton("Tasks");
+    expect(tasksNewButton).toBeTruthy();
+    await user.click(tasksNewButton!);
     await waitFor(() => {
-      expect(getByRole("heading", { name: /Start a new loop/ })).toBeTruthy();
+      expect(getByRole("heading", { name: /Start a new task/ })).toBeTruthy();
     });
 
     // Select workspace
@@ -204,7 +204,7 @@ describe("error handling scenario", () => {
 
     // Fill required fields
     const titleInput = getByLabelText(/Title/) as HTMLInputElement;
-    await user.type(titleInput, "Conflict Loop");
+    await user.type(titleInput, "Conflict Task");
 
     const promptTextarea = getByLabelText(/Prompt/) as HTMLTextAreaElement;
     await user.type(promptTextarea, "X");
@@ -220,21 +220,21 @@ describe("error handling scenario", () => {
     });
   });
 
-  test("accept loop failure shows error in modal", async () => {
+  test("accept task failure shows error in modal", async () => {
     setupBaseApi();
 
-    const loop = createLoopWithStatus("completed", {
+    const task = createTaskWithStatus("completed", {
       config: { id: "accept-fail-1", name: "Accept Fail", directory: "/workspaces/my-project", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [loop]);
-    api.get("/api/loops/:id", () => loop);
+    api.get("/api/tasks", () => [task]);
+    api.get("/api/tasks/:id", () => task);
     api.get("/api/workspaces", () => [WORKSPACE]);
-    api.post("/api/loops/:id/accept", () => ({ error: "Merge conflict detected" }), 500);
+    api.post("/api/tasks/:id/accept", () => ({ error: "Merge conflict detected" }), 500);
 
     const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
 
-    await navigateToLoopRoute("accept-fail-1");
+    await navigateToTaskRoute("accept-fail-1");
 
     await waitFor(() => {
       expect(getAllByText("Accept Fail").length).toBeGreaterThan(0);
@@ -255,9 +255,9 @@ describe("error handling scenario", () => {
     );
     await user.click(acceptBtn!);
 
-    // AcceptLoopModal opens
+    // AcceptTaskModal opens
     await waitFor(() => {
-      expect(getByText("Finalize Loop")).toBeTruthy();
+      expect(getByText("Finalize Task")).toBeTruthy();
     });
 
     // Click Accept Locally
@@ -268,28 +268,28 @@ describe("error handling scenario", () => {
 
     // The API was called (even if it fails)
     await waitFor(() => {
-      const calls = api.calls("/api/loops/:id/accept", "POST");
+      const calls = api.calls("/api/tasks/:id/accept", "POST");
       expect(calls.length).toBeGreaterThan(0);
     });
   });
 
-  test("multiple loops in different error states display correctly", async () => {
+  test("multiple tasks in different error states display correctly", async () => {
     setupBaseApi();
 
-    const failedLoop = createLoopWithStatus("failed", {
+    const failedTask = createTaskWithStatus("failed", {
       config: { id: "multi-fail", name: "Failure One", directory: "/workspaces/my-project", workspaceId: "ws-1" },
       state: {
-        error: createLoopError({ message: "Timeout error" }),
+        error: createTaskError({ message: "Timeout error" }),
       },
     });
-    const stoppedLoop = createLoopWithStatus("stopped", {
+    const stoppedTask = createTaskWithStatus("stopped", {
       config: { id: "multi-stop", name: "Stopped One", directory: "/workspaces/my-project", workspaceId: "ws-1" },
     });
-    const maxIterLoop = createLoopWithStatus("max_iterations", {
+    const maxIterTask = createTaskWithStatus("max_iterations", {
       config: { id: "multi-max", name: "Maxed Out", directory: "/workspaces/my-project", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [failedLoop, stoppedLoop, maxIterLoop]);
+    api.get("/api/tasks", () => [failedTask, stoppedTask, maxIterTask]);
     api.get("/api/workspaces", () => [WORKSPACE]);
 
     const { getAllByText } = renderWithUser(<App />);

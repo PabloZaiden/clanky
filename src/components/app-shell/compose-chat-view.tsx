@@ -13,7 +13,7 @@ import {
   modelVariantExists,
   parseModelKey,
 } from "../ModelSelector";
-import { BranchSelector } from "../create-loop/branch-selector";
+import { BranchSelector } from "../create-task/branch-selector";
 import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
@@ -291,7 +291,7 @@ export function ComposeChatView({
                 Use worktree
               </span>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Keep the chat session isolated in its own Ralph worktree when supported.
+                Keep the chat session isolated in its own Clanky worktree when supported.
               </p>
             </div>
           </label>

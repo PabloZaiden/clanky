@@ -18,7 +18,7 @@ describe("GitService Worktree Operations", () => {
   beforeEach(async () => {
     // Resolve symlinks (macOS /var → /private/var) to match git's resolved paths
     testDir = await createTempGitRepository({
-      prefix: "ralpher-worktree-test-",
+      prefix: "clanky-worktree-test-",
       resolveRealpath: true,
       initialCommit: "empty",
     });
@@ -32,9 +32,9 @@ describe("GitService Worktree Operations", () => {
 
   describe("createWorktree", () => {
     test("creates a worktree with a new branch", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "test-loop-1");
+      const worktreePath = join(testDir, ".clanky-worktrees", "test-task-1");
 
-      await git.createWorktree(testDir, worktreePath, "ralph/test-branch");
+      await git.createWorktree(testDir, worktreePath, "clanky/test-branch");
 
       // Verify worktree directory exists
       const exists = await Bun.file(join(worktreePath, ".git")).exists();
@@ -42,7 +42,7 @@ describe("GitService Worktree Operations", () => {
 
       // Verify the branch is checked out in the worktree
       const branch = (await Bun.$`git -C ${worktreePath} branch --show-current`.text()).trim();
-      expect(branch).toBe("ralph/test-branch");
+      expect(branch).toBe("clanky/test-branch");
     });
 
     test("creates a worktree from a specific base branch", async () => {
@@ -57,29 +57,29 @@ describe("GitService Worktree Operations", () => {
       await Bun.$`git -C ${testDir} checkout ${defaultBranch}`.quiet().nothrow();
 
       // Create worktree based on feature branch
-      const worktreePath = join(testDir, ".ralph-worktrees", "loop-from-feature");
-      await git.createWorktree(testDir, worktreePath, "ralph/from-feature", "feature");
+      const worktreePath = join(testDir, ".clanky-worktrees", "task-from-feature");
+      await git.createWorktree(testDir, worktreePath, "clanky/from-feature", "feature");
 
       // Verify the worktree has the feature branch commit
       const log = (await Bun.$`git -C ${worktreePath} log --oneline -1`.text()).trim();
       expect(log).toContain("Feature commit");
     });
 
-    test("adds .ralph-worktrees to .git/info/exclude", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "test-exclude");
+    test("adds .clanky-worktrees to .git/info/exclude", async () => {
+      const worktreePath = join(testDir, ".clanky-worktrees", "test-exclude");
 
-      await git.createWorktree(testDir, worktreePath, "ralph/exclude-test");
+      await git.createWorktree(testDir, worktreePath, "clanky/exclude-test");
 
       // Read the exclude file
       const excludeContent = await readFile(join(testDir, ".git", "info", "exclude"), "utf-8");
-      expect(excludeContent).toContain(".ralph-worktrees");
+      expect(excludeContent).toContain(".clanky-worktrees");
     });
 
     test("throws when branch already exists", async () => {
       // Create a branch first
       await Bun.$`git -C ${testDir} branch existing-branch`.quiet();
 
-      const worktreePath = join(testDir, ".ralph-worktrees", "existing-test");
+      const worktreePath = join(testDir, ".clanky-worktrees", "existing-test");
 
       await expect(
         git.createWorktree(testDir, worktreePath, "existing-branch")
@@ -87,18 +87,18 @@ describe("GitService Worktree Operations", () => {
     });
 
     test("creates multiple worktrees with unique branches", async () => {
-      const path1 = join(testDir, ".ralph-worktrees", "loop-1");
-      const path2 = join(testDir, ".ralph-worktrees", "loop-2");
+      const path1 = join(testDir, ".clanky-worktrees", "task-1");
+      const path2 = join(testDir, ".clanky-worktrees", "task-2");
 
-      await git.createWorktree(testDir, path1, "ralph/branch-1");
-      await git.createWorktree(testDir, path2, "ralph/branch-2");
+      await git.createWorktree(testDir, path1, "clanky/branch-1");
+      await git.createWorktree(testDir, path2, "clanky/branch-2");
 
       // Verify both worktrees exist and have correct branches
       const branch1 = (await Bun.$`git -C ${path1} branch --show-current`.text()).trim();
       const branch2 = (await Bun.$`git -C ${path2} branch --show-current`.text()).trim();
 
-      expect(branch1).toBe("ralph/branch-1");
-      expect(branch2).toBe("ralph/branch-2");
+      expect(branch1).toBe("clanky/branch-1");
+      expect(branch2).toBe("clanky/branch-2");
     });
   });
 
@@ -107,7 +107,7 @@ describe("GitService Worktree Operations", () => {
       // Create a branch
       await Bun.$`git -C ${testDir} branch existing-branch`.quiet();
 
-      const worktreePath = join(testDir, ".ralph-worktrees", "reuse-test");
+      const worktreePath = join(testDir, ".clanky-worktrees", "reuse-test");
       await git.addWorktreeForExistingBranch(testDir, worktreePath, "existing-branch");
 
       // Verify worktree has the correct branch
@@ -116,7 +116,7 @@ describe("GitService Worktree Operations", () => {
     });
 
     test("throws when branch does not exist", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "nonexistent-test");
+      const worktreePath = join(testDir, ".clanky-worktrees", "nonexistent-test");
 
       await expect(
         git.addWorktreeForExistingBranch(testDir, worktreePath, "nonexistent-branch")
@@ -126,8 +126,8 @@ describe("GitService Worktree Operations", () => {
 
   describe("removeWorktree", () => {
     test("removes an existing worktree", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "to-remove");
-      await git.createWorktree(testDir, worktreePath, "ralph/to-remove");
+      const worktreePath = join(testDir, ".clanky-worktrees", "to-remove");
+      await git.createWorktree(testDir, worktreePath, "clanky/to-remove");
 
       // Verify it exists first
       expect(await Bun.file(join(worktreePath, ".git")).exists()).toBe(true);
@@ -141,8 +141,8 @@ describe("GitService Worktree Operations", () => {
     });
 
     test("force-removes a worktree with uncommitted changes", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "dirty-remove");
-      await git.createWorktree(testDir, worktreePath, "ralph/dirty-remove");
+      const worktreePath = join(testDir, ".clanky-worktrees", "dirty-remove");
+      await git.createWorktree(testDir, worktreePath, "clanky/dirty-remove");
 
       // Create an uncommitted file in the worktree
       await Bun.$`touch ${worktreePath}/dirty-file.txt`.quiet();
@@ -161,7 +161,7 @@ describe("GitService Worktree Operations", () => {
     });
 
     test("throws when worktree path does not exist", async () => {
-      const fakePath = join(testDir, ".ralph-worktrees", "nonexistent");
+      const fakePath = join(testDir, ".clanky-worktrees", "nonexistent");
 
       await expect(
         git.removeWorktree(testDir, fakePath)
@@ -179,11 +179,11 @@ describe("GitService Worktree Operations", () => {
     });
 
     test("lists created worktrees", async () => {
-      const path1 = join(testDir, ".ralph-worktrees", "wt-1");
-      const path2 = join(testDir, ".ralph-worktrees", "wt-2");
+      const path1 = join(testDir, ".clanky-worktrees", "wt-1");
+      const path2 = join(testDir, ".clanky-worktrees", "wt-2");
 
-      await git.createWorktree(testDir, path1, "ralph/wt-1");
-      await git.createWorktree(testDir, path2, "ralph/wt-2");
+      await git.createWorktree(testDir, path1, "clanky/wt-1");
+      await git.createWorktree(testDir, path2, "clanky/wt-2");
 
       const worktrees = await git.listWorktrees(testDir);
 
@@ -197,13 +197,13 @@ describe("GitService Worktree Operations", () => {
       // Verify branches
       const wt1 = worktrees.find(wt => wt.path === path1);
       const wt2 = worktrees.find(wt => wt.path === path2);
-      expect(wt1!.branch).toBe("ralph/wt-1");
-      expect(wt2!.branch).toBe("ralph/wt-2");
+      expect(wt1!.branch).toBe("clanky/wt-1");
+      expect(wt2!.branch).toBe("clanky/wt-2");
     });
 
     test("shows correct branch after worktree removal", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "wt-temp");
-      await git.createWorktree(testDir, worktreePath, "ralph/wt-temp");
+      const worktreePath = join(testDir, ".clanky-worktrees", "wt-temp");
+      await git.createWorktree(testDir, worktreePath, "clanky/wt-temp");
 
       let worktrees = await git.listWorktrees(testDir);
       expect(worktrees.length).toBe(2);
@@ -218,22 +218,22 @@ describe("GitService Worktree Operations", () => {
 
   describe("worktreeExists", () => {
     test("returns true for an existing worktree", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "exists-test");
-      await git.createWorktree(testDir, worktreePath, "ralph/exists-test");
+      const worktreePath = join(testDir, ".clanky-worktrees", "exists-test");
+      await git.createWorktree(testDir, worktreePath, "clanky/exists-test");
 
       const exists = await git.worktreeExists(testDir, worktreePath);
       expect(exists).toBe(true);
     });
 
     test("returns false for a non-existent worktree", async () => {
-      const fakePath = join(testDir, ".ralph-worktrees", "no-such-worktree");
+      const fakePath = join(testDir, ".clanky-worktrees", "no-such-worktree");
       const exists = await git.worktreeExists(testDir, fakePath);
       expect(exists).toBe(false);
     });
 
     test("returns false after worktree is removed", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "removed-test");
-      await git.createWorktree(testDir, worktreePath, "ralph/removed-test");
+      const worktreePath = join(testDir, ".clanky-worktrees", "removed-test");
+      await git.createWorktree(testDir, worktreePath, "clanky/removed-test");
 
       expect(await git.worktreeExists(testDir, worktreePath)).toBe(true);
 
@@ -255,7 +255,7 @@ describe("GitService Worktree Operations", () => {
 
       const originalListWorktrees = git.listWorktrees.bind(git);
       git.listWorktrees = async () => [
-        { path: canonicalWorktreePath, head: "deadbeef", branch: "ralph/stale-symlinked" },
+        { path: canonicalWorktreePath, head: "deadbeef", branch: "clanky/stale-symlinked" },
       ];
 
       try {
@@ -268,8 +268,8 @@ describe("GitService Worktree Operations", () => {
 
   describe("pruneWorktrees", () => {
     test("prunes stale worktree entries", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "stale-test");
-      await git.createWorktree(testDir, worktreePath, "ralph/stale-test");
+      const worktreePath = join(testDir, ".clanky-worktrees", "stale-test");
+      await git.createWorktree(testDir, worktreePath, "clanky/stale-test");
 
       // Manually delete the worktree directory (simulating external deletion)
       await rm(worktreePath, { recursive: true, force: true });
@@ -295,8 +295,8 @@ describe("GitService Worktree Operations", () => {
 
   describe("ensureWorktreeRemoved", () => {
     test("prunes stale worktree metadata when the directory was deleted externally", async () => {
-      const worktreePath = join(testDir, ".ralph-worktrees", "externally-deleted");
-      await git.createWorktree(testDir, worktreePath, "ralph/externally-deleted");
+      const worktreePath = join(testDir, ".clanky-worktrees", "externally-deleted");
+      await git.createWorktree(testDir, worktreePath, "clanky/externally-deleted");
 
       await rm(worktreePath, { recursive: true, force: true });
 
@@ -308,7 +308,7 @@ describe("GitService Worktree Operations", () => {
     });
 
     test("throws when a leftover worktree directory still exists after cleanup", async () => {
-      const orphanPath = join(testDir, ".ralph-worktrees", "orphaned-directory");
+      const orphanPath = join(testDir, ".clanky-worktrees", "orphaned-directory");
       await Bun.$`mkdir -p ${orphanPath}`.quiet();
 
       await expect(
@@ -325,8 +325,8 @@ describe("GitService Worktree Operations", () => {
       await git.ensureWorktreeExcluded(testDir);
 
       const content = await readFile(join(testDir, ".git", "info", "exclude"), "utf-8");
-      expect(content).toContain(".ralph-worktrees");
-      expect(content).toContain(".ralph-planning");
+      expect(content).toContain(".clanky-worktrees");
+      expect(content).toContain(".clanky-planning");
     });
 
     test("appends to existing .git/info/exclude without duplicating", async () => {
@@ -338,15 +338,15 @@ describe("GitService Worktree Operations", () => {
 
       let content = await readFile(excludePath, "utf-8");
       expect(content).toContain("*.log");
-      expect(content).toContain(".ralph-worktrees");
-      expect(content).toContain(".ralph-planning");
+      expect(content).toContain(".clanky-worktrees");
+      expect(content).toContain(".clanky-planning");
 
       // Call again — should not duplicate
       await git.ensureWorktreeExcluded(testDir);
 
       content = await readFile(excludePath, "utf-8");
-      expect((content.match(/\.ralph-worktrees/g) || []).length).toBe(1);
-      expect((content.match(/\.ralph-planning/g) || []).length).toBe(1);
+      expect((content.match(/\.clanky-worktrees/g) || []).length).toBe(1);
+      expect((content.match(/\.clanky-planning/g) || []).length).toBe(1);
     });
 
     test("is idempotent when entry already exists", async () => {
@@ -355,14 +355,14 @@ describe("GitService Worktree Operations", () => {
       await git.ensureWorktreeExcluded(testDir);
 
       const content = await readFile(join(testDir, ".git", "info", "exclude"), "utf-8");
-      expect((content.match(/\.ralph-worktrees/g) || []).length).toBe(1);
-      expect((content.match(/\.ralph-planning/g) || []).length).toBe(1);
+      expect((content.match(/\.clanky-worktrees/g) || []).length).toBe(1);
+      expect((content.match(/\.clanky-planning/g) || []).length).toBe(1);
     });
 
     test("works when called from a worktree directory (where .git is a file)", async () => {
       // Create a worktree first
-      const worktreePath = join(testDir, ".ralph-worktrees", "wt-exclude-test");
-      await git.createWorktree(testDir, worktreePath, "ralph/wt-exclude-test");
+      const worktreePath = join(testDir, ".clanky-worktrees", "wt-exclude-test");
+      await git.createWorktree(testDir, worktreePath, "clanky/wt-exclude-test");
 
       // Clear the exclude file to reset state
       const mainExcludePath = join(testDir, ".git", "info", "exclude");
@@ -378,18 +378,18 @@ describe("GitService Worktree Operations", () => {
       // The exclude entry should be written to the main repo's .git/info/exclude,
       // not to a non-existent .git/info/exclude inside the worktree
       const content = await readFile(mainExcludePath, "utf-8");
-      expect(content).toContain(".ralph-worktrees");
-      expect(content).toContain(".ralph-planning");
+      expect(content).toContain(".clanky-worktrees");
+      expect(content).toContain(".clanky-planning");
     });
   });
 
   describe("worktree isolation", () => {
     test("changes in one worktree do not affect another", async () => {
-      const path1 = join(testDir, ".ralph-worktrees", "isolated-1");
-      const path2 = join(testDir, ".ralph-worktrees", "isolated-2");
+      const path1 = join(testDir, ".clanky-worktrees", "isolated-1");
+      const path2 = join(testDir, ".clanky-worktrees", "isolated-2");
 
-      await git.createWorktree(testDir, path1, "ralph/isolated-1");
-      await git.createWorktree(testDir, path2, "ralph/isolated-2");
+      await git.createWorktree(testDir, path1, "clanky/isolated-1");
+      await git.createWorktree(testDir, path2, "clanky/isolated-2");
 
       // Create a file in worktree 1
       await Bun.write(join(path1, "file-from-wt1.txt"), "content from wt1");
@@ -408,8 +408,8 @@ describe("GitService Worktree Operations", () => {
     test("main checkout branch is unchanged after worktree operations", async () => {
       const mainBranch = await git.getCurrentBranch(testDir);
 
-      const worktreePath = join(testDir, ".ralph-worktrees", "no-affect-main");
-      await git.createWorktree(testDir, worktreePath, "ralph/no-affect-main");
+      const worktreePath = join(testDir, ".clanky-worktrees", "no-affect-main");
+      await git.createWorktree(testDir, worktreePath, "clanky/no-affect-main");
 
       // Verify main checkout is still on the same branch
       const branchAfter = await git.getCurrentBranch(testDir);
@@ -417,11 +417,11 @@ describe("GitService Worktree Operations", () => {
     });
 
     test("each worktree has independent staging area", async () => {
-      const path1 = join(testDir, ".ralph-worktrees", "staging-1");
-      const path2 = join(testDir, ".ralph-worktrees", "staging-2");
+      const path1 = join(testDir, ".clanky-worktrees", "staging-1");
+      const path2 = join(testDir, ".clanky-worktrees", "staging-2");
 
-      await git.createWorktree(testDir, path1, "ralph/staging-1");
-      await git.createWorktree(testDir, path2, "ralph/staging-2");
+      await git.createWorktree(testDir, path1, "clanky/staging-1");
+      await git.createWorktree(testDir, path2, "clanky/staging-2");
 
       // Stage a file in worktree 1
       await Bun.write(join(path1, "staged.txt"), "staged content");

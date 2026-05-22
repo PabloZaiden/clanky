@@ -75,8 +75,8 @@ export interface SshSessionConfig {
   name: SshSessionBaseConfig["name"];
   /** Workspace that owns this session */
   workspaceId: string;
-  /** Optional loop associated with this session */
-  loopId?: string;
+  /** Optional task associated with this session */
+  taskId?: string;
   /** Working directory used when creating the persistent session shell or direct shell */
   directory: string;
   /** How this saved session connects to the remote host */
@@ -124,8 +124,8 @@ export interface SshSession {
 export interface PortForwardConfig {
   /** Unique identifier (UUID v4) */
   id: string;
-  /** Loop that owns this forward */
-  loopId: string;
+  /** Task that owns this forward */
+  taskId: string;
   /** Workspace that owns this forward */
   workspaceId: string;
   /** Optional linked SSH session */
@@ -134,7 +134,7 @@ export interface PortForwardConfig {
   remoteHost: string;
   /** Remote port exposed through the tunnel */
   remotePort: number;
-  /** Local Ralpher-host listener port reserved for the tunnel */
+  /** Local Clanky-host listener port reserved for the tunnel */
   localPort: number;
   /** ISO 8601 timestamp of when the forward was created */
   createdAt: string;

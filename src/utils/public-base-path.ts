@@ -3,4 +3,4 @@ export {
   getPublicBasePathFromForwardedPrefix,
   getPublicBasePathFromPathname,
   normalizePublicBasePath,
-} from "@ralpher/shared";
+} from "@clanky/shared";

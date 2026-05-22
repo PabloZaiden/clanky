@@ -108,7 +108,7 @@ describe("WorkspaceSettingsModal AGENTS.md optimization", () => {
 
       // Wait for the status text to appear (indicates loading is done)
       await waitFor(() => {
-        expect(getByText("AGENTS.md exists but is not optimized for Ralpher.")).toBeInTheDocument();
+        expect(getByText("AGENTS.md exists but is not optimized for Clanky.")).toBeInTheDocument();
       });
 
       // Loading message should be gone
@@ -196,7 +196,7 @@ describe("WorkspaceSettingsModal AGENTS.md optimization", () => {
 
       // Now the AGENTS.md status info should appear
       await waitFor(() => {
-        expect(getByText("AGENTS.md exists but is not optimized for Ralpher.")).toBeInTheDocument();
+        expect(getByText("AGENTS.md exists but is not optimized for Clanky.")).toBeInTheDocument();
       });
     });
 
@@ -238,7 +238,7 @@ describe("WorkspaceSettingsModal AGENTS.md optimization", () => {
       );
 
       await waitFor(() => {
-        expect(getByText("AGENTS.md exists but is not optimized for Ralpher.")).toBeInTheDocument();
+        expect(getByText("AGENTS.md exists but is not optimized for Clanky.")).toBeInTheDocument();
       });
     });
 
@@ -274,7 +274,7 @@ describe("WorkspaceSettingsModal AGENTS.md optimization", () => {
       );
 
       await waitFor(() => {
-        expect(getByText("An updated version of the Ralpher guidelines is available.")).toBeInTheDocument();
+        expect(getByText("An updated version of the Clanky guidelines is available.")).toBeInTheDocument();
       });
     });
 
@@ -338,170 +338,170 @@ describe("WorkspaceSettingsModal AGENTS.md optimization", () => {
   });
 });
 
-describe("WorkspaceSettingsModal terminal-state loop purge", () => {
-  test("shows purgeable terminal-state loop count and opens confirmation modal", async () => {
+describe("WorkspaceSettingsModal terminal-state task purge", () => {
+  test("shows purgeable terminal-state task count and opens confirmation modal", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
 
     const { getByText, user } = renderWithUser(
       <WorkspaceSettingsModal
         {...defaultProps()}
-        purgeableLoopCount={3}
-        onPurgeArchivedLoops={mock(() => Promise.resolve({
+        purgeableTaskCount={3}
+        onPurgeArchivedTasks={mock(() => Promise.resolve({
           success: true,
           workspaceId: "ws-test-1",
           totalArchived: 3,
           purgedCount: 3,
-          purgedLoopIds: ["loop-1", "loop-2", "loop-3"],
+          purgedTaskIds: ["task-1", "task-2", "task-3"],
           failures: [],
         }))}
       />
     );
 
     await waitFor(() => {
-      expect(getByText("Loops in a Terminal State")).toBeInTheDocument();
+      expect(getByText("Tasks in a Terminal State")).toBeInTheDocument();
       expect(getByText("3 purgeable")).toBeInTheDocument();
-      expect(getByText("Permanently delete loops in a terminal state for this workspace once they are no longer awaiting feedback. This currently applies to merged, pushed, and deleted loops. This removes their loop data and cannot be undone.")).toBeInTheDocument();
+      expect(getByText("Permanently delete tasks in a terminal state for this workspace once they are no longer awaiting feedback. This currently applies to merged, pushed, and deleted tasks. This removes their task data and cannot be undone.")).toBeInTheDocument();
     });
 
-    await user.click(getByText("Purge Terminal-State Loops"));
+    await user.click(getByText("Purge Terminal-State Tasks"));
 
     await waitFor(() => {
-      expect(getByText('Are you sure you want to permanently delete all 3 loops in a terminal state for "Test Workspace"? This currently applies to merged, pushed, and deleted loops and cannot be undone.')).toBeInTheDocument();
+      expect(getByText('Are you sure you want to permanently delete all 3 tasks in a terminal state for "Test Workspace"? This currently applies to merged, pushed, and deleted tasks and cannot be undone.')).toBeInTheDocument();
     });
   });
 
   test("runs purge action and shows success summary", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
-    const onPurgeArchivedLoops = mock(() => Promise.resolve({
+    const onPurgeArchivedTasks = mock(() => Promise.resolve({
       success: true,
       workspaceId: "ws-test-1",
       totalArchived: 2,
       purgedCount: 2,
-      purgedLoopIds: ["loop-1", "loop-2"],
+      purgedTaskIds: ["task-1", "task-2"],
       failures: [],
     }));
 
     const { getByText, user } = renderWithUser(
       <WorkspaceSettingsModal
         {...defaultProps()}
-        purgeableLoopCount={2}
-        onPurgeArchivedLoops={onPurgeArchivedLoops}
+        purgeableTaskCount={2}
+        onPurgeArchivedTasks={onPurgeArchivedTasks}
       />
     );
 
     await waitFor(() => {
-      expect(getByText("Purge Terminal-State Loops")).toBeInTheDocument();
+      expect(getByText("Purge Terminal-State Tasks")).toBeInTheDocument();
     });
 
-    await user.click(getByText("Purge Terminal-State Loops"));
+    await user.click(getByText("Purge Terminal-State Tasks"));
     await user.click(getByText("Purge All"));
 
     await waitFor(() => {
-      expect(onPurgeArchivedLoops).toHaveBeenCalled();
-      expect(getByText("Purged 2 terminal-state loops.")).toBeInTheDocument();
+      expect(onPurgeArchivedTasks).toHaveBeenCalled();
+      expect(getByText("Purged 2 terminal-state tasks.")).toBeInTheDocument();
     });
   });
 
   test("closes the confirmation modal and shows an error when purge returns failure", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
-    const onPurgeArchivedLoops = mock(() => Promise.resolve({
+    const onPurgeArchivedTasks = mock(() => Promise.resolve({
       success: false,
       workspaceId: "ws-test-1",
       totalArchived: 2,
       purgedCount: 0,
-      purgedLoopIds: [],
+      purgedTaskIds: [],
       failures: [],
     }));
 
     const { getByText, queryByText, user } = renderWithUser(
       <WorkspaceSettingsModal
         {...defaultProps()}
-        purgeableLoopCount={2}
-        onPurgeArchivedLoops={onPurgeArchivedLoops}
+        purgeableTaskCount={2}
+        onPurgeArchivedTasks={onPurgeArchivedTasks}
       />
     );
 
     await waitFor(() => {
-      expect(getByText("Purge Terminal-State Loops")).toBeInTheDocument();
+      expect(getByText("Purge Terminal-State Tasks")).toBeInTheDocument();
     });
 
-    await user.click(getByText("Purge Terminal-State Loops"));
+    await user.click(getByText("Purge Terminal-State Tasks"));
     await user.click(getByText("Purge All"));
 
     await waitFor(() => {
-      expect(onPurgeArchivedLoops).toHaveBeenCalled();
-      expect(queryByText('Are you sure you want to permanently delete all 2 loops in a terminal state for "Test Workspace"? This currently applies to merged, pushed, and deleted loops and cannot be undone.')).not.toBeInTheDocument();
-      expect(getByText("Failed to purge terminal-state loops.")).toBeInTheDocument();
+      expect(onPurgeArchivedTasks).toHaveBeenCalled();
+      expect(queryByText('Are you sure you want to permanently delete all 2 tasks in a terminal state for "Test Workspace"? This currently applies to merged, pushed, and deleted tasks and cannot be undone.')).not.toBeInTheDocument();
+      expect(getByText("Failed to purge terminal-state tasks.")).toBeInTheDocument();
     });
   });
 
   test("closes the confirmation modal and shows thrown purge errors", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
-    const onPurgeArchivedLoops = mock(() => Promise.reject(new Error("Remote cleanup failed")));
+    const onPurgeArchivedTasks = mock(() => Promise.reject(new Error("Remote cleanup failed")));
 
     const { getByText, queryByText, user } = renderWithUser(
       <WorkspaceSettingsModal
         {...defaultProps()}
-        purgeableLoopCount={2}
-        onPurgeArchivedLoops={onPurgeArchivedLoops}
+        purgeableTaskCount={2}
+        onPurgeArchivedTasks={onPurgeArchivedTasks}
       />
     );
 
     await waitFor(() => {
-      expect(getByText("Purge Terminal-State Loops")).toBeInTheDocument();
+      expect(getByText("Purge Terminal-State Tasks")).toBeInTheDocument();
     });
 
-    await user.click(getByText("Purge Terminal-State Loops"));
+    await user.click(getByText("Purge Terminal-State Tasks"));
     await user.click(getByText("Purge All"));
 
     await waitFor(() => {
-      expect(onPurgeArchivedLoops).toHaveBeenCalled();
-      expect(queryByText('Are you sure you want to permanently delete all 2 loops in a terminal state for "Test Workspace"? This currently applies to merged, pushed, and deleted loops and cannot be undone.')).not.toBeInTheDocument();
-      expect(getByText("Failed to purge terminal-state loops: Error: Remote cleanup failed")).toBeInTheDocument();
+      expect(onPurgeArchivedTasks).toHaveBeenCalled();
+      expect(queryByText('Are you sure you want to permanently delete all 2 tasks in a terminal state for "Test Workspace"? This currently applies to merged, pushed, and deleted tasks and cannot be undone.')).not.toBeInTheDocument();
+      expect(getByText("Failed to purge terminal-state tasks: Error: Remote cleanup failed")).toBeInTheDocument();
     });
   });
 
-  test("disables purge button when there are no purgeable terminal-state loops", async () => {
+  test("disables purge button when there are no purgeable terminal-state tasks", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
 
     const { getByText } = renderWithUser(
       <WorkspaceSettingsModal
         {...defaultProps()}
-        purgeableLoopCount={0}
-        onPurgeArchivedLoops={mock(() => Promise.resolve({
+        purgeableTaskCount={0}
+        onPurgeArchivedTasks={mock(() => Promise.resolve({
           success: true,
           workspaceId: "ws-test-1",
           totalArchived: 0,
           purgedCount: 0,
-          purgedLoopIds: [],
+          purgedTaskIds: [],
           failures: [],
         }))}
       />
     );
 
     await waitFor(() => {
-      const purgeButton = getByText("Purge Terminal-State Loops").closest("button");
+      const purgeButton = getByText("Purge Terminal-State Tasks").closest("button");
       expect(purgeButton).toBeDisabled();
     });
   });
 });
 
 describe("WorkspaceSettingsModal workspace deletion", () => {
-  test("disables workspace deletion while loops still exist", async () => {
+  test("disables workspace deletion while tasks still exist", async () => {
     api.get("/api/workspaces/:id/agents-md", () => agentsMdStatus());
 
     const { getByRole, getByText } = renderWithUser(
       <WorkspaceSettingsModal
         {...defaultProps()}
         onDeleteWorkspace={mock(() => Promise.resolve({ success: true }))}
-        workspaceLoopCount={2}
+        workspaceTaskCount={2}
       />
     );
 
       await waitFor(() => {
         expect(getByRole("button", { name: "Delete Workspace" })).toBeDisabled();
         expect(
-          getByText("Delete the remaining 2 loops in this workspace before removing it from Ralpher. This only removes the workspace record and does not delete files on disk.")
+          getByText("Delete the remaining 2 tasks in this workspace before removing it from Clanky. This only removes the workspace record and does not delete files on disk.")
         ).toBeInTheDocument();
       });
     });
@@ -527,7 +527,7 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
 
     await waitFor(() => {
       expect(
-        getByText('Are you sure you want to delete workspace "Test Workspace"? This only removes it from Ralpher and does not delete files on disk.')
+        getByText('Are you sure you want to delete workspace "Test Workspace"? This only removes it from Clanky and does not delete files on disk.')
       ).toBeInTheDocument();
     });
 
@@ -537,7 +537,7 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
       expect(onDeleteWorkspace).toHaveBeenCalled();
       expect(onClose).toHaveBeenCalled();
       expect(
-        queryByText('Are you sure you want to delete workspace "Test Workspace"? This only removes it from Ralpher and does not delete files on disk.')
+        queryByText('Are you sure you want to delete workspace "Test Workspace"? This only removes it from Clanky and does not delete files on disk.')
       ).toBeNull();
     });
   });
@@ -629,7 +629,7 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
     const onClose = mock();
     const onDeleteWorkspace = mock(() => Promise.resolve({
       success: false,
-      error: "Workspace has 1 loop(s). Delete all loops first.",
+      error: "Workspace has 1 task(s). Delete all tasks first.",
     }));
 
     const { getByRole, getByText, queryByText, user } = renderWithUser(
@@ -650,8 +650,8 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
     await waitFor(() => {
       expect(onDeleteWorkspace).toHaveBeenCalled();
       expect(onClose).not.toHaveBeenCalled();
-      expect(queryByText('Are you sure you want to delete workspace "Test Workspace"? This only removes it from Ralpher and does not delete files on disk.')).not.toBeInTheDocument();
-      expect(getByText("Workspace has 1 loop(s). Delete all loops first.")).toBeInTheDocument();
+      expect(queryByText('Are you sure you want to delete workspace "Test Workspace"? This only removes it from Clanky and does not delete files on disk.')).not.toBeInTheDocument();
+      expect(getByText("Workspace has 1 task(s). Delete all tasks first.")).toBeInTheDocument();
     });
   });
 });

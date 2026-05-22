@@ -1,5 +1,5 @@
 import { hostname } from "os";
-import { formatRalpherVersion, RALPHER_VERSION } from "../version";
+import { formatClankyVersion, CLANKY_VERSION } from "../version";
 import {
   getCliRequestAuthContext,
   getAuthorizedHeaders,
@@ -31,46 +31,46 @@ const CLI_HELP_ENTRIES: CliHelpEntry[] = [
   {
     name: "help",
     description: "Show the CLI help and available commands.",
-    usage: ["ralpher-cli help"],
+    usage: ["clanky-cli help"],
   },
   {
     name: "version",
-    description: "Print the current ralpher-cli version.",
-    usage: ["ralpher-cli version"],
+    description: "Print the current clanky-cli version.",
+    usage: ["clanky-cli version"],
   },
   {
     name: "update",
-    description: "Check for or install newer Ralpher release binaries.",
-    usage: ["ralpher-cli update [--check] [--version <version>]"],
+    description: "Check for or install newer Clanky release binaries.",
+    usage: ["clanky-cli update [--check] [--version <version>]"],
   },
   {
     name: "auth",
-    description: "Authenticate against a Ralpher server and store credentials.",
-    usage: ["ralpher-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]"],
+    description: "Authenticate against a Clanky server and store credentials.",
+    usage: ["clanky-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]"],
   },
   {
     name: "status",
     description: "Show the current authentication status for a server.",
-    usage: ["ralpher-cli status [base-url]"],
+    usage: ["clanky-cli status [base-url]"],
   },
   {
     name: "api",
     description: "List API endpoints or send an authenticated API request.",
     usage: [
-      "ralpher-cli api",
-      "ralpher-cli api <endpoint> [--method <method>] [--payload <json>]",
+      "clanky-cli api",
+      "clanky-cli api <endpoint> [--method <method>] [--payload <json>]",
     ],
   },
   {
     name: "schema",
     description: "Show the request schema metadata for an API endpoint.",
-    usage: ["ralpher-cli schema <endpoint>"],
+    usage: ["clanky-cli schema <endpoint>"],
   },
   {
     name: "ws",
-    description: "Stream live WebSocket events for loops, chats, SSH, or provisioning.",
+    description: "Stream live WebSocket events for tasks, chats, SSH, or provisioning.",
     usage: [
-      "ralpher-cli ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
+      "clanky-cli ws [base-url] [--task-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
     ],
   },
 ];
@@ -89,10 +89,10 @@ const CLI_COMMANDS = [
   "Commands:",
   ...CLI_HELP_ENTRIES.map((entry) => `  ${entry.name.padEnd(CLI_COMMAND_WIDTH)} ${entry.description}`),
 ].join("\n");
-const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
+const CLI_HELP = [formatClankyVersion("clanky-cli"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
-const DEFAULT_CLIENT_ID = "ralpher-cli";
+const DEFAULT_CLIENT_ID = "clanky-cli";
 
 type CliOutputDependencies = {
   out?: (message: string) => void;
@@ -476,7 +476,7 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
 
   if (action === "ws") {
     const { positionals, options } = parseCommandArguments(restArgs, [
-      "--loop-id",
+      "--task-id",
       "--chat-id",
       "--ssh-session-id",
       "--ssh-server-session-id",
@@ -496,7 +496,7 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
     return {
       action,
       baseUrl,
-      loopId: options["--loop-id"]?.trim(),
+      taskId: options["--task-id"]?.trim(),
       chatId: options["--chat-id"]?.trim(),
       sshSessionId: options["--ssh-session-id"]?.trim(),
       sshServerSessionId: options["--ssh-server-session-id"]?.trim(),
@@ -530,14 +530,14 @@ export async function runCli(
         out(CLI_HELP);
         return command.exitCode;
       case "version":
-        out(formatRalpherVersion("ralpher-cli"));
+        out(formatClankyVersion("clanky-cli"));
         return 0;
       case "update":
         return await runUpdateCommand(command, {
           fetchFn,
           out,
           err,
-          currentVersion: RALPHER_VERSION,
+          currentVersion: CLANKY_VERSION,
           ...dependencies.updateDependencies,
         });
       case "auth":

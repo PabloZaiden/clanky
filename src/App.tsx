@@ -12,7 +12,7 @@ import { AppEventsProvider, ThemePreferenceProvider, usePasskeyAuth } from "./ho
 import "@xterm/xterm/css/xterm.css";
 import "./index.css";
 
-const LOOP_FILES_HASH_PREFIX = "/loop-files/";
+const TASK_FILES_HASH_PREFIX = "/task-files/";
 const CODE_EXPLORER_HASH_PREFIX = "/code-explorer";
 
 function parseHashPath(hash: string): { path: string; searchParams: URLSearchParams } {
@@ -37,8 +37,8 @@ function parseHash(): ShellRoute {
     if (contentType === "workspace" && entityId) {
       return { view: "code-explorer", target: { contentType, workspaceId: entityId, startDirectory, filePath } };
     }
-    if (contentType === "loop" && entityId) {
-      return { view: "code-explorer", target: { contentType, loopId: entityId, startDirectory, filePath } };
+    if (contentType === "task" && entityId) {
+      return { view: "code-explorer", target: { contentType, taskId: entityId, startDirectory, filePath } };
     }
     if (contentType === "server" && entityId) {
       return { view: "code-explorer", target: { contentType, serverId: entityId, startDirectory, filePath } };
@@ -48,17 +48,17 @@ function parseHash(): ShellRoute {
     }
   }
 
-  if (hash.startsWith("/loop/")) {
-    const loopId = hash.slice(6);
-    if (loopId) {
-      return { view: "loop", loopId };
+  if (hash.startsWith("/task/")) {
+    const taskId = hash.slice(6);
+    if (taskId) {
+      return { view: "task", taskId };
     }
   }
 
-  if (hash.startsWith(LOOP_FILES_HASH_PREFIX)) {
-    const loopId = hash.slice(LOOP_FILES_HASH_PREFIX.length);
-    if (loopId) {
-      return { view: "loop-files", loopId, startDirectory };
+  if (hash.startsWith(TASK_FILES_HASH_PREFIX)) {
+    const taskId = hash.slice(TASK_FILES_HASH_PREFIX.length);
+    if (taskId) {
+      return { view: "task-files", taskId, startDirectory };
     }
   }
 
@@ -146,7 +146,7 @@ function parseHash(): ShellRoute {
   if (hash.startsWith("/new/")) {
     const [kind, scopeId] = hash.slice(5).split("/");
     if (
-      kind === "loop"
+      kind === "task"
       || kind === "chat"
       || kind === "workspace"
       || kind === "ssh-session"

@@ -142,7 +142,7 @@ export function TokenAuthSection() {
             type="url"
             value={canonicalIssuer}
             onChange={(event) => setCanonicalIssuer(event.target.value)}
-            placeholder="https://ralpher.example.com"
+            placeholder="https://clanky.example.com"
             disabled={loading || savingIssuer}
             className="block w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:ring-gray-500 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100"
           />

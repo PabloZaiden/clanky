@@ -33,11 +33,11 @@ export interface ParseAndValidateOptions {
  *
  * @example
  * ```typescript
- * const result = validateRequest(CreateLoopRequestSchema, await req.json());
+ * const result = validateRequest(CreateTaskRequestSchema, await req.json());
  * if (!result.success) {
  *   return result.response;
  * }
- * const data = result.data; // Typed as CreateLoopRequest
+ * const data = result.data; // Typed as CreateTaskRequest
  * ```
  */
 export function validateRequest<T>(
@@ -108,11 +108,11 @@ function invalidJsonResponse(): Response {
  *
  * @example
  * ```typescript
- * const result = await parseAndValidate(CreateLoopRequestSchema, req);
+ * const result = await parseAndValidate(CreateTaskRequestSchema, req);
  * if (!result.success) {
  *   return result.response;
  * }
- * const data = result.data; // Typed as CreateLoopRequest
+ * const data = result.data; // Typed as CreateTaskRequest
  * ```
  */
 export async function parseAndValidate<T>(

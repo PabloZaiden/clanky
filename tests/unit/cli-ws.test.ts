@@ -126,16 +126,16 @@ describe("cli websocket helpers", () => {
   let originalCliHome: string | undefined;
 
   beforeEach(async () => {
-    cliHomeDir = await mkdtemp(join(tmpdir(), "ralpher-cli-ws-home-"));
-    originalCliHome = process.env["RALPHER_CLI_HOME"];
-    process.env["RALPHER_CLI_HOME"] = cliHomeDir;
+    cliHomeDir = await mkdtemp(join(tmpdir(), "clanky-cli-ws-home-"));
+    originalCliHome = process.env["CLANKY_CLI_HOME"];
+    process.env["CLANKY_CLI_HOME"] = cliHomeDir;
   });
 
   afterEach(async () => {
     if (originalCliHome === undefined) {
-      delete process.env["RALPHER_CLI_HOME"];
+      delete process.env["CLANKY_CLI_HOME"];
     } else {
-      process.env["RALPHER_CLI_HOME"] = originalCliHome;
+      process.env["CLANKY_CLI_HOME"] = originalCliHome;
     }
     await rm(cliHomeDir, { recursive: true, force: true });
   });
@@ -143,20 +143,20 @@ describe("cli websocket helpers", () => {
   test("buildWebSocketUrl converts http urls and preserves filters", () => {
     expect(buildWebSocketUrl("http://example.test/base", {
       baseUrl: "http://example.test/base",
-      loopId: "loop-1",
+      taskId: "task-1",
       chatId: "chat-2",
       sshSessionId: "ssh-3",
       sshServerSessionId: "ssh-server-4",
       provisioningJobId: "job-5",
     })).toBe(
-      "ws://example.test/base/api/ws?loopId=loop-1&chatId=chat-2&sshSessionId=ssh-3&sshServerSessionId=ssh-server-4&provisioningJobId=job-5",
+      "ws://example.test/base/api/ws?taskId=task-1&chatId=chat-2&sshSessionId=ssh-3&sshServerSessionId=ssh-server-4&provisioningJobId=job-5",
     );
   });
 
   test("connectWsCommand reuses stored auth headers for the websocket handshake", async () => {
     const credentials: StoredCliCredentials = {
       baseUrl: "https://example.test/app",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "access-token-1",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -172,7 +172,7 @@ describe("cli websocket helpers", () => {
     let capturedUrl = "";
     let capturedHeaders: HeadersInit | undefined;
     const connectPromise = connectWsCommand({
-      loopId: "loop-1",
+      taskId: "task-1",
     }, createWsDependencies({
       createSocket: (url, options) => {
         capturedUrl = url;
@@ -188,7 +188,7 @@ describe("cli websocket helpers", () => {
     const connection = await connectPromise;
 
     expect(connection).not.toBeNull();
-    expect(capturedUrl).toBe("wss://example.test/app/api/ws?loopId=loop-1");
+    expect(capturedUrl).toBe("wss://example.test/app/api/ws?taskId=task-1");
     expect(capturedHeaders).toBeInstanceOf(Headers);
     expect((capturedHeaders as Headers).get("authorization")).toBe("Bearer access-token-1");
     expect((capturedHeaders as Headers).get("cookie")).toBe("authentik_proxy=proxy-cookie");
@@ -202,7 +202,7 @@ describe("cli websocket helpers", () => {
     let capturedHeaders: HeadersInit | undefined;
 
     const connection = await connectWsCommand({
-      loopId: "loop-1",
+      taskId: "task-1",
     }, createWsDependencies({
       fetchFn: createFetchMock(async (input: string | URL | Request) => {
         requests.push(String(input));
@@ -231,7 +231,7 @@ describe("cli websocket helpers", () => {
     expect(connection).not.toBeNull();
     expect(connection?.authContext.kind).toBe("anonymous-local");
     expect(requests).toEqual(["http://localhost:3000/api/auth/status"]);
-    expect(capturedUrl).toBe("ws://localhost:3000/api/ws?loopId=loop-1");
+    expect(capturedUrl).toBe("ws://localhost:3000/api/ws?taskId=task-1");
     expect(capturedHeaders).toBeInstanceOf(Headers);
     expect((capturedHeaders as Headers).get("authorization")).toBeNull();
     expect((capturedHeaders as Headers).get("origin")).toBe("http://localhost:3000");
@@ -293,7 +293,7 @@ describe("cli websocket helpers", () => {
   test("runWsCommand bridges stdout payloads and stdin websocket messages", async () => {
     const credentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "access-token-2",
       refreshToken: "refresh-token-2",
       tokenType: "Bearer",
@@ -308,13 +308,13 @@ describe("cli websocket helpers", () => {
     const socket = new FakeWebSocket();
     socket.send = (data: string) => {
       socket.sentMessages.push(data);
-      socket.emit("message", { data: JSON.stringify({ type: "connected", loopId: "loop-1" }) });
+      socket.emit("message", { data: JSON.stringify({ type: "connected", taskId: "task-1" }) });
     };
     const stdout: string[] = [];
     const stderr: string[] = [];
 
     const exitCodePromise = runWsCommand({
-      loopId: "loop-1",
+      taskId: "task-1",
     }, createWsDependencies({
       out: (message: string) => stdout.push(message),
       err: (message: string) => stderr.push(message),
@@ -335,7 +335,7 @@ describe("cli websocket helpers", () => {
 
     expect(exitCode).toBe(0);
     expect(socket.sentMessages).toEqual([JSON.stringify({ type: "ping" })]);
-    expect(stdout).toEqual([JSON.stringify({ type: "connected", loopId: "loop-1" })]);
+    expect(stdout).toEqual([JSON.stringify({ type: "connected", taskId: "task-1" })]);
     expect(stderr).toEqual([]);
     expect(socket.closeCode).toBe(1000);
     expect(socket.closeReason).toBe("stdin EOF");
@@ -344,7 +344,7 @@ describe("cli websocket helpers", () => {
   test("runWsCommand rejects invalid stdin JSON without corrupting stdout", async () => {
     const credentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "access-token-3",
       refreshToken: "refresh-token-3",
       tokenType: "Bearer",
@@ -384,7 +384,7 @@ describe("cli websocket helpers", () => {
   test("runWsCommand reports websocket errors before the close result", async () => {
     const credentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "access-token-4",
       refreshToken: "refresh-token-4",
       tokenType: "Bearer",
@@ -438,7 +438,7 @@ describe("cli websocket helpers", () => {
   test("runWsCommand reports unexpected websocket closes from the server", async () => {
     const credentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "access-token-5",
       refreshToken: "refresh-token-5",
       tokenType: "Bearer",

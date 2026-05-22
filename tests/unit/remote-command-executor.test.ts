@@ -47,7 +47,7 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
       const commandTokens = capturedCommand ?? [];
       expect(commandTokens).toContain("ControlMaster=auto");
       expect(commandTokens).toContain("ControlPersist=60s");
-      expect(getSshOptionValue(commandTokens, "ControlPath")).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
+      expect(getSshOptionValue(commandTokens, "ControlPath")).toMatch(/^~\/\.ssh\/clanky-cm-v1-[a-f0-9]{32}$/);
       const scriptArg = commandTokens[commandTokens.indexOf("--") + 1];
       expect(typeof scriptArg).toBe("string");
       expect(scriptArg ?? "").toContain("sh -lc");
@@ -259,7 +259,7 @@ describe("CommandExecutorImpl SSH spawn cwd", () => {
     });
 
     const baseControlPath = getSshOptionValue(baseArgs, "ControlPath");
-    expect(baseControlPath).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
+    expect(baseControlPath).toMatch(/^~\/\.ssh\/clanky-cm-v1-[a-f0-9]{32}$/);
     expect(getSshOptionValue(changedWorkspaceArgs, "ControlPath")).not.toBe(baseControlPath);
     expect(getSshOptionValue(changedIdentityArgs, "ControlPath")).not.toBe(baseControlPath);
   });

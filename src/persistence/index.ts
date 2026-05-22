@@ -4,7 +4,7 @@
 
 export * from "./database";
 export * from "./chats";
-export * from "./loops";
+export * from "./tasks";
 export * from "./preferences";
 export * from "./migrations";
 export * from "./workspaces";

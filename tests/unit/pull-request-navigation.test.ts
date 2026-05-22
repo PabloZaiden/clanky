@@ -8,7 +8,7 @@ import {
   validateExistingPullRequestUrl,
   type PullRequestNavigationGitService,
 } from "../../src/core/pull-request-navigation";
-import { createLoopWithStatus } from "../frontend/helpers/factories";
+import { createTaskWithStatus } from "../frontend/helpers/factories";
 
 class StubExecutor implements CommandExecutor {
   private responses = new Map<string, CommandResult>();
@@ -93,11 +93,11 @@ describe("pull request navigation", () => {
     expect(validateExistingPullRequestUrl("https://github.com/owner/repo/issues/42")).toBeNull();
   });
 
-  test("returns an existing PR URL when gh pr view succeeds for the loop working branch", async () => {
-    const loop = createLoopWithStatus("pushed");
+  test("returns an existing PR URL when gh pr view succeeds for the task working branch", async () => {
+    const task = createTaskWithStatus("pushed");
     const executor = new StubExecutor();
     const git = new StubGitService();
-    const workingBranch = loop.state.git?.workingBranch ?? "";
+    const workingBranch = task.state.git?.workingBranch ?? "";
 
     executor.addResponse("gh", ["--version"], {
       success: true,
@@ -112,7 +112,7 @@ describe("pull request navigation", () => {
       exitCode: 0,
     });
 
-    const destination = await resolvePullRequestDestination(loop, "/tmp/repo", executor, git);
+    const destination = await resolvePullRequestDestination(task, "/tmp/repo", executor, git);
 
     expect(destination).toEqual({
       enabled: true,
@@ -123,7 +123,7 @@ describe("pull request navigation", () => {
   });
 
   test("builds a PR creation URL when gh is available but no PR exists yet", async () => {
-    const loop = createLoopWithStatus("pushed", {
+    const task = createTaskWithStatus("pushed", {
       config: { baseBranch: "main" },
       state: {
         git: {
@@ -149,7 +149,7 @@ describe("pull request navigation", () => {
       exitCode: 1,
     });
 
-    const destination = await resolvePullRequestDestination(loop, "/tmp/repo", executor, git);
+    const destination = await resolvePullRequestDestination(task, "/tmp/repo", executor, git);
 
     expect(destination).toEqual({
       enabled: true,
@@ -160,7 +160,7 @@ describe("pull request navigation", () => {
   });
 
   test("falls back to PR creation when gh returns an invalid URL", async () => {
-    const loop = createLoopWithStatus("pushed", {
+    const task = createTaskWithStatus("pushed", {
       config: { baseBranch: "main" },
       state: {
         git: {
@@ -186,7 +186,7 @@ describe("pull request navigation", () => {
       exitCode: 0,
     });
 
-    const destination = await resolvePullRequestDestination(loop, "/tmp/repo", executor, git);
+    const destination = await resolvePullRequestDestination(task, "/tmp/repo", executor, git);
 
     expect(destination).toEqual({
       enabled: true,
@@ -196,7 +196,7 @@ describe("pull request navigation", () => {
   });
 
   test("disables PR navigation when gh is unavailable", async () => {
-    const loop = createLoopWithStatus("pushed");
+    const task = createTaskWithStatus("pushed");
     const executor = new StubExecutor();
     const git = new StubGitService();
 
@@ -207,17 +207,17 @@ describe("pull request navigation", () => {
       exitCode: 127,
     });
 
-    const destination = await resolvePullRequestDestination(loop, "/tmp/repo", executor, git);
+    const destination = await resolvePullRequestDestination(task, "/tmp/repo", executor, git);
 
     expect(destination).toEqual({
       enabled: false,
       destinationType: "disabled",
-      disabledReason: "GitHub CLI is not available in the loop environment.",
+      disabledReason: "GitHub CLI is not available in the task environment.",
     });
   });
 
-  test("falls back to the repository default branch when loop base data is missing", async () => {
-    const loop = createLoopWithStatus("pushed", {
+  test("falls back to the repository default branch when task base data is missing", async () => {
+    const task = createTaskWithStatus("pushed", {
       config: { baseBranch: undefined },
       state: {
         git: {
@@ -244,7 +244,7 @@ describe("pull request navigation", () => {
       exitCode: 1,
     });
 
-    const destination = await resolvePullRequestDestination(loop, "/tmp/repo", executor, git);
+    const destination = await resolvePullRequestDestination(task, "/tmp/repo", executor, git);
 
     expect(destination).toEqual({
       enabled: true,
@@ -255,7 +255,7 @@ describe("pull request navigation", () => {
   });
 
   test("probePullRequestMonitoring returns merged when gh reports a merged PR", async () => {
-    const loop = createLoopWithStatus("pushed", {
+    const task = createTaskWithStatus("pushed", {
       state: {
         git: {
           originalBranch: "main",
@@ -285,7 +285,7 @@ describe("pull request navigation", () => {
       exitCode: 0,
     });
 
-    const monitoring = await probePullRequestMonitoring(loop, "/tmp/repo", executor, git);
+    const monitoring = await probePullRequestMonitoring(task, "/tmp/repo", executor, git);
 
     expect(monitoring).toEqual({
       status: "merged",
@@ -297,7 +297,7 @@ describe("pull request navigation", () => {
   });
 
   test("probePullRequestMonitoring returns no_pr when gh reports no pull request", async () => {
-    const loop = createLoopWithStatus("pushed", {
+    const task = createTaskWithStatus("pushed", {
       state: {
         git: {
           originalBranch: "main",
@@ -322,7 +322,7 @@ describe("pull request navigation", () => {
       exitCode: 1,
     });
 
-    const monitoring = await probePullRequestMonitoring(loop, "/tmp/repo", executor, git);
+    const monitoring = await probePullRequestMonitoring(task, "/tmp/repo", executor, git);
 
     expect(monitoring).toEqual({
       status: "no_pr",
@@ -331,7 +331,7 @@ describe("pull request navigation", () => {
   });
 
   test("probePullRequestMonitoring returns unavailable for non-GitHub remotes", async () => {
-    const loop = createLoopWithStatus("pushed", {
+    const task = createTaskWithStatus("pushed", {
       state: {
         git: {
           originalBranch: "main",
@@ -351,17 +351,17 @@ describe("pull request navigation", () => {
       exitCode: 0,
     });
 
-    const monitoring = await probePullRequestMonitoring(loop, "/tmp/repo", executor, git);
+    const monitoring = await probePullRequestMonitoring(task, "/tmp/repo", executor, git);
 
     expect(monitoring).toEqual({
       status: "unavailable",
       lastCheckedAt: expect.any(String),
-      lastError: "Could not determine a GitHub origin remote for this loop.",
+      lastError: "Could not determine a GitHub origin remote for this task.",
     });
   });
 
   test("probePullRequestMonitoring returns an error when gh output is invalid", async () => {
-    const loop = createLoopWithStatus("pushed", {
+    const task = createTaskWithStatus("pushed", {
       state: {
         git: {
           originalBranch: "main",
@@ -386,7 +386,7 @@ describe("pull request navigation", () => {
       exitCode: 0,
     });
 
-    const monitoring = await probePullRequestMonitoring(loop, "/tmp/repo", executor, git);
+    const monitoring = await probePullRequestMonitoring(task, "/tmp/repo", executor, git);
 
     expect(monitoring).toEqual({
       status: "error",

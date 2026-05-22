@@ -1,7 +1,7 @@
 /**
  * Mock ACP runtime used for testing.
  *
- * This process speaks ACP-style JSON-RPC over stdio so Ralpher can exercise
+ * This process speaks ACP-style JSON-RPC over stdio so Clanky can exercise
  * the real ACP transport path without requiring a real coding agent.
  */
 
@@ -457,8 +457,8 @@ class MockAcpServer {
         },
       },
       agentInfo: {
-        name: "ralpher-mock-acp",
-        title: "Ralpher Mock ACP",
+        name: "clanky-mock-acp",
+        title: "Clanky Mock ACP",
         version: "0.0.0-test",
       },
       authMethods: [

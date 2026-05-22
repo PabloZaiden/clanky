@@ -10,12 +10,12 @@ import { join } from "path";
 import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { loadChat, updateChatState } from "../../src/persistence/chats";
-import { saveLoop } from "../../src/persistence/loops";
+import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
 import { backendManager } from "../../src/core/backend-manager";
 import { getPlanFilePath } from "../../src/lib/planning-files";
-import type { Loop, LoopLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
-import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
+import type { Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
+import { DEFAULT_TASK_CONFIG } from "../../src/types/task";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 
@@ -87,25 +87,25 @@ describe("Chats API Integration", () => {
     throw new Error(`Timed out waiting for chat ${chatId} to settle`);
   }
 
-  function createTestLoop(loopId: string, workingDirectory: string): Loop {
+  function createTestTask(taskId: string, workingDirectory: string): Task {
     const now = new Date().toISOString();
     return {
       config: {
-        ...DEFAULT_LOOP_CONFIG,
-        id: loopId,
-        name: `Loop ${loopId}`,
+        ...DEFAULT_TASK_CONFIG,
+        id: taskId,
+        name: `Task ${taskId}`,
         directory: testWorkDir,
-        prompt: "Investigate the loop chat flow",
+        prompt: "Investigate the task chat flow",
         createdAt: now,
         updatedAt: now,
         workspaceId: testWorkspaceId,
         model: testModel,
         baseBranch: "main",
         useWorktree: true,
-        mode: "loop",
+        mode: "task",
       },
       state: {
-        id: loopId,
+        id: taskId,
         status: "completed",
         currentIteration: 1,
         startedAt: now,
@@ -116,7 +116,7 @@ describe("Chats API Integration", () => {
         toolCalls: [],
         git: {
           originalBranch: "main",
-          workingBranch: `feature/${loopId}`,
+          workingBranch: `feature/${taskId}`,
           worktreePath: workingDirectory,
           commits: [],
         },
@@ -125,11 +125,11 @@ describe("Chats API Integration", () => {
   }
 
   beforeAll(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-api-chats-test-data-"));
-    testWorkDir = await mkdtemp(join(tmpdir(), "ralpher-api-chats-test-work-"));
-    testOriginDir = await mkdtemp(join(tmpdir(), "ralpher-api-chats-test-origin-"));
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-api-chats-test-data-"));
+    testWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-chats-test-work-"));
+    testOriginDir = await mkdtemp(join(tmpdir(), "clanky-api-chats-test-origin-"));
 
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     await ensureDataDirectories();
 
@@ -161,7 +161,7 @@ describe("Chats API Integration", () => {
     await rm(testDataDir, { recursive: true, force: true });
     await rm(testWorkDir, { recursive: true, force: true });
     await rm(testOriginDir, { recursive: true, force: true });
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
   test("creates, lists, sends messages to, and reconnects chats", async () => {
@@ -327,7 +327,7 @@ describe("Chats API Integration", () => {
     expect(created.config.useWorktree).toBe(true);
     expect(created.config.baseBranch).toBeUndefined();
 
-    const expectedWorktreePath = `${testWorkDir}/.ralph-worktrees/${created.config.id}`;
+    const expectedWorktreePath = `${testWorkDir}/.clanky-worktrees/${created.config.id}`;
     expect(created.state.worktree?.originalBranch).toBe("main");
     expect(created.state.worktree?.workingBranch).toContain("chat-chat-without-base-branch-");
     expect(created.state.worktree?.worktreePath).toBe(expectedWorktreePath);
@@ -358,7 +358,7 @@ describe("Chats API Integration", () => {
       content: "Large transcript content that should not be returned by the list endpoint",
       timestamp,
     }];
-    const logs: LoopLogEntry[] = [{
+    const logs: TaskLogEntry[] = [{
       id: "log-1",
       level: "agent",
       message: "Large log content that should not be returned by the list endpoint",
@@ -841,35 +841,35 @@ describe("Chats API Integration", () => {
     expect(persisted?.config.model).toEqual(updatedTestModel);
   });
 
-  test("creates a loop-owned default chat that stays out of standalone chat APIs", async () => {
-    const loopId = "loop-chat-api-test";
-    const loopWorkingDirectory = join(testWorkDir, ".ralph-worktrees", loopId);
-    await saveLoop(createTestLoop(loopId, loopWorkingDirectory));
+  test("creates a task-owned default chat that stays out of standalone chat APIs", async () => {
+    const taskId = "task-chat-api-test";
+    const taskWorkingDirectory = join(testWorkDir, ".clanky-worktrees", taskId);
+    await saveTask(createTestTask(taskId, taskWorkingDirectory));
 
-    const createResponse = await fetch(`${baseUrl}/api/loops/${loopId}/chat`, {
+    const createResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/chat`, {
       method: "POST",
     });
     expect(createResponse.status).toBe(201);
     const created = await createResponse.json();
-    expect(created.config.scope).toBe("loop");
-    expect(created.config.loopId).toBe(loopId);
-    expect(created.config.directory).toBe(loopWorkingDirectory);
+    expect(created.config.scope).toBe("task");
+    expect(created.config.taskId).toBe(taskId);
+    expect(created.config.directory).toBe(taskWorkingDirectory);
     expect(created.config.useWorktree).toBe(false);
 
     const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: "Stay in the loop worktree",
+        message: "Stay in the task worktree",
         attachments: [],
       }),
     });
     expect(sendResponse.status).toBe(200);
 
     await waitForChatIdle(created.config.id as string);
-    expect(mockBackend.getDirectory()).toBe(loopWorkingDirectory);
+    expect(mockBackend.getDirectory()).toBe(taskWorkingDirectory);
 
-    const getResponse = await fetch(`${baseUrl}/api/loops/${loopId}/chat`);
+    const getResponse = await fetch(`${baseUrl}/api/tasks/${taskId}/chat`);
     expect(getResponse.status).toBe(200);
     const loaded = await getResponse.json();
     expect(loaded.config.id).toBe(created.config.id);
@@ -897,7 +897,7 @@ describe("Chats API Integration", () => {
     expect(deleteResponse.status).toBe(409);
   });
 
-  test("spawns a plan-mode loop from an existing chat without deleting the chat", async () => {
+  test("spawns a plan-mode task from an existing chat without deleting the chat", async () => {
     installMockBackend([
       "Hello from chat API",
       "Plan created\n<promise>PLAN_READY</promise>",
@@ -923,7 +923,7 @@ describe("Chats API Integration", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: "Turn this debugging conversation into a loop plan.",
+        message: "Turn this debugging conversation into a task plan.",
         attachments: [],
       }),
     });
@@ -937,28 +937,28 @@ describe("Chats API Integration", () => {
     };
     expect(settledChat.state.status).toBe("idle");
 
-    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop`, {
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task`, {
       method: "POST",
     });
     expect(spawnResponse.status).toBe(201);
-    const spawnedLoop = await spawnResponse.json();
+    const spawnedTask = await spawnResponse.json();
 
-    expect(spawnedLoop.config.id).not.toBe(chatId);
-    expect(spawnedLoop.config.workspaceId).toBe(testWorkspaceId);
-    expect(spawnedLoop.config.planMode).toBe(true);
-    expect(spawnedLoop.config.autoAcceptPlan).toBe(false);
-    expect(spawnedLoop.config.fullyAutonomous).toBe(false);
-    expect(spawnedLoop.state.status).toBe("planning");
-    expect(spawnedLoop.config.prompt).toContain("You are creating a new Ralph plan loop from an existing chat conversation.");
-    expect(spawnedLoop.config.prompt).toContain("Chat title: Spawn Source Chat");
-    expect(spawnedLoop.config.prompt).toContain("Only the user and assistant messages are included here; tool calls and hidden reasoning are intentionally excluded.");
-    expect(spawnedLoop.config.prompt).toContain("Turn this debugging conversation into a loop plan.");
-    expect(spawnedLoop.config.prompt).toContain("Hello from chat API");
+    expect(spawnedTask.config.id).not.toBe(chatId);
+    expect(spawnedTask.config.workspaceId).toBe(testWorkspaceId);
+    expect(spawnedTask.config.planMode).toBe(true);
+    expect(spawnedTask.config.autoAcceptPlan).toBe(false);
+    expect(spawnedTask.config.fullyAutonomous).toBe(false);
+    expect(spawnedTask.state.status).toBe("planning");
+    expect(spawnedTask.config.prompt).toContain("You are creating a new Clanky plan task from an existing chat conversation.");
+    expect(spawnedTask.config.prompt).toContain("Chat title: Spawn Source Chat");
+    expect(spawnedTask.config.prompt).toContain("Only the user and assistant messages are included here; tool calls and hidden reasoning are intentionally excluded.");
+    expect(spawnedTask.config.prompt).toContain("Turn this debugging conversation into a task plan.");
+    expect(spawnedTask.config.prompt).toContain("Hello from chat API");
 
-    const listLoopsResponse = await fetch(`${baseUrl}/api/loops`);
-    expect(listLoopsResponse.status).toBe(200);
-    const loops = await listLoopsResponse.json();
-    expect(loops.some((loop: { config: { id: string } }) => loop.config.id === spawnedLoop.config.id)).toBe(true);
+    const listTasksResponse = await fetch(`${baseUrl}/api/tasks`);
+    expect(listTasksResponse.status).toBe(200);
+    const tasks = await listTasksResponse.json();
+    expect(tasks.some((task: { config: { id: string } }) => task.config.id === spawnedTask.config.id)).toBe(true);
 
     const chatResponse = await fetch(`${baseUrl}/api/chats/${chatId}`);
     expect(chatResponse.status).toBe(200);
@@ -970,7 +970,7 @@ describe("Chats API Integration", () => {
     );
   });
 
-  test("rejects spawn-loop when the chat transcript is empty", async () => {
+  test("rejects spawn-task when the chat transcript is empty", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -986,18 +986,18 @@ describe("Chats API Integration", () => {
     expect(createResponse.status).toBe(201);
     const created = await createResponse.json();
 
-    const spawnResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/spawn-loop`, {
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/spawn-task`, {
       method: "POST",
     });
 
     expect(spawnResponse.status).toBe(400);
     await expect(spawnResponse.json()).resolves.toMatchObject({
       error: "empty_transcript",
-      message: "Chat transcript is empty. Send at least one message before spawning a loop.",
+      message: "Chat transcript is empty. Send at least one message before spawning a task.",
     });
   });
 
-  test("rejects spawn-loop while a chat response is still in progress", async () => {
+  test("rejects spawn-task while a chat response is still in progress", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1021,7 +1021,7 @@ describe("Chats API Integration", () => {
       status: "streaming",
     });
 
-    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop`, {
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task`, {
       method: "POST",
     });
 
@@ -1032,7 +1032,7 @@ describe("Chats API Integration", () => {
     });
   });
 
-  test("spawns a loop from the chat's current plan", async () => {
+  test("spawns a task from the chat's current plan", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1053,7 +1053,7 @@ describe("Chats API Integration", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: "Turn this into a plan-ready loop.",
+        message: "Turn this into a plan-ready task.",
         attachments: [],
       }),
     });
@@ -1078,7 +1078,7 @@ describe("Chats API Integration", () => {
     );
     await writeFile(join(chatWorktreePath, "plans", "status.md"), "# Imported status\n\nReady to review.");
 
-    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1087,21 +1087,21 @@ describe("Chats API Integration", () => {
     });
 
     expect(spawnResponse.status).toBe(201);
-    const spawnedLoop = await spawnResponse.json();
-    expect(spawnedLoop.config.autoAcceptPlan).toBe(false);
-    expect(spawnedLoop.config.fullyAutonomous).toBe(false);
-    expect(spawnedLoop.state.status).toBe("planning");
-    expect(spawnedLoop.state.planMode?.isPlanReady).toBe(true);
-    expect(spawnedLoop.state.planMode?.planContent).toBe("# Imported plan\n\n1. Do the seeded work.");
+    const spawnedTask = await spawnResponse.json();
+    expect(spawnedTask.config.autoAcceptPlan).toBe(false);
+    expect(spawnedTask.config.fullyAutonomous).toBe(false);
+    expect(spawnedTask.state.status).toBe("planning");
+    expect(spawnedTask.state.planMode?.isPlanReady).toBe(true);
+    expect(spawnedTask.state.planMode?.planContent).toBe("# Imported plan\n\n1. Do the seeded work.");
 
-    const planResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/plan`);
+    const planResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/plan`);
     expect(planResponse.status).toBe(200);
     await expect(planResponse.json()).resolves.toMatchObject({
       exists: true,
       content: "# Imported plan\n\n1. Do the seeded work.",
     });
 
-    const statusResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/status-file`);
+    const statusResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/status-file`);
     expect(statusResponse.status).toBe(200);
     await expect(statusResponse.json()).resolves.toMatchObject({
       exists: true,
@@ -1144,10 +1144,10 @@ describe("Chats API Integration", () => {
       };
     };
     const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
-    await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
+    await mkdir(join(chatWorktreePath, ".clanky-planning"), { recursive: true });
     await writeFile(getPlanFilePath(chatWorktreePath), "# Fallback plan\n\n1. Use the default path.\n");
 
-    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1156,8 +1156,8 @@ describe("Chats API Integration", () => {
     });
 
     expect(spawnResponse.status).toBe(201);
-    const spawnedLoop = await spawnResponse.json();
-    expect(spawnedLoop.state.planMode?.planContent).toBe("# Fallback plan\n\n1. Use the default path.");
+    const spawnedTask = await spawnResponse.json();
+    expect(spawnedTask.state.planMode?.planContent).toBe("# Fallback plan\n\n1. Use the default path.");
   });
 
   test("spawns from an absolute plan path outside the chat workspace", async () => {
@@ -1194,7 +1194,7 @@ describe("Chats API Integration", () => {
     await writeFile(importedPlanPath, "# External plan\n\n1. Import from an absolute path.\n");
     await writeFile(join(importedPlanDir, "status.md"), "# External status\n\nReady from outside workspace.");
 
-    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1203,17 +1203,17 @@ describe("Chats API Integration", () => {
     });
 
     expect(spawnResponse.status).toBe(201);
-    const spawnedLoop = await spawnResponse.json();
-    expect(spawnedLoop.state.planMode?.planContent).toBe("# External plan\n\n1. Import from an absolute path.");
+    const spawnedTask = await spawnResponse.json();
+    expect(spawnedTask.state.planMode?.planContent).toBe("# External plan\n\n1. Import from an absolute path.");
 
-    const planResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/plan`);
+    const planResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/plan`);
     expect(planResponse.status).toBe(200);
     await expect(planResponse.json()).resolves.toMatchObject({
       exists: true,
       content: "# External plan\n\n1. Import from an absolute path.",
     });
 
-    const statusResponse = await fetch(`${baseUrl}/api/loops/${spawnedLoop.config.id}/status-file`);
+    const statusResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/status-file`);
     expect(statusResponse.status).toBe(200);
     await expect(statusResponse.json()).resolves.toMatchObject({
       exists: true,
@@ -1249,14 +1249,14 @@ describe("Chats API Integration", () => {
     expect(sendResponse.status).toBe(200);
     await waitForChatIdle(chatId);
 
-    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",
     });
 
     expect(spawnResponse.status).toBe(400);
     await expect(spawnResponse.json()).resolves.toMatchObject({
       error: "invalid_current_plan",
-      message: "No Ralpher plan file was found in the current chat workspace.",
+      message: "No Clanky plan file was found in the current chat workspace.",
     });
   });
 
@@ -1295,17 +1295,17 @@ describe("Chats API Integration", () => {
       };
     };
     const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
-    await mkdir(join(chatWorktreePath, ".ralph-planning"), { recursive: true });
+    await mkdir(join(chatWorktreePath, ".clanky-planning"), { recursive: true });
     await writeFile(getPlanFilePath(chatWorktreePath), "\n<promise>PLAN_READY</promise>\n");
 
-    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",
     });
 
     expect(spawnResponse.status).toBe(400);
     await expect(spawnResponse.json()).resolves.toMatchObject({
       error: "invalid_current_plan",
-      message: "The current Ralpher plan file is empty.",
+      message: "The current Clanky plan file is empty.",
     });
   });
 });

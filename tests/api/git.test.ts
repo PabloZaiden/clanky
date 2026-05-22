@@ -24,11 +24,11 @@ describe("Git API Integration", () => {
 
   beforeAll(async () => {
     // Create temp directories
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-api-git-test-data-"));
-    testWorkDir = await mkdtemp(join(tmpdir(), "ralpher-api-git-test-work-"));
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-api-git-test-data-"));
+    testWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-git-test-work-"));
 
     // Set env var for persistence
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
     await ensureDataDirectories();
 
     // Initialize git repo with a couple branches

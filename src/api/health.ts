@@ -1,5 +1,5 @@
 /**
- * Health check API endpoint for Ralph Loops Management System.
+ * Health check API endpoint for Clanky Tasks Management System.
  * 
  * Provides a simple health check endpoint to verify the server is running.
  * Used by load balancers, monitoring tools, and the UI to check connectivity.
@@ -12,7 +12,7 @@
 
 import type { HealthResponse } from "../types/api";
 import { createLogger } from "../core/logger";
-import { RALPHER_VERSION } from "../version";
+import { CLANKY_VERSION } from "../version";
 
 const log = createLogger("api:health");
 
@@ -36,7 +36,7 @@ export const healthRoutes = {
       log.trace("GET /api/health");
       const response: HealthResponse = {
         healthy: true,
-        version: RALPHER_VERSION,
+        version: CLANKY_VERSION,
       };
       return Response.json(response);
     },

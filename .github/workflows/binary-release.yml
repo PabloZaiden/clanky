@@ -15,15 +15,15 @@ jobs:
       binaries: |
         [
           {
-            "name": "ralpher",
-            "asset_prefix": "ralpher",
+            "name": "clanky",
+            "asset_prefix": "clanky",
             "build_command": "bun --cwd apps/server src/build.ts --target=$BUN_TARGET",
-            "output_path": "apps/server/dist/ralpher-$RELEASE_TARGET"
+            "output_path": "apps/server/dist/clanky-$RELEASE_TARGET"
           },
           {
-            "name": "ralpher-cli",
-            "asset_prefix": "ralpher-cli",
+            "name": "clanky-cli",
+            "asset_prefix": "clanky-cli",
             "build_command": "bun --cwd apps/cli src/build.ts --target=$BUN_TARGET",
-            "output_path": "apps/cli/dist/ralpher-cli-$RELEASE_TARGET"
+            "output_path": "apps/cli/dist/clanky-cli-$RELEASE_TARGET"
           }
         ]

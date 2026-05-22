@@ -1,5 +1,5 @@
 /**
- * Git service for Ralph Loops Management System.
+ * Git service for Clanky Tasks Management System.
  * Provides git operations using a CommandExecutor abstraction.
  * All operations are isolated to a specific directory.
  *
@@ -63,7 +63,7 @@ import type {
 } from "./git-types";
 
 /**
- * GitService provides git operations for Ralph Loops.
+ * GitService provides git operations for Clanky Tasks.
  * Uses a CommandExecutor for running git commands, allowing for both
  * local execution (`stdio` transport) and remote execution (`ssh` transport).
  */
@@ -87,7 +87,7 @@ export class GitService {
 
   /**
    * Clean up stale git lock files that may have been left behind by crashed processes.
-   * This is especially important when a loop is forcefully stopped while git operations
+   * This is especially important when a task is forcefully stopped while git operations
    * are in progress.
    *
    * Handles both regular repos (lock at `.git/index.lock`) and worktrees

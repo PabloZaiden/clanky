@@ -1,5 +1,5 @@
 -- Demo-only UI seed for local visual testing.
--- Apply this against data/ralpher.db with your preferred SQLite client.
+-- Apply this against data/clanky.db with your preferred SQLite client.
 
 PRAGMA foreign_keys = ON;
 BEGIN TRANSACTION;
@@ -16,7 +16,7 @@ INSERT INTO ssh_servers (
   'demo-server-build',
   'Build Box',
   'demo-box.internal',
-  'ralph',
+  'clanky',
   '2026-04-16T18:00:00.000Z',
   '2026-04-16T18:00:00.000Z',
   '/srv/workspaces'
@@ -71,7 +71,7 @@ INSERT INTO ssh_server_sessions (
   'demo-server-session-build-main',
   'demo-server-build',
   'Main shell',
-  'ralpher-build-main',
+  'clanky-build-main',
   '2026-04-16T18:10:00.000Z',
   '2026-04-16T19:30:00.000Z',
   'connected',
@@ -111,7 +111,7 @@ INSERT INTO ssh_server_sessions (
   'demo-server-session-ops-debug',
   'demo-server-ops',
   'Debug shell',
-  'ralpher-ops-debug',
+  'clanky-ops-debug',
   '2026-04-16T18:15:00.000Z',
   '2026-04-16T19:20:00.000Z',
   'failed',
@@ -195,10 +195,10 @@ INSERT INTO workspaces (
   'demo-workspace-api',
   'Billing API',
   '/srv/workspaces/billing-api',
-  'copilot:ssh:demo-box.internal:22:ralph',
+  'copilot:ssh:demo-box.internal:22:clanky',
   '2026-04-16T17:55:00.000Z',
   '2026-04-16T19:45:00.000Z',
-  '{"agent":{"provider":"copilot","transport":"ssh","hostname":"demo-box.internal","port":22,"username":"ralph"}}',
+  '{"agent":{"provider":"copilot","transport":"ssh","hostname":"demo-box.internal","port":22,"username":"clanky"}}',
   '/srv/workspaces',
   'demo-server-build',
   'https://github.com/example/billing-api',
@@ -231,7 +231,7 @@ INSERT INTO ssh_sessions (
   status,
   last_connected_at,
   error_message,
-  loop_id,
+  task_id,
   connection_mode,
   runtime_connection_mode,
   notice_message
@@ -261,7 +261,7 @@ ON CONFLICT(id) DO UPDATE SET
   status = excluded.status,
   last_connected_at = excluded.last_connected_at,
   error_message = excluded.error_message,
-  loop_id = excluded.loop_id,
+  task_id = excluded.task_id,
   connection_mode = excluded.connection_mode,
   runtime_connection_mode = excluded.runtime_connection_mode,
   notice_message = excluded.notice_message;
@@ -277,25 +277,25 @@ INSERT INTO ssh_sessions (
   status,
   last_connected_at,
   error_message,
-  loop_id,
+  task_id,
   connection_mode,
   runtime_connection_mode,
   notice_message
 ) VALUES (
-  'demo-workspace-session-loop-running',
-  'Loop shell',
+  'demo-workspace-session-task-running',
+  'Task shell',
   'demo-workspace-api',
-  '/srv/worktrees/billing-api/running-loop',
-  'billing-api-loop-running',
+  '/srv/worktrees/billing-api/running-task',
+  'billing-api-task-running',
   '2026-04-16T18:30:00.000Z',
   '2026-04-16T19:32:00.000Z',
   'connected',
   '2026-04-16T19:32:00.000Z',
   NULL,
-  'demo-loop-running',
+  'demo-task-running',
   'dtach',
   NULL,
-  'Bound to the running loop worktree.'
+  'Bound to the running task worktree.'
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -307,12 +307,12 @@ ON CONFLICT(id) DO UPDATE SET
   status = excluded.status,
   last_connected_at = excluded.last_connected_at,
   error_message = excluded.error_message,
-  loop_id = excluded.loop_id,
+  task_id = excluded.task_id,
   connection_mode = excluded.connection_mode,
   runtime_connection_mode = excluded.runtime_connection_mode,
   notice_message = excluded.notice_message;
 
-INSERT INTO loops (
+INSERT INTO tasks (
   id,
   name,
   directory,
@@ -374,17 +374,17 @@ INSERT INTO loops (
   automatic_pr_flow,
   fully_autonomous_pending
 ) VALUES (
-  'demo-loop-planning',
+  'demo-task-planning',
   'Dashboard filters',
   '/workspaces/demo-storefront',
-  'Design and implement dashboard filtering for loops, chats, and SSH sessions.',
+  'Design and implement dashboard filtering for tasks, chats, and SSH sessions.',
   '2026-04-16T18:40:00.000Z',
   '2026-04-16T19:10:00.000Z',
   'demo-workspace-webapp',
   'anthropic',
   'claude-sonnet-4.5',
   '',
-  '{"mode":"same-as-loop"}',
+  '{"mode":"same-as-task"}',
   6,
   10,
   NULL,
@@ -398,7 +398,7 @@ INSERT INTO loops (
   1,
   0,
   0,
-  'loop',
+  'task',
   'planning',
   0,
   '2026-04-16T18:41:00.000Z',
@@ -414,9 +414,9 @@ INSERT INTO loops (
   '/worktrees/demo-storefront/dashboard-filters',
   '[]',
   '[{"iteration":1,"startedAt":"2026-04-16T18:42:00.000Z","completedAt":"2026-04-16T18:54:00.000Z","messageCount":4,"toolCallCount":3,"outcome":"plan_ready"}]',
-  '[{"id":"log-demo-loop-planning-1","level":"info","message":"Plan draft ready for review.","timestamp":"2026-04-16T18:54:00.000Z"},{"id":"log-demo-loop-planning-2","level":"agent","message":"Waiting for plan approval.","timestamp":"2026-04-16T19:10:00.000Z"}]',
-  '[{"id":"msg-demo-loop-planning-1","role":"user","content":"Add filtering controls to the dashboard.","timestamp":"2026-04-16T18:41:00.000Z"},{"id":"msg-demo-loop-planning-2","role":"assistant","content":"Plan ready. Add a compact filter bar and persist the selected query in the URL.","timestamp":"2026-04-16T18:54:00.000Z"}]',
-  '[{"id":"tool-demo-loop-planning-1","name":"Glob","input":{"pattern":"src/components/**/*.tsx"},"output":["src/components/dashboard.tsx"],"status":"completed","timestamp":"2026-04-16T18:45:00.000Z"}]',
+  '[{"id":"log-demo-task-planning-1","level":"info","message":"Plan draft ready for review.","timestamp":"2026-04-16T18:54:00.000Z"},{"id":"log-demo-task-planning-2","level":"agent","message":"Waiting for plan approval.","timestamp":"2026-04-16T19:10:00.000Z"}]',
+  '[{"id":"msg-demo-task-planning-1","role":"user","content":"Add filtering controls to the dashboard.","timestamp":"2026-04-16T18:41:00.000Z"},{"id":"msg-demo-task-planning-2","role":"assistant","content":"Plan ready. Add a compact filter bar and persist the selected query in the URL.","timestamp":"2026-04-16T18:54:00.000Z"}]',
+  '[{"id":"tool-demo-task-planning-1","name":"Glob","input":{"pattern":"src/components/**/*.tsx"},"output":["src/components/dashboard.tsx"],"status":"completed","timestamp":"2026-04-16T18:45:00.000Z"}]',
   NULL,
   NULL,
   NULL,
@@ -426,7 +426,7 @@ INSERT INTO loops (
   'sess-demo-plan-1',
   'http://localhost:7777',
   2,
-  '# Plan\n1. Add a compact filter bar.\n2. Filter loops, chats, and sessions consistently.\n3. Persist the selection for refresh recovery.\n\nPLAN_READY',
+  '# Plan\n1. Add a compact filter bar.\n2. Filter tasks, chats, and sessions consistently.\n3. Persist the selection for refresh recovery.\n\nPLAN_READY',
   1,
   1,
   NULL,
@@ -496,7 +496,7 @@ ON CONFLICT(id) DO UPDATE SET
   automatic_pr_flow = excluded.automatic_pr_flow,
   fully_autonomous_pending = excluded.fully_autonomous_pending;
 
-INSERT INTO loops (
+INSERT INTO tasks (
   id,
   name,
   directory,
@@ -558,7 +558,7 @@ INSERT INTO loops (
   automatic_pr_flow,
   fully_autonomous_pending
 ) VALUES (
-  'demo-loop-running',
+  'demo-task-running',
   'Rework invoice timeline',
   '/srv/workspaces/billing-api',
   'Improve the invoice timeline with grouped events and cleaner empty states.',
@@ -582,7 +582,7 @@ INSERT INTO loops (
   1,
   0,
   0,
-  'loop',
+  'task',
   'running',
   3,
   '2026-04-16T18:52:00.000Z',
@@ -595,12 +595,12 @@ INSERT INTO loops (
   NULL,
   'main',
   'feat/invoice-timeline',
-  '/srv/worktrees/billing-api/running-loop',
+  '/srv/worktrees/billing-api/running-task',
   '[{"iteration":1,"sha":"abc1234","message":"feat(billing): scaffold grouped timeline","timestamp":"2026-04-16T19:01:00.000Z","filesChanged":4},{"iteration":2,"sha":"def5678","message":"refactor(billing): extract empty state cards","timestamp":"2026-04-16T19:18:00.000Z","filesChanged":6}]',
   '[{"iteration":1,"startedAt":"2026-04-16T18:52:00.000Z","completedAt":"2026-04-16T19:01:00.000Z","messageCount":6,"toolCallCount":4,"outcome":"continue"},{"iteration":2,"startedAt":"2026-04-16T19:05:00.000Z","completedAt":"2026-04-16T19:18:00.000Z","messageCount":5,"toolCallCount":6,"outcome":"continue"}]',
-  '[{"id":"log-demo-loop-running-1","level":"info","message":"Connected to remote workspace host.","timestamp":"2026-04-16T18:52:10.000Z"},{"id":"log-demo-loop-running-2","level":"agent","message":"Refining grouped event rendering.","timestamp":"2026-04-16T19:22:00.000Z"},{"id":"log-demo-loop-running-3","level":"debug","message":"Local tests still pending.","timestamp":"2026-04-16T19:33:00.000Z"}]',
-  '[{"id":"msg-demo-loop-running-1","role":"user","content":"Make the invoice timeline easier to scan.","timestamp":"2026-04-16T18:52:00.000Z"},{"id":"msg-demo-loop-running-2","role":"assistant","content":"I grouped related events and am tightening the spacing now.","timestamp":"2026-04-16T19:22:30.000Z"}]',
-  '[{"id":"tool-demo-loop-running-1","name":"Read","input":{"filePath":"src/components/invoice-timeline.tsx"},"output":{"lineCount":280},"status":"completed","timestamp":"2026-04-16T18:57:00.000Z"},{"id":"tool-demo-loop-running-2","name":"Edit","input":{"filePath":"src/components/invoice-timeline.tsx"},"output":{"updated":true},"status":"completed","timestamp":"2026-04-16T19:20:00.000Z"}]',
+  '[{"id":"log-demo-task-running-1","level":"info","message":"Connected to remote workspace host.","timestamp":"2026-04-16T18:52:10.000Z"},{"id":"log-demo-task-running-2","level":"agent","message":"Refining grouped event rendering.","timestamp":"2026-04-16T19:22:00.000Z"},{"id":"log-demo-task-running-3","level":"debug","message":"Local tests still pending.","timestamp":"2026-04-16T19:33:00.000Z"}]',
+  '[{"id":"msg-demo-task-running-1","role":"user","content":"Make the invoice timeline easier to scan.","timestamp":"2026-04-16T18:52:00.000Z"},{"id":"msg-demo-task-running-2","role":"assistant","content":"I grouped related events and am tightening the spacing now.","timestamp":"2026-04-16T19:22:30.000Z"}]',
+  '[{"id":"tool-demo-task-running-1","name":"Read","input":{"filePath":"src/components/invoice-timeline.tsx"},"output":{"lineCount":280},"status":"completed","timestamp":"2026-04-16T18:57:00.000Z"},{"id":"tool-demo-task-running-2","name":"Edit","input":{"filePath":"src/components/invoice-timeline.tsx"},"output":{"updated":true},"status":"completed","timestamp":"2026-04-16T19:20:00.000Z"}]',
   NULL,
   NULL,
   NULL,
@@ -680,7 +680,7 @@ ON CONFLICT(id) DO UPDATE SET
   automatic_pr_flow = excluded.automatic_pr_flow,
   fully_autonomous_pending = excluded.fully_autonomous_pending;
 
-INSERT INTO loops (
+INSERT INTO tasks (
   id,
   name,
   directory,
@@ -742,7 +742,7 @@ INSERT INTO loops (
   automatic_pr_flow,
   fully_autonomous_pending
 ) VALUES (
-  'demo-loop-pushed',
+  'demo-task-pushed',
   'PR follow-up automation',
   '/srv/workspaces/billing-api',
   'Handle PR feedback automatically after push and keep monitoring merge state.',
@@ -752,7 +752,7 @@ INSERT INTO loops (
   'anthropic',
   'claude-sonnet-4.6',
   'thinking',
-  '{"mode":"same-as-loop"}',
+  '{"mode":"same-as-task"}',
   NULL,
   10,
   NULL,
@@ -766,7 +766,7 @@ INSERT INTO loops (
   1,
   1,
   1,
-  'loop',
+  'task',
   'pushed',
   5,
   '2026-04-16T17:42:00.000Z',
@@ -782,9 +782,9 @@ INSERT INTO loops (
   '/srv/worktrees/billing-api/pr-automation',
   '[{"iteration":2,"sha":"111aaaa","message":"feat(automation): monitor pushed PR state","timestamp":"2026-04-16T18:02:00.000Z","filesChanged":5},{"iteration":4,"sha":"222bbbb","message":"feat(automation): persist handled review items","timestamp":"2026-04-16T18:34:00.000Z","filesChanged":7}]',
   '[{"iteration":1,"startedAt":"2026-04-16T17:42:00.000Z","completedAt":"2026-04-16T17:55:00.000Z","messageCount":4,"toolCallCount":3,"outcome":"continue"},{"iteration":2,"startedAt":"2026-04-16T17:57:00.000Z","completedAt":"2026-04-16T18:02:00.000Z","messageCount":3,"toolCallCount":4,"outcome":"continue"},{"iteration":3,"startedAt":"2026-04-16T18:10:00.000Z","completedAt":"2026-04-16T18:20:00.000Z","messageCount":4,"toolCallCount":2,"outcome":"continue"},{"iteration":4,"startedAt":"2026-04-16T18:25:00.000Z","completedAt":"2026-04-16T18:34:00.000Z","messageCount":5,"toolCallCount":5,"outcome":"continue"},{"iteration":5,"startedAt":"2026-04-16T18:40:00.000Z","completedAt":"2026-04-16T18:50:00.000Z","messageCount":2,"toolCallCount":1,"outcome":"complete"}]',
-  '[{"id":"log-demo-loop-pushed-1","level":"info","message":"Branch pushed to origin.","timestamp":"2026-04-16T18:50:00.000Z"},{"id":"log-demo-loop-pushed-2","level":"info","message":"Automatic PR flow is monitoring feedback.","timestamp":"2026-04-16T19:28:00.000Z"}]',
-  '[{"id":"msg-demo-loop-pushed-1","role":"user","content":"Monitor pushed PRs and react to review feedback.","timestamp":"2026-04-16T17:42:00.000Z"},{"id":"msg-demo-loop-pushed-2","role":"assistant","content":"The branch is pushed and the PR automation loop is active.","timestamp":"2026-04-16T19:28:00.000Z"}]',
-  '[{"id":"tool-demo-loop-pushed-1","name":"Bash","input":{"command":"gh pr view --json number,state,url"},"output":{"number":42,"state":"OPEN","url":"https://github.com/example/billing-api/pull/42"},"status":"completed","timestamp":"2026-04-16T19:05:00.000Z"}]',
+  '[{"id":"log-demo-task-pushed-1","level":"info","message":"Branch pushed to origin.","timestamp":"2026-04-16T18:50:00.000Z"},{"id":"log-demo-task-pushed-2","level":"info","message":"Automatic PR flow is monitoring feedback.","timestamp":"2026-04-16T19:28:00.000Z"}]',
+  '[{"id":"msg-demo-task-pushed-1","role":"user","content":"Monitor pushed PRs and react to review feedback.","timestamp":"2026-04-16T17:42:00.000Z"},{"id":"msg-demo-task-pushed-2","role":"assistant","content":"The branch is pushed and the PR automation task is active.","timestamp":"2026-04-16T19:28:00.000Z"}]',
+  '[{"id":"tool-demo-task-pushed-1","name":"Bash","input":{"command":"gh pr view --json number,state,url"},"output":{"number":42,"state":"OPEN","url":"https://github.com/example/billing-api/pull/42"},"status":"completed","timestamp":"2026-04-16T19:05:00.000Z"}]',
   NULL,
   NULL,
   NULL,
@@ -864,7 +864,7 @@ ON CONFLICT(id) DO UPDATE SET
   automatic_pr_flow = excluded.automatic_pr_flow,
   fully_autonomous_pending = excluded.fully_autonomous_pending;
 
-INSERT INTO loops (
+INSERT INTO tasks (
   id,
   name,
   directory,
@@ -926,7 +926,7 @@ INSERT INTO loops (
   automatic_pr_flow,
   fully_autonomous_pending
 ) VALUES (
-  'demo-loop-failed',
+  'demo-task-failed',
   'Sync legacy ledger jobs',
   '/workspaces/demo-storefront',
   'Backfill ledger jobs from the old worker system and remove dead code.',
@@ -936,7 +936,7 @@ INSERT INTO loops (
   'anthropic',
   'claude-sonnet-4.5',
   '',
-  '{"mode":"same-as-loop"}',
+  '{"mode":"same-as-task"}',
   5,
   10,
   NULL,
@@ -950,7 +950,7 @@ INSERT INTO loops (
   1,
   0,
   0,
-  'loop',
+  'task',
   'failed',
   2,
   '2026-04-16T17:25:00.000Z',
@@ -966,9 +966,9 @@ INSERT INTO loops (
   '/worktrees/demo-storefront/ledger-sync',
   '[{"iteration":1,"sha":"fedcba1","message":"chore(ledger): add migration scaffold","timestamp":"2026-04-16T17:45:00.000Z","filesChanged":3}]',
   '[{"iteration":1,"startedAt":"2026-04-16T17:25:00.000Z","completedAt":"2026-04-16T17:45:00.000Z","messageCount":4,"toolCallCount":2,"outcome":"continue"},{"iteration":2,"startedAt":"2026-04-16T17:50:00.000Z","completedAt":"2026-04-16T18:12:00.000Z","messageCount":3,"toolCallCount":4,"outcome":"error"}]',
-  '[{"id":"log-demo-loop-failed-1","level":"warn","message":"Legacy payload parser returned an unexpected shape.","timestamp":"2026-04-16T18:08:00.000Z"},{"id":"log-demo-loop-failed-2","level":"error","message":"Loop failed after repeated parser errors.","timestamp":"2026-04-16T18:12:00.000Z"}]',
-  '[{"id":"msg-demo-loop-failed-1","role":"user","content":"Migrate the old ledger job payloads.","timestamp":"2026-04-16T17:25:00.000Z"},{"id":"msg-demo-loop-failed-2","role":"assistant","content":"The legacy payload format is inconsistent and needs manual cleanup.","timestamp":"2026-04-16T18:12:00.000Z"}]',
-  '[{"id":"tool-demo-loop-failed-1","name":"Bash","input":{"command":"bun run scripts/migrate-ledger.ts"},"output":{"exitCode":1,"stderr":"Unexpected token at row 19"},"status":"failed","timestamp":"2026-04-16T18:12:00.000Z"}]',
+  '[{"id":"log-demo-task-failed-1","level":"warn","message":"Legacy payload parser returned an unexpected shape.","timestamp":"2026-04-16T18:08:00.000Z"},{"id":"log-demo-task-failed-2","level":"error","message":"Task failed after repeated parser errors.","timestamp":"2026-04-16T18:12:00.000Z"}]',
+  '[{"id":"msg-demo-task-failed-1","role":"user","content":"Migrate the old ledger job payloads.","timestamp":"2026-04-16T17:25:00.000Z"},{"id":"msg-demo-task-failed-2","role":"assistant","content":"The legacy payload format is inconsistent and needs manual cleanup.","timestamp":"2026-04-16T18:12:00.000Z"}]',
+  '[{"id":"tool-demo-task-failed-1","name":"Bash","input":{"command":"bun run scripts/migrate-ledger.ts"},"output":{"exitCode":1,"stderr":"Unexpected token at row 19"},"status":"failed","timestamp":"2026-04-16T18:12:00.000Z"}]',
   '{"lastErrorMessage":"Unexpected token at row 19","count":2}',
   NULL,
   NULL,
@@ -1232,7 +1232,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO review_comments (
   id,
-  loop_id,
+  task_id,
   review_cycle,
   comment_text,
   created_at,
@@ -1240,7 +1240,7 @@ INSERT INTO review_comments (
   addressed_at
 ) VALUES (
   'demo-review-comment-1',
-  'demo-loop-pushed',
+  'demo-task-pushed',
   1,
   'Please split the PR monitoring badge into its own component.',
   '2026-04-16T19:12:00.000Z',
@@ -1248,7 +1248,7 @@ INSERT INTO review_comments (
   NULL
 )
 ON CONFLICT(id) DO UPDATE SET
-  loop_id = excluded.loop_id,
+  task_id = excluded.task_id,
   review_cycle = excluded.review_cycle,
   comment_text = excluded.comment_text,
   created_at = excluded.created_at,
@@ -1257,7 +1257,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT INTO forwarded_ports (
   id,
-  loop_id,
+  task_id,
   workspace_id,
   ssh_session_id,
   remote_host,
@@ -1271,9 +1271,9 @@ INSERT INTO forwarded_ports (
   error_message
 ) VALUES (
   'demo-forwarded-port-1',
-  'demo-loop-running',
+  'demo-task-running',
   'demo-workspace-api',
-  'demo-workspace-session-loop-running',
+  'demo-workspace-session-task-running',
   '127.0.0.1',
   4173,
   54173,
@@ -1285,7 +1285,7 @@ INSERT INTO forwarded_ports (
   NULL
 )
 ON CONFLICT(id) DO UPDATE SET
-  loop_id = excluded.loop_id,
+  task_id = excluded.task_id,
   workspace_id = excluded.workspace_id,
   ssh_session_id = excluded.ssh_session_id,
   remote_host = excluded.remote_host,

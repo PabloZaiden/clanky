@@ -1,5 +1,5 @@
 {
-  "name": "@ralpher/client-sdk",
+  "name": "@clanky/client-sdk",
   "private": true,
   "type": "module",
   "exports": {
@@ -10,7 +10,7 @@
     "build": "bunx tsc -p tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
-    "@ralpher/shared": "workspace:*",
+    "@clanky/shared": "workspace:*",
     "zod": "4.4.3"
   }
 }

@@ -128,7 +128,7 @@ function createTestSession(workspaceId: string, directory: string): SshSession {
       directory,
       connectionMode: "dtach",
       useTmux: true,
-      remoteSessionName: "ralpher-session-1",
+      remoteSessionName: "clanky-session-1",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -161,8 +161,8 @@ describe("SshTerminalBridge", () => {
   let execImpl: (command: string, args: string[], options?: CommandOptions) => Promise<CommandResult>;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-bridge-unit-"));
-    process.env["RALPHER_DATA_DIR"] = tempDir;
+    tempDir = await mkdtemp(join(tmpdir(), "clanky-ssh-bridge-unit-"));
+    process.env["CLANKY_DATA_DIR"] = tempDir;
     await initializeDatabase();
 
     backendManager.resetForTesting();
@@ -201,16 +201,16 @@ describe("SshTerminalBridge", () => {
     backendManager.resetForTesting();
     sshServerManager.setExecutorFactoryForTesting(null);
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(tempDir, { recursive: true, force: true });
   });
 
   test("buildAttachCommand keeps the dtach wrapper around the tmux-aware persistent shell bootstrap", () => {
     const command = buildAttachCommand(session);
 
-    expect(command).toContain("session_socket='/tmp/ralpher-session-1.dtach.sock'");
-    expect(command).toContain("client_tty_file='/tmp/ralpher-terminal-ssh-session-1.tty'");
-    expect(command).toContain("session_tty_file='/tmp/ralpher-terminal-ssh-session-1.session.tty'");
+    expect(command).toContain("session_socket='/tmp/clanky-session-1.dtach.sock'");
+    expect(command).toContain("client_tty_file='/tmp/clanky-terminal-ssh-session-1.tty'");
+    expect(command).toContain("session_tty_file='/tmp/clanky-terminal-ssh-session-1.session.tty'");
     expect(command).toMatch(/cd .*\/workspaces\/example.*\|\| exit 1;/);
     expect(command).toMatch(/COLORTERM=.*truecolor.*;/);
     expect(command).toContain("export COLORTERM;");
@@ -223,11 +223,11 @@ describe("SshTerminalBridge", () => {
     const command = buildAttachCommand({
       config: {
         id: "standalone-session-1",
-        remoteSessionName: "ralpher-server-session-1",
+        remoteSessionName: "clanky-server-session-1",
       },
     });
 
-    expect(command).toContain("session_socket='/tmp/ralpher-server-session-1.dtach.sock'");
+    expect(command).toContain("session_socket='/tmp/clanky-server-session-1.dtach.sock'");
     expect(command).not.toContain("cd '");
   });
 

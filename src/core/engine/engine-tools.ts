@@ -1,29 +1,29 @@
 /**
- * Agent event processing helpers for LoopEngine.
+ * Agent event processing helpers for TaskEngine.
  */
 
-import type { LoopConfig, LoopState } from "../../types/loop";
-import type { LogLevel, LoopEvent, MessageData, ToolCallData } from "../../types/events";
+import type { TaskConfig, TaskState } from "../../types/task";
+import type { LogLevel, TaskEvent, MessageData, ToolCallData } from "../../types/events";
 import { createTimestamp } from "../../types/events";
 import type { AgentEvent } from "../../backends/types";
-import type { LoopBackend, IterationContext } from "./engine-types";
+import type { TaskBackend, IterationContext } from "./engine-types";
 
 export interface ToolProcessingContext {
-  loopId: string;
-  config: LoopConfig;
-  state: LoopState;
-  backend: LoopBackend;
+  taskId: string;
+  config: TaskConfig;
+  state: TaskState;
+  backend: TaskBackend;
   sessionId: string | null;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>, id?: string, consoleLevel?: "trace" | "debug" | "info" | "warn" | "error") => string;
-  emit: (event: LoopEvent) => void;
-  updateState: (update: Partial<LoopState>) => void;
+  emit: (event: TaskEvent) => void;
+  updateState: (update: Partial<TaskState>) => void;
   persistMessage: (message: MessageData) => void;
   persistToolCall: (toolCall: ToolCallData) => void;
   triggerPersistence: () => Promise<void>;
   scheduleToolImagePreview: (toolCall: ToolCallData, iteration: number) => void;
 }
 
-export async function processLoopAgentEvent(event: AgentEvent, ctx: IterationContext, toolCtx: ToolProcessingContext): Promise<void> {
+export async function processTaskAgentEvent(event: AgentEvent, ctx: IterationContext, toolCtx: ToolProcessingContext): Promise<void> {
   switch (event.type) {
     case "message.start":
       ctx.currentMessageId = event.messageId;
@@ -39,8 +39,8 @@ export async function processLoopAgentEvent(event: AgentEvent, ctx: IterationCon
       ctx.responseContent += event.content;
       handleStreamingDelta(event.content, ctx, "response", toolCtx);
       toolCtx.emit({
-        type: "loop.progress",
-        loopId: toolCtx.loopId,
+        type: "task.progress",
+        taskId: toolCtx.taskId,
         iteration: ctx.iteration,
         content: event.content,
         timestamp: createTimestamp(),
@@ -147,8 +147,8 @@ function handleMessageComplete(
   };
   toolCtx.persistMessage(messageData);
   toolCtx.emit({
-    type: "loop.message",
-    loopId: toolCtx.loopId,
+    type: "task.message",
+    taskId: toolCtx.taskId,
     iteration: ctx.iteration,
     message: messageData,
     timestamp: createTimestamp(),
@@ -175,8 +175,8 @@ function handleToolStart(event: AgentEvent & { type: "tool.start" }, ctx: Iterat
   };
   toolCtx.persistToolCall(toolCallData);
   toolCtx.emit({
-    type: "loop.tool_call",
-    loopId: toolCtx.loopId,
+    type: "task.tool_call",
+    taskId: toolCtx.taskId,
     iteration: ctx.iteration,
     tool: toolCallData,
     timestamp,
@@ -201,8 +201,8 @@ async function handleToolComplete(event: AgentEvent & { type: "tool.complete" },
   };
   toolCtx.persistToolCall(toolCompleteData);
   toolCtx.emit({
-    type: "loop.tool_call",
-    loopId: toolCtx.loopId,
+    type: "task.tool_call",
+    taskId: toolCtx.taskId,
     iteration: ctx.iteration,
     tool: toolCompleteData,
     timestamp,

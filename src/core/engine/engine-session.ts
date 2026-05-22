@@ -1,38 +1,38 @@
 /**
- * Session management helpers for LoopEngine.
+ * Session management helpers for TaskEngine.
  */
 
-import type { LoopConfig, LoopState } from "../../types/loop";
+import type { TaskConfig, TaskState } from "../../types/task";
 import type { LogLevel } from "../../types/events";
 import type { AgentSession } from "../../backends/types";
 import { AcpBackend } from "../../backends/acp";
 import { backendManager, buildConnectionConfig } from "../backend-manager";
 import { log } from "../logger";
-import type { LoopBackend, IterationContext } from "./engine-types";
+import type { TaskBackend, IterationContext } from "./engine-types";
 
 export interface SessionOperationContext {
-  backend: LoopBackend;
-  config: LoopConfig;
-  state: LoopState;
+  backend: TaskBackend;
+  config: TaskConfig;
+  state: TaskState;
   workingDirectory: string;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
-  updateState: (update: Partial<LoopState>) => void;
+  updateState: (update: Partial<TaskState>) => void;
   getSessionId: () => string | null;
   setSessionId: (id: string | null) => void;
 }
 
-export async function setupLoopSession(ctx: SessionOperationContext): Promise<string> {
-  log.debug("[LoopEngine] setupSession: Entry point");
+export async function setupTaskSession(ctx: SessionOperationContext): Promise<string> {
+  log.debug("[TaskEngine] setupSession: Entry point");
 
   const settings = await backendManager.getWorkspaceSettings(ctx.config.workspaceId);
-  log.debug("[LoopEngine] setupSession: Got settings", {
+  log.debug("[TaskEngine] setupSession: Got settings", {
     provider: settings.agent.provider,
     transport: settings.agent.transport,
     workspaceId: ctx.config.workspaceId,
   });
 
   const isConnected = ctx.backend.isConnected();
-  log.debug("[LoopEngine] setupSession: Backend connected?", { isConnected });
+  log.debug("[TaskEngine] setupSession: Backend connected?", { isConnected });
   if (!isConnected) {
     ctx.emitLog("info", "Backend not connected, establishing connection...", {
       provider: settings.agent.provider,
@@ -40,22 +40,22 @@ export async function setupLoopSession(ctx: SessionOperationContext): Promise<st
       hostname: settings.agent.transport === "ssh" ? settings.agent.hostname : undefined,
       port: settings.agent.transport === "ssh" ? settings.agent.port : undefined,
     });
-    log.debug("[LoopEngine] setupSession: About to call backend.connect");
+    log.debug("[TaskEngine] setupSession: About to call backend.connect");
     await ctx.backend.connect(buildConnectionConfig(settings, ctx.workingDirectory));
-    log.debug("[LoopEngine] setupSession: backend.connect completed");
+    log.debug("[TaskEngine] setupSession: backend.connect completed");
     ctx.emitLog("info", "Backend connection established");
   } else {
     ctx.emitLog("debug", "Backend already connected");
   }
 
-  log.debug("[LoopEngine] setupSession: About to create session");
+  log.debug("[TaskEngine] setupSession: About to create session");
   ctx.emitLog("info", "Creating new AI session...");
   const session = await ctx.backend.createSession({
-    title: `Ralph Loop: ${ctx.config.name}`,
+    title: `Clanky Task: ${ctx.config.name}`,
     directory: ctx.workingDirectory,
     model: ctx.config.model?.modelID,
   });
-  log.debug("[LoopEngine] setupSession: Session created", {
+  log.debug("[TaskEngine] setupSession: Session created", {
     sessionId: session.id,
     requestedModel: ctx.config.model?.modelID ?? "default",
     reportedModel: session.model ?? "not reported by ACP",
@@ -75,24 +75,24 @@ export async function setupLoopSession(ctx: SessionOperationContext): Promise<st
     ? `ssh://${connectionConfig.hostname}:${connectionConfig.port ?? 22}`
     : undefined;
 
-  log.debug("[LoopEngine] setupSession: About to update state");
+  log.debug("[TaskEngine] setupSession: About to update state");
   ctx.updateState({
     session: {
       id: session.id,
       serverUrl,
     },
   });
-  log.debug("[LoopEngine] setupSession: Exit point");
+  log.debug("[TaskEngine] setupSession: Exit point");
 
   return session.id;
 }
 
-export async function reconnectLoopSession(ctx: SessionOperationContext): Promise<void> {
-  log.debug("[LoopEngine] reconnectSession: Entry point");
+export async function reconnectTaskSession(ctx: SessionOperationContext): Promise<void> {
+  log.debug("[TaskEngine] reconnectSession: Entry point");
 
   const activeSessionId = ctx.getSessionId();
   if (activeSessionId && ctx.backend.isConnected()) {
-    log.debug("[LoopEngine] reconnectSession: Verifying active connected session", { sessionId: activeSessionId });
+    log.debug("[TaskEngine] reconnectSession: Verifying active connected session", { sessionId: activeSessionId });
   }
 
   const existingSessionId = activeSessionId ?? ctx.state.session?.id;
@@ -103,7 +103,7 @@ export async function reconnectLoopSession(ctx: SessionOperationContext): Promis
       }
     : undefined;
   if (existingSession?.id) {
-    log.debug("[LoopEngine] reconnectSession: Found existing session in state", {
+    log.debug("[TaskEngine] reconnectSession: Found existing session in state", {
       sessionId: existingSession.id,
       serverUrl: existingSession.serverUrl,
     });
@@ -131,7 +131,7 @@ export async function reconnectLoopSession(ctx: SessionOperationContext): Promis
             sessionId: existingSession.id,
           });
           await recreateSessionAfterLoss(ctx, `Session ${existingSession.id} not found during reconnect`);
-          log.debug("[LoopEngine] reconnectSession: Recreated missing session");
+          log.debug("[TaskEngine] reconnectSession: Recreated missing session");
           return;
         }
       } catch (error) {
@@ -142,7 +142,7 @@ export async function reconnectLoopSession(ctx: SessionOperationContext): Promis
             error: message,
           });
           await recreateSessionAfterLoss(ctx, message);
-          log.debug("[LoopEngine] reconnectSession: Recreated missing session after lookup error");
+          log.debug("[TaskEngine] reconnectSession: Recreated missing session after lookup error");
           return;
         }
 
@@ -155,14 +155,14 @@ export async function reconnectLoopSession(ctx: SessionOperationContext): Promis
 
     ctx.setSessionId(existingSession.id);
     ctx.emitLog("info", "Reconnected to existing session", { sessionId: ctx.getSessionId() });
-    log.debug("[LoopEngine] reconnectSession: Reconnected to session", { sessionId: ctx.getSessionId() });
+    log.debug("[TaskEngine] reconnectSession: Reconnected to session", { sessionId: ctx.getSessionId() });
     return;
   }
 
-  log.debug("[LoopEngine] reconnectSession: No existing session, creating new one");
+  log.debug("[TaskEngine] reconnectSession: No existing session, creating new one");
   ctx.emitLog("info", "No existing session found, creating new session");
-  await setupLoopSession(ctx);
-  log.debug("[LoopEngine] reconnectSession: Exit point (new session created)");
+  await setupTaskSession(ctx);
+  log.debug("[TaskEngine] reconnectSession: Exit point (new session created)");
 }
 
 export async function recreateSessionAfterLoss(ctx: SessionOperationContext, reason: string): Promise<string> {
@@ -173,7 +173,7 @@ export async function recreateSessionAfterLoss(ctx: SessionOperationContext, rea
   });
   ctx.setSessionId(null);
   ctx.updateState({ session: undefined });
-  const newSessionId = await setupLoopSession(ctx);
+  const newSessionId = await setupTaskSession(ctx);
   ctx.emitLog("info", "AI session recreated", {
     previousSessionId,
     newSessionId,
@@ -218,7 +218,7 @@ export async function handleModelChange(ctx: SessionOperationContext): Promise<v
       });
       return;
     } catch {
-      log.debug("[LoopEngine] session/set_config_option not supported, trying session/set_model");
+      log.debug("[TaskEngine] session/set_config_option not supported, trying session/set_model");
     }
 
     try {
@@ -228,7 +228,7 @@ export async function handleModelChange(ctx: SessionOperationContext): Promise<v
         sessionId: ctx.getSessionId(),
       });
     } catch (error) {
-      log.warn("[LoopEngine] Failed to set model via config option or set_model, will use per-prompt model", {
+      log.warn("[TaskEngine] Failed to set model via config option or set_model, will use per-prompt model", {
         error: String(error),
         model: newModelID,
       });
@@ -247,7 +247,7 @@ export async function setModelAfterSessionCreate(ctx: SessionOperationContext, s
   }
 
   if (session.model === desiredModel) {
-    log.debug("[LoopEngine] Session already using desired model", { model: desiredModel });
+    log.debug("[TaskEngine] Session already using desired model", { model: desiredModel });
     return;
   }
 
@@ -259,7 +259,7 @@ export async function setModelAfterSessionCreate(ctx: SessionOperationContext, s
     });
     return;
   } catch {
-    log.debug("[LoopEngine] session/set_config_option not supported, trying session/set_model");
+    log.debug("[TaskEngine] session/set_config_option not supported, trying session/set_model");
   }
 
   try {
@@ -269,7 +269,7 @@ export async function setModelAfterSessionCreate(ctx: SessionOperationContext, s
       sessionId: ctx.getSessionId(),
     });
   } catch (error) {
-    log.warn("[LoopEngine] Failed to set model via config option or set_model after session creation", {
+    log.warn("[TaskEngine] Failed to set model via config option or set_model after session creation", {
       error: String(error),
       model: desiredModel,
     });

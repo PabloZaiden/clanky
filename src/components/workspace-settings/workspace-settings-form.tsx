@@ -8,7 +8,7 @@ import { ServerSettingsForm } from "../ServerSettingsForm";
 import type { ServerSettings } from "../../types/settings";
 import { createLogger } from "../../lib/logger";
 import { AgentsMdSection } from "./agents-md-section";
-import { PurgeLoopsSection } from "./purge-loops-section";
+import { PurgeTasksSection } from "./purge-tasks-section";
 import { DeleteWorkspaceSection } from "./delete-workspace-section";
 import type { WorkspaceSettingsFormProps } from "./types";
 
@@ -19,13 +19,13 @@ export function WorkspaceSettingsForm({
   status,
   onSave,
   onTest,
-  onPurgeArchivedLoops,
+  onPurgeArchivedTasks,
   onDeleteWorkspace,
-  purgeableLoopCount = 0,
-  workspaceLoopCount = 0,
+  purgeableTaskCount = 0,
+  workspaceTaskCount = 0,
   saving = false,
   testing = false,
-  purgingPurgeableLoops = false,
+  purgingPurgeableTasks = false,
   remoteOnly = false,
   showConnectionStatus = true,
   formId = "workspace-settings-form",
@@ -159,14 +159,14 @@ export function WorkspaceSettingsForm({
         {workspace && <AgentsMdSection workspace={workspace} />}
       </form>
 
-      {/* Terminal-state loop purge — rendered outside <form> so ConfirmModal buttons
+      {/* Terminal-state task purge — rendered outside <form> so ConfirmModal buttons
           do not accidentally submit the form. */}
-      {workspace && onPurgeArchivedLoops && (
-        <PurgeLoopsSection
+      {workspace && onPurgeArchivedTasks && (
+        <PurgeTasksSection
           workspace={workspace}
-          onPurgeArchivedLoops={onPurgeArchivedLoops}
-          purgeableLoopCount={purgeableLoopCount}
-          purgingPurgeableLoops={purgingPurgeableLoops}
+          onPurgeArchivedTasks={onPurgeArchivedTasks}
+          purgeableTaskCount={purgeableTaskCount}
+          purgingPurgeableTasks={purgingPurgeableTasks}
         />
       )}
 
@@ -176,7 +176,7 @@ export function WorkspaceSettingsForm({
         <DeleteWorkspaceSection
           workspace={workspace}
           onDeleteWorkspace={onDeleteWorkspace}
-          workspaceLoopCount={workspaceLoopCount}
+          workspaceTaskCount={workspaceTaskCount}
           saving={saving}
           onDeleted={onDeleted}
         />

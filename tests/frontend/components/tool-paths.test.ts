@@ -13,8 +13,8 @@ describe("formatToolPathForDisplay", () => {
   test("keeps Windows worktree paths relative to their configured root", () => {
     expect(
       formatToolPathForDisplay(
-        "C:\\workspace\\project\\.ralph-worktrees\\feature\\src\\persistence\\auth.ts",
-        "C:\\workspace\\project\\.ralph-worktrees\\feature",
+        "C:\\workspace\\project\\.clanky-worktrees\\feature\\src\\persistence\\auth.ts",
+        "C:\\workspace\\project\\.clanky-worktrees\\feature",
       ),
     ).toBe("src/persistence/auth.ts");
   });

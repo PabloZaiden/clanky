@@ -93,7 +93,7 @@ describe("SshSessionDetails", () => {
     restoreDocumentFonts();
     // Default to non-focus mode for tests that don't specifically test focus mode,
     // so they can interact with the header and session info normally.
-    globalThis.localStorage?.setItem("ralpher-ssh-focus-mode", "false");
+    globalThis.localStorage?.setItem("clanky-ssh-focus-mode", "false");
   });
 
   afterEach(() => {
@@ -168,7 +168,7 @@ describe("SshSessionDetails", () => {
 
     expect(lastTerminalOptions).toEqual({
       fontSize: 16,
-      fontFamily: "\"Ralpher Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
+      fontFamily: "\"Clanky Terminal Nerd Font\", \"JetBrainsMono Nerd Font Mono\", \"JetBrainsMono Nerd Font\", SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, \"Liberation Mono\", \"Liga SFMono Nerd Font\", \"MesloLGS NF\", \"MonaspiceNe Nerd Font Mono\", \"MonaspiceXe Nerd Font Mono\", \"Iosevka Nerd Font\", \"RecMonoLinear Nerd Font Mono\", \"Terminess Nerd Font Mono\", \"FiraCode Nerd Font Mono\", \"CaskaydiaMono Nerd Font Mono\", \"CaskaydiaCove Nerd Font Mono\", \"Hack Nerd Font Mono\", \"SauceCodePro Nerd Font Mono\", \"Symbols Nerd Font Mono\", \"Symbols Nerd Font\", monospace",
       theme: expectedTerminalTheme,
       scrollback: 10000,
       cursorBlink: true,
@@ -217,7 +217,7 @@ describe("SshSessionDetails", () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Local Font Preference" } }),
     );
-    mockDocumentFonts(["Liga SFMono Nerd Font", "Ralpher Terminal Nerd Font"]);
+    mockDocumentFonts(["Liga SFMono Nerd Font", "Clanky Terminal Nerd Font"]);
 
     const { getByText } = renderWithUser(
       <SshSessionDetails sshSessionId="ssh-local-fonts-1" onBack={() => {}} />,
@@ -231,7 +231,7 @@ describe("SshSessionDetails", () => {
 
     expect(lastTerminalOptions).toEqual({
       fontSize: 16,
-      fontFamily: "\"Ralpher Terminal Nerd Font\", \"Liga SFMono Nerd Font\", monospace",
+      fontFamily: "\"Clanky Terminal Nerd Font\", \"Liga SFMono Nerd Font\", monospace",
       theme: expectedTerminalTheme,
       scrollback: 10000,
       cursorBlink: true,
@@ -1148,7 +1148,7 @@ describe("SshSessionDetails", () => {
   });
 
   test("shows the clipboard fallback in focus mode when remote clipboard copy is blocked", async () => {
-    globalThis.localStorage?.setItem("ralpher-ssh-focus-mode", "true");
+    globalThis.localStorage?.setItem("clanky-ssh-focus-mode", "true");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Focus Clipboard Fallback" } }),
@@ -1204,7 +1204,7 @@ describe("SshSessionDetails", () => {
   });
 
   test("reuses the clipboard fallback when focus-mode copy is blocked", async () => {
-    globalThis.localStorage?.setItem("ralpher-ssh-focus-mode", "true");
+    globalThis.localStorage?.setItem("clanky-ssh-focus-mode", "true");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Focus Selected Copy Fallback" } }),
@@ -1262,7 +1262,7 @@ describe("SshSessionDetails", () => {
   });
 
   test("connects a standalone SSH session terminal with a stored browser credential", async () => {
-    globalThis.localStorage?.setItem("ralpher.sshServerCredential.server-1", JSON.stringify({
+    globalThis.localStorage?.setItem("clanky.sshServerCredential.server-1", JSON.stringify({
       encryptedCredential: {
         algorithm: "RSA-OAEP-256",
         fingerprint: "fp-1",
@@ -1277,7 +1277,7 @@ describe("SshSessionDetails", () => {
         sshServerId: "server-1",
         name: "Standalone Session",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-standalone-1",
+        remoteSessionName: "clanky-standalone-1",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -1337,7 +1337,7 @@ describe("SshSessionDetails", () => {
   });
 
   test("refreshes the standalone SSH credential token when focus recovery reconnects the terminal", async () => {
-    globalThis.localStorage?.setItem("ralpher.sshServerCredential.server-1", JSON.stringify({
+    globalThis.localStorage?.setItem("clanky.sshServerCredential.server-1", JSON.stringify({
       encryptedCredential: {
         algorithm: "RSA-OAEP-256",
         fingerprint: "fp-1",
@@ -1352,7 +1352,7 @@ describe("SshSessionDetails", () => {
         sshServerId: "server-1",
         name: "Standalone Focus Recovery",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-standalone-focus",
+        remoteSessionName: "clanky-standalone-focus",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -1458,7 +1458,7 @@ describe("SshSessionDetails", () => {
   });
 
   test("shows the standalone password prompt when credential refresh throws during focus recovery", async () => {
-    globalThis.localStorage?.setItem("ralpher.sshServerCredential.server-1", JSON.stringify({
+    globalThis.localStorage?.setItem("clanky.sshServerCredential.server-1", JSON.stringify({
       encryptedCredential: {
         algorithm: "RSA-OAEP-256",
         fingerprint: "fp-1",
@@ -1473,7 +1473,7 @@ describe("SshSessionDetails", () => {
         sshServerId: "server-1",
         name: "Standalone Focus Refresh Failure",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-standalone-refresh-failure",
+        remoteSessionName: "clanky-standalone-refresh-failure",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -1579,7 +1579,7 @@ describe("SshSessionDetails", () => {
   test("does not re-probe the workspace endpoint or remint standalone terminal credentials on session refresh", async () => {
     let standaloneStatus = "ready";
 
-    globalThis.localStorage?.setItem("ralpher.sshServerCredential.server-1", JSON.stringify({
+    globalThis.localStorage?.setItem("clanky.sshServerCredential.server-1", JSON.stringify({
       encryptedCredential: {
         algorithm: "RSA-OAEP-256",
         fingerprint: "fp-1",
@@ -1599,7 +1599,7 @@ describe("SshSessionDetails", () => {
         sshServerId: "server-1",
         name: "Refresh Stable Session",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-standalone-refresh",
+        remoteSessionName: "clanky-standalone-refresh",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -1685,7 +1685,7 @@ describe("SshSessionDetails", () => {
         sshServerId: standaloneServerId,
         name: "Password Prompt Session",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-standalone-2",
+        remoteSessionName: "clanky-standalone-2",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -1752,7 +1752,7 @@ describe("SshSessionDetails", () => {
 
     await waitFor(() => {
       expect(api.calls("/api/ssh-servers/:id/credentials", "POST")).toHaveLength(1);
-      expect(globalThis.localStorage?.getItem(`ralpher.sshServerCredential.${standaloneServerId}`)).toBeTruthy();
+      expect(globalThis.localStorage?.getItem(`clanky.sshServerCredential.${standaloneServerId}`)).toBeTruthy();
       expect(ws.getConnections("/api/ssh-terminal")).toHaveLength(1);
     });
 
@@ -1771,7 +1771,7 @@ describe("SshSessionDetails", () => {
         sshServerId: standaloneServerId,
         name: "Password Failure Session",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-standalone-failure",
+        remoteSessionName: "clanky-standalone-failure",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -1834,7 +1834,7 @@ describe("SshSessionDetails", () => {
         sshServerId: standaloneServerId,
         name: "Password Retry Session",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-standalone-retry",
+        remoteSessionName: "clanky-standalone-retry",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -1918,7 +1918,7 @@ describe("SshSessionDetails", () => {
 
   test("shows focus mode toggle in touch controls and enters focus mode on click", async () => {
     // Clear the explicit "false" set in beforeEach to test the real default (focus mode ON)
-    globalThis.localStorage?.removeItem("ralpher-ssh-focus-mode");
+    globalThis.localStorage?.removeItem("clanky-ssh-focus-mode");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "Focus Mode Test" } }),
@@ -1978,7 +1978,7 @@ describe("SshSessionDetails", () => {
   });
 
   test("prevents focus-mode controls from taking focus on press", async () => {
-    globalThis.localStorage?.removeItem("ralpher-ssh-focus-mode");
+    globalThis.localStorage?.removeItem("clanky-ssh-focus-mode");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "Focus Keyboard Stability" } }),
@@ -2006,7 +2006,7 @@ describe("SshSessionDetails", () => {
 
   test("exits focus mode and restores normal view", async () => {
     // Clear the explicit "false" set in beforeEach to test the real default (focus mode ON)
-    globalThis.localStorage?.removeItem("ralpher-ssh-focus-mode");
+    globalThis.localStorage?.removeItem("clanky-ssh-focus-mode");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "Focus Exit Test" } }),
@@ -2038,7 +2038,7 @@ describe("SshSessionDetails", () => {
 
   test("persists focus mode preference across renders via localStorage", async () => {
     // Clear the explicit "false" set in beforeEach to test the real default (focus mode ON)
-    globalThis.localStorage?.removeItem("ralpher-ssh-focus-mode");
+    globalThis.localStorage?.removeItem("clanky-ssh-focus-mode");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "Focus Persist" } }),
@@ -2061,7 +2061,7 @@ describe("SshSessionDetails", () => {
       expect(queryByText("Focus Persist")).not.toBeNull();
     });
 
-    expect(localStorage.getItem("ralpher-ssh-focus-mode")).toBe("false");
+    expect(localStorage.getItem("clanky-ssh-focus-mode")).toBe("false");
 
     // Unmount and re-render — should start in normal mode (preference was persisted)
     unmount();
@@ -2084,7 +2084,7 @@ describe("SshSessionDetails", () => {
 
   test("keeps the terminal container mounted when toggling focus mode", async () => {
     // Clear the explicit "false" set in beforeEach to test the real default (focus mode ON)
-    globalThis.localStorage?.removeItem("ralpher-ssh-focus-mode");
+    globalThis.localStorage?.removeItem("clanky-ssh-focus-mode");
 
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "Focus Terminal" } }),

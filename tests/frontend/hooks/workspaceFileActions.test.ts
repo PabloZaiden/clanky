@@ -143,7 +143,7 @@ describe("server file explorer actions", () => {
     }));
     api.get("/api/ssh-servers/:id/files", (req) => {
       expect(req.params["id"]).toBe("server-1");
-      expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("token-123");
+      expect(req.headers.get("x-clanky-ssh-credential-token")).toBe("token-123");
       expect(new URL(req.url, "http://localhost").searchParams.get("startDirectory")).toBe("/srv/apps");
       return {
         serverId: "server-1",
@@ -173,7 +173,7 @@ describe("server file explorer actions", () => {
     }));
     api.post("/api/ssh-servers/:id/files/write", (req) => {
       expect(req.params["id"]).toBe("server-1");
-      expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("token-456");
+      expect(req.headers.get("x-clanky-ssh-credential-token")).toBe("token-456");
       expect(req.body).toEqual({
         path: "src/index.ts",
         content: "export const value = 2;\n",

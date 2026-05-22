@@ -15,19 +15,19 @@ export function isTruthyEnvFlag(name: string): boolean {
  * When enabled, spawning local servers is disabled and only
  * connecting to remote servers is allowed.
  * 
- * Set RALPHER_REMOTE_ONLY=true, 1, or yes to enable.
+ * Set CLANKY_REMOTE_ONLY=true, 1, or yes to enable.
  */
 export function isRemoteOnlyMode(): boolean {
-  return isTruthyEnvFlag("RALPHER_REMOTE_ONLY");
+  return isTruthyEnvFlag("CLANKY_REMOTE_ONLY");
 }
 
 /**
  * Check if the built-in mock ACP runtime should be used.
  *
- * Set RALPHER_MOCK_ACP=true, 1, or yes to enable.
+ * Set CLANKY_MOCK_ACP=true, 1, or yes to enable.
  */
 export function isMockAcpEnabled(): boolean {
-  return isTruthyEnvFlag("RALPHER_MOCK_ACP");
+  return isTruthyEnvFlag("CLANKY_MOCK_ACP");
 }
 
 /**
@@ -36,10 +36,10 @@ export function isMockAcpEnabled(): boolean {
  * Intended for development setups where the browser origin differs from the
  * backend origin on purpose.
  *
- * Set RALPHER_DISABLE_SAME_ORIGIN_CHECK=true, 1, or yes to disable.
+ * Set CLANKY_DISABLE_SAME_ORIGIN_CHECK=true, 1, or yes to disable.
  */
 export function isSameOriginCheckDisabled(): boolean {
-  return isTruthyEnvFlag("RALPHER_DISABLE_SAME_ORIGIN_CHECK");
+  return isTruthyEnvFlag("CLANKY_DISABLE_SAME_ORIGIN_CHECK");
 }
 
 /**

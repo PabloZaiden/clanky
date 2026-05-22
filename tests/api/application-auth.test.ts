@@ -25,7 +25,7 @@ function createSignedPasskeySessionCookie(
 ): string {
   const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = createHmac("sha256", secret).update(encodedPayload, "utf8").digest("base64url");
-  return `ralpher_passkey_session=${encodedPayload}.${signature}`;
+  return `clanky_passkey_session=${encodedPayload}.${signature}`;
 }
 
 async function issueBearerToken(): Promise<string> {

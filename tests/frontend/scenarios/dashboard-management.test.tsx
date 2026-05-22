@@ -10,7 +10,7 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor, within } from "../helpers/render";
 import {
-  createLoopWithStatus,
+  createTaskWithStatus,
   createSshSession,
   createWorkspace,
   createModelInfo,
@@ -55,7 +55,7 @@ function createChat(overrides?: {
       mode: "chat",
       ...overrides?.config,
       scope: overrides?.config?.scope ?? "workspace",
-      loopId: overrides?.config?.loopId,
+      taskId: overrides?.config?.taskId,
     },
     state: {
       id: overrides?.state?.id ?? overrides?.config?.id ?? "chat-1",
@@ -86,13 +86,13 @@ function setupBaseApi() {
   }));
   api.get("/api/git/default-branch", () => ({ defaultBranch: "main" }));
   api.get("/api/check-planning-dir", () => ({ warning: null }));
-  // LoopDetails endpoints (for navigation tests)
-  api.get("/api/loops/:id/diff", () => []);
-  api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-  api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-  api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-  api.get("/api/loops/:id/port-forwards", () => []);
-  api.get("/api/loops/:id/pull-request", () => ({
+  // TaskDetails endpoints (for navigation tests)
+  api.get("/api/tasks/:id/diff", () => []);
+  api.get("/api/tasks/:id/plan", () => ({ exists: false, content: "" }));
+  api.get("/api/tasks/:id/status-file", () => ({ exists: false, content: "" }));
+  api.get("/api/tasks/:id/comments", () => ({ success: true, comments: [] }));
+  api.get("/api/tasks/:id/port-forwards", () => []);
+  api.get("/api/tasks/:id/pull-request", () => ({
     enabled: false,
     destinationType: "disabled",
     disabledReason: "disabled",
@@ -120,20 +120,20 @@ describe("dashboard management scenario", () => {
   test("overview shows active work, server maps, and the workspaces map", async () => {
     setupBaseApi();
 
-    const runningLoop = createLoopWithStatus("running", {
-      config: { id: "loop-run-1", name: "Running Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const runningTask = createTaskWithStatus("running", {
+      config: { id: "task-run-1", name: "Running Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const completedLoop = createLoopWithStatus("completed", {
-      config: { id: "loop-comp-1", name: "Done Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const completedTask = createTaskWithStatus("completed", {
+      config: { id: "task-comp-1", name: "Done Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const pushedLoop = createLoopWithStatus("pushed", {
-      config: { id: "loop-pushed-1", name: "Pushed Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const pushedTask = createTaskWithStatus("pushed", {
+      config: { id: "task-pushed-1", name: "Pushed Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const draftLoop = createLoopWithStatus("draft", {
-      config: { id: "loop-draft-1", name: "Draft Task", directory: "/workspaces/beta", workspaceId: "ws-b" },
+    const draftTask = createTaskWithStatus("draft", {
+      config: { id: "task-draft-1", name: "Draft Task", directory: "/workspaces/beta", workspaceId: "ws-b" },
     });
 
-    api.get("/api/loops", () => [runningLoop, completedLoop, pushedLoop, draftLoop]);
+    api.get("/api/tasks", () => [runningTask, completedTask, pushedTask, draftTask]);
     api.get("/api/workspaces", () => [WORKSPACE_A, WORKSPACE_B]);
 
     const { getAllByText, getByRole, getByTestId, getByText } = renderWithUser(<App />);
@@ -160,15 +160,15 @@ describe("dashboard management scenario", () => {
     expect(serverMapsHeading.compareDocumentPosition(workspacesMapHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  test("clicking a loop card navigates to loop details", async () => {
+  test("clicking a task card navigates to task details", async () => {
     setupBaseApi();
 
-    const loop = createLoopWithStatus("running", {
-      config: { id: "nav-loop-1", name: "Nav Target", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const task = createTaskWithStatus("running", {
+      config: { id: "nav-task-1", name: "Nav Target", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
 
-    api.get("/api/loops", () => [loop]);
-    api.get("/api/loops/:id", () => loop);
+    api.get("/api/tasks", () => [task]);
+    api.get("/api/tasks/:id", () => task);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
 
     const { getAllByText, user } = renderWithUser(<App />);
@@ -180,20 +180,20 @@ describe("dashboard management scenario", () => {
     await user.click(getAllByText("Nav Target")[0]!);
 
     await waitFor(() => {
-      expect(window.location.hash).toBe("#/loop/nav-loop-1");
+      expect(window.location.hash).toBe("#/task/nav-task-1");
     });
     expect(getAllByText("Nav Target").length).toBeGreaterThan(0);
   });
 
-  test("navigating to loop details and back preserves the overview", async () => {
+  test("navigating to task details and back preserves the overview", async () => {
     setupBaseApi();
 
-    const loop = createLoopWithStatus("completed", {
+    const task = createTaskWithStatus("completed", {
       config: { id: "round-trip-1", name: "Round Trip", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
 
-    api.get("/api/loops", () => [loop]);
-    api.get("/api/loops/:id", () => loop);
+    api.get("/api/tasks", () => [task]);
+    api.get("/api/tasks/:id", () => task);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
 
     const { getAllByText, getByRole, user } = renderWithUser(<App />);
@@ -204,14 +204,14 @@ describe("dashboard management scenario", () => {
 
     await user.click(getAllByText("Round Trip")[0]!);
     await waitFor(() => {
-      expect(window.location.hash).toBe("#/loop/round-trip-1");
+      expect(window.location.hash).toBe("#/task/round-trip-1");
     });
 
-    await user.click(getByRole("button", { name: /ralpher/i }));
+    await user.click(getByRole("button", { name: /clanky/i }));
 
     await waitFor(() => {
-      expect(getByRole("button", { name: /ralpher/i })).toBeTruthy();
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("button", { name: /clanky/i })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
       expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
       expect(getByRole("heading", { name: "Server maps" })).toBeTruthy();
     });
@@ -219,13 +219,13 @@ describe("dashboard management scenario", () => {
 
   test("settings button opens the shell settings view", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => []);
 
     const { getByLabelText, getByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     await user.click(getByLabelText("Open settings"));
@@ -236,11 +236,11 @@ describe("dashboard management scenario", () => {
     });
   });
 
-  test("addressable review loops remain reachable from the shell", async () => {
+  test("addressable review tasks remain reachable from the shell", async () => {
     setupBaseApi();
 
-    const pushedLoop = createLoopWithStatus("pushed", {
-      config: { id: "pushed-1", name: "Pushed Loop", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const pushedTask = createTaskWithStatus("pushed", {
+      config: { id: "pushed-1", name: "Pushed Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
       state: {
         reviewMode: {
           addressable: true,
@@ -250,39 +250,39 @@ describe("dashboard management scenario", () => {
       },
     });
 
-    api.get("/api/loops", () => [pushedLoop]);
+    api.get("/api/tasks", () => [pushedTask]);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
 
     const { getAllByText } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Pushed Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Pushed Task").length).toBeGreaterThan(0);
     });
   });
 
-  test("active work keeps sidebar-active loops visible while omitting history loops", async () => {
+  test("active work keeps sidebar-active tasks visible while omitting history tasks", async () => {
     setupBaseApi();
 
-    const runningLoop = createLoopWithStatus("running", {
-      config: { id: "loop-run-visible", name: "Visible Running", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const runningTask = createTaskWithStatus("running", {
+      config: { id: "task-run-visible", name: "Visible Running", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const planningLoop = createLoopWithStatus("planning", {
-      config: { id: "loop-plan-visible", name: "Visible Planning", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const planningTask = createTaskWithStatus("planning", {
+      config: { id: "task-plan-visible", name: "Visible Planning", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const completedLoop = createLoopWithStatus("completed", {
-      config: { id: "loop-completed-visible", name: "Visible Completed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const completedTask = createTaskWithStatus("completed", {
+      config: { id: "task-completed-visible", name: "Visible Completed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const failedLoop = createLoopWithStatus("failed", {
-      config: { id: "loop-failed-hidden", name: "Hidden Failed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const failedTask = createTaskWithStatus("failed", {
+      config: { id: "task-failed-hidden", name: "Hidden Failed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const pushedLoop = createLoopWithStatus("pushed", {
-      config: { id: "loop-pushed-visible", name: "Visible Pushed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const pushedTask = createTaskWithStatus("pushed", {
+      config: { id: "task-pushed-visible", name: "Visible Pushed", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
-    const mergedLoop = createLoopWithStatus("merged", {
-      config: { id: "loop-merged-hidden", name: "Hidden Merged", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const mergedTask = createTaskWithStatus("merged", {
+      config: { id: "task-merged-hidden", name: "Hidden Merged", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
 
-    api.get("/api/loops", () => [runningLoop, planningLoop, completedLoop, failedLoop, pushedLoop, mergedLoop]);
+    api.get("/api/tasks", () => [runningTask, planningTask, completedTask, failedTask, pushedTask, mergedTask]);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
 
     const { getByRole, getByTestId } = renderWithUser(<App />);
@@ -307,15 +307,15 @@ describe("dashboard management scenario", () => {
   test("active work mirrors sidebar item categories and ordering", async () => {
     setupBaseApi();
 
-    const loop = createLoopWithStatus("running", {
-      config: { id: "loop-active-work", name: "Loop Work", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const task = createTaskWithStatus("running", {
+      config: { id: "task-active-work", name: "Task Work", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
     const chat = createChat({ config: { id: "chat-active-work", name: "Chat Work", workspaceId: "ws-a" } });
     const session = createSshSession({
       config: { id: "ssh-active-work", name: "Terminal Work", workspaceId: "ws-a", directory: "/workspaces/alpha" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/chats", () => [chat]);
     api.get("/api/ssh-sessions", () => [session]);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
@@ -325,7 +325,7 @@ describe("dashboard management scenario", () => {
     const activeWorkCard = await waitFor(() => getByTestId("active-work-card"));
 
     await waitFor(() => {
-      expect(within(activeWorkCard).getByRole("button", { name: /Loop Work/ })).toBeTruthy();
+      expect(within(activeWorkCard).getByRole("button", { name: /Task Work/ })).toBeTruthy();
       expect(within(activeWorkCard).getByRole("button", { name: /Chat Work/ })).toBeTruthy();
       expect(within(activeWorkCard).getByRole("button", { name: /Terminal Work/ })).toBeTruthy();
     });
@@ -334,7 +334,7 @@ describe("dashboard management scenario", () => {
       .getAllByRole("button")
       .map((button) => button.textContent ?? "");
 
-    expect(labels[0]).toContain("Loop Work");
+    expect(labels[0]).toContain("Task Work");
     expect(labels[1]).toContain("Chat Work");
     expect(labels[2]).toContain("Terminal Work");
   });
@@ -342,8 +342,8 @@ describe("dashboard management scenario", () => {
   test("active work excludes chats pinned to the quick chat workspace", async () => {
     setupBaseApi();
 
-    const loop = createLoopWithStatus("running", {
-      config: { id: "loop-quick-chat-filter", name: "Loop Work", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    const task = createTaskWithStatus("running", {
+      config: { id: "task-quick-chat-filter", name: "Task Work", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
     const quickChat = createChat({
       config: { id: "chat-quick-chat-filter", name: "Quick Chat Work", workspaceId: "ws-a" },
@@ -360,7 +360,7 @@ describe("dashboard management scenario", () => {
         variant: "",
       },
     }));
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/chats", () => [quickChat]);
     api.get("/api/ssh-sessions", () => [session]);
     api.get("/api/workspaces", () => [WORKSPACE_A]);
@@ -370,7 +370,7 @@ describe("dashboard management scenario", () => {
     const activeWorkCard = await waitFor(() => getByTestId("active-work-card"));
 
     await waitFor(() => {
-      expect(within(activeWorkCard).getByRole("button", { name: /Loop Work/ })).toBeTruthy();
+      expect(within(activeWorkCard).getByRole("button", { name: /Task Work/ })).toBeTruthy();
       expect(within(activeWorkCard).getByRole("button", { name: /Terminal Work/ })).toBeTruthy();
     });
 
@@ -379,9 +379,9 @@ describe("dashboard management scenario", () => {
 
   test("overview omits removed shell summary cards", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => [
-      createLoopWithStatus("running", {
-        config: { id: "summary-loop", name: "Summary Loop", directory: "/workspaces/alpha", workspaceId: "ws-a" },
+    api.get("/api/tasks", () => [
+      createTaskWithStatus("running", {
+        config: { id: "summary-task", name: "Summary Task", directory: "/workspaces/alpha", workspaceId: "ws-a" },
       }),
     ]);
     api.get("/api/workspaces", () => [WORKSPACE_A, WORKSPACE_B]);
@@ -395,7 +395,7 @@ describe("dashboard management scenario", () => {
     });
 
     expect(queryByText("Tracked repositories and hosts.")).toBeNull();
-    expect(queryByText("Task-oriented Ralph loops.")).toBeNull();
+    expect(queryByText("Task-oriented Clanky tasks.")).toBeNull();
     expect(queryByText("Interactive conversations.")).toBeNull();
   });
 
@@ -403,14 +403,14 @@ describe("dashboard management scenario", () => {
   // the "Connected" text indicator was removed from the Dashboard in PR #118.
   // WebSocket connection status is no longer displayed as a text label.
 
-  test("workspace map includes workspaces with no loops", async () => {
+  test("workspace map includes workspaces with no tasks", async () => {
     setupBaseApi();
 
-    const loopInA = createLoopWithStatus("running", {
+    const taskInA = createTaskWithStatus("running", {
       config: { id: "in-a", name: "In Alpha", directory: "/workspaces/alpha", workspaceId: "ws-a" },
     });
 
-    api.get("/api/loops", () => [loopInA]);
+    api.get("/api/tasks", () => [taskInA]);
     api.get("/api/workspaces", () => [WORKSPACE_A, WORKSPACE_B]);
 
     const { getAllByText, getByText } = renderWithUser(<App />);
@@ -419,6 +419,6 @@ describe("dashboard management scenario", () => {
       expect(getByText("Workspaces map")).toBeTruthy();
     });
     expect(getAllByText("Project Beta").length).toBeGreaterThan(0);
-    expect(getByText("0 loops")).toBeTruthy();
+    expect(getByText("0 tasks")).toBeTruthy();
   });
 });

@@ -7,7 +7,7 @@ import type {
 } from "../types";
 
 const log = createLogger("sshBrowserCredentials");
-const SSH_CREDENTIAL_STORAGE_PREFIX = "ralpher.sshServerCredential.";
+const SSH_CREDENTIAL_STORAGE_PREFIX = "clanky.sshServerCredential.";
 
 interface CachedSshCredentialToken {
   credentialToken: string;

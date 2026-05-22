@@ -21,7 +21,7 @@ describe("prompt templates", () => {
     expect(template?.description).toBe(
       "Updates project dependencies to the latest stable versions across detected package ecosystems and verifies the result.",
     );
-    expect(template?.loopDefaults?.planMode).toBe(true);
+    expect(template?.taskDefaults?.planMode).toBe(true);
     expect(template?.prompt).toContain("latest stable non-prerelease versions");
     expect(template?.prompt).toContain("package.json");
     expect(template?.prompt).toContain("go.mod");

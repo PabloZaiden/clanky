@@ -6,7 +6,7 @@
  * the same code paths as the real command executor.
  * 
  * For true end-to-end testing with a real opencode server, see the
- * manual test scripts in the .ralph-planning folder.
+ * manual test scripts in the .clanky-planning folder.
  */
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
@@ -20,7 +20,7 @@ describe("CommandExecutor Integration", () => {
   let executor: TestCommandExecutor;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), "ralpher-cmd-test-"));
+    testDir = await mkdtemp(join(tmpdir(), "clanky-cmd-test-"));
     executor = new TestCommandExecutor();
   });
 
@@ -244,8 +244,8 @@ describe("Marker Parsing Logic", () => {
     return "";
   }
 
-  const startMarker = "__RALPHER_START_test123__";
-  const endMarker = "__RALPHER_END_test123__";
+  const startMarker = "__CLANKY_START_test123__";
+  const endMarker = "__CLANKY_END_test123__";
 
   test("extracts content between markers with \\r\\n", () => {
     const output = `some noise\r\n${startMarker}\r\nactual content\r\n${endMarker}:0\r\nmore noise`;

@@ -17,22 +17,22 @@ describe("useRefreshOnReconnect", () => {
       {
         initialProps: {
           status: "open",
-          resetKey: "loop-1",
+          resetKey: "task-1",
         },
       },
     );
 
     rerender({
       status: "open",
-      resetKey: "loop-2",
+      resetKey: "task-2",
     });
     rerender({
       status: "error",
-      resetKey: "loop-2",
+      resetKey: "task-2",
     });
     rerender({
       status: "open",
-      resetKey: "loop-2",
+      resetKey: "task-2",
     });
 
     await waitFor(() => {
@@ -47,14 +47,14 @@ describe("useRefreshOnReconnect", () => {
       {
         initialProps: {
           status: "open",
-          resetKey: "loop-1",
+          resetKey: "task-1",
         },
       },
     );
 
     rerender({
       status: "open",
-      resetKey: "loop-2",
+      resetKey: "task-2",
     });
 
     await waitFor(() => {

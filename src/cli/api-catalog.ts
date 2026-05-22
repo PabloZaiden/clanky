@@ -6,7 +6,7 @@ import {
   CompletePasskeyAuthenticationRequestSchema,
   CompletePasskeyRegistrationRequestSchema,
   CreateChatRequestSchema,
-  CreateLoopRequestSchema,
+  CreateTaskRequestSchema,
   CreatePortForwardRequestSchema,
   CreateProvisioningJobRequestSchema,
   CreateSshServerRequestSchema,
@@ -17,7 +17,7 @@ import {
   DeviceStartRequestSchema,
   DeviceVerificationActionSchema,
   FollowUpRequestSchema,
-  GenerateLoopTitleRequestSchema,
+  GenerateTaskTitleRequestSchema,
   GetWorkspaceFileRequestSchema,
   GetWorkspaceFileTreeRequestSchema,
   InterruptChatRequestSchema,
@@ -46,7 +46,7 @@ import {
   TestConnectionRequestSchema,
   TokenRequestSchema,
   UpdateChatRequestSchema,
-  UpdateLoopRequestSchema,
+  UpdateTaskRequestSchema,
   UpdateSshServerRequestSchema,
   UpdateSshSessionRequestSchema,
   UpdateWorkspaceRequestSchema,
@@ -148,115 +148,115 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/passkey-auth/passkey": {
     description: "Delete configured passkeys for the current account.",
   },
-  "/api/loops": {
-    description: "List loops or create a new loop.",
-    requestSchema: CreateLoopRequestSchema,
+  "/api/tasks": {
+    description: "List tasks or create a new task.",
+    requestSchema: CreateTaskRequestSchema,
   },
-  "/api/loops/title": {
-    description: "Generate a loop title from a prompt.",
-    requestSchema: GenerateLoopTitleRequestSchema,
+  "/api/tasks/title": {
+    description: "Generate a task title from a prompt.",
+    requestSchema: GenerateTaskTitleRequestSchema,
   },
-  "/api/loops/:id": {
-    description: "Read, update, or delete a loop.",
-    requestSchema: UpdateLoopRequestSchema,
+  "/api/tasks/:id": {
+    description: "Read, update, or delete a task.",
+    requestSchema: UpdateTaskRequestSchema,
   },
-  "/api/loops/:id/accept": {
-    description: "Accept a completed loop locally without pushing.",
+  "/api/tasks/:id/accept": {
+    description: "Accept a completed task locally without pushing.",
   },
-  "/api/loops/:id/close-local": {
-    description: "Close a locally accepted loop without PR actions.",
+  "/api/tasks/:id/close-local": {
+    description: "Close a locally accepted task without PR actions.",
   },
-  "/api/loops/:id/push": {
-    description: "Push a completed loop branch to the remote repository.",
+  "/api/tasks/:id/push": {
+    description: "Push a completed task branch to the remote repository.",
   },
-  "/api/loops/:id/update-branch": {
-    description: "Sync a pushed loop branch with its base branch.",
+  "/api/tasks/:id/update-branch": {
+    description: "Sync a pushed task branch with its base branch.",
   },
-  "/api/loops/:id/mark-merged": {
-    description: "Mark a loop as merged after an external merge.",
+  "/api/tasks/:id/mark-merged": {
+    description: "Mark a task as merged after an external merge.",
   },
-  "/api/loops/:id/manual-complete": {
-    description: "Promote a stopped or failed loop to completed.",
+  "/api/tasks/:id/manual-complete": {
+    description: "Promote a stopped or failed task to completed.",
   },
-  "/api/loops/:id/plan/feedback": {
-    description: "Submit feedback on a generated loop plan.",
+  "/api/tasks/:id/plan/feedback": {
+    description: "Submit feedback on a generated task plan.",
     requestSchema: PlanFeedbackRequestSchema,
   },
-  "/api/loops/:id/plan": {
-    description: "Read a loop's planning document.",
+  "/api/tasks/:id/plan": {
+    description: "Read a task's planning document.",
   },
-  "/api/loops/:id/plan/accept": {
-    description: "Accept a generated loop plan.",
+  "/api/tasks/:id/plan/accept": {
+    description: "Accept a generated task plan.",
     requestSchema: PlanAcceptRequestSchema,
   },
-  "/api/loops/:id/plan/discard": {
-    description: "Discard a generated loop plan and delete the loop.",
+  "/api/tasks/:id/plan/discard": {
+    description: "Discard a generated task plan and delete the task.",
   },
-  "/api/loops/:id/address-comments": {
-    description: "Address review comments for a loop.",
+  "/api/tasks/:id/address-comments": {
+    description: "Address review comments for a task.",
     requestSchema: AddressCommentsRequestSchema,
   },
-  "/api/loops/:id/review-history": {
-    description: "Read review history for a loop.",
+  "/api/tasks/:id/review-history": {
+    description: "Read review history for a task.",
   },
-  "/api/loops/:id/automatic-pr-flow/start": {
-    description: "Enable automatic pull request monitoring for a loop.",
+  "/api/tasks/:id/automatic-pr-flow/start": {
+    description: "Enable automatic pull request monitoring for a task.",
   },
-  "/api/loops/:id/automatic-pr-flow/stop": {
-    description: "Disable automatic pull request monitoring for a loop.",
+  "/api/tasks/:id/automatic-pr-flow/stop": {
+    description: "Disable automatic pull request monitoring for a task.",
   },
-  "/api/loops/:id/pull-request/auto-merge": {
-    description: "Enable pull request auto-merge for a loop.",
+  "/api/tasks/:id/pull-request/auto-merge": {
+    description: "Enable pull request auto-merge for a task.",
   },
-  "/api/loops/:id/pending-prompt": {
-    description: "Set the pending prompt used for the next loop iteration.",
+  "/api/tasks/:id/pending-prompt": {
+    description: "Set the pending prompt used for the next task iteration.",
     requestSchema: PendingPromptRequestSchema,
   },
-  "/api/loops/:id/pending": {
-    description: "Apply a pending message or model override for the next loop iteration.",
+  "/api/tasks/:id/pending": {
+    description: "Apply a pending message or model override for the next task iteration.",
     requestSchema: SetPendingRequestSchema,
   },
-  "/api/loops/:id/follow-up": {
-    description: "Send a follow-up message to a loop.",
+  "/api/tasks/:id/follow-up": {
+    description: "Send a follow-up message to a task.",
     requestSchema: FollowUpRequestSchema,
   },
-  "/api/loops/:id/draft/start": {
-    description: "Start draft generation for a loop.",
+  "/api/tasks/:id/draft/start": {
+    description: "Start draft generation for a task.",
     requestSchema: StartDraftRequestSchema,
   },
-  "/api/loops/:id/chat": {
-    description: "Read or create the chat session attached to a loop.",
+  "/api/tasks/:id/chat": {
+    description: "Read or create the chat session attached to a task.",
   },
-  "/api/loops/:id/comments": {
-    description: "List review comments for a loop.",
+  "/api/tasks/:id/comments": {
+    description: "List review comments for a task.",
   },
-  "/api/loops/:id/diff": {
-    description: "Read the git diff produced by a loop.",
+  "/api/tasks/:id/diff": {
+    description: "Read the git diff produced by a task.",
   },
-  "/api/loops/:id/discard": {
-    description: "Discard a loop and remove its working branch.",
+  "/api/tasks/:id/discard": {
+    description: "Discard a task and remove its working branch.",
   },
-  "/api/loops/:id/port-forwards": {
-    description: "Create or list loop port forwards.",
+  "/api/tasks/:id/port-forwards": {
+    description: "Create or list task port forwards.",
     requestSchema: CreatePortForwardRequestSchema,
   },
-  "/api/loops/:id/port-forwards/:forwardId": {
-    description: "Delete a loop port forward.",
+  "/api/tasks/:id/port-forwards/:forwardId": {
+    description: "Delete a task port forward.",
   },
-  "/api/loops/:id/pull-request": {
-    description: "Read pull request navigation details for a loop.",
+  "/api/tasks/:id/pull-request": {
+    description: "Read pull request navigation details for a task.",
   },
-  "/api/loops/:id/purge": {
-    description: "Permanently delete a loop from storage.",
+  "/api/tasks/:id/purge": {
+    description: "Permanently delete a task from storage.",
   },
-  "/api/loops/:id/ssh-session": {
-    description: "Read or create a loop-backed SSH session.",
+  "/api/tasks/:id/ssh-session": {
+    description: "Read or create a task-backed SSH session.",
   },
-  "/api/loops/:id/status-file": {
-    description: "Read a loop's status tracking document.",
+  "/api/tasks/:id/status-file": {
+    description: "Read a task's status tracking document.",
   },
-  "/api/loops/:id/stop": {
-    description: "Stop an active loop run.",
+  "/api/tasks/:id/stop": {
+    description: "Stop an active task run.",
   },
   "/api/chats": {
     description: "List chats or create a chat session.",
@@ -281,14 +281,14 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/chats/:id/reconnect": {
     description: "Reconnect a chat session to its backend runtime.",
   },
-  "/api/chats/:id/spawn-loop": {
-    description: "Create a loop from an existing chat transcript.",
+  "/api/chats/:id/spawn-task": {
+    description: "Create a task from an existing chat transcript.",
   },
-  "/api/chats/:id/spawn-loop-from-current-plan": {
-    description: "Create a loop from the current plan discussed in a chat.",
+  "/api/chats/:id/spawn-task-from-current-plan": {
+    description: "Create a task from the current plan discussed in a chat.",
   },
   "/api/check-planning-dir": {
-    description: "Inspect a directory for .ralph-planning files.",
+    description: "Inspect a directory for .clanky-planning files.",
   },
   "/api/git/branches": {
     description: "List local git branches for a workspace directory.",
@@ -329,8 +329,8 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/workspaces/:id/agents-md/optimize": {
     description: "Apply AGENTS.md optimization changes to a workspace.",
   },
-  "/api/workspaces/:id/archived-loops/purge": {
-    description: "Purge archived loops for a workspace.",
+  "/api/workspaces/:id/archived-tasks/purge": {
+    description: "Purge archived tasks for a workspace.",
   },
   "/api/workspaces/:id/pull-latest-changes": {
     description: "Pull the latest changes for a workspace's default branch.",
@@ -515,11 +515,11 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/settings/reset-all": {
     description: "Reset all persisted settings and recreate the database.",
   },
-  "/api/settings/purge-terminal-loops": {
-    description: "Purge terminal-state loops across all workspaces.",
+  "/api/settings/purge-terminal-tasks": {
+    description: "Purge terminal-state tasks across all workspaces.",
   },
   "/api/server/kill": {
-    description: "Shut down the Ralpher server process.",
+    description: "Shut down the Clanky server process.",
   },
 };
 

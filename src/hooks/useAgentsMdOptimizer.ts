@@ -1,6 +1,6 @@
 /**
  * Hook for AGENTS.md optimization operations.
- * Provides functions to read, preview, and apply Ralpher optimization
+ * Provides functions to read, preview, and apply Clanky optimization
  * to a workspace's AGENTS.md file.
  */
 

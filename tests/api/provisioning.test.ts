@@ -71,8 +71,8 @@ describe("Provisioning API integration", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-provisioning-api-"));
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-provisioning-api-"));
+    process.env["CLANKY_DATA_DIR"] = dataDir;
     await ensureDataDirectories();
 
     backendManager.setBackendForTesting(createMockBackend());
@@ -91,7 +91,7 @@ describe("Provisioning API integration", () => {
     sshServerManager.setExecutorFactoryForTesting(null);
     provisioningManager.resetForTesting();
     backendManager.resetForTesting();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
   });
 
@@ -99,7 +99,7 @@ describe("Provisioning API integration", () => {
     const db = getDatabase();
     provisioningManager.resetForTesting();
     sshServerManager.setExecutorFactoryForTesting(null);
-    db.run("DELETE FROM loops");
+    db.run("DELETE FROM tasks");
     db.run("DELETE FROM workspaces");
     db.run("DELETE FROM ssh_server_sessions");
     db.run("DELETE FROM ssh_servers");

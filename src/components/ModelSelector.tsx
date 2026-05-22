@@ -2,7 +2,7 @@
  * Shared ModelSelector component for selecting AI models.
  *
  * Extracts duplicated model grouping, sorting, and option rendering logic
- * from CreateLoopForm and LoopActionBar into a reusable component.
+ * from CreateTaskForm and TaskActionBar into a reusable component.
  */
 
 import type { ModelInfo } from "../types";

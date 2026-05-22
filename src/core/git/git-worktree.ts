@@ -190,7 +190,7 @@ export async function ensureWorktreeExcluded(
   executor: CommandExecutor,
   repoDirectory: string
 ): Promise<void> {
-  const excludePatterns = [".ralph-worktrees", PLANNING_DIRECTORY_NAME];
+  const excludePatterns = [".clanky-worktrees", PLANNING_DIRECTORY_NAME];
 
   let excludePath: string;
   try {
@@ -222,7 +222,7 @@ export async function ensureWorktreeExcluded(
     ));
 
     if (missingPatterns.length === 0) {
-      log.debug("[GitService] Ralph-managed directories already in .git/info/exclude");
+      log.debug("[GitService] Clanky-managed directories already in .git/info/exclude");
       return;
     }
 
@@ -238,7 +238,7 @@ export async function ensureWorktreeExcluded(
     await executor.exec("mkdir", ["-p", excludeDir]);
     const content = `# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n${excludePatterns.join("\n")}\n`;
     await executor.exec("sh", ["-c", `cat > "${excludePath}" << 'EXCLUDE_EOF'\n${content}EXCLUDE_EOF`]);
-    log.info("[GitService] Created .git/info/exclude with Ralph-managed directory entries");
+    log.info("[GitService] Created .git/info/exclude with Clanky-managed directory entries");
   }
 }
 

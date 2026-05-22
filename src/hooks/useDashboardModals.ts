@@ -5,16 +5,16 @@
 
 import { useState, useCallback } from "react";
 import type { UncommittedChangesError } from "../types";
-import type { CreateLoopFormActionState } from "../components/CreateLoopForm";
+import type { CreateTaskFormActionState } from "../components/CreateTaskForm";
 
 export interface ModalState<T = string | null> {
   open: boolean;
-  loopId: T;
+  taskId: T;
 }
 
 export interface UncommittedModalState {
   open: boolean;
-  loopId: string | null;
+  taskId: string | null;
   error: UncommittedChangesError | null;
 }
 
@@ -36,13 +36,13 @@ export interface UseDashboardModalsResult {
   setWorkspaceSettingsModal: (state: { open: boolean; workspaceId: string | null }) => void;
 
   // Form action state
-  formActionState: CreateLoopFormActionState | null;
-  setFormActionState: (state: CreateLoopFormActionState | null) => void;
+  formActionState: CreateTaskFormActionState | null;
+  setFormActionState: (state: CreateTaskFormActionState | null) => void;
 
   // Handler functions
   handleCloseCreateModal: () => void;
-  handleEditDraft: (loopId: string) => void;
-  handleOpenCreateLoop: () => void;
+  handleEditDraft: (taskId: string) => void;
+  handleOpenCreateTask: () => void;
 }
 
 export function useDashboardModals(
@@ -52,7 +52,7 @@ export function useDashboardModals(
   const [editDraftId, setEditDraftId] = useState<string | null>(null);
   const [uncommittedModal, setUncommittedModal] = useState<UncommittedModalState>({
     open: false,
-    loopId: null,
+    taskId: null,
     error: null,
   });
   const [sshSessionRenameModal, setSshSessionRenameModal] = useState<{ open: boolean; sessionId: string | null }>({
@@ -65,7 +65,7 @@ export function useDashboardModals(
     open: false,
     workspaceId: null,
   });
-  const [formActionState, setFormActionState] = useState<CreateLoopFormActionState | null>(null);
+  const [formActionState, setFormActionState] = useState<CreateTaskFormActionState | null>(null);
 
   const handleCloseCreateModal = useCallback(() => {
     setShowCreateModal(false);
@@ -73,12 +73,12 @@ export function useDashboardModals(
     resetCreateModalState();
   }, [resetCreateModalState]);
 
-  const handleEditDraft = useCallback((loopId: string) => {
-    setEditDraftId(loopId);
+  const handleEditDraft = useCallback((taskId: string) => {
+    setEditDraftId(taskId);
     setShowCreateModal(true);
   }, []);
 
-  const handleOpenCreateLoop = useCallback(() => {
+  const handleOpenCreateTask = useCallback(() => {
     setEditDraftId(null);
     setShowCreateModal(true);
   }, []);
@@ -102,6 +102,6 @@ export function useDashboardModals(
     setFormActionState,
     handleCloseCreateModal,
     handleEditDraft,
-    handleOpenCreateLoop,
+    handleOpenCreateTask,
   };
 }

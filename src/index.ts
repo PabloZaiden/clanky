@@ -1,5 +1,5 @@
 /**
- * Main binary entrypoint for the standalone Ralpher server.
+ * Main binary entrypoint for the standalone Clanky server.
  */
 
 import { startServer } from "./server";

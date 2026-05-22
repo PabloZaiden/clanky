@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { getStoredLoopModelPreference } from "../../src/lib/model-selection-preferences";
+import { getStoredTaskModelPreference } from "../../src/lib/model-selection-preferences";
 
 describe("model-selection-preferences", () => {
   test("returns null when storage access throws during getItem", () => {
@@ -11,7 +11,7 @@ describe("model-selection-preferences", () => {
       removeItem: mock((_key: string) => {}),
     };
 
-    expect(getStoredLoopModelPreference({ storage })).toBeNull();
+    expect(getStoredTaskModelPreference({ storage })).toBeNull();
     expect(storage.removeItem).not.toHaveBeenCalled();
   });
 
@@ -24,7 +24,7 @@ describe("model-selection-preferences", () => {
       }),
     };
 
-    expect(getStoredLoopModelPreference({ storage })).toBeNull();
+    expect(getStoredTaskModelPreference({ storage })).toBeNull();
     expect(storage.removeItem).toHaveBeenCalledTimes(1);
   });
 });

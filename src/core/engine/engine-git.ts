@@ -1,14 +1,14 @@
 /**
- * Git operation helpers for LoopEngine.
+ * Git operation helpers for TaskEngine.
  */
 
-import type { LoopConfig, LoopState, GitCommit } from "../../types/loop";
-import type { LogLevel, LoopEvent } from "../../types/events";
+import type { TaskConfig, TaskState, GitCommit } from "../../types/task";
+import type { LogLevel, TaskEvent } from "../../types/events";
 import { createTimestamp } from "../../types/events";
 import type { PromptInput } from "../../backends/types";
 import type { GitService } from "../git-service";
-import type { LoopBackend } from "./engine-types";
-import { buildLoopBranchName } from "../branch-name";
+import type { TaskBackend } from "./engine-types";
+import { buildTaskBranchName } from "../branch-name";
 import { backendManager } from "../backend-manager";
 import { formatConventionalCommit, normalizeAiCommitMessage } from "../conventional-commits";
 import { syncMainCheckoutBeforeWorktree } from "../git/worktree-sync";
@@ -17,20 +17,20 @@ import { getPlanningDirectoryPath } from "../../lib/planning-files";
 
 export interface GitOperationContext {
   git: GitService;
-  config: LoopConfig;
-  state: LoopState;
+  config: TaskConfig;
+  state: TaskState;
   workingDirectory: string;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
-  updateState: (update: Partial<LoopState>) => void;
-  emit: (event: LoopEvent) => void;
+  updateState: (update: Partial<TaskState>) => void;
+  emit: (event: TaskEvent) => void;
 }
 
 export interface GitCommitContext extends GitOperationContext {
-  backend: LoopBackend;
+  backend: TaskBackend;
   sessionId: string | null;
 }
 
-export async function clearLoopPlanningFolder(ctx: GitOperationContext): Promise<void> {
+export async function clearTaskPlanningFolder(ctx: GitOperationContext): Promise<void> {
   const planningDir = getPlanningDirectoryPath(ctx.workingDirectory);
 
   try {
@@ -39,21 +39,21 @@ export async function clearLoopPlanningFolder(ctx: GitOperationContext): Promise
     const exists = await executor.directoryExists(planningDir);
 
     if (!exists) {
-      ctx.emitLog("debug", ".ralph-planning directory does not exist, skipping clear");
+      ctx.emitLog("debug", ".clanky-planning directory does not exist, skipping clear");
       return;
     }
 
     const files = await executor.listDirectory(planningDir);
 
     if (files.length === 0) {
-      ctx.emitLog("debug", ".ralph-planning directory is already empty");
+      ctx.emitLog("debug", ".clanky-planning directory is already empty");
       return;
     }
 
     const filesToDelete = files.filter((file) => file !== ".gitkeep");
 
     if (filesToDelete.length === 0) {
-      ctx.emitLog("debug", ".ralph-planning directory only contains .gitkeep");
+      ctx.emitLog("debug", ".clanky-planning directory only contains .gitkeep");
       return;
     }
 
@@ -66,34 +66,34 @@ export async function clearLoopPlanningFolder(ctx: GitOperationContext): Promise
       throw new Error(`rm command failed: ${result.stderr}`);
     }
 
-    ctx.emitLog("info", `Cleared .ralph-planning folder: ${filesToDelete.length} file(s) deleted`, {
+    ctx.emitLog("info", `Cleared .clanky-planning folder: ${filesToDelete.length} file(s) deleted`, {
       deletedCount: filesToDelete.length,
       preservedFiles: files.includes(".gitkeep") ? [".gitkeep"] : [],
     });
 
     const hasChanges = await ctx.git.hasUncommittedChanges(ctx.workingDirectory);
     if (hasChanges) {
-      ctx.emitLog("info", "Committing cleared .ralph-planning folder...");
+      ctx.emitLog("info", "Committing cleared .clanky-planning folder...");
       try {
         const commitInfo = await ctx.git.commit(
           ctx.workingDirectory,
-          formatConventionalCommit("chore", ctx.config.git.commitScope, "clear .ralph-planning folder for fresh start"),
+          formatConventionalCommit("chore", ctx.config.git.commitScope, "clear .clanky-planning folder for fresh start"),
           { expectedBranch: ctx.state.git?.workingBranch }
         );
-        ctx.emitLog("info", `Committed .ralph-planning folder cleanup`, {
+        ctx.emitLog("info", `Committed .clanky-planning folder cleanup`, {
           sha: commitInfo.sha.slice(0, 8),
           filesChanged: commitInfo.filesChanged,
         });
       } catch (commitError) {
-        ctx.emitLog("warn", `Failed to commit .ralph-planning folder cleanup: ${String(commitError)}`);
+        ctx.emitLog("warn", `Failed to commit .clanky-planning folder cleanup: ${String(commitError)}`);
       }
     }
   } catch (error) {
-    ctx.emitLog("warn", `Failed to clear .ralph-planning folder: ${String(error)}`);
+    ctx.emitLog("warn", `Failed to clear .clanky-planning folder: ${String(error)}`);
   }
 }
 
-export async function setupLoopGitBranch(ctx: GitOperationContext, _allowPlanningFolderChanges = false): Promise<void> {
+export async function setupTaskGitBranch(ctx: GitOperationContext, _allowPlanningFolderChanges = false): Promise<void> {
   const directory = ctx.config.directory;
 
   ctx.emitLog("debug", "Checking if directory is a git repository", { directory });
@@ -140,14 +140,14 @@ export async function setupLoopGitBranch(ctx: GitOperationContext, _allowPlannin
     },
   });
 
-  log.debug("[LoopEngine] About to emit 'Git branch setup complete' log");
+  log.debug("[TaskEngine] About to emit 'Git branch setup complete' log");
   ctx.emitLog("info", `Git branch setup complete`, {
     originalBranch,
     workingBranch: branchName,
     worktreePath: worktreePath ?? directory,
     useWorktree: ctx.config.useWorktree,
   });
-  log.debug("[LoopEngine] Exiting setupGitBranch");
+  log.debug("[TaskEngine] Exiting setupGitBranch");
 }
 
 async function resolveBranchName(ctx: GitOperationContext, directory: string): Promise<string> {
@@ -155,7 +155,7 @@ async function resolveBranchName(ctx: GitOperationContext, directory: string): P
     return ctx.state.git.workingBranch;
   }
 
-  const baseBranchName = buildLoopBranchName(ctx.config.name, ctx.config.prompt);
+  const baseBranchName = buildTaskBranchName(ctx.config.name, ctx.config.prompt);
 
   let branchName = baseBranchName;
   let collisionIndex = 2;
@@ -180,7 +180,7 @@ async function resolveDirectBranchName(ctx: GitOperationContext, directory: stri
     return ctx.state.git.workingBranch;
   }
 
-  // Non-worktree loops intentionally commit directly on the user's current branch.
+  // Non-worktree tasks intentionally commit directly on the user's current branch.
   const branch = await ctx.git.getCurrentBranch(directory);
   ctx.emitLog("info", `Using current branch directly: ${branch}`);
   return branch;
@@ -208,7 +208,7 @@ async function resolveOriginalBranch(ctx: GitOperationContext, directory: string
 }
 
 async function setupWorktree(ctx: GitOperationContext, directory: string, branchName: string, originalBranch: string): Promise<string> {
-  const worktreePath = `${directory}/.ralph-worktrees/${ctx.config.id}`;
+  const worktreePath = `${directory}/.clanky-worktrees/${ctx.config.id}`;
 
   const branchExists = await ctx.git.branchExists(directory, branchName);
 
@@ -227,7 +227,7 @@ async function setupWorktree(ctx: GitOperationContext, directory: string, branch
   return worktreePath;
 }
 
-export async function commitLoopIteration(ctx: GitCommitContext, iteration: number, responseContent: string): Promise<void> {
+export async function commitTaskIteration(ctx: GitCommitContext, iteration: number, responseContent: string): Promise<void> {
   const directory = ctx.workingDirectory;
   const hasChanges = await ctx.git.hasUncommittedChanges(directory);
 
@@ -274,8 +274,8 @@ export async function commitLoopIteration(ctx: GitCommitContext, iteration: numb
     });
 
     ctx.emit({
-      type: "loop.git.commit",
-      loopId: ctx.config.id,
+      type: "task.git.commit",
+      taskId: ctx.config.id,
       iteration,
       commit,
       timestamp: createTimestamp(),
@@ -322,7 +322,7 @@ Valid types: feat, fix, refactor, docs, style, test, build, ci, chore, perf, rev
 
 Rules:
 1. Only include a scope when it names a specific module, section, topic, or area touched by the change
-2. Never use generic scopes like "ralph"
+2. Never use generic scopes like "clanky"
 3. If no meaningful scope stands out, omit the scope entirely and use "type: description"
 4. First line max 72 characters
 5. Be specific about what changed

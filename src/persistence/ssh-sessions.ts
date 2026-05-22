@@ -17,7 +17,7 @@ const ALLOWED_SSH_SESSION_COLUMNS = new Set([
   "id",
   "name",
   "workspace_id",
-  "loop_id",
+  "task_id",
   "directory",
   "connection_mode",
   "use_tmux",
@@ -44,7 +44,7 @@ function sshSessionToRow(session: SshSession): Record<string, unknown> {
     id: session.config.id,
     name: session.config.name,
     workspace_id: session.config.workspaceId,
-    loop_id: session.config.loopId ?? null,
+    task_id: session.config.taskId ?? null,
     directory: session.config.directory,
     connection_mode: session.config.connectionMode,
     use_tmux: session.config.useTmux ? 1 : 0,
@@ -65,7 +65,7 @@ function rowToSshSession(row: Record<string, unknown>): SshSession {
       id: row["id"] as string,
       name: row["name"] as string,
       workspaceId: row["workspace_id"] as string,
-      loopId: (row["loop_id"] as string | null) ?? undefined,
+      taskId: (row["task_id"] as string | null) ?? undefined,
       directory: row["directory"] as string,
       connectionMode: normalizeSshConnectionMode(
         (row["connection_mode"] as SshSession["config"]["connectionMode"] | null) ?? DEFAULT_SSH_CONNECTION_MODE,
@@ -132,11 +132,11 @@ export async function listSshSessionsByWorkspace(workspaceId: string): Promise<S
   return rows.map(rowToSshSession);
 }
 
-export async function getSshSessionByLoopId(loopId: string): Promise<SshSession | null> {
+export async function getSshSessionByTaskId(taskId: string): Promise<SshSession | null> {
   const db = getDatabase();
   const row = db.query(
-    "SELECT * FROM ssh_sessions WHERE loop_id = ? LIMIT 1",
-  ).get(loopId) as Record<string, unknown> | null;
+    "SELECT * FROM ssh_sessions WHERE task_id = ? LIMIT 1",
+  ).get(taskId) as Record<string, unknown> | null;
   return row ? rowToSshSession(row) : null;
 }
 

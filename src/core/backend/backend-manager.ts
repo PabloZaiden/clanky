@@ -1,17 +1,17 @@
 /**
- * Backend manager for Ralph Loops Management System.
+ * Backend manager for Clanky Tasks Management System.
  * Manages multiple workspace-specific backend connections.
  *
  * Each workspace can have its own server settings and connection,
- * allowing parallel operation of loops across different workspaces.
+ * allowing parallel operation of tasks across different workspaces.
  */
 
 import { AcpBackend } from "../../backends/acp";
 import type { Backend } from "../../backends/types";
 import { getWorkspace } from "../../persistence/workspaces";
 import { getDefaultServerSettings, type ServerSettings } from "../../types/settings";
-import { loopEventEmitter } from "../event-emitter";
-import type { LoopEvent } from "../../types/events";
+import { taskEventEmitter } from "../event-emitter";
+import type { TaskEvent } from "../../types/events";
 import type { CommandExecutor } from "../command-executor";
 import { CommandExecutorImpl } from "../remote-command-executor";
 import { GitService } from "../git-service";
@@ -22,7 +22,7 @@ import {
   deriveExecutionSettings,
   buildAgentServerUrl,
   type WorkspaceConnectionState,
-  type LoopConnectionState,
+  type TaskConnectionState,
   type ServerEvent,
 } from "./backend-state";
 import type { CommandExecutorFactory } from "./backend-executor-factory";
@@ -34,8 +34,8 @@ import type { CommandExecutorFactory } from "./backend-executor-factory";
 class BackendManager {
   /** Map of workspace ID to connection state (for workspace-level operations) */
   private connections = new Map<string, WorkspaceConnectionState>();
-  /** Map of loop ID to its own dedicated backend connection */
-  private loopConnections = new Map<string, LoopConnectionState>();
+  /** Map of task ID to its own dedicated backend connection */
+  private taskConnections = new Map<string, TaskConnectionState>();
   /** Map of workspace execution key to command executor. */
   private commandExecutors = new Map<string, CommandExecutor>();
   private initialized = false;
@@ -316,22 +316,22 @@ class BackendManager {
       }
     }
 
-    // Reset all loop-level connections
-    for (const [loopId, state] of this.loopConnections) {
+    // Reset all task-level connections
+    for (const [taskId, state] of this.taskConnections) {
       try {
         state.backend.abortAllSubscriptions();
         if (state.backend.isConnected()) {
           await state.backend.disconnect();
         }
       } catch (error) {
-        log.error(`Error resetting loop connection for ${loopId}: ${String(error)}`);
+        log.error(`Error resetting task connection for ${taskId}: ${String(error)}`);
       }
     }
 
     // If not using test backend, clear all connections
     if (!this.isTestBackend) {
       this.connections.clear();
-      this.loopConnections.clear();
+      this.taskConnections.clear();
     }
     this.commandExecutors.clear();
 
@@ -530,11 +530,11 @@ class BackendManager {
    * Get an already-initialized backend instance for a workspace
    * (workspace-level operations only).
    *
-   * Used for operations that don't belong to a specific loop (name generation,
+   * Used for operations that don't belong to a specific task (name generation,
    * model listing, directory validation) when the workspace state is already
    * initialized.
    *
-   * IMPORTANT: Do NOT use this for loop execution. Use getLoopBackend() instead.
+   * IMPORTANT: Do NOT use this for task execution. Use getTaskBackend() instead.
    *
    * @throws Error if workspace state has not been initialized yet.
    *         Use getBackendAsync() or connect() to hydrate it first.
@@ -578,62 +578,62 @@ class BackendManager {
   }
 
   /**
-   * Get a dedicated backend instance for a loop.
-   * Each loop gets its own AcpBackend so that concurrent loops
+   * Get a dedicated backend instance for a task.
+   * Each task gets its own AcpBackend so that concurrent tasks
    * in the same workspace don't interfere with each other.
    *
-   * The actual directory binding happens later when LoopEngine calls
+   * The actual directory binding happens later when TaskEngine calls
    * backend.connect() in setupSession() with the worktree directory.
    *
    * In test mode, returns the shared test backend (tests manage their own isolation).
    *
-   * @param loopId - The loop ID
+   * @param taskId - The task ID
    * @param workspaceId - The workspace ID (for settings lookup)
-   * @returns A Backend instance dedicated to this loop
+   * @returns A Backend instance dedicated to this task
    */
-  getLoopBackend(loopId: string, workspaceId: string): Backend {
+  getTaskBackend(taskId: string, workspaceId: string): Backend {
     // Use test backend if set (tests share a single mock backend)
     if (this.isTestBackend && this.testBackend) {
       return this.testBackend;
     }
 
-    const existing = this.loopConnections.get(loopId);
+    const existing = this.taskConnections.get(taskId);
     if (existing) {
       return existing.backend;
     }
 
-    // Create a new dedicated backend for this loop
+    // Create a new dedicated backend for this task
     const settings = this.connections.get(workspaceId)?.settings ?? getDefaultServerSettings();
     const backend = this.createBackendForSettings(settings);
-    this.loopConnections.set(loopId, {
+    this.taskConnections.set(taskId, {
       backend,
       workspaceId,
     });
-    log.debug(`[BackendManager] Created dedicated backend for loop ${loopId}`);
+    log.debug(`[BackendManager] Created dedicated backend for task ${taskId}`);
     return backend;
   }
 
   /**
    * Get a dedicated backend instance for a chat.
-   * Chats share the same dedicated-backend pool semantics as loops.
+   * Chats share the same dedicated-backend pool semantics as tasks.
    */
   getChatBackend(chatId: string, workspaceId: string): Backend {
-    return this.getLoopBackend(chatId, workspaceId);
+    return this.getTaskBackend(chatId, workspaceId);
   }
 
   /**
-   * Disconnect and clean up the backend for a specific loop.
-   * Called when a loop is stopped, completed, or failed.
+   * Disconnect and clean up the backend for a specific task.
+   * Called when a task is stopped, completed, or failed.
    *
-   * @param loopId - The loop ID to clean up
+   * @param taskId - The task ID to clean up
    */
-  async disconnectLoop(loopId: string): Promise<void> {
+  async disconnectTask(taskId: string): Promise<void> {
     // In test mode, don't disconnect the shared test backend
     if (this.isTestBackend) {
       return;
     }
 
-    const state = this.loopConnections.get(loopId);
+    const state = this.taskConnections.get(taskId);
     if (!state) {
       return;
     }
@@ -644,18 +644,18 @@ class BackendManager {
         await state.backend.disconnect();
       }
     } catch (error) {
-      log.error(`[BackendManager] Error disconnecting loop ${loopId}: ${String(error)}`);
+      log.error(`[BackendManager] Error disconnecting task ${taskId}: ${String(error)}`);
     }
 
-    this.loopConnections.delete(loopId);
-    log.debug(`[BackendManager] Cleaned up backend for loop ${loopId}`);
+    this.taskConnections.delete(taskId);
+    log.debug(`[BackendManager] Cleaned up backend for task ${taskId}`);
   }
 
   /**
    * Disconnect and clean up the backend for a specific chat.
    */
   async disconnectChat(chatId: string): Promise<void> {
-    await this.disconnectLoop(chatId);
+    await this.disconnectTask(chatId);
   }
 
   /**
@@ -797,7 +797,7 @@ class BackendManager {
    */
   resetForTesting(): void {
     this.connections.clear();
-    this.loopConnections.clear();
+    this.taskConnections.clear();
     this.commandExecutors.clear();
     this.initialized = false;
     this.testExecutorFactory = null;
@@ -811,9 +811,9 @@ class BackendManager {
    * Emit a server event.
    */
   private emitEvent(event: ServerEvent): void {
-    // Cast to LoopEvent since the emitter accepts that type
+    // Cast to TaskEvent since the emitter accepts that type
     // The WebSocket handler will pass through any event with a type property
-    loopEventEmitter.emit(event as unknown as LoopEvent);
+    taskEventEmitter.emit(event as unknown as TaskEvent);
   }
 }
 

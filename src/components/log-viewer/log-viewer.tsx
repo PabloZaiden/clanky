@@ -1,7 +1,7 @@
 /**
- * Loop-focused wrapper around the shared conversation viewer.
+ * Task-focused wrapper around the shared conversation viewer.
  *
- * Loops continue to hide assistant messages because their content is surfaced
+ * Tasks continue to hide assistant messages because their content is surfaced
  * through streaming response log entries.
  */
 

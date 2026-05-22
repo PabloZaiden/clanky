@@ -4,9 +4,9 @@ import { createLogger } from "./logger";
 
 const log = createLogger("modelSelectionPreferences");
 
-const LOOP_MODEL_STORAGE_KEY = "ralpher.loopModelPreference";
-const LOOP_CHEAP_MODEL_STORAGE_KEY = "ralpher.loopCheapModelPreference";
-const CHAT_MODEL_STORAGE_KEY = "ralpher.chatModelPreference";
+const TASK_MODEL_STORAGE_KEY = "clanky.taskModelPreference";
+const TASK_CHEAP_MODEL_STORAGE_KEY = "clanky.taskCheapModelPreference";
+const CHAT_MODEL_STORAGE_KEY = "clanky.chatModelPreference";
 
 export interface ModelPreferenceStorageLike {
   getItem(key: string): string | null;
@@ -117,7 +117,7 @@ function readStoredCheapModelPreference(
     return null;
   }
 
-  const raw = readStorageItem(storage, LOOP_CHEAP_MODEL_STORAGE_KEY);
+  const raw = readStorageItem(storage, TASK_CHEAP_MODEL_STORAGE_KEY);
   if (!raw) {
     return null;
   }
@@ -127,10 +127,10 @@ function readStoredCheapModelPreference(
     const validation = CheapModelSelectionSchema.safeParse(parsed);
     if (!validation.success) {
       log.warn("Removing invalid stored cheap-model preference", {
-        storageKey: LOOP_CHEAP_MODEL_STORAGE_KEY,
+        storageKey: TASK_CHEAP_MODEL_STORAGE_KEY,
         issues: validation.error.issues.map((issue) => issue.message),
       });
-      removeStoredPreference(storage, LOOP_CHEAP_MODEL_STORAGE_KEY, {
+      removeStoredPreference(storage, TASK_CHEAP_MODEL_STORAGE_KEY, {
         issues: validation.error.issues.map((issue) => issue.message),
       });
       return null;
@@ -138,10 +138,10 @@ function readStoredCheapModelPreference(
     return validation.data;
   } catch (error) {
     log.warn("Removing invalid stored cheap-model preference", {
-      storageKey: LOOP_CHEAP_MODEL_STORAGE_KEY,
+      storageKey: TASK_CHEAP_MODEL_STORAGE_KEY,
       error: String(error),
     });
-    removeStoredPreference(storage, LOOP_CHEAP_MODEL_STORAGE_KEY, {
+    removeStoredPreference(storage, TASK_CHEAP_MODEL_STORAGE_KEY, {
       error: String(error),
     });
     return null;
@@ -168,30 +168,30 @@ function writeStoredPreference(
   }
 }
 
-export function getStoredLoopModelPreference(
+export function getStoredTaskModelPreference(
   dependencies: ModelSelectionPreferenceDependencies = {},
 ): ModelConfig | null {
-  return readStoredModelPreference(LOOP_MODEL_STORAGE_KEY, dependencies);
+  return readStoredModelPreference(TASK_MODEL_STORAGE_KEY, dependencies);
 }
 
-export function saveStoredLoopModelPreference(
+export function saveStoredTaskModelPreference(
   model: ModelConfig,
   dependencies: ModelSelectionPreferenceDependencies = {},
 ): void {
-  writeStoredPreference(LOOP_MODEL_STORAGE_KEY, model, dependencies);
+  writeStoredPreference(TASK_MODEL_STORAGE_KEY, model, dependencies);
 }
 
-export function getStoredLoopCheapModelPreference(
+export function getStoredTaskCheapModelPreference(
   dependencies: ModelSelectionPreferenceDependencies = {},
 ): CheapModelSelection | null {
   return readStoredCheapModelPreference(dependencies);
 }
 
-export function saveStoredLoopCheapModelPreference(
+export function saveStoredTaskCheapModelPreference(
   selection: CheapModelSelection,
   dependencies: ModelSelectionPreferenceDependencies = {},
 ): void {
-  writeStoredPreference(LOOP_CHEAP_MODEL_STORAGE_KEY, selection, dependencies);
+  writeStoredPreference(TASK_CHEAP_MODEL_STORAGE_KEY, selection, dependencies);
 }
 
 export function getStoredChatModelPreference(

@@ -1,5 +1,5 @@
 /**
- * E2E tests for git integration in Ralph Loops.
+ * E2E tests for git integration in Clanky Tasks.
  * Tests branch creation, commits per iteration, and accept/discard workflows.
  */
 
@@ -10,7 +10,7 @@ import {
   setupTestContext,
   teardownTestContext,
   waitForEvent,
-  waitForLoopStatus,
+  waitForTaskStatus,
   countEvents,
   getEvents,
   testModelFields,
@@ -39,12 +39,12 @@ describe("Git Workflow", () => {
   });
 
   describe("Branch Creation", () => {
-    test("creates a branch when starting a loop with git enabled", async () => {
-      const loop = await ctx.manager.createLoop({
+    test("creates a branch when starting a task with git enabled", async () => {
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Branch ID Loop",
+        name: "Branch ID Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
@@ -52,64 +52,64 @@ describe("Git Workflow", () => {
       // Get original branch
       const originalBranch = await ctx.git.getCurrentBranch(ctx.workDir);
 
-      // Start the loop
-      await ctx.manager.startLoop(loop.config.id);
+      // Start the task
+      await ctx.manager.startTask(task.config.id);
 
       // Wait for completion
-      await waitForEvent(ctx.events, "loop.completed");
+      await waitForEvent(ctx.events, "task.completed");
 
       // With worktrees, main checkout stays on original branch
       const currentBranch = await ctx.git.getCurrentBranch(ctx.workDir);
       expect(currentBranch).toBe(originalBranch);
 
-      // Verify the loop state has git info with the working branch
-      const finalLoop = await ctx.manager.getLoop(loop.config.id);
-      expect(finalLoop!.state.git).toBeDefined();
-      expect(finalLoop!.state.git!.originalBranch).toBe(originalBranch);
-      expect(finalLoop!.state.git!.workingBranch).not.toStartWith("ralph/");
-      expect(finalLoop!.state.git!.workingBranch).toMatch(/-[0-9a-f]{7}$/);
-      expect(finalLoop!.state.git!.worktreePath).toBeDefined();
+      // Verify the task state has git info with the working branch
+      const finalTask = await ctx.manager.getTask(task.config.id);
+      expect(finalTask!.state.git).toBeDefined();
+      expect(finalTask!.state.git!.originalBranch).toBe(originalBranch);
+      expect(finalTask!.state.git!.workingBranch).not.toStartWith("clanky/");
+      expect(finalTask!.state.git!.workingBranch).toMatch(/-[0-9a-f]{7}$/);
+      expect(finalTask!.state.git!.worktreePath).toBeDefined();
     });
 
     test("starts branch names with the sanitized title even when a custom prefix is configured", async () => {
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         gitBranchPrefix: "feature/",
         workspaceId: testWorkspaceId,
       });
 
-      await ctx.manager.startLoop(loop.config.id);
-      await waitForEvent(ctx.events, "loop.completed");
+      await ctx.manager.startTask(task.config.id);
+      await waitForEvent(ctx.events, "task.completed");
 
-      // With worktrees, check the loop state's working branch, not the main checkout
-      const finalLoop = await ctx.manager.getLoop(loop.config.id);
-      expect(finalLoop!.state.git!.workingBranch).toMatch(/^test-loop-[0-9a-f]{7}$/);
+      // With worktrees, check the task state's working branch, not the main checkout
+      const finalTask = await ctx.manager.getTask(task.config.id);
+      expect(finalTask!.state.git!.workingBranch).toMatch(/^test-task-[0-9a-f]{7}$/);
     });
 
-    test("branch name includes loop name and prompt hash", async () => {
-      const loop = await ctx.manager.createLoop({
+    test("branch name includes task name and prompt hash", async () => {
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Branch ID Loop",
+        name: "Branch ID Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
 
-      await ctx.manager.startLoop(loop.config.id);
-      await waitForEvent(ctx.events, "loop.completed");
+      await ctx.manager.startTask(task.config.id);
+      await waitForEvent(ctx.events, "task.completed");
 
-      // With worktrees, check the loop state's working branch, not the main checkout
-      const finalLoop = await ctx.manager.getLoop(loop.config.id);
-      const workingBranch = finalLoop!.state.git!.workingBranch;
-      // Branch should contain the sanitized loop name
-      expect(workingBranch).toContain("branch-id-loop");
-      // Branch should not include the legacy ralph/ prefix
-      expect(workingBranch).not.toStartWith("ralph/");
+      // With worktrees, check the task state's working branch, not the main checkout
+      const finalTask = await ctx.manager.getTask(task.config.id);
+      const workingBranch = finalTask!.state.git!.workingBranch;
+      // Branch should contain the sanitized task name
+      expect(workingBranch).toContain("branch-id-task");
+      // Branch should not include the legacy clanky/ prefix
+      expect(workingBranch).not.toStartWith("clanky/");
       // Branch should end with a 7-character prompt hash
       expect(workingBranch).toMatch(/-[0-9a-f]{7}$/);
     });
@@ -131,11 +131,11 @@ describe("Git Workflow", () => {
         ],
       });
 
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Branch ID Loop",
+        name: "Branch ID Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
@@ -145,59 +145,59 @@ describe("Git Workflow", () => {
       await Bun.$`git add .`.cwd(ctx.workDir).quiet();
       await Bun.$`git commit -m "Add test file"`.cwd(ctx.workDir).quiet();
 
-      await ctx.manager.startLoop(loop.config.id);
-      const finalLoop = await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+      await ctx.manager.startTask(task.config.id);
+      const finalTask = await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
 
       // Check that git commit events were emitted
-      getEvents(ctx.events, "loop.git.commit");
+      getEvents(ctx.events, "task.git.commit");
       // Note: commits only happen if there are changes
       // Since mock backend doesn't actually change files, we may not have commits
       // But we can verify the git info is set up correctly
 
-      expect(finalLoop.state.git).toBeDefined();
-      expect(Array.isArray(finalLoop.state.git!.commits)).toBe(true);
+      expect(finalTask.state.git).toBeDefined();
+      expect(Array.isArray(finalTask.state.git!.commits)).toBe(true);
     });
 
     test("uses custom commit scope", async () => {
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         gitCommitScope: "custom",
         workspaceId: testWorkspaceId,
       });
 
       // Verify the config is set correctly
-      expect(loop.config.git.commitScope).toBe("custom");
+      expect(task.config.git.commitScope).toBe("custom");
     });
   });
 
   describe("Uncommitted Changes Handling", () => {
-    test("allows starting loop with uncommitted changes (worktree isolation)", async () => {
+    test("allows starting task with uncommitted changes (worktree isolation)", async () => {
       // Create uncommitted changes
       await writeFile(join(ctx.workDir, "uncommitted.txt"), "uncommitted content");
       await Bun.$`git add .`.cwd(ctx.workDir).quiet();
 
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
 
-      // With worktrees, uncommitted changes in main checkout don't block loop creation
-      await ctx.manager.startLoop(loop.config.id);
-      await waitForEvent(ctx.events, "loop.completed");
+      // With worktrees, uncommitted changes in main checkout don't block task creation
+      await ctx.manager.startTask(task.config.id);
+      await waitForEvent(ctx.events, "task.completed");
 
-      // Verify loop completed successfully
-      const finalLoop = await ctx.manager.getLoop(loop.config.id);
-      expect(finalLoop!.state.status).toBe("completed");
-      expect(finalLoop!.state.git!.workingBranch).not.toStartWith("ralph/");
-      expect(finalLoop!.state.git!.workingBranch).toMatch(/-[0-9a-f]{7}$/);
+      // Verify task completed successfully
+      const finalTask = await ctx.manager.getTask(task.config.id);
+      expect(finalTask!.state.status).toBe("completed");
+      expect(finalTask!.state.git!.workingBranch).not.toStartWith("clanky/");
+      expect(finalTask!.state.git!.workingBranch).toMatch(/-[0-9a-f]{7}$/);
 
       // Clean up uncommitted changes
       await Bun.$`git reset HEAD -- .`.cwd(ctx.workDir).quiet().nothrow();
@@ -207,28 +207,28 @@ describe("Git Workflow", () => {
 
   });
 
-  describe("Accept Loop (Merge Branch)", () => {
+  describe("Accept Task (Merge Branch)", () => {
     test("merges branch on accept", async () => {
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
 
       const originalBranch = await ctx.git.getCurrentBranch(ctx.workDir);
 
-      await ctx.manager.startLoop(loop.config.id);
-      await waitForEvent(ctx.events, "loop.completed");
+      await ctx.manager.startTask(task.config.id);
+      await waitForEvent(ctx.events, "task.completed");
 
       // Get the working branch name from in-memory engine
-      const loopAfterComplete = await ctx.manager.getLoop(loop.config.id);
-      const workingBranch = loopAfterComplete!.state.git!.workingBranch;
+      const taskAfterComplete = await ctx.manager.getTask(task.config.id);
+      const workingBranch = taskAfterComplete!.state.git!.workingBranch;
 
-      // Accept the loop
-      const result = await ctx.manager.acceptLoop(loop.config.id);
+      // Accept the task
+      const result = await ctx.manager.acceptTask(task.config.id);
 
       expect(result.success).toBe(true);
 
@@ -241,51 +241,51 @@ describe("Git Workflow", () => {
       expect(branchExists).toBe(true);
 
       // Verify reviewMode was initialized
-      const updatedLoop = await ctx.manager.getLoop(loop.config.id);
-      expect(updatedLoop?.state.reviewMode).toBeDefined();
-      expect(updatedLoop?.state.reviewMode?.addressable).toBe(true);
-      expect(updatedLoop?.state.reviewMode?.completionAction).toBe("local");
-      expect(updatedLoop?.state.reviewMode?.reviewCycles).toBe(0);
+      const updatedTask = await ctx.manager.getTask(task.config.id);
+      expect(updatedTask?.state.reviewMode).toBeDefined();
+      expect(updatedTask?.state.reviewMode?.addressable).toBe(true);
+      expect(updatedTask?.state.reviewMode?.completionAction).toBe("local");
+      expect(updatedTask?.state.reviewMode?.reviewCycles).toBe(0);
 
       // Verify event was emitted
-      expect(countEvents(ctx.events, "loop.accepted")).toBe(1);
+      expect(countEvents(ctx.events, "task.accepted")).toBe(1);
     });
 
-    test("returns error when accepting non-completed loop", async () => {
-      const loop = await ctx.manager.createLoop({
+    test("returns error when accepting non-completed task", async () => {
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
 
-      const result = await ctx.manager.acceptLoop(loop.config.id);
+      const result = await ctx.manager.acceptTask(task.config.id);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Cannot accept loop");
+      expect(result.error).toContain("Cannot accept task");
     });
   });
 
-  describe("Discard Loop", () => {
-    test("discards loop without modifying main checkout", async () => {
-      const loop = await ctx.manager.createLoop({
+  describe("Discard Task", () => {
+    test("discards task without modifying main checkout", async () => {
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
 
       const originalBranch = await ctx.git.getCurrentBranch(ctx.workDir);
 
-      await ctx.manager.startLoop(loop.config.id);
-      await waitForEvent(ctx.events, "loop.completed");
+      await ctx.manager.startTask(task.config.id);
+      await waitForEvent(ctx.events, "task.completed");
 
-      // Discard the loop
-      const result = await ctx.manager.discardLoop(loop.config.id);
+      // Discard the task
+      const result = await ctx.manager.discardTask(task.config.id);
 
       expect(result.success).toBe(true);
 
@@ -296,28 +296,28 @@ describe("Git Workflow", () => {
       // With worktrees, discard no longer deletes the branch (only purge does)
 
       // Verify event was emitted
-      expect(countEvents(ctx.events, "loop.discarded")).toBe(1);
+      expect(countEvents(ctx.events, "task.discarded")).toBe(1);
     });
   });
 
   describe("Mark as Merged", () => {
-    test("rejects completed loops without push", async () => {
-      const loop = await ctx.manager.createLoop({
+    test("rejects completed tasks without push", async () => {
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
 
       const originalBranch = await ctx.git.getCurrentBranch(ctx.workDir);
 
-      await ctx.manager.startLoop(loop.config.id);
-      await waitForEvent(ctx.events, "loop.completed");
+      await ctx.manager.startTask(task.config.id);
+      await waitForEvent(ctx.events, "task.completed");
 
       // Mark as merged is only valid after push
-      const result = await ctx.manager.markMerged(loop.config.id);
+      const result = await ctx.manager.markMerged(task.config.id);
 
       expect(result.success).toBe(false);
 
@@ -325,17 +325,17 @@ describe("Git Workflow", () => {
       const currentBranch = await ctx.git.getCurrentBranch(ctx.workDir);
       expect(currentBranch).toBe(originalBranch);
 
-      // Verify loop status remains completed
-      const finalLoop = await ctx.manager.getLoop(loop.config.id);
-      expect(finalLoop!.state.status).toBe("completed");
+      // Verify task status remains completed
+      const finalTask = await ctx.manager.getTask(task.config.id);
+      expect(finalTask!.state.status).toBe("completed");
     });
 
-    test("works for pushed loops", async () => {
-      const loop = await ctx.manager.createLoop({
+    test("works for pushed tasks", async () => {
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
@@ -346,14 +346,14 @@ describe("Git Workflow", () => {
       await Bun.$`git -C ${ctx.workDir} remote add origin ${remoteDir}`.quiet();
       await Bun.$`git -C ${ctx.workDir} push origin ${originalBranch}`.quiet();
 
-      await ctx.manager.startLoop(loop.config.id);
-      await waitForEvent(ctx.events, "loop.completed");
+      await ctx.manager.startTask(task.config.id);
+      await waitForEvent(ctx.events, "task.completed");
 
-      const pushResult = await ctx.manager.pushLoop(loop.config.id);
+      const pushResult = await ctx.manager.pushTask(task.config.id);
       expect(pushResult.success).toBe(true);
 
       // Mark as merged
-      const result = await ctx.manager.markMerged(loop.config.id);
+      const result = await ctx.manager.markMerged(task.config.id);
 
       expect(result.success).toBe(true);
 
@@ -361,26 +361,26 @@ describe("Git Workflow", () => {
       const currentBranch = await ctx.git.getCurrentBranch(ctx.workDir);
       expect(currentBranch).toBe(originalBranch);
 
-      // Verify loop status is merged
-      const finalLoop = await ctx.manager.getLoop(loop.config.id);
-      expect(finalLoop!.state.status).toBe("merged");
+      // Verify task status is merged
+      const finalTask = await ctx.manager.getTask(task.config.id);
+      expect(finalTask!.state.status).toBe("merged");
     });
 
-    test("returns error when loop is not in final state", async () => {
-      const loop = await ctx.manager.createLoop({
+    test("returns error when task is not in final state", async () => {
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
         prompt: "Make changes",
-        name: "Test Loop",
+        name: "Test Task",
         planMode: false,
         workspaceId: testWorkspaceId,
       });
 
-      // Try to mark as merged without running the loop
-      const result = await ctx.manager.markMerged(loop.config.id);
+      // Try to mark as merged without running the task
+      const result = await ctx.manager.markMerged(task.config.id);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Cannot mark loop as merged");
+      expect(result.error).toContain("Cannot mark task as merged");
     });
   });
 });

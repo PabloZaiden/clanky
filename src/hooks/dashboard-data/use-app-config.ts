@@ -7,7 +7,7 @@ import type { AppConfig, HealthResponse } from "../../types";
 import { appFetch, setConfiguredPublicBasePath } from "../../lib/public-path";
 import { useToast } from "../useToast";
 import { createLogger } from "../../lib/logger";
-import { purgeTerminalLoopsApi, type PurgeTerminalLoopsResult } from "../loopActions";
+import { purgeTerminalTasksApi, type PurgeTerminalTasksResult } from "../taskActions";
 
 const log = createLogger("useAppConfig");
 
@@ -16,10 +16,10 @@ export interface UseAppConfigResult {
   version: string | null;
   appSettingsResetting: boolean;
   appSettingsKilling: boolean;
-  appSettingsPurgingTerminalLoops: boolean;
+  appSettingsPurgingTerminalTasks: boolean;
   resetAllSettings: () => Promise<boolean>;
   killServer: () => Promise<boolean>;
-  purgeTerminalLoops: () => Promise<PurgeTerminalLoopsResult | null>;
+  purgeTerminalTasks: () => Promise<PurgeTerminalTasksResult | null>;
 }
 
 export function useAppConfig(): UseAppConfigResult {
@@ -29,7 +29,7 @@ export function useAppConfig(): UseAppConfigResult {
   const [version, setVersion] = useState<string | null>(null);
   const [appSettingsResetting, setAppSettingsResetting] = useState(false);
   const [appSettingsKilling, setAppSettingsKilling] = useState(false);
-  const [appSettingsPurgingTerminalLoops, setAppSettingsPurgingTerminalLoops] = useState(false);
+  const [appSettingsPurgingTerminalTasks, setAppSettingsPurgingTerminalTasks] = useState(false);
 
   useEffect(() => {
     appFetch("/api/config")
@@ -89,16 +89,16 @@ export function useAppConfig(): UseAppConfigResult {
     }
   }, []);
 
-  const purgeTerminalLoops = useCallback(async (): Promise<PurgeTerminalLoopsResult | null> => {
-    setAppSettingsPurgingTerminalLoops(true);
+  const purgeTerminalTasks = useCallback(async (): Promise<PurgeTerminalTasksResult | null> => {
+    setAppSettingsPurgingTerminalTasks(true);
     try {
-      return await purgeTerminalLoopsApi();
+      return await purgeTerminalTasksApi();
     } catch (error) {
-      log.error("Failed to purge terminal-state loops:", error);
-      toast.error("Failed to purge terminal-state loops");
+      log.error("Failed to purge terminal-state tasks:", error);
+      toast.error("Failed to purge terminal-state tasks");
       return null;
     } finally {
-      setAppSettingsPurgingTerminalLoops(false);
+      setAppSettingsPurgingTerminalTasks(false);
     }
   }, [toast]);
 
@@ -107,9 +107,9 @@ export function useAppConfig(): UseAppConfigResult {
     version,
     appSettingsResetting,
     appSettingsKilling,
-    appSettingsPurgingTerminalLoops,
+    appSettingsPurgingTerminalTasks,
     resetAllSettings,
     killServer,
-    purgeTerminalLoops,
+    purgeTerminalTasks,
   };
 }

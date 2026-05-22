@@ -1,7 +1,7 @@
 import type { Chat, SshServer, Workspace } from "../../types";
 import { findRegisteredSshServer } from "../../types/settings";
-import type { useChats, useLoops, useSshSessions } from "../../hooks";
-import { getLoopStatusPill, isWorkspaceHistoryLoop } from "../../utils";
+import type { useChats, useTasks, useSshSessions } from "../../hooks";
+import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   ActionMenu,
   Button,
@@ -34,7 +34,7 @@ function getWorkspaceHeaderServerLabel(
 
 export function WorkspaceView({
   workspace,
-  relatedLoops,
+  relatedTasks,
   relatedChats,
   relatedSessions,
   registeredSshServers,
@@ -45,7 +45,7 @@ export function WorkspaceView({
   onNavigate,
 }: {
   workspace: Workspace;
-  relatedLoops: ReturnType<typeof useLoops>["loops"];
+  relatedTasks: ReturnType<typeof useTasks>["tasks"];
   relatedChats: ReturnType<typeof useChats>["chats"];
   relatedSessions: ReturnType<typeof useSshSessions>["sessions"];
   registeredSshServers: readonly SshServer[];
@@ -58,14 +58,14 @@ export function WorkspaceView({
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
   const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
-  const activityLoops = relatedLoops.filter((loop) => !isWorkspaceHistoryLoop(loop.state.status));
-  const historyLoops = relatedLoops.filter((loop) => isWorkspaceHistoryLoop(loop.state.status));
+  const activityTasks = relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status));
+  const historyTasks = relatedTasks.filter((task) => isWorkspaceHistoryTask(task.state.status));
   const activityDescription = workspaceSshEnabled
-    ? "Active loops, chats, and SSH sessions in this workspace."
-    : "Active loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.";
-  const hasActivity = activityLoops.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
+    ? "Active tasks, chats, and SSH sessions in this workspace."
+    : "Active tasks and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.";
+  const hasActivity = activityTasks.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
   const activityRowClassName = "flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800";
-  const historyDescription = "Merged and deleted loops from this workspace.";
+  const historyDescription = "Merged and deleted tasks from this workspace.";
   const createActionItems = buildWorkspaceActionItems({
     workspace,
     githubUrl,
@@ -75,22 +75,22 @@ export function WorkspaceView({
     onOpenGitHub: (url) => window.open(url, "_blank", "noopener,noreferrer"),
   });
 
-  function renderLoopRow(loop: ReturnType<typeof useLoops>["loops"][number]) {
-    const route: ShellRoute = { view: "loop", loopId: loop.config.id };
-    const statusPill = getLoopStatusPill(loop);
+  function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
+    const route: ShellRoute = { view: "task", taskId: task.config.id };
+    const statusPill = getTaskStatusPill(task);
     return (
       <button
-        key={loop.config.id}
+        key={task.config.id}
         type="button"
         onClick={() => onNavigate(route)}
         className={activityRowClassName}
       >
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-            {loop.config.name}
+            {task.config.name}
           </span>
           <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
-            Loop
+            Task
           </span>
         </span>
         <StatusBadge className="ml-auto shrink-0" variant={statusPill.variant}>
@@ -135,7 +135,7 @@ export function WorkspaceView({
           </div>
           {hasActivity ? (
             <div className="space-y-2">
-              {activityLoops.map((loop) => renderLoopRow(loop))}
+              {activityTasks.map((task) => renderTaskRow(task))}
               {relatedChats.map((chat: Chat) => (
                 <button
                   key={chat.config.id}
@@ -185,7 +185,7 @@ export function WorkspaceView({
           )}
         </div>
 
-        {historyLoops.length > 0 ? (
+        {historyTasks.length > 0 ? (
           <div
             data-testid="workspace-history-card"
             className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50"
@@ -195,7 +195,7 @@ export function WorkspaceView({
               <p className="text-sm text-gray-600 dark:text-gray-400">{historyDescription}</p>
             </div>
             <div className="space-y-2">
-              {historyLoops.map((loop) => renderLoopRow(loop))}
+              {historyTasks.map((task) => renderTaskRow(task))}
             </div>
           </div>
         ) : null}

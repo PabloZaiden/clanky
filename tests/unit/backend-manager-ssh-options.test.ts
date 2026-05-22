@@ -64,7 +64,7 @@ describe("buildConnectionConfig SSH command options", () => {
     expect(args).toContain("BatchMode=yes");
     expect(args).toContain("ControlMaster=auto");
     expect(args).toContain("ControlPersist=60s");
-    expect(getSshOptionValue(args, "ControlPath")).toMatch(/^~\/\.ssh\/ralpher-cm-v1-[a-f0-9]{32}$/);
+    expect(getSshOptionValue(args, "ControlPath")).toMatch(/^~\/\.ssh\/clanky-cm-v1-[a-f0-9]{32}$/);
     expect(args).toContain("ConnectTimeout=10");
     expect(args).toContain("StrictHostKeyChecking=no");
     expect(args).toContain("UserKnownHostsFile=/dev/null");

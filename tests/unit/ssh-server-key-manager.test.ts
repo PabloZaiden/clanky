@@ -23,14 +23,14 @@ function createTestSshServerConfig(overrides?: Partial<SshServerConfig>): SshSer
 
 describe("SshServerKeyManager", () => {
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-keys-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-server-keys-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
   });
 
   afterEach(async () => {
     const { closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true, force: true });
   });
 

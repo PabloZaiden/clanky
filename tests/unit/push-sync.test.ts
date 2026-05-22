@@ -1,5 +1,5 @@
 /**
- * Unit tests for the push-with-sync flow in LoopManager.
+ * Unit tests for the push-with-sync flow in TaskManager.
  * Tests the base branch sync behavior that happens before pushing:
  * - Already up to date: no merge needed
  * - Clean merge: base branch merged cleanly, then push
@@ -13,7 +13,7 @@ import {
   setupTestContext,
   teardownTestContext,
   waitForEvent,
-  waitForLoopStatus,
+  waitForTaskStatus,
   testModelFields,
 } from "../setup";
 import type { TestContext } from "../setup";
@@ -33,22 +33,22 @@ async function setupRemote(ctx: TestContext): Promise<{ remoteDir: string; curre
 }
 
 /**
- * Helper: create and complete a loop, returning the loop object.
+ * Helper: create and complete a task, returning the task object.
  */
-async function createAndCompleteLoop(ctx: TestContext) {
-  const loop = await ctx.manager.createLoop({
+async function createAndCompleteTask(ctx: TestContext) {
+  const task = await ctx.manager.createTask({
     ...testModelFields,
     directory: ctx.workDir,
     prompt: "Make changes",
-    name: "Test Loop",
+    name: "Test Task",
     planMode: false,
     workspaceId: testWorkspaceId,
   });
 
-  await ctx.manager.startLoop(loop.config.id);
-  await waitForEvent(ctx.events, "loop.completed");
+  await ctx.manager.startTask(task.config.id);
+  await waitForEvent(ctx.events, "task.completed");
 
-  return loop;
+  return task;
 }
 
 /**
@@ -115,27 +115,27 @@ describe("Push with Base Branch Sync", () => {
 
       try {
         const { currentBranch: _currentBranch } = await setupRemote(ctx);
-        const loop = await createAndCompleteLoop(ctx);
+        const task = await createAndCompleteTask(ctx);
 
-        // Push the loop — base branch hasn't changed, should be "already_up_to_date"
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        // Push the task — base branch hasn't changed, should be "already_up_to_date"
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
         expect(pushResult.syncStatus).toBe("already_up_to_date");
         // remoteBranch should be set when push actually happened
         expect(pushResult.remoteBranch).toBeDefined();
 
-        // Verify loop is in pushed state
-        const pushedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(pushedLoop).not.toBeNull();
-        expect(pushedLoop!.state.status).toBe("pushed");
-        expect(pushedLoop!.state.syncState).toBeUndefined();
-        expect(pushedLoop!.state.reviewMode).toBeDefined();
-        expect(pushedLoop!.state.reviewMode!.completionAction).toBe("push");
+        // Verify task is in pushed state
+        const pushedTask = await ctx.manager.getTask(task.config.id);
+        expect(pushedTask).not.toBeNull();
+        expect(pushedTask!.state.status).toBe("pushed");
+        expect(pushedTask!.state.syncState).toBeUndefined();
+        expect(pushedTask!.state.reviewMode).toBeDefined();
+        expect(pushedTask!.state.reviewMode!.completionAction).toBe("push");
 
         // Verify sync events were emitted
-        const syncStarted = ctx.events.find((e) => e.type === "loop.sync.started");
+        const syncStarted = ctx.events.find((e) => e.type === "task.sync.started");
         expect(syncStarted).toBeDefined();
-        const syncClean = ctx.events.find((e) => e.type === "loop.sync.clean");
+        const syncClean = ctx.events.find((e) => e.type === "task.sync.clean");
         expect(syncClean).toBeDefined();
       } finally {
         await teardownTestContext(ctx);
@@ -152,10 +152,10 @@ describe("Push with Base Branch Sync", () => {
 
       try {
         const { remoteDir } = await setupRemote(ctx);
-        const loop = await createAndCompleteLoop(ctx);
+        const task = await createAndCompleteTask(ctx);
 
         // Add a non-conflicting commit to the base branch on the remote
-        // The loop's mock backend only responds with COMPLETE and doesn't create files,
+        // The task's mock backend only responds with COMPLETE and doesn't create files,
         // so a new file on the remote won't conflict
         await addRemoteCommit(
           remoteDir,
@@ -164,23 +164,23 @@ describe("Push with Base Branch Sync", () => {
           ctx.dataDir,
         );
 
-        // Push the loop — should merge cleanly, then push
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        // Push the task — should merge cleanly, then push
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
         expect(pushResult.syncStatus).toBe("clean");
         // remoteBranch should be set when push actually happened
         expect(pushResult.remoteBranch).toBeDefined();
 
-        // Verify loop is in pushed state
-        const pushedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(pushedLoop).not.toBeNull();
-        expect(pushedLoop!.state.status).toBe("pushed");
-        expect(pushedLoop!.state.syncState).toBeUndefined();
+        // Verify task is in pushed state
+        const pushedTask = await ctx.manager.getTask(task.config.id);
+        expect(pushedTask).not.toBeNull();
+        expect(pushedTask!.state.status).toBe("pushed");
+        expect(pushedTask!.state.syncState).toBeUndefined();
 
         // Verify sync events
-        const syncStarted = ctx.events.find((e) => e.type === "loop.sync.started");
+        const syncStarted = ctx.events.find((e) => e.type === "task.sync.started");
         expect(syncStarted).toBeDefined();
-        const syncClean = ctx.events.find((e) => e.type === "loop.sync.clean");
+        const syncClean = ctx.events.find((e) => e.type === "task.sync.clean");
         expect(syncClean).toBeDefined();
       } finally {
         await teardownTestContext(ctx);
@@ -195,11 +195,11 @@ describe("Push with Base Branch Sync", () => {
 
       try {
         const { remoteDir } = await setupRemote(ctx);
-        const loop = await createAndCompleteLoop(ctx);
+        const task = await createAndCompleteTask(ctx);
 
-        // Get the worktree path for the loop
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const worktreePath = completedLoop!.state.git!.worktreePath!;
+        // Get the worktree path for the task
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const worktreePath = completedTask!.state.git!.worktreePath!;
 
         // Make a commit in the worktree with a meaningful message
         await writeFile(join(worktreePath, "feature.txt"), "New feature code\n");
@@ -215,7 +215,7 @@ describe("Push with Base Branch Sync", () => {
         );
 
         // Push — the merge commit message should use the last local commit message
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
         expect(pushResult.syncStatus).toBe("clean");
 
@@ -234,7 +234,7 @@ describe("Push with Base Branch Sync", () => {
   describe("conflict resolution", () => {
     test("starts conflict resolution engine when merge conflicts exist", async () => {
         // Mock responses consumed in order:
-        // Index 0: subscribeToEvents (initial loop iteration) → COMPLETE
+        // Index 0: subscribeToEvents (initial task iteration) → COMPLETE
         // Index 1: subscribeToEvents (conflict resolution iteration) → COMPLETE
         const ctx = await setupTestContext({
           initGit: true,
@@ -248,27 +248,27 @@ describe("Push with Base Branch Sync", () => {
       try {
         const { remoteDir } = await setupRemote(ctx);
 
-        // Create loop
-        const loop = await ctx.manager.createLoop({
+        // Create task
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Modify test.txt",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
-        // Get the worktree path for the loop
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const worktreePath = completedLoop!.state.git!.worktreePath!;
+        // Get the worktree path for the task
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const worktreePath = completedTask!.state.git!.worktreePath!;
 
-        // Modify test.txt in the worktree (simulating what the loop engine would do)
-        await writeFile(join(worktreePath, "test.txt"), "Modified by loop\n");
+        // Modify test.txt in the worktree (simulating what the task engine would do)
+        await writeFile(join(worktreePath, "test.txt"), "Modified by task\n");
         await Bun.$`git -C ${worktreePath} add -A`.quiet();
-        await Bun.$`git -C ${worktreePath} commit -m "Loop changes to test.txt"`.quiet();
+        await Bun.$`git -C ${worktreePath} commit -m "Task changes to test.txt"`.quiet();
 
         // Now add a conflicting commit to the base branch on the remote
         await addRemoteCommit(
@@ -278,34 +278,34 @@ describe("Push with Base Branch Sync", () => {
           ctx.dataDir,
         );
 
-        // Push the loop — should detect conflicts and start resolution engine
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        // Push the task — should detect conflicts and start resolution engine
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
         expect(pushResult.syncStatus).toBe("conflicts_being_resolved");
         // remoteBranch should NOT be set when push is deferred
         expect(pushResult.remoteBranch).toBeUndefined();
 
         // Verify sync events
-        const syncConflicts = ctx.events.find((e) => e.type === "loop.sync.conflicts");
+        const syncConflicts = ctx.events.find((e) => e.type === "task.sync.conflicts");
         expect(syncConflicts).toBeDefined();
 
         // Verify syncState was set with mergeCommitMessage
-        const conflictLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(conflictLoop).not.toBeNull();
-        expect(conflictLoop!.state.syncState).toBeDefined();
-        expect(conflictLoop!.state.syncState!.mergeCommitMessage).toBe("Loop changes to test.txt");
+        const conflictTask = await ctx.manager.getTask(task.config.id);
+        expect(conflictTask).not.toBeNull();
+        expect(conflictTask!.state.syncState).toBeDefined();
+        expect(conflictTask!.state.syncState!.mergeCommitMessage).toBe("Task changes to test.txt");
 
         // The conflict resolution engine should have been started. 
         // With the mock backend, it will complete quickly and trigger auto-push.
-        // Wait for the loop to reach "pushed" status (auto-push after resolution).
-        const finalLoop = await waitForLoopStatus(ctx.manager, loop.config.id, ["pushed"], 10000);
-        expect(finalLoop.state.status).toBe("pushed");
-        expect(finalLoop.state.syncState).toBeUndefined();
-        expect(finalLoop.state.reviewMode).toBeDefined();
-        expect(finalLoop.state.reviewMode!.completionAction).toBe("push");
+        // Wait for the task to reach "pushed" status (auto-push after resolution).
+        const finalTask = await waitForTaskStatus(ctx.manager, task.config.id, ["pushed"], 10000);
+        expect(finalTask.state.status).toBe("pushed");
+        expect(finalTask.state.syncState).toBeUndefined();
+        expect(finalTask.state.reviewMode).toBeDefined();
+        expect(finalTask.state.reviewMode!.completionAction).toBe("push");
 
-        // Verify loop.pushed event was emitted
-        const pushedEvent = ctx.events.find((e) => e.type === "loop.pushed");
+        // Verify task.pushed event was emitted
+        const pushedEvent = ctx.events.find((e) => e.type === "task.pushed");
         expect(pushedEvent).toBeDefined();
       } finally {
         await teardownTestContext(ctx);
@@ -314,7 +314,7 @@ describe("Push with Base Branch Sync", () => {
 
     test("does not auto-push when conflict resolution fails", async () => {
       // Mock responses consumed in order:
-      // Index 0: subscribeToEvents (initial loop iteration) → COMPLETE
+      // Index 0: subscribeToEvents (initial task iteration) → COMPLETE
       // Index 1: subscribeToEvents (conflict resolution iteration) → ERROR
       // With maxConsecutiveErrors: 1, a single error triggers failsafe → "failed" status
       const ctx = await setupTestContext({
@@ -329,26 +329,26 @@ describe("Push with Base Branch Sync", () => {
       try {
         const { remoteDir } = await setupRemote(ctx);
 
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Modify test.txt",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
           maxConsecutiveErrors: 1,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
         // Get the worktree path and modify test.txt to create a conflict
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const worktreePath = completedLoop!.state.git!.worktreePath!;
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const worktreePath = completedTask!.state.git!.worktreePath!;
 
-        await writeFile(join(worktreePath, "test.txt"), "Modified by loop\n");
+        await writeFile(join(worktreePath, "test.txt"), "Modified by task\n");
         await Bun.$`git -C ${worktreePath} add -A`.quiet();
-        await Bun.$`git -C ${worktreePath} commit -m "Loop changes"`.quiet();
+        await Bun.$`git -C ${worktreePath} commit -m "Task changes"`.quiet();
 
         // Add conflicting commit to remote
         await addRemoteCommit(
@@ -362,26 +362,26 @@ describe("Push with Base Branch Sync", () => {
         ctx.events.length = 0;
 
         // Push — should start conflict resolution
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
         expect(pushResult.syncStatus).toBe("conflicts_being_resolved");
         // remoteBranch should NOT be set when push is deferred
         expect(pushResult.remoteBranch).toBeUndefined();
 
         // Wait for the conflict resolution engine to fail
-        const failedLoop = await waitForLoopStatus(
+        const failedTask = await waitForTaskStatus(
           ctx.manager,
-          loop.config.id,
+          task.config.id,
           ["failed"],
           10000,
         );
-        expect(failedLoop.state.status).toBe("failed");
+        expect(failedTask.state.status).toBe("failed");
 
         // autoPushOnComplete should have been cleared
-        expect(failedLoop.state.syncState?.autoPushOnComplete).toBe(false);
+        expect(failedTask.state.syncState?.autoPushOnComplete).toBe(false);
 
-        // Verify NO loop.pushed event was emitted
-        const pushedEvent = ctx.events.find((e) => e.type === "loop.pushed");
+        // Verify NO task.pushed event was emitted
+        const pushedEvent = ctx.events.find((e) => e.type === "task.pushed");
         expect(pushedEvent).toBeUndefined();
       } finally {
         await teardownTestContext(ctx);
@@ -390,7 +390,7 @@ describe("Push with Base Branch Sync", () => {
   });
 
   describe("edge cases", () => {
-    test("rejects push when loop is not in completed status", async () => {
+    test("rejects push when task is not in completed status", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: { "test.txt": "content" },
@@ -398,29 +398,29 @@ describe("Push with Base Branch Sync", () => {
 
       try {
         await setupRemote(ctx);
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Test",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        // Don't start the loop — it's still in "idle" status
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        // Don't start the task — it's still in "idle" status
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(false);
-        expect(pushResult.error).toContain("Cannot push loop in status");
+        expect(pushResult.error).toContain("Cannot push task in status");
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("rejects push for non-existent loop", async () => {
+    test("rejects push for non-existent task", async () => {
       const ctx = await setupTestContext({ initGit: true });
 
       try {
-        const pushResult = await ctx.manager.pushLoop("non-existent-id");
+        const pushResult = await ctx.manager.pushTask("non-existent-id");
         expect(pushResult.success).toBe(false);
         expect(pushResult.error).toContain("not found");
       } finally {
@@ -428,11 +428,11 @@ describe("Push with Base Branch Sync", () => {
       }
     });
 
-    test("syncState is cleared when jumpstarting a loop", async () => {
+    test("syncState is cleared when jumpstarting a task", async () => {
       // Mock responses consumed in order:
-      // Index 0: subscribeToEvents (initial loop iteration) → COMPLETE
+      // Index 0: subscribeToEvents (initial task iteration) → COMPLETE
       // Index 1: subscribeToEvents (conflict resolution iteration) → ERROR (fails with maxConsecutiveErrors: 1)
-      // Index 2: subscribeToEvents (jumpstarted loop iteration) → COMPLETE
+      // Index 2: subscribeToEvents (jumpstarted task iteration) → COMPLETE
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: { "test.txt": "Initial content" },
@@ -446,26 +446,26 @@ describe("Push with Base Branch Sync", () => {
       try {
         const { remoteDir } = await setupRemote(ctx);
 
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Modify test.txt",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
           maxConsecutiveErrors: 1,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
         // Create a conflict scenario
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const worktreePath = completedLoop!.state.git!.worktreePath!;
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const worktreePath = completedTask!.state.git!.worktreePath!;
 
-        await writeFile(join(worktreePath, "test.txt"), "Modified by loop\n");
+        await writeFile(join(worktreePath, "test.txt"), "Modified by task\n");
         await Bun.$`git -C ${worktreePath} add -A`.quiet();
-        await Bun.$`git -C ${worktreePath} commit -m "Loop changes"`.quiet();
+        await Bun.$`git -C ${worktreePath} commit -m "Task changes"`.quiet();
 
         await addRemoteCommit(
           remoteDir,
@@ -475,19 +475,19 @@ describe("Push with Base Branch Sync", () => {
         );
 
         // Push to trigger conflict resolution (which will fail)
-        await ctx.manager.pushLoop(loop.config.id);
+        await ctx.manager.pushTask(task.config.id);
 
         // Wait for the conflict resolution to fail
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["failed"], 10000);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["failed"], 10000);
 
-        // Jumpstart the loop via injectPending — syncState should be cleared
+        // Jumpstart the task via injectPending — syncState should be cleared
         ctx.events.length = 0;
-        await ctx.manager.injectPending(loop.config.id, { message: "Try again" });
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.injectPending(task.config.id, { message: "Try again" });
+        await waitForEvent(ctx.events, "task.completed");
 
-        const jumpstartedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(jumpstartedLoop).not.toBeNull();
-        expect(jumpstartedLoop!.state.syncState).toBeUndefined();
+        const jumpstartedTask = await ctx.manager.getTask(task.config.id);
+        expect(jumpstartedTask).not.toBeNull();
+        expect(jumpstartedTask!.state.syncState).toBeUndefined();
       } finally {
         await teardownTestContext(ctx);
       }
@@ -500,7 +500,7 @@ describe("Push with Working Branch Sync", () => {
     test("merges remote working branch changes before pushing", async () => {
       // Mock responses consumed in order:
       // Index 0: sendPrompt (name generation) → COMPLETE name
-      // Index 1: subscribeToEvents (initial loop iteration) → COMPLETE
+      // Index 1: subscribeToEvents (initial task iteration) → COMPLETE
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: { "test.txt": "Initial content" },
@@ -508,12 +508,12 @@ describe("Push with Working Branch Sync", () => {
 
       try {
         const { remoteDir } = await setupRemote(ctx);
-        const loop = await createAndCompleteLoop(ctx);
+        const task = await createAndCompleteTask(ctx);
 
         // Get the worktree path and working branch
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const worktreePath = completedLoop!.state.git!.worktreePath!;
-        const workingBranch = completedLoop!.state.git!.workingBranch;
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const worktreePath = completedTask!.state.git!.worktreePath!;
+        const workingBranch = completedTask!.state.git!.workingBranch;
 
         // Push the working branch to remote first (simulating a previous push)
         await Bun.$`git -C ${ctx.workDir} push -u origin ${workingBranch}`.quiet();
@@ -532,16 +532,16 @@ describe("Push with Working Branch Sync", () => {
         await Bun.$`git -C ${worktreePath} add -A`.quiet();
         await Bun.$`git -C ${worktreePath} commit -m "Local changes in worktree"`.quiet();
 
-        // Push the loop — should merge remote working branch changes first, then push
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        // Push the task — should merge remote working branch changes first, then push
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
         expect(pushResult.remoteBranch).toBeDefined();
 
-        // Verify loop is in pushed state
-        const pushedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(pushedLoop).not.toBeNull();
-        expect(pushedLoop!.state.status).toBe("pushed");
-        expect(pushedLoop!.state.syncState).toBeUndefined();
+        // Verify task is in pushed state
+        const pushedTask = await ctx.manager.getTask(task.config.id);
+        expect(pushedTask).not.toBeNull();
+        expect(pushedTask!.state.status).toBe("pushed");
+        expect(pushedTask!.state.syncState).toBeUndefined();
 
         // Verify the remote file from the working branch was merged in
         const remoteFileExists = await Bun.$`git -C ${worktreePath} show HEAD:remote-working-file.txt`.quiet().then(() => true).catch(() => false);
@@ -555,7 +555,7 @@ describe("Push with Working Branch Sync", () => {
   describe("working branch conflicts", () => {
     test("starts conflict resolution when working branch has conflicting remote changes", async () => {
       // Mock responses consumed in order:
-      // Index 0: subscribeToEvents (initial loop iteration) → COMPLETE
+      // Index 0: subscribeToEvents (initial task iteration) → COMPLETE
       // Index 1: subscribeToEvents (conflict resolution for working branch) → COMPLETE
       //
       // NOTE: We only verify that conflict resolution starts with the correct syncPhase.
@@ -577,23 +577,23 @@ describe("Push with Working Branch Sync", () => {
       try {
         const { remoteDir } = await setupRemote(ctx);
 
-        // Create loop
-        const loop = await ctx.manager.createLoop({
+        // Create task
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Modify test.txt",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
         // Get worktree path and working branch
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const worktreePath = completedLoop!.state.git!.worktreePath!;
-        const workingBranch = completedLoop!.state.git!.workingBranch;
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const worktreePath = completedTask!.state.git!.worktreePath!;
+        const workingBranch = completedTask!.state.git!.workingBranch;
 
         // Push the working branch to remote first
         await Bun.$`git -C ${ctx.workDir} push -u origin ${workingBranch}`.quiet();
@@ -612,22 +612,22 @@ describe("Push with Working Branch Sync", () => {
           ctx.dataDir,
         );
 
-        // Push the loop — should detect working branch conflicts and start resolution
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        // Push the task — should detect working branch conflicts and start resolution
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
         expect(pushResult.syncStatus).toBe("conflicts_being_resolved");
         expect(pushResult.remoteBranch).toBeUndefined();
 
         // Verify sync conflicts event was emitted
-        const syncConflicts = ctx.events.find((e) => e.type === "loop.sync.conflicts");
+        const syncConflicts = ctx.events.find((e) => e.type === "task.sync.conflicts");
         expect(syncConflicts).toBeDefined();
 
         // Verify syncState was set with the correct syncPhase
-        const conflictLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(conflictLoop).not.toBeNull();
-        expect(conflictLoop!.state.syncState).toBeDefined();
-        expect(conflictLoop!.state.syncState!.syncPhase).toBe("working_branch");
-        expect(conflictLoop!.state.syncState!.autoPushOnComplete).toBe(true);
+        const conflictTask = await ctx.manager.getTask(task.config.id);
+        expect(conflictTask).not.toBeNull();
+        expect(conflictTask!.state.syncState).toBeDefined();
+        expect(conflictTask!.state.syncState!.syncPhase).toBe("working_branch");
+        expect(conflictTask!.state.syncState!.autoPushOnComplete).toBe(true);
       } finally {
         await teardownTestContext(ctx);
       }

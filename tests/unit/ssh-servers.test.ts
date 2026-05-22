@@ -30,7 +30,7 @@ function createTestSshServerSession(overrides?: Partial<SshServerSession["config
       name: overrides?.name ?? "Deploy shell",
       connectionMode: "dtach",
       useTmux: overrides?.useTmux ?? true,
-      remoteSessionName: overrides?.remoteSessionName ?? "ralpher-ssh-session-1",
+      remoteSessionName: overrides?.remoteSessionName ?? "clanky-ssh-session-1",
       createdAt: overrides?.createdAt ?? now,
       updatedAt: overrides?.updatedAt ?? now,
     },
@@ -42,14 +42,14 @@ function createTestSshServerSession(overrides?: Partial<SshServerSession["config
 
 describe("SSH server persistence", () => {
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-server-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
   });
 
   afterEach(async () => {
     const { closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true, force: true });
   });
 

@@ -17,7 +17,7 @@ function createSignedPasskeySessionCookie(
 ): string {
   const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = createHmac("sha256", secret).update(encodedPayload, "utf8").digest("base64url");
-  return `ralpher_passkey_session=${encodedPayload}.${signature}`;
+  return `clanky_passkey_session=${encodedPayload}.${signature}`;
 }
 
 describe("passkey auth routes", () => {
@@ -85,7 +85,7 @@ describe("passkey auth routes", () => {
         new Request("http://internal-host:3000/api/passkey-auth/status", {
           headers: {
             cookie,
-            "x-forwarded-host": "ralpher.example.test",
+            "x-forwarded-host": "clanky.example.test",
             "x-forwarded-proto": "https",
           },
         }),
@@ -100,7 +100,7 @@ describe("passkey auth routes", () => {
         passkeyRequired: true,
         authenticated: true,
       });
-      expect(setCookie).toContain("ralpher_passkey_session=");
+      expect(setCookie).toContain("clanky_passkey_session=");
       expect(setCookie).toContain("SameSite=Strict");
       expect(setCookie).toContain("Secure");
 
@@ -123,7 +123,7 @@ describe("passkey auth cookies", () => {
       const registration = await passkeyAuthCore.beginPasskeyRegistration(
         new Request("http://internal-host:3000/api/passkey-auth/registration/options", {
           headers: {
-            "x-forwarded-host": "ralpher.example.test",
+            "x-forwarded-host": "clanky.example.test",
             "x-forwarded-proto": "https",
           },
         }),
@@ -131,7 +131,7 @@ describe("passkey auth cookies", () => {
       const logoutHeaders = passkeyAuthCore.createPasskeyLogoutHeaders(
         new Request("http://internal-host:3000/api/passkey-auth/logout", {
           headers: {
-            "x-forwarded-host": "ralpher.example.test",
+            "x-forwarded-host": "clanky.example.test",
             "x-forwarded-proto": "https",
           },
         }),

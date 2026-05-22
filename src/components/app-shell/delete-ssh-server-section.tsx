@@ -24,8 +24,8 @@ export function DeleteSshServerSection({
   const [deleting, setDeleting] = useState(false);
 
   const confirmMessage = relatedSessionCount === 0
-    ? `Delete "${server.config.name}"? This removes the saved SSH server metadata from Ralpher and any saved browser credential for this server.`
-    : `Delete "${server.config.name}" and its ${relatedSessionCount} standalone session${relatedSessionCount === 1 ? "" : "s"}? This removes the saved SSH server metadata from Ralpher, any saved browser credential for this server, and cannot be undone.`;
+    ? `Delete "${server.config.name}"? This removes the saved SSH server metadata from Clanky and any saved browser credential for this server.`
+    : `Delete "${server.config.name}" and its ${relatedSessionCount} standalone session${relatedSessionCount === 1 ? "" : "s"}? This removes the saved SSH server metadata from Clanky, any saved browser credential for this server, and cannot be undone.`;
 
   async function handleDelete() {
     setDeleting(true);
@@ -52,7 +52,7 @@ export function DeleteSshServerSection({
         <h3 className="mb-2 text-sm font-medium text-red-800 dark:text-red-200">Delete SSH Server</h3>
         <p className="mb-4 text-sm text-red-700 dark:text-red-300">
           {relatedSessionCount === 0
-            ? "Remove this SSH server from Ralpher when you no longer need its saved connection details."
+            ? "Remove this SSH server from Clanky when you no longer need its saved connection details."
             : `This also removes ${relatedSessionCount} standalone session${relatedSessionCount === 1 ? "" : "s"} associated with this server.`}
           {" "}Any saved browser credential for this server is cleared as part of deletion.
         </p>

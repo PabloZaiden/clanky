@@ -1,26 +1,26 @@
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
-import type { CreateLoopRequest } from "../../types";
-import type { CreateLoopResult } from "../../hooks/useLoops";
+import type { CreateTaskRequest } from "../../types";
+import type { CreateTaskResult } from "../../hooks/useTasks";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { ToastContextValue } from "../../hooks/useToast";
 import {
-  saveStoredLoopCheapModelPreference,
-  saveStoredLoopModelPreference,
+  saveStoredTaskCheapModelPreference,
+  saveStoredTaskModelPreference,
 } from "../../lib/model-selection-preferences";
 import type { ShellRoute } from "./shell-types";
-import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
-import type { CreateLoopFormActionState } from "../CreateLoopForm";
+import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormActionState } from "../CreateTaskForm";
 
 export interface UseComposeStateResult {
-  composeActionState: CreateLoopFormActionState | null;
-  setComposeActionState: Dispatch<SetStateAction<CreateLoopFormActionState | null>>;
-  handleLoopSubmit: (request: CreateLoopFormSubmitRequest) => Promise<boolean>;
+  composeActionState: CreateTaskFormActionState | null;
+  setComposeActionState: Dispatch<SetStateAction<CreateTaskFormActionState | null>>;
+  handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
 }
 
 interface UseComposeStateOptions {
   route: ShellRoute;
-  createLoop: (req: CreateLoopRequest) => Promise<CreateLoopResult>;
-  refreshLoops: () => Promise<void>;
+  createTask: (req: CreateTaskRequest) => Promise<CreateTaskResult>;
+  refreshTasks: () => Promise<void>;
   navigateWithinShell: (route: ShellRoute) => void;
   dashboardData: UseDashboardDataResult;
   toast: ToastContextValue;
@@ -28,20 +28,20 @@ interface UseComposeStateOptions {
 
 export function useComposeState({
   route,
-  createLoop,
-  refreshLoops,
+  createTask,
+  refreshTasks,
   navigateWithinShell,
   dashboardData,
   toast,
 }: UseComposeStateOptions): UseComposeStateResult {
-  const [composeActionState, setComposeActionState] = useState<CreateLoopFormActionState | null>(null);
+  const [composeActionState, setComposeActionState] = useState<CreateTaskFormActionState | null>(null);
 
   useEffect(() => {
     if (route.view !== "compose") {
       dashboardData.resetCreateModalState();
       return;
     }
-    if (route.kind !== "loop") {
+    if (route.kind !== "task") {
       dashboardData.resetCreateModalState();
     }
   }, [dashboardData.resetCreateModalState, route]);
@@ -51,61 +51,61 @@ export function useComposeState({
       setComposeActionState(null);
       return;
     }
-    if (route.kind !== "loop") {
+    if (route.kind !== "task") {
       setComposeActionState(null);
     }
   }, [route.view, route.view === "compose" ? route.kind : undefined]);
 
-  async function finalizeLoopCreation(request: CreateLoopFormSubmitRequest) {
+  async function finalizeTaskCreation(request: CreateTaskFormSubmitRequest) {
     if (!request.model) {
-      toast.error("Please select a model before starting a loop.");
+      toast.error("Please select a model before starting a task.");
       return null;
     }
 
-    const createRequest: CreateLoopRequest = {
+    const createRequest: CreateTaskRequest = {
       ...request,
       model: request.model,
     };
-    const result = await createLoop(createRequest);
+    const result = await createTask(createRequest);
 
     if (result.startError) {
       toast.error("Uncommitted changes blocked the new run. Resolve them and try again.");
       return null;
     }
 
-    if (!result.loop) {
-      toast.error("Failed to create loop");
+    if (!result.task) {
+      toast.error("Failed to create task");
       return null;
     }
 
-    await refreshLoops();
+    await refreshTasks();
     dashboardData.setLastModel(request.model);
     dashboardData.setLastCheapModel(request.cheapModel ?? null);
-    saveStoredLoopModelPreference(request.model);
-    saveStoredLoopCheapModelPreference(request.cheapModel);
+    saveStoredTaskModelPreference(request.model);
+    saveStoredTaskCheapModelPreference(request.cheapModel);
 
-    return result.loop;
+    return result.task;
   }
 
-  async function handleLoopSubmit(request: CreateLoopFormSubmitRequest): Promise<boolean> {
+  async function handleTaskSubmit(request: CreateTaskFormSubmitRequest): Promise<boolean> {
     if (!request.draft) {
-      void finalizeLoopCreation(request);
+      void finalizeTaskCreation(request);
       navigateWithinShell({ view: "workspace", workspaceId: request.workspaceId });
       return true;
     }
 
-    const loop = await finalizeLoopCreation(request);
-    if (!loop) {
+    const task = await finalizeTaskCreation(request);
+    if (!task) {
       return false;
     }
 
-    navigateWithinShell({ view: "loop", loopId: loop.config.id });
+    navigateWithinShell({ view: "task", taskId: task.config.id });
     return true;
   }
 
   return {
     composeActionState,
     setComposeActionState,
-    handleLoopSubmit,
+    handleTaskSubmit,
   };
 }

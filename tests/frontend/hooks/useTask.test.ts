@@ -1,0 +1,1313 @@
+/**
+ * Tests for useTask hook.
+ *
+ * Tests single task state management, WebSocket event handling for
+ * messages/toolCalls/progress/logs, and all action methods.
+ */
+
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { renderHook, waitFor, act } from "@testing-library/react";
+import { createMockApi, MockApiError } from "../helpers/mock-api";
+import { createMockWebSocket } from "../helpers/mock-websocket";
+import {
+  createTask,
+  createTaskLogEntry,
+  createTaskWithStatus,
+  createPersistedMessage,
+  createPersistedToolCall,
+} from "../helpers/factories";
+import { AppEventsProvider } from "@/hooks";
+import { useTask } from "@/hooks/useTask";
+import type { Task } from "@/types/task";
+
+const TASK_ID = "test-task-1";
+const api = createMockApi();
+const ws = createMockWebSocket();
+
+beforeEach(() => {
+  api.reset();
+  api.install();
+  ws.reset();
+  ws.install();
+});
+
+afterEach(() => {
+  api.uninstall();
+  ws.uninstall();
+});
+
+/** Set up default GET /api/tasks/:id mock. */
+function setupTask(task: Task = createTask({ config: { id: TASK_ID }, state: { id: TASK_ID } })) {
+  api.get("/api/tasks/:id", () => task);
+  return task;
+}
+
+/** Wait for hook to finish initial load. */
+async function waitForLoad(result: { current: { loading: boolean } }) {
+  await waitFor(() => {
+    expect(result.current.loading).toBe(false);
+  });
+}
+
+/** Wait for WebSocket connections to exist. */
+async function waitForWs() {
+  await waitFor(() => {
+    expect(ws.connections().length).toBeGreaterThan(0);
+  });
+}
+
+// ─── Initial fetch ───────────────────────────────────────────────────────────
+
+describe("initial fetch", () => {
+  test("fetches task on mount and sets loading to false", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    expect(result.current.loading).toBe(true);
+
+    await waitForLoad(result);
+
+    expect(result.current.task).not.toBeNull();
+    expect(result.current.task!.config.id).toBe(TASK_ID);
+    expect(result.current.error).toBeNull();
+  });
+
+  test("sets error when task not found (404)", async () => {
+    api.get("/api/tasks/:id", () => {
+      throw new MockApiError(404, { message: "Task not found" });
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+
+    expect(result.current.task).toBeNull();
+    expect(result.current.error).toBe("Task not found");
+  });
+
+  test("sets error when fetch fails", async () => {
+    api.get("/api/tasks/:id", () => {
+      throw new MockApiError(500, { message: "Server error" });
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+
+    expect(result.current.error).toBeTruthy();
+  });
+
+  test("hydrates persisted user image attachments on initial load", async () => {
+    const attachment = {
+      id: "img-1",
+      filename: "screen.png",
+      mimeType: "image/png",
+      data: "ZmFrZQ==",
+      size: 1234,
+    };
+    setupTask(createTask({
+      config: { id: TASK_ID },
+      state: {
+        id: TASK_ID,
+        messages: [createPersistedMessage({
+          id: "msg-1",
+          role: "user",
+          content: "Please inspect this screenshot",
+          attachments: [attachment],
+        })],
+      },
+    }));
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0]).toMatchObject({
+      id: "msg-1",
+      role: "user",
+      content: "Please inspect this screenshot",
+      attachments: [attachment],
+    });
+  });
+
+  test("hydrates finalized response markers for persisted response logs", async () => {
+    setupTask(createTask({
+      config: { id: TASK_ID },
+      state: {
+        id: TASK_ID,
+        logs: [{
+          id: "log-response-1",
+          level: "agent",
+          message: "AI generating response...",
+          details: {
+            logKind: "response",
+            responseContent: "Done\n<promise>COMPLETE</promise>",
+          },
+          timestamp: new Date().toISOString(),
+        }],
+      },
+    }));
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+
+    expect(result.current.logs).toHaveLength(1);
+    expect(result.current.logs[0]?.finalizedResponse).toEqual({
+      content: "Done",
+      indicator: {
+        marker: "COMPLETE",
+        kind: "complete",
+        label: "COMPLETED",
+      },
+    });
+  });
+});
+
+// ─── WebSocket events: messages ──────────────────────────────────────────────
+
+describe("WebSocket event: task.message", () => {
+  test("accumulates messages from events", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.message",
+        taskId: TASK_ID,
+        iteration: 1,
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: "Hello",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.messages).toHaveLength(1);
+    });
+    expect(result.current.messages[0]!.content).toBe("Hello");
+    expect(result.current.messages[0]!.role).toBe("assistant");
+  });
+
+  test("clears progress content when message arrives", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    // First send progress
+    act(() => {
+      ws.sendEvent({
+        type: "task.progress",
+        taskId: TASK_ID,
+        iteration: 1,
+        content: "Partial text...",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.progressContent).toBe("Partial text...");
+    });
+
+    // Then send the complete message
+    act(() => {
+      ws.sendEvent({
+        type: "task.message",
+        taskId: TASK_ID,
+        iteration: 1,
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: "Full message",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.progressContent).toBe("");
+    });
+  });
+
+  test("finalizes the latest response log when an assistant message completes", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.log",
+        taskId: TASK_ID,
+        id: "response-log-1",
+        level: "agent",
+        message: "AI generating response...",
+        details: {
+          logKind: "response",
+          responseContent: "Plan created\n<promise>PLAN_READY</promise>",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(1);
+    });
+    expect(result.current.logs[0]?.finalizedResponse).toBeUndefined();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.message",
+        taskId: TASK_ID,
+        iteration: 1,
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: "Plan created\n<promise>PLAN_READY</promise>",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]?.finalizedResponse?.indicator.kind).toBe("plan_ready");
+    });
+    expect(result.current.logs[0]?.finalizedResponse).toEqual({
+      content: "Plan created",
+      indicator: {
+        marker: "PLAN_READY",
+        kind: "plan_ready",
+        label: "PLAN READY",
+      },
+    });
+  });
+
+  test("preserves finalized response metadata when a later log update replaces the same response entry", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.log",
+        taskId: TASK_ID,
+        id: "response-log-1",
+        level: "agent",
+        message: "AI generating response...",
+        details: {
+          logKind: "response",
+          responseContent: "Plan created\n<promise>PLAN_READY</promise>",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(1);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.message",
+        taskId: TASK_ID,
+        iteration: 1,
+        message: {
+          id: "msg-1",
+          role: "assistant",
+          content: "Plan created\n<promise>PLAN_READY</promise>",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]?.finalizedResponse?.indicator.kind).toBe("plan_ready");
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.log",
+        taskId: TASK_ID,
+        id: "response-log-1",
+        level: "agent",
+        message: "AI response finished",
+        details: {
+          logKind: "response",
+          responseContent: "Plan created\n<promise>PLAN_READY</promise>",
+          metadata: "kept",
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]?.message).toBe("AI response finished");
+    });
+
+    expect(result.current.logs[0]?.finalizedResponse).toEqual({
+      content: "Plan created",
+      indicator: {
+        marker: "PLAN_READY",
+        kind: "plan_ready",
+        label: "PLAN READY",
+      },
+    });
+  });
+});
+
+// ─── WebSocket events: tool calls ────────────────────────────────────────────
+
+describe("WebSocket event: task.tool_call", () => {
+  test("accumulates tool calls from events", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.tool_call",
+        taskId: TASK_ID,
+        iteration: 1,
+        tool: {
+          id: "tc-1",
+          name: "Read",
+          input: { filePath: "/src/index.ts" },
+          status: "running",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.toolCalls).toHaveLength(1);
+    });
+    expect(result.current.toolCalls[0]!.name).toBe("Read");
+    expect(result.current.toolCalls[0]!.status).toBe("running");
+  });
+
+  test("updates existing tool call by id", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    // Send initial tool call
+    act(() => {
+      ws.sendEvent({
+        type: "task.tool_call",
+        taskId: TASK_ID,
+        iteration: 1,
+        tool: {
+          id: "tc-1",
+          name: "Read",
+          input: { filePath: "/src/index.ts" },
+          status: "running",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.toolCalls).toHaveLength(1);
+    });
+
+    // Update same tool call to completed
+    act(() => {
+      ws.sendEvent({
+        type: "task.tool_call",
+        taskId: TASK_ID,
+        iteration: 1,
+        tool: {
+          id: "tc-1",
+          name: "Read",
+          input: { filePath: "/src/index.ts" },
+          output: "file contents",
+          status: "completed",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.toolCalls[0]!.status).toBe("completed");
+    });
+    // Should still be just 1 tool call, not 2
+    expect(result.current.toolCalls).toHaveLength(1);
+  });
+});
+
+// ─── WebSocket events: progress ──────────────────────────────────────────────
+
+describe("WebSocket event: task.progress", () => {
+  test("accumulates progress content", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.progress",
+        taskId: TASK_ID,
+        iteration: 1,
+        content: "Hello ",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.progressContent).toBe("Hello ");
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.progress",
+        taskId: TASK_ID,
+        iteration: 1,
+        content: "world!",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.progressContent).toBe("Hello world!");
+    });
+  });
+});
+
+// ─── WebSocket events: logs ──────────────────────────────────────────────────
+
+describe("WebSocket event: task.log", () => {
+  test("adds log entries from events", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.log",
+        taskId: TASK_ID,
+        id: "log-1",
+        level: "info",
+        message: "Starting iteration 1",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(1);
+    });
+    expect(result.current.logs[0]!.message).toBe("Starting iteration 1");
+    expect(result.current.logs[0]!.level).toBe("info");
+  });
+
+  test("updates existing log entry by id", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.log",
+        taskId: TASK_ID,
+        id: "log-1",
+        level: "info",
+        message: "Processing...",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(1);
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.log",
+        taskId: TASK_ID,
+        id: "log-1",
+        level: "info",
+        message: "Processing... done",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs[0]!.message).toBe("Processing... done");
+    });
+    expect(result.current.logs).toHaveLength(1);
+  });
+});
+
+// ─── WebSocket events: git changes ──────────────────────────────────────────
+
+describe("WebSocket events: git changes", () => {
+  test("task.iteration.end increments gitChangeCounter", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    const initialCounter = result.current.gitChangeCounter;
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.iteration.end",
+        taskId: TASK_ID,
+        iteration: 1,
+        outcome: "continue",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.gitChangeCounter).toBe(initialCounter + 1);
+    });
+  });
+
+  test("task.git.commit increments gitChangeCounter", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    const initialCounter = result.current.gitChangeCounter;
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.git.commit",
+        taskId: TASK_ID,
+        iteration: 1,
+        commit: {
+          iteration: 1,
+          sha: "abc123",
+          message: "Fix bug",
+          timestamp: new Date().toISOString(),
+          filesChanged: 2,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.gitChangeCounter).toBe(initialCounter + 1);
+    });
+  });
+});
+
+// ─── WebSocket events: lifecycle triggers refresh ────────────────────────────
+
+describe("WebSocket lifecycle events trigger refresh", () => {
+  test("task.completed triggers refresh and updates status", async () => {
+    const runningTask = createTaskWithStatus("running", { config: { id: TASK_ID }, state: { id: TASK_ID } });
+    const completedTask = createTaskWithStatus("completed", { config: { id: TASK_ID }, state: { id: TASK_ID } });
+
+    let callCount = 0;
+    api.get("/api/tasks/:id", () => {
+      callCount++;
+      return callCount === 1 ? runningTask : completedTask;
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    expect(result.current.task!.state.status).toBe("running");
+
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.completed",
+        taskId: TASK_ID,
+        totalIterations: 3,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.task!.state.status).toBe("completed");
+    });
+  });
+});
+
+// ─── Task switching isolation ────────────────────────────────────────────────
+
+describe("task switching isolation", () => {
+  test("ignores stale WebSocket messages after switching tasks", async () => {
+    const secondTaskId = "test-task-2";
+    const tasksById: Record<string, Task> = {
+      [TASK_ID]: createTask({ config: { id: TASK_ID }, state: { id: TASK_ID } }),
+      [secondTaskId]: createTask({ config: { id: secondTaskId }, state: { id: secondTaskId } }),
+    };
+    api.get("/api/tasks/:id", (req) => {
+      const task = tasksById[req.params["id"]!];
+      if (!task) {
+        throw new MockApiError(404, { message: "Task not found" });
+      }
+      return task;
+    });
+
+    const { result, rerender } = renderHook(
+      ({ taskId }) => useTask(taskId),
+      { initialProps: { taskId: TASK_ID }, wrapper: AppEventsProvider },
+    );
+
+    await waitForLoad(result);
+    await waitFor(() => {
+      expect(ws.getGlobalConnection()?.isOpen).toBe(true);
+    });
+
+    const oldConnection = ws.getGlobalConnection()!;
+
+    act(() => {
+      oldConnection.instance.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            type: "task.log",
+            taskId: TASK_ID,
+            id: "initial-log",
+            level: "info",
+            message: "before switch",
+            timestamp: new Date().toISOString(),
+          }),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(1);
+    });
+
+    rerender({ taskId: secondTaskId });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.task?.config.id).toBe(secondTaskId);
+    });
+
+    await waitFor(() => {
+      const openTaskConnections = ws.connections().filter(
+        (connection) => connection.isOpen && connection.url.includes("/api/ws") && !connection.url.includes("?"),
+      );
+      expect(openTaskConnections).toHaveLength(1);
+      expect(openTaskConnections[0]!.url).toContain("/api/ws");
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(0);
+    });
+
+    act(() => {
+      oldConnection.instance.onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            type: "task.log",
+            taskId: TASK_ID,
+            id: "stale-log",
+            level: "info",
+            message: "stale log",
+            timestamp: new Date().toISOString(),
+          }),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.logs).toHaveLength(0);
+    });
+  });
+
+  test("ignores stale push callbacks after switching tasks", async () => {
+    const secondTaskId = "test-task-2";
+    const tasksById: Record<string, Task> = {
+      [TASK_ID]: createTaskWithStatus("completed", { config: { id: TASK_ID }, state: { id: TASK_ID } }),
+      [secondTaskId]: createTaskWithStatus("completed", {
+        config: { id: secondTaskId },
+        state: { id: secondTaskId },
+      }),
+    };
+    api.get("/api/tasks/:id", (req) => {
+      const task = tasksById[req.params["id"]!];
+      if (!task) {
+        throw new MockApiError(404, { message: "Task not found" });
+      }
+      return task;
+    });
+    api.post("/api/tasks/:id/push", (req) => ({
+      success: true,
+      remoteBranch: `branch-${req.params["id"]!}`,
+    }));
+
+    const { result, rerender } = renderHook(
+      ({ taskId }) => useTask(taskId),
+      { initialProps: { taskId: TASK_ID }, wrapper: AppEventsProvider },
+    );
+
+    await waitForLoad(result);
+
+    const stalePush = result.current.push;
+
+    rerender({ taskId: secondTaskId });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.task?.config.id).toBe(secondTaskId);
+    });
+
+    let staleResult: { success: boolean; remoteBranch?: string } = { success: true };
+    await act(async () => {
+      staleResult = await stalePush();
+    });
+
+    expect(staleResult.success).toBe(false);
+    expect(api.calls("/api/tasks/:id/push", "POST")).toHaveLength(0);
+
+    let pushResult: { success: boolean; remoteBranch?: string } = { success: false };
+    await act(async () => {
+      pushResult = await result.current.push();
+    });
+
+    expect(pushResult.success).toBe(true);
+    expect(pushResult.remoteBranch).toBe(`branch-${secondTaskId}`);
+    const pushCalls = api.calls("/api/tasks/:id/push", "POST");
+    expect(pushCalls).toHaveLength(1);
+    expect(pushCalls[0]!.params["id"]).toBe(secondTaskId);
+  });
+});
+
+// ─── Actions: update ─────────────────────────────────────────────────────────
+
+describe("update", () => {
+  test("sends PATCH request and updates task state", async () => {
+    setupTask();
+    const updated = createTask({ config: { id: TASK_ID, name: "New Name" }, state: { id: TASK_ID } });
+    api.patch("/api/tasks/:id", () => updated);
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.update({ name: "New Name" });
+    });
+
+    expect(success).toBe(true);
+    expect(result.current.task!.config.name).toBe("New Name");
+  });
+
+  test("returns false on failure", async () => {
+    setupTask();
+    api.patch("/api/tasks/:id", () => {
+      throw new MockApiError(400, { message: "Invalid name" });
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.update({ name: "" });
+    });
+
+    expect(success).toBe(false);
+    expect(result.current.error).toBeTruthy();
+  });
+});
+
+// ─── Actions: remove ─────────────────────────────────────────────────────────
+
+describe("remove", () => {
+  test("calls deleteTaskApi and sets task to null", async () => {
+    setupTask();
+    api.delete("/api/tasks/:id", () => ({ success: true }));
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+    expect(result.current.task).not.toBeNull();
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.remove();
+    });
+
+    expect(success).toBe(true);
+    expect(result.current.task).toBeNull();
+  });
+});
+
+// ─── Actions: purge ──────────────────────────────────────────────────────────
+
+describe("purge", () => {
+  test("calls purgeTaskApi and sets task to null", async () => {
+    setupTask();
+    api.post("/api/tasks/:id/purge", () => ({ success: true }));
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.purge();
+    });
+
+    expect(success).toBe(true);
+    expect(result.current.task).toBeNull();
+  });
+});
+
+// ─── Actions: markMerged ─────────────────────────────────────────────────────
+
+describe("markMerged", () => {
+  test("calls markMergedApi and refreshes the task as merged", async () => {
+    let currentTask = createTask({ config: { id: TASK_ID }, state: { id: TASK_ID, status: "pushed" } });
+    api.get("/api/tasks/:id", () => currentTask);
+    api.post("/api/tasks/:id/mark-merged", () => {
+      currentTask = createTask({ config: { id: TASK_ID }, state: { id: TASK_ID, status: "merged" } });
+      return { success: true };
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.markMerged();
+    });
+
+    expect(success).toBe(true);
+    expect(result.current.task?.state.status).toBe("merged");
+  });
+
+  test("marks the current task as merged after switching tasks", async () => {
+    const secondTaskId = "test-task-2";
+    const tasksById: Record<string, Task> = {
+      [TASK_ID]: createTask({ config: { id: TASK_ID }, state: { id: TASK_ID, status: "pushed" } }),
+      [secondTaskId]: createTask({
+        config: { id: secondTaskId },
+        state: { id: secondTaskId, status: "pushed" },
+      }),
+    };
+    api.get("/api/tasks/:id", (req) => {
+      const task = tasksById[req.params["id"]!];
+      if (!task) {
+        throw new MockApiError(404, { message: "Task not found" });
+      }
+      return task;
+    });
+    api.post("/api/tasks/:id/mark-merged", (req) => {
+      const taskId = req.params["id"]!;
+      tasksById[taskId] = createTask({
+        config: { id: taskId },
+        state: { id: taskId, status: "merged" },
+      });
+      return { success: true };
+    });
+
+    const { result, rerender } = renderHook(
+      ({ taskId }) => useTask(taskId),
+      { initialProps: { taskId: TASK_ID }, wrapper: AppEventsProvider },
+    );
+    await waitForLoad(result);
+
+    rerender({ taskId: secondTaskId });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.task?.config.id).toBe(secondTaskId);
+    });
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.markMerged();
+    });
+
+    const calls = api.calls("/api/tasks/:id/mark-merged", "POST");
+    expect(success).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.params["id"]).toBe(secondTaskId);
+    expect(result.current.task?.config.id).toBe(secondTaskId);
+    expect(result.current.task?.state.status).toBe("merged");
+  });
+});
+
+// ─── Actions: manualCompleteTask ──────────────────────────────────────────────
+
+describe("manualCompleteTask", () => {
+  test("calls manualCompleteTaskApi and refreshes the task as completed", async () => {
+    let currentTask = createTaskWithStatus("failed", { config: { id: TASK_ID }, state: { id: TASK_ID } });
+    api.get("/api/tasks/:id", () => currentTask);
+    api.post("/api/tasks/:id/manual-complete", () => {
+      currentTask = createTaskWithStatus("completed", {
+        config: { id: TASK_ID },
+        state: { id: TASK_ID, error: undefined },
+      });
+      return { success: true };
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let success = false;
+    await act(async () => {
+      success = await result.current.manualCompleteTask();
+    });
+
+    expect(success).toBe(true);
+    expect(result.current.task?.state.status).toBe("completed");
+    expect(result.current.task?.state.error).toBeUndefined();
+  });
+});
+
+// ─── Actions: getDiff ────────────────────────────────────────────────────────
+
+describe("getDiff", () => {
+  test("fetches diff from API", async () => {
+    setupTask();
+    const diffs = [
+      { path: "src/index.ts", status: "modified", additions: 5, deletions: 2 },
+    ];
+    api.get("/api/tasks/:id/diff", () => diffs);
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let diff: unknown[] = [];
+    await act(async () => {
+      diff = await result.current.getDiff();
+    });
+
+    expect(diff).toHaveLength(1);
+    expect((diff[0] as { path: string }).path).toBe("src/index.ts");
+  });
+
+  test("returns empty array on 400 (no git branch)", async () => {
+    setupTask();
+    api.get("/api/tasks/:id/diff", () => {
+      throw new MockApiError(400, { error: "no_git_branch", message: "No branch" });
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let diff: unknown[] = [];
+    await act(async () => {
+      diff = await result.current.getDiff();
+    });
+
+    expect(diff).toEqual([]);
+  });
+});
+
+// ─── Actions: getPlan / getStatusFile ────────────────────────────────────────
+
+describe("getPlan / getStatusFile", () => {
+  test("getPlan fetches plan content", async () => {
+    setupTask();
+    api.get("/api/tasks/:id/plan", () => ({ content: "# My Plan", exists: true }));
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let plan = { content: "", exists: false };
+    await act(async () => {
+      plan = await result.current.getPlan();
+    });
+
+    expect(plan.content).toBe("# My Plan");
+    expect(plan.exists).toBe(true);
+  });
+
+  test("getStatusFile fetches status content", async () => {
+    setupTask();
+    api.get("/api/tasks/:id/status-file", () => ({ content: "In progress", exists: true }));
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+
+    let status = { content: "", exists: false };
+    await act(async () => {
+      status = await result.current.getStatusFile();
+    });
+
+    expect(status.content).toBe("In progress");
+    expect(status.exists).toBe(true);
+  });
+});
+
+describe("WebSocket event: task.automatic_pr_flow.updated", () => {
+  test("refreshes task state when automatic PR flow is enabled after push", async () => {
+    const initialTask = createTaskWithStatus("pushed", {
+      config: { id: TASK_ID },
+      state: {
+        id: TASK_ID,
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+        },
+      },
+    });
+    const updatedTask = createTaskWithStatus("pushed", {
+      config: { id: TASK_ID },
+      state: {
+        id: TASK_ID,
+        reviewMode: {
+          addressable: true,
+          completionAction: "push",
+          reviewCycles: 0,
+        },
+        automaticPrFlow: {
+          enabled: true,
+          status: "monitoring",
+          startedAt: "2026-04-11T04:00:00.000Z",
+          updatedAt: "2026-04-11T04:00:00.000Z",
+          lastCheckedAt: "2026-04-11T04:00:00.000Z",
+          pullRequestNumber: 42,
+          pullRequestUrl: "https://github.com/example/repo/pull/42",
+          handledItems: [],
+        },
+      },
+    });
+
+    let requestCount = 0;
+    api.get("/api/tasks/:id", () => {
+      requestCount += 1;
+      return requestCount === 1 ? initialTask : updatedTask;
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+    await waitForLoad(result);
+    await waitForWs();
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.automatic_pr_flow.updated",
+        taskId: TASK_ID,
+        automaticPrFlow: updatedTask.state.automaticPrFlow,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.task?.state.automaticPrFlow?.enabled).toBe(true);
+    });
+    expect(result.current.task?.state.automaticPrFlow?.pullRequestNumber).toBe(42);
+  });
+});
+
+// ─── Actions: setPending / clearPending ──────────────────────────────────────
+
+// ─── Connection status ───────────────────────────────────────────────────────
+
+describe("connectionStatus", () => {
+  test("reflects WebSocket connection status", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+
+    await waitFor(() => {
+      expect(result.current.connectionStatus).toBe("open");
+    });
+  });
+
+  test("re-syncs task detail state after websocket reconnect", async () => {
+    const initialTask = createTask({
+      config: { id: TASK_ID },
+      state: {
+        id: TASK_ID,
+        status: "running",
+        messages: [
+          createPersistedMessage({
+            id: "msg-1",
+            role: "assistant",
+            content: "Initial response",
+          }),
+        ],
+        logs: [
+          createTaskLogEntry({
+            id: "log-1",
+            message: "Initial log",
+          }),
+        ],
+        toolCalls: [
+          createPersistedToolCall({
+            id: "tool-1",
+            name: "Read",
+            status: "running",
+          }),
+        ],
+      },
+    });
+    const recoveredTask = createTask({
+      config: { id: TASK_ID },
+      state: {
+        id: TASK_ID,
+        status: "completed",
+        messages: [
+          createPersistedMessage({
+            id: "msg-1",
+            role: "assistant",
+            content: "Initial response",
+          }),
+          createPersistedMessage({
+            id: "msg-2",
+            role: "assistant",
+            content: "Recovered response",
+          }),
+        ],
+        logs: [
+          createTaskLogEntry({
+            id: "log-1",
+            message: "Initial log",
+          }),
+          createTaskLogEntry({
+            id: "log-2",
+            message: "Recovered log",
+          }),
+        ],
+        toolCalls: [
+          createPersistedToolCall({
+            id: "tool-1",
+            name: "Read",
+            status: "completed",
+          }),
+          createPersistedToolCall({
+            id: "tool-2",
+            name: "Write",
+            status: "completed",
+          }),
+        ],
+      },
+    });
+
+    let callCount = 0;
+    api.get("/api/tasks/:id", () => {
+      callCount++;
+      return callCount === 1 ? initialTask : recoveredTask;
+    });
+
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    expect(result.current.task?.state.status).toBe("running");
+    expect(result.current.messages.map((message) => message.content)).toEqual(["Initial response"]);
+    expect(result.current.logs.map((entry) => entry.message)).toEqual(["Initial log"]);
+    expect(result.current.toolCalls.map((tool) => tool.id)).toEqual(["tool-1"]);
+    expect(callCount).toBe(1);
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.progress",
+        taskId: TASK_ID,
+        iteration: 1,
+        content: "Partial response",
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.progressContent).toBe("Partial response");
+    });
+
+    act(() => {
+      ws.sendEvent({
+        type: "task.tool_call",
+        taskId: TASK_ID,
+        iteration: 1,
+        tool: {
+          id: "tool-stale",
+          name: "Search",
+          input: { query: "stale local tool call" },
+          status: "running",
+          timestamp: new Date().toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.toolCalls.some((tool) => tool.id === "tool-stale")).toBe(true);
+    });
+
+    const connectionsForTask = ws.connections().filter((connection) => connection.url.includes("/api/ws") && !connection.url.includes("?"));
+    const initialConnection = connectionsForTask[0]!;
+    await act(async () => {
+      initialConnection.instance.close(1006, "network lost");
+    });
+
+    await waitFor(() => {
+      const recoveredConnections = ws.connections().filter((connection) => connection.url.includes("/api/ws") && !connection.url.includes("?"));
+      expect(recoveredConnections.length).toBeGreaterThan(1);
+    }, { timeout: 3000 });
+    await waitFor(() => {
+      expect(result.current.task?.state.status).toBe("completed");
+    });
+
+    expect(result.current.messages.map((message) => message.content)).toEqual([
+      "Initial response",
+      "Recovered response",
+    ]);
+    expect(result.current.logs.map((entry) => entry.message)).toEqual([
+      "Initial log",
+      "Recovered log",
+    ]);
+    expect(result.current.toolCalls.map((tool) => tool.id)).toEqual([
+      "tool-1",
+      "tool-2",
+    ]);
+    expect(result.current.task?.state.toolCalls.map((tool) => tool.id)).toEqual([
+      "tool-1",
+      "tool-2",
+    ]);
+    expect(result.current.progressContent).toBe("");
+    expect(callCount).toBe(2);
+  });
+});
+
+// ─── WebSocket connection sharing ────────────────────────────────────────────
+
+describe("WebSocket connection", () => {
+  test("uses the shared app event WebSocket without a taskId query param", async () => {
+    setupTask();
+    const { result } = renderHook(() => useTask(TASK_ID), { wrapper: AppEventsProvider });
+
+    await waitForLoad(result);
+    await waitForWs();
+
+    const taskConn = ws.getGlobalConnection();
+    expect(taskConn).toBeDefined();
+    expect(ws.getTaskConnection(TASK_ID)).toBeUndefined();
+  });
+});

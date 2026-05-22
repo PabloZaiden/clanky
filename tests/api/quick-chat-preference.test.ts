@@ -9,8 +9,8 @@ let testDataDir: string;
 
 describe("Quick chat preference API", () => {
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-quick-chat-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-quick-chat-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     const { ensureDataDirectories } = await import("../../src/persistence/database");
     await ensureDataDirectories();
@@ -34,7 +34,7 @@ describe("Quick chat preference API", () => {
     const { closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
 
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true });
   });
 

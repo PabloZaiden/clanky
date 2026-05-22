@@ -4,7 +4,7 @@
  * Tests verify that:
  * - getModels() returns variants correctly
  * - Last model preference includes variant
- * - Loop creation works with variant specified
+ * - Task creation works with variant specified
  */
 
 import {
@@ -23,7 +23,7 @@ import { serve, type Server } from "bun";
 import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
-import { loopManager } from "../../src/core/loop-manager";
+import { taskManager } from "../../src/core/task-manager";
 import { closeDatabase } from "../../src/persistence/database";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import {
@@ -32,9 +32,9 @@ import {
 } from "../mocks/mock-backend";
 
 describe("Model Variants API", () => {
-  const baseCreateLoopPayload = {
+  const baseCreateTaskPayload = {
     attachments: [],
-    cheapModel: { mode: "same-as-loop" as const },
+    cheapModel: { mode: "same-as-task" as const },
     maxIterations: null,
     maxConsecutiveErrors: 10,
     activityTimeoutSeconds: 300,
@@ -114,7 +114,7 @@ describe("Model Variants API", () => {
     workspaceId: string;
   }> {
     const workDir = await mkdtemp(
-      join(tmpdir(), "ralpher-model-variants-test-work-")
+      join(tmpdir(), "clanky-model-variants-test-work-")
     );
     await Bun.$`git init -b main ${workDir}`.quiet();
     await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
@@ -122,7 +122,7 @@ describe("Model Variants API", () => {
     await writeFile(join(workDir, "README.md"), "# Test");
     await Bun.$`git -C ${workDir} add .`.quiet();
     await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
-    await mkdir(join(workDir, ".ralph-planning"), { recursive: true });
+    await mkdir(join(workDir, ".clanky-planning"), { recursive: true });
     const workspaceId = await getOrCreateWorkspace(workDir, "Test Workspace");
     return { workDir, workspaceId };
   }
@@ -130,11 +130,11 @@ describe("Model Variants API", () => {
   beforeAll(async () => {
     // Create temp data directory
     testDataDir = await mkdtemp(
-      join(tmpdir(), "ralpher-model-variants-test-data-")
+      join(tmpdir(), "clanky-model-variants-test-data-")
     );
 
     // Set env var for persistence before importing modules
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     // Ensure directories exist
     await ensureDataDirectories();
@@ -159,31 +159,31 @@ describe("Model Variants API", () => {
 
   afterAll(async () => {
     server.stop();
-    loopManager.resetForTesting();
+    taskManager.resetForTesting();
     backendManager.resetForTesting();
     closeDatabase();
     await rm(testDataDir, { recursive: true, force: true });
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
-  // Clean up any active loops before and after each test
-  const cleanupActiveLoops = async () => {
-    const { listLoops, updateLoopState, loadLoop } = await import(
-      "../../src/persistence/loops"
+  // Clean up any active tasks before and after each test
+  const cleanupActiveTasks = async () => {
+    const { listTasks, updateTaskState, loadTask } = await import(
+      "../../src/persistence/tasks"
     );
 
     // Clear all running engines first
-    loopManager.resetForTesting();
+    taskManager.resetForTesting();
 
-    const loops = await listLoops();
+    const tasks = await listTasks();
     const activeStatuses = ["idle", "planning", "starting", "running", "waiting"];
 
-    for (const loop of loops) {
-      if (activeStatuses.includes(loop.state.status)) {
-        const fullLoop = await loadLoop(loop.config.id);
-        if (fullLoop) {
-          await updateLoopState(loop.config.id, {
-            ...fullLoop.state,
+    for (const task of tasks) {
+      if (activeStatuses.includes(task.state.status)) {
+        const fullTask = await loadTask(task.config.id);
+        if (fullTask) {
+          await updateTaskState(task.config.id, {
+            ...fullTask.state,
             status: "deleted",
           });
         }
@@ -200,17 +200,17 @@ describe("Model Variants API", () => {
   };
 
   beforeEach(async () => {
-    await cleanupActiveLoops();
+    await cleanupActiveTasks();
   });
 
   afterEach(async () => {
-    await cleanupActiveLoops();
+    await cleanupActiveTasks();
   });
 
   // NOTE: GET /api/models endpoint creates its own backend instance,
   // so it cannot be tested with mocks. The variant functionality is 
   // tested through unit tests for the backend and integration tests
-  // for loop creation with variants.
+  // for task creation with variants.
 
   describe("PUT /api/preferences/last-model - Last Model with Variant", () => {
     test("saves and retrieves last model with variant", async () => {
@@ -272,21 +272,21 @@ describe("Model Variants API", () => {
     });
   });
 
-  describe("POST /api/loops - Create Loop with Variant", () => {
-    test("creates draft loop with model variant", async () => {
+  describe("POST /api/tasks - Create Task with Variant", () => {
+    test("creates draft task with model variant", async () => {
       const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
       try {
-        const response = await fetch(`${baseUrl}/api/loops`, {
+        const response = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...baseCreateLoopPayload,
+            ...baseCreateTaskPayload,
             workspaceId,
             prompt: "Test prompt",
-            name: "Test Loop",
+            name: "Test Task",
             planMode: false,
             useWorktree: true,
-            draft: true, // Use draft mode to avoid starting the loop
+            draft: true, // Use draft mode to avoid starting the task
             model: {
               providerID: "anthropic",
               modelID: "claude-sonnet-4-20250514",
@@ -305,20 +305,20 @@ describe("Model Variants API", () => {
       }
     });
 
-    test("creates draft loop with empty variant (default)", async () => {
+    test("creates draft task with empty variant (default)", async () => {
       const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
       try {
-        const response = await fetch(`${baseUrl}/api/loops`, {
+        const response = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...baseCreateLoopPayload,
+            ...baseCreateTaskPayload,
             workspaceId,
             prompt: "Test prompt",
-            name: "Test Loop",
+            name: "Test Task",
             planMode: false,
             useWorktree: true,
-            draft: true, // Use draft mode to avoid starting the loop
+            draft: true, // Use draft mode to avoid starting the task
             model: {
               providerID: "anthropic",
               modelID: "claude-sonnet-4-20250514",
@@ -337,20 +337,20 @@ describe("Model Variants API", () => {
       }
     });
 
-    test("rejects draft loop creation without variant specified", async () => {
+    test("rejects draft task creation without variant specified", async () => {
       const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
       try {
-        const response = await fetch(`${baseUrl}/api/loops`, {
+        const response = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...baseCreateLoopPayload,
+            ...baseCreateTaskPayload,
             workspaceId,
             prompt: "Test prompt",
-            name: "Test Loop",
+            name: "Test Task",
             planMode: false,
             useWorktree: true,
-            draft: true, // Use draft mode to avoid starting the loop
+            draft: true, // Use draft mode to avoid starting the task
             model: {
               providerID: "openai",
               modelID: "gpt-4o",
@@ -365,19 +365,19 @@ describe("Model Variants API", () => {
     });
   });
 
-  describe("POST /api/loops - Saves Last Model with Variant", () => {
-    test("saves model with variant as last model when creating a loop", async () => {
+  describe("POST /api/tasks - Saves Last Model with Variant", () => {
+    test("saves model with variant as last model when creating a task", async () => {
       const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
       try {
-        // Create a loop with a specific model and variant
-        const response = await fetch(`${baseUrl}/api/loops`, {
+        // Create a task with a specific model and variant
+        const response = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...baseCreateLoopPayload,
+            ...baseCreateTaskPayload,
             workspaceId,
             prompt: "Test prompt",
-            name: "Test Loop",
+            name: "Test Task",
             planMode: false,
             useWorktree: true,
             draft: true,
@@ -406,18 +406,18 @@ describe("Model Variants API", () => {
       }
     });
 
-    test("saves model with empty variant as last model when creating a loop", async () => {
+    test("saves model with empty variant as last model when creating a task", async () => {
       const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
       try {
-        // Create a loop with an empty variant (default)
-        const response = await fetch(`${baseUrl}/api/loops`, {
+        // Create a task with an empty variant (default)
+        const response = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...baseCreateLoopPayload,
+            ...baseCreateTaskPayload,
             workspaceId,
             prompt: "Test prompt",
-            name: "Test Loop",
+            name: "Test Task",
             planMode: false,
             useWorktree: true,
             draft: true,
@@ -446,17 +446,17 @@ describe("Model Variants API", () => {
       }
     });
 
-    test("rejects creating a loop without variant when saving last model", async () => {
+    test("rejects creating a task without variant when saving last model", async () => {
       const { workDir, workspaceId } = await createTestWorkDirWithWorkspace();
       try {
-        const response = await fetch(`${baseUrl}/api/loops`, {
+        const response = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...baseCreateLoopPayload,
+            ...baseCreateTaskPayload,
             workspaceId,
             prompt: "Test prompt",
-            name: "Test Loop",
+            name: "Test Task",
             planMode: false,
             useWorktree: true,
             draft: true,

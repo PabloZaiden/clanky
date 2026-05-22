@@ -48,8 +48,8 @@ export function SpawnCurrentPlanModal({
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Spawn loop from plan file"
-      description="Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .ralph-planning/plan.md."
+      title="Spawn task from plan file"
+      description="Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .clanky-planning/plan.md."
       size="sm"
       showCloseButton={!submitting}
       closeOnOverlayClick={!submitting}
@@ -63,7 +63,7 @@ export function SpawnCurrentPlanModal({
             form="spawn-current-plan-modal-form"
             loading={submitting}
           >
-            Spawn loop
+            Spawn task
           </Button>
         </>
       )}
@@ -88,7 +88,7 @@ export function SpawnCurrentPlanModal({
           />
         </div>
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          Relative paths resolve from the current chat workspace. Blank input uses <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-neutral-700">{workspaceDirectory}/.ralph-planning/plan.md</code>.
+          Relative paths resolve from the current chat workspace. Blank input uses <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-neutral-700">{workspaceDirectory}/.clanky-planning/plan.md</code>.
         </p>
       </form>
     </Modal>

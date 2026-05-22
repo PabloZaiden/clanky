@@ -10,15 +10,15 @@ describe("getRequestOriginInfo", () => {
     const info = getRequestOriginInfo(
       new Request("http://internal-host:3000/api/passkey-auth/registration/verify", {
         headers: {
-          origin: "https://ralpher.example.test:12443",
+          origin: "https://clanky.example.test:12443",
           host: "internal-host:3000",
         },
       }),
     );
 
     expect(info).toEqual({
-      origin: "https://ralpher.example.test:12443",
-      hostname: "ralpher.example.test",
+      origin: "https://clanky.example.test:12443",
+      hostname: "clanky.example.test",
       secure: true,
     });
   });
@@ -27,15 +27,15 @@ describe("getRequestOriginInfo", () => {
     const info = getRequestOriginInfo(
       new Request("http://internal-host:3000/api/passkey-auth/registration/options", {
         headers: {
-          referer: "https://ralpher.example.test:12443/settings",
+          referer: "https://clanky.example.test:12443/settings",
           host: "internal-host:3000",
         },
       }),
     );
 
     expect(info).toEqual({
-      origin: "https://ralpher.example.test:12443",
-      hostname: "ralpher.example.test",
+      origin: "https://clanky.example.test:12443",
+      hostname: "clanky.example.test",
       secure: true,
     });
   });
@@ -44,15 +44,15 @@ describe("getRequestOriginInfo", () => {
     const info = getRequestOriginInfo(
       new Request("http://internal-host:3000/api/passkey-auth/registration/options", {
         headers: {
-          "x-forwarded-host": "ralpher.example.test:12443",
+          "x-forwarded-host": "clanky.example.test:12443",
           "x-forwarded-proto": "https",
         },
       }),
     );
 
     expect(info).toEqual({
-      origin: "https://ralpher.example.test:12443",
-      hostname: "ralpher.example.test",
+      origin: "https://clanky.example.test:12443",
+      hostname: "clanky.example.test",
       secure: true,
     });
   });
@@ -64,22 +64,22 @@ describe("getEffectiveRequestOriginInfo", () => {
       new Request("http://internal-host:3000/api/passkey-auth/authentication/verify", {
         headers: {
           origin: "https://attacker.example.test",
-          "x-forwarded-host": "ralpher.example.test:12443",
+          "x-forwarded-host": "clanky.example.test:12443",
           "x-forwarded-proto": "https",
         },
       }),
     );
 
     expect(info).toEqual({
-      origin: "https://ralpher.example.test:12443",
-      hostname: "ralpher.example.test",
+      origin: "https://clanky.example.test:12443",
+      hostname: "clanky.example.test",
       secure: true,
     });
   });
 
   test("falls back to the request URL when forwarded headers are malformed", () => {
     const info = getEffectiveRequestOriginInfo(
-      new Request("https://ralpher.example.test/api/passkey-auth/authentication/verify", {
+      new Request("https://clanky.example.test/api/passkey-auth/authentication/verify", {
         headers: {
           "x-forwarded-host": "bad host value",
           "x-forwarded-proto": "ftp",
@@ -88,8 +88,8 @@ describe("getEffectiveRequestOriginInfo", () => {
     );
 
     expect(info).toEqual({
-      origin: "https://ralpher.example.test",
-      hostname: "ralpher.example.test",
+      origin: "https://clanky.example.test",
+      hostname: "clanky.example.test",
       secure: true,
     });
   });
@@ -98,11 +98,11 @@ describe("getEffectiveRequestOriginInfo", () => {
 describe("checkRequestSameOrigin", () => {
   test("accepts a matching Origin header", () => {
     const result = checkRequestSameOrigin(
-      new Request("http://internal-host:3000/api/loops", {
+      new Request("http://internal-host:3000/api/tasks", {
         method: "POST",
         headers: {
-          origin: "https://ralpher.example.test:12443",
-          "x-forwarded-host": "ralpher.example.test:12443",
+          origin: "https://clanky.example.test:12443",
+          "x-forwarded-host": "clanky.example.test:12443",
           "x-forwarded-proto": "https",
         },
       }),
@@ -110,19 +110,19 @@ describe("checkRequestSameOrigin", () => {
 
     expect(result).toEqual({
       allowed: true,
-      expectedOrigin: "https://ralpher.example.test:12443",
-      actualOrigin: "https://ralpher.example.test:12443",
+      expectedOrigin: "https://clanky.example.test:12443",
+      actualOrigin: "https://clanky.example.test:12443",
       source: "origin",
     });
   });
 
   test("falls back to Referer when Origin is missing", () => {
     const result = checkRequestSameOrigin(
-      new Request("http://internal-host:3000/api/loops", {
+      new Request("http://internal-host:3000/api/tasks", {
         method: "POST",
         headers: {
-          referer: "https://ralpher.example.test:12443/app/settings",
-          "x-forwarded-host": "ralpher.example.test:12443",
+          referer: "https://clanky.example.test:12443/app/settings",
+          "x-forwarded-host": "clanky.example.test:12443",
           "x-forwarded-proto": "https",
         },
       }),
@@ -130,19 +130,19 @@ describe("checkRequestSameOrigin", () => {
 
     expect(result).toEqual({
       allowed: true,
-      expectedOrigin: "https://ralpher.example.test:12443",
-      actualOrigin: "https://ralpher.example.test:12443",
+      expectedOrigin: "https://clanky.example.test:12443",
+      actualOrigin: "https://clanky.example.test:12443",
       source: "referer",
     });
   });
 
   test("rejects a foreign Origin header", () => {
     const result = checkRequestSameOrigin(
-      new Request("http://internal-host:3000/api/loops", {
+      new Request("http://internal-host:3000/api/tasks", {
         method: "POST",
         headers: {
           origin: "https://attacker.example.test",
-          "x-forwarded-host": "ralpher.example.test:12443",
+          "x-forwarded-host": "clanky.example.test:12443",
           "x-forwarded-proto": "https",
         },
       }),
@@ -150,7 +150,7 @@ describe("checkRequestSameOrigin", () => {
 
     expect(result).toEqual({
       allowed: false,
-      expectedOrigin: "https://ralpher.example.test:12443",
+      expectedOrigin: "https://clanky.example.test:12443",
       actualOrigin: "https://attacker.example.test",
       source: "origin",
       reason: "mismatch",
@@ -159,14 +159,14 @@ describe("checkRequestSameOrigin", () => {
 
   test("rejects requests when both Origin and Referer are missing", () => {
     const result = checkRequestSameOrigin(
-      new Request("https://ralpher.example.test/api/loops", {
+      new Request("https://clanky.example.test/api/tasks", {
         method: "POST",
       }),
     );
 
     expect(result).toEqual({
       allowed: false,
-      expectedOrigin: "https://ralpher.example.test",
+      expectedOrigin: "https://clanky.example.test",
       reason: "missing",
     });
   });

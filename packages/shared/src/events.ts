@@ -1,10 +1,10 @@
 /**
- * Event type definitions for Ralph Loops Management System.
+ * Event type definitions for Clanky Tasks Management System.
  * 
- * These types define the events emitted during loop execution and streamed
+ * These types define the events emitted during task execution and streamed
  * to connected clients via WebSocket. Events follow a consistent structure:
- * - `type`: Event identifier (always prefixed with "loop.")
- * - `loopId`: The loop this event belongs to
+ * - `type`: Event identifier (always prefixed with "task.")
+ * - `taskId`: The task this event belongs to
  * - `timestamp`: ISO 8601 timestamp when the event occurred
  * 
  * Events are used for:
@@ -16,7 +16,7 @@
  */
 
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
-import type { AutomaticPrFlowState, GitCommit, LoopConfig, LoopLogEntry, ModelConfig } from "./loop";
+import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig } from "./task";
 import type { MessageImageAttachment } from "./message-attachments";
 import type { ToolCallExtra, ToolCallRecord } from "./tool-call";
 
@@ -73,11 +73,11 @@ export interface MessageData {
 export interface ToolCallData extends ToolCallRecord {}
 
 /**
- * Union type of all possible loop events.
+ * Union type of all possible task events.
  * 
  * These events are streamed via WebSocket to connected clients for real-time
  * updates. Each event type corresponds to a specific state change or activity
- * in the loop lifecycle.
+ * in the task lifecycle.
  * 
  * Event categories:
  * - **Lifecycle events**: created, started, completed, stopped, session_aborted, error, deleted, merged
@@ -88,37 +88,37 @@ export interface ToolCallData extends ToolCallRecord {}
  * - **Plan mode events**: plan.ready, plan.feedback, plan.accepted, plan.discarded
  * - **State events**: pending.updated, automatic_pr_flow.updated
  */
-export type LoopEvent =
-  | LoopCreatedEvent
-  | LoopStartedEvent
-  | LoopIterationStartEvent
-  | LoopIterationEndEvent
-  | LoopMessageEvent
-  | LoopToolCallEvent
-  | LoopToolCallExtraEvent
-  | LoopProgressEvent
-  | LoopLogEvent
-  | LoopGitCommitEvent
-  | LoopCompletedEvent
-  | LoopSshHandoffEvent
-  | LoopStoppedEvent
-  | LoopSessionAbortedEvent
-  | LoopErrorEvent
-  | LoopDeletedEvent
-  | LoopMergedEvent
-  | LoopAcceptedEvent
-  | LoopDiscardedEvent
-  | LoopPushedEvent
-  | LoopSyncStartedEvent
-  | LoopSyncCleanEvent
-  | LoopSyncConflictsEvent
-  | LoopSyncFailedEvent
-  | LoopPlanReadyEvent
-  | LoopPlanFeedbackSentEvent
-  | LoopPlanAcceptedEvent
-  | LoopPlanDiscardedEvent
-  | LoopPendingUpdatedEvent
-  | LoopAutomaticPrFlowUpdatedEvent;
+export type TaskEvent =
+  | TaskCreatedEvent
+  | TaskStartedEvent
+  | TaskIterationStartEvent
+  | TaskIterationEndEvent
+  | TaskMessageEvent
+  | TaskToolCallEvent
+  | TaskToolCallExtraEvent
+  | TaskProgressEvent
+  | TaskLogEvent
+  | TaskGitCommitEvent
+  | TaskCompletedEvent
+  | TaskSshHandoffEvent
+  | TaskStoppedEvent
+  | TaskSessionAbortedEvent
+  | TaskErrorEvent
+  | TaskDeletedEvent
+  | TaskMergedEvent
+  | TaskAcceptedEvent
+  | TaskDiscardedEvent
+  | TaskPushedEvent
+  | TaskSyncStartedEvent
+  | TaskSyncCleanEvent
+  | TaskSyncConflictsEvent
+  | TaskSyncFailedEvent
+  | TaskPlanReadyEvent
+  | TaskPlanFeedbackSentEvent
+  | TaskPlanAcceptedEvent
+  | TaskPlanDiscardedEvent
+  | TaskPendingUpdatedEvent
+  | TaskAutomaticPrFlowUpdatedEvent;
 
 /**
  * Union type of all chat-scoped events streamed to clients.
@@ -181,7 +181,7 @@ export interface ChatToolCallExtraEvent {
 export interface ChatLogEvent {
   type: "chat.log";
   chatId: string;
-  log: LoopLogEntry;
+  log: TaskLogEntry;
   timestamp: string;
 }
 
@@ -205,27 +205,27 @@ export interface ChatDeletedEvent {
 }
 
 /**
- * Emitted when a new loop is created.
- * Contains the full configuration for the new loop.
+ * Emitted when a new task is created.
+ * Contains the full configuration for the new task.
  */
-export interface LoopCreatedEvent {
-  type: "loop.created";
-  /** ID of the newly created loop */
-  loopId: string;
-  /** Full configuration of the loop */
-  config: LoopConfig;
+export interface TaskCreatedEvent {
+  type: "task.created";
+  /** ID of the newly created task */
+  taskId: string;
+  /** Full configuration of the task */
+  config: TaskConfig;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
 
 /**
- * Emitted when a loop starts execution.
+ * Emitted when a task starts execution.
  * This occurs after git branch setup and backend connection are established.
  */
-export interface LoopStartedEvent {
-  type: "loop.started";
-  /** ID of the loop that started */
-  loopId: string;
+export interface TaskStartedEvent {
+  type: "task.started";
+  /** ID of the task that started */
+  taskId: string;
   /** Iteration number (usually 1 for initial start) */
   iteration: number;
   /** ISO 8601 timestamp */
@@ -236,10 +236,10 @@ export interface LoopStartedEvent {
  * Emitted at the beginning of each iteration.
  * An iteration is one complete prompt-response cycle with the AI.
  */
-export interface LoopIterationStartEvent {
-  type: "loop.iteration.start";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskIterationStartEvent {
+  type: "task.iteration.start";
+  /** ID of the task */
+  taskId: string;
   /** Iteration number (1-based) */
   iteration: number;
   /** ISO 8601 timestamp */
@@ -250,16 +250,16 @@ export interface LoopIterationStartEvent {
  * Emitted at the end of each iteration.
  * Contains the outcome which determines what happens next.
  */
-export interface LoopIterationEndEvent {
-  type: "loop.iteration.end";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskIterationEndEvent {
+  type: "task.iteration.end";
+  /** ID of the task */
+  taskId: string;
   /** Iteration number (1-based) */
   iteration: number;
   /** 
    * How the iteration ended:
    * - "continue": More work needed, will start next iteration
-   * - "complete": Stop pattern matched, loop is done
+   * - "complete": Stop pattern matched, task is done
    * - "error": An error occurred during iteration
    * - "plan_ready": Plan mode completed, awaiting approval
    */
@@ -272,10 +272,10 @@ export interface LoopIterationEndEvent {
  * Emitted when an AI message is received.
  * Messages are streamed incrementally during iteration execution.
  */
-export interface LoopMessageEvent {
-  type: "loop.message";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskMessageEvent {
+  type: "task.message";
+  /** ID of the task */
+  taskId: string;
   /** Current iteration number */
   iteration: number;
   /** The message data */
@@ -288,10 +288,10 @@ export interface LoopMessageEvent {
  * Emitted when a tool call is made or updated.
  * The same tool call ID may be emitted multiple times as status changes.
  */
-export interface LoopToolCallEvent {
-  type: "loop.tool_call";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskToolCallEvent {
+  type: "task.tool_call";
+  /** ID of the task */
+  taskId: string;
   /** Current iteration number */
   iteration: number;
   /** The tool call data */
@@ -303,10 +303,10 @@ export interface LoopToolCallEvent {
 /**
  * Emitted when a new persisted extra is attached to an existing tool call.
  */
-export interface LoopToolCallExtraEvent {
-  type: "loop.tool_call.extra";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskToolCallExtraEvent {
+  type: "task.tool_call.extra";
+  /** ID of the task */
+  taskId: string;
   /** Current iteration number */
   iteration: number;
   /** Tool call ID that owns the extra */
@@ -321,10 +321,10 @@ export interface LoopToolCallExtraEvent {
  * Emitted for streaming progress updates.
  * Used for partial content that doesn't form complete messages yet.
  */
-export interface LoopProgressEvent {
-  type: "loop.progress";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskProgressEvent {
+  type: "task.progress";
+  /** ID of the task */
+  taskId: string;
   /** Current iteration number */
   iteration: number;
   /** Partial content being streamed */
@@ -334,9 +334,9 @@ export interface LoopProgressEvent {
 }
 
 /**
- * Log levels for loop events.
+ * Log levels for task events.
  * - "agent": AI agent activity (prompts, responses, tool calls)
- * - "user": User-injected messages (mid-loop messages from the user)
+ * - "user": User-injected messages (mid-task messages from the user)
  * - "info": General informational messages
  * - "warn": Warning messages
  * - "error": Error messages
@@ -347,11 +347,11 @@ export type LogLevel = "agent" | "user" | "info" | "warn" | "error" | "debug" | 
 
 /**
  * Application-level log event.
- * Used to communicate what the loop engine is doing internally.
+ * Used to communicate what the task engine is doing internally.
  */
-export interface LoopLogEvent {
-  type: "loop.log";
-  loopId: string;
+export interface TaskLogEvent {
+  type: "task.log";
+  taskId: string;
   /** Unique ID for this log entry (used for updates) */
   id: string;
   /** Log level */
@@ -364,13 +364,13 @@ export interface LoopLogEvent {
 }
 
 /**
- * Emitted when a git commit is created during loop execution.
+ * Emitted when a git commit is created during task execution.
  * The AI agent may create commits after making file changes.
  */
-export interface LoopGitCommitEvent {
-  type: "loop.git.commit";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskGitCommitEvent {
+  type: "task.git.commit";
+  /** ID of the task */
+  taskId: string;
   /** Iteration number when the commit was made */
   iteration: number;
   /** Git commit details */
@@ -380,13 +380,13 @@ export interface LoopGitCommitEvent {
 }
 
 /**
- * Emitted when a loop completes successfully.
+ * Emitted when a task completes successfully.
  * This occurs when the stop pattern is matched in the AI response.
  */
-export interface LoopCompletedEvent {
-  type: "loop.completed";
-  /** ID of the loop that completed */
-  loopId: string;
+export interface TaskCompletedEvent {
+  type: "task.completed";
+  /** ID of the task that completed */
+  taskId: string;
   /** Total number of iterations executed */
   totalIterations: number;
   /** ISO 8601 timestamp */
@@ -395,12 +395,12 @@ export interface LoopCompletedEvent {
 
 /**
  * Emitted when a plan is accepted and control is handed off directly via SSH.
- * This path skips autonomous execution while moving the loop to a completed state.
+ * This path skips autonomous execution while moving the task to a completed state.
  */
-export interface LoopSshHandoffEvent {
-  type: "loop.ssh_handoff";
-  /** ID of the loop that was handed off */
-  loopId: string;
+export interface TaskSshHandoffEvent {
+  type: "task.ssh_handoff";
+  /** ID of the task that was handed off */
+  taskId: string;
   /** Total number of iterations executed before the handoff */
   totalIterations: number;
   /** ISO 8601 timestamp */
@@ -408,12 +408,12 @@ export interface LoopSshHandoffEvent {
 }
 
 /**
- * Emitted when a loop is manually stopped by the user.
+ * Emitted when a task is manually stopped by the user.
  */
-export interface LoopStoppedEvent {
-  type: "loop.stopped";
-  /** ID of the loop that was stopped */
-  loopId: string;
+export interface TaskStoppedEvent {
+  type: "task.stopped";
+  /** ID of the task that was stopped */
+  taskId: string;
   /** Reason for stopping (e.g., "User requested stop") */
   reason: string;
   /** ISO 8601 timestamp */
@@ -421,14 +421,14 @@ export interface LoopStoppedEvent {
 }
 
 /**
- * Emitted when a loop's session is aborted without changing status.
+ * Emitted when a task's session is aborted without changing status.
  * Used during connection resets to clean up backend resources while
- * preserving the loop's current state (e.g., planning loops stay in planning).
+ * preserving the task's current state (e.g., planning tasks stay in planning).
  */
-export interface LoopSessionAbortedEvent {
-  type: "loop.session_aborted";
-  /** ID of the loop whose session was aborted */
-  loopId: string;
+export interface TaskSessionAbortedEvent {
+  type: "task.session_aborted";
+  /** ID of the task whose session was aborted */
+  taskId: string;
   /** Reason for the session abort (e.g., "Connection reset requested") */
   reason: string;
   /** ISO 8601 timestamp */
@@ -436,13 +436,13 @@ export interface LoopSessionAbortedEvent {
 }
 
 /**
- * Emitted when an error occurs during loop execution.
- * The loop may retry or fail depending on the error type and retry count.
+ * Emitted when an error occurs during task execution.
+ * The task may retry or fail depending on the error type and retry count.
  */
-export interface LoopErrorEvent {
-  type: "loop.error";
-  /** ID of the loop that errored */
-  loopId: string;
+export interface TaskErrorEvent {
+  type: "task.error";
+  /** ID of the task that errored */
+  taskId: string;
   /** Error message */
   error: string;
   /** Iteration number when the error occurred */
@@ -452,60 +452,60 @@ export interface LoopErrorEvent {
 }
 
 /**
- * Emitted when a loop is deleted.
- * The loop's git branch may or may not be deleted depending on user choice.
+ * Emitted when a task is deleted.
+ * The task's git branch may or may not be deleted depending on user choice.
  */
-export interface LoopDeletedEvent {
-  type: "loop.deleted";
-  /** ID of the deleted loop */
-  loopId: string;
+export interface TaskDeletedEvent {
+  type: "task.deleted";
+  /** ID of the deleted task */
+  taskId: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
 
 /**
- * Emitted when a loop is marked as merged after the merge happened externally
+ * Emitted when a task is marked as merged after the merge happened externally
  * (for example via a pull request on GitHub).
  */
-export interface LoopMergedEvent {
-  type: "loop.merged";
-  /** ID of the loop that was merged */
-  loopId: string;
+export interface TaskMergedEvent {
+  type: "task.merged";
+  /** ID of the task that was merged */
+  taskId: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
 
 /**
- * Emitted when a loop's committed changes are accepted locally without pushing.
+ * Emitted when a task's committed changes are accepted locally without pushing.
  */
-export interface LoopAcceptedEvent {
-  type: "loop.accepted";
-  /** ID of the loop that was accepted */
-  loopId: string;
+export interface TaskAcceptedEvent {
+  type: "task.accepted";
+  /** ID of the task that was accepted */
+  taskId: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
 
 /**
- * Emitted when a loop's changes are discarded.
+ * Emitted when a task's changes are discarded.
  * The working branch is deleted and changes are lost.
  */
-export interface LoopDiscardedEvent {
-  type: "loop.discarded";
-  /** ID of the loop that was discarded */
-  loopId: string;
+export interface TaskDiscardedEvent {
+  type: "task.discarded";
+  /** ID of the task that was discarded */
+  taskId: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
 
 /**
- * Emitted when a loop's branch is pushed to a remote repository.
- * The loop enters "pushed" status and can receive reviewer comments.
+ * Emitted when a task's branch is pushed to a remote repository.
+ * The task enters "pushed" status and can receive reviewer comments.
  */
-export interface LoopPushedEvent {
-  type: "loop.pushed";
-  /** ID of the loop that was pushed */
-  loopId: string;
+export interface TaskPushedEvent {
+  type: "task.pushed";
+  /** ID of the task that was pushed */
+  taskId: string;
   /** Name of the remote branch (e.g., "origin/add-feature-a1b2c3d") */
   remoteBranch: string;
   /** ISO 8601 timestamp */
@@ -516,10 +516,10 @@ export interface LoopPushedEvent {
  * Emitted when a base branch sync starts during push.
  * Indicates the system is fetching and merging the latest base branch.
  */
-export interface LoopSyncStartedEvent {
-  type: "loop.sync.started";
-  /** ID of the loop being synced */
-  loopId: string;
+export interface TaskSyncStartedEvent {
+  type: "task.sync.started";
+  /** ID of the task being synced */
+  taskId: string;
   /** The base branch being synced with */
   baseBranch: string;
   /** ISO 8601 timestamp */
@@ -530,10 +530,10 @@ export interface LoopSyncStartedEvent {
  * Emitted when a base branch sync completes cleanly (no conflicts).
  * The merge succeeded and push will proceed immediately.
  */
-export interface LoopSyncCleanEvent {
-  type: "loop.sync.clean";
-  /** ID of the loop that was synced */
-  loopId: string;
+export interface TaskSyncCleanEvent {
+  type: "task.sync.clean";
+  /** ID of the task that was synced */
+  taskId: string;
   /** The base branch that was synced with */
   baseBranch: string;
   /** ISO 8601 timestamp */
@@ -542,12 +542,12 @@ export interface LoopSyncCleanEvent {
 
 /**
  * Emitted when a base branch sync detects merge conflicts.
- * The loop engine is being restarted to resolve the conflicts.
+ * The task engine is being restarted to resolve the conflicts.
  */
-export interface LoopSyncConflictsEvent {
-  type: "loop.sync.conflicts";
-  /** ID of the loop with conflicts */
-  loopId: string;
+export interface TaskSyncConflictsEvent {
+  type: "task.sync.conflicts";
+  /** ID of the task with conflicts */
+  taskId: string;
   /** The base branch that caused conflicts */
   baseBranch: string;
   /** List of files with conflicts */
@@ -558,12 +558,12 @@ export interface LoopSyncConflictsEvent {
 
 /**
  * Emitted when a base branch sync cannot complete.
- * The loop remains blocked until the failure is surfaced or retried explicitly.
+ * The task remains blocked until the failure is surfaced or retried explicitly.
  */
-export interface LoopSyncFailedEvent {
-  type: "loop.sync.failed";
-  /** ID of the loop whose sync failed */
-  loopId: string;
+export interface TaskSyncFailedEvent {
+  type: "task.sync.failed";
+  /** ID of the task whose sync failed */
+  taskId: string;
   /** The base branch that could not be synced */
   baseBranch: string;
   /** Human-readable failure reason */
@@ -576,10 +576,10 @@ export interface LoopSyncFailedEvent {
  * Emitted when plan mode completes and a plan is ready for review.
  * The user can approve, provide feedback, or discard the plan.
  */
-export interface LoopPlanReadyEvent {
-  type: "loop.plan.ready";
-  /** ID of the loop in planning mode */
-  loopId: string;
+export interface TaskPlanReadyEvent {
+  type: "task.plan.ready";
+  /** ID of the task in planning mode */
+  taskId: string;
   /** The generated plan content (markdown) */
   planContent: string;
   /** ISO 8601 timestamp */
@@ -590,10 +590,10 @@ export interface LoopPlanReadyEvent {
  * Emitted when the user sends feedback on a plan.
  * The AI will revise the plan based on the feedback.
  */
-export interface LoopPlanFeedbackSentEvent {
-  type: "loop.plan.feedback";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskPlanFeedbackSentEvent {
+  type: "task.plan.feedback";
+  /** ID of the task */
+  taskId: string;
   /** Feedback round number (1-based) */
   round: number;
   /** ISO 8601 timestamp */
@@ -602,25 +602,25 @@ export interface LoopPlanFeedbackSentEvent {
 
 /**
  * Emitted when a plan is accepted.
- * The loop transitions from "planning" to either "running" or "completed",
+ * The task transitions from "planning" to either "running" or "completed",
  * depending on whether execution starts immediately or control is handed off via SSH.
  */
-export interface LoopPlanAcceptedEvent {
-  type: "loop.plan.accepted";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskPlanAcceptedEvent {
+  type: "task.plan.accepted";
+  /** ID of the task */
+  taskId: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
 
 /**
  * Emitted when a plan is discarded.
- * The loop returns to draft status without executing.
+ * The task returns to draft status without executing.
  */
-export interface LoopPlanDiscardedEvent {
-  type: "loop.plan.discarded";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskPlanDiscardedEvent {
+  type: "task.plan.discarded";
+  /** ID of the task */
+  taskId: string;
   /** ISO 8601 timestamp */
   timestamp: string;
 }
@@ -629,10 +629,10 @@ export interface LoopPlanDiscardedEvent {
  * Emitted when pending values (prompt or model) are updated.
  * Used for real-time UI updates when the next message/model override changes.
  */
-export interface LoopPendingUpdatedEvent {
-  type: "loop.pending.updated";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskPendingUpdatedEvent {
+  type: "task.pending.updated";
+  /** ID of the task */
+  taskId: string;
   /** Pending prompt (if set, undefined if cleared) */
   pendingPrompt?: string;
   /** Pending model (if set, undefined if cleared) */
@@ -643,13 +643,13 @@ export interface LoopPendingUpdatedEvent {
 
 /**
  * Emitted when the persisted automatic PR flow state changes.
- * Used by the UI to refresh pushed-loop state after automation is enabled,
+ * Used by the UI to refresh pushed-task state after automation is enabled,
  * disabled, or transitions between feedback-handling phases.
  */
-export interface LoopAutomaticPrFlowUpdatedEvent {
-  type: "loop.automatic_pr_flow.updated";
-  /** ID of the loop */
-  loopId: string;
+export interface TaskAutomaticPrFlowUpdatedEvent {
+  type: "task.automatic_pr_flow.updated";
+  /** ID of the task */
+  taskId: string;
   /** Latest automatic PR flow state after persistence */
   automaticPrFlow?: AutomaticPrFlowState;
   /** ISO 8601 timestamp */
@@ -663,10 +663,10 @@ export interface LoopAutomaticPrFlowUpdatedEvent {
  * 
  * @example
  * ```typescript
- * const event: LoopCreatedEvent = {
- *   type: "loop.created",
- *   loopId: "abc-123",
- *   config: loopConfig,
+ * const event: TaskCreatedEvent = {
+ *   type: "task.created",
+ *   taskId: "abc-123",
+ *   config: taskConfig,
  *   timestamp: createTimestamp()
  * };
  * ```

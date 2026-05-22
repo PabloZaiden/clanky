@@ -32,7 +32,7 @@ Vrt5VIv2q/QnK29KDywKJrsCAwEAAQ==
 function setupBaseApi() {
   api.get("/api/config", () => ({ remoteOnly: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
-  api.get("/api/loops", () => []);
+  api.get("/api/tasks", () => []);
   api.get("/api/workspaces", () => []);
   api.get("/api/ssh-sessions", () => []);
   api.get("/api/preferences/last-model", () => null);
@@ -76,7 +76,7 @@ function createStandaloneSession(serverId: string): SshServerSession {
       name: "Deploy Shell",
       connectionMode: "dtach",
       useTmux: true,
-      remoteSessionName: "ralpher-standalone-1",
+      remoteSessionName: "clanky-standalone-1",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     },
@@ -219,7 +219,7 @@ describe("ssh server management scenario", () => {
     });
 
     expect(api.calls("/api/ssh-servers/:id", "PATCH")).toHaveLength(0);
-    expect(localStorage.getItem("ralpher.sshServerCredential.server-1")).toBeTruthy();
+    expect(localStorage.getItem("clanky.sshServerCredential.server-1")).toBeTruthy();
   });
 
   test("checks server prerequisites from SSH server settings", async () => {
@@ -245,7 +245,7 @@ describe("ssh server management scenario", () => {
             id: "ssh_connection",
             label: "SSH connectivity",
             status: "available",
-            details: "Ralpher can connect to this host and execute remote commands.",
+            details: "Clanky can connect to this host and execute remote commands.",
             requiredFor: ["Connecting to this SSH server"],
           },
           {

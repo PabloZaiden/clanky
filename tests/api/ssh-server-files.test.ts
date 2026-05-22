@@ -18,10 +18,10 @@ describe("Standalone SSH server files API integration", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-files-data-"));
-    workDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-files-work-"));
-    alternateRootDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-files-alt-"));
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-server-files-data-"));
+    workDir = await mkdtemp(join(tmpdir(), "clanky-ssh-server-files-work-"));
+    alternateRootDir = await mkdtemp(join(tmpdir(), "clanky-ssh-server-files-alt-"));
+    process.env["CLANKY_DATA_DIR"] = dataDir;
 
     await ensureDataDirectories();
     await mkdir(join(workDir, "src"), { recursive: true });
@@ -45,7 +45,7 @@ describe("Standalone SSH server files API integration", () => {
   afterAll(async () => {
     server.stop();
     sshServerManager.setExecutorFactoryForTesting(null);
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
     await rm(alternateRootDir, { recursive: true, force: true });
@@ -113,7 +113,7 @@ describe("Standalone SSH server files API integration", () => {
 
     const listResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files`, {
       headers: {
-        "x-ralpher-ssh-credential-token": credentialToken,
+        "x-clanky-ssh-credential-token": credentialToken,
       },
     });
     expect(listResponse.ok).toBe(true);
@@ -132,7 +132,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/content?path=${encodeURIComponent("src/index.ts")}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": readToken,
+          "x-clanky-ssh-credential-token": readToken,
         },
       },
     );
@@ -164,7 +164,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/preview?path=${encodeURIComponent("logo.svg")}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": previewToken,
+          "x-clanky-ssh-credential-token": previewToken,
         },
       },
     );
@@ -188,7 +188,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/download?path=${encodeURIComponent("README.md")}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": credentialToken,
+          "x-clanky-ssh-credential-token": credentialToken,
         },
       },
     );
@@ -208,7 +208,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/metadata?path=${encodeURIComponent("src/index.ts")}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": metadataToken,
+          "x-clanky-ssh-credential-token": metadataToken,
         },
       },
     );
@@ -220,7 +220,7 @@ describe("Standalone SSH server files API integration", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-ralpher-ssh-credential-token": writeToken,
+        "x-clanky-ssh-credential-token": writeToken,
       },
       body: JSON.stringify({
         path: "src/index.ts",
@@ -237,7 +237,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/content?path=${encodeURIComponent("src/index.ts")}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": readToken,
+          "x-clanky-ssh-credential-token": readToken,
         },
       },
     );
@@ -249,7 +249,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/content?path=${encodeURIComponent("../outside.txt")}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": invalidPathToken,
+          "x-clanky-ssh-credential-token": invalidPathToken,
         },
       },
     );
@@ -261,7 +261,7 @@ describe("Standalone SSH server files API integration", () => {
   test("returns not_found when the standalone server does not exist", async () => {
     const response = await fetch(`${baseUrl}/api/ssh-servers/missing-server/files`, {
       headers: {
-        "x-ralpher-ssh-credential-token": "token-123",
+        "x-clanky-ssh-credential-token": "token-123",
       },
     });
 
@@ -281,7 +281,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files?startDirectory=${startDirectory}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": listToken,
+          "x-clanky-ssh-credential-token": listToken,
         },
       },
     );
@@ -296,7 +296,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/metadata?path=${encodeURIComponent("logs/output.log")}&startDirectory=${startDirectory}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": metadataToken,
+          "x-clanky-ssh-credential-token": metadataToken,
         },
       },
     );
@@ -307,7 +307,7 @@ describe("Standalone SSH server files API integration", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-ralpher-ssh-credential-token": writeToken,
+        "x-clanky-ssh-credential-token": writeToken,
       },
       body: JSON.stringify({
         path: "logs/output.log",
@@ -324,7 +324,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/content?path=${encodeURIComponent("logs/output.log")}&startDirectory=${startDirectory}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": readToken,
+          "x-clanky-ssh-credential-token": readToken,
         },
       },
     );
@@ -333,7 +333,7 @@ describe("Standalone SSH server files API integration", () => {
   });
 
   test("reuses the same credential token across root changes and parent-directory navigation", async () => {
-    const parentRootDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-files-parent-"));
+    const parentRootDir = await mkdtemp(join(tmpdir(), "clanky-ssh-server-files-parent-"));
     const configuredRootDir = join(parentRootDir, "project");
     try {
       await mkdir(join(configuredRootDir, "src"), { recursive: true });
@@ -358,7 +358,7 @@ describe("Standalone SSH server files API integration", () => {
 
       const initialListResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files`, {
         headers: {
-          "x-ralpher-ssh-credential-token": credentialToken,
+          "x-clanky-ssh-credential-token": credentialToken,
         },
       });
       expect(initialListResponse.ok).toBe(true);
@@ -372,7 +372,7 @@ describe("Standalone SSH server files API integration", () => {
         `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files?startDirectory=${parentStartDirectory}`,
         {
           headers: {
-            "x-ralpher-ssh-credential-token": credentialToken,
+            "x-clanky-ssh-credential-token": credentialToken,
           },
         },
       );
@@ -386,7 +386,7 @@ describe("Standalone SSH server files API integration", () => {
         `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/content?path=${encodeURIComponent("shared/notes.txt")}&startDirectory=${parentStartDirectory}`,
         {
           headers: {
-            "x-ralpher-ssh-credential-token": credentialToken,
+            "x-clanky-ssh-credential-token": credentialToken,
           },
         },
       );
@@ -409,7 +409,7 @@ describe("Standalone SSH server files API integration", () => {
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files?startDirectory=${missingStartDirectory}`,
       {
         headers: {
-          "x-ralpher-ssh-credential-token": credentialToken,
+          "x-clanky-ssh-credential-token": credentialToken,
         },
       },
     );

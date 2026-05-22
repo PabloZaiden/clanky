@@ -5,7 +5,7 @@
  */
 
 import type { Backend } from "../../backends/types";
-import type { LoopEvent } from "../../types/events";
+import type { TaskEvent } from "../../types/events";
 import type { ConnectionStatus, ServerSettings } from "../../types/settings";
 import { getSshConnectionTargetFromSettings, type SshConnectionTarget } from "../ssh-connection-target";
 
@@ -34,12 +34,12 @@ export interface WorkspaceConnectionState {
 }
 
 /**
- * Connection state for a loop.
- * Each loop gets its own dedicated backend connection.
- * The actual directory binding happens later when LoopEngine calls backend.connect()
+ * Connection state for a task.
+ * Each task gets its own dedicated backend connection.
+ * The actual directory binding happens later when TaskEngine calls backend.connect()
  * in setupSession() with the worktree directory.
  */
-export interface LoopConnectionState {
+export interface TaskConnectionState {
   backend: Backend;
   workspaceId: string;
 }
@@ -116,4 +116,4 @@ export type ServerEvent =
 /**
  * Combined event type for the event emitter.
  */
-export type AppEvent = LoopEvent | ServerEvent;
+export type AppEvent = TaskEvent | ServerEvent;

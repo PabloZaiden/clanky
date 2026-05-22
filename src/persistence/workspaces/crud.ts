@@ -103,18 +103,18 @@ export async function updateWorkspace(
   return getWorkspace(id);
 }
 
-export async function countWorkspaceLoops(id: string): Promise<number> {
+export async function countWorkspaceTasks(id: string): Promise<number> {
   const db = getDatabase();
-  const loopCountStmt = db.prepare("SELECT COUNT(*) as count FROM loops WHERE workspace_id = ?");
-  const loopCountRow = loopCountStmt.get(id) as { count: number };
-  return loopCountRow.count;
+  const taskCountStmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ?");
+  const taskCountRow = taskCountStmt.get(id) as { count: number };
+  return taskCountRow.count;
 }
 
 /**
  * Delete a workspace by ID.
- * Only succeeds if the workspace has no associated loops.
+ * Only succeeds if the workspace has no associated tasks.
  *
- * @returns true if deleted, false if not found or has loops
+ * @returns true if deleted, false if not found or has tasks
  */
 export async function deleteWorkspace(id: string): Promise<{ success: boolean; reason?: string }> {
   log.debug("Deleting workspace", { id });
@@ -126,13 +126,13 @@ export async function deleteWorkspace(id: string): Promise<{ success: boolean; r
     return { success: false, reason: "Workspace not found" };
   }
 
-  const loopCount = await countWorkspaceLoops(id);
+  const taskCount = await countWorkspaceTasks(id);
 
-  if (loopCount > 0) {
-    log.warn("Cannot delete workspace with loops", { id, loopCount });
+  if (taskCount > 0) {
+    log.warn("Cannot delete workspace with tasks", { id, taskCount });
     return {
       success: false,
-      reason: `Workspace has ${loopCount} loop(s). Delete all loops first.`,
+      reason: `Workspace has ${taskCount} task(s). Delete all tasks first.`,
     };
   }
 

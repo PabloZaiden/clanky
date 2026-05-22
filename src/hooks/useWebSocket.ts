@@ -1,6 +1,6 @@
 /**
  * WebSocket hook for real-time event streaming.
- * Provides connectivity to the Ralpher events API.
+ * Provides connectivity to the Clanky events API.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -234,14 +234,14 @@ export function useGlobalEvents<T = unknown>(
 }
 
 /**
- * Convenience hook for connecting to a loop-specific events endpoint.
+ * Convenience hook for connecting to a task-specific events endpoint.
  */
-export function useLoopEvents<T = unknown>(
-  loopId: string,
+export function useTaskEvents<T = unknown>(
+  taskId: string,
   options?: Omit<UseWebSocketOptions<T>, "url">
 ): UseWebSocketResult<T> {
   return useWebSocket<T>({
-    url: `/api/ws?loopId=${encodeURIComponent(loopId)}`,
+    url: `/api/ws?taskId=${encodeURIComponent(taskId)}`,
     ...options,
   });
 }

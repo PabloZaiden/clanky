@@ -17,7 +17,7 @@ describe("public path helpers", () => {
   });
 
   test("appFetch prefixes local API requests", async () => {
-    window.location.href = "https://example.com/ralpher/";
+    window.location.href = "https://example.com/clanky/";
 
     const originalFetch = globalThis.fetch;
     const requestedUrls: string[] = [];
@@ -42,11 +42,11 @@ describe("public path helpers", () => {
       globalThis.fetch = originalFetch;
     }
 
-    expect(requestedUrls).toEqual(["/ralpher/api/config"]);
+    expect(requestedUrls).toEqual(["/clanky/api/config"]);
   });
 
   test("appFetch dispatches the auth-required event only for passkey-tagged 401 responses", async () => {
-    window.location.href = "https://example.com/ralpher/";
+    window.location.href = "https://example.com/clanky/";
 
     const originalFetch = globalThis.fetch;
     const receivedEventTypes: string[] = [];

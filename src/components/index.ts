@@ -7,15 +7,15 @@ export * from "./common";
 
 // Main components
 export { Dashboard } from "./Dashboard";
-export { LoopCard } from "./LoopCard";
-export { LoopDetails } from "./LoopDetails";
+export { TaskCard } from "./TaskCard";
+export { TaskDetails } from "./TaskDetails";
 export { SshSessionDetails } from "./SshSessionDetails";
 export { ConversationViewer, LogViewer } from "./LogViewer";
 export { ChatDetails } from "./ChatDetails";
-export { CreateLoopForm } from "./CreateLoopForm";
+export { CreateTaskForm } from "./CreateTaskForm";
 export { CreateSshSessionModal } from "./CreateSshSessionModal";
 export { ProvisioningJobView } from "./ProvisioningJobView";
 export { RenameChatModal } from "./RenameChatModal";
 export { RenameSshSessionModal } from "./RenameSshSessionModal";
-export { LoopActionBar } from "./LoopActionBar";
+export { TaskActionBar } from "./TaskActionBar";
 export { SshSessionSection } from "./SshSessionSection";

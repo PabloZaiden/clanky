@@ -20,7 +20,7 @@ function createSignedPasskeySessionCookie(
 ): string {
   const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = createHmac("sha256", secret).update(encodedPayload, "utf8").digest("base64url");
-  return `ralpher_passkey_session=${encodedPayload}.${signature}`;
+  return `clanky_passkey_session=${encodedPayload}.${signature}`;
 }
 
 describe("auth routes", () => {
@@ -50,8 +50,8 @@ describe("auth routes", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          clientId: "ralpher-cli-tests",
-          scope: "loops:read loops:write",
+          clientId: "clanky-cli-tests",
+          scope: "tasks:read tasks:write",
         }),
       }),
     );
@@ -105,7 +105,7 @@ describe("auth routes", () => {
         body: JSON.stringify({
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           device_code: startBody.device_code,
-          client_id: "ralpher-cli-tests",
+          client_id: "clanky-cli-tests",
         }),
       }),
     );
@@ -129,7 +129,7 @@ describe("auth routes", () => {
         body: JSON.stringify({
           grant_type: "refresh_token",
           refresh_token: tokenBody.refresh_token,
-          client_id: "ralpher-cli-tests",
+          client_id: "clanky-cli-tests",
         }),
       }),
     );
@@ -149,7 +149,7 @@ describe("auth routes", () => {
         body: JSON.stringify({
           grant_type: "refresh_token",
           refresh_token: tokenBody.refresh_token,
-          client_id: "ralpher-cli-tests",
+          client_id: "clanky-cli-tests",
         }),
       }),
     );
@@ -194,7 +194,7 @@ describe("auth routes", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          canonicalIssuer: "https://public.example.com/ralpher",
+          canonicalIssuer: "https://public.example.com/clanky",
         }),
       }),
     );
@@ -206,11 +206,11 @@ describe("auth routes", () => {
 
     expect(discoveryResponse.status).toBe(200);
     expect(await discoveryResponse.json()).toEqual(expect.objectContaining({
-      issuer: "https://public.example.com/ralpher",
-      jwks_uri: "https://public.example.com/ralpher/.well-known/jwks.json",
-      token_endpoint: "https://public.example.com/ralpher/api/auth/token",
-      device_authorization_endpoint: "https://public.example.com/ralpher/api/auth/device",
-      revocation_endpoint: "https://public.example.com/ralpher/api/auth/revoke",
+      issuer: "https://public.example.com/clanky",
+      jwks_uri: "https://public.example.com/clanky/.well-known/jwks.json",
+      token_endpoint: "https://public.example.com/clanky/api/auth/token",
+      device_authorization_endpoint: "https://public.example.com/clanky/api/auth/device",
+      revocation_endpoint: "https://public.example.com/clanky/api/auth/revoke",
     }));
   });
 
@@ -258,7 +258,7 @@ describe("auth routes", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          clientId: "ralpher-cli-tests",
+          clientId: "clanky-cli-tests",
         }),
       }),
     );
@@ -297,7 +297,7 @@ describe("auth routes", () => {
         body: JSON.stringify({
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           device_code: startBody.device_code,
-          client_id: "ralpher-cli-tests",
+          client_id: "clanky-cli-tests",
         }),
       }),
     );
@@ -325,8 +325,8 @@ describe("auth routes", () => {
     expect(await authenticatedResponse.json()).toEqual({
       authenticated: true,
       authKind: "bearer",
-      subject: "ralpher-user",
-      clientId: "ralpher-cli-tests",
+      subject: "clanky-user",
+      clientId: "clanky-cli-tests",
       scope: "",
     });
     expect(unauthenticatedResponse.status).toBe(401);
@@ -340,7 +340,7 @@ describe("auth routes", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          clientId: "ralpher-cli-tests",
+          clientId: "clanky-cli-tests",
         }),
       }),
     );
@@ -379,7 +379,7 @@ describe("auth routes", () => {
         body: JSON.stringify({
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
           device_code: startBody.device_code,
-          client_id: "ralpher-cli-tests",
+          client_id: "clanky-cli-tests",
         }),
       }),
     );

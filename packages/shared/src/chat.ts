@@ -1,7 +1,7 @@
 /**
  * Chat type definitions for long-lived ACP-backed chat sessions.
  *
- * Chats are distinct from loops: they represent one resumable agent session
+ * Chats are distinct from tasks: they represent one resumable agent session
  * tied to a workspace and optional git worktree, with persisted transcript and
  * streaming artifacts used only for UI hydration and presentation.
  *
@@ -10,22 +10,22 @@
 
 import type { ModelConfig } from "./model";
 import type {
-  LoopLogEntry,
+  TaskLogEntry,
   PersistedMessage,
   PersistedToolCall,
   SessionInfo,
-} from "./loop";
+} from "./task";
 
 export type { ModelConfig };
 
-export type ChatScope = "workspace" | "loop";
+export type ChatScope = "workspace" | "task";
 
 export interface ChatConfig {
   id: string;
   name: string;
   workspaceId: string;
   scope: ChatScope;
-  loopId?: string;
+  taskId?: string;
   directory: string;
   model: ModelConfig;
   useWorktree: boolean;
@@ -83,7 +83,7 @@ export interface ChatState {
   error?: ChatError;
   worktree?: ChatWorktreeState;
   messages: PersistedMessage[];
-  logs: LoopLogEntry[];
+  logs: TaskLogEntry[];
   toolCalls: PersistedToolCall[];
   pendingPermissionRequests?: ChatPermissionRequest[];
   activeMessageId?: string;
@@ -119,12 +119,12 @@ export function isChatBusyStatus(status: ChatStatus): boolean {
   return status === "starting" || status === "streaming" || status === "interrupting";
 }
 
-export function isLoopChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
-  return "config" in chat ? chat.config.scope === "loop" : chat.scope === "loop";
+export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
+  return "config" in chat ? chat.config.scope === "task" : chat.scope === "task";
 }
 
 export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
-  return !isLoopChat(chat);
+  return !isTaskChat(chat);
 }
 
 export class ChatBusyError extends Error {
@@ -161,7 +161,7 @@ export class EmptyChatTranscriptError extends Error {
   readonly code = "empty_transcript";
   readonly status = 400;
 
-  constructor(message = "Chat transcript is empty. Send at least one message before spawning a loop.") {
+  constructor(message = "Chat transcript is empty. Send at least one message before spawning a task.") {
     super(message);
     this.name = "EmptyChatTranscriptError";
   }

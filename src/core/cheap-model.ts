@@ -69,7 +69,7 @@ export async function resolveEffectiveCheapModel(options: {
   cheapModel?: CheapModelSelection;
   operation: string;
 }): Promise<ModelConfig> {
-  if (!options.cheapModel || options.cheapModel.mode === "same-as-loop") {
+  if (!options.cheapModel || options.cheapModel.mode === "same-as-task") {
     return options.model;
   }
 
@@ -79,14 +79,14 @@ export async function resolveEffectiveCheapModel(options: {
       return options.cheapModel.model;
     }
 
-    log.info("Falling back to loop model because cheap model is unavailable", {
+    log.info("Falling back to task model because cheap model is unavailable", {
       workspaceId: options.workspaceId,
       operation: options.operation,
       cheapModelProvider: options.cheapModel.model.providerID,
       cheapModelId: options.cheapModel.model.modelID,
     });
   } catch (error) {
-    log.warn("Failed to validate cheap model, falling back to loop model", {
+    log.warn("Failed to validate cheap model, falling back to task model", {
       workspaceId: options.workspaceId,
       operation: options.operation,
       error: String(error),

@@ -2,8 +2,8 @@
  * Unit tests for user message logging across all prompt types.
  * Verifies that emitUserMessage() is called correctly in
  * buildExecutionPrompt and buildPlanModePrompt,
- * and that user messages are persisted in loop.state.messages
- * and emitted as loop.message events with role "user".
+ * and that user messages are persisted in task.state.messages
+ * and emitted as task.message events with role "user".
  */
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
@@ -11,13 +11,13 @@ import { mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
-  LoopEngine,
-  type LoopBackend,
-} from "../../src/core/loop-engine";
+  TaskEngine,
+  type TaskBackend,
+} from "../../src/core/task-engine";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
-import type { Loop, LoopConfig, LoopState } from "../../src/types/loop";
-import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
-import type { LoopEvent, LoopMessageEvent } from "../../src/types/events";
+import type { Task, TaskConfig, TaskState } from "../../src/types/task";
+import { DEFAULT_TASK_CONFIG } from "../../src/types/task";
+import type { TaskEvent, TaskMessageEvent } from "../../src/types/events";
 import type {
   AgentSession,
   AgentEvent,
@@ -32,20 +32,20 @@ import { backendManager } from "../../src/core/backend-manager";
 
 describe("User Message Logging", () => {
   let testDir: string;
-  let emitter: SimpleEventEmitter<LoopEvent>;
-  let emittedEvents: LoopEvent[];
+  let emitter: SimpleEventEmitter<TaskEvent>;
+  let emittedEvents: TaskEvent[];
   let gitService: GitService;
 
   /**
    * Create a mock backend that captures prompts and delivers responses.
    */
-  function createMockBackend(responses: string[]): LoopBackend & { sentPrompts: PromptInput[] } {
+  function createMockBackend(responses: string[]): TaskBackend & { sentPrompts: PromptInput[] } {
     let responseIndex = 0;
     let connected = false;
     let pendingResponse: string | null = null;
     const sentPrompts: PromptInput[] = [];
 
-    const backend: LoopBackend & { sentPrompts: PromptInput[] } = {
+    const backend: TaskBackend & { sentPrompts: PromptInput[] } = {
       sentPrompts,
 
       async connect(_config: BackendConnectionConfig): Promise<void> {
@@ -120,10 +120,10 @@ describe("User Message Logging", () => {
     return backend;
   }
 
-  function createLoop(overrides?: Partial<LoopConfig>): Loop {
-    const config: LoopConfig = {
-      id: "test-user-msg-loop",
-      name: "test-loop",
+  function createTask(overrides?: Partial<TaskConfig>): Task {
+    const config: TaskConfig = {
+      id: "test-user-msg-task",
+      name: "test-task",
       directory: testDir,
       prompt: "Build a REST API",
       createdAt: new Date().toISOString(),
@@ -134,15 +134,15 @@ describe("User Message Logging", () => {
       git: { branchPrefix: "", commitScope: "" },
       maxIterations: 1,
       maxConsecutiveErrors: 10,
-      activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
-      useWorktree: DEFAULT_LOOP_CONFIG.useWorktree,
+      activityTimeoutSeconds: DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
+      useWorktree: DEFAULT_TASK_CONFIG.useWorktree,
       clearPlanningFolder: false,
       planMode: false,
-      mode: "loop",
+      mode: "task",
       ...overrides,
     };
 
-    const state: LoopState = {
+    const state: TaskState = {
       id: config.id,
       status: "idle",
       currentIteration: 0,
@@ -156,17 +156,17 @@ describe("User Message Logging", () => {
   }
 
   /** Helper to extract user message events from emitted events. */
-  function getUserMessageEvents(): LoopMessageEvent[] {
+  function getUserMessageEvents(): TaskMessageEvent[] {
     return emittedEvents.filter(
-      (e): e is LoopMessageEvent =>
-        e.type === "loop.message" && "message" in e && e.message.role === "user"
+      (e): e is TaskMessageEvent =>
+        e.type === "task.message" && "message" in e && e.message.role === "user"
     );
   }
 
   beforeEach(async () => {
     testDir = await mkdtemp(join(tmpdir(), "user-msg-test-"));
     emittedEvents = [];
-    emitter = new SimpleEventEmitter<LoopEvent>();
+    emitter = new SimpleEventEmitter<TaskEvent>();
     emitter.subscribe((event) => emittedEvents.push(event));
 
     const executor = new TestCommandExecutor();
@@ -192,15 +192,15 @@ describe("User Message Logging", () => {
 
   describe("execution mode", () => {
     test("first execution iteration logs config.prompt as user message", async () => {
-      const loop = createLoop({
-        mode: "loop",
+      const task = createTask({
+        mode: "task",
         prompt: "Build a REST API",
         maxIterations: 1,
       });
       const backend = createMockBackend(["Working on it... <promise>COMPLETE</promise>"]);
 
-      const engine = new LoopEngine({
-        loop,
+      const engine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -213,22 +213,22 @@ describe("User Message Logging", () => {
       expect(userMsgEvents[0]!.message.content).toBe("Build a REST API");
 
       // Verify persisted
-      const userMessages = loop.state.messages?.filter((m) => m.role === "user");
+      const userMessages = task.state.messages?.filter((m) => m.role === "user");
       expect(userMessages?.length).toBe(1);
       expect(userMessages?.[0]?.content).toBe("Build a REST API");
     });
 
     test("injected message in execution mode is logged as user message", async () => {
-      const loop = createLoop({
-        mode: "loop",
+      const task = createTask({
+        mode: "task",
         prompt: "Original goal",
         maxIterations: 1,
       });
-      loop.state.pendingPrompt = "Please also add tests";
+      task.state.pendingPrompt = "Please also add tests";
       const backend = createMockBackend(["Done. <promise>COMPLETE</promise>"]);
 
-      const engine = new LoopEngine({
-        loop,
+      const engine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -242,25 +242,25 @@ describe("User Message Logging", () => {
     });
 
     test("injected messages from separate runs keep unique persisted IDs", async () => {
-      const loop = createLoop({
-        mode: "loop",
+      const task = createTask({
+        mode: "task",
         prompt: "Original goal",
         maxIterations: 1,
       });
-      loop.state.git = {
+      task.state.git = {
         originalBranch: "main",
         workingBranch: "test-a1b2c3d",
         worktreePath: testDir,
         commits: [],
       };
-      loop.state.pendingPrompt = "First injected message";
+      task.state.pendingPrompt = "First injected message";
       const backend = createMockBackend([
         "Run one done <promise>COMPLETE</promise>",
         "Run two done <promise>COMPLETE</promise>",
       ]);
 
-      const firstEngine = new LoopEngine({
-        loop,
+      const firstEngine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -269,12 +269,12 @@ describe("User Message Logging", () => {
       await firstEngine.start();
 
       // Simulate jumpstart-like restart with a new injected message.
-      loop.state.status = "stopped";
-      loop.state.completedAt = undefined;
-      loop.state.pendingPrompt = "Second injected message";
+      task.state.status = "stopped";
+      task.state.completedAt = undefined;
+      task.state.pendingPrompt = "Second injected message";
 
-      const secondEngine = new LoopEngine({
-        loop,
+      const secondEngine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -282,7 +282,7 @@ describe("User Message Logging", () => {
       });
       await secondEngine.start();
 
-      const persistedUserMessages = (loop.state.messages ?? []).filter((message) => message.role === "user");
+      const persistedUserMessages = (task.state.messages ?? []).filter((message) => message.role === "user");
       expect(persistedUserMessages.map((message) => message.content)).toEqual([
         "First injected message",
         "Second injected message",
@@ -291,15 +291,15 @@ describe("User Message Logging", () => {
     });
 
     test("first execution uses deterministic 'initial-goal' ID suffix", async () => {
-      const loop = createLoop({
-        mode: "loop",
+      const task = createTask({
+        mode: "task",
         prompt: "Build something",
         maxIterations: 1,
       });
       const backend = createMockBackend(["Done. <promise>COMPLETE</promise>"]);
 
-      const engine = new LoopEngine({
-        loop,
+      const engine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -317,14 +317,14 @@ describe("User Message Logging", () => {
 
   describe("plan mode", () => {
     test("initial plan creation logs config.prompt as user message", async () => {
-      const loop = createLoop({
-        mode: "loop",
+      const task = createTask({
+        mode: "task",
         prompt: "Design a login system",
         maxIterations: 1,
       });
       // Set up plan mode state
-      loop.state.status = "planning";
-      loop.state.planMode = {
+      task.state.status = "planning";
+      task.state.planMode = {
         active: true,
         feedbackRounds: 0,
         planningFolderCleared: false,
@@ -332,7 +332,7 @@ describe("User Message Logging", () => {
       };
       // Plan mode skips git setup in start(), so we need to set the worktree path
       // manually (normally done by startPlanMode() before engine.start()).
-      loop.state.git = {
+      task.state.git = {
         originalBranch: "main",
         workingBranch: "test-a1b2c3d",
         worktreePath: testDir,
@@ -340,8 +340,8 @@ describe("User Message Logging", () => {
       };
       const backend = createMockBackend(["Here is my plan... <promise>PLAN_READY</promise>"]);
 
-      const engine = new LoopEngine({
-        loop,
+      const engine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -356,14 +356,14 @@ describe("User Message Logging", () => {
     });
 
     test("plan feedback is logged as user message", async () => {
-      const loop = createLoop({
-        mode: "loop",
+      const task = createTask({
+        mode: "task",
         prompt: "Design a login system",
         maxIterations: 1,
       });
       // Set up plan mode with feedback round
-      loop.state.status = "planning";
-      loop.state.planMode = {
+      task.state.status = "planning";
+      task.state.planMode = {
         active: true,
         feedbackRounds: 1,
         planningFolderCleared: false,
@@ -371,17 +371,17 @@ describe("User Message Logging", () => {
       };
       // Plan mode skips git setup in start(), so we need to set the worktree path
       // manually (normally done by startPlanMode() before engine.start()).
-      loop.state.git = {
+      task.state.git = {
         originalBranch: "main",
         workingBranch: "test-a1b2c3d",
         worktreePath: testDir,
         commits: [],
       };
-      loop.state.pendingPrompt = "Please add more detail to step 3";
+      task.state.pendingPrompt = "Please add more detail to step 3";
       const backend = createMockBackend(["Updated plan... <promise>PLAN_READY</promise>"]);
 
-      const engine = new LoopEngine({
-        loop,
+      const engine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -400,11 +400,11 @@ describe("User Message Logging", () => {
 
   describe("deduplication", () => {
     test("user message uses deterministic ID for retry safety", async () => {
-      const loop = createLoop({ mode: "loop", prompt: "Test dedup", maxIterations: 1 });
+      const task = createTask({ mode: "task", prompt: "Test dedup", maxIterations: 1 });
       const backend = createMockBackend(["Response."]);
 
-      const engine = new LoopEngine({
-        loop,
+      const engine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -412,22 +412,22 @@ describe("User Message Logging", () => {
 
       await engine.start();
 
-      // The user message should have a deterministic ID based on loop ID
-      const userMessages = loop.state.messages?.filter((m) => m.role === "user");
+      // The user message should have a deterministic ID based on task ID
+      const userMessages = task.state.messages?.filter((m) => m.role === "user");
       expect(userMessages?.length).toBe(1);
-      expect(userMessages?.[0]?.id).toContain("test-user-msg-loop");
+      expect(userMessages?.[0]?.id).toContain("test-user-msg-task");
     });
   });
 
   // ─── Both user and assistant messages in conversation ─────────────────────
 
   describe("conversation flow", () => {
-    test("loop execution produces both user and assistant messages in order", async () => {
-      const loop = createLoop({ mode: "loop", prompt: "What is 2+2?", maxIterations: 1 });
+    test("task execution produces both user and assistant messages in order", async () => {
+      const task = createTask({ mode: "task", prompt: "What is 2+2?", maxIterations: 1 });
       const backend = createMockBackend(["4"]);
 
-      const engine = new LoopEngine({
-        loop,
+      const engine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -436,7 +436,7 @@ describe("User Message Logging", () => {
       await engine.start();
 
       // Should have both user and assistant messages
-      const messages = loop.state.messages ?? [];
+      const messages = task.state.messages ?? [];
       const userMsgs = messages.filter((m) => m.role === "user");
       const assistantMsgs = messages.filter((m) => m.role === "assistant");
 
@@ -451,12 +451,12 @@ describe("User Message Logging", () => {
       expect(userIdx).toBeLessThan(assistantIdx);
     });
 
-    test("loop.message events emitted for both user and assistant", async () => {
-      const loop = createLoop({ mode: "loop", prompt: "Tell me a joke", maxIterations: 1 });
+    test("task.message events emitted for both user and assistant", async () => {
+      const task = createTask({ mode: "task", prompt: "Tell me a joke", maxIterations: 1 });
       const backend = createMockBackend(["Why did the chicken cross the road?"]);
 
-      const engine = new LoopEngine({
-        loop,
+      const engine = new TaskEngine({
+        task,
         backend,
         gitService,
         eventEmitter: emitter,
@@ -465,7 +465,7 @@ describe("User Message Logging", () => {
       await engine.start();
 
       const messageEvents = emittedEvents.filter(
-        (e): e is LoopMessageEvent => e.type === "loop.message"
+        (e): e is TaskMessageEvent => e.type === "task.message"
       );
       const userEvents = messageEvents.filter((e) => e.message.role === "user");
       const assistantEvents = messageEvents.filter((e) => e.message.role === "assistant");

@@ -1,9 +1,9 @@
 /**
- * Log and persistence helpers for LoopEngine.
+ * Log and persistence helpers for TaskEngine.
  */
 
 import { log } from "../logger";
-import type { LoopLogEntry, PersistedMessage } from "../../types/loop";
+import type { TaskLogEntry, PersistedMessage } from "../../types/task";
 import type { MessageData, ToolCallData, LogLevel } from "../../types/events";
 import { mergeToolCallRecord } from "../../types/tool-call";
 import {
@@ -14,14 +14,14 @@ import {
 
 export function logToConsole(
   level: LogLevel,
-  loopPrefix: string,
+  taskPrefix: string,
   message: string,
   detailsStr: string,
   consoleLevel?: "trace" | "debug" | "info" | "warn" | "error",
 ): void {
   if (consoleLevel) {
     const levelTag = level === "agent" || level === "user" ? ` [${level}]` : "";
-    const logMessage = `${loopPrefix}${levelTag} ${message}${detailsStr}`;
+    const logMessage = `${taskPrefix}${levelTag} ${message}${detailsStr}`;
     switch (consoleLevel) {
       case "trace": log.trace(logMessage); break;
       case "debug": log.debug(logMessage); break;
@@ -31,24 +31,24 @@ export function logToConsole(
     }
   } else {
     switch (level) {
-      case "error": log.error(`${loopPrefix} ${message}${detailsStr}`); break;
-      case "warn": log.warn(`${loopPrefix} ${message}${detailsStr}`); break;
-      case "info": log.info(`${loopPrefix} ${message}${detailsStr}`); break;
-      case "debug": log.debug(`${loopPrefix} ${message}${detailsStr}`); break;
-      case "trace": log.trace(`${loopPrefix} ${message}${detailsStr}`); break;
+      case "error": log.error(`${taskPrefix} ${message}${detailsStr}`); break;
+      case "warn": log.warn(`${taskPrefix} ${message}${detailsStr}`); break;
+      case "info": log.info(`${taskPrefix} ${message}${detailsStr}`); break;
+      case "debug": log.debug(`${taskPrefix} ${message}${detailsStr}`); break;
+      case "trace": log.trace(`${taskPrefix} ${message}${detailsStr}`); break;
       case "agent":
       case "user":
-        log.info(`${loopPrefix} [${level}] ${message}${detailsStr}`);
+        log.info(`${taskPrefix} [${level}] ${message}${detailsStr}`);
         break;
     }
   }
 }
 
-export function persistLoopLog(
-  logs: LoopLogEntry[],
-  entry: LoopLogEntry,
+export function persistTaskLog(
+  logs: TaskLogEntry[],
+  entry: TaskLogEntry,
   isUpdate: boolean,
-): LoopLogEntry[] {
+): TaskLogEntry[] {
   if (isUpdate) {
     const index = logs.findIndex((log) => log.id === entry.id);
     if (index >= 0) {
@@ -65,7 +65,7 @@ export function persistLoopLog(
   return logs;
 }
 
-export function persistLoopMessage(
+export function persistTaskMessage(
   messages: PersistedMessage[],
   message: MessageData,
 ): PersistedMessage[] {
@@ -97,7 +97,7 @@ export function persistLoopMessage(
   return messages;
 }
 
-export function persistLoopToolCall(
+export function persistTaskToolCall(
   toolCalls: ToolCallData[],
   toolCall: ToolCallData,
 ): ToolCallData[] {

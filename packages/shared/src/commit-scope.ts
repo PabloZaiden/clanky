@@ -3,13 +3,13 @@
  */
 
 const GENERIC_COMMIT_SCOPES = new Set([
-  "ralph",
+  "clanky",
 ]);
 
 /**
  * Returns a meaningful commit scope, or `undefined` when the scope should be omitted.
  *
- * Generic project-wide placeholders such as `ralph` are treated the same as no scope.
+ * Generic project-wide placeholders such as `clanky` are treated the same as no scope.
  */
 export function normalizeCommitScope(scope: string | null | undefined): string | undefined {
   const trimmedScope = scope?.trim();

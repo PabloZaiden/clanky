@@ -1,5 +1,5 @@
 /**
- * Browser helpers for building app-local URLs when Ralpher is mounted
+ * Browser helpers for building app-local URLs when Clanky is mounted
  * behind a reverse proxy subpath.
  */
 
@@ -7,13 +7,13 @@ import {
   applyPublicBasePath,
   getPublicBasePathFromPathname,
   normalizePublicBasePath,
-} from "@ralpher/shared";
+} from "@clanky/shared";
 import { isPasskeyAuthRequiredResponse } from "./passkey-auth-http";
 
 let configuredPublicBasePath: string | undefined;
 let configuredApiBaseUrl: string | undefined;
 let configuredWebSocketBaseUrl: string | undefined;
-export const PASSKEY_AUTH_REQUIRED_EVENT = "ralpher:passkey-auth-required";
+export const PASSKEY_AUTH_REQUIRED_EVENT = "clanky:passkey-auth-required";
 const DIRECT_APP_ROUTES = ["/device"];
 
 function normalizeOptionalBaseUrl(rawValue?: string | null): string | undefined {

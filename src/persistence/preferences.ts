@@ -1,5 +1,5 @@
 /**
- * User preferences persistence for Ralph Loops Management System.
+ * User preferences persistence for Clanky Tasks Management System.
  * Stores user preferences in SQLite database using a key-value pattern.
  * 
  * Note: Server settings are now stored per-workspace, not globally.
@@ -71,7 +71,7 @@ export interface UserPreferences {
   };
   /** Last used helper-model selection for cheap operations */
   lastCheapModel?: CheapModelSelection;
-  /** Last used working directory for loop creation */
+  /** Last used working directory for task creation */
   lastDirectory?: string;
   /** Whether markdown rendering is enabled (defaults to true) */
   markdownRenderingEnabled?: boolean;

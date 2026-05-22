@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { LoopManager } from "../../src/core/loop-manager";
+import { TaskManager } from "../../src/core/task-manager";
 import { backendManager } from "../../src/core/backend-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { createWorkspace } from "../../src/persistence/workspaces";
-import { updateLoopState } from "../../src/persistence/loops";
+import { updateTaskState } from "../../src/persistence/tasks";
 import { closeDatabase, ensureDataDirectories, getDatabase } from "../../src/persistence/database";
 import { getDefaultServerSettings } from "../../src/types/settings";
 import { sshSessionManager } from "../../src/core/ssh-session-manager";
@@ -54,10 +54,10 @@ class FailingDeleteExecutor extends SshCapableExecutor {
   }
 }
 
-describe("SshSessionManager loop-linked sessions", () => {
+describe("SshSessionManager task-linked sessions", () => {
   let dataDir: string;
   let workDir: string;
-  let manager: LoopManager;
+  let manager: TaskManager;
   let executor: SshCapableExecutor;
   const workspaceId = "workspace-1";
   const modelFields = {
@@ -67,9 +67,9 @@ describe("SshSessionManager loop-linked sessions", () => {
   };
 
   beforeEach(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-session-manager-data-"));
-    workDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-session-manager-work-"));
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-session-manager-data-"));
+    workDir = await mkdtemp(join(tmpdir(), "clanky-ssh-session-manager-work-"));
+    process.env["CLANKY_DATA_DIR"] = dataDir;
 
     await ensureDataDirectories();
     await Bun.$`git init ${workDir}`.quiet();
@@ -99,7 +99,7 @@ describe("SshSessionManager loop-linked sessions", () => {
     backendManager.setExecutorFactoryForTesting(() => executor);
     portForwardManager.setSpawnFactoryForTesting(() => spawn("sleep", ["60"], { stdio: "ignore" }));
 
-    manager = new LoopManager();
+    manager = new TaskManager();
   });
 
   afterEach(async () => {
@@ -107,87 +107,87 @@ describe("SshSessionManager loop-linked sessions", () => {
     backendManager.resetForTesting();
     portForwardManager.setSpawnFactoryForTesting(null);
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
   });
 
-  test("getOrCreateLoopSession reuses the same linked session and uses the worktree path", async () => {
-    const loop = await manager.createLoop({
+  test("getOrCreateTaskSession reuses the same linked session and uses the worktree path", async () => {
+    const task = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Link me to SSH",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
     });
-    const worktreePath = join(workDir, ".ralph-worktrees", loop.config.id);
+    const worktreePath = join(workDir, ".clanky-worktrees", task.config.id);
 
-    await updateLoopState(loop.config.id, {
-      ...loop.state,
+    await updateTaskState(task.config.id, {
+      ...task.state,
       git: {
         originalBranch: "main",
-        workingBranch: "test-loop-a1b2c3d",
+        workingBranch: "test-task-a1b2c3d",
         worktreePath,
         commits: [],
       },
     });
 
-    const firstSession = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
-    const secondSession = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
+    const firstSession = await sshSessionManager.getOrCreateTaskSession(task.config.id);
+    const secondSession = await sshSessionManager.getOrCreateTaskSession(task.config.id);
 
-    expect(firstSession.config.loopId).toBe(loop.config.id);
+    expect(firstSession.config.taskId).toBe(task.config.id);
     expect(firstSession.config.directory).toBe(worktreePath);
     expect(firstSession.config.name.endsWith(" SSH")).toBe(true);
     expect(secondSession.config.id).toBe(firstSession.config.id);
   });
 
-  test("purgeLoop deletes the linked SSH session and stops the persistent session", async () => {
-    const loop = await manager.createLoop({
+  test("purgeTask deletes the linked SSH session and stops the persistent session", async () => {
+    const task = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Purge linked ssh session",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
     });
-    const worktreePath = join(workDir, ".ralph-worktrees", loop.config.id);
+    const worktreePath = join(workDir, ".clanky-worktrees", task.config.id);
 
-    await updateLoopState(loop.config.id, {
-      ...loop.state,
+    await updateTaskState(task.config.id, {
+      ...task.state,
       status: "deleted",
       git: {
         originalBranch: "main",
-        workingBranch: "purge-loop-a1b2c3d",
+        workingBranch: "purge-task-a1b2c3d",
         worktreePath,
         commits: [],
       },
     });
 
-    const session = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
-    const result = await manager.purgeLoop(loop.config.id);
+    const session = await sshSessionManager.getOrCreateTaskSession(task.config.id);
+    const result = await manager.purgeTask(task.config.id);
 
     expect(result).toEqual({ success: true });
     expect(await sshSessionManager.getSession(session.config.id)).toBeNull();
     expect(executor.deleteCommands.some((command) => command.includes(session.config.remoteSessionName))).toBe(true);
   });
 
-  test("purgeLoop deletes loop-owned port forwards", async () => {
-    const loop = await manager.createLoop({
+  test("purgeTask deletes task-owned port forwards", async () => {
+    const task = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Purge linked port forwards",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
     });
-    const worktreePath = join(workDir, ".ralph-worktrees", loop.config.id);
+    const worktreePath = join(workDir, ".clanky-worktrees", task.config.id);
 
-    await updateLoopState(loop.config.id, {
-      ...loop.state,
+    await updateTaskState(task.config.id, {
+      ...task.state,
       status: "deleted",
       git: {
         originalBranch: "main",
@@ -197,31 +197,31 @@ describe("SshSessionManager loop-linked sessions", () => {
       },
     });
 
-    const forward = await portForwardManager.createLoopPortForward({
-      loopId: loop.config.id,
+    const forward = await portForwardManager.createTaskPortForward({
+      taskId: task.config.id,
       remotePort: 3000,
     });
 
-    const result = await manager.purgeLoop(loop.config.id);
+    const result = await manager.purgeTask(task.config.id);
 
     expect(result).toEqual({ success: true });
     expect(await portForwardManager.getPortForward(forward.config.id)).toBeNull();
   });
 
   test("deleting an SSH session also deletes linked port forwards", async () => {
-    const loop = await manager.createLoop({
+    const task = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Delete linked port forwards",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
     });
-    const worktreePath = join(workDir, ".ralph-worktrees", loop.config.id);
+    const worktreePath = join(workDir, ".clanky-worktrees", task.config.id);
 
-    await updateLoopState(loop.config.id, {
-      ...loop.state,
+    await updateTaskState(task.config.id, {
+      ...task.state,
       git: {
         originalBranch: "main",
         workingBranch: "delete-forwards-a1b2c3d",
@@ -230,9 +230,9 @@ describe("SshSessionManager loop-linked sessions", () => {
       },
     });
 
-    const session = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
-    const forward = await portForwardManager.createLoopPortForward({
-      loopId: loop.config.id,
+    const session = await sshSessionManager.getOrCreateTaskSession(task.config.id);
+    const forward = await portForwardManager.createTaskPortForward({
+      taskId: task.config.id,
       remotePort: 3000,
     });
 
@@ -242,19 +242,19 @@ describe("SshSessionManager loop-linked sessions", () => {
   });
 
   test("deletes a workspace SSH session even when its workspace record is missing", async () => {
-    const loop = await manager.createLoop({
+    const task = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Delete session without workspace",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
     });
-    const worktreePath = join(workDir, ".ralph-worktrees", loop.config.id);
+    const worktreePath = join(workDir, ".clanky-worktrees", task.config.id);
 
-    await updateLoopState(loop.config.id, {
-      ...loop.state,
+    await updateTaskState(task.config.id, {
+      ...task.state,
       git: {
         originalBranch: "main",
         workingBranch: "missing-workspace-a1b2c3d",
@@ -263,7 +263,7 @@ describe("SshSessionManager loop-linked sessions", () => {
       },
     });
 
-    const session = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
+    const session = await sshSessionManager.getOrCreateTaskSession(task.config.id);
     const db = getDatabase();
     db.run("PRAGMA foreign_keys = OFF");
     try {
@@ -279,19 +279,19 @@ describe("SshSessionManager loop-linked sessions", () => {
   });
 
   test("deletes a failed SSH session even when remote cleanup fails again", async () => {
-    const loop = await manager.createLoop({
+    const task = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Delete failed session",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
     });
-    const worktreePath = join(workDir, ".ralph-worktrees", loop.config.id);
+    const worktreePath = join(workDir, ".clanky-worktrees", task.config.id);
 
-    await updateLoopState(loop.config.id, {
-      ...loop.state,
+    await updateTaskState(task.config.id, {
+      ...task.state,
       git: {
         originalBranch: "main",
         workingBranch: "failed-session-a1b2c3d",
@@ -300,7 +300,7 @@ describe("SshSessionManager loop-linked sessions", () => {
       },
     });
 
-    const session = await sshSessionManager.getOrCreateLoopSession(loop.config.id);
+    const session = await sshSessionManager.getOrCreateTaskSession(task.config.id);
     await sshSessionManager.markStatus(session.config.id, "failed", "dtach socket is gone");
 
     const failingExecutor = new FailingDeleteExecutor();

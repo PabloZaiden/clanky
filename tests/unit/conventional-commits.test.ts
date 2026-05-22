@@ -21,8 +21,8 @@ describe("formatConventionalCommit", () => {
     expect(result).toBe("fix: resolve null pointer");
   });
 
-  test("omits generic ralph scope", () => {
-    const result = formatConventionalCommit("feat", "ralph", "add auth endpoint");
+  test("omits generic clanky scope", () => {
+    const result = formatConventionalCommit("feat", "clanky", "add auth endpoint");
     expect(result).toBe("feat: add auth endpoint");
   });
 
@@ -164,7 +164,7 @@ describe("normalizeAiCommitMessage", () => {
   });
 
   test("drops generic AI scope when no configured scope exists", () => {
-    const result = normalizeAiCommitMessage("feat(ralph): add auth endpoint", undefined);
+    const result = normalizeAiCommitMessage("feat(clanky): add auth endpoint", undefined);
     expect(result).toBe("feat: add auth endpoint");
   });
 
@@ -204,7 +204,7 @@ describe("normalizeAiCommitMessage", () => {
   });
 
   test("treats configured generic scope as no scope", () => {
-    const result = normalizeAiCommitMessage("fix: resolve crash", "ralph");
+    const result = normalizeAiCommitMessage("fix: resolve crash", "clanky");
     expect(result).toBe("fix: resolve crash");
   });
 
@@ -226,7 +226,7 @@ describe("normalizeAiCommitMessage", () => {
 
 describe("GitConfigSchema commitScope sanitization", () => {
   // Import the schema for validation tests
-  const { GitConfigSchema } = require("../../src/types/schemas/loop");
+  const { GitConfigSchema } = require("../../src/types/schemas/task");
 
   test("passes through meaningful commitScope", () => {
     const result = GitConfigSchema.parse({ branchPrefix: "", commitScope: "auth" });
@@ -239,7 +239,7 @@ describe("GitConfigSchema commitScope sanitization", () => {
   });
 
   test("maps generic commitScope to empty string", () => {
-    const result = GitConfigSchema.parse({ branchPrefix: "", commitScope: "ralph" });
+    const result = GitConfigSchema.parse({ branchPrefix: "", commitScope: "clanky" });
     expect(result.commitScope).toBe("");
   });
 

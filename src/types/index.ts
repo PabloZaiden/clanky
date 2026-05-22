@@ -1,9 +1,9 @@
 /**
- * Central export for all types in the Ralph Loops Management System.
+ * Central export for all types in the Clanky Tasks Management System.
  */
 
-export * from "./loop";
-export * from "./loop-request";
+export * from "./task";
+export * from "./task-request";
 export * from "./chat";
 export * from "./ssh-session";
 export * from "./ssh-server";

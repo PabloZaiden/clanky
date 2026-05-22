@@ -59,7 +59,7 @@ describe("GitService", () => {
 
   async function createGitServiceTestContext(): Promise<GitServiceTestContext> {
     const testDir = await createTempGitRepository({
-      prefix: "ralpher-git-test-",
+      prefix: "clanky-git-test-",
       initialCommit: "readme",
     });
     const git = new GitService(new TestCommandExecutor());
@@ -275,7 +275,7 @@ describe("GitService", () => {
 
         void git;
         // Create a new empty repo (no commits)
-        const emptyRepoDir = await mkdtemp(join(tmpdir(), "ralpher-empty-repo-"));
+        const emptyRepoDir = await mkdtemp(join(tmpdir(), "clanky-empty-repo-"));
         try {
           await Bun.$`git init ${emptyRepoDir}`.quiet();
           
@@ -971,7 +971,7 @@ describe("GitService", () => {
       const git = new GitService(executor);
 
       await expect(
-        git.createWorktree("/repo", "/repo/.ralph-worktrees/chat", "chat-branch", "main")
+        git.createWorktree("/repo", "/repo/.clanky-worktrees/chat", "chat-branch", "main")
       ).resolves.toBeUndefined();
 
       expect(getCommandCalls(executor)).toEqual([
@@ -980,12 +980,12 @@ describe("GitService", () => {
         [
           "sh",
           "-c",
-          "cat > \"/repo/.git/info/exclude\" << 'EXCLUDE_EOF'\n# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n.ralph-worktrees\n.ralph-planning\nEXCLUDE_EOF",
+          "cat > \"/repo/.git/info/exclude\" << 'EXCLUDE_EOF'\n# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n.clanky-worktrees\n.clanky-planning\nEXCLUDE_EOF",
         ],
-        ["mkdir", "-p", "/repo/.ralph-worktrees/chat"],
-        ["rmdir", "/repo/.ralph-worktrees/chat"],
+        ["mkdir", "-p", "/repo/.clanky-worktrees/chat"],
+        ["rmdir", "/repo/.clanky-worktrees/chat"],
         ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
-        ["git", "-C", "/repo", "worktree", "add", "/repo/.ralph-worktrees/chat", "-b", "chat-branch", "main"],
+        ["git", "-C", "/repo", "worktree", "add", "/repo/.clanky-worktrees/chat", "-b", "chat-branch", "main"],
       ]);
     });
 
@@ -1043,7 +1043,7 @@ describe("GitService", () => {
       const git = new GitService(executor);
 
       await expect(
-        git.createWorktree("/repo", "/repo/.ralph-worktrees/chat", "chat-branch", "main")
+        git.createWorktree("/repo", "/repo/.clanky-worktrees/chat", "chat-branch", "main")
       ).resolves.toBeUndefined();
 
       expect(getCommandCalls(executor)).toEqual([
@@ -1052,13 +1052,13 @@ describe("GitService", () => {
         [
           "sh",
           "-c",
-          "cat > \"/repo/.git/info/exclude\" << 'EXCLUDE_EOF'\n# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n.ralph-worktrees\n.ralph-planning\nEXCLUDE_EOF",
+          "cat > \"/repo/.git/info/exclude\" << 'EXCLUDE_EOF'\n# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n.clanky-worktrees\n.clanky-planning\nEXCLUDE_EOF",
         ],
-        ["mkdir", "-p", "/repo/.ralph-worktrees/chat"],
-        ["rmdir", "/repo/.ralph-worktrees/chat"],
+        ["mkdir", "-p", "/repo/.clanky-worktrees/chat"],
+        ["rmdir", "/repo/.clanky-worktrees/chat"],
         ["git", "-C", "/repo", "rev-parse", "--verify", "main"],
         ["git", "-C", "/repo", "symbolic-ref", "--short", "HEAD"],
-        ["git", "-C", "/repo", "worktree", "add", "--orphan", "-b", "chat-branch", "/repo/.ralph-worktrees/chat"],
+        ["git", "-C", "/repo", "worktree", "add", "--orphan", "-b", "chat-branch", "/repo/.clanky-worktrees/chat"],
       ]);
     });
   });
@@ -1080,7 +1080,7 @@ describe("GitService", () => {
         },
         {
           success: true,
-          stdout: ".git/ralpher-known-hosts\n",
+          stdout: ".git/clanky-known-hosts\n",
           stderr: "",
           exitCode: 0,
         },
@@ -1102,9 +1102,9 @@ describe("GitService", () => {
       expect(executor.calls[0]?.options?.env).toBeUndefined();
       expect(executor.calls[1]?.command).toBe("bash");
       expect(executor.calls[1]?.args).toEqual(["-lc", "printf %s \"${GIT_SSH_COMMAND:-}\""]);
-      expect(executor.calls[2]?.args).toEqual(["-C", "/repo", "rev-parse", "--git-path", "ralpher-known-hosts"]);
+      expect(executor.calls[2]?.args).toEqual(["-C", "/repo", "rev-parse", "--git-path", "clanky-known-hosts"]);
       expect(executor.calls[3]?.options?.env).toEqual({
-        GIT_SSH_COMMAND: "ssh -i /tmp/custom-key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile='/repo/.git/ralpher-known-hosts'",
+        GIT_SSH_COMMAND: "ssh -i /tmp/custom-key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile='/repo/.git/clanky-known-hosts'",
       });
     });
 
@@ -1136,7 +1136,7 @@ describe("GitService", () => {
         },
         {
           success: true,
-          stdout: ".git/ralpher-known-hosts\n",
+          stdout: ".git/clanky-known-hosts\n",
           stderr: "",
           exitCode: 0,
         },
@@ -1155,10 +1155,10 @@ describe("GitService", () => {
       expect(executor.calls).toHaveLength(6);
       expect(executor.calls[2]?.command).toBe("bash");
       expect(executor.calls[3]?.args).toEqual(["-C", "/repo", "config", "--get", "core.sshCommand"]);
-      expect(executor.calls[4]?.args).toEqual(["-C", "/repo", "rev-parse", "--git-path", "ralpher-known-hosts"]);
+      expect(executor.calls[4]?.args).toEqual(["-C", "/repo", "rev-parse", "--git-path", "clanky-known-hosts"]);
       expect(executor.calls[5]?.args).toEqual(["-C", "/repo", "fetch", "origin", "main"]);
       expect(executor.calls[5]?.options?.env).toEqual({
-        GIT_SSH_COMMAND: "ssh -i ~/.ssh/review-key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile='/repo/.git/ralpher-known-hosts'",
+        GIT_SSH_COMMAND: "ssh -i ~/.ssh/review-key -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile='/repo/.git/clanky-known-hosts'",
       });
     });
 

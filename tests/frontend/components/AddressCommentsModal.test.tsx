@@ -19,7 +19,7 @@ describe("AddressCommentsModal", () => {
     isOpen: true,
     onClose: mock(),
     onSubmit: mock(() => Promise.resolve()),
-    loopName: "Test Loop",
+    taskName: "Test Task",
     reviewCycle: 1,
   });
 

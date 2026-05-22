@@ -6,7 +6,7 @@ export type { WorkspaceSettingsModalProps, WorkspaceSettingsFormProps } from "./
 export { WorkspaceSettingsForm } from "./workspace-settings-form";
 export { WorkspaceSettingsModal } from "./workspace-settings-modal";
 export { AgentsMdSection } from "./agents-md-section";
-export { PurgeLoopsSection } from "./purge-loops-section";
+export { PurgeTasksSection } from "./purge-tasks-section";
 export { DeleteWorkspaceSection } from "./delete-workspace-section";
 export { ProvisioningActionsSection } from "./provisioning-actions-section";
 export { LoadingSpinner, DocumentIcon, OptimizeIcon, TrashIcon } from "./icons";

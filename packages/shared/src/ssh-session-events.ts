@@ -45,7 +45,7 @@ export interface SshSessionStatusEvent {
 export interface PortForwardCreatedEvent {
   type: "ssh_session.port_forward.created";
   portForwardId: string;
-  loopId: string;
+  taskId: string;
   sshSessionId?: string;
   forward: PortForward;
   timestamp: string;
@@ -54,7 +54,7 @@ export interface PortForwardCreatedEvent {
 export interface PortForwardUpdatedEvent {
   type: "ssh_session.port_forward.updated";
   portForwardId: string;
-  loopId: string;
+  taskId: string;
   sshSessionId?: string;
   forward: PortForward;
   timestamp: string;
@@ -63,7 +63,7 @@ export interface PortForwardUpdatedEvent {
 export interface PortForwardDeletedEvent {
   type: "ssh_session.port_forward.deleted";
   portForwardId: string;
-  loopId: string;
+  taskId: string;
   sshSessionId?: string;
   timestamp: string;
 }
@@ -71,7 +71,7 @@ export interface PortForwardDeletedEvent {
 export interface PortForwardStatusEvent {
   type: "ssh_session.port_forward.status";
   portForwardId: string;
-  loopId: string;
+  taskId: string;
   sshSessionId?: string;
   status: PortForwardStatus;
   error?: string;

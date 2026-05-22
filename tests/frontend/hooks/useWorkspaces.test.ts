@@ -257,7 +257,7 @@ describe("deleteWorkspace", () => {
   test("returns error object on failure without setting error state (for non-throw path)", async () => {
     setupWorkspacesList();
     api.delete("/api/workspaces/:id", () => {
-      throw new MockApiError(409, { message: "Workspace has loops" });
+      throw new MockApiError(409, { message: "Workspace has tasks" });
     });
 
     const { result } = renderHook(() => useWorkspaces());
@@ -272,7 +272,7 @@ describe("deleteWorkspace", () => {
     });
 
     expect(deleteResult.success).toBe(false);
-    expect(deleteResult.error).toBe("Workspace has loops");
+    expect(deleteResult.error).toBe("Workspace has tasks");
   });
 
   test("returns fallback error message when no message in response", async () => {

@@ -17,7 +17,7 @@ type ClosableAsyncIterable<T> = AsyncIterable<T> & {
 };
 
 export interface WsCommandOptions extends StatusCommandOptions {
-  loopId?: string;
+  taskId?: string;
   chatId?: string;
   sshSessionId?: string;
   sshServerSessionId?: string;
@@ -187,8 +187,8 @@ export function buildWebSocketUrl(baseUrl: string, command: WsCommandOptions): s
   const url = new URL(`${baseUrl}/api/ws`);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 
-  if (command.loopId) {
-    url.searchParams.set("loopId", command.loopId);
+  if (command.taskId) {
+    url.searchParams.set("taskId", command.taskId);
   }
   if (command.chatId) {
     url.searchParams.set("chatId", command.chatId);

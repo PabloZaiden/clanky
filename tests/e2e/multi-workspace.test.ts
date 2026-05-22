@@ -15,11 +15,11 @@ import { backendManager } from "../../src/core/backend-manager";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 
-// Default test model for loop creation (model is now required)
+// Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
-const createLoopRequestBase = {
+const createTaskRequestBase = {
   attachments: [],
-  cheapModel: { mode: "same-as-loop" as const },
+  cheapModel: { mode: "same-as-task" as const },
   maxIterations: null,
   maxConsecutiveErrors: 10,
   activityTimeoutSeconds: 300,
@@ -73,12 +73,12 @@ describe("Multi-Workspace E2E", () => {
 
   beforeAll(async () => {
     // Create temp directories
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-multi-workspace-test-data-"));
-    testWorkDir1 = await mkdtemp(join(tmpdir(), "ralpher-multi-workspace-test-work1-"));
-    testWorkDir2 = await mkdtemp(join(tmpdir(), "ralpher-multi-workspace-test-work2-"));
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-multi-workspace-test-data-"));
+    testWorkDir1 = await mkdtemp(join(tmpdir(), "clanky-multi-workspace-test-work1-"));
+    testWorkDir2 = await mkdtemp(join(tmpdir(), "clanky-multi-workspace-test-work2-"));
 
     // Set env var for persistence before importing modules
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     // Ensure directories exist
     await ensureDataDirectories();
@@ -125,15 +125,15 @@ describe("Multi-Workspace E2E", () => {
     await rm(testWorkDir2, { recursive: true, force: true });
 
     // Clear env
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
   // Clean up workspaces before each test
   beforeEach(async () => {
     const { getDatabase } = await import("../../src/persistence/database");
-    // Clear the workspaces and loops tables
+    // Clear the workspaces and tasks tables
     const db = getDatabase();
-    db.run("DELETE FROM loops WHERE workspace_id IS NOT NULL");
+    db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
   });
 
@@ -238,7 +238,7 @@ describe("Multi-Workspace E2E", () => {
       expect(ws2Settings.agent.hostname).toBeUndefined();
     });
 
-    test("loops are isolated to their workspace", async () => {
+    test("tasks are isolated to their workspace", async () => {
       // Create two workspaces
       const ws1Response = await fetch(`${baseUrl}/api/workspaces`, {
         method: "POST",
@@ -262,49 +262,49 @@ describe("Multi-Workspace E2E", () => {
       });
       const ws2 = await ws2Response.json();
 
-      // Create a loop in workspace 1
-      const loop1Response = await fetch(`${baseUrl}/api/loops`, {
+      // Create a task in workspace 1
+      const task1Response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...createLoopRequestBase,
+          ...createTaskRequestBase,
           workspaceId: ws1.id,
-          prompt: "Test loop for workspace 1",
-          name: "Test Draft Loop",
+          prompt: "Test task for workspace 1",
+          name: "Test Draft Task",
           draft: true,
           planMode: false,
           model: testModel,
           useWorktree: true,
         }),
       });
-      expect(loop1Response.ok).toBe(true);
-      const loop1 = await loop1Response.json();
+      expect(task1Response.ok).toBe(true);
+      const task1 = await task1Response.json();
 
-      // Create a loop in workspace 2
-      const loop2Response = await fetch(`${baseUrl}/api/loops`, {
+      // Create a task in workspace 2
+      const task2Response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...createLoopRequestBase,
+          ...createTaskRequestBase,
           workspaceId: ws2.id,
-          prompt: "Test loop for workspace 2",
-          name: "Test Draft Loop",
+          prompt: "Test task for workspace 2",
+          name: "Test Draft Task",
           draft: true,
           planMode: false,
           model: testModel,
           useWorktree: true,
         }),
       });
-      expect(loop2Response.ok).toBe(true);
-      const loop2 = await loop2Response.json();
+      expect(task2Response.ok).toBe(true);
+      const task2 = await task2Response.json();
 
-      // Verify loops are in different workspaces
-      expect(loop1.config.workspaceId).toBe(ws1.id);
-      expect(loop2.config.workspaceId).toBe(ws2.id);
+      // Verify tasks are in different workspaces
+      expect(task1.config.workspaceId).toBe(ws1.id);
+      expect(task2.config.workspaceId).toBe(ws2.id);
 
-      // Verify loops use correct directories
-      expect(loop1.config.directory).toBe(testWorkDir1);
-      expect(loop2.config.directory).toBe(testWorkDir2);
+      // Verify tasks use correct directories
+      expect(task1.config.directory).toBe(testWorkDir1);
+      expect(task2.config.directory).toBe(testWorkDir2);
 
     });
 

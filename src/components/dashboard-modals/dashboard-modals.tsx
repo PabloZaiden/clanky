@@ -3,32 +3,32 @@
  */
 
 import type {
-  Loop,
+  Task,
   UncommittedChangesError,
   ModelInfo,
   ModelConfig,
   BranchInfo,
   Workspace,
-  CreateLoopRequest,
+  CreateTaskRequest,
   SshSession,
   SshServer,
 } from "../../types";
 import type { WorkspaceExportData, WorkspaceImportResult, CreateWorkspaceRequest } from "../../types/workspace";
-import type { CreateLoopFormActionState } from "../CreateLoopForm";
-import type { PurgeArchivedLoopsResult } from "../../hooks";
-import type { CreateLoopResult } from "../../hooks/useLoops";
+import type { CreateTaskFormActionState } from "../CreateTaskForm";
+import type { PurgeArchivedTasksResult } from "../../hooks";
+import type { CreateTaskResult } from "../../hooks/useTasks";
 import type { UseWorkspaceServerSettingsResult } from "../../hooks/useWorkspaceServerSettings";
 import {
   UncommittedChangesModal,
-} from "../LoopModals";
+} from "../TaskModals";
 import { AppSettingsModal } from "../AppSettingsModal";
 import { RenameSshSessionModal } from "../RenameSshSessionModal";
 import { WorkspaceSettingsModal } from "../WorkspaceSettingsModal";
 import { CreateWorkspaceModal } from "../CreateWorkspaceModal";
-import { CreateEditLoopModal } from "./create-edit-loop-modal";
+import { CreateEditTaskModal } from "./create-edit-task-modal";
 
 export interface DashboardModalsProps {
-  loops: Loop[];
+  tasks: Task[];
   sshSessions: SshSession[];
   workspaces: Workspace[];
   workspacesLoading: boolean;
@@ -37,11 +37,11 @@ export interface DashboardModalsProps {
   // Create/Edit modal
   showCreateModal: boolean;
   editDraftId: string | null;
-  formActionState: CreateLoopFormActionState | null;
-  setFormActionState: (state: CreateLoopFormActionState | null) => void;
+  formActionState: CreateTaskFormActionState | null;
+  setFormActionState: (state: CreateTaskFormActionState | null) => void;
   onCloseCreateModal: () => void;
-  onCreateLoop: (request: CreateLoopRequest) => Promise<CreateLoopResult>;
-  onDeleteDraft: (loopId: string) => Promise<boolean>;
+  onCreateTask: (request: CreateTaskRequest) => Promise<CreateTaskResult>;
+  onDeleteDraft: (taskId: string) => Promise<boolean>;
   onRefresh: () => Promise<void>;
 
   // Model/branch/workspace data for create form
@@ -59,9 +59,9 @@ export interface DashboardModalsProps {
   defaultBranch: string;
 
   // Uncommitted changes modal
-  uncommittedModal: { open: boolean; loopId: string | null; error: UncommittedChangesError | null };
+  uncommittedModal: { open: boolean; taskId: string | null; error: UncommittedChangesError | null };
   onCloseUncommittedModal: () => void;
-  setUncommittedModal: (state: { open: boolean; loopId: string | null; error: UncommittedChangesError | null }) => void;
+  setUncommittedModal: (state: { open: boolean; taskId: string | null; error: UncommittedChangesError | null }) => void;
 
   sshSessionRenameModal: { open: boolean; sessionId: string | null };
   onCloseSshSessionRenameModal: () => void;
@@ -85,12 +85,12 @@ export interface DashboardModalsProps {
   workspaceStatus: UseWorkspaceServerSettingsResult["status"];
   workspaceSettingsSaving: boolean;
   workspaceSettingsTesting: boolean;
-  workspaceArchivedLoopsPurging: boolean;
+  workspaceArchivedTasksPurging: boolean;
   testWorkspaceConnection: UseWorkspaceServerSettingsResult["testConnection"];
   updateWorkspaceSettings: UseWorkspaceServerSettingsResult["updateWorkspace"];
-  archivedLoopCount: number;
-  workspaceLoopCount: number;
-  purgeArchivedWorkspaceLoops: (workspaceId: string) => Promise<PurgeArchivedLoopsResult>;
+  archivedTaskCount: number;
+  workspaceTaskCount: number;
+  purgeArchivedWorkspaceTasks: (workspaceId: string) => Promise<PurgeArchivedTasksResult>;
   onDeleteWorkspace: (workspaceId: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   refreshWorkspaces: () => Promise<void>;
   remoteOnly: boolean;
@@ -107,14 +107,14 @@ export function DashboardModals(props: DashboardModalsProps) {
   return (
     <>
       {/* Create/Edit modal */}
-      <CreateEditLoopModal
-        loops={props.loops}
+      <CreateEditTaskModal
+        tasks={props.tasks}
         showCreateModal={props.showCreateModal}
         editDraftId={props.editDraftId}
         formActionState={props.formActionState}
         setFormActionState={props.setFormActionState}
         onCloseCreateModal={props.onCloseCreateModal}
-        onCreateLoop={props.onCreateLoop}
+        onCreateTask={props.onCreateTask}
         onDeleteDraft={props.onDeleteDraft}
         onRefresh={props.onRefresh}
         models={props.models}
@@ -181,18 +181,18 @@ export function DashboardModals(props: DashboardModalsProps) {
           return success;
         }}
         onTest={props.testWorkspaceConnection}
-        onPurgeArchivedLoops={async () => {
+        onPurgeArchivedTasks={async () => {
           if (!props.workspaceSettingsModal.workspaceId) {
             return {
               success: false,
               workspaceId: "",
               totalArchived: 0,
               purgedCount: 0,
-              purgedLoopIds: [],
+              purgedTaskIds: [],
               failures: [],
             };
           }
-          return await props.purgeArchivedWorkspaceLoops(props.workspaceSettingsModal.workspaceId);
+          return await props.purgeArchivedWorkspaceTasks(props.workspaceSettingsModal.workspaceId);
         }}
         onDeleteWorkspace={async (options) => {
           if (!props.workspaceSettingsModal.workspaceId) {
@@ -203,11 +203,11 @@ export function DashboardModals(props: DashboardModalsProps) {
           }
           return await props.onDeleteWorkspace(props.workspaceSettingsModal.workspaceId, options);
         }}
-        purgeableLoopCount={props.archivedLoopCount}
-        workspaceLoopCount={props.workspaceLoopCount}
+        purgeableTaskCount={props.archivedTaskCount}
+        workspaceTaskCount={props.workspaceTaskCount}
         saving={props.workspaceSettingsSaving}
         testing={props.workspaceSettingsTesting}
-        purgingPurgeableLoops={props.workspaceArchivedLoopsPurging}
+        purgingPurgeableTasks={props.workspaceArchivedTasksPurging}
         remoteOnly={props.remoteOnly}
       />
 

@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "repo": "pablozaiden/ralpher",
+  "repo": "pablozaiden/clanky",
   "installDir": "$HOME/.local/bin",
   "binaries": [
     {
-      "name": "ralpher",
-      "assetPrefix": "ralpher",
-      "postInstallMessage": "Run 'ralpher' to start the local server."
+      "name": "clanky",
+      "assetPrefix": "clanky",
+      "postInstallMessage": "Run 'clanky' to start the local server."
     },
     {
-      "name": "ralpher-cli",
-      "assetPrefix": "ralpher-cli",
-      "postInstallMessage": "Run 'ralpher-cli --help' to use the API client."
+      "name": "clanky-cli",
+      "assetPrefix": "clanky-cli",
+      "postInstallMessage": "Run 'clanky-cli --help' to use the API client."
     }
   ],
   "checksums": {

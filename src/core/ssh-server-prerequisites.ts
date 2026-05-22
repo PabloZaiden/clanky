@@ -260,7 +260,7 @@ export async function checkSshServerPrerequisites(
       "ssh_connection",
       "SSH connectivity",
       "available",
-      "Ralpher can connect to this host and execute remote commands.",
+      "Clanky can connect to this host and execute remote commands.",
       connectionUses,
     ),
     bashCheck,

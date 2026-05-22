@@ -30,7 +30,7 @@ export interface UseWorkspacesResult {
   createWorkspace: (request: CreateWorkspaceRequest) => Promise<Workspace | null>;
   /** Update a workspace */
   updateWorkspace: (id: string, name: string) => Promise<Workspace | null>;
-  /** Delete a workspace (only if it has no loops) */
+  /** Delete a workspace (only if it has no tasks) */
   deleteWorkspace: (id: string, options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
   /** Pull latest changes for the workspace default branch */
   pullLatestChanges: (

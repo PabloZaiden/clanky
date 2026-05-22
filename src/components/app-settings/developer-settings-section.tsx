@@ -26,7 +26,7 @@ export function DeveloperSettingsSection() {
             </p>
             {logLevelFromEnv ? (
               <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
-                Log level is controlled by the <code className="break-all rounded bg-amber-100 px-1 py-0.5 font-mono text-xs dark:bg-amber-800">RALPHER_LOG_LEVEL</code> environment variable.
+                Log level is controlled by the <code className="break-all rounded bg-amber-100 px-1 py-0.5 font-mono text-xs dark:bg-amber-800">CLANKY_LOG_LEVEL</code> environment variable.
                 Current level: <strong>{logLevel}</strong>
               </div>
             ) : (

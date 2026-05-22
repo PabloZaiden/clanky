@@ -1,16 +1,16 @@
 /**
- * Dashboard component showing all loops in a grid view.
- * Orchestrates data fetching, modal state, and loop grouping via extracted hooks and components.
+ * Dashboard component showing all tasks in a grid view.
+ * Orchestrates data fetching, modal state, and task grouping via extracted hooks and components.
  */
 
-import { useLoops, useSshServers, useSshSessions, useWorkspaces, useViewModePreference } from "../../hooks";
+import { useTasks, useSshServers, useSshSessions, useWorkspaces, useViewModePreference } from "../../hooks";
 import { useWorkspaceServerSettings } from "../../hooks";
 import { useToast } from "../../hooks/useToast";
 import { useDashboardData } from "../../hooks/useDashboardData";
 import { useDashboardModals } from "../../hooks/useDashboardModals";
-import { useLoopGrouping } from "../../hooks/useLoopGrouping";
+import { useTaskGrouping } from "../../hooks/useTaskGrouping";
 import { DashboardHeader } from "../DashboardHeader";
-import { LoopGrid } from "../LoopGrid";
+import { TaskGrid } from "../TaskGrid";
 import { DashboardModals } from "../DashboardModals";
 import { CreateSshServerModal } from "../CreateSshServerModal";
 import { CreateSshSessionModal } from "../CreateSshSessionModal";
@@ -19,22 +19,22 @@ import { useMemo, useState } from "react";
 import type { SshServer } from "../../types";
 
 export interface DashboardProps {
-  /** Callback when a loop is selected */
-  onSelectLoop?: (loopId: string) => void;
+  /** Callback when a task is selected */
+  onSelectTask?: (taskId: string) => void;
   /** Callback when an SSH session is selected */
   onSelectSshSession?: (sessionId: string) => void;
 }
 
-export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) {
+export function Dashboard({ onSelectTask, onSelectSshSession }: DashboardProps) {
   const {
-    loops,
+    tasks,
     loading,
     error,
     refresh,
-    createLoop,
-    purgeLoop,
-    purgeArchivedWorkspaceLoops,
-  } = useLoops();
+    createTask,
+    purgeTask,
+    purgeArchivedWorkspaceTasks,
+  } = useTasks();
   const {
     sessions,
     loading: sshSessionsLoading,
@@ -78,17 +78,17 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
   // Modal state hook
   const modals = useDashboardModals(dashboardData.resetCreateModalState);
 
-  // Loop grouping hook (memoized)
-  const { workspaceGroups, unassignedLoops, unassignedStatusGroups } = useLoopGrouping(
-    loops,
+  // Task grouping hook (memoized)
+  const { workspaceGroups, unassignedTasks, unassignedStatusGroups } = useTaskGrouping(
+    tasks,
     workspaces,
     !workspacesLoading,
   );
-  const [workspaceArchivedLoopsPurging, setWorkspaceArchivedLoopsPurging] = useState(false);
+  const [workspaceArchivedTasksPurging, setWorkspaceArchivedTasksPurging] = useState(false);
   const sshWorkspaces = useMemo(() => {
     return workspaces.filter((workspace) => workspace.serverSettings.agent.transport === "ssh");
   }, [workspaces]);
-  const selectedWorkspaceArchivedLoopCount = useMemo(() => {
+  const selectedWorkspaceArchivedTaskCount = useMemo(() => {
     if (!modals.workspaceSettingsModal.workspaceId) {
       return 0;
     }
@@ -96,16 +96,16 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
       (group) => group.workspace.id === modals.workspaceSettingsModal.workspaceId
     )?.statusGroups.archived.length ?? 0;
   }, [modals.workspaceSettingsModal.workspaceId, workspaceGroups]);
-  const selectedWorkspaceLoopCount = useMemo(() => {
+  const selectedWorkspaceTaskCount = useMemo(() => {
     if (!modals.workspaceSettingsModal.workspaceId) {
       return 0;
     }
     return workspaceGroups.find(
       (group) => group.workspace.id === modals.workspaceSettingsModal.workspaceId
-    )?.loops.length ?? 0;
+    )?.tasks.length ?? 0;
   }, [modals.workspaceSettingsModal.workspaceId, workspaceGroups]);
 
-  const handleSelectItem = (loopId: string) => onSelectLoop?.(loopId);
+  const handleSelectItem = (taskId: string) => onSelectTask?.(taskId);
 
   // View mode preference hook
   const { viewMode, toggle: toggleViewMode } = useViewModePreference();
@@ -185,23 +185,23 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
     }
   }
 
-  async function handlePurgeArchivedWorkspaceLoops(workspaceId: string) {
+  async function handlePurgeArchivedWorkspaceTasks(workspaceId: string) {
     try {
-      setWorkspaceArchivedLoopsPurging(true);
-      const result = await purgeArchivedWorkspaceLoops(workspaceId);
+      setWorkspaceArchivedTasksPurging(true);
+      const result = await purgeArchivedWorkspaceTasks(workspaceId);
 
       if (!result.success) {
-        toast.error("Failed to purge terminal-state loops");
+        toast.error("Failed to purge terminal-state tasks");
         return result;
       }
 
       if (result.failures.length > 0) {
-        toast.error(`Purged ${result.purgedCount} of ${result.totalArchived} terminal-state loops`);
+        toast.error(`Purged ${result.purgedCount} of ${result.totalArchived} terminal-state tasks`);
       }
 
       return result;
     } finally {
-      setWorkspaceArchivedLoopsPurging(false);
+      setWorkspaceArchivedTasksPurging(false);
     }
   }
 
@@ -223,7 +223,7 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
         onToggleViewMode={toggleViewMode}
         onOpenServerSettings={() => modals.setShowServerSettingsModal(true)}
         onOpenCreateWorkspace={() => modals.setShowCreateWorkspaceModal(true)}
-        onOpenCreateLoop={() => modals.handleOpenCreateLoop()}
+        onOpenCreateTask={() => modals.handleOpenCreateTask()}
         onCreateSshSession={() => void handleCreateWorkspaceSshSession()}
       />
 
@@ -254,16 +254,16 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
             onRenameSession={(sessionId) => modals.setSshSessionRenameModal({ open: true, sessionId })}
           />
 
-          <LoopGrid
-            loops={loops}
+          <TaskGrid
+            tasks={tasks}
             loading={loading}
             error={error}
             viewMode={viewMode}
             workspaceGroups={workspaceGroups}
             registeredSshServers={sshServers}
-            unassignedLoops={unassignedLoops}
+            unassignedTasks={unassignedTasks}
             unassignedStatusGroups={unassignedStatusGroups}
-            onSelectLoop={handleSelectItem}
+            onSelectTask={handleSelectItem}
             onEditDraft={modals.handleEditDraft}
             onOpenWorkspaceSettings={(workspaceId) => modals.setWorkspaceSettingsModal({ open: true, workspaceId })}
             onDeleteWorkspace={deleteWorkspace}
@@ -272,7 +272,7 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
       </main>
 
       <DashboardModals
-        loops={loops}
+        tasks={tasks}
         sshSessions={sessions}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
@@ -283,8 +283,8 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
         formActionState={modals.formActionState}
         setFormActionState={modals.setFormActionState}
         onCloseCreateModal={modals.handleCloseCreateModal}
-        onCreateLoop={createLoop}
-        onDeleteDraft={purgeLoop}
+        onCreateTask={createTask}
+        onDeleteDraft={purgeTask}
         onRefresh={refresh}
         // Model/branch/workspace data
         models={dashboardData.models}
@@ -301,7 +301,7 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
         defaultBranch={dashboardData.defaultBranch}
         // Uncommitted modal
         uncommittedModal={modals.uncommittedModal}
-        onCloseUncommittedModal={() => modals.setUncommittedModal({ open: false, loopId: null, error: null })}
+        onCloseUncommittedModal={() => modals.setUncommittedModal({ open: false, taskId: null, error: null })}
         setUncommittedModal={modals.setUncommittedModal}
         sshSessionRenameModal={modals.sshSessionRenameModal}
         onCloseSshSessionRenameModal={() => modals.setSshSessionRenameModal({ open: false, sessionId: null })}
@@ -325,12 +325,12 @@ export function Dashboard({ onSelectLoop, onSelectSshSession }: DashboardProps) 
         workspaceStatus={workspaceStatus}
         workspaceSettingsSaving={workspaceSettingsSaving}
         workspaceSettingsTesting={workspaceSettingsTesting}
-        workspaceArchivedLoopsPurging={workspaceArchivedLoopsPurging}
+        workspaceArchivedTasksPurging={workspaceArchivedTasksPurging}
         testWorkspaceConnection={testWorkspaceConnection}
         updateWorkspaceSettings={updateWorkspaceSettings}
-        archivedLoopCount={selectedWorkspaceArchivedLoopCount}
-        workspaceLoopCount={selectedWorkspaceLoopCount}
-        purgeArchivedWorkspaceLoops={handlePurgeArchivedWorkspaceLoops}
+        archivedTaskCount={selectedWorkspaceArchivedTaskCount}
+        workspaceTaskCount={selectedWorkspaceTaskCount}
+        purgeArchivedWorkspaceTasks={handlePurgeArchivedWorkspaceTasks}
         onDeleteWorkspace={deleteWorkspace}
         refreshWorkspaces={refreshWorkspaces}
         remoteOnly={dashboardData.remoteOnly}

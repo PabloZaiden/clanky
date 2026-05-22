@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useChats,
   useDashboardData,
-  useLoopGrouping,
-  useLoops,
+  useTaskGrouping,
+  useTasks,
   useProvisioningJob,
   useQuickChatSettings,
   useSshServers,
@@ -42,14 +42,14 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     createChat,
   } = useChats();
   const {
-    loops,
-    loading: loopsLoading,
-    error: loopsError,
-    refresh: refreshLoops,
-    createLoop,
-    purgeLoop,
-    purgeArchivedWorkspaceLoops,
-  } = useLoops();
+    tasks,
+    loading: tasksLoading,
+    error: tasksError,
+    refresh: refreshTasks,
+    createTask,
+    purgeTask,
+    purgeArchivedWorkspaceTasks,
+  } = useTasks();
   const {
     sessions,
     loading: sshSessionsLoading,
@@ -83,7 +83,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const quickChatSettings = useQuickChatSettings();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
-  const { workspaceGroups } = useLoopGrouping(loops, workspaces, !workspacesLoading);
+  const { workspaceGroups } = useTaskGrouping(tasks, workspaces, !workspacesLoading);
 
   const sidebar = useSidebar(route, onNavigate);
   const { navigateWithinShell, showSidebar } = sidebar;
@@ -109,7 +109,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const workspaceSettings = useWorkspaceSettingsShell({
     route,
     workspaceGroups,
-    purgeArchivedWorkspaceLoops,
+    purgeArchivedWorkspaceTasks,
   });
 
   const pullLatestWorkspaceChanges = useCallback(async (workspaceId: string) => {
@@ -139,8 +139,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
 
   const composeState = useComposeState({
     route,
-    createLoop,
-    refreshLoops,
+    createTask,
+    refreshTasks,
     navigateWithinShell,
     dashboardData,
     toast,
@@ -150,11 +150,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const sidebarWorkspaceGroups = useMemo(
     () => buildWorkspaceSidebarGroups({
       workspaces,
-      loops,
+      tasks,
       chats,
       sessions,
     }),
-    [chats, loops, sessions, workspaces],
+    [chats, tasks, sessions, workspaces],
   );
   const serverNodes = useMemo(
     () => buildServerSidebarNodes({
@@ -199,23 +199,23 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     quickChatWorkspace,
   ]);
 
-  const shellLoading = chatsLoading || loopsLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
-  const shellErrors = [chatsError, loopsError, sshSessionsError, sshServersError, workspaceError].filter(
+  const shellLoading = chatsLoading || tasksLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
+  const shellErrors = [chatsError, tasksError, sshSessionsError, sshServersError, workspaceError].filter(
     Boolean,
   ) as string[];
   const codeExplorerTarget = route.view === "code-explorer" ? route.target : undefined;
-  const codeExplorerLoopId = codeExplorerTarget?.contentType === "loop" ? codeExplorerTarget.loopId : null;
+  const codeExplorerTaskId = codeExplorerTarget?.contentType === "task" ? codeExplorerTarget.taskId : null;
   const codeExplorerChatId = codeExplorerTarget?.contentType === "chat" ? codeExplorerTarget.chatId : null;
   const codeExplorerWorkspaceId = codeExplorerTarget?.contentType === "workspace"
     ? codeExplorerTarget.workspaceId
     : null;
   const codeExplorerServerId = codeExplorerTarget?.contentType === "server" ? codeExplorerTarget.serverId : null;
 
-  const selectedLoop =
-    route.view === "loop" || route.view === "loop-files"
-      ? (loops.find((loop) => loop.config.id === route.loopId) ?? null)
-      : codeExplorerLoopId
-        ? (loops.find((loop) => loop.config.id === codeExplorerLoopId) ?? null)
+  const selectedTask =
+    route.view === "task" || route.view === "task-files"
+      ? (tasks.find((task) => task.config.id === route.taskId) ?? null)
+      : codeExplorerTaskId
+        ? (tasks.find((task) => task.config.id === codeExplorerTaskId) ?? null)
       : null;
   const selectedChat =
     route.view === "chat"
@@ -232,8 +232,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
       ? (workspaces.find((w) => w.id === route.workspaceId) ?? null)
       : codeExplorerWorkspaceId
         ? (workspaces.find((w) => w.id === codeExplorerWorkspaceId) ?? null)
-        : codeExplorerLoopId
-          ? (workspaces.find((w) => w.id === selectedLoop?.config.workspaceId) ?? null)
+        : codeExplorerTaskId
+          ? (workspaces.find((w) => w.id === selectedTask?.config.workspaceId) ?? null)
           : codeExplorerChatId
             ? (workspaces.find((w) => w.id === selectedChat?.config.workspaceId) ?? null)
             : null;
@@ -366,7 +366,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         shellHeaderOffsetClassName={sidebar.shellHeaderOffsetClassName}
         openSidebar={sidebar.openSidebar}
         navigateWithinShell={navigateWithinShell}
-        loops={loops}
+        tasks={tasks}
         chats={chats}
         workspaces={workspaces}
         sessions={sessions}
@@ -378,16 +378,16 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         workspacesLoading={workspacesLoading}
         workspacesSaving={workspacesSaving}
         workspaceError={workspaceError}
-        selectedLoop={selectedLoop}
+        selectedTask={selectedTask}
         selectedChat={selectedChat}
         selectedWorkspace={selectedWorkspace}
         composeWorkspace={composeWorkspace}
         composeServer={composeServer}
         composeServerSessionCount={composeServerSessionCount}
         selectedServer={selectedServer}
-        refreshLoops={refreshLoops}
+        refreshTasks={refreshTasks}
         refreshChats={refreshChats}
-        purgeLoop={purgeLoop}
+        purgeTask={purgeTask}
         refreshSshSessions={refreshSshSessions}
         refreshSshServers={refreshSshServers}
         refreshWorkspaces={refreshWorkspaces}
@@ -410,7 +410,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         updateQuickChatSettings={quickChatSettings.updateSettings}
         composeActionState={composeState.composeActionState}
         setComposeActionState={composeState.setComposeActionState}
-        handleLoopSubmit={composeState.handleLoopSubmit}
+        handleTaskSubmit={composeState.handleTaskSubmit}
         createChat={createChat}
         workspaceCreate={workspaceCreate}
         workspaceSettings={workspaceSettings}

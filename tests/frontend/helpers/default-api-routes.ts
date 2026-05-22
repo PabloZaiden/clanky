@@ -69,16 +69,16 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   defaultRoute("/api/check-planning-dir", () => ({
     warning: null,
   })),
-  defaultRoute("/api/loops/:id/plan", () => ({
+  defaultRoute("/api/tasks/:id/plan", () => ({
     exists: false,
     content: "",
   })),
-  defaultRoute("/api/loops/:id/status-file", () => ({
+  defaultRoute("/api/tasks/:id/status-file", () => ({
     exists: false,
     content: "",
   })),
-  defaultRoute("/api/loops/:id/port-forwards", () => []),
-  defaultRoute("/api/loops/:id/pull-request", () => ({
+  defaultRoute("/api/tasks/:id/port-forwards", () => []),
+  defaultRoute("/api/tasks/:id/pull-request", () => ({
     enabled: false,
     destinationType: "disabled",
     disabledReason: "disabled",
@@ -116,7 +116,7 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   })),
   defaultRoute("/api/auth/issuer", () => ({
     canonicalIssuer: null,
-    effectiveIssuer: "urn:ralpher:instance:test",
+    effectiveIssuer: "urn:clanky:instance:test",
   })),
   defaultRoute("/api/auth/sessions", () => []),
 ];

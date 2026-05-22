@@ -1,5 +1,5 @@
 /**
- * Library exports for Ralpher frontend.
+ * Library exports for Clanky frontend.
  */
 
 export {
@@ -29,11 +29,11 @@ export {
 } from "./ssh-browser-credentials";
 export {
   getStoredChatModelPreference,
-  getStoredLoopCheapModelPreference,
-  getStoredLoopModelPreference,
+  getStoredTaskCheapModelPreference,
+  getStoredTaskModelPreference,
   saveStoredChatModelPreference,
-  saveStoredLoopCheapModelPreference,
-  saveStoredLoopModelPreference,
+  saveStoredTaskCheapModelPreference,
+  saveStoredTaskModelPreference,
   type ModelPreferenceStorageLike,
   type ModelSelectionPreferenceDependencies,
 } from "./model-selection-preferences";

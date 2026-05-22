@@ -67,7 +67,7 @@ describe("ssh-browser-credentials", () => {
 
     expect(record.storedAt).toBe("2026-01-02T03:04:05.000Z");
     expect(record.encryptedCredential.ciphertext).not.toBe("super-secret");
-    expect(storage.getItem("ralpher.sshServerCredential.server-1")).not.toContain("super-secret");
+    expect(storage.getItem("clanky.sshServerCredential.server-1")).not.toContain("super-secret");
   });
 
   test("returns a token from a compatible stored credential", async () => {
@@ -159,10 +159,10 @@ describe("ssh-browser-credentials", () => {
 
   test("clears invalid stored payloads", () => {
     const storage = new MemoryStorage();
-    storage.setItem("ralpher.sshServerCredential.server-1", "{bad json");
+    storage.setItem("clanky.sshServerCredential.server-1", "{bad json");
 
     expect(getStoredSshServerCredential("server-1", { storage })).toBeNull();
-    expect(storage.getItem("ralpher.sshServerCredential.server-1")).toBeNull();
+    expect(storage.getItem("clanky.sshServerCredential.server-1")).toBeNull();
   });
 
   test("clears stored credentials after an invalid encrypted credential response", async () => {

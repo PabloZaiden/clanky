@@ -29,7 +29,7 @@ function createChat(overrides?: Partial<Chat>): Chat {
       mode: "chat",
       ...(overrides?.config ?? {}),
       scope: overrides?.config?.scope ?? "workspace",
-      loopId: overrides?.config?.loopId,
+      taskId: overrides?.config?.taskId,
     },
     state: {
       id: CHAT_ID,

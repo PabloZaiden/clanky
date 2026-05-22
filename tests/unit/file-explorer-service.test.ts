@@ -77,7 +77,7 @@ describe("fileExplorerService.listDirectory", () => {
   });
 
   test("uses a single lightweight batch call for directory entries", async () => {
-    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-service-"));
+    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-explorer-service-"));
     tempDirectories.push(rootDirectory);
     await mkdir(join(rootDirectory, "src"), { recursive: true });
     await writeFile(join(rootDirectory, "README.md"), "# hello\n");
@@ -100,7 +100,7 @@ describe("fileExplorerService.listDirectory", () => {
   });
 
   test("loads the full tree with a single traversal command and preserves empty directories", async () => {
-    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-tree-"));
+    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-explorer-tree-"));
     tempDirectories.push(rootDirectory);
     await mkdir(join(rootDirectory, "src", "nested"), { recursive: true });
     await mkdir(join(rootDirectory, "empty-dir"), { recursive: true });
@@ -142,7 +142,7 @@ describe("fileExplorerService.listDirectory", () => {
   });
 
   test("marks heavy directories for lazy expansion while pruning their descendants from the initial full tree", async () => {
-    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-pruned-"));
+    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-explorer-pruned-"));
     tempDirectories.push(rootDirectory);
     await mkdir(join(rootDirectory, "node_modules", "pkg"), { recursive: true });
     await mkdir(join(rootDirectory, ".git", "objects"), { recursive: true });
@@ -192,7 +192,7 @@ describe("fileExplorerService.listDirectory", () => {
   });
 
   test("loads executables and symlinks without tree suffix markers in the parsed paths", async () => {
-    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-links-"));
+    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-explorer-links-"));
     tempDirectories.push(rootDirectory);
     await mkdir(join(rootDirectory, "src"), { recursive: true });
     await writeFile(join(rootDirectory, "src", "index.ts"), "export const value = 1;\n");
@@ -325,7 +325,7 @@ describe("fileExplorerService file entries", () => {
   });
 
   test("includes the absolute path when reading a file", async () => {
-    const rootDirectory = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-read-"));
+    const rootDirectory = await mkdtemp(join(tmpdir(), "clanky-file-explorer-read-"));
     tempDirectories.push(rootDirectory);
     await mkdir(join(rootDirectory, "src"), { recursive: true });
     await writeFile(join(rootDirectory, "src", "index.ts"), "export const value = 1;\n");
@@ -343,8 +343,8 @@ describe("fileExplorerService file entries", () => {
   });
 
   test("includes the absolute path in metadata for alternate roots", async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-alt-root-"));
-    const alternateRoot = await mkdtemp(join(tmpdir(), "ralpher-file-explorer-alt-target-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "clanky-file-explorer-alt-root-"));
+    const alternateRoot = await mkdtemp(join(tmpdir(), "clanky-file-explorer-alt-target-"));
     tempDirectories.push(workspaceRoot, alternateRoot);
     await mkdir(join(alternateRoot, "notes"), { recursive: true });
     await writeFile(join(alternateRoot, "notes", "todo.txt"), "remember the milk\n");

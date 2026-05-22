@@ -80,7 +80,7 @@ describe("Diff parsing with CRLF line endings", () => {
   let testDir: string;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), "ralpher-diff-test-"));
+    testDir = await mkdtemp(join(tmpdir(), "clanky-diff-test-"));
     
     // Initialize git repo
     await Bun.$`git init ${testDir}`.quiet();

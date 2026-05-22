@@ -81,7 +81,7 @@ describe("ThemePreferenceProvider", () => {
       expect(document.documentElement.style.colorScheme).toBe("dark");
       expect(document.documentElement.dataset["themePreference"]).toBe("dark");
       expect(document.documentElement.dataset["themeResolved"]).toBe("dark");
-      expect(localStorage.getItem("ralpher.themePreference")).toBe("dark");
+      expect(localStorage.getItem("clanky.themePreference")).toBe("dark");
     });
   });
 

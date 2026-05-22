@@ -8,7 +8,7 @@
  */
 
 import type { Backend, PromptInput, AgentEvent } from "../backends/types";
-import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Loop, LoopLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
+import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Task, TaskLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
 import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
 import type { MessageImageAttachment } from "../types/message-attachments";
@@ -22,13 +22,13 @@ import {
   DEFAULT_CHAT_CONFIG,
   InvalidChatBaseBranchError,
   isChatBusyStatus,
-  isLoopChat,
+  isTaskChat,
   isStandaloneChat,
 } from "../types/chat";
 import type { ChatPermissionDecision, ChatPermissionRequest } from "../types/chat";
 import {
   loadChat,
-  loadLoopChat,
+  loadTaskChat,
   listChats,
   listChatSummaries,
   listChatsByWorkspace,
@@ -46,14 +46,14 @@ import { nextWithTimeout } from "./engine/engine-helpers";
 import { isSessionNotFoundError } from "./engine/engine-session";
 import { GitService, InvalidBranchNameError } from "./git";
 import { syncMainCheckoutBeforeWorktree } from "./git/worktree-sync";
-import { loopManager } from "./loop-manager";
+import { taskManager } from "./task-manager";
 import { createLogger } from "./logger";
 import { buildSeededPlanStatusContent, readValidatedPlanningFiles } from "./planning-file-service";
 import { sanitizeBranchName } from "../utils";
-import { buildSpawnCurrentPlanPrompt, buildSpawnLoopName, buildSpawnLoopPrompt } from "../utils/chat-to-loop-prompt";
+import { buildSpawnCurrentPlanPrompt, buildSpawnTaskName, buildSpawnTaskPrompt } from "../utils/chat-to-task-prompt";
 import { getImageViewToolPath, resolveToolCallImagePreview } from "./tool-call-image-preview";
 import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
-import { getLoopWorkingDirectory } from "./loop/loop-types";
+import { getTaskWorkingDirectory } from "./task/task-types";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -78,7 +78,7 @@ export interface CreateChatOptions {
   name?: string;
   workspaceId: string;
   scope?: ChatConfig["scope"];
-  loopId?: string;
+  taskId?: string;
   modelProviderID: string;
   modelID: string;
   modelVariant?: string;
@@ -112,11 +112,11 @@ export class ChatManager {
     }
 
     const scope = options.scope ?? DEFAULT_CHAT_CONFIG.scope;
-    if (scope === "loop" && !options.loopId) {
-      throw new Error("Loop chats require a loopId");
+    if (scope === "task" && !options.taskId) {
+      throw new Error("Task chats require a taskId");
     }
-    if (scope === "workspace" && options.loopId) {
-      throw new Error("Standalone chats cannot specify a loopId");
+    if (scope === "workspace" && options.taskId) {
+      throw new Error("Standalone chats cannot specify a taskId");
     }
 
     const id = crypto.randomUUID();
@@ -136,14 +136,14 @@ export class ChatManager {
         name,
         workspaceId: options.workspaceId,
         scope,
-        loopId: options.loopId,
+        taskId: options.taskId,
         directory: options.directory ?? workspace.directory,
         model: {
           providerID: options.modelProviderID,
           modelID: options.modelID,
           variant: options.modelVariant ?? "",
         },
-        useWorktree: scope === "loop" ? false : (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree),
+        useWorktree: scope === "task" ? false : (options.useWorktree ?? DEFAULT_CHAT_CONFIG.useWorktree),
         autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
         skipBaseBranchSync: options.syncBaseBranch === false,
         baseBranch: options.baseBranch,
@@ -155,7 +155,7 @@ export class ChatManager {
     };
 
     const shouldPrepareWorktreeOnCreate =
-      !isLoopChat(chat) && chat.config.useWorktree && (options.prepareWorktreeOnCreate ?? true);
+      !isTaskChat(chat) && chat.config.useWorktree && (options.prepareWorktreeOnCreate ?? true);
     const preparedChat = shouldPrepareWorktreeOnCreate
       ? {
           ...chat,
@@ -176,7 +176,7 @@ export class ChatManager {
       config: preparedChat.config,
       timestamp: now,
     });
-    if (!shouldPrepareWorktreeOnCreate && !isLoopChat(preparedChat) && preparedChat.config.useWorktree) {
+    if (!shouldPrepareWorktreeOnCreate && !isTaskChat(preparedChat) && preparedChat.config.useWorktree) {
       this.prepareWorktreeInBackground(preparedChat);
     }
     return preparedChat;
@@ -202,43 +202,43 @@ export class ChatManager {
     return (await listChatSummariesByWorkspace(workspaceId)).filter(isStandaloneChat);
   }
 
-  async getLoopChat(loopId: string): Promise<Chat | null> {
-    return loadLoopChat(loopId);
+  async getTaskChat(taskId: string): Promise<Chat | null> {
+    return loadTaskChat(taskId);
   }
 
-  async getOrCreateLoopChat(loopId: string, loop?: Loop): Promise<{ chat: Chat; created: boolean }> {
-    const existing = await this.getLoopChat(loopId);
+  async getOrCreateTaskChat(taskId: string, task?: Task): Promise<{ chat: Chat; created: boolean }> {
+    const existing = await this.getTaskChat(taskId);
     if (existing) {
       return { chat: existing, created: false };
     }
 
-    const targetLoop = loop ?? await loopManager.getLoop(loopId);
-    if (!targetLoop) {
-      throw new Error(`Loop not found: ${loopId}`);
+    const targetTask = task ?? await taskManager.getTask(taskId);
+    if (!targetTask) {
+      throw new Error(`Task not found: ${taskId}`);
     }
 
-    const workingDirectory = getLoopWorkingDirectory(targetLoop);
+    const workingDirectory = getTaskWorkingDirectory(targetTask);
     if (!workingDirectory) {
-      throw new Error(`Loop ${loopId} does not currently have a working directory for chat creation`);
+      throw new Error(`Task ${taskId} does not currently have a working directory for chat creation`);
     }
 
     try {
       const chat = await this.createChat({
-        name: targetLoop.config.name,
-        workspaceId: targetLoop.config.workspaceId,
-        scope: "loop",
-        loopId,
-        modelProviderID: targetLoop.config.model.providerID,
-        modelID: targetLoop.config.model.modelID,
-        modelVariant: targetLoop.config.model.variant,
+        name: targetTask.config.name,
+        workspaceId: targetTask.config.workspaceId,
+        scope: "task",
+        taskId,
+        modelProviderID: targetTask.config.model.providerID,
+        modelID: targetTask.config.model.modelID,
+        modelVariant: targetTask.config.model.variant,
         useWorktree: false,
-        baseBranch: targetLoop.config.baseBranch,
+        baseBranch: targetTask.config.baseBranch,
         directory: workingDirectory,
       });
       return { chat, created: true };
     } catch (error) {
-      if (String(error).includes("UNIQUE constraint failed: chats.loop_id")) {
-        const concurrent = await this.getLoopChat(loopId);
+      if (String(error).includes("UNIQUE constraint failed: chats.task_id")) {
+        const concurrent = await this.getTaskChat(taskId);
         if (concurrent) {
           return { chat: concurrent, created: false };
         }
@@ -247,8 +247,8 @@ export class ChatManager {
     }
   }
 
-  async deleteLoopChat(loopId: string): Promise<boolean> {
-    const chat = await this.getLoopChat(loopId);
+  async deleteTaskChat(taskId: string): Promise<boolean> {
+    const chat = await this.getTaskChat(taskId);
     if (!chat) {
       return false;
     }
@@ -257,7 +257,7 @@ export class ChatManager {
 
   async updateChat(
     chatId: string,
-    updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "loopId">>,
+    updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId">>,
   ): Promise<Chat | null> {
     const chat = await loadChat(chatId);
     if (!chat) {
@@ -563,7 +563,7 @@ export class ChatManager {
     return deleted;
   }
 
-  async spawnLoopFromChat(chatId: string): Promise<Loop> {
+  async spawnTaskFromChat(chatId: string): Promise<Task> {
     const chat = await loadChat(chatId);
     if (!chat) {
       throw new Error(`Chat not found: ${chatId}`);
@@ -577,12 +577,12 @@ export class ChatManager {
       ?? chat.config.baseBranch
       ?? await git.getDefaultBranch(chat.config.directory);
 
-    const prompt = buildSpawnLoopPrompt(chat.config.name, chat.state.messages);
+    const prompt = buildSpawnTaskPrompt(chat.config.name, chat.state.messages);
 
     await touchWorkspace(chat.config.workspaceId);
 
-    const loop = await loopManager.createLoop({
-      name: buildSpawnLoopName(chat.config.name),
+    const task = await taskManager.createTask({
+      name: buildSpawnTaskName(chat.config.name),
       directory: chat.config.directory,
       prompt,
       workspaceId: chat.config.workspaceId,
@@ -597,25 +597,25 @@ export class ChatManager {
     });
 
     try {
-      await loopManager.startPlanMode(loop.config.id);
-      await loopManager.saveLastUsedModel(chat.config.model);
+      await taskManager.startPlanMode(task.config.id);
+      await taskManager.saveLastUsedModel(chat.config.model);
     } catch (error) {
       try {
-        await loopManager.deleteLoop(loop.config.id);
+        await taskManager.deleteTask(task.config.id);
       } catch (cleanupError) {
-        log.warn("Failed to clean up spawned loop after plan-mode start failure", {
-          loopId: loop.config.id,
+        log.warn("Failed to clean up spawned task after plan-mode start failure", {
+          taskId: task.config.id,
           chatId,
           error: String(cleanupError),
         });
       }
-      throw new Error("Failed to start spawned loop in plan mode", { cause: error });
+      throw new Error("Failed to start spawned task in plan mode", { cause: error });
     }
 
-    return await loopManager.getLoop(loop.config.id) ?? loop;
+    return await taskManager.getTask(task.config.id) ?? task;
   }
 
-  async spawnLoopFromCurrentPlan(chatId: string, planFilePath?: string): Promise<Loop> {
+  async spawnTaskFromCurrentPlan(chatId: string, planFilePath?: string): Promise<Task> {
     const chat = await loadChat(chatId);
     if (!chat) {
       throw new Error(`Chat not found: ${chatId}`);
@@ -642,8 +642,8 @@ export class ChatManager {
 
     await touchWorkspace(working.chat.config.workspaceId);
 
-    const loop = await loopManager.createLoop({
-      name: buildSpawnLoopName(working.chat.config.name),
+    const task = await taskManager.createTask({
+      name: buildSpawnTaskName(working.chat.config.name),
       directory: working.chat.config.directory,
       prompt,
       workspaceId: working.chat.config.workspaceId,
@@ -658,25 +658,25 @@ export class ChatManager {
     });
 
     try {
-      await loopManager.seedPlanFiles(loop.config.id, {
+      await taskManager.seedPlanFiles(task.config.id, {
         planContent: currentPlan.planContent,
-        statusContent: currentPlan.statusContent ?? buildSeededPlanStatusContent(loop.config.name),
+        statusContent: currentPlan.statusContent ?? buildSeededPlanStatusContent(task.config.name),
       });
-      await loopManager.saveLastUsedModel(working.chat.config.model);
+      await taskManager.saveLastUsedModel(working.chat.config.model);
     } catch (error) {
       try {
-        await loopManager.deleteLoop(loop.config.id);
+        await taskManager.deleteTask(task.config.id);
       } catch (cleanupError) {
-        log.warn("Failed to clean up spawned loop after current-plan seed failure", {
-          loopId: loop.config.id,
+        log.warn("Failed to clean up spawned task after current-plan seed failure", {
+          taskId: task.config.id,
           chatId,
           error: String(cleanupError),
         });
       }
-      throw new Error("Failed to seed spawned loop from the current plan", { cause: error });
+      throw new Error("Failed to seed spawned task from the current plan", { cause: error });
     }
 
-    return await loopManager.getLoop(loop.config.id) ?? loop;
+    return await taskManager.getTask(task.config.id) ?? task;
   }
 
   getChatBackend(chatId: string, workspaceId: string): Backend {
@@ -758,7 +758,7 @@ export class ChatManager {
   ): Promise<Chat> {
     const working = await this.resolveWorkingDirectory(chat, options);
     const session = await backend.createSession({
-      title: `Ralpher Chat: ${working.chat.config.name}`,
+      title: `Clanky Chat: ${working.chat.config.name}`,
       directory: working.directory,
       model: working.chat.config.model.modelID,
     });
@@ -800,18 +800,18 @@ export class ChatManager {
     chat: Chat,
     options: { prepareWorkspace: boolean },
   ): Promise<ResolvedChatDirectory> {
-    if (isLoopChat(chat)) {
-      const loopId = chat.config.loopId;
-      if (!loopId) {
-        throw new Error(`Loop chat ${chat.config.id} is missing its loopId`);
+    if (isTaskChat(chat)) {
+      const taskId = chat.config.taskId;
+      if (!taskId) {
+        throw new Error(`Task chat ${chat.config.id} is missing its taskId`);
       }
-      const loop = await loopManager.getLoop(loopId);
-      if (!loop) {
-        throw new Error(`Loop ${loopId} for chat ${chat.config.id} was not found`);
+      const task = await taskManager.getTask(taskId);
+      if (!task) {
+        throw new Error(`Task ${taskId} for chat ${chat.config.id} was not found`);
       }
-      const directory = getLoopWorkingDirectory(loop);
+      const directory = getTaskWorkingDirectory(task);
       if (!directory) {
-        throw new Error(`Loop ${loopId} does not currently have a working directory for chat ${chat.config.id}`);
+        throw new Error(`Task ${taskId} does not currently have a working directory for chat ${chat.config.id}`);
       }
       return { chat, directory };
     }
@@ -852,7 +852,7 @@ export class ChatManager {
   }
 
   private async ensureStandaloneChatBranch(chat: Chat): Promise<void> {
-    if (isLoopChat(chat) || chat.config.useWorktree) {
+    if (isTaskChat(chat) || chat.config.useWorktree) {
       return;
     }
 
@@ -900,7 +900,7 @@ export class ChatManager {
   }
 
   private async ensureWorktree(chat: Chat): Promise<Chat> {
-    if (isLoopChat(chat)) {
+    if (isTaskChat(chat)) {
       return chat;
     }
 
@@ -971,7 +971,7 @@ export class ChatManager {
     const workingBranch = chat.state.worktree?.workingBranch
       ?? this.buildWorkingBranchName(chat);
     const worktreePath = chat.state.worktree?.worktreePath
-      ?? `${chat.config.directory}/.ralph-worktrees/${chat.config.id}`;
+      ?? `${chat.config.directory}/.clanky-worktrees/${chat.config.id}`;
 
     const worktreeExists = await git.worktreeExists(chat.config.directory, worktreePath);
     if (!worktreeExists) {
@@ -1005,7 +1005,7 @@ export class ChatManager {
   }
 
   private async cleanupWorktree(chat: Chat): Promise<void> {
-    if (isLoopChat(chat)) {
+    if (isTaskChat(chat)) {
       return;
     }
 
@@ -1412,7 +1412,7 @@ export class ChatManager {
       content,
       timestamp: existingMessage?.timestamp ?? timestamp,
     };
-    const responseLog: LoopLogEntry = {
+    const responseLog: TaskLogEntry = {
       id: responseLogId ?? `chat-log-${crypto.randomUUID()}`,
       level: "agent",
       message: "AI generating response...",
@@ -1457,7 +1457,7 @@ export class ChatManager {
 
   private async emitChatLog(
     chat: Chat,
-    level: LoopLogEntry["level"],
+    level: TaskLogEntry["level"],
     message: string,
     details?: Record<string, unknown>,
     id?: string,
@@ -1467,7 +1467,7 @@ export class ChatManager {
       ? chat.state.logs.find((logEntry) => logEntry.id === id)
       : undefined;
     const activityTimestamp = timestamp ?? createTimestamp();
-    const entry: LoopLogEntry = {
+    const entry: TaskLogEntry = {
       id: id ?? `chat-log-${crypto.randomUUID()}`,
       level,
       message,

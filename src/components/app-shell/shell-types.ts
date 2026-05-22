@@ -1,6 +1,6 @@
-import { canJumpstart, getLoopStatusPill, isFinalState } from "../../utils";
+import { canJumpstart, getTaskStatusPill, isFinalState } from "../../utils";
 import { createLogger } from "../../lib/logger";
-import type { Chat, Loop, SshSession, Workspace } from "../../types";
+import type { Chat, Task, SshSession, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import {
   getChatStatusBadgeVariant,
@@ -11,7 +11,7 @@ import {
 
 const log = createLogger("AppShell");
 
-export const SIDEBAR_SECTION_STORAGE_KEY = "ralpher.sidebarSectionCollapseState";
+export const SIDEBAR_SECTION_STORAGE_KEY = "clanky.sidebarSectionCollapseState";
 
 export type SidebarSectionId = "workspaces" | "ssh-servers";
 export type SidebarWorkspaceGroupId = "active" | "inactive";
@@ -31,8 +31,8 @@ export interface SidebarWorkspaceSessionNode {
   createdAt: string;
 }
 
-export interface SidebarLoopNode {
-  loop: Loop;
+export interface SidebarTaskNode {
+  task: Task;
   title: string;
   badge: string;
   badgeVariant: BadgeVariant;
@@ -48,8 +48,8 @@ export interface SidebarChatNode {
 export interface SidebarWorkspaceNode {
   workspace: Workspace;
   key: string;
-  loops: SidebarLoopNode[];
-  historyLoops: SidebarLoopNode[];
+  tasks: SidebarTaskNode[];
+  historyTasks: SidebarTaskNode[];
   chats: SidebarChatNode[];
   sshSessions: SidebarWorkspaceSessionNode[];
   hasActivity: boolean;
@@ -78,10 +78,10 @@ export interface SidebarServerNode {
 
 export type SidebarActiveWorkItem =
   | {
-      kind: "loop";
+      kind: "task";
       key: string;
       workspaceName: string;
-      loopNode: SidebarLoopNode;
+      taskNode: SidebarTaskNode;
     }
   | {
       kind: "chat";
@@ -108,8 +108,8 @@ export type CodeExplorerTarget =
       filePath?: string;
     }
   | {
-      contentType: "loop";
-      loopId: string;
+      contentType: "task";
+      taskId: string;
       startDirectory?: string;
       filePath?: string;
     }
@@ -130,8 +130,8 @@ export type ShellRoute =
   | { view: "home" }
   | { view: "settings" }
   | { view: "code-explorer"; target?: CodeExplorerTarget }
-  | { view: "loop"; loopId: string }
-  | { view: "loop-files"; loopId: string; startDirectory?: string }
+  | { view: "task"; taskId: string }
+  | { view: "task-files"; taskId: string; startDirectory?: string }
   | { view: "chat"; chatId: string }
   | { view: "ssh"; sshSessionId: string }
   | { view: "workspace"; workspaceId: string }
@@ -143,7 +143,7 @@ export type ShellRoute =
   | { view: "server-arise"; serverId: string }
   | {
       view: "compose";
-      kind: "loop" | "chat" | "workspace" | "ssh-session" | "ssh-server";
+      kind: "task" | "chat" | "workspace" | "ssh-session" | "ssh-server";
       scopeId?: string;
     }
   | {
@@ -197,18 +197,18 @@ export function getSidebarWorkspaceSectionCollapseKey(
   sectionId: SidebarSectionId,
   groupId: SidebarWorkspaceGroupId,
   workspaceId: string,
-  childSectionId: "loops" | "history" | "chats" | "ssh-sessions",
+  childSectionId: "tasks" | "history" | "chats" | "ssh-sessions",
 ): string {
   return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, childSectionId);
 }
 
-export function getSidebarLoopCollapseKey(
+export function getSidebarTaskCollapseKey(
   sectionId: SidebarSectionId,
   groupId: SidebarWorkspaceGroupId,
   workspaceId: string,
-  loopId: string,
+  taskId: string,
 ): string {
-  return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, "loop", loopId);
+  return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, "task", taskId);
 }
 
 export function getSidebarServerCollapseKey(sectionId: SidebarSectionId, serverId: string): string {
@@ -246,14 +246,14 @@ export function getProvisioningStatusBadgeVariant(status: string | undefined): B
 
 function createWorkspaceSessionNode(
   session: SshSession,
-  loopNameById: ReadonlyMap<string, string>,
+  taskNameById: ReadonlyMap<string, string>,
 ): SidebarWorkspaceSessionNode {
-  const linkedLoopName = session.config.loopId ? loopNameById.get(session.config.loopId) : undefined;
+  const linkedTaskName = session.config.taskId ? taskNameById.get(session.config.taskId) : undefined;
   return {
     session,
     title: session.config.name,
-    subtitle: linkedLoopName
-      ? `${linkedLoopName} · ${getSshConnectionModeLabel(session.config.connectionMode)}`
+    subtitle: linkedTaskName
+      ? `${linkedTaskName} · ${getSshConnectionModeLabel(session.config.connectionMode)}`
       : getSshConnectionModeLabel(session.config.connectionMode),
     badge: getSshSessionStatusLabel(session.state.status),
     badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
@@ -265,31 +265,31 @@ function sortByDesc<T>(items: T[], getValue: (item: T) => string): T[] {
   return [...items].sort((left, right) => getValue(right).localeCompare(getValue(left)));
 }
 
-function isTerminalSidebarLoop(loop: Loop): boolean {
-  const { status } = loop.state;
+function isTerminalSidebarTask(task: Task): boolean {
+  const { status } = task.state;
   return status !== "completed" && status !== "pushed" && (canJumpstart(status) || isFinalState(status));
 }
 
 export function buildWorkspaceSidebarGroups({
   workspaces,
-  loops,
+  tasks,
   chats,
   sessions,
 }: {
   workspaces: Workspace[];
-  loops: Loop[];
+  tasks: Task[];
   chats: Chat[];
   sessions: SshSession[];
 }): SidebarWorkspaceGroupNode[] {
-  const loopsByWorkspaceId = new Map<string, Loop[]>();
+  const tasksByWorkspaceId = new Map<string, Task[]>();
   const chatsByWorkspaceId = new Map<string, Chat[]>();
   const sessionsByWorkspaceId = new Map<string, SshSession[]>();
-  const loopNameById = new Map(loops.map((loop) => [loop.config.id, loop.config.name]));
+  const taskNameById = new Map(tasks.map((task) => [task.config.id, task.config.name]));
 
-  for (const loop of loops) {
-    const workspaceLoops = loopsByWorkspaceId.get(loop.config.workspaceId) ?? [];
-    workspaceLoops.push(loop);
-    loopsByWorkspaceId.set(loop.config.workspaceId, workspaceLoops);
+  for (const task of tasks) {
+    const workspaceTasks = tasksByWorkspaceId.get(task.config.workspaceId) ?? [];
+    workspaceTasks.push(task);
+    tasksByWorkspaceId.set(task.config.workspaceId, workspaceTasks);
   }
 
   for (const chat of chats) {
@@ -305,31 +305,31 @@ export function buildWorkspaceSidebarGroups({
   }
 
   const workspaceNodes = workspaces.map((workspace) => {
-    const workspaceLoops = loopsByWorkspaceId.get(workspace.id) ?? [];
+    const workspaceTasks = tasksByWorkspaceId.get(workspace.id) ?? [];
     const workspaceChats = [...(chatsByWorkspaceId.get(workspace.id) ?? [])]
       .sort((left, right) => right.config.updatedAt.localeCompare(left.config.updatedAt));
     const workspaceSessions = sortByDesc(
       sessionsByWorkspaceId.get(workspace.id) ?? [],
       (session) => session.config.createdAt,
     )
-      .map((session) => createWorkspaceSessionNode(session, loopNameById));
-    const loopNodes = workspaceLoops.map((loop) => {
-      const statusPill = getLoopStatusPill(loop);
+      .map((session) => createWorkspaceSessionNode(session, taskNameById));
+    const taskNodes = workspaceTasks.map((task) => {
+      const statusPill = getTaskStatusPill(task);
       return {
-        loop,
-        title: loop.config.name,
+        task,
+        title: task.config.name,
         badge: statusPill.label,
         badgeVariant: statusPill.variant,
       };
     });
-    const activeLoopNodes = loopNodes.filter((loopNode) => !isTerminalSidebarLoop(loopNode.loop));
-    const historyLoopNodes = loopNodes.filter((loopNode) => isTerminalSidebarLoop(loopNode.loop));
+    const activeTaskNodes = taskNodes.filter((taskNode) => !isTerminalSidebarTask(taskNode.task));
+    const historyTaskNodes = taskNodes.filter((taskNode) => isTerminalSidebarTask(taskNode.task));
 
     return {
       workspace,
       key: workspace.id,
-      loops: activeLoopNodes,
-      historyLoops: historyLoopNodes,
+      tasks: activeTaskNodes,
+      historyTasks: historyTaskNodes,
       chats: workspaceChats.map((chat) => ({
         chat,
         title: chat.config.name,
@@ -337,7 +337,7 @@ export function buildWorkspaceSidebarGroups({
         badgeVariant: getChatStatusBadgeVariant(chat.state.status),
       })),
       sshSessions: workspaceSessions,
-      hasActivity: loopNodes.length > 0 || workspaceChats.length > 0 || workspaceSessions.length > 0,
+      hasActivity: taskNodes.length > 0 || workspaceChats.length > 0 || workspaceSessions.length > 0,
     } satisfies SidebarWorkspaceNode;
   });
 
@@ -359,7 +359,7 @@ export function buildActiveWorkSidebarItems(
   workspaceGroups: SidebarWorkspaceGroupNode[],
   options: BuildActiveWorkSidebarItemsOptions = {},
 ): SidebarActiveWorkItem[] {
-  const loopItems: SidebarActiveWorkItem[] = [];
+  const taskItems: SidebarActiveWorkItem[] = [];
   const chatItems: SidebarActiveWorkItem[] = [];
   const sessionItems: SidebarActiveWorkItem[] = [];
   const quickChatIds = new Set(
@@ -370,12 +370,12 @@ export function buildActiveWorkSidebarItems(
     for (const workspaceNode of group.workspaces) {
       const workspaceName = workspaceNode.workspace.name;
 
-      for (const loopNode of workspaceNode.loops) {
-        loopItems.push({
-          kind: "loop",
-          key: `loop:${loopNode.loop.config.id}`,
+      for (const taskNode of workspaceNode.tasks) {
+        taskItems.push({
+          kind: "task",
+          key: `task:${taskNode.task.config.id}`,
           workspaceName,
-          loopNode,
+          taskNode,
         });
       }
 
@@ -400,7 +400,7 @@ export function buildActiveWorkSidebarItems(
   }
 
   const items = [
-    ...loopItems,
+    ...taskItems,
     ...chatItems,
     ...sessionItems,
   ];

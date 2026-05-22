@@ -42,8 +42,8 @@ describe("ProvisioningManager", () => {
   let testDataDir: string;
 
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-provisioning-unit-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-provisioning-unit-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
     await ensureDataDirectories();
     const db = getDatabase();
     db.run("DELETE FROM workspaces");
@@ -58,7 +58,7 @@ describe("ProvisioningManager", () => {
     backendManager.resetForTesting();
     provisioningManager.resetForTesting();
     await rm(testDataDir, { recursive: true, force: true });
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
   test("extractRepoName handles https and SSH repository URLs", () => {

@@ -1,1 +1,1 @@
-console.log("Ralpher Electron preload bridge placeholder.");
+console.log("Clanky Electron preload bridge placeholder.");

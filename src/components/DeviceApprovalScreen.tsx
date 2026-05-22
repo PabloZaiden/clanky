@@ -28,7 +28,7 @@ export function DeviceApprovalScreen({ userCode }: DeviceApprovalScreenProps) {
 
   const loadDetails = useCallback(async () => {
     if (!userCode) {
-      setError("Open the verification URL provided by the CLI so Ralpher knows which device request to approve.");
+      setError("Open the verification URL provided by the CLI so Clanky knows which device request to approve.");
       setLoading(false);
       return;
     }

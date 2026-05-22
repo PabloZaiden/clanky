@@ -28,8 +28,8 @@ export function buildWorkspaceActionItems({
 
   return [
     {
-      label: "New Loop",
-      onClick: () => onNavigate({ view: "compose", kind: "loop", scopeId: workspace.id }),
+      label: "New Task",
+      onClick: () => onNavigate({ view: "compose", kind: "task", scopeId: workspace.id }),
     },
     {
       label: "New Chat",

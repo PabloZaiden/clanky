@@ -10,7 +10,7 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor, within } from "../helpers/render";
 import {
-  createLoopWithStatus,
+  createTaskWithStatus,
   createSshSession,
   createWorkspace,
   createModelInfo,
@@ -86,13 +86,13 @@ afterEach(() => {
 describe("workspace management scenario", () => {
   test("clicking New Workspace opens the shell composer", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => []);
 
     const { getByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     const workspacesNewButton = getSectionActionButton("Workspaces");
@@ -109,7 +109,7 @@ describe("workspace management scenario", () => {
 
   test("create workspace flow: fill form and submit", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => []);
     api.post("/api/workspaces", () => ({
       id: "ws-new",
@@ -145,7 +145,7 @@ describe("workspace management scenario", () => {
     const { getByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     const workspacesNewButton = getSectionActionButton("Workspaces");
@@ -193,7 +193,7 @@ describe("workspace management scenario", () => {
 
   test("create workspace can use a registered SSH server selection", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => []);
     api.get("/api/ssh-servers", () => [{
       config: {
@@ -247,7 +247,7 @@ describe("workspace management scenario", () => {
     const { getByRole, queryByLabelText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     const workspacesNewButton = getSectionActionButton("Workspaces");
@@ -299,7 +299,7 @@ describe("workspace management scenario", () => {
 
   test("shell composer keeps create controls working when switching to automatic mode", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => []);
     api.get("/api/ssh-servers", () => [{
       config: {
@@ -344,7 +344,7 @@ describe("workspace management scenario", () => {
     const { getByRole, queryByLabelText, queryByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     const workspacesNewButton = getSectionActionButton("Workspaces");
@@ -393,7 +393,7 @@ describe("workspace management scenario", () => {
 
   test("workspace map includes empty workspaces and navigates to workspace details", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => [WORKSPACE]);
 
     const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
@@ -414,14 +414,14 @@ describe("workspace management scenario", () => {
   test("workspace route splits active items from workspace history", async () => {
     setupBaseApi();
 
-    const loop = createLoopWithStatus("running", {
-      config: { id: "ws-loop-1", name: "In Workspace", directory: "/workspaces/existing", workspaceId: "ws-1" },
+    const task = createTaskWithStatus("running", {
+      config: { id: "ws-task-1", name: "In Workspace", directory: "/workspaces/existing", workspaceId: "ws-1" },
     });
-    const mergedLoop = createLoopWithStatus("merged", {
-      config: { id: "ws-loop-2", name: "Merged Workspace Loop", directory: "/workspaces/existing", workspaceId: "ws-1" },
+    const mergedTask = createTaskWithStatus("merged", {
+      config: { id: "ws-task-2", name: "Merged Workspace Task", directory: "/workspaces/existing", workspaceId: "ws-1" },
     });
-    const deletedLoop = createLoopWithStatus("deleted", {
-      config: { id: "ws-loop-3", name: "Deleted Workspace Loop", directory: "/workspaces/existing", workspaceId: "ws-1" },
+    const deletedTask = createTaskWithStatus("deleted", {
+      config: { id: "ws-task-3", name: "Deleted Workspace Task", directory: "/workspaces/existing", workspaceId: "ws-1" },
     });
     const chat: Chat = {
       config: {
@@ -486,7 +486,7 @@ describe("workspace management scenario", () => {
       },
     });
 
-    api.get("/api/loops", () => [loop, mergedLoop, deletedLoop]);
+    api.get("/api/tasks", () => [task, mergedTask, deletedTask]);
     api.get("/api/chats", () => [chat]);
     api.get("/api/ssh-sessions", () => [session]);
     api.get("/api/ssh-servers", () => [server]);
@@ -508,33 +508,33 @@ describe("workspace management scenario", () => {
     const activityHeading = getByRole("heading", { name: "Activity" });
     const activityCard = activityHeading.closest("div.rounded-2xl") as HTMLElement | null;
     expect(activityCard).toBeTruthy();
-    expect(within(activityCard!).getByText("Active loops, chats, and SSH sessions in this workspace.")).toBeTruthy();
+    expect(within(activityCard!).getByText("Active tasks, chats, and SSH sessions in this workspace.")).toBeTruthy();
     expect(
       getAllByText((content) => content === "Build host" || content === "server.example.com").length
     ).toBeGreaterThan(0);
     expect(document.body.textContent?.includes("Connection")).toBe(false);
     expect(queryByText("Workspace activity")).toBeNull();
-    expect(queryByRole("heading", { name: "Loops" })).toBeNull();
+    expect(queryByRole("heading", { name: "Tasks" })).toBeNull();
     expect(queryByRole("heading", { name: "Chats" })).toBeNull();
     expect(queryByRole("heading", { name: "SSH sessions" })).toBeNull();
     expect(within(activityCard!).getByText("In Workspace")).toBeTruthy();
-    expect(within(activityCard!).queryByText("Merged Workspace Loop")).toBeNull();
-    expect(within(activityCard!).queryByText("Deleted Workspace Loop")).toBeNull();
+    expect(within(activityCard!).queryByText("Merged Workspace Task")).toBeNull();
+    expect(within(activityCard!).queryByText("Deleted Workspace Task")).toBeNull();
     expect(getAllByText("Workspace Chat").length).toBeGreaterThan(0);
     expect(getAllByText("Workspace SSH").length).toBeGreaterThan(0);
 
     const historyHeading = getByRole("heading", { name: "History" });
     const historyCard = historyHeading.closest("div.rounded-2xl") as HTMLElement | null;
     expect(historyCard).toBeTruthy();
-    expect(within(historyCard!).getByText("Merged and deleted loops from this workspace.")).toBeTruthy();
-    expect(within(historyCard!).getByText("Merged Workspace Loop")).toBeTruthy();
-    expect(within(historyCard!).getByText("Deleted Workspace Loop")).toBeTruthy();
+    expect(within(historyCard!).getByText("Merged and deleted tasks from this workspace.")).toBeTruthy();
+    expect(within(historyCard!).getByText("Merged Workspace Task")).toBeTruthy();
+    expect(within(historyCard!).getByText("Deleted Workspace Task")).toBeTruthy();
     expect(within(historyCard!).queryByText("In Workspace")).toBeNull();
   });
 
   test("workspace route shows stdio in the header for local workspaces", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/chats", () => []);
     api.get("/api/ssh-sessions", () => []);
     api.get("/api/workspaces", () => [WORKSPACE]);
@@ -563,7 +563,7 @@ describe("workspace management scenario", () => {
       sshServerId: "server-1",
     });
 
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/chats", () => []);
     api.get("/api/ssh-sessions", () => []);
     api.get("/api/workspaces", () => [provisionedWorkspace]);
@@ -619,7 +619,7 @@ describe("workspace management scenario", () => {
       },
     });
 
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/chats", () => []);
     api.get("/api/ssh-sessions", () => [legacySession]);
     api.get("/api/workspaces", () => [WORKSPACE]);
@@ -636,18 +636,18 @@ describe("workspace management scenario", () => {
       expect(getByRole("heading", { name: "Activity" })).toBeTruthy();
     });
 
-    expect(getByText("Active loops and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.")).toBeTruthy();
+    expect(getByText("Active tasks and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.")).toBeTruthy();
     expect(getAllByText("Legacy SSH").length).toBeGreaterThan(0);
     expect(document.body.textContent?.includes("stay at 0")).toBe(false);
   });
 
-  test("workspace detail rows keep long loop and session names shrinkable on mobile", async () => {
+  test("workspace detail rows keep long task and session names shrinkable on mobile", async () => {
     setupBaseApi();
 
-    const longLoopName = "Loop name that is intentionally extremely long to verify mobile truncation stays inside the workspace detail card";
+    const longTaskName = "Task name that is intentionally extremely long to verify mobile truncation stays inside the workspace detail card";
     const longSessionName = "SSH session name that is intentionally extremely long to verify mobile truncation stays inside the workspace detail card";
-    const loop = createLoopWithStatus("running", {
-      config: { id: "ws-loop-long", name: longLoopName, directory: "/workspaces/existing", workspaceId: "ws-1" },
+    const task = createTaskWithStatus("running", {
+      config: { id: "ws-task-long", name: longTaskName, directory: "/workspaces/existing", workspaceId: "ws-1" },
     });
     const session = createSshSession({
       config: {
@@ -658,7 +658,7 @@ describe("workspace management scenario", () => {
       state: { status: "connected" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/ssh-sessions", () => [session]);
     api.get("/api/workspaces", () => [WORKSPACE]);
     api.get("/api/workspaces/:id", () => WORKSPACE);
@@ -676,16 +676,16 @@ describe("workspace management scenario", () => {
 
     const activityCard = document.querySelector('[data-testid="workspace-activity-card"]');
 
-    const loopRow = Array.from(activityCard?.querySelectorAll("button") ?? []).find((button) =>
-      button.textContent?.includes(longLoopName)
+    const taskRow = Array.from(activityCard?.querySelectorAll("button") ?? []).find((button) =>
+      button.textContent?.includes(longTaskName)
     );
     const sessionRow = Array.from(activityCard?.querySelectorAll("button") ?? []).find((button) =>
       button.textContent?.includes(longSessionName)
     );
 
-    expect(loopRow?.className).toContain("min-w-0");
-    expect(loopRow?.querySelector("span.flex-1")?.className).toContain("min-w-0");
-    expect(loopRow?.querySelector("span.shrink-0")).toBeTruthy();
+    expect(taskRow?.className).toContain("min-w-0");
+    expect(taskRow?.querySelector("span.flex-1")?.className).toContain("min-w-0");
+    expect(taskRow?.querySelector("span.shrink-0")).toBeTruthy();
 
     expect(sessionRow?.className).toContain("min-w-0");
     expect(sessionRow?.querySelector("span.flex-1")?.className).toContain("min-w-0");

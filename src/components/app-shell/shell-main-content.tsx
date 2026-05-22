@@ -1,20 +1,20 @@
-import type { Chat, Loop, SshSession, Workspace } from "../../types";
+import type { Chat, Task, SshSession, Workspace } from "../../types";
 import type { CreateSshSessionRequest } from "../../types/api";
 import type { SshServer } from "../../types/ssh-server";
 import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/workspace";
 import type { QuickChatSettings } from "../../types/preferences";
-import type { WorkspaceGroup } from "../../hooks/useLoopGrouping";
+import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UsePasskeyAuthResult } from "../../hooks/usePasskeyAuth";
 import { AppSettingsPanel } from "../AppSettingsModal";
 import { ChatDetails } from "../ChatDetails";
-import { LoopDetails } from "../LoopDetails";
+import { TaskDetails } from "../TaskDetails";
 import { SshSessionDetails } from "../SshSessionDetails";
 import { SidebarIcon } from "../common";
 import { ShellPanel } from "./shell-panel";
 import { OverviewView, WorkspaceView, SshServerView } from "./shell-views";
-import { DraftLoopComposer } from "./shell-composers";
+import { DraftTaskComposer } from "./shell-composers";
 import { ComposeView } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
@@ -26,9 +26,9 @@ import type { SidebarWorkspaceGroupNode, SidebarWorkspaceNode } from "./shell-ty
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
-  CreateLoopFormActionState,
-} from "../CreateLoopForm";
-import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
+  CreateTaskFormActionState,
+} from "../CreateTaskForm";
+import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
 
 interface ShellMainContentProps {
   route: ShellRoute;
@@ -40,7 +40,7 @@ interface ShellMainContentProps {
   navigateWithinShell: (route: ShellRoute) => void;
 
   // Data
-  loops: Loop[];
+  tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
   sessions: SshSession[];
@@ -54,7 +54,7 @@ interface ShellMainContentProps {
   workspaceError: string | null;
 
   // Selections
-  selectedLoop: Loop | null;
+  selectedTask: Task | null;
   selectedChat: Chat | null;
   selectedWorkspace: Workspace | null;
   composeWorkspace: Workspace | null;
@@ -62,10 +62,10 @@ interface ShellMainContentProps {
   composeServerSessionCount: number;
   selectedServer: SshServer | null;
 
-  // Loop actions
-  refreshLoops: () => Promise<void>;
+  // Task actions
+  refreshTasks: () => Promise<void>;
   refreshChats: () => Promise<void>;
-  purgeLoop: (loopId: string) => Promise<boolean>;
+  purgeTask: (taskId: string) => Promise<boolean>;
   refreshSshSessions: () => Promise<void>;
   refreshSshServers: () => Promise<void>;
   refreshWorkspaces: () => Promise<void>;
@@ -100,9 +100,9 @@ interface ShellMainContentProps {
   updateQuickChatSettings: (settings: QuickChatSettings) => Promise<QuickChatSettings | null>;
 
   // Compose state
-  composeActionState: CreateLoopFormActionState | null;
-  setComposeActionState: (state: CreateLoopFormActionState | null) => void;
-  handleLoopSubmit: (request: CreateLoopFormSubmitRequest) => Promise<boolean>;
+  composeActionState: CreateTaskFormActionState | null;
+  setComposeActionState: (state: CreateTaskFormActionState | null) => void;
+  handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
 
   // Workspace create
@@ -124,7 +124,7 @@ function renderMainContent(props: ShellMainContentProps) {
     shellLoading,
     shellHeaderOffsetClassName,
     navigateWithinShell,
-    loops,
+    tasks,
     chats,
     workspaces,
     sessions,
@@ -135,16 +135,16 @@ function renderMainContent(props: ShellMainContentProps) {
     quickChatWorkspace,
     workspacesLoading,
     workspaceError,
-    selectedLoop,
+    selectedTask,
     selectedChat,
     selectedWorkspace,
     selectedServer,
-    refreshLoops,
+    refreshTasks,
     refreshChats,
     refreshSshSessions,
     refreshSshServers,
     refreshWorkspaces,
-    purgeLoop,
+    purgeTask,
     deleteServer,
     deleteWorkspace,
     pullLatestWorkspaceChanges,
@@ -167,12 +167,12 @@ function renderMainContent(props: ShellMainContentProps) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading…</div>;
   }
 
-  if (route.view === "loop") {
-    if (!selectedLoop) {
+  if (route.view === "task") {
+    if (!selectedTask) {
       return shellLoading ? (
-        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading loop…</div>
+        <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading task…</div>
       ) : (
-        <ShellPanel eyebrow="Loop" title="Loop not found" description="The selected loop no longer exists.">
+        <ShellPanel eyebrow="Task" title="Task not found" description="The selected task no longer exists.">
           <p className="text-sm text-gray-500 dark:text-gray-400">
             Use the sidebar or home button to continue.
           </p>
@@ -180,10 +180,10 @@ function renderMainContent(props: ShellMainContentProps) {
       );
     }
 
-    if (selectedLoop.state.status === "draft") {
+    if (selectedTask.state.status === "draft") {
       return (
-        <DraftLoopComposer
-          loop={selectedLoop}
+        <DraftTaskComposer
+          task={selectedTask}
           workspaces={workspaces}
           models={dashboardData.models}
           modelsLoading={dashboardData.modelsLoading}
@@ -200,37 +200,37 @@ function renderMainContent(props: ShellMainContentProps) {
           workspaceError={workspaceError}
           workspacesLoading={workspacesLoading}
           headerOffsetClassName={shellHeaderOffsetClassName}
-          onRefresh={refreshLoops}
-          onDeleteDraft={purgeLoop}
+          onRefresh={refreshTasks}
+          onDeleteDraft={purgeTask}
           onNavigate={navigateWithinShell}
         />
       );
     }
 
     return (
-      <LoopDetails
-        key={`loop:${route.loopId}`}
-        loopId={route.loopId}
+      <TaskDetails
+        key={`task:${route.taskId}`}
+        taskId={route.taskId}
         onBack={() => {
           navigateWithinShell({ view: "home" });
-          void refreshLoops();
+          void refreshTasks();
         }}
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "ssh", sshSessionId })}
-        onOpenLoopFiles={(loopId) => navigateWithinShell({
+        onOpenTaskFiles={(taskId) => navigateWithinShell({
           view: "code-explorer",
-          target: { contentType: "loop", loopId },
+          target: { contentType: "task", taskId },
         })}
       />
     );
   }
 
-  if (route.view === "loop-files") {
+  if (route.view === "task-files") {
     return (
       <CodeExplorerView
-        routeTarget={{ contentType: "loop", loopId: route.loopId, startDirectory: route.startDirectory }}
-        loops={loops}
+        routeTarget={{ contentType: "task", taskId: route.taskId, startDirectory: route.startDirectory }}
+        tasks={tasks}
         chats={chats}
         workspaces={workspaces}
         sessions={sessions}
@@ -269,8 +269,8 @@ function renderMainContent(props: ShellMainContentProps) {
           view: "code-explorer",
           target: { contentType: "chat", chatId },
         })}
-        onOpenLoop={(loopId) => {
-          navigateWithinShell({ view: "loop", loopId });
+        onOpenTask={(taskId) => {
+          navigateWithinShell({ view: "task", taskId });
         }}
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
@@ -307,7 +307,7 @@ function renderMainContent(props: ShellMainContentProps) {
         </ShellPanel>
       );
     }
-    const relatedLoops = loops.filter((loop) => loop.config.workspaceId === selectedWorkspace.id);
+    const relatedTasks = tasks.filter((task) => task.config.workspaceId === selectedWorkspace.id);
     const relatedChats = chats.filter((chat) => chat.config.workspaceId === selectedWorkspace.id);
     const relatedSessions = sessions.filter(
       (session) => session.config.workspaceId === selectedWorkspace.id,
@@ -315,7 +315,7 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <WorkspaceView
         workspace={selectedWorkspace}
-        relatedLoops={relatedLoops}
+        relatedTasks={relatedTasks}
         relatedChats={relatedChats}
         relatedSessions={relatedSessions}
         registeredSshServers={servers}
@@ -336,7 +336,7 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <CodeExplorerView
         routeTarget={{ contentType: "workspace", workspaceId: route.workspaceId, startDirectory: route.startDirectory }}
-        loops={loops}
+        tasks={tasks}
         chats={chats}
         workspaces={workspaces}
         sessions={sessions}
@@ -434,7 +434,7 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <CodeExplorerView
         routeTarget={{ contentType: "server", serverId: route.serverId, startDirectory: route.startDirectory }}
-        loops={loops}
+        tasks={tasks}
         chats={chats}
         workspaces={workspaces}
         sessions={sessions}
@@ -452,7 +452,7 @@ function renderMainContent(props: ShellMainContentProps) {
     return (
       <CodeExplorerView
         routeTarget={route.target}
-        loops={loops}
+        tasks={tasks}
         chats={chats}
         workspaces={workspaces}
         sessions={sessions}
@@ -542,7 +542,7 @@ function renderMainContent(props: ShellMainContentProps) {
         navigateWithinShell={navigateWithinShell}
         composeActionState={props.composeActionState}
         setComposeActionState={props.setComposeActionState}
-        handleLoopSubmit={props.handleLoopSubmit}
+        handleTaskSubmit={props.handleTaskSubmit}
         createChat={createChat}
         dashboardData={dashboardData}
         workspaces={workspaces}
@@ -575,14 +575,14 @@ function renderMainContent(props: ShellMainContentProps) {
           resetting={dashboardData.appSettingsResetting}
           onKillServer={dashboardData.killServer}
           killingServer={dashboardData.appSettingsKilling}
-          onPurgeTerminalLoops={async () => {
-            const result = await dashboardData.purgeTerminalLoops();
+          onPurgeTerminalTasks={async () => {
+            const result = await dashboardData.purgeTerminalTasks();
             if (result) {
-              await refreshLoops();
+              await refreshTasks();
             }
             return result;
           }}
-          purgingTerminalLoops={dashboardData.appSettingsPurgingTerminalLoops}
+          purgingTerminalTasks={dashboardData.appSettingsPurgingTerminalTasks}
           onExportConfig={exportConfig}
           onImportConfig={importConfig}
           configSaving={workspacesSaving}

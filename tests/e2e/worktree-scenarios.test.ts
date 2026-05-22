@@ -1,5 +1,5 @@
 /**
- * E2E scenario tests for per-loop git worktrees.
+ * E2E scenario tests for per-task git worktrees.
  * These tests verify the full worktree lifecycle through the HTTP API,
  * including creation, isolation, persistence, and cleanup.
  */
@@ -11,28 +11,28 @@ import { existsSync } from "fs";
 import {
   setupTestServer,
   teardownTestServer,
-  createLoopViaAPI,
-  waitForLoopStatus,
-  acceptLoopViaAPI,
-  pushLoopViaAPI,
-  discardLoopViaAPI,
+  createTaskViaAPI,
+  waitForTaskStatus,
+  acceptTaskViaAPI,
+  pushTaskViaAPI,
+  discardTaskViaAPI,
   getCurrentBranch,
   branchExists,
   remoteBranchExists,
-  assertLoopState,
-  getLoopViaAPI,
+  assertTaskState,
+  getTaskViaAPI,
   type TestServerContext,
 } from "../integration/user-scenarios/helpers";
-import type { Loop } from "../../src/types/loop";
+import type { Task } from "../../src/types/task";
 
 /**
- * Helper to purge a loop via the API.
+ * Helper to purge a task via the API.
  */
-async function purgeLoopViaAPI(
+async function purgeTaskViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { success: boolean; error?: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/purge`, {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/purge`, {
     method: "POST",
   });
   const body = await response.json();
@@ -64,13 +64,13 @@ async function listWorktrees(workDir: string): Promise<string[]> {
 }
 
 describe("Worktree Scenarios", () => {
-  describe("Full loop lifecycle with worktree", () => {
+  describe("Full task lifecycle with worktree", () => {
     let ctx: TestServerContext;
 
     beforeEach(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          "wt-lifecycle-loop",
+          "wt-lifecycle-task",
           "Working on iteration 1...",
           "Done! <promise>COMPLETE</promise>",
         ],
@@ -85,37 +85,37 @@ describe("Worktree Scenarios", () => {
     test("create → complete → accept → purge removes worktree", async () => {
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
-      // Create and start loop
-      const { status, body } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create and start task
+      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Full lifecycle test",
         planMode: false,
       });
       expect(status).toBe(201);
-      const loop = body as Loop;
+      const task = body as Task;
 
       // Wait for completion
-      const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
-      assertLoopState(completedLoop, { status: "completed", hasGitBranch: true, hasError: false });
+      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      assertTaskState(completedTask, { status: "completed", hasGitBranch: true, hasError: false });
 
       // Verify worktree was created
-      const worktreePath = completedLoop.state.git!.worktreePath;
+      const worktreePath = completedTask.state.git!.worktreePath;
       expect(worktreePath).toBeDefined();
-      expect(worktreePath).toContain(".ralph-worktrees/");
+      expect(worktreePath).toContain(".clanky-worktrees/");
       expect(worktreeDirectoryExists(worktreePath!)).toBe(true);
 
       // Main checkout unchanged
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Accept (merge) — worktree should persist
-      const { status: acceptStatus } = await acceptLoopViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: acceptStatus } = await acceptTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(acceptStatus).toBe(200);
 
-      const mergedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "accepted_local");
+      const mergedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "accepted_local");
       expect(worktreeDirectoryExists(worktreePath!)).toBe(true);
 
       // Purge — worktree should be removed
-      const { status: purgeStatus, body: purgeBody } = await purgeLoopViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: purgeStatus, body: purgeBody } = await purgeTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(purgeStatus).toBe(200);
       expect(purgeBody.success).toBe(true);
 
@@ -127,28 +127,28 @@ describe("Worktree Scenarios", () => {
       expect(worktrees).not.toContain(worktreePath!);
 
       // Branch should be deleted
-      expect(await branchExists(ctx.workDir, mergedLoop.state.git!.workingBranch)).toBe(false);
+      expect(await branchExists(ctx.workDir, mergedTask.state.git!.workingBranch)).toBe(false);
 
-      // Loop should be deleted from DB
-      const { status: getStatus } = await getLoopViaAPI(ctx.baseUrl, loop.config.id);
+      // Task should be deleted from DB
+      const { status: getStatus } = await getTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(getStatus).toBe(404);
     });
   });
 
-  describe("Concurrent loops on same workspace", () => {
+  describe("Concurrent tasks on same workspace", () => {
     let ctx: TestServerContext;
 
     beforeEach(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          // Loop 1 responses
-          "concurrent-loop-one",
-          "Working loop 1...",
-          "Done loop 1! <promise>COMPLETE</promise>",
-          // Loop 2 responses
-          "concurrent-loop-two",
-          "Working loop 2...",
-          "Done loop 2! <promise>COMPLETE</promise>",
+          // Task 1 responses
+          "concurrent-task-one",
+          "Working task 1...",
+          "Done task 1! <promise>COMPLETE</promise>",
+          // Task 2 responses
+          "concurrent-task-two",
+          "Working task 2...",
+          "Done task 2! <promise>COMPLETE</promise>",
         ],
         withPlanningDir: true,
       });
@@ -158,28 +158,28 @@ describe("Worktree Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("two loops can run concurrently with separate worktrees", async () => {
+    test("two tasks can run concurrently with separate worktrees", async () => {
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
-      // Create both loops
-      const { body: body1 } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create both tasks
+      const { body: body1 } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
-        prompt: "Concurrent loop 1",
+        prompt: "Concurrent task 1",
         planMode: false,
       });
-      const loop1 = body1 as Loop;
+      const task1 = body1 as Task;
 
-      const { body: body2 } = await createLoopViaAPI(ctx.baseUrl, {
+      const { body: body2 } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
-        prompt: "Concurrent loop 2",
+        prompt: "Concurrent task 2",
         planMode: false,
       });
-      const loop2 = body2 as Loop;
+      const task2 = body2 as Task;
 
       // Wait for both to complete
       const [completed1, completed2] = await Promise.all([
-        waitForLoopStatus(ctx.baseUrl, loop1.config.id, "completed"),
-        waitForLoopStatus(ctx.baseUrl, loop2.config.id, "completed"),
+        waitForTaskStatus(ctx.baseUrl, task1.config.id, "completed"),
+        waitForTaskStatus(ctx.baseUrl, task2.config.id, "completed"),
       ]);
 
       // Both should have separate worktrees
@@ -204,18 +204,18 @@ describe("Worktree Scenarios", () => {
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Clean up both
-      await discardLoopViaAPI(ctx.baseUrl, loop1.config.id);
-      await discardLoopViaAPI(ctx.baseUrl, loop2.config.id);
+      await discardTaskViaAPI(ctx.baseUrl, task1.config.id);
+      await discardTaskViaAPI(ctx.baseUrl, task2.config.id);
     });
   });
 
-  describe("Loop with uncommitted changes in main checkout", () => {
+  describe("Task with uncommitted changes in main checkout", () => {
     let ctx: TestServerContext;
 
     beforeEach(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          "uncommitted-test-loop",
+          "uncommitted-test-task",
           "Working...",
           "Done! <promise>COMPLETE</promise>",
         ],
@@ -227,26 +227,26 @@ describe("Worktree Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("loop starts successfully despite uncommitted changes in main checkout", async () => {
+    test("task starts successfully despite uncommitted changes in main checkout", async () => {
       // Create uncommitted changes in main checkout
       await writeFile(join(ctx.workDir, "dirty-file.txt"), "uncommitted content");
       await Bun.$`git -C ${ctx.workDir} add dirty-file.txt`.quiet();
 
-      // Create and start loop — should NOT be blocked
-      const { status, body } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create and start task — should NOT be blocked
+      const { status, body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
-        prompt: "Loop with dirty main checkout",
+        prompt: "Task with dirty main checkout",
         planMode: false,
       });
       expect(status).toBe(201);
-      const loop = body as Loop;
+      const task = body as Task;
 
       // Wait for completion
-      const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
-      assertLoopState(completedLoop, { status: "completed", hasGitBranch: true, hasError: false });
+      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      assertTaskState(completedTask, { status: "completed", hasGitBranch: true, hasError: false });
 
       // Worktree should exist and be clean (doesn't inherit main checkout's dirty state)
-      const worktreePath = completedLoop.state.git!.worktreePath!;
+      const worktreePath = completedTask.state.git!.worktreePath!;
       expect(worktreeDirectoryExists(worktreePath)).toBe(true);
 
       // Main checkout should still have the staged dirty file
@@ -254,7 +254,7 @@ describe("Worktree Scenarios", () => {
       expect(statusOutput).toContain("dirty-file.txt");
 
       // Clean up
-      await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
+      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
       // Reset the dirty state
       await Bun.$`git -C ${ctx.workDir} reset HEAD -- dirty-file.txt`.quiet();
       await Bun.$`git -C ${ctx.workDir} checkout -- .`.quiet();
@@ -268,7 +268,7 @@ describe("Worktree Scenarios", () => {
     beforeEach(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          "discard-preserve-loop",
+          "discard-preserve-task",
           "Working...",
           "Done! <promise>COMPLETE</promise>",
         ],
@@ -280,31 +280,31 @@ describe("Worktree Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test("discard marks loop as deleted but preserves worktree until purge", async () => {
-      // Create and complete loop
-      const { body } = await createLoopViaAPI(ctx.baseUrl, {
+    test("discard marks task as deleted but preserves worktree until purge", async () => {
+      // Create and complete task
+      const { body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Discard test",
         planMode: false,
       });
-      const loop = body as Loop;
+      const task = body as Task;
 
-      const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
-      const worktreePath = completedLoop.state.git!.worktreePath!;
+      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      const worktreePath = completedTask.state.git!.worktreePath!;
       expect(worktreeDirectoryExists(worktreePath)).toBe(true);
 
       // Discard — worktree should persist
-      const { status: discardStatus } = await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: discardStatus } = await discardTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(discardStatus).toBe(200);
 
-      const deletedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "deleted");
-      assertLoopState(deletedLoop, { status: "deleted", hasError: false });
+      const deletedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "deleted");
+      assertTaskState(deletedTask, { status: "deleted", hasError: false });
 
       // Worktree directory should still exist after discard
       expect(worktreeDirectoryExists(worktreePath)).toBe(true);
 
       // Now purge — worktree should be removed
-      const { status: purgeStatus, body: purgeBody } = await purgeLoopViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: purgeStatus, body: purgeBody } = await purgeTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(purgeStatus).toBe(200);
       expect(purgeBody.success).toBe(true);
 
@@ -319,7 +319,7 @@ describe("Worktree Scenarios", () => {
     beforeEach(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          "push-preserve-loop",
+          "push-preserve-task",
           "Working...",
           "Done! <promise>COMPLETE</promise>",
         ],
@@ -335,20 +335,20 @@ describe("Worktree Scenarios", () => {
     test("push succeeds from worktree and worktree persists until purge", async () => {
       expect(ctx.remoteDir).toBeDefined();
 
-      // Create and complete loop
-      const { body } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create and complete task
+      const { body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Push test",
         planMode: false,
       });
-      const loop = body as Loop;
+      const task = body as Task;
 
-      const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
-      const worktreePath = completedLoop.state.git!.worktreePath!;
-      const workingBranch = completedLoop.state.git!.workingBranch;
+      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      const worktreePath = completedTask.state.git!.worktreePath!;
+      const workingBranch = completedTask.state.git!.workingBranch;
 
       // Push — worktree should persist
-      const { status: pushStatus, body: pushBody } = await pushLoopViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: pushStatus, body: pushBody } = await pushTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(pushStatus).toBe(200);
       expect(pushBody.success).toBe(true);
 
@@ -356,11 +356,11 @@ describe("Worktree Scenarios", () => {
       expect(await remoteBranchExists(ctx.workDir, workingBranch)).toBe(true);
 
       // Worktree should still exist after push
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "pushed");
+      await waitForTaskStatus(ctx.baseUrl, task.config.id, "pushed");
       expect(worktreeDirectoryExists(worktreePath)).toBe(true);
 
       // Purge should clean up everything
-      const { status: purgeStatus, body: purgeBody } = await purgeLoopViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: purgeStatus, body: purgeBody } = await purgeTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(purgeStatus).toBe(200);
       expect(purgeBody.success).toBe(true);
 
@@ -377,10 +377,10 @@ describe("Worktree Scenarios", () => {
     beforeEach(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          "exclude-test-loop-one",
+          "exclude-test-task-one",
           "Working...",
           "Done! <promise>COMPLETE</promise>",
-          "exclude-test-loop-two",
+          "exclude-test-task-two",
           "Working...",
           "Done! <promise>COMPLETE</promise>",
         ],
@@ -392,48 +392,48 @@ describe("Worktree Scenarios", () => {
       await teardownTestServer(ctx);
     });
 
-    test(".ralph-worktrees is re-validated in .git/info/exclude on every loop creation", async () => {
-      // Create first loop — should add exclude entry
-      const { body: body1 } = await createLoopViaAPI(ctx.baseUrl, {
+    test(".clanky-worktrees is re-validated in .git/info/exclude on every task creation", async () => {
+      // Create first task — should add exclude entry
+      const { body: body1 } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
-        prompt: "First loop",
+        prompt: "First task",
         planMode: false,
       });
-      const loop1 = body1 as Loop;
-      await waitForLoopStatus(ctx.baseUrl, loop1.config.id, "completed");
+      const task1 = body1 as Task;
+      await waitForTaskStatus(ctx.baseUrl, task1.config.id, "completed");
 
       // Verify exclude entry exists
       const excludePath = join(ctx.workDir, ".git/info/exclude");
       let excludeContent = await Bun.file(excludePath).text();
-      expect(excludeContent).toContain(".ralph-worktrees");
+      expect(excludeContent).toContain(".clanky-worktrees");
 
       // Manually remove the exclude entry
       excludeContent = excludeContent
         .split("\n")
-        .filter((line) => !line.includes(".ralph-worktrees"))
+        .filter((line) => !line.includes(".clanky-worktrees"))
         .join("\n");
       await writeFile(excludePath, excludeContent);
 
       // Verify it's gone
       const afterRemoval = await Bun.file(excludePath).text();
-      expect(afterRemoval).not.toContain(".ralph-worktrees");
+      expect(afterRemoval).not.toContain(".clanky-worktrees");
 
-      // Create second loop — should re-add exclude entry
-      const { body: body2 } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create second task — should re-add exclude entry
+      const { body: body2 } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
-        prompt: "Second loop",
+        prompt: "Second task",
         planMode: false,
       });
-      const loop2 = body2 as Loop;
-      await waitForLoopStatus(ctx.baseUrl, loop2.config.id, "completed");
+      const task2 = body2 as Task;
+      await waitForTaskStatus(ctx.baseUrl, task2.config.id, "completed");
 
       // Verify exclude entry was re-added
       const finalContent = await Bun.file(excludePath).text();
-      expect(finalContent).toContain(".ralph-worktrees");
+      expect(finalContent).toContain(".clanky-worktrees");
 
       // Clean up
-      await discardLoopViaAPI(ctx.baseUrl, loop1.config.id);
-      await discardLoopViaAPI(ctx.baseUrl, loop2.config.id);
+      await discardTaskViaAPI(ctx.baseUrl, task1.config.id);
+      await discardTaskViaAPI(ctx.baseUrl, task2.config.id);
     });
   });
 
@@ -443,7 +443,7 @@ describe("Worktree Scenarios", () => {
     beforeEach(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          "purge-cleanup-loop",
+          "purge-cleanup-task",
           "Working...",
           "Done! <promise>COMPLETE</promise>",
         ],
@@ -456,17 +456,17 @@ describe("Worktree Scenarios", () => {
     });
 
     test("purge removes worktree directory, git metadata, branch, and DB entry", async () => {
-      // Create and complete loop
-      const { body } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create and complete task
+      const { body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Purge cleanup test",
         planMode: false,
       });
-      const loop = body as Loop;
+      const task = body as Task;
 
-      const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
-      const worktreePath = completedLoop.state.git!.worktreePath!;
-      const workingBranch = completedLoop.state.git!.workingBranch;
+      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      const worktreePath = completedTask.state.git!.worktreePath!;
+      const workingBranch = completedTask.state.git!.workingBranch;
 
       // Verify everything exists before purge
       expect(worktreeDirectoryExists(worktreePath)).toBe(true);
@@ -474,12 +474,12 @@ describe("Worktree Scenarios", () => {
       const worktreesBefore = await listWorktrees(ctx.workDir);
       expect(worktreesBefore).toContain(worktreePath);
 
-      // Discard first (required before purge — can only purge deleted/merged/pushed loops)
-      await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
-      await waitForLoopStatus(ctx.baseUrl, loop.config.id, "deleted");
+      // Discard first (required before purge — can only purge deleted/merged/pushed tasks)
+      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
+      await waitForTaskStatus(ctx.baseUrl, task.config.id, "deleted");
 
       // Purge
-      const { status: purgeStatus, body: purgeBody } = await purgeLoopViaAPI(ctx.baseUrl, loop.config.id);
+      const { status: purgeStatus, body: purgeBody } = await purgeTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(purgeStatus).toBe(200);
       expect(purgeBody.success).toBe(true);
 
@@ -494,8 +494,8 @@ describe("Worktree Scenarios", () => {
       // 3. Branch deleted
       expect(await branchExists(ctx.workDir, workingBranch)).toBe(false);
 
-      // 4. Loop deleted from DB
-      const { status: getStatus } = await getLoopViaAPI(ctx.baseUrl, loop.config.id);
+      // 4. Task deleted from DB
+      const { status: getStatus } = await getTaskViaAPI(ctx.baseUrl, task.config.id);
       expect(getStatus).toBe(404);
     });
   });
@@ -506,7 +506,7 @@ describe("Worktree Scenarios", () => {
     beforeEach(async () => {
       ctx = await setupTestServer({
         mockResponses: [
-          "isolation-test-loop",
+          "isolation-test-task",
           "Working...",
           "Done! <promise>COMPLETE</promise>",
         ],
@@ -521,16 +521,16 @@ describe("Worktree Scenarios", () => {
     test("files created in worktree do not appear in main checkout", async () => {
       const originalBranch = await getCurrentBranch(ctx.workDir);
 
-      // Create and complete loop
-      const { body } = await createLoopViaAPI(ctx.baseUrl, {
+      // Create and complete task
+      const { body } = await createTaskViaAPI(ctx.baseUrl, {
         directory: ctx.workDir,
         prompt: "Isolation test",
         planMode: false,
       });
-      const loop = body as Loop;
+      const task = body as Task;
 
-      const completedLoop = await waitForLoopStatus(ctx.baseUrl, loop.config.id, "completed");
-      const worktreePath = completedLoop.state.git!.worktreePath!;
+      const completedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "completed");
+      const worktreePath = completedTask.state.git!.worktreePath!;
 
       // Create a file in the worktree
       const testFile = "worktree-only-file.txt";
@@ -548,7 +548,7 @@ describe("Worktree Scenarios", () => {
       expect(await getCurrentBranch(ctx.workDir)).toBe(originalBranch);
 
       // Clean up
-      await discardLoopViaAPI(ctx.baseUrl, loop.config.id);
+      await discardTaskViaAPI(ctx.baseUrl, task.config.id);
     });
   });
 });
