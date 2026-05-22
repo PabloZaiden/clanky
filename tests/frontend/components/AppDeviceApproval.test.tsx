@@ -37,16 +37,16 @@ describe("App device approval route", () => {
     }));
     api.get("/api/auth/device/verification", () => ({
       userCode: "ABCD-EFGH",
-      clientId: "ralpher-cli",
-      scope: "loops:read",
+      clientId: "clanky-cli",
+      scope: "tasks:read",
       status: "pending",
       expiresAt: "2099-04-21T15:00:00.000Z",
       passkeyRequired: true,
     }));
     api.post("/api/auth/device/approve", () => ({
       userCode: "ABCD-EFGH",
-      clientId: "ralpher-cli",
-      scope: "loops:read",
+      clientId: "clanky-cli",
+      scope: "tasks:read",
       status: "approved",
       expiresAt: "2099-04-21T15:00:00.000Z",
       passkeyRequired: true,

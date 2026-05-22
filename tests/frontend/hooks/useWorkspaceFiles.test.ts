@@ -522,7 +522,7 @@ describe("useWorkspaceFiles", () => {
       }),
     }));
     api.get("/api/ssh-servers/:id/files/metadata", (req) => {
-      expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("credential-token");
+      expect(req.headers.get("x-clanky-ssh-credential-token")).toBe("credential-token");
       return {
         serverId: "server-1",
         file: createDirectoryEntry({
@@ -537,7 +537,7 @@ describe("useWorkspaceFiles", () => {
       };
     });
     api.get("/api/ssh-servers/:id/files/preview", (req) => {
-      expect(req.headers.get("x-ralpher-ssh-credential-token")).toBe("credential-token");
+      expect(req.headers.get("x-clanky-ssh-credential-token")).toBe("credential-token");
       return "png-bytes";
     });
     api.get("/api/ssh-servers/:id/files/content", () => {

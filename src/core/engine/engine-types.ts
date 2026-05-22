@@ -1,22 +1,22 @@
 /**
- * Shared types and constants for LoopEngine internals.
+ * Shared types and constants for TaskEngine internals.
  */
 
 import type { AcpBackend } from "../../backends/acp";
 import type {
-  LoopConfig,
-  LoopState,
-  Loop,
-  LoopLogEntry,
+  TaskConfig,
+  TaskState,
+  Task,
+  TaskLogEntry,
   ModelConfig,
-} from "../../types/loop";
-import type { LoopEvent } from "../../types/events";
+} from "../../types/task";
+import type { TaskEvent } from "../../types/events";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { GitService } from "../git-service";
 import type { SimpleEventEmitter } from "../event-emitter";
 
 /**
- * Maximum number of log entries to persist in loop state.
+ * Maximum number of log entries to persist in task state.
  * When exceeded, the oldest entries are evicted to keep memory bounded.
  * The frontend loads the last 1000 on page refresh, so 5000 provides
  * ample history while preventing unbounded growth.
@@ -24,24 +24,24 @@ import type { SimpleEventEmitter } from "../event-emitter";
 export const MAX_PERSISTED_LOGS = 5000;
 
 /**
- * Maximum number of messages to persist in loop state.
+ * Maximum number of messages to persist in task state.
  * Messages are larger than logs due to AI response content.
  */
 export const MAX_PERSISTED_MESSAGES = 2000;
 
 /**
- * Maximum number of tool calls to persist in loop state.
+ * Maximum number of tool calls to persist in task state.
  */
 export const MAX_PERSISTED_TOOL_CALLS = 5000;
 
 /**
- * Backend interface for LoopEngine.
- * This is a structural type that defines the methods LoopEngine needs.
+ * Backend interface for TaskEngine.
+ * This is a structural type that defines the methods TaskEngine needs.
  * Both AcpBackend and MockAcpBackend satisfy this interface.
  * Using a structural type (interface) instead of a union allows for
  * easy mocking in tests without requiring all internal class fields.
  */
-export interface LoopBackend {
+export interface TaskBackend {
   connect: AcpBackend["connect"];
   disconnect: AcpBackend["disconnect"];
   isConnected: AcpBackend["isConnected"];
@@ -57,22 +57,22 @@ export interface LoopBackend {
 }
 
 /**
- * Options for creating a LoopEngine.
+ * Options for creating a TaskEngine.
  */
-export interface LoopEngineOptions {
-  /** The loop configuration and state */
-  loop: Loop;
+export interface TaskEngineOptions {
+  /** The task configuration and state */
+  task: Task;
   /** The agent backend to use */
-  backend: LoopBackend;
+  backend: TaskBackend;
   /** Git service instance (required) */
   gitService: GitService;
   /** Event emitter instance (optional, defaults to global) */
-  eventEmitter?: SimpleEventEmitter<LoopEvent>;
+  eventEmitter?: SimpleEventEmitter<TaskEvent>;
   /** Callback to persist state to disk (optional) */
-  onPersistState?: (state: LoopState) => Promise<void>;
+  onPersistState?: (state: TaskState) => Promise<void>;
   /** Callback fired after a plan becomes ready (optional) */
   onPlanReady?: () => Promise<void>;
-  /** Callback fired after a loop reaches completed status (optional) */
+  /** Callback fired after a task reaches completed status (optional) */
   onCompleted?: () => Promise<void>;
   /** Skip git branch setup (for review cycles where branch is already set up) */
   skipGitSetup?: boolean;
@@ -84,7 +84,7 @@ export interface LoopEngineOptions {
  * Result of running an iteration.
  */
 export interface IterationResult {
-  /** Whether the loop should continue */
+  /** Whether the task should continue */
   continue: boolean;
   /** The outcome of this iteration */
   outcome: "continue" | "complete" | "error" | "plan_ready";
@@ -121,5 +121,5 @@ export interface IterationContext {
   currentReasoningLogContent: string;
 }
 
-// Re-export loop types used by engine consumers so they don't have to reach into types/loop
-export type { LoopConfig, LoopState, Loop, LoopLogEntry, ModelConfig };
+// Re-export task types used by engine consumers so they don't have to reach into types/task
+export type { TaskConfig, TaskState, Task, TaskLogEntry, ModelConfig };

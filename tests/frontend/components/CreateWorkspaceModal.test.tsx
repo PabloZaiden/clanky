@@ -347,7 +347,7 @@ describe("CreateWorkspaceModal", () => {
 
   test("hides the password field when a stored browser credential exists", async () => {
     window.localStorage.setItem(
-      "ralpher.sshServerCredential.server-1",
+      "clanky.sshServerCredential.server-1",
       JSON.stringify({
         encryptedCredential: {
           algorithm: "RSA-OAEP-256",
@@ -420,7 +420,7 @@ describe("CreateWorkspaceModal", () => {
     });
 
     await user.click(getAllByRole("button", { name: "Close" }).at(-1)!);
-    expect(window.localStorage.getItem("ralpher.activeProvisioningJobId")).toBeNull();
+    expect(window.localStorage.getItem("clanky.activeProvisioningJobId")).toBeNull();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -489,7 +489,7 @@ describe("CreateWorkspaceModal", () => {
       expect(getByRole("button", { name: "Start Provisioning" })).toBeInTheDocument();
     });
 
-    expect(window.localStorage.getItem("ralpher.activeProvisioningJobId")).toBeNull();
+    expect(window.localStorage.getItem("clanky.activeProvisioningJobId")).toBeNull();
     expect((getByRole("textbox", { name: "Workspace Name *" }) as HTMLInputElement).value).toBe("Provisioned Workspace");
     expect((getByRole("textbox", { name: "Git Repository URL *" }) as HTMLInputElement).value).toBe("git@github.com:owner/repo.git");
     expect((getByRole("textbox", { name: "Remote Base Path *" }) as HTMLInputElement).value).toBe("/workspaces");
@@ -607,7 +607,7 @@ describe("CreateWorkspaceModal", () => {
     expect((getByRole("textbox", { name: "Remote Base Path *" }) as HTMLInputElement).value).toBe("/custom/path");
     expect(getAutomaticDevcontainerVariantInput().value).toBe(".devcontainer/backend/devcontainer.json");
     // Password is intentionally empty after going back (security)
-    expect(window.localStorage.getItem("ralpher.activeProvisioningJobId")).toBeNull();
+    expect(window.localStorage.getItem("clanky.activeProvisioningJobId")).toBeNull();
   });
 
   test("preserves a selected devbox template after failure and Back", async () => {

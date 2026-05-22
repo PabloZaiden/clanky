@@ -6,12 +6,12 @@
  * 
  * Route Modules:
  * - health: Server health check endpoint
- * - loops: Loop CRUD, control, data, and review operations
+ * - tasks: Task CRUD, control, data, and review operations
  * - models: AI model listing and user preferences
  * - settings: Server configuration and connection management
  * - git: Git repository information
  * - workspaces: Workspace CRUD operations
- * - agents-md: AGENTS.md optimization for Ralpher
+ * - agents-md: AGENTS.md optimization for Clanky
  * - ssh-servers: Standalone SSH server registry, credentials, and ad-hoc sessions
  * - ssh-sessions: Workspace-backed persistent SSH sessions
  * - provisioning: Remote workspace provisioning jobs
@@ -22,7 +22,7 @@
  */
 
 import { healthRoutes } from "./health";
-import { loopsRoutes } from "./loops";
+import { tasksRoutes } from "./tasks";
 import { modelsAndPreferencesRoutes } from "./models";
 import { settingsRoutes } from "./settings";
 import { gitRoutes } from "./git";
@@ -54,7 +54,7 @@ import { authRoutes } from "./auth";
  */
 export const apiRoutes = {
   ...healthRoutes,
-  ...loopsRoutes,
+  ...tasksRoutes,
   ...modelsAndPreferencesRoutes,
   ...settingsRoutes,
   ...gitRoutes,
@@ -72,7 +72,7 @@ export const apiRoutes = {
 // Re-export individual route modules
 export * from "./helpers";
 export * from "./health";
-export * from "./loops";
+export * from "./tasks";
 export * from "./models";
 export * from "./settings";
 export * from "./git";

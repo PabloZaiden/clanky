@@ -23,7 +23,7 @@ export async function createTempGitRepository(
   options: CreateTempGitRepositoryOptions = {},
 ): Promise<string> {
   const {
-    prefix = "ralpher-git-test-",
+    prefix = "clanky-git-test-",
     resolveRealpath = false,
     initialCommit = "readme",
     initialBranch,

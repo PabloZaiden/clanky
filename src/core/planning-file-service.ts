@@ -25,8 +25,8 @@ function hasMeaningfulPlanContent(content: string): boolean {
   return normalizePlanContent(content).length > 0;
 }
 
-function sanitizeLoopNameForStatusContent(loopName: string): string {
-  return loopName
+function sanitizeTaskNameForStatusContent(taskName: string): string {
+  return taskName
     .replace(/[`]/g, "")
     .replace(/[\r\n]+/g, " ")
     .replace(/\s+/g, " ")
@@ -100,14 +100,14 @@ export async function readValidatedPlanningFiles(
   const rawPlanContent = await executor.readFile(source.planPath);
   if (rawPlanContent === null) {
     if (source.isDefault) {
-      throw new InvalidCurrentPlanError("No Ralpher plan file was found in the current chat workspace.");
+      throw new InvalidCurrentPlanError("No Clanky plan file was found in the current chat workspace.");
     }
     throw new InvalidCurrentPlanError(`No plan file was found at "${source.displayPath}".`);
   }
   const planContent = normalizePlanContent(rawPlanContent);
   if (!hasMeaningfulPlanContent(rawPlanContent)) {
     if (source.isDefault) {
-      throw new InvalidCurrentPlanError("The current Ralpher plan file is empty.");
+      throw new InvalidCurrentPlanError("The current Clanky plan file is empty.");
     }
     throw new InvalidCurrentPlanError(`The selected plan file "${source.displayPath}" is empty.`);
   }
@@ -121,15 +121,15 @@ export async function readValidatedPlanningFiles(
   };
 }
 
-export function buildSeededPlanStatusContent(loopName: string): string {
-  const safeLoopName = sanitizeLoopNameForStatusContent(loopName) || "this loop";
+export function buildSeededPlanStatusContent(taskName: string): string {
+  const safeTaskName = sanitizeTaskNameForStatusContent(taskName) || "this task";
   return `# Status
 
 ## Current state
 
-- Imported plan ready for ${safeLoopName}
+- Imported plan ready for ${safeTaskName}
 - Current task: review the imported plan and either accept it or send feedback
-- Notes: This loop was spawned from the chat's current Ralpher plan
+- Notes: This task was spawned from the chat's current Clanky plan
 
 ## Next steps
 
@@ -147,7 +147,7 @@ export async function writePlanningFiles(
 
   const planWritten = await executor.writeFile(getPlanFilePath(directory), files.planContent);
   if (!planWritten) {
-    throw new Error("Failed to write plan.md for the seeded loop");
+    throw new Error("Failed to write plan.md for the seeded task");
   }
 
   const nextStatusContent = files.statusContent?.trim();
@@ -157,6 +157,6 @@ export async function writePlanningFiles(
 
   const statusWritten = await executor.writeFile(getStatusFilePath(directory), nextStatusContent);
   if (!statusWritten) {
-    throw new Error("Failed to write status.md for the seeded loop");
+    throw new Error("Failed to write status.md for the seeded task");
   }
 }

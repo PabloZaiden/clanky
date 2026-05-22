@@ -30,15 +30,15 @@ export {
   type CheapModelSelection,
 } from "./model";
 
-// Loop schemas
+// Task schemas
 export {
   GitConfigSchema,
-  LoopNameSchema,
+  TaskNameSchema,
   MessageImageAttachmentSchema,
   MessageImageAttachmentsSchema,
-  CreateLoopRequestSchema,
-  GenerateLoopTitleRequestSchema,
-  UpdateLoopRequestSchema,
+  CreateTaskRequestSchema,
+  GenerateTaskTitleRequestSchema,
+  UpdateTaskRequestSchema,
   AddressCommentsRequestSchema,
   PlanFeedbackRequestSchema,
   PlanAcceptRequestSchema,
@@ -46,7 +46,7 @@ export {
   SetPendingRequestSchema,
   StartDraftRequestSchema,
   FollowUpRequestSchema,
-} from "./loop";
+} from "./task";
 
 // Chat schemas
 export {
@@ -55,7 +55,7 @@ export {
   SendChatMessageRequestSchema,
   InterruptChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
-  SpawnCurrentPlanLoopRequestSchema,
+  SpawnCurrentPlanTaskRequestSchema,
 } from "./chat";
 
 // Workspace schemas

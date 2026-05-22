@@ -81,7 +81,7 @@ describe("SshSessionComposer", () => {
               name: options?.name ?? "SSH session",
               connectionMode: options?.connectionMode ?? "dtach",
               useTmux: options?.useTmux ?? true,
-              remoteSessionName: "ralpher-standalone-1",
+              remoteSessionName: "clanky-standalone-1",
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             },

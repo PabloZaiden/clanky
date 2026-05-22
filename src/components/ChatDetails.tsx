@@ -36,8 +36,8 @@ import type {
   Chat,
   ChatEvent,
   ComposerImageAttachment,
-  Loop,
-  LoopLogEntry,
+  Task,
+  TaskLogEntry,
   MessageData,
   ToolCallData,
 } from "../types";
@@ -108,22 +108,22 @@ export function ChatDetails({
   chatId,
   onBack,
   onOpenCodeExplorer,
-  onOpenLoop,
+  onOpenTask,
   showBackButton = true,
   headerOffsetClassName,
-  embeddedLoopId,
+  embeddedTaskId,
 }: {
   chatId: string;
   onBack?: () => void;
   onOpenCodeExplorer?: (chatId: string) => void;
-  onOpenLoop?: (loopId: string) => void;
+  onOpenTask?: (taskId: string) => void;
   showBackButton?: boolean;
   headerOffsetClassName?: string;
-  embeddedLoopId?: string;
+  embeddedTaskId?: string;
 }) {
   const toast = useToast();
   const { enabled: markdownEnabled } = useMarkdownPreference();
-  const isEmbedded = typeof embeddedLoopId === "string" && embeddedLoopId.length > 0;
+  const isEmbedded = typeof embeddedTaskId === "string" && embeddedTaskId.length > 0;
   const chatHeaderClassName = "border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-neutral-800 flex-shrink-0 safe-area-top";
   const chatHeaderInnerClassName = "px-4 sm:px-6 lg:px-8 py-2";
   const chatHeaderPrimaryRowClassName = [(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "flex min-h-14 items-center gap-2"].join(" ");
@@ -252,7 +252,7 @@ export function ChatDetails({
               ...current.state,
               status: getStreamingActivityStatus(current.state.status),
               lastActivityAt: event.timestamp,
-              logs: upsertById(current.state.logs as LoopLogEntry[], event.log),
+              logs: upsertById(current.state.logs as TaskLogEntry[], event.log),
             },
           };
         case "chat.interrupted":
@@ -508,27 +508,27 @@ export function ChatDetails({
     }
   }
 
-  const handleSpawnLoop = useCallback(async () => {
+  const handleSpawnTask = useCallback(async () => {
     if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
       return;
     }
 
     setIsSpawnPending(true);
     try {
-      const response = await appFetch(`/api/chats/${chatId}/spawn-loop`, {
+      const response = await appFetch(`/api/chats/${chatId}/spawn-task`, {
         method: "POST",
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to spawn loop"));
+        throw new Error(await parseError(response, "Failed to spawn task"));
       }
-      const loop = (await response.json()) as Loop;
-      onOpenLoop?.(loop.config.id);
+      const task = (await response.json()) as Task;
+      onOpenTask?.(task.config.id);
     } catch (spawnError) {
       toast.error(String(spawnError));
     } finally {
       setIsSpawnPending(false);
     }
-  }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenLoop, toast]);
+  }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenTask, toast]);
 
   const openSpawnCurrentPlanModal = useCallback(() => {
     if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
@@ -548,7 +548,7 @@ export function ChatDetails({
     setSpawnCurrentPlanPath("");
   }, [isSpawnCurrentPlanPending]);
 
-  const handleSpawnLoopFromCurrentPlan = useCallback(async (requestedPlanPath: string) => {
+  const handleSpawnTaskFromCurrentPlan = useCallback(async (requestedPlanPath: string) => {
     if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
       return;
     }
@@ -557,7 +557,7 @@ export function ChatDetails({
 
     setIsSpawnCurrentPlanPending(true);
     try {
-      const response = await appFetch(`/api/chats/${chatId}/spawn-loop-from-current-plan`, {
+      const response = await appFetch(`/api/chats/${chatId}/spawn-task-from-current-plan`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -565,18 +565,18 @@ export function ChatDetails({
         body: JSON.stringify(trimmedPlanPath ? { planFilePath: trimmedPlanPath } : {}),
       });
       if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to spawn loop from current plan"));
+        throw new Error(await parseError(response, "Failed to spawn task from current plan"));
       }
-      const loop = (await response.json()) as Loop;
+      const task = (await response.json()) as Task;
       setSpawnCurrentPlanPath("");
       setIsSpawnCurrentPlanModalOpen(false);
-      onOpenLoop?.(loop.config.id);
+      onOpenTask?.(task.config.id);
     } catch (spawnError) {
       toast.error(getErrorMessage(spawnError));
     } finally {
       setIsSpawnCurrentPlanPending(false);
     }
-  }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenLoop, toast]);
+  }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenTask, toast]);
 
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     attachmentControlRef.current?.handlePaste(event);
@@ -605,10 +605,10 @@ export function ChatDetails({
       rootDirectory: chatWorkingDirectory,
       getFileHref: ({ path, startDirectory }: TranscriptFileLinkTarget) => `#${getHashForShellRoute({
         view: "code-explorer",
-        target: embeddedLoopId
+        target: embeddedTaskId
           ? {
-              contentType: "loop",
-              loopId: embeddedLoopId,
+              contentType: "task",
+              taskId: embeddedTaskId,
               startDirectory,
               filePath: path,
             }
@@ -622,10 +622,10 @@ export function ChatDetails({
       openFile: ({ path, startDirectory }: TranscriptFileLinkTarget) => {
         window.location.hash = getHashForShellRoute({
           view: "code-explorer",
-          target: embeddedLoopId
+          target: embeddedTaskId
             ? {
-                contentType: "loop",
-                loopId: embeddedLoopId,
+                contentType: "task",
+                taskId: embeddedTaskId,
                 startDirectory,
                 filePath: path,
               }
@@ -638,7 +638,7 @@ export function ChatDetails({
         });
       },
     };
-  }, [chat, chatWorkingDirectory, embeddedLoopId]);
+  }, [chat, chatWorkingDirectory, embeddedTaskId]);
 
   const headerActionMenuItems = useMemo<ActionMenuItem[]>(() => {
     if (!chat || isEmbedded) {
@@ -647,14 +647,14 @@ export function ChatDetails({
 
     return [
       {
-        id: "spawn-loop",
-        label: isSpawnPending ? "Spawning loop..." : "Spawn Loop",
-        onClick: () => void handleSpawnLoop(),
+        id: "spawn-task",
+        label: isSpawnPending ? "Spawning task..." : "Spawn Task",
+        onClick: () => void handleSpawnTask(),
         disabled: isActive || isSpawnPending || isSpawnCurrentPlanPending || chat.state.messages.length === 0,
       },
       {
-        id: "spawn-loop-from-current-plan",
-        label: isSpawnCurrentPlanPending ? "Spawning loop from current plan..." : "Spawn loop from current plan",
+        id: "spawn-task-from-current-plan",
+        label: isSpawnCurrentPlanPending ? "Spawning task from current plan..." : "Spawn task from current plan",
         onClick: () => void openSpawnCurrentPlanModal(),
         disabled: isActive || isSpawnPending || isSpawnCurrentPlanPending || chat.state.messages.length === 0,
       },
@@ -676,7 +676,7 @@ export function ChatDetails({
         destructive: true,
       },
     ];
-  }, [chat, handleSpawnLoop, hasCodeExplorerAction, isActive, isEmbedded, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal]);
+  }, [chat, handleSpawnTask, hasCodeExplorerAction, isActive, isEmbedded, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal]);
 
   const {
     composerRef,
@@ -957,7 +957,7 @@ export function ChatDetails({
       onClose={closeSpawnCurrentPlanModal}
       onSubmit={async (planFilePath) => {
         setSpawnCurrentPlanPath(planFilePath);
-        await handleSpawnLoopFromCurrentPlan(planFilePath);
+        await handleSpawnTaskFromCurrentPlan(planFilePath);
       }}
     />
   );

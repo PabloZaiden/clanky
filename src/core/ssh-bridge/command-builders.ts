@@ -27,7 +27,7 @@ export function buildAttachCommand(session: {
 }
 
 export function buildDirectTtyFilePath(sessionId: string): string {
-  return `/tmp/ralpher-terminal-${sessionId}.tty`;
+  return `/tmp/clanky-terminal-${sessionId}.tty`;
 }
 
 export function buildDirectShellCommand(session: { config: { id: string; directory?: string; useTmux?: boolean } }): string {

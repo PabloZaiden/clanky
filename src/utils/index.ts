@@ -8,34 +8,34 @@ export {
   canMarkMerged,
   canManualComplete,
   isFinalState,
-  isLoopActive,
-  isLoopRunning,
-  isLoopGenerating,
+  isTaskActive,
+  isTaskRunning,
+  isTaskGenerating,
   canJumpstart,
   canSendTerminalFollowUp,
   isAwaitingFeedback,
-  isArchivedLoop,
-  isWorkspaceHistoryLoop,
+  isArchivedTask,
+  isWorkspaceHistoryTask,
   shouldShowInRecentActivity,
   getRecentActivityTimestamp,
   getPlanningStatusLabel,
-  getLoopStatusLabel,
-  getLoopStatusPill,
-  getLoopStatusPillFromState,
-  isLoopPlanReady,
+  getTaskStatusLabel,
+  getTaskStatusPill,
+  getTaskStatusPillFromState,
+  isTaskPlanReady,
   getEntityLabel,
   type EntityLabels,
-  type LoopStatusPill,
-  type LoopStatusPillKey,
-  type LoopStatusPillVariant,
-} from "./loop-status";
+  type TaskStatusPill,
+  type TaskStatusPillKey,
+  type TaskStatusPillVariant,
+} from "./task-status";
 
 export { sanitizeBranchName } from "./sanitize-branch-name";
 export { normalizeCommitScope } from "./commit-scope";
 
 export { formatRelativeTime } from "./format";
 
-export { buildDefaultSshSessionName, buildLoopSshSessionName } from "./ssh-session-name";
+export { buildDefaultSshSessionName, buildTaskSshSessionName } from "./ssh-session-name";
 
 export { writeTextToClipboard } from "./clipboard";
 

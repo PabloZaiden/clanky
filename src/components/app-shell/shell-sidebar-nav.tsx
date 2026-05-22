@@ -22,7 +22,7 @@ import {
   getSidebarWorkspaceSectionCollapseKey,
   type SidebarServerSessionNode,
   type ShellRoute,
-  type SidebarLoopNode,
+  type SidebarTaskNode,
   type SidebarServerNode,
   type SidebarWorkspaceNode,
   type SidebarWorkspaceGroupNode,
@@ -62,10 +62,10 @@ const iconButtonActive =
 const searchInputClassName =
   "block w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700";
 
-interface SidebarLoopSearchResult {
+interface SidebarTaskSearchResult {
   key: string;
   workspaceName: string;
-  loopNode: SidebarLoopNode;
+  taskNode: SidebarTaskNode;
 }
 
 interface SidebarChatSearchResult {
@@ -82,7 +82,7 @@ interface SidebarSessionSearchResult {
 
 interface SidebarSearchResults {
   workspaces: SidebarWorkspaceNode[];
-  loops: SidebarLoopSearchResult[];
+  tasks: SidebarTaskSearchResult[];
   chats: SidebarChatSearchResult[];
   sshSessions: SidebarSessionSearchResult[];
   sshServers: SidebarServerNode[];
@@ -290,13 +290,13 @@ export function ShellSidebarNav({
     );
   }
 
-  function isLoopActive(loopId: string): boolean {
+  function isTaskActive(taskId: string): boolean {
     return (
-      ((route.view === "loop" || route.view === "loop-files") && route.loopId === loopId)
+      ((route.view === "task" || route.view === "task-files") && route.taskId === taskId)
       || (
         route.view === "code-explorer"
-        && route.target?.contentType === "loop"
-        && route.target.loopId === loopId
+        && route.target?.contentType === "task"
+        && route.target.taskId === taskId
       )
     );
   }
@@ -329,24 +329,24 @@ export function ShellSidebarNav({
     );
   }
 
-  function renderLoopNodes({
-    loopNodes,
+  function renderTaskNodes({
+    taskNodes,
     indentLevel = 3,
   }: {
-    loopNodes: SidebarLoopNode[];
+    taskNodes: SidebarTaskNode[];
     indentLevel?: number;
   }) {
-    return loopNodes.map((loopNode) => (
+    return taskNodes.map((taskNode) => (
       <SidebarTreeItem
-        key={loopNode.loop.config.id}
-        active={isLoopActive(loopNode.loop.config.id)}
-        title={loopNode.title}
-        badge={loopNode.badge}
-        badgeVariant={loopNode.badgeVariant}
+        key={taskNode.task.config.id}
+        active={isTaskActive(taskNode.task.config.id)}
+        title={taskNode.title}
+        badge={taskNode.badge}
+        badgeVariant={taskNode.badgeVariant}
         indentLevel={indentLevel}
         onClick={(event) => handleSidebarItemClick(event, {
-          view: "loop",
-          loopId: loopNode.loop.config.id,
+          view: "task",
+          taskId: taskNode.task.config.id,
         })}
       />
     ));
@@ -394,19 +394,19 @@ export function ShellSidebarNav({
 
     const results: SidebarSearchResults = {
       workspaces: [],
-      loops: [],
+      tasks: [],
       chats: [],
       sshSessions: [],
       sshServers: [],
     };
     const seenWorkspaceIds = new Set<string>();
-    const seenLoopIds = new Set<string>();
+    const seenTaskIds = new Set<string>();
     const seenChatIds = new Set<string>();
     const seenSessionIds = new Set<string>();
     const seenServerIds = new Set<string>();
 
     const matchesWorkspacesSection = matchesSearchText("Workspaces", searchQuery);
-    const matchesLoopsSection = matchesSearchText("Loops", searchQuery);
+    const matchesTasksSection = matchesSearchText("Tasks", searchQuery);
     const matchesChatsSection = matchesSearchText("Chats", searchQuery);
     const matchesSshSessionsSection = matchesSearchText("SSH sessions", searchQuery);
     const matchesHistorySection = matchesSearchText("History", searchQuery);
@@ -424,27 +424,27 @@ export function ShellSidebarNav({
           results.workspaces.push(workspaceNode);
         }
 
-        for (const loopNode of workspaceNode.loops) {
-          const loopId = loopNode.loop.config.id;
-          if ((matchesLoopsSection || matchesSearchText(loopNode.title, searchQuery)) && !seenLoopIds.has(loopId)) {
-            seenLoopIds.add(loopId);
-            results.loops.push({
-              key: loopId,
+        for (const taskNode of workspaceNode.tasks) {
+          const taskId = taskNode.task.config.id;
+          if ((matchesTasksSection || matchesSearchText(taskNode.title, searchQuery)) && !seenTaskIds.has(taskId)) {
+            seenTaskIds.add(taskId);
+            results.tasks.push({
+              key: taskId,
               workspaceName: workspaceNode.workspace.name,
-              loopNode,
+              taskNode,
             });
           }
         }
 
-        for (const loopNode of workspaceNode.historyLoops) {
-          const loopId = loopNode.loop.config.id;
-          if ((matchesLoopsSection || matchesHistorySection || matchesSearchText(loopNode.title, searchQuery))
-            && !seenLoopIds.has(loopId)) {
-            seenLoopIds.add(loopId);
-            results.loops.push({
-              key: loopId,
+        for (const taskNode of workspaceNode.historyTasks) {
+          const taskId = taskNode.task.config.id;
+          if ((matchesTasksSection || matchesHistorySection || matchesSearchText(taskNode.title, searchQuery))
+            && !seenTaskIds.has(taskId)) {
+            seenTaskIds.add(taskId);
+            results.tasks.push({
+              key: taskId,
               workspaceName: workspaceNode.workspace.name,
-              loopNode,
+              taskNode,
             });
           }
         }
@@ -502,7 +502,7 @@ export function ShellSidebarNav({
   }, [searchQuery, serverNodes, workspaceGroups]);
   const isSearching = searchResults !== null;
   const hasSearchResults = (searchResults?.workspaces.length ?? 0) > 0
-    || (searchResults?.loops.length ?? 0) > 0
+    || (searchResults?.tasks.length ?? 0) > 0
     || (searchResults?.chats.length ?? 0) > 0
     || (searchResults?.sshSessions.length ?? 0) > 0
     || (searchResults?.sshServers.length ?? 0) > 0;
@@ -529,7 +529,7 @@ export function ShellSidebarNav({
             onClick={() => navigateWithinShell({ view: "home" })}
             className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500 transition hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
           >
-            Ralpher
+            Clanky
           </button>
           <div className="flex items-center gap-2">
             <button
@@ -608,16 +608,16 @@ export function ShellSidebarNav({
                         })}
                         onContextMenu={(event) => openWorkspaceContextMenu(event, workspaceNode.workspace)}
                       />
-                      {(workspaceNode.loops.length > 0 || workspaceNode.historyLoops.length > 0) && (
-                        <SidebarTreeSection title="Loops" indentLevel={1}>
-                          {workspaceNode.loops.length > 0 && renderLoopNodes({
-                            loopNodes: workspaceNode.loops,
+                      {(workspaceNode.tasks.length > 0 || workspaceNode.historyTasks.length > 0) && (
+                        <SidebarTreeSection title="Tasks" indentLevel={1}>
+                          {workspaceNode.tasks.length > 0 && renderTaskNodes({
+                            taskNodes: workspaceNode.tasks,
                             indentLevel: 2,
                           })}
-                          {workspaceNode.historyLoops.length > 0 && (
+                          {workspaceNode.historyTasks.length > 0 && (
                             <SidebarTreeSection title="History" indentLevel={2}>
-                              {renderLoopNodes({
-                                loopNodes: workspaceNode.historyLoops,
+                              {renderTaskNodes({
+                                taskNodes: workspaceNode.historyTasks,
                                 indentLevel: 3,
                               })}
                             </SidebarTreeSection>
@@ -666,19 +666,19 @@ export function ShellSidebarNav({
                 </SearchResultsSection>
               )}
 
-              {searchResults.loops.length > 0 && (
-                <SearchResultsSection title="Loops" bordered={searchResults.workspaces.length > 0}>
-                  {searchResults.loops.map(({ key, workspaceName, loopNode }) => (
+              {searchResults.tasks.length > 0 && (
+                <SearchResultsSection title="Tasks" bordered={searchResults.workspaces.length > 0}>
+                  {searchResults.tasks.map(({ key, workspaceName, taskNode }) => (
                     <SidebarTreeItem
-                      key={`search-loop:${key}`}
-                      active={isLoopActive(loopNode.loop.config.id)}
-                      title={loopNode.title}
+                      key={`search-task:${key}`}
+                      active={isTaskActive(taskNode.task.config.id)}
+                      title={taskNode.title}
                       subtitle={workspaceName}
-                      badge={loopNode.badge}
-                      badgeVariant={loopNode.badgeVariant}
+                      badge={taskNode.badge}
+                      badgeVariant={taskNode.badgeVariant}
                       onClick={(event) => handleSidebarItemClick(event, {
-                        view: "loop",
-                        loopId: loopNode.loop.config.id,
+                        view: "task",
+                        taskId: taskNode.task.config.id,
                       })}
                     />
                   ))}
@@ -688,7 +688,7 @@ export function ShellSidebarNav({
               {searchResults.chats.length > 0 && (
                 <SearchResultsSection
                   title="Chats"
-                  bordered={searchResults.workspaces.length > 0 || searchResults.loops.length > 0}
+                  bordered={searchResults.workspaces.length > 0 || searchResults.tasks.length > 0}
                 >
                   {searchResults.chats.map(({ key, workspaceName, chatNode }) => (
                     <SidebarTreeItem
@@ -711,7 +711,7 @@ export function ShellSidebarNav({
                 <SearchResultsSection
                   title="SSH sessions"
                   bordered={searchResults.workspaces.length > 0
-                    || searchResults.loops.length > 0
+                    || searchResults.tasks.length > 0
                     || searchResults.chats.length > 0}
                 >
                   {searchResults.sshSessions.map(({ key, contextName, sessionNode }) => {
@@ -738,7 +738,7 @@ export function ShellSidebarNav({
                 <SearchResultsSection
                   title="SSH servers"
                   bordered={searchResults.workspaces.length > 0
-                    || searchResults.loops.length > 0
+                    || searchResults.tasks.length > 0
                     || searchResults.chats.length > 0
                     || searchResults.sshSessions.length > 0}
                 >
@@ -797,19 +797,19 @@ export function ShellSidebarNav({
             {activeWorkItems.length > 0 && (
               <SidebarTreeSection title="Active Work">
                 {activeWorkItems.map((item) => {
-                  if (item.kind === "loop") {
+                  if (item.kind === "task") {
                     return (
                       <SidebarTreeItem
                         key={item.key}
-                        active={isLoopActive(item.loopNode.loop.config.id)}
-                        title={item.loopNode.title}
+                        active={isTaskActive(item.taskNode.task.config.id)}
+                        title={item.taskNode.title}
                         subtitle={item.workspaceName}
-                        badge={item.loopNode.badge}
-                        badgeVariant={item.loopNode.badgeVariant}
+                        badge={item.taskNode.badge}
+                        badgeVariant={item.taskNode.badgeVariant}
                         indentLevel={1}
                         onClick={(event) => handleSidebarItemClick(event, {
-                          view: "loop",
-                          loopId: item.loopNode.loop.config.id,
+                          view: "task",
+                          taskId: item.taskNode.task.config.id,
                         })}
                       />
                     );
@@ -869,7 +869,7 @@ export function ShellSidebarNav({
                     onToggle={() => toggleNodeCollapsed(groupCollapseKey)}
                   >
                     {group.workspaces.map((workspaceNode) => {
-                      const hasLoopChildren = workspaceNode.loops.length > 0 || workspaceNode.historyLoops.length > 0;
+                      const hasTaskChildren = workspaceNode.tasks.length > 0 || workspaceNode.historyTasks.length > 0;
                       const hasChatChildren = workspaceNode.chats.length > 0;
                       const hasSessionChildren = workspaceNode.sshSessions.length > 0;
                       const workspaceCollapseKey = getSidebarWorkspaceCollapseKey(
@@ -877,11 +877,11 @@ export function ShellSidebarNav({
                         group.key,
                         workspaceNode.workspace.id,
                       );
-                      const loopsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                      const tasksCollapseKey = getSidebarWorkspaceSectionCollapseKey(
                         "workspaces",
                         group.key,
                         workspaceNode.workspace.id,
-                        "loops",
+                        "tasks",
                       );
                       const chatsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
                         "workspaces",
@@ -919,30 +919,30 @@ export function ShellSidebarNav({
                           {!isNodeCollapsed(workspaceCollapseKey) && (
                             <div className="space-y-1">
                               <SidebarTreeSection
-                                title="Loops"
+                                title="Tasks"
                                 actionLabel="New"
-                                actionTitle={getShellShortcutTitle("new-loop", "New loop")}
+                                actionTitle={getShellShortcutTitle("new-task", "New task")}
                                 onAction={() => navigateWithinShell({
                                   view: "compose",
-                                  kind: "loop",
+                                  kind: "task",
                                   scopeId: workspaceNode.workspace.id,
                                 })}
-                                collapsed={hasLoopChildren ? isNodeCollapsed(loopsCollapseKey) : undefined}
-                                onToggle={hasLoopChildren ? () => toggleNodeCollapsed(loopsCollapseKey) : undefined}
+                                collapsed={hasTaskChildren ? isNodeCollapsed(tasksCollapseKey) : undefined}
+                                onToggle={hasTaskChildren ? () => toggleNodeCollapsed(tasksCollapseKey) : undefined}
                                 indentLevel={2}
                               >
-                                {workspaceNode.loops.length > 0 && renderLoopNodes({
-                                  loopNodes: workspaceNode.loops,
+                                {workspaceNode.tasks.length > 0 && renderTaskNodes({
+                                  taskNodes: workspaceNode.tasks,
                                 })}
-                                {workspaceNode.historyLoops.length > 0 && (
+                                {workspaceNode.historyTasks.length > 0 && (
                                   <SidebarTreeSection
                                     title="History"
                                     collapsed={isNodeCollapsed(historyCollapseKey)}
                                     onToggle={() => toggleNodeCollapsed(historyCollapseKey)}
                                     indentLevel={3}
                                   >
-                                    {renderLoopNodes({
-                                      loopNodes: workspaceNode.historyLoops,
+                                    {renderTaskNodes({
+                                      taskNodes: workspaceNode.historyTasks,
                                     })}
                                   </SidebarTreeSection>
                                 )}

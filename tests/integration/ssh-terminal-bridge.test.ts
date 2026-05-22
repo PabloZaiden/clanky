@@ -89,7 +89,7 @@ async function waitForCondition(
 }
 
 const canRunRealSshBridge = async () =>
-  process.env["RALPHER_RUN_REAL_SSH_BRIDGE_TEST"] === "1"
+  process.env["CLANKY_RUN_REAL_SSH_BRIDGE_TEST"] === "1"
   && await commandExists("sshd")
   && await commandExists("ssh")
   && await commandExists("ssh-keygen")
@@ -119,8 +119,8 @@ describe("SshTerminalBridge integration", () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-bridge-"));
-    process.env["RALPHER_DATA_DIR"] = join(tempDir, "data");
+    tempDir = await mkdtemp(join(tmpdir(), "clanky-ssh-bridge-"));
+    process.env["CLANKY_DATA_DIR"] = join(tempDir, "data");
     backendManager.resetForTesting();
     await initializeDatabase();
   });
@@ -128,7 +128,7 @@ describe("SshTerminalBridge integration", () => {
   afterEach(async () => {
     backendManager.resetForTesting();
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(tempDir, { recursive: true, force: true });
   });
 
@@ -247,7 +247,7 @@ describe("SshTerminalBridge integration", () => {
           directory: workspaceDir,
           connectionMode: "dtach",
           useTmux: true,
-          remoteSessionName: `ralpher-${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`,
+          remoteSessionName: `clanky-${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },

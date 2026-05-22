@@ -49,20 +49,20 @@ export async function listWorkspaces(): Promise<Workspace[]> {
 }
 
 /**
- * Get the count of loops for a workspace.
+ * Get the count of tasks for a workspace.
  */
-export async function getWorkspaceLoopCount(workspaceId: string): Promise<number> {
-  log.debug("Getting workspace loop count", { workspaceId });
+export async function getWorkspaceTaskCount(workspaceId: string): Promise<number> {
+  log.debug("Getting workspace task count", { workspaceId });
   const db = getDatabase();
-  const stmt = db.prepare("SELECT COUNT(*) as count FROM loops WHERE workspace_id = ?");
+  const stmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ?");
   const row = stmt.get(workspaceId) as { count: number };
-  log.debug("Workspace loop count retrieved", { workspaceId, count: row.count });
+  log.debug("Workspace task count retrieved", { workspaceId, count: row.count });
   return row.count;
 }
 
 /**
  * Touch a workspace to update its updated_at timestamp.
- * Called when a loop is created in this workspace.
+ * Called when a task is created in this workspace.
  */
 export async function touchWorkspace(id: string): Promise<void> {
   log.debug("Touching workspace", { id });

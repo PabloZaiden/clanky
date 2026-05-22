@@ -11,7 +11,7 @@
  * - fatal (6): Fatal error messages
  * 
  * Priority order for log level:
- * 1. RALPHER_LOG_LEVEL environment variable (highest priority)
+ * 1. CLANKY_LOG_LEVEL environment variable (highest priority)
  * 2. Saved preference in database (applied on startup)
  * 3. Default: "info" (level 3)
  * 
@@ -35,7 +35,7 @@ export { type LogLevelName, LOG_LEVELS, VALID_LOG_LEVELS, LOG_LEVEL_NAMES, DEFAU
  * Returns the numeric log level if valid, or the default (info = 3).
  */
 function getInitialLogLevel(): number {
-  const envLevel = process.env["RALPHER_LOG_LEVEL"]?.toLowerCase();
+  const envLevel = process.env["CLANKY_LOG_LEVEL"]?.toLowerCase();
   
   if (envLevel && envLevel in LOG_LEVELS) {
     return LOG_LEVELS[envLevel as LogLevelName];
@@ -50,7 +50,7 @@ function getInitialLogLevel(): number {
  * Use this for all logging throughout the application.
  */
 export const log: Logger<ILogObj> = new Logger({
-  name: "ralpher",
+  name: "clanky",
   minLevel: getInitialLogLevel(),
 });
 
@@ -72,7 +72,7 @@ const subLoggers: Map<string, Logger<ILogObj>> = new Map();
  * level can be synchronized when setLogLevel() is called (tslog sub-loggers
  * don't automatically inherit level changes from the parent).
  *
- * @param name - The name for the sub-logger (e.g., "api:loops", "core:engine")
+ * @param name - The name for the sub-logger (e.g., "api:tasks", "core:engine")
  * @returns A Logger instance for the given name (cached)
  */
 export function createLogger(name: string): Logger<ILogObj> {
@@ -124,9 +124,9 @@ export function getLogLevel(): LogLevelName {
  * Check if the log level was set via environment variable.
  * Used to determine if the env var should take precedence over saved preferences.
  * 
- * @returns true if RALPHER_LOG_LEVEL environment variable is set
+ * @returns true if CLANKY_LOG_LEVEL environment variable is set
  */
 export function isLogLevelFromEnv(): boolean {
-  const envLevel = process.env["RALPHER_LOG_LEVEL"]?.toLowerCase();
+  const envLevel = process.env["CLANKY_LOG_LEVEL"]?.toLowerCase();
   return envLevel !== undefined && envLevel in LOG_LEVELS;
 }

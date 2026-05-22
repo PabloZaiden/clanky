@@ -1,10 +1,10 @@
 /**
- * Helpers for resolving a pull request destination for pushed loops.
+ * Helpers for resolving a pull request destination for pushed tasks.
  */
 
 import type { CommandExecutor } from "./command-executor";
 import { createLogger } from "./logger";
-import type { Loop, PullRequestMonitoringState } from "../types/loop";
+import type { Task, PullRequestMonitoringState } from "../types/task";
 import type { PullRequestDestinationResponse } from "../types/api";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
 
@@ -16,8 +16,8 @@ export interface PullRequestNavigationGitService {
   hasRemote(directory: string, remote?: string): Promise<boolean>;
 }
 
-const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the loop environment.";
-const NO_GITHUB_REMOTE_REASON = "Could not determine a GitHub origin remote for this loop.";
+const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the task environment.";
+const NO_GITHUB_REMOTE_REASON = "Could not determine a GitHub origin remote for this task.";
 const log = createLogger("core:pull-request-navigation");
 
 interface PullRequestView {
@@ -65,13 +65,13 @@ export function validateExistingPullRequestUrl(url: string): string | null {
   }
 }
 
-function getBaseBranch(loop: Loop): string | null {
-  const configuredBaseBranch = loop.config.baseBranch?.trim();
+function getBaseBranch(task: Task): string | null {
+  const configuredBaseBranch = task.config.baseBranch?.trim();
   if (configuredBaseBranch) {
     return configuredBaseBranch;
   }
 
-  const originalBranch = loop.state.git?.originalBranch?.trim();
+  const originalBranch = task.state.git?.originalBranch?.trim();
   if (originalBranch) {
     return originalBranch;
   }
@@ -79,8 +79,8 @@ function getBaseBranch(loop: Loop): string | null {
   return null;
 }
 
-function getWorkingBranch(loop: Loop): string | null {
-  const workingBranch = loop.state.git?.workingBranch?.trim();
+function getWorkingBranch(task: Task): string | null {
+  const workingBranch = task.state.git?.workingBranch?.trim();
   return workingBranch ? workingBranch : null;
 }
 
@@ -172,17 +172,17 @@ async function isGhAvailable(executor: CommandExecutor, directory: string): Prom
 }
 
 export async function probePullRequestMonitoring(
-  loop: Loop,
+  task: Task,
   directory: string,
   executor: CommandExecutor,
   git: PullRequestNavigationGitService,
 ): Promise<PullRequestMonitoringState> {
   const lastCheckedAt = new Date().toISOString();
-  const workingBranch = getWorkingBranch(loop);
+  const workingBranch = getWorkingBranch(task);
   if (!workingBranch) {
     return createMonitoringState(lastCheckedAt, {
       status: "error",
-      lastError: "This loop does not have a working branch to monitor.",
+      lastError: "This task does not have a working branch to monitor.",
     });
   }
 
@@ -236,14 +236,14 @@ export async function probePullRequestMonitoring(
 }
 
 export async function resolvePullRequestDestination(
-  loop: Loop,
+  task: Task,
   directory: string,
   executor: CommandExecutor,
   git: PullRequestNavigationGitService,
 ): Promise<PullRequestDestinationResponse> {
-  const workingBranch = getWorkingBranch(loop);
+  const workingBranch = getWorkingBranch(task);
   if (!workingBranch) {
-    return disabled("This loop does not have a working branch to compare.");
+    return disabled("This task does not have a working branch to compare.");
   }
 
   if (!(await isGhAvailable(executor, directory))) {
@@ -278,7 +278,7 @@ export async function resolvePullRequestDestination(
     return disabled(NO_GITHUB_REMOTE_REASON);
   }
 
-  const baseBranch = getBaseBranch(loop) ?? await git.getDefaultBranch(directory);
+  const baseBranch = getBaseBranch(task) ?? await git.getDefaultBranch(directory);
   return {
     enabled: true,
     destinationType: "create_pr",

@@ -1,25 +1,25 @@
 /**
- * WebSocket handlers for Ralph Loops Management System.
+ * WebSocket handlers for Clanky Tasks Management System.
  *
  * Supports three websocket surfaces:
- * - WS /api/ws for loop events and SSH session lifecycle events
+ * - WS /api/ws for task events and SSH session lifecycle events
  * - WS /api/ssh-terminal for interactive SSH terminal streams
- * - forwarded-port proxy websocket upgrades under /loop/:loopId/port/:forwardId
+ * - forwarded-port proxy websocket upgrades under /task/:taskId/port/:forwardId
  *
  * Features:
- * - Real-time loop and SSH session event streaming
- * - Optional loop or SSH session filtering via query parameters
+ * - Real-time task and SSH session event streaming
+ * - Optional task or SSH session filtering via query parameters
  * - Ping/pong keep-alive support
  * - Automatic cleanup on disconnect
  *
  * Event Types Streamed:
  * - chat.created, chat.updated, chat.status, chat.interrupted, chat.error, chat.deleted
- * - loop.created, loop.started, loop.completed, loop.ssh_handoff, loop.stopped, loop.error
- * - loop.iteration.start, loop.iteration.end
- * - loop.message, loop.tool_call, loop.progress, loop.log
- * - loop.git.commit, loop.deleted, loop.merged, loop.accepted, loop.pushed, loop.discarded
- * - loop.plan.ready, loop.plan.feedback, loop.plan.accepted, loop.plan.discarded
- * - loop.pending.updated, loop.automatic_pr_flow.updated
+ * - task.created, task.started, task.completed, task.ssh_handoff, task.stopped, task.error
+ * - task.iteration.start, task.iteration.end
+ * - task.message, task.tool_call, task.progress, task.log
+ * - task.git.commit, task.deleted, task.merged, task.accepted, task.pushed, task.discarded
+ * - task.plan.ready, task.plan.feedback, task.plan.accepted, task.plan.discarded
+ * - task.pending.updated, task.automatic_pr_flow.updated
  * - ssh_session.created, ssh_session.updated, ssh_session.deleted, ssh_session.status
  * - ssh_session.port_forward.created, ssh_session.port_forward.updated,
  *   ssh_session.port_forward.deleted, ssh_session.port_forward.status

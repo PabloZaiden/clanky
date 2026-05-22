@@ -1,9 +1,9 @@
 /**
  * E2E Scenario: Plan Mode Workflow
  *
- * Tests the full plan mode flow: create loop with plan mode -> planning status ->
+ * Tests the full plan mode flow: create task with plan mode -> planning status ->
  * plan content appears -> user sends feedback -> plan updated -> user accepts plan ->
- * loop starts running. Also tests: discard plan.
+ * task starts running. Also tests: discard plan.
  */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
@@ -11,7 +11,7 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor } from "../helpers/render";
 import {
-  createLoopWithStatus,
+  createTaskWithStatus,
   createWorkspace,
   createModelInfo,
   createSshSession,
@@ -21,7 +21,7 @@ import { App } from "@/App";
 const api = createMockApi();
 const ws = createMockWebSocket();
 
-const LOOP_ID = "plan-loop-1";
+const TASK_ID = "plan-task-1";
 
 const WORKSPACE = createWorkspace({
   id: "ws-1",
@@ -29,9 +29,9 @@ const WORKSPACE = createWorkspace({
   directory: "/workspaces/my-project",
 });
 
-function planningLoop(isPlanReady: boolean, feedbackRounds = 0) {
-  return createLoopWithStatus("planning", {
-    config: { id: LOOP_ID, name: "Plan Loop", directory: "/workspaces/my-project", workspaceId: "ws-1" },
+function planningTask(isPlanReady: boolean, feedbackRounds = 0) {
+  return createTaskWithStatus("planning", {
+    config: { id: TASK_ID, name: "Plan Task", directory: "/workspaces/my-project", workspaceId: "ws-1" },
     state: {
       planMode: {
         active: true,
@@ -43,9 +43,9 @@ function planningLoop(isPlanReady: boolean, feedbackRounds = 0) {
   });
 }
 
-function setupApi(loop: ReturnType<typeof createLoopWithStatus>, planContent = "") {
-  api.get("/api/loops", () => [loop]);
-  api.get("/api/loops/:id", () => loop);
+function setupApi(task: ReturnType<typeof createTaskWithStatus>, planContent = "") {
+  api.get("/api/tasks", () => [task]);
+  api.get("/api/tasks/:id", () => task);
   api.get("/api/workspaces", () => [WORKSPACE]);
   api.get("/api/config", () => ({ remoteOnly: false, passkeyAuth: { passkeyConfigured: false, passkeyDisabled: false, passkeyRequired: false, authenticated: false }, publicBasePath: null }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
@@ -55,14 +55,14 @@ function setupApi(loop: ReturnType<typeof createLoopWithStatus>, planContent = "
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
   api.get("/api/preferences/last-directory", () => null);
   api.get("/api/models", () => [createModelInfo({ connected: true })]);
-  api.get("/api/loops/:id/diff", () => []);
-  api.get("/api/loops/:id/plan", () => ({
+  api.get("/api/tasks/:id/diff", () => []);
+  api.get("/api/tasks/:id/plan", () => ({
     exists: planContent.length > 0,
     content: planContent,
   }));
-  api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-  api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-  api.get("/api/loops/:id/port-forwards", () => []);
+  api.get("/api/tasks/:id/status-file", () => ({ exists: false, content: "" }));
+  api.get("/api/tasks/:id/comments", () => ({ success: true, comments: [] }));
+  api.get("/api/tasks/:id/port-forwards", () => []);
   api.get("/api/preferences/markdown-rendering", () => ({ enabled: false }));
 }
 
@@ -83,15 +83,15 @@ afterEach(() => {
 // ─── Plan mode scenarios ─────────────────────────────────────────────────────
 
 describe("plan mode scenario", () => {
-  test("planning loop shows unified tab UI with plan tab active", async () => {
-    const loop = planningLoop(false);
-    setupApi(loop);
+  test("planning task shows unified tab UI with plan tab active", async () => {
+    const task = planningTask(false);
+    setupApi(task);
 
-    window.location.hash = `/loop/${LOOP_ID}`;
+    window.location.hash = `/task/${TASK_ID}`;
     const { getAllByText, getByText } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Plan Task").length).toBeGreaterThan(0);
     });
 
     // Unified tab UI should show all tabs including Plan
@@ -104,14 +104,14 @@ describe("plan mode scenario", () => {
   });
 
   test("plan content appears when plan is ready", async () => {
-    const loop = planningLoop(true);
-    setupApi(loop, "## Step 1\nDo something\n\n## Step 2\nDo more");
+    const task = planningTask(true);
+    setupApi(task, "## Step 1\nDo something\n\n## Step 2\nDo more");
 
-    window.location.hash = `/loop/${LOOP_ID}`;
+    window.location.hash = `/task/${TASK_ID}`;
     const { getAllByText, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Plan Task").length).toBeGreaterThan(0);
     });
 
     // Plan content should be visible (rendered as raw text since markdown rendering is disabled)
@@ -137,14 +137,14 @@ describe("plan mode scenario", () => {
   });
 
   test("accept plan disabled while AI is still writing", async () => {
-    const loop = planningLoop(false);
-    setupApi(loop, "## Partial plan");
+    const task = planningTask(false);
+    setupApi(task, "## Partial plan");
 
-    window.location.hash = `/loop/${LOOP_ID}`;
+    window.location.hash = `/task/${TASK_ID}`;
     const { getAllByText, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Plan Task").length).toBeGreaterThan(0);
     });
 
     // Wait for plan content to appear
@@ -170,20 +170,20 @@ describe("plan mode scenario", () => {
   });
 
   test("send feedback on plan", async () => {
-    let currentLoop = planningLoop(true, 0);
-    setupApi(currentLoop, "## Initial Plan\nDo X and Y");
+    let currentTask = planningTask(true, 0);
+    setupApi(currentTask, "## Initial Plan\nDo X and Y");
 
-    api.get("/api/loops/:id", () => currentLoop);
-    api.post("/api/loops/:id/plan/feedback", () => {
-      currentLoop = planningLoop(false, 1);
+    api.get("/api/tasks/:id", () => currentTask);
+    api.post("/api/tasks/:id/plan/feedback", () => {
+      currentTask = planningTask(false, 1);
       return { success: true };
     });
 
-    window.location.hash = `/loop/${LOOP_ID}`;
+    window.location.hash = `/task/${TASK_ID}`;
     const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Plan Task").length).toBeGreaterThan(0);
     });
 
     // Wait for plan content to load
@@ -199,22 +199,22 @@ describe("plan mode scenario", () => {
 
     // API should have been called
     await waitFor(() => {
-      const calls = api.calls("/api/loops/:id/plan/feedback", "POST");
+      const calls = api.calls("/api/tasks/:id/plan/feedback", "POST");
       expect(calls.length).toBeGreaterThan(0);
     });
   });
 
-  test("accept plan triggers API and transitions loop", async () => {
-    const loop = planningLoop(true);
-    setupApi(loop, "## Final Plan\nAll steps defined");
+  test("accept plan triggers API and transitions task", async () => {
+    const task = planningTask(true);
+    setupApi(task, "## Final Plan\nAll steps defined");
 
-    api.post("/api/loops/:id/plan/accept", () => ({ success: true, mode: "start_loop" }), 200);
+    api.post("/api/tasks/:id/plan/accept", () => ({ success: true, mode: "start_task" }), 200);
 
-    window.location.hash = `/loop/${LOOP_ID}`;
+    window.location.hash = `/task/${TASK_ID}`;
     const { getAllByText, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Plan Task").length).toBeGreaterThan(0);
     });
 
     await waitFor(() => {
@@ -228,7 +228,7 @@ describe("plan mode scenario", () => {
     expect(actionsTab).toBeTruthy();
     await user.click(actionsTab!);
 
-    // Click Accept Plan & Start Loop
+    // Click Accept Plan & Start Task
     await waitFor(() => {
       const acceptBtn = Array.from(document.querySelectorAll("button")).find(
         (b) => b.textContent?.includes("Accept Plan"),
@@ -242,28 +242,28 @@ describe("plan mode scenario", () => {
 
     // API should have been called
     await waitFor(() => {
-      const calls = api.calls("/api/loops/:id/plan/accept", "POST");
+      const calls = api.calls("/api/tasks/:id/plan/accept", "POST");
       expect(calls.length).toBeGreaterThan(0);
     });
   });
 
   test("accept plan and open ssh navigates straight to the ssh route", async () => {
-    const loop = planningLoop(true);
-    setupApi(loop, "## Final Plan\nAll steps defined");
-    const sshSession = createSshSession({ config: { id: "ssh-plan-1", loopId: LOOP_ID } });
+    const task = planningTask(true);
+    setupApi(task, "## Final Plan\nAll steps defined");
+    const sshSession = createSshSession({ config: { id: "ssh-plan-1", taskId: TASK_ID } });
 
-    api.post("/api/loops/:id/plan/accept", (req) => {
+    api.post("/api/tasks/:id/plan/accept", (req) => {
       expect(req.body).toEqual({ mode: "open_ssh" });
       return { success: true, mode: "open_ssh", sshSession };
     }, 200);
     api.get("/api/ssh-sessions/:id", () => sshSession);
     api.get("/api/ssh-sessions/:id/output", () => ({ output: "", seq: 0 }));
 
-    window.location.hash = `/loop/${LOOP_ID}`;
+    window.location.hash = `/task/${TASK_ID}`;
     const { getAllByText, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Plan Task").length).toBeGreaterThan(0);
     });
 
     await waitFor(() => {
@@ -286,17 +286,17 @@ describe("plan mode scenario", () => {
     });
   });
 
-  test("discard plan shows confirmation and deletes loop", async () => {
-    const loop = planningLoop(true);
-    setupApi(loop, "## Plan to discard");
+  test("discard plan shows confirmation and deletes task", async () => {
+    const task = planningTask(true);
+    setupApi(task, "## Plan to discard");
 
-    api.post("/api/loops/:id/plan/discard", () => ({ success: true }));
+    api.post("/api/tasks/:id/plan/discard", () => ({ success: true }));
 
-    window.location.hash = `/loop/${LOOP_ID}`;
+    window.location.hash = `/task/${TASK_ID}`;
     const { getAllByText, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Plan Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Plan Task").length).toBeGreaterThan(0);
     });
 
     await waitFor(() => {
@@ -336,7 +336,7 @@ describe("plan mode scenario", () => {
 
     // API should have been called
     await waitFor(() => {
-      const calls = api.calls("/api/loops/:id/plan/discard", "POST");
+      const calls = api.calls("/api/tasks/:id/plan/discard", "POST");
       expect(calls.length).toBeGreaterThan(0);
     });
   });

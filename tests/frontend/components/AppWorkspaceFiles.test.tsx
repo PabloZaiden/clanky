@@ -3,7 +3,7 @@ import type { Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor } from "../helpers/render";
-import { createLoopWithStatus, createWorkspace } from "../helpers/factories";
+import { createTaskWithStatus, createWorkspace } from "../helpers/factories";
 
 mock.module("@monaco-editor/react", () => ({
   default: ({ value }: { value?: string }) => <div aria-label="Monaco editor">{value ?? ""}</div>,
@@ -34,7 +34,7 @@ function createChat(overrides?: {
       mode: "chat",
       ...(overrides?.config ?? {}),
       scope: overrides?.config?.scope ?? "workspace",
-      loopId: overrides?.config?.loopId,
+      taskId: overrides?.config?.taskId,
     },
     state: {
       id: overrides?.state?.id ?? overrides?.config?.id ?? "chat-1",
@@ -87,7 +87,7 @@ describe("App workspace files route", () => {
       directory: "/workspaces/files-route",
     });
 
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/chats", () => []);
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => []);
@@ -127,7 +127,7 @@ describe("App workspace files route", () => {
       directory: "/workspaces/files-route-root",
     });
 
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/chats", () => []);
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => []);
@@ -164,16 +164,16 @@ describe("App workspace files route", () => {
       name: "Picker Workspace",
       directory: "/workspaces/picker",
     });
-    const loop = createLoopWithStatus("idle", {
+    const task = createTaskWithStatus("idle", {
       config: {
-        id: "picker-loop",
-        name: "Picker Loop",
+        id: "picker-task",
+        name: "Picker Task",
         workspaceId: workspace.id,
         directory: workspace.directory,
       },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/chats", () => []);
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => []);
@@ -200,12 +200,12 @@ describe("App workspace files route", () => {
     });
   });
 
-  test("renders the loop files screen from the hash route, preserving the full loop id", async () => {
+  test("renders the task files screen from the hash route, preserving the full task id", async () => {
     const { App } = await import("@/App");
     const workspace = createWorkspace({
-      id: "workspace-loop-files",
-      name: "Loop Files Workspace",
-      directory: "/workspaces/loop-files",
+      id: "workspace-task-files",
+      name: "Task Files Workspace",
+      directory: "/workspaces/task-files",
       serverSettings: {
         agent: {
           provider: "opencode",
@@ -215,12 +215,12 @@ describe("App workspace files route", () => {
         },
       },
     });
-    const loopId = "xloop-files-1";
-    const worktreePath = `/workspaces/loop-files/.ralph-worktrees/${loopId}`;
-    const loop = createLoopWithStatus("running", {
+    const taskId = "xtask-files-1";
+    const worktreePath = `/workspaces/task-files/.clanky-worktrees/${taskId}`;
+    const task = createTaskWithStatus("running", {
       config: {
-        id: loopId,
-        name: "Loop Files Route",
+        id: taskId,
+        name: "Task Files Route",
         workspaceId: workspace.id,
         directory: workspace.directory,
         useWorktree: true,
@@ -228,14 +228,14 @@ describe("App workspace files route", () => {
       state: {
         git: {
           originalBranch: "main",
-          workingBranch: "loop-files-route",
+          workingBranch: "task-files-route",
           commits: [],
           worktreePath,
         },
       },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/chats", () => []);
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => []);
@@ -257,11 +257,11 @@ describe("App workspace files route", () => {
     });
 
     const { getByRole } = renderWithUser(<App />, {
-      route: `#/code-explorer/loop/${loopId}`,
+      route: `#/code-explorer/task/${taskId}`,
     });
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Loop Files Route code explorer" })).toBeInTheDocument();
+      expect(getByRole("heading", { name: "Task Files Route code explorer" })).toBeInTheDocument();
     });
   });
 
@@ -273,7 +273,7 @@ describe("App workspace files route", () => {
       directory: "/workspaces/open-file",
     });
 
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/chats", () => []);
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => []);
@@ -366,7 +366,7 @@ describe("App workspace files route", () => {
       },
     });
 
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/chats", () => [chat]);
     api.get("/api/chats/:id", () => chat);
     api.get("/api/workspaces", () => [workspace]);

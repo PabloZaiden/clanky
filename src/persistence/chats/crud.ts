@@ -14,7 +14,7 @@ const CHAT_LIST_COLUMNS = [
   "name",
   "workspace_id",
   "scope",
-  "loop_id",
+  "task_id",
   "directory",
   "created_at",
   "updated_at",
@@ -80,10 +80,10 @@ export async function loadChat(chatId: string): Promise<Chat | null> {
   return row ? rowToChat(row) : null;
 }
 
-export async function loadLoopChat(loopId: string): Promise<Chat | null> {
+export async function loadTaskChat(taskId: string): Promise<Chat | null> {
   const row = getDatabase()
-    .prepare("SELECT * FROM chats WHERE loop_id = ? AND scope = 'loop' LIMIT 1")
-    .get(loopId) as Record<string, unknown> | null;
+    .prepare("SELECT * FROM chats WHERE task_id = ? AND scope = 'task' LIMIT 1")
+    .get(taskId) as Record<string, unknown> | null;
 
   return row ? rowToChat(row) : null;
 }
@@ -93,8 +93,8 @@ export async function deleteChat(chatId: string): Promise<boolean> {
   return result.changes > 0;
 }
 
-export async function deleteChatsByLoopId(loopId: string): Promise<number> {
-  const result = getDatabase().prepare("DELETE FROM chats WHERE loop_id = ?").run(loopId);
+export async function deleteChatsByTaskId(taskId: string): Promise<number> {
+  const result = getDatabase().prepare("DELETE FROM chats WHERE task_id = ?").run(taskId);
   return result.changes;
 }
 

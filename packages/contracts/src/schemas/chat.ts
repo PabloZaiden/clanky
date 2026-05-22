@@ -5,9 +5,9 @@
  */
 
 import { z } from "zod";
-import { DEFAULT_CHAT_INTERRUPT_REASON } from "@ralpher/shared";
+import { DEFAULT_CHAT_INTERRUPT_REASON } from "@clanky/shared";
 import { ModelConfigSchema } from "./model";
-import { LoopNameSchema, MessageImageAttachmentsSchema } from "./loop";
+import { TaskNameSchema, MessageImageAttachmentsSchema } from "./task";
 
 export const CreateChatRequestSchema = z.object({
   name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
@@ -20,7 +20,7 @@ export const CreateChatRequestSchema = z.object({
 });
 
 export const UpdateChatRequestSchema = z.object({
-  name: LoopNameSchema.optional(),
+  name: TaskNameSchema.optional(),
   model: ModelConfigSchema.optional(),
   baseBranch: z.string().optional(),
   useWorktree: z.boolean().optional(),
@@ -50,6 +50,6 @@ export const ReplyToChatPermissionRequestSchema = z.object({
   decision: z.enum(["allow", "deny"]),
 });
 
-export const SpawnCurrentPlanLoopRequestSchema = z.object({
+export const SpawnCurrentPlanTaskRequestSchema = z.object({
   planFilePath: z.string().trim().optional(),
 });

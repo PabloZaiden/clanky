@@ -1,5 +1,5 @@
 /**
- * ACP backend implementation for Ralph Loops Management System.
+ * ACP backend implementation for Clanky Tasks Management System.
  * Uses ACP JSON-RPC over stdio for agent communication.
  */
 
@@ -140,7 +140,7 @@ export class AcpBackend implements Backend {
 
     if (isRemoteOnlyMode() && config.transport !== "ssh") {
       throw new Error(
-        "Local stdio transport is disabled. RALPHER_REMOTE_ONLY environment variable is set. " +
+        "Local stdio transport is disabled. CLANKY_REMOTE_ONLY environment variable is set. " +
         "Only ssh transport is allowed.",
       );
     }
@@ -198,7 +198,7 @@ export class AcpBackend implements Backend {
         await this.sendRpcRequest("initialize", {
           protocolVersion: 1,
           clientInfo: {
-            name: "ralpher",
+            name: "clanky",
             version: "0.0.0",
           },
         });

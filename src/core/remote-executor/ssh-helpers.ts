@@ -53,7 +53,7 @@ function buildSshControlPath(options: {
     .update(fingerprintInput)
     .digest("hex")
     .slice(0, 32);
-  return `~/.ssh/ralpher-cm-${CONTROL_PATH_VERSION}-${fingerprint}`;
+  return `~/.ssh/clanky-cm-${CONTROL_PATH_VERSION}-${fingerprint}`;
 }
 
 export function buildSshMultiplexingArgs(options: {

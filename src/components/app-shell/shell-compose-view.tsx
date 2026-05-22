@@ -3,12 +3,12 @@ import type { CreateSshSessionRequest, CreateSshServerRequest } from "../../type
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
-import type { CreateLoopFormSubmitRequest } from "../../types/loop-request";
-import type { CreateLoopFormActionState } from "../CreateLoopForm";
+import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { CreateTaskFormActionState } from "../CreateTaskForm";
 import { SshSessionComposer, SshServerComposer } from "./shell-composers";
 import type { ComposeKind, ShellRoute } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
-import { ComposeLoopView } from "./compose-loop-view";
+import { ComposeTaskView } from "./compose-task-view";
 import { ComposeChatView } from "./compose-chat-view";
 import { ComposeWorkspaceView } from "./compose-workspace-view";
 
@@ -18,9 +18,9 @@ interface ComposeViewProps {
   composeServer: SshServer | null;
   shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: ShellRoute) => void;
-  composeActionState: CreateLoopFormActionState | null;
-  setComposeActionState: (state: CreateLoopFormActionState | null) => void;
-  handleLoopSubmit: (request: CreateLoopFormSubmitRequest) => Promise<boolean>;
+  composeActionState: CreateTaskFormActionState | null;
+  setComposeActionState: (state: CreateTaskFormActionState | null) => void;
+  handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
   dashboardData: UseDashboardDataResult;
   workspaces: Workspace[];
@@ -55,7 +55,7 @@ export function ComposeView(props: ComposeViewProps) {
     navigateWithinShell,
     composeActionState,
     setComposeActionState,
-    handleLoopSubmit,
+    handleTaskSubmit,
     createChat,
     dashboardData,
     workspaces,
@@ -77,15 +77,15 @@ export function ComposeView(props: ComposeViewProps) {
     (workspace) => workspace.serverSettings.agent.transport === "ssh",
   );
 
-  if (kind === "loop") {
+  if (kind === "task") {
     return (
-      <ComposeLoopView
+      <ComposeTaskView
         composeWorkspace={composeWorkspace}
         shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}
         composeActionState={composeActionState}
         setComposeActionState={setComposeActionState}
-        handleLoopSubmit={handleLoopSubmit}
+        handleTaskSubmit={handleTaskSubmit}
         dashboardData={dashboardData}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}

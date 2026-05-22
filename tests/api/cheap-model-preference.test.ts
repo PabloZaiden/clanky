@@ -11,8 +11,8 @@ let testDataDir: string;
 
 describe("Cheap helper model preference API", () => {
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     const { ensureDataDirectories } = await import("../../src/persistence/database");
     await ensureDataDirectories();
@@ -22,7 +22,7 @@ describe("Cheap helper model preference API", () => {
     const { closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
 
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true });
   });
 

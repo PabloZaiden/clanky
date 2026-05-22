@@ -22,9 +22,9 @@ function createRefreshSessionInput(input: {
   return {
     id: input.id,
     familyId: input.familyId,
-    subject: "ralpher-user",
-    clientId: input.clientId ?? "ralpher-cli-tests",
-    scope: "loops:read",
+    subject: "clanky-user",
+    clientId: input.clientId ?? "clanky-cli-tests",
+    scope: "tasks:read",
     refreshTokenHash: input.refreshTokenHash ?? `${input.id}-hash`,
     refreshExpiresAt: new Date(Date.now() + 60_000).toISOString(),
     parentSessionId: input.parentSessionId,
@@ -45,15 +45,15 @@ describe("auth persistence", () => {
   test("consumes approved device requests at most once", async () => {
     await createDeviceAuthRequest({
       id: "request-1",
-      clientId: "ralpher-cli-tests",
+      clientId: "clanky-cli-tests",
       deviceCodeHash: "device-hash-1",
       userCode: "ABCD-EFGH",
-      scope: "loops:read",
+      scope: "tasks:read",
       status: "approved",
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
       approvedAt: new Date().toISOString(),
       pollCount: 0,
-      subject: "ralpher-user",
+      subject: "clanky-user",
     });
 
     const firstSession = createRefreshSessionInput({
@@ -72,7 +72,7 @@ describe("auth persistence", () => {
     await expect(getDeviceAuthRequestByUserCode("ABCD-EFGH")).resolves.toEqual(expect.objectContaining({
       status: "consumed",
       sessionId: "session-1",
-      subject: "ralpher-user",
+      subject: "clanky-user",
     }));
     await expect(getRefreshSessionById("session-1")).resolves.toEqual(expect.objectContaining({
       id: "session-1",

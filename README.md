@@ -1,11 +1,11 @@
-# Ralpher
+# Clanky
 
-[![Latest Release](https://img.shields.io/github/v/release/pablozaiden/ralpher?style=flat-square&label=Latest%20Release)](https://github.com/pablozaiden/ralpher/releases/latest)
-[![Docker Main](https://img.shields.io/github/actions/workflow/status/pablozaiden/ralpher/docker-main.yml?branch=main&style=flat-square&label=Docker%20Main)](https://github.com/pablozaiden/ralpher/actions/workflows/docker-main.yml)
+[![Latest Release](https://img.shields.io/github/v/release/pablozaiden/clanky?style=flat-square&label=Latest%20Release)](https://github.com/pablozaiden/clanky/releases/latest)
+[![Docker Main](https://img.shields.io/github/actions/workflow/status/pablozaiden/clanky/docker-main.yml?branch=main&style=flat-square&label=Docker%20Main)](https://github.com/pablozaiden/clanky/actions/workflows/docker-main.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-f9f1e1?style=flat-square&logo=bun)](https://bun.sh)
 
-Ralpher is a web dashboard and REST API for running, reviewing, and iterating on Ralph Loops with ACP-compatible agents such as Copilot and OpenCode. It keeps autonomous coding work manageable by starting each iteration with fresh context while persisting state in `.ralph-planning/`.
+Clanky is a web dashboard and REST API for running, reviewing, and iterating on Clanky Tasks with ACP-compatible agents such as Copilot and OpenCode. It keeps autonomous coding work manageable by starting each iteration with fresh context while persisting state in `.clanky-planning/`.
 
 The repository is organized as a workspace-style monorepo:
 
@@ -15,37 +15,37 @@ The repository is organized as a workspace-style monorepo:
 - `apps/tui` and `apps/electron` - reserved stubs for future client surfaces
 - `packages/shared`, `packages/contracts`, `packages/client-sdk` - shared runtime-neutral types/helpers, API contracts, and client transport/auth utilities
 
-## Best way to use Ralpher
+## Best way to use Clanky
 
-The recommended workflow is to treat Ralpher as a controller for SSH-backed development environments, even when that SSH host is just your own machine.
+The recommended workflow is to treat Clanky as a controller for SSH-backed development environments, even when that SSH host is just your own machine.
 
-1. Register an `ssh` server in Ralpher. Using `localhost` is a great default if you want the SSH workflow without needing a separate remote machine.
+1. Register an `ssh` server in Clanky. Using `localhost` is a great default if you want the SSH workflow without needing a separate remote machine.
 2. Create an automatic workspace for each project you want to work on, and let that workspace use your devbox-managed environment so tools and dependencies are ready inside the project context.
-3. Once the workspace is ready, either open chats to work interactively with the coding agent in that workspace or create a new loop, write the task prompt, and let the agent work autonomously.
+3. Once the workspace is ready, either open chats to work interactively with the coding agent in that workspace or create a new task, write the task prompt, and let the agent work autonomously.
 
-**[Download the latest release](https://github.com/pablozaiden/ralpher/releases/latest)**
+**[Download the latest release](https://github.com/pablozaiden/clanky/releases/latest)**
 
-![Ralpher Dashboard](assets/screenshots/desktop/home.jpg)
+![Clanky Dashboard](assets/screenshots/desktop/home.jpg)
 
-*Dashboard overview with active loops, workspaces, and quick actions.*
+*Dashboard overview with active tasks, workspaces, and quick actions.*
 
-## Why Ralpher
+## Why Clanky
 
-- **Fresh context, persistent progress.** Ralph Loops use `.ralph-planning/plan.md` and `.ralph-planning/status.md` to keep long tasks moving across clean agent context windows.
-- **Safer automation.** Each loop works in its own branch/worktree, commits iteration-by-iteration, and can be merged or discarded deliberately.
-- **Operational visibility.** The dashboard gives you logs, diffs, plan review, loop controls, and follow-up flows in one place.
+- **Fresh context, persistent progress.** Clanky Tasks use `.clanky-planning/plan.md` and `.clanky-planning/status.md` to keep long tasks moving across clean agent context windows.
+- **Safer automation.** Each task works in its own branch/worktree, commits iteration-by-iteration, and can be merged or discarded deliberately.
+- **Operational visibility.** The dashboard gives you logs, diffs, plan review, task controls, and follow-up flows in one place.
 - **Local or remote execution.** Workspaces can use local `stdio` transport or remote `ssh` transports, with optional SSH sessions and port forwarding.
 
 <details>
 <summary><strong>More screenshots</strong></summary>
 
-![Create Loop](assets/screenshots/desktop/create-loop.jpg)
+![Create Task](assets/screenshots/desktop/create-task.jpg)
 
-*Create a loop with prompt, model, and execution settings.*
+*Create a task with prompt, model, and execution settings.*
 
 ![Status View](assets/screenshots/desktop/status.jpg)
 
-*Track iteration status and loop progress in real time.*
+*Track iteration status and task progress in real time.*
 
 ![Diff View](assets/screenshots/desktop/diff.jpg)
 
@@ -53,7 +53,7 @@ The recommended workflow is to treat Ralpher as a controller for SSH-backed deve
 
 ![SSH Sessions](assets/screenshots/desktop/ssh.jpg)
 
-*Open persistent SSH sessions alongside loop execution.*
+*Open persistent SSH sessions alongside task execution.*
 </details>
 
 ## Installation
@@ -61,22 +61,22 @@ The recommended workflow is to treat Ralpher as a controller for SSH-backed deve
 Install the latest Linux or macOS binary releases:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh | sh -s -- pablozaiden/ralpher
+curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh | sh -s -- pablozaiden/clanky
 ```
 
-The shared installer downloads the latest release assets for Linux or macOS (`x64` or `arm64`) and installs both `ralpher` and `ralpher-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
+The shared installer downloads the latest release assets for Linux or macOS (`x64` or `arm64`) and installs both `clanky` and `clanky-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
 
-You can also download binaries directly from the [Releases page](https://github.com/pablozaiden/ralpher/releases/latest).
+You can also download binaries directly from the [Releases page](https://github.com/pablozaiden/clanky/releases/latest).
 
 Once installed from a release binary, you can update the installed release binaries in place:
 
 ```bash
-ralpher-cli update --check
-ralpher-cli update
-ralpher-cli update --version v0.8.1
+clanky-cli update --check
+clanky-cli update
+clanky-cli update --version v0.8.1
 ```
 
-`ralpher-cli update` is currently supported for the published Linux and macOS release binaries only. It updates `ralpher-cli`, also updates a sibling `ralpher` binary when one is installed beside it, verifies published checksums, and prints progress while release metadata and binary downloads are in flight. If you are running Ralpher from source with Bun, use the shared installer or download release binaries instead of self-updating.
+`clanky-cli update` is currently supported for the published Linux and macOS release binaries only. It updates `clanky-cli`, also updates a sibling `clanky` binary when one is installed beside it, verifies published checksums, and prints progress while release metadata and binary downloads are in flight. If you are running Clanky from source with Bun, use the shared installer or download release binaries instead of self-updating.
 
 ## Quick start
 
@@ -85,13 +85,13 @@ ralpher-cli update --version v0.8.1
 - Git
 - An ACP-capable CLI in your `PATH` (`opencode` and/or `copilot`)
 - Optional SSH access to remote workspace hosts if you plan to use `ssh` transport
-- [Bun](https://bun.sh) 1.3.5+ only if you want to run Ralpher from source
+- [Bun](https://bun.sh) 1.3.5+ only if you want to run Clanky from source
 
-### Run Ralpher
+### Run Clanky
 
 ```bash
 # Installed server binary (embedded API + web, same-origin)
-ralpher
+clanky
 
 # Source development (combined API + web, same-origin)
 bun dev
@@ -100,74 +100,74 @@ bun dev
 bun run dev:server
 ```
 
-The UI is available at `http://localhost:3000` by default. Use `RALPHER_PORT` to change the port and `RALPHER_HOST` to change the bind address.
+The UI is available at `http://localhost:3000` by default. Use `CLANKY_PORT` to change the port and `CLANKY_HOST` to change the bind address.
 
 The normal development and published runtime is same-origin: the Bun server hosts the React app and the API together, and the frontend defaults to relative `/api` requests.
 In development, `bun dev` watches the shared web bundle in `apps/web/dist` and serves that processed output from the server so Tailwind/CSS behaves the same way as the bundled app.
 
 ### CLI client commands
 
-The separately installed `ralpher-cli` binary exposes the terminal client surface:
+The separately installed `clanky-cli` binary exposes the terminal client surface:
 
 ```bash
 # Check which version is installed
-ralpher-cli version
+clanky-cli version
 
 # Check whether a newer published binary is available
-ralpher-cli update --check
+clanky-cli update --check
 
 # Update the installed release binaries in place
-ralpher-cli update
+clanky-cli update
 
 # Install a specific published release
-ralpher-cli update --version v0.8.1
+clanky-cli update --version v0.8.1
 
-# Start device authorization against a specific Ralpher server
-ralpher-cli auth http://localhost:3000
+# Start device authorization against a specific Clanky server
+clanky-cli auth http://localhost:3000
 
 # Check whether stored CLI credentials are still valid
-ralpher-cli status
+clanky-cli status
 
 # List the discoverable REST endpoints
-ralpher-cli api
+clanky-cli api
 
 # Invoke an authenticated API request (prints one JSON object)
-ralpher-cli api loops/my-loop --method GET
+clanky-cli api tasks/my-task --method GET
 
 # Inspect the expected schema for an endpoint
-ralpher-cli schema auth/device
+clanky-cli schema auth/device
 
 # Stream authenticated websocket events over stdio
-ralpher-cli ws --loop-id my-loop
+clanky-cli ws --task-id my-task
 ```
 
-### Create your first loop
+### Create your first task
 
-1. Open the dashboard and click **New Loop**.
+1. Open the dashboard and click **New Task**.
 2. Pick or create a workspace that points at your repository.
 3. Choose the provider and transport for that workspace.
-4. Write the task prompt, select the model, and create the loop.
-5. Review plans, logs, diffs, and final changes from the loop details view.
+4. Write the task prompt, select the model, and create the task.
+5. Review plans, logs, diffs, and final changes from the task details view.
 
-## How a Ralph Loop works
+## How a Clanky Task works
 
-A Ralph Loop is an external execution loop around an AI coding agent. Instead of keeping all history inside one growing chat, each iteration starts fresh and reads the project state from the filesystem.
+A Clanky Task is an external execution task around an AI coding agent. Instead of keeping all history inside one growing chat, each iteration starts fresh and reads the project state from the filesystem.
 
 | Principle | Description |
 | --- | --- |
 | **Fresh context per iteration** | Every iteration starts with a clean agent context window. |
-| **Filesystem state** | Progress lives in `.ralph-planning/plan.md` and `.ralph-planning/status.md`. |
-| **Stop condition** | The loop ends when the configured completion pattern is produced. |
+| **Filesystem state** | Progress lives in `.clanky-planning/plan.md` and `.clanky-planning/status.md`. |
+| **Stop condition** | The task ends when the configured completion pattern is produced. |
 | **Git isolation** | Changes stay isolated in a branch/worktree until you accept, push, or discard them. |
 
 ## Key features
 
-- **Dashboard + API:** manage loops from the browser or automate them through the REST API.
+- **Dashboard + API:** manage tasks from the browser or automate them through the REST API.
 - **Plan mode:** review and refine a generated plan before code changes begin.
 - **Review cycles:** continue from completed, pushed, or merged work with follow-up prompts and review comments.
-- **Live observability:** stream logs, inspect diffs, and track loop state over WebSocket updates.
+- **Live observability:** stream logs, inspect diffs, and track task state over WebSocket updates.
 - **Workspace flexibility:** configure provider and transport per workspace, including remote SSH-backed execution.
-- **Testing support:** use `RALPHER_MOCK_ACP=true` to replace local provider launches with the built-in mock ACP runtime.
+- **Testing support:** use `CLANKY_MOCK_ACP=true` to replace local provider launches with the built-in mock ACP runtime.
 
 ## Configuration and deployment
 
@@ -175,44 +175,44 @@ A Ralph Loop is an external execution loop around an AI coding agent. Instead of
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `RALPHER_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
-| `RALPHER_PORT` | HTTP port | `3000` |
-| `RALPHER_DATA_DIR` | Data directory for SQLite persistence | `./data` |
-| `RALPHER_REMOTE_ONLY` | Disables local `stdio` transport | unset |
-| `RALPHER_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
-| `RALPHER_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
-| `RALPHER_DISABLE_SAME_ORIGIN_CHECK` | Disables `Origin`/`Referer` validation for state-changing requests and WebSocket upgrades | unset |
-| `RALPHER_LOG_LEVEL` | Server log level override | `info` |
+| `CLANKY_HOST` | Host/interface passed to `Bun.serve` | `127.0.0.1` |
+| `CLANKY_PORT` | HTTP port | `3000` |
+| `CLANKY_DATA_DIR` | Data directory for SQLite persistence | `./data` |
+| `CLANKY_REMOTE_ONLY` | Disables local `stdio` transport | unset |
+| `CLANKY_MOCK_ACP` | Uses the built-in fake ACP runtime for local testing | unset |
+| `CLANKY_DISABLE_PASSKEY` | Bypasses passkey enforcement when set to `true`, `1`, or `yes` | unset |
+| `CLANKY_DISABLE_SAME_ORIGIN_CHECK` | Disables `Origin`/`Referer` validation for state-changing requests and WebSocket upgrades | unset |
+| `CLANKY_LOG_LEVEL` | Server log level override | `info` |
 
 ### Auth notes
 
 - Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
-- `ralpher-cli auth` stores bearer credentials in per-user CLI state under the home directory, `ralpher-cli status` validates them through `GET /api/auth/status`, `ralpher-cli api` sends authenticated REST calls with the stored tokens, `ralpher-cli ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `ralpher-cli schema` exposes endpoint discoverability data from the built-in API catalog.
-- Ralpher exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
-- Set `RALPHER_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
-- Set `RALPHER_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
-- In production, Ralpher is typically deployed behind a reverse proxy that handles authentication and authorization.
+- `clanky-cli auth` stores bearer credentials in per-user CLI state under the home directory, `clanky-cli status` validates them through `GET /api/auth/status`, `clanky-cli api` sends authenticated REST calls with the stored tokens, `clanky-cli ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky-cli schema` exposes endpoint discoverability data from the built-in API catalog.
+- Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
+- Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
+- Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
+- In production, Clanky is typically deployed behind a reverse proxy that handles authentication and authorization.
 
 ### Docker
 
 ```yaml
 services:
-  ralpher:
-    image: ghcr.io/pablozaiden/ralpher:latest
+  clanky:
+    image: ghcr.io/pablozaiden/clanky:latest
     ports:
       - "8080:8080"
     volumes:
-      - ralpher-data:/app/data
+      - clanky-data:/app/data
     environment:
-      RALPHER_DATA_DIR: /app/data
+      CLANKY_DATA_DIR: /app/data
 
 volumes:
-  ralpher-data:
+  clanky-data:
 ```
 
-The container listens on port `8080` by default and starts the same embedded server product that the `ralpher` binary runs locally. Docker overrides the bind host to `0.0.0.0`; local/native runs default to `127.0.0.1` unless you override `RALPHER_HOST`.
+The container listens on port `8080` by default and starts the same embedded server product that the `clanky` binary runs locally. Docker overrides the bind host to `0.0.0.0`; local/native runs default to `127.0.0.1` unless you override `CLANKY_HOST`.
 
 ## Documentation
 
@@ -222,16 +222,16 @@ The container listens on port `8080` by default and starts the same embedded ser
 ## Development
 
 ```bash
-git clone https://github.com/pablozaiden/ralpher.git
-cd ralpher
+git clone https://github.com/pablozaiden/clanky.git
+cd clanky
 bun install
 bun run build
 bun run test
 bun dev
 ```
 
-`bun run build` creates a standalone executable in `dist/ralpher`.
-It also builds `apps/server/dist/ralpher` and `apps/cli/dist/ralpher-cli`.
+`bun run build` creates a standalone executable in `dist/clanky`.
+It also builds `apps/server/dist/clanky` and `apps/cli/dist/clanky-cli`.
 
 To repopulate local demo data for the UI, run:
 

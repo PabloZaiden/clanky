@@ -217,7 +217,7 @@ export type AgentEvent =
  * This includes both the real AcpBackend and MockAcpBackend for tests.
  * 
  * The interface is split into two parts:
- * - Core methods: Used by LoopEngine for loop execution
+ * - Core methods: Used by TaskEngine for task execution
  * - Manager methods: Used by BackendManager for connection management
  */
 export interface Backend {
@@ -225,7 +225,7 @@ export interface Backend {
   readonly name: string;
 
   // ============================================
-  // Core methods (used by LoopEngine)
+  // Core methods (used by TaskEngine)
   // ============================================
 
   /** Connect to the backend server. Optional signal allows aborting the connection attempt. */

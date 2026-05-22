@@ -36,7 +36,7 @@ function AllProviders({ children }: { children: ReactNode }) {
  *
  * @example
  * ```typescript
- * const { user, getByText } = renderWithUser(<MyComponent />, { route: "#/loop/123" });
+ * const { user, getByText } = renderWithUser(<MyComponent />, { route: "#/task/123" });
  * await user.click(getByText("Submit"));
  * ```
  */

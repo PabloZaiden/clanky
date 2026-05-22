@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AppEventsProvider, useToast } from "@/hooks";
-import { ChatTab } from "@/components/loop-details/chat-tab";
+import { ChatTab } from "@/components/task-details/chat-tab";
 import type { Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
@@ -9,13 +9,13 @@ import { renderWithUser, waitFor } from "../helpers/render";
 const api = createMockApi();
 const ws = createMockWebSocket();
 
-function createLoopChat(): Chat {
+function createTaskChat(): Chat {
   return {
     config: {
-      id: "loop-chat-1",
-      name: "Loop Chat",
+      id: "task-chat-1",
+      name: "Task Chat",
       workspaceId: "workspace-1",
-      directory: "/workspace/repo/.ralph-worktrees/loop-1",
+      directory: "/workspace/repo/.clanky-worktrees/task-1",
       model: {
         providerID: "github",
         modelID: "gpt-5.4",
@@ -26,11 +26,11 @@ function createLoopChat(): Chat {
       createdAt: "2026-04-28T00:00:00.000Z",
       updatedAt: "2026-04-28T00:00:00.000Z",
       mode: "chat",
-      scope: "loop",
-      loopId: "loop-1",
+      scope: "task",
+      taskId: "task-1",
     },
     state: {
-      id: "loop-chat-1",
+      id: "task-chat-1",
       status: "idle",
       messages: [],
       logs: [],
@@ -55,8 +55,8 @@ describe("ChatTab", () => {
     api.install();
     api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
     api.get("/api/models", () => []);
-    api.get("/api/chats/:id", () => createLoopChat());
-    api.post("/api/loops/:id/chat", () => createLoopChat(), 201);
+    api.get("/api/chats/:id", () => createTaskChat());
+    api.post("/api/tasks/:id/chat", () => createTaskChat(), 201);
     ws.reset();
     ws.install();
   });
@@ -66,12 +66,12 @@ describe("ChatTab", () => {
     ws.uninstall();
   });
 
-  test("does not recreate the loop chat when unrelated toast updates rerender the provider", async () => {
+  test("does not recreate the task chat when unrelated toast updates rerender the provider", async () => {
     const { getByRole, getByText, user } = renderWithUser(
       <>
         <ToastTrigger />
         <AppEventsProvider>
-          <ChatTab loopId="loop-1" />
+          <ChatTab taskId="task-1" />
         </AppEventsProvider>
       </>,
     );
@@ -79,12 +79,12 @@ describe("ChatTab", () => {
     await waitFor(() => {
       expect(getByText("No messages yet")).toBeTruthy();
     });
-    expect(api.calls("/api/loops/:id/chat", "POST")).toHaveLength(1);
+    expect(api.calls("/api/tasks/:id/chat", "POST")).toHaveLength(1);
 
     await user.click(getByRole("button", { name: "Trigger toast" }));
 
     await waitFor(() => {
-      expect(api.calls("/api/loops/:id/chat", "POST")).toHaveLength(1);
+      expect(api.calls("/api/tasks/:id/chat", "POST")).toHaveLength(1);
     });
   });
 });

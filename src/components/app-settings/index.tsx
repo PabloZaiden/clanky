@@ -8,7 +8,7 @@ import type { PublicWorkspace } from "../../types/workspace";
 import type { QuickChatSettings } from "../../types/preferences";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "../../types/preferences";
 import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/workspace";
-import type { PurgeTerminalLoopsResult } from "../../hooks";
+import type { PurgeTerminalTasksResult } from "../../hooks";
 import { DisplaySettingsSection } from "./display-settings-section";
 import { DeveloperSettingsSection } from "./developer-settings-section";
 import { ImportExportSection } from "./import-export-section";
@@ -26,10 +26,10 @@ export interface AppSettingsPanelProps {
   onKillServer?: () => Promise<boolean>;
   /** Whether kill server is in progress */
   killingServer?: boolean;
-  /** Callback to purge terminal-state loops across all workspaces */
-  onPurgeTerminalLoops?: () => Promise<PurgeTerminalLoopsResult | null>;
+  /** Callback to purge terminal-state tasks across all workspaces */
+  onPurgeTerminalTasks?: () => Promise<PurgeTerminalTasksResult | null>;
   /** Whether global terminal-state purge is in progress */
-  purgingTerminalLoops?: boolean;
+  purgingTerminalTasks?: boolean;
   /** Callback to export workspace configs */
   onExportConfig?: () => Promise<WorkspaceExportData | null>;
   /** Callback to import workspace configs */
@@ -81,8 +81,8 @@ export function AppSettingsPanel({
   resetting = false,
   onKillServer,
   killingServer = false,
-  onPurgeTerminalLoops,
-  purgingTerminalLoops = false,
+  onPurgeTerminalTasks,
+  purgingTerminalTasks = false,
   onExportConfig,
   onImportConfig,
   configSaving = false,
@@ -139,8 +139,8 @@ export function AppSettingsPanel({
         resetting={resetting}
         onKillServer={onKillServer}
         killingServer={killingServer}
-        onPurgeTerminalLoops={onPurgeTerminalLoops}
-        purgingTerminalLoops={purgingTerminalLoops}
+        onPurgeTerminalTasks={onPurgeTerminalTasks}
+        purgingTerminalTasks={purgingTerminalTasks}
         passkeyConfigured={passkeyAuthStatus?.passkeyConfigured}
         removingPasskey={removingPasskey}
         onRemovePasskey={onRemovePasskey}

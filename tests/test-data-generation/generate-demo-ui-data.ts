@@ -87,7 +87,7 @@ async function loadDatabaseModule(): Promise<DatabaseModule> {
 }
 
 async function applySeedToDatabase(dataDir: string, sqlPath: string): Promise<void> {
-  process.env["RALPHER_DATA_DIR"] = dataDir;
+  process.env["CLANKY_DATA_DIR"] = dataDir;
   const database = await loadDatabaseModule();
   await database.initializeDatabase();
 
@@ -100,7 +100,7 @@ async function applySeedToDatabase(dataDir: string, sqlPath: string): Promise<vo
 }
 
 async function main(): Promise<void> {
-  process.env["RALPHER_LOG_LEVEL"] ??= "fatal";
+  process.env["CLANKY_LOG_LEVEL"] ??= "fatal";
 
   const options = parseArgs(process.argv.slice(2));
   const { sqlPath, keyDir } = await writeRuntimeArtifacts(options.dataDir);

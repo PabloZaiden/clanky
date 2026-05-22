@@ -1,5 +1,5 @@
 /**
- * Test setup and utilities for Ralph Loops Management System.
+ * Test setup and utilities for Clanky Tasks Management System.
  */
 
 import { mkdtemp, rm, writeFile, mkdir } from "fs/promises";
@@ -8,15 +8,15 @@ import { join } from "path";
 import { AcpBackend } from "../src/backends/acp";
 import { SimpleEventEmitter } from "../src/core/event-emitter";
 import { GitService } from "../src/core/git-service";
-import { LoopManager } from "../src/core/loop-manager";
+import { TaskManager } from "../src/core/task-manager";
 import { backendManager } from "../src/core/backend-manager";
 import { ensureDataDirectories } from "../src/persistence/database";
 import { closeDatabase } from "../src/persistence/database";
 import { createWorkspace } from "../src/persistence/workspaces";
-import { loadLoop } from "../src/persistence/loops";
+import { loadTask } from "../src/persistence/tasks";
 import { TestCommandExecutor } from "./mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "./mocks/mock-backend";
-import type { LoopEvent } from "../src/types/events";
+import type { TaskEvent } from "../src/types/events";
 import { getDefaultServerSettings } from "../src/types/settings";
 
 /**
@@ -26,7 +26,7 @@ import { getDefaultServerSettings } from "../src/types/settings";
 export const testWorkspaceId = "test-workspace-id";
 
 /**
- * Default test model configuration for loop creation.
+ * Default test model configuration for task creation.
  * Use this in tests to satisfy the required model field.
  */
 export const testModel = {
@@ -36,7 +36,7 @@ export const testModel = {
 };
 
 /**
- * Default test model fields for CreateLoopOptions.
+ * Default test model fields for CreateTaskOptions.
  * Use spread operator: { ...testModelFields, ... }
  */
 export const testModelFields = {
@@ -53,17 +53,17 @@ export interface TestContext {
   dataDir: string;
   /** Temporary working directory (simulates a project) */
   workDir: string;
-  /** Event emitter for loop events */
-  emitter: SimpleEventEmitter<LoopEvent>;
+  /** Event emitter for task events */
+  emitter: SimpleEventEmitter<TaskEvent>;
   /** Collected events for assertions */
-  events: LoopEvent[];
+  events: TaskEvent[];
   /** Git service instance */
   git: GitService;
-  /** Loop manager instance */
-  manager: LoopManager;
+  /** Task manager instance */
+  manager: TaskManager;
   /** Mock backend instance (if using mock) */
   mockBackend?: MockAcpBackend;
-  /** Original RALPHER_MOCK_ACP env value before test setup */
+  /** Original CLANKY_MOCK_ACP env value before test setup */
   originalMockAcpEnv?: string;
 }
 
@@ -96,18 +96,18 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   } = options;
 
   // Create temp directories
-  const dataDir = await mkdtemp(join(tmpdir(), "ralpher-test-data-"));
-  const workDir = await mkdtemp(join(tmpdir(), "ralpher-test-work-"));
+  const dataDir = await mkdtemp(join(tmpdir(), "clanky-test-data-"));
+  const workDir = await mkdtemp(join(tmpdir(), "clanky-test-work-"));
 
   // Start every test context from a fresh database connection so suite-order
   // leaks from earlier tests cannot leave persistence pointed at another temp dir.
   closeDatabase();
 
   // Set env var for persistence
-  process.env["RALPHER_DATA_DIR"] = dataDir;
+  process.env["CLANKY_DATA_DIR"] = dataDir;
   await ensureDataDirectories();
 
-  // Create the default test workspace (required for loops with workspaceId)
+  // Create the default test workspace (required for tasks with workspaceId)
   await createWorkspace({
     id: testWorkspaceId,
     name: "Test Workspace",
@@ -141,15 +141,15 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   }
 
   // Set up event emitter
-  const events: LoopEvent[] = [];
-  const emitter = new SimpleEventEmitter<LoopEvent>();
+  const events: TaskEvent[] = [];
+  const emitter = new SimpleEventEmitter<TaskEvent>();
   emitter.subscribe((event) => events.push(event));
 
   // Register mock backend if requested
   let mockBackend: MockAcpBackend | undefined;
-  const originalMockAcpEnv = process.env["RALPHER_MOCK_ACP"];
+  const originalMockAcpEnv = process.env["CLANKY_MOCK_ACP"];
   if (useMockAcpProcess) {
-    process.env["RALPHER_MOCK_ACP"] = "true";
+    process.env["CLANKY_MOCK_ACP"] = "true";
     backendManager.setBackendForTesting(new AcpBackend());
     backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
   } else if (useMockBackend) {
@@ -163,7 +163,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   }
 
   // Create manager
-  const manager = new LoopManager({
+  const manager = new TaskManager({
     eventEmitter: emitter,
   });
 
@@ -193,11 +193,11 @@ export async function teardownTestContext(ctx: TestContext): Promise<void> {
   closeDatabase();
 
   // Clean up env
-  delete process.env["RALPHER_DATA_DIR"];
+  delete process.env["CLANKY_DATA_DIR"];
   if (ctx.originalMockAcpEnv === undefined) {
-    delete process.env["RALPHER_MOCK_ACP"];
+    delete process.env["CLANKY_MOCK_ACP"];
   } else {
-    process.env["RALPHER_MOCK_ACP"] = ctx.originalMockAcpEnv;
+    process.env["CLANKY_MOCK_ACP"] = ctx.originalMockAcpEnv;
   }
 
   // Remove temp directories (force: true ignores ENOENT if already deleted)
@@ -208,18 +208,18 @@ export async function teardownTestContext(ctx: TestContext): Promise<void> {
 /**
  * Wait for a specific event type to be emitted.
  */
-export function waitForEvent<T extends LoopEvent["type"]>(
-  events: LoopEvent[],
+export function waitForEvent<T extends TaskEvent["type"]>(
+  events: TaskEvent[],
   eventType: T,
   timeout = 5000,
-): Promise<Extract<LoopEvent, { type: T }>> {
+): Promise<Extract<TaskEvent, { type: T }>> {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
 
     const check = () => {
       const event = events.find((e) => e.type === eventType);
       if (event) {
-        resolve(event as Extract<LoopEvent, { type: T }>);
+        resolve(event as Extract<TaskEvent, { type: T }>);
         return;
       }
 
@@ -238,9 +238,9 @@ export function waitForEvent<T extends LoopEvent["type"]>(
 /**
  * Wait for an event matching a predicate.
  */
-export function waitForEventMatching<T extends LoopEvent>(
-  events: LoopEvent[],
-  predicate: (event: LoopEvent) => event is T,
+export function waitForEventMatching<T extends TaskEvent>(
+  events: TaskEvent[],
+  predicate: (event: TaskEvent) => event is T,
   timeout = 5000,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -268,18 +268,18 @@ export function waitForEventMatching<T extends LoopEvent>(
 /**
  * Count events of a specific type.
  */
-export function countEvents(events: LoopEvent[], eventType: LoopEvent["type"]): number {
+export function countEvents(events: TaskEvent[], eventType: TaskEvent["type"]): number {
   return events.filter((e) => e.type === eventType).length;
 }
 
 /**
  * Get all events of a specific type.
  */
-export function getEvents<T extends LoopEvent["type"]>(
-  events: LoopEvent[],
+export function getEvents<T extends TaskEvent["type"]>(
+  events: TaskEvent[],
   eventType: T,
-): Extract<LoopEvent, { type: T }>[] {
-  return events.filter((e) => e.type === eventType) as Extract<LoopEvent, { type: T }>[];
+): Extract<TaskEvent, { type: T }>[] {
+  return events.filter((e) => e.type === eventType) as Extract<TaskEvent, { type: T }>[];
 }
 
 /**
@@ -290,75 +290,75 @@ export function delay(ms: number): Promise<void> {
 }
 
 /**
- * Poll until a loop reaches expected status (via LoopManager).
+ * Poll until a task reaches expected status (via TaskManager).
  */
-export async function waitForLoopStatus(
-  manager: LoopManager,
-  loopId: string,
+export async function waitForTaskStatus(
+  manager: TaskManager,
+  taskId: string,
   expectedStatuses: string[],
   timeoutMs = 10000
-): Promise<import("../src/types").Loop> {
+): Promise<import("../src/types").Task> {
   const startTime = Date.now();
   let lastStatus = "unknown";
   while (Date.now() - startTime < timeoutMs) {
-    const loop = await manager.getLoop(loopId);
-    if (loop) {
-      lastStatus = loop.state?.status ?? "unknown";
+    const task = await manager.getTask(taskId);
+    if (task) {
+      lastStatus = task.state?.status ?? "unknown";
       if (expectedStatuses.includes(lastStatus)) {
-        return loop;
+        return task;
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(
-    `Loop ${loopId} did not reach status [${expectedStatuses.join(", ")}] within ${timeoutMs}ms. Last: ${lastStatus}`
+    `Task ${taskId} did not reach status [${expectedStatuses.join(", ")}] within ${timeoutMs}ms. Last: ${lastStatus}`
   );
 }
 
 /**
- * Poll until isPlanReady becomes true (via LoopManager).
+ * Poll until isPlanReady becomes true (via TaskManager).
  */
 export async function waitForPlanReady(
-  manager: LoopManager,
-  loopId: string,
+  manager: TaskManager,
+  taskId: string,
   timeoutMs = 10000
-): Promise<import("../src/types").Loop> {
+): Promise<import("../src/types").Task> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    const loop = await manager.getLoop(loopId);
-    if (loop?.state.planMode?.isPlanReady === true) {
-      return loop;
+    const task = await manager.getTask(taskId);
+    if (task?.state.planMode?.isPlanReady === true) {
+      return task;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  const finalLoop = await manager.getLoop(loopId);
+  const finalTask = await manager.getTask(taskId);
   throw new Error(
-    `Plan did not become ready within ${timeoutMs}ms. isPlanReady: ${finalLoop?.state.planMode?.isPlanReady}, status: ${finalLoop?.state.status}`
+    `Plan did not become ready within ${timeoutMs}ms. isPlanReady: ${finalTask?.state.planMode?.isPlanReady}, status: ${finalTask?.state.status}`
   );
 }
 
 /**
- * Poll until isPlanReady is persisted to the database (via loadLoop).
+ * Poll until isPlanReady is persisted to the database (via loadTask).
  * Unlike waitForPlanReady() which reads in-memory state, this reads directly
  * from the persistence layer to ensure the plan-ready state has been flushed
  * to disk. Use this before resetForTesting() to ensure recovery tests can
  * load the persisted state reliably.
  */
 export async function waitForPersistedPlanReady(
-  loopId: string,
+  taskId: string,
   timeoutMs = 10000
-): Promise<import("../src/types").Loop> {
+): Promise<import("../src/types").Task> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    const loop = await loadLoop(loopId);
-    if (loop?.state.planMode?.isPlanReady === true) {
-      return loop;
+    const task = await loadTask(taskId);
+    if (task?.state.planMode?.isPlanReady === true) {
+      return task;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  const finalLoop = await loadLoop(loopId);
+  const finalTask = await loadTask(taskId);
   throw new Error(
-    `Plan isPlanReady not persisted within ${timeoutMs}ms. Persisted isPlanReady: ${finalLoop?.state.planMode?.isPlanReady}, status: ${finalLoop?.state.status}`
+    `Plan isPlanReady not persisted within ${timeoutMs}ms. Persisted isPlanReady: ${finalTask?.state.planMode?.isPlanReady}, status: ${finalTask?.state.status}`
   );
 }
 

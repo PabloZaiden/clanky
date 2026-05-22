@@ -1,10 +1,10 @@
 /**
- * Simple event emitter for Ralph Loops Management System.
+ * Simple event emitter for Clanky Tasks Management System.
  * A minimal pub/sub implementation for internal event handling.
  * No external dependencies - uses native patterns.
  */
 
-import type { ChatEvent, LoopEvent, ProvisioningEvent, SshSessionEvent } from "../types";
+import type { ChatEvent, TaskEvent, ProvisioningEvent, SshSessionEvent } from "../types";
 import { log } from "./logger";
 
 type EventHandler<T> = (event: T) => void;
@@ -12,9 +12,9 @@ type Unsubscribe = () => void;
 
 /**
  * Simple typed event emitter.
- * Provides basic pub/sub functionality for loop events.
+ * Provides basic pub/sub functionality for task events.
  */
-export class SimpleEventEmitter<T = LoopEvent> {
+export class SimpleEventEmitter<T = TaskEvent> {
   private handlers = new Set<EventHandler<T>>();
 
   /**
@@ -32,9 +32,9 @@ export class SimpleEventEmitter<T = LoopEvent> {
    * Emit an event to all subscribers.
    */
   emit(event: T): void {
-    // Only log subscriber count for loop.log events to avoid spam
+    // Only log subscriber count for task.log events to avoid spam
     const eventType = (event as { type?: string }).type;
-    if (this.handlers.size > 1 && eventType === "loop.log") {
+    if (this.handlers.size > 1 && eventType === "task.log") {
       log.debug("[EventEmitter] emit: Multiple subscribers detected", {
         subscriberCount: this.handlers.size,
         eventType,
@@ -66,10 +66,10 @@ export class SimpleEventEmitter<T = LoopEvent> {
 }
 
 /**
- * Global event emitter instance for loop events.
+ * Global event emitter instance for task events.
  * Used by WebSocket handlers to broadcast events to clients.
  */
-export const loopEventEmitter = new SimpleEventEmitter<LoopEvent>();
+export const taskEventEmitter = new SimpleEventEmitter<TaskEvent>();
 
 /**
  * Global event emitter instance for chat events.

@@ -10,9 +10,9 @@ import { settingsRoutes } from "../../src/api/settings";
 import { closeDatabase, ensureDataDirectories } from "../../src/persistence/database";
 
 describe("GET /api/config", () => {
-  const originalEnv = process.env["RALPHER_REMOTE_ONLY"];
-  const originalDisablePasskey = process.env["RALPHER_DISABLE_PASSKEY"];
-  const originalDataDir = process.env["RALPHER_DATA_DIR"];
+  const originalEnv = process.env["CLANKY_REMOTE_ONLY"];
+  const originalDisablePasskey = process.env["CLANKY_DISABLE_PASSKEY"];
+  const originalDataDir = process.env["CLANKY_DATA_DIR"];
   const handler = settingsRoutes["/api/config"].GET;
   let tempDataDir: string | undefined;
 
@@ -27,31 +27,31 @@ describe("GET /api/config", () => {
       tempDataDir = undefined;
     }
     if (originalEnv === undefined) {
-      delete process.env["RALPHER_REMOTE_ONLY"];
+      delete process.env["CLANKY_REMOTE_ONLY"];
     } else {
-      process.env["RALPHER_REMOTE_ONLY"] = originalEnv;
+      process.env["CLANKY_REMOTE_ONLY"] = originalEnv;
     }
     if (originalDisablePasskey === undefined) {
-      delete process.env["RALPHER_DISABLE_PASSKEY"];
+      delete process.env["CLANKY_DISABLE_PASSKEY"];
     } else {
-      process.env["RALPHER_DISABLE_PASSKEY"] = originalDisablePasskey;
+      process.env["CLANKY_DISABLE_PASSKEY"] = originalDisablePasskey;
     }
     if (originalDataDir === undefined) {
-      delete process.env["RALPHER_DATA_DIR"];
+      delete process.env["CLANKY_DATA_DIR"];
     } else {
-      process.env["RALPHER_DATA_DIR"] = originalDataDir;
+      process.env["CLANKY_DATA_DIR"] = originalDataDir;
     }
   });
 
   async function initializeConfigDatabase(): Promise<void> {
-    tempDataDir = await mkdtemp(join(tmpdir(), "ralpher-config-test-"));
-    process.env["RALPHER_DATA_DIR"] = tempDataDir;
+    tempDataDir = await mkdtemp(join(tmpdir(), "clanky-config-test-"));
+    process.env["CLANKY_DATA_DIR"] = tempDataDir;
     await ensureDataDirectories();
   }
 
   test("returns remoteOnly: false when env var is not set", async () => {
-    delete process.env["RALPHER_REMOTE_ONLY"];
-    delete process.env["RALPHER_DISABLE_PASSKEY"];
+    delete process.env["CLANKY_REMOTE_ONLY"];
+    delete process.env["CLANKY_DISABLE_PASSKEY"];
     await initializeConfigDatabase();
 
     const response = await handler(createConfigRequest());
@@ -71,7 +71,7 @@ describe("GET /api/config", () => {
   });
 
   test("returns remoteOnly: true when env var is 'true'", async () => {
-    process.env["RALPHER_REMOTE_ONLY"] = "true";
+    process.env["CLANKY_REMOTE_ONLY"] = "true";
     await initializeConfigDatabase();
 
     const response = await handler(createConfigRequest());
@@ -82,7 +82,7 @@ describe("GET /api/config", () => {
   });
 
   test("returns remoteOnly: true when env var is '1'", async () => {
-    process.env["RALPHER_REMOTE_ONLY"] = "1";
+    process.env["CLANKY_REMOTE_ONLY"] = "1";
     await initializeConfigDatabase();
 
     const response = await handler(createConfigRequest());
@@ -93,7 +93,7 @@ describe("GET /api/config", () => {
   });
 
   test("returns remoteOnly: true when env var is 'yes'", async () => {
-    process.env["RALPHER_REMOTE_ONLY"] = "yes";
+    process.env["CLANKY_REMOTE_ONLY"] = "yes";
     await initializeConfigDatabase();
 
     const response = await handler(createConfigRequest());
@@ -104,20 +104,20 @@ describe("GET /api/config", () => {
   });
 
   test("returns normalized publicBasePath from X-Forwarded-Prefix", async () => {
-    delete process.env["RALPHER_REMOTE_ONLY"];
+    delete process.env["CLANKY_REMOTE_ONLY"];
     await initializeConfigDatabase();
 
     const response = await handler(createConfigRequest({
-      "x-forwarded-prefix": "/ralpher/",
+      "x-forwarded-prefix": "/clanky/",
     }));
 
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toEqual(expect.objectContaining({ remoteOnly: false, publicBasePath: "/ralpher" }));
+    expect(body).toEqual(expect.objectContaining({ remoteOnly: false, publicBasePath: "/clanky" }));
   });
 
   test("returns disabled passkey status when env var is enabled", async () => {
-    process.env["RALPHER_DISABLE_PASSKEY"] = "true";
+    process.env["CLANKY_DISABLE_PASSKEY"] = "true";
     await initializeConfigDatabase();
 
     const response = await handler(createConfigRequest());

@@ -36,7 +36,7 @@ interface RunTestBucketsDependencies {
 const rootDir = `${import.meta.dir}/..`;
 
 const measuredFileWeights: Record<string, number> = {
-  "tests/integration/user-scenarios/plan-loop.test.ts": 5,
+  "tests/integration/user-scenarios/plan-task.test.ts": 5,
   "tests/unit/provisioning-manager.test.ts": 5,
   "tests/api/plan-mode.test.ts": 4,
   "tests/unit/plan-mode.test.ts": 4,
@@ -45,31 +45,31 @@ const measuredFileWeights: Record<string, number> = {
   "tests/integration/user-scenarios/review-cycles.test.ts": 3,
   "tests/unit/chat-manager.test.ts": 3,
   "tests/unit/git-service.test.ts": 3,
-  "tests/unit/loop-engine.test.ts": 3,
+  "tests/unit/task-engine.test.ts": 3,
   "tests/unit/push-sync.test.ts": 3,
   "tests/unit/review-mode.test.ts": 3,
   "tests/unit/ssh-server-key-manager.test.ts": 3,
-  "tests/frontend/components/CreateLoopForm.test.tsx": 3,
-  "tests/frontend/components/LoopDetails.test.tsx": 3,
+  "tests/frontend/components/CreateTaskForm.test.tsx": 3,
+  "tests/frontend/components/TaskDetails.test.tsx": 3,
   "tests/frontend/components/SshSessionDetails.test.tsx": 3,
-  "tests/frontend/hooks/useLoop.test.ts": 3,
-  "tests/frontend/hooks/useLoops.test.ts": 3,
-  "tests/api/loops-control.test.ts": 2,
-  "tests/api/loops-crud.test.ts": 2,
-  "tests/api/loops-pending.test.ts": 2,
-  "tests/api/loops-port-forwards.test.ts": 2,
+  "tests/frontend/hooks/useTask.test.ts": 3,
+  "tests/frontend/hooks/useTasks.test.ts": 3,
+  "tests/api/tasks-control.test.ts": 2,
+  "tests/api/tasks-crud.test.ts": 2,
+  "tests/api/tasks-pending.test.ts": 2,
+  "tests/api/tasks-port-forwards.test.ts": 2,
   "tests/api/ssh-server-files.test.ts": 2,
   "tests/api/ssh-servers.test.ts": 2,
   "tests/e2e/git-workflow.test.ts": 2,
   "tests/e2e/worktree-scenarios.test.ts": 2,
-  "tests/integration/user-scenarios/regular-loop.test.ts": 2,
+  "tests/integration/user-scenarios/regular-task.test.ts": 2,
   "tests/unit/update-branch.test.ts": 2,
   "tests/frontend/components/App.test.tsx": 2,
   "tests/frontend/components/ChatDetails.test.tsx": 2,
   "tests/frontend/components/CreateWorkspaceModal.test.tsx": 2,
-  "tests/frontend/components/LoopActionBar.test.tsx": 2,
+  "tests/frontend/components/TaskActionBar.test.tsx": 2,
   "tests/frontend/components/WorkspaceFilesView.test.tsx": 2,
-  "tests/frontend/scenarios/create-loop.test.tsx": 2,
+  "tests/frontend/scenarios/create-task.test.tsx": 2,
 };
 
 const suiteDefinitions: SuiteDefinition[] = [
@@ -182,8 +182,8 @@ export function buildEnv(sourceEnv: Record<string, string | undefined> = process
       env[key] = value;
     }
   }
-  if (env["RALPHER_LOG_LEVEL"] === undefined) {
-    env["RALPHER_LOG_LEVEL"] = "fatal";
+  if (env["CLANKY_LOG_LEVEL"] === undefined) {
+    env["CLANKY_LOG_LEVEL"] = "fatal";
   }
   return env;
 }
@@ -228,10 +228,10 @@ function getFileWeight(path: string): number {
 }
 
 export function shouldRetryFailedBuckets(env: Record<string, string>): boolean {
-  if (env["RALPHER_TEST_RETRY_FAILED_BUCKETS"] === "0") {
+  if (env["CLANKY_TEST_RETRY_FAILED_BUCKETS"] === "0") {
     return false;
   }
-  if (env["RALPHER_TEST_RETRY_FAILED_BUCKETS"] === "1") {
+  if (env["CLANKY_TEST_RETRY_FAILED_BUCKETS"] === "1") {
     return true;
   }
   return env["CI"] === "true";
@@ -448,7 +448,7 @@ export async function runTestBuckets(
   const buckets = await buildBucketsImpl(mode);
   const maxWorkers = Math.max(
     1,
-    Number.parseInt(env["RALPHER_TEST_MAX_WORKERS"] ?? "", 10)
+    Number.parseInt(env["CLANKY_TEST_MAX_WORKERS"] ?? "", 10)
       || Math.min(10, buckets.length),
   );
 

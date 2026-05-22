@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { persistLoopMessage, persistLoopToolCall } from "../../src/core/engine/engine-events";
+import { persistTaskMessage, persistTaskToolCall } from "../../src/core/engine/engine-events";
 import type { MessageData, ToolCallData } from "../../src/types/events";
 import type { ToolCallExtra } from "../../src/types/tool-call";
 
@@ -18,7 +18,7 @@ const sampleToolExtra: ToolCallExtra = {
   sourcePath: "/tmp/screen.png",
 };
 
-describe("persistLoopMessage", () => {
+describe("persistTaskMessage", () => {
   test("retains image attachments when persisting a user message", () => {
     const message: MessageData = {
       id: "msg-1",
@@ -28,7 +28,7 @@ describe("persistLoopMessage", () => {
       timestamp: new Date().toISOString(),
     };
 
-    const persisted = persistLoopMessage([], message);
+    const persisted = persistTaskMessage([], message);
 
     expect(persisted).toEqual([{
       id: "msg-1",
@@ -55,8 +55,8 @@ describe("persistLoopMessage", () => {
       timestamp: new Date().toISOString(),
     };
 
-    const persisted = persistLoopMessage([], originalMessage);
-    const updatedPersisted = persistLoopMessage(persisted, updatedMessage);
+    const persisted = persistTaskMessage([], originalMessage);
+    const updatedPersisted = persistTaskMessage(persisted, updatedMessage);
 
     expect(updatedPersisted).toEqual([{
       id: "msg-1",
@@ -68,7 +68,7 @@ describe("persistLoopMessage", () => {
   });
 });
 
-describe("persistLoopToolCall", () => {
+describe("persistTaskToolCall", () => {
   test("preserves persisted extras when a tool update omits them", () => {
     const originalToolCall: ToolCallData = {
       id: "tool-1",
@@ -88,8 +88,8 @@ describe("persistLoopToolCall", () => {
       timestamp: "2025-01-01T00:00:01.000Z",
     };
 
-    const persisted = persistLoopToolCall([], originalToolCall);
-    const updatedPersisted = persistLoopToolCall(persisted, updatedToolCall);
+    const persisted = persistTaskToolCall([], originalToolCall);
+    const updatedPersisted = persistTaskToolCall(persisted, updatedToolCall);
 
     expect(updatedPersisted).toEqual([{
       ...updatedToolCall,

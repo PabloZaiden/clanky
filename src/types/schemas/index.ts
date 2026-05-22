@@ -1,1 +1,1 @@
-export * from "@ralpher/contracts/schemas";
+export * from "@clanky/contracts/schemas";

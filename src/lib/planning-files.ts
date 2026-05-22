@@ -1,10 +1,10 @@
 /**
- * Shared planning directory paths used by Ralpher-managed loop state files.
+ * Shared planning directory paths used by Clanky-managed task state files.
  */
 
 import { posix as pathPosix } from "node:path";
 
-export const PLANNING_DIRECTORY_NAME = ".ralph-planning";
+export const PLANNING_DIRECTORY_NAME = ".clanky-planning";
 export const PLAN_FILE_NAME = "plan.md";
 export const STATUS_FILE_NAME = "status.md";
 export const DEFAULT_PLAN_DISPLAY_PATH = pathPosix.join(PLANNING_DIRECTORY_NAME, PLAN_FILE_NAME);

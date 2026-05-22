@@ -11,7 +11,7 @@ import {
   resolveAutomaticPrFlowReviewThread,
 } from "../../src/core/automatic-pr-flow-github";
 import { backendManager } from "../../src/core/backend-manager";
-import { createLoopWithStatus, createModelInfo } from "../frontend/helpers/factories";
+import { createTaskWithStatus, createModelInfo } from "../frontend/helpers/factories";
 import { createMockBackend, MockAcpBackend } from "../mocks/mock-backend";
 
 let testDataDir: string;
@@ -81,8 +81,8 @@ class StubGitService implements PullRequestNavigationGitService {
   }
 }
 
-function createPushedLoop() {
-  return createLoopWithStatus("pushed", {
+function createPushedTask() {
+  return createTaskWithStatus("pushed", {
     config: {
       name: "Automatic PR Flow",
       prompt: "Implement the automatic PR flow end to end.",
@@ -100,8 +100,8 @@ function createPushedLoop() {
 
 describe("automatic PR flow GitHub helpers", () => {
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-automatic-pr-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-automatic-pr-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
     backendManager.resetForTesting();
     const { ensureDataDirectories, closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
@@ -122,12 +122,12 @@ describe("automatic PR flow GitHub helpers", () => {
     backendManager.resetForTesting();
     const { closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true, force: true });
   });
 
   test("reuses an existing pull request when one already exists", async () => {
-    const loop = createPushedLoop();
+    const task = createPushedTask();
     const executor = new StubExecutor();
     const git = new StubGitService();
 
@@ -150,7 +150,7 @@ describe("automatic PR flow GitHub helpers", () => {
       exitCode: 0,
     });
 
-    const pullRequest = await ensureAutomaticPrFlowPullRequest(loop, "/tmp/repo", executor, git);
+    const pullRequest = await ensureAutomaticPrFlowPullRequest(task, "/tmp/repo", executor, git);
 
     expect(pullRequest).toEqual({
       number: 42,
@@ -164,7 +164,7 @@ describe("automatic PR flow GitHub helpers", () => {
   });
 
   test("enables auto-merge for an existing pull request", async () => {
-    const loop = createPushedLoop();
+    const task = createPushedTask();
     const executor = new StubExecutor();
     const git = new StubGitService();
 
@@ -193,7 +193,7 @@ describe("automatic PR flow GitHub helpers", () => {
       exitCode: 0,
     });
 
-    const pullRequest = await enableExistingPullRequestAutoMerge(loop, "/tmp/repo", executor, git);
+    const pullRequest = await enableExistingPullRequestAutoMerge(task, "/tmp/repo", executor, git);
 
     expect(pullRequest.number).toBe(42);
     expect(pullRequest.url).toBe("https://github.com/owner/repo/pull/42");
@@ -204,7 +204,7 @@ describe("automatic PR flow GitHub helpers", () => {
   });
 
   test("requires an existing pull request before enabling auto-merge", async () => {
-    const loop = createPushedLoop();
+    const task = createPushedTask();
     const executor = new StubExecutor();
     const git = new StubGitService();
 
@@ -221,14 +221,14 @@ describe("automatic PR flow GitHub helpers", () => {
       exitCode: 1,
     });
 
-    await expect(enableExistingPullRequestAutoMerge(loop, "/tmp/repo", executor, git)).rejects.toThrow(
-      "This loop does not have an existing GitHub pull request yet.",
+    await expect(enableExistingPullRequestAutoMerge(task, "/tmp/repo", executor, git)).rejects.toThrow(
+      "This task does not have an existing GitHub pull request yet.",
     );
   });
 
   test("creates a pull request when one does not exist yet", async () => {
-    const loop = createPushedLoop();
-    loop.state.git!.commits = [
+    const task = createPushedTask();
+    task.state.git!.commits = [
       {
         iteration: 1,
         sha: "abc123",
@@ -310,24 +310,24 @@ describe("automatic PR flow GitHub helpers", () => {
       exitCode: 0,
     });
 
-    const pullRequest = await ensureAutomaticPrFlowPullRequest(loop, "/tmp/repo", executor, git);
+    const pullRequest = await ensureAutomaticPrFlowPullRequest(task, "/tmp/repo", executor, git);
 
     expect(pullRequest.number).toBe(42);
     expect(pullRequest.url).toBe("https://github.com/owner/repo/pull/42");
     const createCall = executor.calls.find((call) => call.command === "gh" && call.args[0] === "pr" && call.args[1] === "create");
     expect(createCall).toBeDefined();
     expect(createCall?.args).toContain("Generate PR metadata from actual changes");
-    expect(createCall?.args.join("\n")).not.toContain("Ralpher");
+    expect(createCall?.args.join("\n")).not.toContain("Clanky");
   });
 
   test("uses the configured cheap model for PR metadata when it is available", async () => {
-    const loop = createPushedLoop();
-    loop.config.model = {
+    const task = createPushedTask();
+    task.config.model = {
       providerID: "anthropic",
       modelID: "claude-sonnet",
       variant: "",
     };
-    loop.config.cheapModel = {
+    task.config.cheapModel = {
       mode: "custom",
       model: {
         providerID: "openai",
@@ -335,7 +335,7 @@ describe("automatic PR flow GitHub helpers", () => {
         variant: "fast",
       },
     };
-    loop.state.git!.commits = [
+    task.state.git!.commits = [
       {
         iteration: 1,
         sha: "abc123",
@@ -443,7 +443,7 @@ describe("automatic PR flow GitHub helpers", () => {
       exitCode: 0,
     });
 
-    await ensureAutomaticPrFlowPullRequest(loop, "/tmp/repo", executor, git);
+    await ensureAutomaticPrFlowPullRequest(task, "/tmp/repo", executor, git);
 
     expect(promptModel).toEqual({
       providerID: "openai",
@@ -453,8 +453,8 @@ describe("automatic PR flow GitHub helpers", () => {
   });
 
   test("falls back to deterministic metadata when AI output is unusable", async () => {
-    const loop = createPushedLoop();
-    loop.state.git!.commits = [
+    const task = createPushedTask();
+    task.state.git!.commits = [
       {
         iteration: 1,
         sha: "abc123",
@@ -474,8 +474,8 @@ describe("automatic PR flow GitHub helpers", () => {
     const git = new StubGitService();
     backendManager.setBackendForTesting(createMockBackend([
       JSON.stringify({
-        title: "AutoPR by Ralpher",
-        body: "Opened automatically by Ralpher.",
+        title: "AutoPR by Clanky",
+        body: "Opened automatically by Clanky.",
       }),
     ]));
 
@@ -542,7 +542,7 @@ describe("automatic PR flow GitHub helpers", () => {
       exitCode: 0,
     });
 
-    const pullRequest = await ensureAutomaticPrFlowPullRequest(loop, "/tmp/repo", executor, git);
+    const pullRequest = await ensureAutomaticPrFlowPullRequest(task, "/tmp/repo", executor, git);
 
     expect(pullRequest.number).toBe(42);
     const createCall = executor.calls.find((call) => call.command === "gh" && call.args[0] === "pr" && call.args[1] === "create");

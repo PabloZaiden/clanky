@@ -30,7 +30,7 @@ export function ServerFilesView({
   return (
     <CodeExplorerView
       routeTarget={{ contentType: "server", serverId: server.config.id, startDirectory }}
-      loops={[]}
+      tasks={[]}
       chats={[]}
       workspaces={[]}
       sessions={[]}

@@ -1,6 +1,6 @@
 {
-  "name": "@pablozaiden/ralpher",
-  "description": "Ralpher is a web and rest service used to control and manage Ralph Loops in opencode",
+  "name": "@pablozaiden/clanky",
+  "description": "Clanky is a web and rest service used to control and manage Clanky Tasks in opencode",
   "version": "0.0.0-development",
   "private": true,
   "type": "module",

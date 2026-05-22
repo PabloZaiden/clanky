@@ -65,7 +65,7 @@ interface MockApiInstance {
 }
 
 /**
- * Convert a route pattern like "/api/loops/:id" to a regex.
+ * Convert a route pattern like "/api/tasks/:id" to a regex.
  */
 function patternToRegex(pattern: string): { regex: RegExp; paramNames: string[] } {
   const paramNames: string[] = [];
@@ -110,8 +110,8 @@ const DEFAULT_ROUTES: RouteConfig[] = DEFAULT_API_ROUTES.map((route) =>
  * @example
  * ```typescript
  * const api = createMockApi();
- * api.get("/api/loops", () => [createLoop()]);
- * api.post("/api/loops", (req) => createLoop({ config: { prompt: req.body.prompt } }));
+ * api.get("/api/tasks", () => [createTask()]);
+ * api.post("/api/tasks", (req) => createTask({ config: { prompt: req.body.prompt } }));
  * api.install();
  * // ... run tests ...
  * api.uninstall();
@@ -273,7 +273,7 @@ export function createMockApi(): MockApiInstance {
  *
  * @example
  * ```typescript
- * api.post("/api/loops", () => {
+ * api.post("/api/tasks", () => {
  *   throw new MockApiError(409, { error: "uncommitted_changes", message: "Dirty repo" });
  * });
  * ```

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getWorkspaceChatNameStats, loadChat, loadLoopChat, saveChat } from "../../src/persistence/chats";
+import { getWorkspaceChatNameStats, loadChat, loadTaskChat, saveChat } from "../../src/persistence/chats";
 import { createInitialChatState, type Chat } from "../../src/types/chat";
 import {
   setupTestContext,
@@ -15,7 +15,7 @@ function createChat(overrides?: {
   id?: string;
   name?: string;
   scope?: Chat["config"]["scope"];
-  loopId?: string;
+  taskId?: string;
 }): Chat {
   const id = overrides?.id ?? "chat-1";
   const now = "2026-04-28T00:00:00.000Z";
@@ -26,7 +26,7 @@ function createChat(overrides?: {
       name: overrides?.name ?? `Chat ${id}`,
       workspaceId: testWorkspaceId,
       scope: overrides?.scope ?? "workspace",
-      loopId: overrides?.loopId,
+      taskId: overrides?.taskId,
       directory: context.workDir,
       model: testModel,
       useWorktree: false,
@@ -48,28 +48,28 @@ describe("chat persistence", () => {
     await teardownTestContext(context);
   });
 
-  test("loadLoopChat ignores workspace-scoped rows even when loop_id matches", async () => {
+  test("loadTaskChat ignores workspace-scoped rows even when task_id matches", async () => {
     await saveChat(createChat({
       id: "workspace-chat",
       scope: "workspace",
-      loopId: "loop-1",
+      taskId: "task-1",
     }));
 
-    await expect(loadLoopChat("loop-1")).resolves.toBeNull();
+    await expect(loadTaskChat("task-1")).resolves.toBeNull();
   });
 
-  test("loadLoopChat returns loop-scoped rows", async () => {
+  test("loadTaskChat returns task-scoped rows", async () => {
     await saveChat(createChat({
-      id: "loop-chat",
-      scope: "loop",
-      loopId: "loop-1",
+      id: "task-chat",
+      scope: "task",
+      taskId: "task-1",
     }));
 
-    await expect(loadLoopChat("loop-1")).resolves.toMatchObject({
+    await expect(loadTaskChat("task-1")).resolves.toMatchObject({
       config: {
-        id: "loop-chat",
-        scope: "loop",
-        loopId: "loop-1",
+        id: "task-chat",
+        scope: "task",
+        taskId: "task-1",
       },
     });
   });
@@ -92,10 +92,10 @@ describe("chat persistence", () => {
       name: "Other Workspace - 9",
     }));
     await saveChat(createChat({
-      id: "loop-chat",
+      id: "task-chat",
       name: "Test Workspace - 10",
-      scope: "loop",
-      loopId: "loop-1",
+      scope: "task",
+      taskId: "task-1",
     }));
 
     await expect(getWorkspaceChatNameStats(testWorkspaceId, "Test Workspace")).resolves.toEqual({

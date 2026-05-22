@@ -1,6 +1,6 @@
-import type { Chat, CreateSshSessionRequest, Loop, SshConnectionMode, SshSession, Workspace } from "../../types";
+import type { Chat, CreateSshSessionRequest, Task, SshConnectionMode, SshSession, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
-import { getOrCreateLoopSshSessionApi } from "../../hooks/loop-actions/ssh-actions";
+import { getOrCreateTaskSshSessionApi } from "../../hooks/task-actions/ssh-actions";
 import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
 type ExplorerSession = SshSession | SshServerSession;
@@ -21,14 +21,14 @@ export interface CodeExplorerOptionGroup {
 
 const CODE_EXPLORER_OPTION_GROUP_ORDER: CodeExplorerTarget["contentType"][] = [
   "workspace",
-  "loop",
+  "task",
   "server",
   "chat",
 ];
 
 const CODE_EXPLORER_OPTION_GROUP_LABELS: Record<CodeExplorerTarget["contentType"], string> = {
   workspace: "Workspaces",
-  loop: "Loops",
+  task: "Tasks",
   server: "SSH servers",
   chat: "Chats",
 };
@@ -55,7 +55,7 @@ export interface ResolvedCodeExplorerTarget {
 interface ResolveCodeExplorerTargetArgs {
   target?: CodeExplorerTarget;
   workspaces: Workspace[];
-  loops: Loop[];
+  tasks: Task[];
   chats: Chat[];
   servers: SshServer[];
   sessions: SshSession[];
@@ -71,8 +71,8 @@ function trimDirectory(directory: string | undefined): string {
   return directory?.trim() || "/";
 }
 
-export function getLoopCodeExplorerRootDirectory(loop: Loop): string {
-  return trimDirectory(loop.state.git?.worktreePath || loop.config.directory);
+export function getTaskCodeExplorerRootDirectory(task: Task): string {
+  return trimDirectory(task.state.git?.worktreePath || task.config.directory);
 }
 
 export function getChatCodeExplorerRootDirectory(chat: Chat): string {
@@ -83,8 +83,8 @@ export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
   switch (target.contentType) {
     case "workspace":
       return target.workspaceId;
-    case "loop":
-      return target.loopId;
+    case "task":
+      return target.taskId;
     case "server":
       return target.serverId;
     case "chat":
@@ -92,20 +92,20 @@ export function getCodeExplorerTargetId(target: CodeExplorerTarget): string {
   }
 }
 
-function supportsLoopTerminal(loop: Loop, sessions: SshSession[]): boolean {
-  if (sessions.some((session) => session.config.loopId === loop.config.id)) {
+function supportsTaskTerminal(task: Task, sessions: SshSession[]): boolean {
+  if (sessions.some((session) => session.config.taskId === task.config.id)) {
     return true;
   }
 
-  return loop.config.useWorktree || Boolean(loop.state.git?.worktreePath);
+  return task.config.useWorktree || Boolean(task.state.git?.worktreePath);
 }
 
 export function getCodeExplorerOptions({
   workspaces,
-  loops,
+  tasks,
   chats,
   servers,
-}: Pick<ResolveCodeExplorerTargetArgs, "workspaces" | "loops" | "chats" | "servers">): CodeExplorerOption[] {
+}: Pick<ResolveCodeExplorerTargetArgs, "workspaces" | "tasks" | "chats" | "servers">): CodeExplorerOption[] {
   return [
     ...workspaces.map((workspace) => ({
       id: `workspace:${workspace.id}`,
@@ -114,12 +114,12 @@ export function getCodeExplorerOptions({
       description: workspace.directory,
       target: { contentType: "workspace" as const, workspaceId: workspace.id },
     })),
-    ...loops.map((loop) => ({
-      id: `loop:${loop.config.id}`,
-      kind: "loop" as const,
-      label: loop.config.name,
-      description: getLoopCodeExplorerRootDirectory(loop),
-      target: { contentType: "loop" as const, loopId: loop.config.id },
+    ...tasks.map((task) => ({
+      id: `task:${task.config.id}`,
+      kind: "task" as const,
+      label: task.config.name,
+      description: getTaskCodeExplorerRootDirectory(task),
+      target: { contentType: "task" as const, taskId: task.config.id },
     })),
     ...servers.map((server) => ({
       id: `server:${server.config.id}`,
@@ -149,7 +149,7 @@ export function getCodeExplorerOptionGroups(options: CodeExplorerOption[]): Code
 export function resolveCodeExplorerTarget({
   target,
   workspaces,
-  loops,
+  tasks,
   chats,
   servers,
   sessions,
@@ -207,47 +207,47 @@ export function resolveCodeExplorerTarget({
         initialFilePath: target.filePath,
       };
     }
-    case "loop": {
-      const loop = loops.find((candidate) => candidate.config.id === routeTargetId);
-      if (!loop) {
+    case "task": {
+      const task = tasks.find((candidate) => candidate.config.id === routeTargetId);
+      if (!task) {
         return null;
       }
 
-      const workspace = workspaces.find((candidate) => candidate.id === loop.config.workspaceId);
+      const workspace = workspaces.find((candidate) => candidate.id === task.config.workspaceId);
       if (!workspace) {
         return null;
       }
 
-      const defaultRootDirectory = getLoopCodeExplorerRootDirectory(loop);
+      const defaultRootDirectory = getTaskCodeExplorerRootDirectory(task);
       const effectiveStartDirectory = target.startDirectory ?? defaultRootDirectory;
-      const loopSessions = sessions.filter((session) => session.config.loopId === loop.config.id);
-      const hasTerminal = workspace.serverSettings.agent.transport === "ssh" && supportsLoopTerminal(loop, loopSessions);
+      const taskSessions = sessions.filter((session) => session.config.taskId === task.config.id);
+      const hasTerminal = workspace.serverSettings.agent.transport === "ssh" && supportsTaskTerminal(task, taskSessions);
 
       return {
         routeTarget: target,
-        title: `${loop.config.name} code explorer`,
+        title: `${task.config.name} code explorer`,
         description: defaultRootDirectory,
         defaultRootDirectory,
-        backLabel: "Back to loop",
-        backRoute: { view: "loop", loopId: loop.config.id },
-        target: { type: "workspace", id: loop.config.workspaceId, startDirectory: effectiveStartDirectory },
+        backLabel: "Back to task",
+        backRoute: { view: "task", taskId: task.config.id },
+        target: { type: "workspace", id: task.config.workspaceId, startDirectory: effectiveStartDirectory },
         buildRoute: (startDirectory?: string) => ({
           view: "code-explorer",
           target: {
-            contentType: "loop",
-            loopId: loop.config.id,
+            contentType: "task",
+            taskId: task.config.id,
             startDirectory: startDirectory?.trim() && startDirectory.trim() !== defaultRootDirectory
               ? startDirectory.trim()
               : undefined,
           },
         }),
-        sessions: loopSessions,
+        sessions: taskSessions,
         hasTerminal,
         emptyTerminalMessage: hasTerminal
-          ? "Choose the loop SSH session or open the loop terminal."
-          : "This loop does not have a loop-linked terminal yet. Start or reconnect the loop SSH session from the info tab.",
-        terminalSelectLabel: "Select loop SSH session",
-        onCreateTerminal: async () => await getOrCreateLoopSshSessionApi(loop.config.id),
+          ? "Choose the task SSH session or open the task terminal."
+          : "This task does not have a task-linked terminal yet. Start or reconnect the task SSH session from the info tab.",
+        terminalSelectLabel: "Select task SSH session",
+        onCreateTerminal: async () => await getOrCreateTaskSshSessionApi(task.config.id),
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };

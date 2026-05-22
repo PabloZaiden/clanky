@@ -11,8 +11,8 @@ let testDataDir: string;
 
 describe("Theme Preference API", () => {
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-theme-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-theme-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     const { ensureDataDirectories } = await import("../../src/persistence/database");
     await ensureDataDirectories();
@@ -22,7 +22,7 @@ describe("Theme Preference API", () => {
     const { closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
 
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true });
   });
 

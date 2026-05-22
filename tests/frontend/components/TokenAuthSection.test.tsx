@@ -41,7 +41,7 @@ describe("TokenAuthSection", () => {
 
     api.get("/api/auth/issuer", () => ({
       canonicalIssuer: null,
-      effectiveIssuer: "urn:ralpher:instance:test",
+      effectiveIssuer: "urn:clanky:instance:test",
     }));
     api.get("/api/auth/sessions", () => sessions);
     api.delete("/api/auth/sessions/:id", ({ params }) => {

@@ -6,7 +6,7 @@ import { buildShellBootstrapCommand } from "./ssh-shell-bootstrap";
 
 const DTACH_INSTALL_HINT = [
   "dtach is not available on the remote host.",
-  "Ralpher switched this session to Direct SSH.",
+  "Clanky switched this session to Direct SSH.",
   "Install dtach on Linux with your package manager",
   "(for example: sudo apt install dtach, sudo dnf install dtach, or sudo pacman -S dtach)",
   "or on macOS with brew install dtach.",
@@ -28,19 +28,19 @@ function buildPersistentSessionSocketPath(remoteSessionName: string): string {
 }
 
 function buildPersistentSessionClientTtyFilePath(sessionId: string): string {
-  return `/tmp/ralpher-terminal-${sessionId}.tty`;
+  return `/tmp/clanky-terminal-${sessionId}.tty`;
 }
 
 function buildPersistentSessionTtyFilePath(sessionId: string): string {
-  return `/tmp/ralpher-terminal-${sessionId}.session.tty`;
+  return `/tmp/clanky-terminal-${sessionId}.session.tty`;
 }
 
 function buildPersistentSessionPidFilePath(sessionId: string): string {
-  return `/tmp/ralpher-terminal-${sessionId}.pid`;
+  return `/tmp/clanky-terminal-${sessionId}.pid`;
 }
 
 function buildPersistentSessionMasterPidFilePath(sessionId: string): string {
-  return `/tmp/ralpher-terminal-${sessionId}.master.pid`;
+  return `/tmp/clanky-terminal-${sessionId}.master.pid`;
 }
 
 function buildPersistentSessionShellCommand(session: { config: PersistentSshSessionConfigLike }): string {

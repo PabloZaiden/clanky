@@ -3,7 +3,7 @@ import { appAbsoluteUrl } from "../../lib/public-path";
 import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
 export type ShellShortcutAction =
-  | "new-loop"
+  | "new-task"
   | "new-chat"
   | "new-ssh-session"
   | "settings"
@@ -18,11 +18,11 @@ interface ShellShortcutDefinition {
 }
 
 export const SHELL_SHORTCUTS: Record<ShellShortcutAction, ShellShortcutDefinition> = {
-  "new-loop": {
-    action: "new-loop",
+  "new-task": {
+    action: "new-task",
     key: "l",
     labelKey: "L",
-    route: { view: "compose", kind: "loop" },
+    route: { view: "compose", kind: "task" },
   },
   "new-chat": {
     action: "new-chat",
@@ -95,8 +95,8 @@ function buildCodeExplorerHash(target?: CodeExplorerTarget): string {
   switch (target.contentType) {
     case "workspace":
       return buildExplorerHash(`/code-explorer/workspace/${target.workspaceId}`, target.startDirectory, target.filePath);
-    case "loop":
-      return buildExplorerHash(`/code-explorer/loop/${target.loopId}`, target.startDirectory, target.filePath);
+    case "task":
+      return buildExplorerHash(`/code-explorer/task/${target.taskId}`, target.startDirectory, target.filePath);
     case "server":
       return buildExplorerHash(`/code-explorer/server/${target.serverId}`, target.startDirectory, target.filePath);
     case "chat":
@@ -110,10 +110,10 @@ export function getHashForShellRoute(route: ShellRoute): string {
       return "/";
     case "code-explorer":
       return buildCodeExplorerHash(route.target);
-    case "loop":
-      return `/loop/${route.loopId}`;
-    case "loop-files":
-      return buildExplorerHash(`/loop-files/${route.loopId}`, route.startDirectory);
+    case "task":
+      return `/task/${route.taskId}`;
+    case "task-files":
+      return buildExplorerHash(`/task-files/${route.taskId}`, route.startDirectory);
     case "ssh":
       return `/ssh/${route.sshSessionId}`;
     case "chat":

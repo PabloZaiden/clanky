@@ -1,5 +1,5 @@
 /**
- * API type definitions for Ralph Loops Management System.
+ * API type definitions for Clanky Tasks Management System.
  * 
  * These types define the request and response shapes for the REST API.
  * They are used for type safety in both the API route handlers and clients.
@@ -16,16 +16,16 @@ import type {
   ReviewComment,
   SshServer,
   SshSession,
-} from "@ralpher/shared";
+} from "@clanky/shared";
 import {
-  CreateLoopRequestSchema,
+  CreateTaskRequestSchema,
   CreateChatRequestSchema,
-  GenerateLoopTitleRequestSchema,
+  GenerateTaskTitleRequestSchema,
   InterruptChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
   SendChatMessageRequestSchema,
-  SpawnCurrentPlanLoopRequestSchema,
-  UpdateLoopRequestSchema,
+  SpawnCurrentPlanTaskRequestSchema,
+  UpdateTaskRequestSchema,
   UpdateChatRequestSchema,
   AddressCommentsRequestSchema,
   CreateSshSessionRequestSchema,
@@ -107,36 +107,36 @@ export interface ModelInfo {
 }
 
 /**
- * Request body for POST /api/loops endpoint.
+ * Request body for POST /api/tasks endpoint.
  * 
- * Creates a new Ralph Loop. Loops are started immediately after creation
- * unless `draft: true` is specified, which saves the loop for later editing.
+ * Creates a new Clanky Task. Tasks are started immediately after creation
+ * unless `draft: true` is specified, which saves the task for later editing.
  * 
- * If `planMode: true`, the loop starts in plan review mode before execution.
+ * If `planMode: true`, the task starts in plan review mode before execution.
  * 
- * The loop name is required and must be provided by the client.
+ * The task name is required and must be provided by the client.
  * 
- * The `workspaceId` is required - loops must be created within a workspace.
+ * The `workspaceId` is required - tasks must be created within a workspace.
  * The directory is automatically derived from the workspace.
  * 
- * Type is derived from CreateLoopRequestSchema - the Zod schema is the
+ * Type is derived from CreateTaskRequestSchema - the Zod schema is the
  * single source of truth for both validation and TypeScript types.
  */
-export type CreateLoopRequest = z.infer<typeof CreateLoopRequestSchema>;
+export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
 export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
 
 /**
- * Request body for POST /api/loops/title endpoint.
+ * Request body for POST /api/tasks/title endpoint.
  *
  * Requests explicit AI-assisted title generation for the current prompt
  * using the selected workspace and model context.
  */
-export type GenerateLoopTitleRequest = z.infer<typeof GenerateLoopTitleRequestSchema>;
+export type GenerateTaskTitleRequest = z.infer<typeof GenerateTaskTitleRequestSchema>;
 
 /**
- * Response from POST /api/loops/title endpoint.
+ * Response from POST /api/tasks/title endpoint.
  */
-export interface GenerateLoopTitleResponse {
+export interface GenerateTaskTitleResponse {
   title: string;
 }
 
@@ -146,19 +146,19 @@ export interface GenerateLoopTitleResponse {
 export type CreateSshSessionRequest = z.infer<typeof CreateSshSessionRequestSchema>;
 
 /**
- * Request body for PATCH /api/loops/:id endpoint.
+ * Request body for PATCH /api/tasks/:id endpoint.
  * All fields are optional - only provided fields are updated. Name updates
- * are accepted only while the loop is still a draft.
+ * are accepted only while the task is still a draft.
  * 
- * Type is derived from UpdateLoopRequestSchema - the Zod schema is the
+ * Type is derived from UpdateTaskRequestSchema - the Zod schema is the
  * single source of truth for both validation and TypeScript types.
  */
-export type UpdateLoopRequest = z.infer<typeof UpdateLoopRequestSchema>;
+export type UpdateTaskRequest = z.infer<typeof UpdateTaskRequestSchema>;
 export type UpdateChatRequest = z.infer<typeof UpdateChatRequestSchema>;
 export type SendChatMessageRequest = z.infer<typeof SendChatMessageRequestSchema>;
 export type InterruptChatRequest = z.infer<typeof InterruptChatRequestSchema>;
 export type ReplyToChatPermissionRequest = z.infer<typeof ReplyToChatPermissionRequestSchema>;
-export type SpawnCurrentPlanLoopRequest = z.infer<typeof SpawnCurrentPlanLoopRequestSchema>;
+export type SpawnCurrentPlanTaskRequest = z.infer<typeof SpawnCurrentPlanTaskRequestSchema>;
 
 export type ListChatsResponse = Chat[];
 
@@ -208,8 +208,8 @@ export type GetDevboxTemplatesRequest = z.infer<typeof GetDevboxTemplatesRequest
 export type ListSshServersResponse = SshServer[];
 
 /**
- * Request body for POST /api/loops/:id/address-comments endpoint.
- * Used to submit reviewer comments for the loop to address.
+ * Request body for POST /api/tasks/:id/address-comments endpoint.
+ * Used to submit reviewer comments for the task to address.
  * 
  * Type is derived from AddressCommentsRequestSchema - the Zod schema is the
  * single source of truth for both validation and TypeScript types.
@@ -217,12 +217,12 @@ export type ListSshServersResponse = SshServer[];
 export type AddressCommentsRequest = z.infer<typeof AddressCommentsRequestSchema>;
 
 /**
- * Request body for POST /api/loops/:id/plan/accept endpoint.
+ * Request body for POST /api/tasks/:id/plan/accept endpoint.
  */
 export type PlanAcceptRequest = z.infer<typeof PlanAcceptRequestSchema>;
 
 /**
- * Response from POST /api/loops/:id/address-comments endpoint.
+ * Response from POST /api/tasks/:id/address-comments endpoint.
  * Uses discriminated union for type-safe success/error handling.
  */
 export type AddressCommentsResponse =
@@ -242,13 +242,13 @@ export type AddressCommentsResponse =
     };
 
 /**
- * Response from GET /api/loops/:id/comments endpoint.
+ * Response from GET /api/tasks/:id/comments endpoint.
  * Uses discriminated union for type-safe success/error handling.
  */
 export type GetCommentsResponse =
   | {
       success: true;
-      /** Array of review comments for the loop */
+      /** Array of review comments for the task */
       comments: ReviewComment[];
     }
   | {
@@ -258,20 +258,20 @@ export type GetCommentsResponse =
     };
 
 /**
- * Review history information for a loop.
- * Returned by GET /api/loops/:id/review-history endpoint.
+ * Review history information for a task.
+ * Returned by GET /api/tasks/:id/review-history endpoint.
  */
 export interface ReviewHistory {
-  /** Whether the loop can still receive reviewer comments */
+  /** Whether the task can still receive reviewer comments */
   addressable: boolean;
-  /** How the loop was last finalized */
+  /** How the task was last finalized */
   completionAction: "local" | "push";
   /** Number of review cycles completed (times comments were addressed) */
   reviewCycles: number;
 }
 
 /**
- * Response from GET /api/loops/:id/review-history endpoint.
+ * Response from GET /api/tasks/:id/review-history endpoint.
  * Uses discriminated union for type-safe success/error handling.
  */
 export type ReviewHistoryResponse =
@@ -287,7 +287,7 @@ export type ReviewHistoryResponse =
     };
 
 /**
- * Response from POST /api/loops/:id/accept endpoint.
+ * Response from POST /api/tasks/:id/accept endpoint.
  * Uses discriminated union for type-safe success/error handling.
  */
 export type AcceptResponse =
@@ -301,11 +301,11 @@ export type AcceptResponse =
     };
 
 /**
- * Response from POST /api/loops/:id/push endpoint.
+ * Response from POST /api/tasks/:id/push endpoint.
  * Uses discriminated union for type-safe success/error handling.
  *
  * When syncStatus is "conflicts_being_resolved", the push is deferred
- * (no remoteBranch yet). The loop will auto-push after conflict resolution.
+ * (no remoteBranch yet). The task will auto-push after conflict resolution.
  */
 export type PushResponse =
   | {
@@ -327,28 +327,28 @@ export type PushResponse =
     };
 
 /**
- * Response from POST /api/loops/:id/plan/accept endpoint.
+ * Response from POST /api/tasks/:id/plan/accept endpoint.
  */
 export type PlanAcceptResponse =
   | {
       success: true;
       /** Which acceptance path was taken */
-      mode: "start_loop";
+      mode: "start_task";
     }
   | {
       success: true;
       /** Which acceptance path was taken */
       mode: "open_ssh";
-      /** Linked SSH session created or reused for the loop */
+      /** Linked SSH session created or reused for the task */
       sshSession: SshSession;
     };
 
 /**
  * Error response returned when directory has uncommitted changes.
  * 
- * This error (HTTP 409) indicates the loop cannot start because the
+ * This error (HTTP 409) indicates the task cannot start because the
  * working directory has uncommitted git changes. The user must commit
- * or stash changes manually before starting the loop.
+ * or stash changes manually before starting the task.
  */
 export interface UncommittedChangesError {
   /** Error code for this specific error type */
@@ -380,8 +380,8 @@ export interface HealthResponse {
 }
 
 /**
- * File diff information returned by GET /api/loops/:id/diff endpoint.
- * Represents changes to a single file in the loop's working branch.
+ * File diff information returned by GET /api/tasks/:id/diff endpoint.
+ * Represents changes to a single file in the task's working branch.
  */
 export interface FileDiff {
   /** File path relative to repository root */
@@ -399,7 +399,7 @@ export interface FileDiff {
 }
 
 /**
- * Response from GET /api/loops/:id/plan and /api/loops/:id/status-file endpoints.
+ * Response from GET /api/tasks/:id/plan and /api/tasks/:id/status-file endpoints.
  */
 export interface FileContentResponse {
   /** The file contents (empty string if file doesn't exist) */
@@ -409,7 +409,7 @@ export interface FileContentResponse {
 }
 
 /**
- * Response from GET /api/loops/:id/pull-request endpoint.
+ * Response from GET /api/tasks/:id/pull-request endpoint.
  */
 export type PullRequestDestinationResponse =
   | {

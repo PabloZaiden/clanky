@@ -97,7 +97,7 @@ export class MockAcpBackend implements Backend {
   }
 
   // ============================================
-  // Core Backend methods (used by LoopEngine)
+  // Core Backend methods (used by TaskEngine)
   // ============================================
 
   async connect(config: BackendConnectionConfig, _signal?: AbortSignal): Promise<void> {
@@ -305,7 +305,7 @@ export class MockAcpBackend implements Backend {
 
 /**
  * Default test model that should be used across all tests.
- * Tests should use this model when creating loops.
+ * Tests should use this model when creating tasks.
  */
 export const defaultTestModel: MockModelInfo = {
   providerID: "test-provider",
@@ -336,8 +336,8 @@ export interface NeverCompletingMockBackendOptions {
 }
 
 /**
- * A mock backend that never completes - useful for testing active loop checks,
- * pending message handling, and other scenarios where loops need to stay running.
+ * A mock backend that never completes - useful for testing active task checks,
+ * pending message handling, and other scenarios where tasks need to stay running.
  */
 export class NeverCompletingMockBackend implements Backend {
   readonly name = "acp";
@@ -397,7 +397,7 @@ export class NeverCompletingMockBackend implements Backend {
     (async () => {
       push({ type: "message.start", messageId: `msg-${Date.now()}` });
       push({ type: "message.delta", content: "Still working..." });
-      // Never end the stream - keep loop running forever
+      // Never end the stream - keep task running forever
       await new Promise((resolve) => setTimeout(resolve, 100000));
     })();
 
@@ -507,7 +507,7 @@ export class PlanModeMockBackend implements Backend {
 
   async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
     // sendPrompt is used for name generation
-    const uniqueName = `test-loop-name-${++this.nameCounter}`;
+    const uniqueName = `test-task-name-${++this.nameCounter}`;
     return {
       id: `msg-${Date.now()}`,
       content: uniqueName,

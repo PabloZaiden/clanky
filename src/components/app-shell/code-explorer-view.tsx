@@ -1,5 +1,5 @@
 import { useMemo, type ComponentType } from "react";
-import type { Chat, CreateSshSessionRequest, Loop, SshConnectionMode, SshSession, Workspace } from "../../types";
+import type { Chat, CreateSshSessionRequest, Task, SshConnectionMode, SshSession, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import type { SshSessionDetailsProps } from "../SshSessionDetails";
 import { ShellPanel } from "./shell-panel";
@@ -14,7 +14,7 @@ import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
 interface CodeExplorerViewProps {
   routeTarget?: CodeExplorerTarget;
-  loops: Loop[];
+  tasks: Task[];
   chats: Chat[];
   workspaces: Workspace[];
   sessions: SshSession[];
@@ -32,7 +32,7 @@ interface CodeExplorerViewProps {
 
 export function CodeExplorerView({
   routeTarget,
-  loops,
+  tasks,
   chats,
   workspaces,
   sessions,
@@ -45,15 +45,15 @@ export function CodeExplorerView({
   sshSessionDetailsComponent,
 }: CodeExplorerViewProps) {
   const options = useMemo(() => getCodeExplorerOptions({
-    loops,
+    tasks,
     chats,
     workspaces,
     servers,
-  }), [chats, loops, servers, workspaces]);
+  }), [chats, tasks, servers, workspaces]);
   const groupedOptions = useMemo(() => getCodeExplorerOptionGroups(options), [options]);
   const resolvedTarget = resolveCodeExplorerTarget({
     target: routeTarget,
-    loops,
+    tasks,
     chats,
     workspaces,
     sessions,
@@ -106,7 +106,7 @@ export function CodeExplorerView({
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Open a workspace, loop, SSH server, or chat path in the unified code explorer.
+            Open a workspace, task, SSH server, or chat path in the unified code explorer.
           </p>
           <div className="space-y-5">
             {groupedOptions.map((group) => (

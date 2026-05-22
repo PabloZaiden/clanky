@@ -5,7 +5,7 @@
  * - Tracks all created connections
  * - Supports sending events to connected clients
  * - Simulates open/close/error events
- * - Parses query parameters (e.g., ?loopId=xxx)
+ * - Parses query parameters (e.g., ?taskId=xxx)
  */
 
 import { beforeEach, afterEach } from "bun:test";
@@ -41,10 +41,10 @@ interface MockWebSocketManager {
   connections: () => MockWebSocketConnection[];
   /** Get connections matching a URL pattern */
   getConnections: (urlPattern?: string) => MockWebSocketConnection[];
-  /** Get the global (non-loop-specific) connection */
+  /** Get the global (non-task-specific) connection */
   getGlobalConnection: () => MockWebSocketConnection | undefined;
-  /** Get a loop-specific connection */
-  getLoopConnection: (loopId: string) => MockWebSocketConnection | undefined;
+  /** Get a task-specific connection */
+  getTaskConnection: (taskId: string) => MockWebSocketConnection | undefined;
   /** Send an event to all connected clients */
   sendEvent: (event: unknown) => void;
   /** Send an event to a specific connection */
@@ -178,11 +178,11 @@ export function createMockWebSocket(): MockWebSocketManager {
     },
 
     getGlobalConnection: () => {
-      return activeConnections.find((c) => !c.queryParams["loopId"]);
+      return activeConnections.find((c) => !c.queryParams["taskId"]);
     },
 
-    getLoopConnection: (loopId) => {
-      return activeConnections.find((c) => c.queryParams["loopId"] === loopId);
+    getTaskConnection: (taskId) => {
+      return activeConnections.find((c) => c.queryParams["taskId"] === taskId);
     },
 
     sendEvent: (event) => {

@@ -1,5 +1,5 @@
 /**
- * Core manager for loop-scoped SSH port forwards.
+ * Core manager for task-scoped SSH port forwards.
  * @see src/core/port-forward/ for implementation sub-modules.
  */
 

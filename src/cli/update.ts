@@ -1,8 +1,8 @@
 import { runUpdateCommand as runInstallerUpdateCommand, type UpdaterDependencies } from "@pablozaiden/installer";
 
-const GITHUB_REPOSITORY = "pablozaiden/ralpher";
-const CLI_BINARY_NAME = "ralpher-cli";
-const SERVER_BINARY_NAME = "ralpher";
+const GITHUB_REPOSITORY = "pablozaiden/clanky";
+const CLI_BINARY_NAME = "clanky-cli";
+const SERVER_BINARY_NAME = "clanky";
 
 export interface UpdateCommandOptions {
   checkOnly: boolean;
@@ -13,11 +13,11 @@ export type CliUpdateDependencies = Partial<UpdaterDependencies> & {
   currentVersion?: string;
 };
 
-export const RALPHER_UPDATER_CONFIG = {
+export const CLANKY_UPDATER_CONFIG = {
   repository: GITHUB_REPOSITORY,
   binaryName: CLI_BINARY_NAME,
   currentVersion: "0.0.0-development",
-  productName: "Ralpher CLI",
+  productName: "Clanky CLI",
   checksum: { required: true },
   companionBinaries: [
     {
@@ -36,8 +36,8 @@ export async function runUpdateCommand(
   return await runInstallerUpdateCommand(
     command,
     {
-      ...RALPHER_UPDATER_CONFIG,
-      currentVersion: currentVersion ?? RALPHER_UPDATER_CONFIG.currentVersion,
+      ...CLANKY_UPDATER_CONFIG,
+      currentVersion: currentVersion ?? CLANKY_UPDATER_CONFIG.currentVersion,
     },
     installerDependencyOverrides,
   );

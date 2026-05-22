@@ -9,9 +9,9 @@ import {
   getServerStartupMessages,
 } from "../../src/core/server-config";
 
-const originalHost = process.env["RALPHER_HOST"];
-const originalPort = process.env["RALPHER_PORT"];
-const originalSameOriginDisabled = process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+const originalHost = process.env["CLANKY_HOST"];
+const originalPort = process.env["CLANKY_PORT"];
+const originalSameOriginDisabled = process.env["CLANKY_DISABLE_SAME_ORIGIN_CHECK"];
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -22,16 +22,16 @@ function restoreEnv(name: string, value: string | undefined): void {
 }
 
 afterEach(() => {
-  restoreEnv("RALPHER_HOST", originalHost);
-  restoreEnv("RALPHER_PORT", originalPort);
-  restoreEnv("RALPHER_DISABLE_SAME_ORIGIN_CHECK", originalSameOriginDisabled);
+  restoreEnv("CLANKY_HOST", originalHost);
+  restoreEnv("CLANKY_PORT", originalPort);
+  restoreEnv("CLANKY_DISABLE_SAME_ORIGIN_CHECK", originalSameOriginDisabled);
 });
 
 describe("getServerRuntimeConfig", () => {
   beforeEach(() => {
-    delete process.env["RALPHER_HOST"];
-    delete process.env["RALPHER_PORT"];
-    delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+    delete process.env["CLANKY_HOST"];
+    delete process.env["CLANKY_PORT"];
+    delete process.env["CLANKY_DISABLE_SAME_ORIGIN_CHECK"];
   });
 
   test("returns defaults when host env vars are unset", () => {
@@ -46,27 +46,27 @@ describe("getServerRuntimeConfig", () => {
   });
 
   test("uses trimmed env values for host and port", () => {
-    process.env["RALPHER_HOST"] = " 127.0.0.1 ";
-    process.env["RALPHER_PORT"] = "8123";
+    process.env["CLANKY_HOST"] = " 127.0.0.1 ";
+    process.env["CLANKY_PORT"] = "8123";
 
     expect(getServerRuntimeConfig()).toEqual({
       host: "127.0.0.1",
       port: 8123,
-      hostSource: "RALPHER_HOST",
+      hostSource: "CLANKY_HOST",
       sameOriginProtection: {
         disabled: false,
       },
     });
   });
 
-  test("falls back to the default port when RALPHER_PORT is blank after trimming", () => {
-    process.env["RALPHER_PORT"] = "   ";
+  test("falls back to the default port when CLANKY_PORT is blank after trimming", () => {
+    process.env["CLANKY_PORT"] = "   ";
 
     expect(getServerRuntimeConfig().port).toBe(3000);
   });
 
   test("enables the same-origin bypass when the env var is truthy", () => {
-    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "yes";
+    process.env["CLANKY_DISABLE_SAME_ORIGIN_CHECK"] = "yes";
 
     expect(getServerRuntimeConfig().sameOriginProtection).toEqual({
       disabled: true,
@@ -74,18 +74,18 @@ describe("getServerRuntimeConfig", () => {
   });
 
   test("throws a clear error for non-numeric ports", () => {
-    process.env["RALPHER_PORT"] = "abc";
+    process.env["CLANKY_PORT"] = "abc";
 
     expect(() => getServerRuntimeConfig()).toThrow(
-      "RALPHER_PORT must be an integer between 0 and 65535; received \"abc\".",
+      "CLANKY_PORT must be an integer between 0 and 65535; received \"abc\".",
     );
   });
 
   test("throws a clear error for out-of-range ports", () => {
-    process.env["RALPHER_PORT"] = "70000";
+    process.env["CLANKY_PORT"] = "70000";
 
     expect(() => getServerRuntimeConfig()).toThrow(
-      "RALPHER_PORT must be an integer between 0 and 65535; received \"70000\".",
+      "CLANKY_PORT must be an integer between 0 and 65535; received \"70000\".",
     );
   });
 });
@@ -109,26 +109,26 @@ describe("getServerDevelopmentConfig", () => {
 
 describe("getServerStartupMessages", () => {
   beforeEach(() => {
-    delete process.env["RALPHER_HOST"];
-    delete process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"];
+    delete process.env["CLANKY_HOST"];
+    delete process.env["CLANKY_DISABLE_SAME_ORIGIN_CHECK"];
   });
 
   test("describes default host binding", () => {
     const messages = getServerStartupMessages(getServerRuntimeConfig());
 
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain("RALPHER_HOST");
+    expect(messages[0]).toContain("CLANKY_HOST");
     expect(messages[0]).toContain("127.0.0.1");
     expect(messages[0]).toContain("0.0.0.0");
   });
 
   test("describes when same-origin protection is disabled", () => {
-    process.env["RALPHER_DISABLE_SAME_ORIGIN_CHECK"] = "true";
+    process.env["CLANKY_DISABLE_SAME_ORIGIN_CHECK"] = "true";
 
     const messages = getServerStartupMessages(getServerRuntimeConfig());
 
     expect(messages).toHaveLength(2);
-    expect(messages[1]).toContain("RALPHER_DISABLE_SAME_ORIGIN_CHECK");
+    expect(messages[1]).toContain("CLANKY_DISABLE_SAME_ORIGIN_CHECK");
     expect(messages[1]).toContain("development");
     expect(messages[1]).toContain("disabled");
   });

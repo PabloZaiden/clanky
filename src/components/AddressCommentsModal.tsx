@@ -1,6 +1,6 @@
 /**
- * AddressCommentsModal component for submitting reviewer comments to a pushed/merged loop.
- * Allows users to provide feedback that the loop will address.
+ * AddressCommentsModal component for submitting reviewer comments to a pushed/merged task.
+ * Allows users to provide feedback that the task will address.
  */
 
 import { useRef, useState, type ClipboardEvent } from "react";
@@ -23,8 +23,8 @@ export interface AddressCommentsModalProps {
   onClose: () => void;
   /** Callback to submit comments */
   onSubmit: (comments: string, attachments?: MessageImageAttachment[]) => Promise<void>;
-  /** Name of the loop */
-  loopName: string;
+  /** Name of the task */
+  taskName: string;
   /** Current review cycle number */
   reviewCycle: number;
 }
@@ -36,7 +36,7 @@ export function AddressCommentsModal({
   isOpen,
   onClose,
   onSubmit,
-  loopName,
+  taskName,
   reviewCycle,
 }: AddressCommentsModalProps) {
   const [comments, setComments] = useState("");
@@ -99,7 +99,7 @@ export function AddressCommentsModal({
       isOpen={isOpen}
       onClose={handleClose}
       title="Address Reviewer Comments"
-      description={`Submit feedback for "${loopName}" (Review Cycle ${reviewCycle})`}
+      description={`Submit feedback for "${taskName}" (Review Cycle ${reviewCycle})`}
       size="lg"
       closeOnOverlayClick={!submitting}
       footer={
@@ -152,7 +152,7 @@ export function AddressCommentsModal({
             className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-neutral-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           />
           <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            The loop will restart and address these comments by making targeted changes to the code.
+            The task will restart and address these comments by making targeted changes to the code.
           </p>
           <div className="mt-3">
             <ImageAttachmentControl

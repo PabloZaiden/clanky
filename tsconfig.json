@@ -26,12 +26,12 @@
 
     "paths": {
       "@/*": ["./src/*"],
-      "@ralpher/shared": ["./packages/shared/src/index.ts"],
-      "@ralpher/shared/*": ["./packages/shared/src/*"],
-      "@ralpher/contracts": ["./packages/contracts/src/index.ts"],
-      "@ralpher/contracts/*": ["./packages/contracts/src/*"],
-      "@ralpher/client-sdk": ["./packages/client-sdk/src/index.ts"],
-      "@ralpher/client-sdk/*": ["./packages/client-sdk/src/*"]
+      "@clanky/shared": ["./packages/shared/src/index.ts"],
+      "@clanky/shared/*": ["./packages/shared/src/*"],
+      "@clanky/contracts": ["./packages/contracts/src/index.ts"],
+      "@clanky/contracts/*": ["./packages/contracts/src/*"],
+      "@clanky/client-sdk": ["./packages/client-sdk/src/index.ts"],
+      "@clanky/client-sdk/*": ["./packages/client-sdk/src/*"]
     },
 
     "noUnusedLocals": true,

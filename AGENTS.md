@@ -1,13 +1,13 @@
 # AGENTS.md - AI Coding Agent Guidelines
 
-This document provides guidelines for AI coding agents working on the Ralpher project.
+This document provides guidelines for AI coding agents working on the Clanky project.
 
 ## General Agentic Workflow
 
 When working on tasks, follow this general workflow to ensure clarity and goal alignment:
 
-- Always make sure you have all your goals written down in a document in `./.ralph-planning/plan.md` and agreed upon before starting to code.
-- Always use the `Todo` functionality to keep track of the work you're doing, and the last `Todo` should always be "verify that all goals are met according to the document, and update the `Todo` again". Use `./.ralph-planning/status.md` to track the plan status.
+- Always make sure you have all your goals written down in a document in `./.clanky-planning/plan.md` and agreed upon before starting to code.
+- Always use the `Todo` functionality to keep track of the work you're doing, and the last `Todo` should always be "verify that all goals are met according to the document, and update the `Todo` again". Use `./.clanky-planning/status.md` to track the plan status.
 - Track the status of the work in that document.
 - After checking the document, update what the next steps to work on are, and what's important to know about it to be able to continue working on it later.
 - Make sure that the goals you are trying to achieve are written down, in a way that you can properly verify them later.
@@ -15,7 +15,7 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 - When you need to see how something works or looks in the UI, use Playwright for manual browser validation during development.
 - Do not add Playwright tests to this repository; prefer lower-level automated tests and keep Playwright as a development tool rather than a committed test layer.
 - Don't say something is done until you have verified that all the goals are met.
-- The general loop then is:
+- The general task then is:
 
   1. Write down the goals you want to achieve.
   2. Write the code to achieve those goals.
@@ -26,23 +26,23 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 
 ## Project Overview
 
-Ralpher is a full-stack Bun + React application for controlling and managing Ralph Loops through ACP-compatible agent backends (OpenCode or Copilot). It uses Bun's native bundler and server, React 19 for the frontend, and Tailwind CSS v4 for styling.
+Clanky is a full-stack Bun + React application for controlling and managing Clanky Tasks through ACP-compatible agent backends (OpenCode or Copilot). It uses Bun's native bundler and server, React 19 for the frontend, and Tailwind CSS v4 for styling.
 
 For more project information, see the [README.md](README.md).
 
 ## Authentication & Authorization
 
-Ralpher is typically deployed behind a reverse proxy that enforces authentication and authorization. Application-level authentication is handled through passkey-backed browser sessions and bearer tokens. This means:
+Clanky is typically deployed behind a reverse proxy that enforces authentication and authorization. Application-level authentication is handled through passkey-backed browser sessions and bearer tokens. This means:
 
-- API endpoints do not require session management inside Ralpher itself
+- API endpoints do not require session management inside Clanky itself
 - Destructive endpoints (server kill, database reset) should still be protected by the reverse proxy or by the application auth layer
 - WebSocket connections can be protected either at the proxy layer or by the application auth layer
 
 ## Remote Command Execution Architecture
 
-**CRITICAL: All operations on workspace repositories MUST be executed through `CommandExecutor` on the workspace host (local for `stdio`, remote for `ssh`), NEVER through direct filesystem assumptions in the Ralpher process.**
+**CRITICAL: All operations on workspace repositories MUST be executed through `CommandExecutor` on the workspace host (local for `stdio`, remote for `ssh`), NEVER through direct filesystem assumptions in the Clanky process.**
 
-Ralpher can connect to ACP runtimes across different environments (local host via `stdio`, or remote machines via `ssh`). Workspace directory paths (like `/workspaces/myrepo`) always refer to the selected workspace host for that transport, not implicitly to the Ralpher server filesystem.
+Clanky can connect to ACP runtimes across different environments (local host via `stdio`, or remote machines via `ssh`). Workspace directory paths (like `/workspaces/myrepo`) always refer to the selected workspace host for that transport, not implicitly to the Clanky server filesystem.
 
 ### How to Execute Commands on Workspace Hosts
 
@@ -68,7 +68,7 @@ const branch = await git.getCurrentBranch(directory);
 import { existsSync } from "fs";
 if (existsSync(directory)) { ... }
 
-// WRONG - runs locally, directory may not exist on Ralpher server
+// WRONG - runs locally, directory may not exist on Clanky server
 await Bun.$`git -C ${directory} status`;
 
 // WRONG - checks local filesystem
@@ -168,7 +168,7 @@ async POST(req) {
 3. Reports progress and errors through alternative channels (event emitters, persistence callbacks, WebSocket events)
 4. Documents the pattern explicitly with inline comments explaining the design decision
 
-Example: `engine.start()` in `LoopManager.startLoop()` uses fire-and-forget because the loop engine runs a `while`-loop with multiple AI iterations that may take hours. The engine has its own `handleError()` method that updates loop state to "failed" and emits error events. Awaiting would block the API response indefinitely.
+Example: `engine.start()` in `TaskManager.startTask()` uses fire-and-forget because the task engine runs a `while`-task with multiple AI iterations that may take hours. The engine has its own `handleError()` method that updates task state to "failed" and emits error events. Awaiting would block the API response indefinitely.
 
 ### React Components
 
@@ -350,26 +350,26 @@ Instead, use polling helpers that wait for a specific condition to be met:
 ```typescript
 // WRONG - flaky, timing-dependent
 await delay(500);
-const loop = await manager.getLoop(loopId);
-expect(loop.state.status).toBe("completed");
+const task = await manager.getTask(taskId);
+expect(task.state.status).toBe("completed");
 
 // CORRECT - polls until condition is met
-const loop = await waitForLoopStatus(manager, loopId, ["completed"]);
-expect(loop.state.status).toBe("completed");
+const task = await waitForTaskStatus(manager, taskId, ["completed"]);
+expect(task.state.status).toBe("completed");
 ```
 
 **Available polling helpers in `tests/setup.ts`:**
 
-- `waitForLoopStatus(manager, loopId, expectedStatuses[], timeoutMs?)` - Wait for loop to reach status
-- `waitForPlanReady(manager, loopId, timeoutMs?)` - Wait for plan's `isPlanReady` to be true
+- `waitForTaskStatus(manager, taskId, expectedStatuses[], timeoutMs?)` - Wait for task to reach status
+- `waitForPlanReady(manager, taskId, timeoutMs?)` - Wait for plan's `isPlanReady` to be true
 - `waitForFileDeleted(filePath, timeoutMs?)` - Wait for file to be deleted
 - `waitForFileExists(filePath, timeoutMs?)` - Wait for file to appear
 - `waitForEvent(events, eventType, timeoutMs?)` - Wait for specific event to be emitted
 
 **For HTTP API tests**, use helpers from `tests/integration/user-scenarios/helpers.ts`:
 
-- `waitForLoopStatus(baseUrl, loopId, expectedStatus, timeoutMs?)` - HTTP-based status polling
-- `waitForPlanReady(baseUrl, loopId, timeoutMs?)` - HTTP-based plan ready polling
+- `waitForTaskStatus(baseUrl, taskId, expectedStatus, timeoutMs?)` - HTTP-based status polling
+- `waitForPlanReady(baseUrl, taskId, timeoutMs?)` - HTTP-based plan ready polling
 
 **Guidelines:**
 
@@ -380,10 +380,10 @@ expect(loop.state.status).toBe("completed");
 
 ## General Guidelines
 
-- Git operations are allowed. The system manages git branches, commits, and merges for Ralph Loops.
+- Git operations are allowed. The system manages git branches, commits, and merges for Clanky Tasks.
 - Always prefer simplicity, usability and top level type safety over cleverness.
 - Before doing something, check the patterns used in the rest of the codebase.
-- Keep the `.ralph-planning/status.md` file updated with progress.
+- Keep the `.clanky-planning/status.md` file updated with progress.
 - **Never use time estimates** in plans, documentation, or task descriptions. Time estimates are inherently inaccurate and create false expectations. Use complexity levels (Low, Medium, High) instead.
 - **Avoid code duplication**: When you find yourself writing similar code in multiple places, refactor to extract the common logic into a shared function or method. Use parameters to handle variations rather than duplicating code. This improves maintainability and reduces the risk of inconsistent behavior.
 
@@ -396,7 +396,7 @@ These guidelines are distilled from a comprehensive code review (108+ findings).
 - **Never interpolate variables into SQL** — even for `PRAGMA` queries. Use whitelists or parameterized queries. The `getTableColumns()` function previously interpolated table names directly into SQL strings.
 - **Never use `INSERT OR REPLACE`** — it triggers `ON DELETE CASCADE`, silently destroying related rows (e.g., review comments). Always use `INSERT ... ON CONFLICT DO UPDATE` (upsert).
 - **Always wrap `JSON.parse` in try/catch** when parsing persisted data. One corrupt row should not prevent loading all records. Use a `safeJsonParse<T>(raw, fallback)` pattern with warning logs.
-- **Validate dynamic column names** — if column names come from variables, validate against an allowlist (e.g., `ALLOWED_LOOP_COLUMNS`).
+- **Validate dynamic column names** — if column names come from variables, validate against an allowlist (e.g., `ALLOWED_TASK_COLUMNS`).
 
 ### Resource Management
 
@@ -407,9 +407,9 @@ These guidelines are distilled from a comprehensive code review (108+ findings).
 
 ### Architecture & Layering
 
-- **Respect the layer hierarchy: API → Core → Persistence.** The API layer should never import directly from persistence modules. Route all data access through Core layer managers (e.g., `LoopManager`).
+- **Respect the layer hierarchy: API → Core → Persistence.** The API layer should never import directly from persistence modules. Route all data access through Core layer managers (e.g., `TaskManager`).
 - **Never define shared types in backend-specific modules.** Domain types (like `TodoItem`) belong in `src/types/`. Backends should import from types, not the other way around.
-- **Centralize state transitions.** Use a state machine with a transition table (`src/core/loop-state-machine.ts`) instead of ad-hoc status checks scattered across files. Always call `assertValidTransition()` before changing state.
+- **Centralize state transitions.** Use a state machine with a transition table (`src/core/task-state-machine.ts`) instead of ad-hoc status checks scattered across files. Always call `assertValidTransition()` before changing state.
 - **Never mutate state directly in API handlers.** Always delegate state changes to the appropriate Core layer manager method.
 
 ### Shared Helpers & Deduplication
@@ -418,12 +418,12 @@ Beyond the general "avoid duplication" guideline, watch for these specific recur
 
 - **API error/success responses** — use `errorResponse()` and `successResponse()` from `src/api/helpers.ts`. Never create ad-hoc `Response.json({ error: ... })` calls.
 - **Workspace lookup + 404** — use `requireWorkspace(workspaceId)` from `src/api/helpers.ts` instead of repeating the lookup-and-check pattern.
-- **Frontend API calls** — use the exported action functions from `src/hooks/loopActions.ts` (e.g., `acceptLoopApi`, `pushLoopApi`, `setPendingApi`) instead of writing raw fetch+check+parse boilerplate. These wrap internal helpers (`apiCall`, `apiAction`, `apiActionWithBody`) that are not exported.
+- **Frontend API calls** — use the exported action functions from `src/hooks/taskActions.ts` (e.g., `acceptTaskApi`, `pushTaskApi`, `setPendingApi`) instead of writing raw fetch+check+parse boilerplate. These wrap internal helpers (`apiCall`, `apiAction`, `apiActionWithBody`) that are not exported.
 - **Shared UI components** — always check if a reusable component exists (e.g., `ModelSelector`, `ConfirmModal`, `Toast`) before building inline equivalents.
 
 ### Frontend Performance
 
-- **Wrap expensive computations in `useMemo`** — any grouping, sorting, or filtering logic that depends on props/state should be memoized. This applies to loop grouping, log entry sorting, and workspace grouping.
+- **Wrap expensive computations in `useMemo`** — any grouping, sorting, or filtering logic that depends on props/state should be memoized. This applies to task grouping, log entry sorting, and workspace grouping.
 - **Use `memo()` for pure display components** — components like `LogViewer` that receive data and render it should be wrapped in `React.memo()`.
 - **Prevent double-fetch on mount** — use a ref (`initialLoadDoneRef`) to track whether the initial fetch has completed, preventing duplicate requests from dependency array changes.
 - **Avoid loading flicker on event-driven refreshes** — only show loading spinners on initial load, not when refreshing data from WebSocket events.
@@ -442,7 +442,7 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 - **Use `error` for unrecoverable failures** — if the current layer cannot recover and the operation fails, log at `error`.
 - **Map request boundary severity by outcome** — at API and WebSocket boundaries, log unexpected server-side failures and 5xx responses at `error`, expected client-side 4xx outcomes at `warn`, and redirects or other non-2xx-but-non-failure outcomes at `info`.
 - **Use `warn` for recoverable failures** — log at `warn` when the code falls back, skips optional work, or encounters a non-critical expectation mismatch but can keep going.
-- **Use `info` for high-level business milestones** — request start/finish, loop lifecycle milestones, provisioning start/finish, and similarly important operation checkpoints belong at `info`.
+- **Use `info` for high-level business milestones** — request start/finish, task lifecycle milestones, provisioning start/finish, and similarly important operation checkpoints belong at `info`.
 - **Use `debug` for control-flow detail** — branch decisions, intermediate execution steps, and helper-level flow detail that helps explain how the code moved through an operation should use `debug`.
 - **Use `trace` for the most verbose diagnostics** — parameter values, detailed intermediate state, and deep execution detail should use `trace` when that extra detail materially helps diagnosis.
 - **Do not duplicate the same failure log across layers** — prefer one clear boundary `error` plus only the lower-level logs that add meaningful new context.
@@ -450,7 +450,7 @@ The existing Error Handling section covers try/catch syntax. Additionally:
 
 ### Component & Method Decomposition
 
-- **Components over 300 LOC should be decomposed.** Extract sub-components (`DashboardHeader`, `LoopGrid`, `DashboardModals`) and custom hooks (`useDashboardData`, `useLoopGrouping`).
+- **Components over 300 LOC should be decomposed.** Extract sub-components (`DashboardHeader`, `TaskGrid`, `DashboardModals`) and custom hooks (`useDashboardData`, `useTaskGrouping`).
 - **Methods over 100 LOC should be broken into named sub-methods** with clear single responsibilities (e.g., `buildPrompt()`, `evaluateOutcome()`, `commitIteration()`).
 - **Bundle functions with 4+ parameters** into a context/options object (e.g., `TranslateEventContext`).
 
@@ -487,7 +487,7 @@ Common fixes:
 
 The project uses a migration system to evolve the database schema over time. The complete current schema is defined in `src/persistence/database.ts` as the base schema. Migrations are used only for schema changes added after the base schema was established.
 
-**Note:** Legacy migrations (v1-v16) were removed in the first clean-cut reset. Post-reset migrations (v1-v13) were removed in the second clean-cut reset. Databases created before this reset must be recreated (delete `data/ralpher.db` and restart).
+**Note:** The Clanky reset starts from a clean schema baseline in `src/persistence/database.ts` with schema version 0 and no historical migrations. Databases created before this reset must be recreated (delete `data/clanky.db` and restart).
 
 ### How Migrations Work
 
@@ -509,21 +509,20 @@ When you need to add a new column, table, or modify the schema:
   name: "add_new_column",
   up: (db) => {
     // Check if column already exists (for idempotency)
-    const columns = getTableColumns(db, "loops");
+    const columns = getTableColumns(db, "tasks");
     if (columns.includes("new_column")) {
       return;
     }
-    db.run("ALTER TABLE loops ADD COLUMN new_column TEXT");
+    db.run("ALTER TABLE tasks ADD COLUMN new_column TEXT");
   },
 }
 ```
 
-2. **Do NOT modify the base schema** in `src/persistence/database.ts` for ordinary schema evolution. New columns/tables should be added via migrations so existing databases are properly upgraded. The exception is startup-time compatibility repair for legacy databases when clean-cut resets or reused migration version numbers mean `schema_migrations` can no longer be trusted to describe the live schema.
+2. **Do NOT modify the base schema** in `src/persistence/database.ts` for ordinary schema evolution after the Clanky reset. New columns/tables should be added via migrations so existing databases are properly upgraded.
 
 3. **Add a test** in `tests/unit/migrations.test.ts` to verify:
    - The migration applies correctly to databases without the new column
    - The migration is idempotent (doesn't fail if run twice)
-   - If legacy databases may already contain colliding `schema_migrations` entries, add initialization-level coverage (for example in `tests/unit/persistence.test.ts`) that proves startup still repairs the live schema before application code writes to it
 
 ### Migration Guidelines
 
@@ -531,17 +530,7 @@ When you need to add a new column, table, or modify the schema:
 - **Use sequential version numbers** starting from 1
 - **Use descriptive snake_case names** - e.g., `add_user_preferences`
 - **Test migrations thoroughly**
-- **Verify real upgrade paths, not just happy-path migrations** — if older databases can carry reused migration version numbers after resets, make startup repair the schema directly and add tests for that legacy mismatch case
-
-### Migration Collision Trap: `pull_request_monitoring`
-
-- The `feat(loop): monitor pushed PRs and auto-mark merged loops` change added `loops.pull_request_monitoring` in migration `v6`, but existing installs can already have an unrelated `schema_migrations.version = 6` from a pre-reset era.
-- In that situation, `runMigrations()` correctly skips `v6` because the version number is present, but the live `loops` table is still missing `pull_request_monitoring`. The next `saveLoop()` then fails with `SQLiteError: table loops has no column named pull_request_monitoring`.
-- **Required fix pattern:** when adding a compatibility-sensitive column to a long-lived table like `loops` or `workspaces`, do both:
-  1. add the normal migration in `src/persistence/migrations/index.ts`
-  2. add/extend the startup repair in `src/persistence/database.ts` (`ensureLoopSchema()` / `ensureWorkspaceSchema()`) so initialization repairs legacy databases before application code writes the new column
-- **Required test pattern:** add the usual migration test in `tests/unit/migrations.test.ts` **and** an initialization-level regression test in `tests/unit/persistence.test.ts` that creates a database with the colliding migration version already recorded and proves startup repaired the schema.
-- Do **not** assume `schema_migrations` is a trustworthy description of the live schema on reused pre-reset databases. For these compatibility paths, the live table shape wins.
+- **Verify real upgrade paths, not just happy-path migrations** — future migrations should be tested against the prior Clanky schema version they upgrade from.
 
 ### Resetting the Database
 
@@ -549,31 +538,31 @@ If the database gets corrupted or you need a fresh start:
 
 1. **Via UI**: Server Settings modal -> "Reset all settings" button
 2. **Via API**: `POST /api/settings/reset-all`
-3. **Manual**: Delete `data/ralpher.db` and related WAL/SHM files, then restart
+3. **Manual**: Delete `data/clanky.db` and related WAL/SHM files, then restart
 
-This will delete all loops, sessions, and preferences. Use with caution.
+This will delete all tasks, sessions, and preferences. Use with caution.
 
-<!-- ralpher-optimized-v1 -->
+<!-- clanky-optimized-v1 -->
 ## Agentic Workflow — Planning & Progress Tracking
 
 When working on tasks, follow this workflow to ensure clarity, goal alignment, and resilience to context loss:
 
 ### Planning
 
-- At the start of any multi-step task, write your goals and plan in `./.ralph-planning/plan.md`.
-- Track the status of each task in `./.ralph-planning/status.md`.
+- At the start of any multi-step task, write your goals and plan in `./.clanky-planning/plan.md`.
+- Track the status of each task in `./.clanky-planning/status.md`.
 - Make sure that goals are written down in a way that you can properly verify them later.
 - Don't say something is done until you have verified that all goals are met.
 - **Never start implementation before the plan is confirmed.** Present the plan to the user and wait for explicit approval before writing any code. If the plan needs changes, revise and re-confirm before proceeding.
 
 ### Incremental Progress Tracking
 
-- After completing each individual task, **immediately** update `./.ralph-planning/status.md` to mark it as completed and note any relevant findings or context.
+- After completing each individual task, **immediately** update `./.clanky-planning/status.md` to mark it as completed and note any relevant findings or context.
 - Do **not** wait until the end of a session to batch-update progress — update after every task so that progress is preserved even if the session is interrupted or context is lost.
 
 ### Pre-Compaction Persistence
 
-- Before ending your response, update `./.ralph-planning/status.md` with:
+- Before ending your response, update `./.clanky-planning/status.md` with:
   - The task you are currently working on and its current state
   - Updated status of all tasks in the plan
   - Any new learnings, discoveries, or important context gathered
@@ -582,8 +571,8 @@ When working on tasks, follow this workflow to ensure clarity, goal alignment, a
 
 ### Goal Verification
 
-- Before considering work complete, check `./.ralph-planning/plan.md` and `./.ralph-planning/status.md` to ensure all tasks are actually marked as completed.
-- Follow this general loop:
+- Before considering work complete, check `./.clanky-planning/plan.md` and `./.clanky-planning/status.md` to ensure all tasks are actually marked as completed.
+- Follow this general task:
   1. Write down goals in the plan
   2. Implement the work
   3. Verify all goals are met

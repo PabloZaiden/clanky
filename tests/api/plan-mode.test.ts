@@ -15,12 +15,12 @@ import { TestCommandExecutor } from "../mocks/mock-executor";
 import { closeDatabase } from "../../src/persistence/database";
 import { PlanModeMockBackend } from "../mocks/mock-backend";
 
-// Default test model for loop creation (model is now required)
+// Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const defaultServerSettings = { agent: { provider: "opencode", transport: "stdio" } };
-const baseCreateLoopPayload = {
+const baseCreateTaskPayload = {
   attachments: [],
-  cheapModel: { mode: "same-as-loop" as const },
+  cheapModel: { mode: "same-as-task" as const },
   maxIterations: null,
   maxConsecutiveErrors: 10,
   activityTimeoutSeconds: 300,
@@ -75,52 +75,52 @@ describe("Plan Mode API Integration", () => {
     throw new Error(`Failed to create workspace: ${JSON.stringify(data)}`);
   }
 
-  // Poll until loop reaches expected status
+  // Poll until task reaches expected status
   async function waitForStatus(
-    loopId: string,
+    taskId: string,
     expectedStatuses: string[],
     timeoutMs = 10000
   ): Promise<Record<string, unknown>> {
     const startTime = Date.now();
     let lastStatus = "unknown";
     while (Date.now() - startTime < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/loops/${loopId}`);
+      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
       if (response.ok) {
-        const loop = await response.json();
-        lastStatus = loop.state?.status ?? "unknown";
+        const task = await response.json();
+        lastStatus = task.state?.status ?? "unknown";
         if (expectedStatuses.includes(lastStatus)) {
-          return loop;
+          return task;
         }
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     throw new Error(
-      `Loop ${loopId} did not reach status [${expectedStatuses.join(", ")}] within ${timeoutMs}ms. Last: ${lastStatus}`
+      `Task ${taskId} did not reach status [${expectedStatuses.join(", ")}] within ${timeoutMs}ms. Last: ${lastStatus}`
     );
   }
 
   // Poll until isPlanReady becomes true
-  async function waitForPlanReady(loopId: string, timeoutMs = 10000): Promise<Record<string, unknown>> {
+  async function waitForPlanReady(taskId: string, timeoutMs = 10000): Promise<Record<string, unknown>> {
     const startTime = Date.now();
     while (Date.now() - startTime < timeoutMs) {
-      const response = await fetch(`${baseUrl}/api/loops/${loopId}`);
+      const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
       if (response.ok) {
-        const loop = await response.json();
-        if (loop.state?.planMode?.isPlanReady === true) {
-          return loop;
+        const task = await response.json();
+        if (task.state?.planMode?.isPlanReady === true) {
+          return task;
         }
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    throw new Error(`Plan for loop ${loopId} did not become ready within ${timeoutMs}ms`);
+    throw new Error(`Plan for task ${taskId} did not become ready within ${timeoutMs}ms`);
   }
 
   beforeAll(async () => {
     // Create temp data directory
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-api-plan-test-data-"));
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-api-plan-test-data-"));
 
     // Set env var for persistence
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
     await ensureDataDirectories();
 
     // Set up backend manager with class-based mock
@@ -146,7 +146,7 @@ describe("Plan Mode API Integration", () => {
     // Clean up
     backendManager.resetForTesting();
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
 
     // Remove temp data directory
     await rm(testDataDir, { recursive: true });
@@ -154,14 +154,14 @@ describe("Plan Mode API Integration", () => {
 
   // Helper to create a unique work directory with git initialized
   async function createTestWorkDir(): Promise<string> {
-    const workDir = await mkdtemp(join(tmpdir(), "ralpher-api-plan-test-work-"));
+    const workDir = await mkdtemp(join(tmpdir(), "clanky-api-plan-test-work-"));
     await Bun.$`git init -b main ${workDir}`.quiet();
     await Bun.$`git -C ${workDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${workDir} config user.name "Test User"`.quiet();
     await Bun.$`touch ${workDir}/README.md`.quiet();
     await Bun.$`git -C ${workDir} add .`.quiet();
     await Bun.$`git -C ${workDir} commit -m "Initial commit"`.quiet();
-    currentRemoteDir = await mkdtemp(join(tmpdir(), "ralpher-api-plan-test-remote-"));
+    currentRemoteDir = await mkdtemp(join(tmpdir(), "clanky-api-plan-test-remote-"));
     await Bun.$`git init --bare ${currentRemoteDir}`.quiet();
     await Bun.$`git -C ${workDir} remote add origin ${currentRemoteDir}`.quiet();
     const currentBranch = (await Bun.$`git -C ${workDir} branch --show-current`.text()).trim();
@@ -177,28 +177,28 @@ describe("Plan Mode API Integration", () => {
     return { workDir, workspaceId };
   }
 
-  // Clean up any active loops and reset state before/after each test
+  // Clean up any active tasks and reset state before/after each test
   const setupAndCleanup = async () => {
-    const { listLoops, updateLoopState, loadLoop } = await import("../../src/persistence/loops");
-    const { loopManager } = await import("../../src/core/loop-manager");
+    const { listTasks, updateTaskState, loadTask } = await import("../../src/persistence/tasks");
+    const { taskManager } = await import("../../src/core/task-manager");
     
     // Clear all running engines first
-    loopManager.resetForTesting();
+    taskManager.resetForTesting();
     
     // Reset the mock backend state
     mockBackend.reset();
     
-    const loops = await listLoops();
+    const tasks = await listTasks();
     const activeStatuses = ["idle", "planning", "starting", "running", "waiting"];
     
-    for (const loop of loops) {
-      if (activeStatuses.includes(loop.state.status)) {
-        // Load full loop to get current state
-        const fullLoop = await loadLoop(loop.config.id);
-        if (fullLoop) {
+    for (const task of tasks) {
+      if (activeStatuses.includes(task.state.status)) {
+        // Load full task to get current state
+        const fullTask = await loadTask(task.config.id);
+        if (fullTask) {
           // Mark as deleted to make it a terminal state
-          await updateLoopState(loop.config.id, {
-            ...fullLoop.state,
+          await updateTaskState(task.config.id, {
+            ...fullTask.state,
             status: "deleted",
           });
         }
@@ -212,23 +212,23 @@ describe("Plan Mode API Integration", () => {
   };
   
   const teardownTest = async () => {
-    const { listLoops, updateLoopState, loadLoop } = await import("../../src/persistence/loops");
-    const { loopManager } = await import("../../src/core/loop-manager");
+    const { listTasks, updateTaskState, loadTask } = await import("../../src/persistence/tasks");
+    const { taskManager } = await import("../../src/core/task-manager");
     
     // Clear all running engines first
-    loopManager.resetForTesting();
+    taskManager.resetForTesting();
     
-    const loops = await listLoops();
+    const tasks = await listTasks();
     const activeStatuses = ["idle", "planning", "starting", "running", "waiting"];
     
-    for (const loop of loops) {
-      if (activeStatuses.includes(loop.state.status)) {
-        // Load full loop to get current state
-        const fullLoop = await loadLoop(loop.config.id);
-        if (fullLoop) {
+    for (const task of tasks) {
+      if (activeStatuses.includes(task.state.status)) {
+        // Load full task to get current state
+        const fullTask = await loadTask(task.config.id);
+        if (fullTask) {
           // Mark as deleted to make it a terminal state
-          await updateLoopState(loop.config.id, {
-            ...fullLoop.state,
+          await updateTaskState(task.config.id, {
+            ...fullTask.state,
             status: "deleted",
           });
         }
@@ -248,8 +248,8 @@ describe("Plan Mode API Integration", () => {
   afterEach(teardownTest);
 
   describe("GET /api/check-planning-dir", () => {
-    test("treats a .ralph-planning directory with only .gitkeep as empty", async () => {
-      const planningDir = join(currentTestWorkDir, ".ralph-planning");
+    test("treats a .clanky-planning directory with only .gitkeep as empty", async () => {
+      const planningDir = join(currentTestWorkDir, ".clanky-planning");
       await mkdir(planningDir, { recursive: true });
       await writeFile(join(planningDir, ".gitkeep"), "");
 
@@ -271,15 +271,15 @@ describe("Plan Mode API Integration", () => {
     });
   });
 
-  describe("POST /api/loops (plan mode)", () => {
-    test("creates loop in planning status when planMode is true", async () => {
-      const response = await fetch(`${baseUrl}/api/loops`, {
+  describe("POST /api/tasks (plan mode)", () => {
+    test("creates task in planning status when planMode is true", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...baseCreateLoopPayload,
+          ...baseCreateTaskPayload,
           prompt: "Create a plan",
-          name: "Test Loop",
+          name: "Test Task",
           workspaceId: currentWorkspaceId,
           maxIterations: 1,
           planMode: true,
@@ -293,20 +293,20 @@ describe("Plan Mode API Integration", () => {
       const data = await response.json();
       expect(data.config?.id).toBeDefined();
 
-      // Get the loop and verify status
-      const getResponse = await fetch(`${baseUrl}/api/loops/${data.config.id}`);
+      // Get the task and verify status
+      const getResponse = await fetch(`${baseUrl}/api/tasks/${data.config.id}`);
       expect(getResponse.ok).toBe(true);
-      const loop = await getResponse.json();
-      expect(loop.state.status).toBe("planning");
-      expect(loop.state.planMode?.active).toBe(true);
+      const task = await getResponse.json();
+      expect(task.state.status).toBe("planning");
+      expect(task.state.planMode?.active).toBe(true);
     });
 
     test("returns 400 if required fields missing", async () => {
-      const response = await fetch(`${baseUrl}/api/loops`, {
+      const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...baseCreateLoopPayload,
+          ...baseCreateTaskPayload,
           // Missing name, prompt, directory
           planMode: true,
         }),
@@ -316,16 +316,16 @@ describe("Plan Mode API Integration", () => {
     });
   });
 
-  describe("POST /api/loops/:id/plan/feedback", () => {
-    test("returns 400 if loop is not in planning status", async () => {
-      // Create a normal loop (not plan mode)
-      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+  describe("POST /api/tasks/:id/plan/feedback", () => {
+    test("returns 400 if task is not in planning status", async () => {
+      // Create a normal task (not plan mode)
+      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...baseCreateLoopPayload,
+          ...baseCreateTaskPayload,
           prompt: "Do something",
-          name: "Test Loop",
+          name: "Test Task",
           workspaceId: currentWorkspaceId,
           maxIterations: 1,
           planMode: false,
@@ -340,7 +340,7 @@ describe("Plan Mode API Integration", () => {
       const id = response.config.id;
 
       // Try to send feedback (should fail)
-      const feedbackResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/feedback`, {
+      const feedbackResponse = await fetch(`${baseUrl}/api/tasks/${id}/plan/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -352,8 +352,8 @@ describe("Plan Mode API Integration", () => {
       expect(feedbackResponse.status).toBe(400);
     });
 
-    test("returns 409 if loop not found", async () => {
-      const response = await fetch(`${baseUrl}/api/loops/nonexistent/plan/feedback`, {
+    test("returns 409 if task not found", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks/nonexistent/plan/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -366,7 +366,7 @@ describe("Plan Mode API Integration", () => {
     });
   });
 
-  describe("POST /api/loops/:id/plan/accept", () => {
+  describe("POST /api/tasks/:id/plan/accept", () => {
     test("accepts the plan in open_ssh mode and returns the linked ssh session", async () => {
       const sshWorkDir = await createTestWorkDir();
       try {
@@ -379,13 +379,13 @@ describe("Plan Mode API Integration", () => {
           },
         });
 
-        const createResponse = await fetch(`${baseUrl}/api/loops`, {
+        const createResponse = await fetch(`${baseUrl}/api/tasks`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-          ...baseCreateLoopPayload,
+          ...baseCreateTaskPayload,
             prompt: "Create a plan",
-            name: "Test Loop",
+            name: "Test Task",
             workspaceId: sshWorkspaceId,
             maxIterations: 1,
             planMode: true,
@@ -400,7 +400,7 @@ describe("Plan Mode API Integration", () => {
         const id = response.config.id;
         await waitForPlanReady(id);
 
-        const acceptResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/accept`, {
+        const acceptResponse = await fetch(`${baseUrl}/api/tasks/${id}/plan/accept`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mode: "open_ssh" }),
@@ -410,16 +410,16 @@ describe("Plan Mode API Integration", () => {
         const data = await acceptResponse.json();
         expect(data.success).toBe(true);
         expect(data.mode).toBe("open_ssh");
-        expect(data.sshSession?.config?.loopId).toBe(id);
+        expect(data.sshSession?.config?.taskId).toBe(id);
 
-        const loop = await waitForStatus(id, ["completed"]);
-        expect((loop["state"] as { status: string }).status).toBe("completed");
+        const task = await waitForStatus(id, ["completed"]);
+        expect((task["state"] as { status: string }).status).toBe("completed");
       } finally {
         await rm(sshWorkDir, { recursive: true, force: true });
       }
     });
 
-    test("returns 400 if loop is not in planning status", async () => {
+    test("returns 400 if task is not in planning status", async () => {
       // Commit any previous changes first
       try {
         await Bun.$`git -C ${currentTestWorkDir} add -A`.quiet();
@@ -428,14 +428,14 @@ describe("Plan Mode API Integration", () => {
         // Ignore if nothing to commit
       }
 
-      // Create normal loop
-      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+      // Create normal task
+      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...baseCreateLoopPayload,
+          ...baseCreateTaskPayload,
           prompt: "Do something",
-          name: "Test Loop",
+          name: "Test Task",
           workspaceId: currentWorkspaceId,
           maxIterations: 1,
           planMode: false,
@@ -450,7 +450,7 @@ describe("Plan Mode API Integration", () => {
       const id = response.config.id;
 
       // Try to accept (should fail)
-      const acceptResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/accept`, {
+      const acceptResponse = await fetch(`${baseUrl}/api/tasks/${id}/plan/accept`, {
         method: "POST",
       });
 
@@ -458,8 +458,8 @@ describe("Plan Mode API Integration", () => {
     });
   });
 
-  describe("POST /api/loops/:id/plan/discard", () => {
-    test("deletes the loop", async () => {
+  describe("POST /api/tasks/:id/plan/discard", () => {
+    test("deletes the task", async () => {
       // Commit any previous changes first
       try {
         await Bun.$`git -C ${currentTestWorkDir} add -A`.quiet();
@@ -468,14 +468,14 @@ describe("Plan Mode API Integration", () => {
         // Ignore if nothing to commit
       }
 
-      // Create loop in plan mode
-      const createResponse = await fetch(`${baseUrl}/api/loops`, {
+      // Create task in plan mode
+      const createResponse = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...baseCreateLoopPayload,
+          ...baseCreateTaskPayload,
           prompt: "Create a plan",
-          name: "Test Loop",
+          name: "Test Task",
           workspaceId: currentWorkspaceId,
           maxIterations: 1,
           planMode: true,
@@ -491,27 +491,27 @@ describe("Plan Mode API Integration", () => {
       const id = response.config.id;
       await waitForPlanReady(id);
 
-      // Verify loop exists
-      let getResponse = await fetch(`${baseUrl}/api/loops/${id}`);
+      // Verify task exists
+      let getResponse = await fetch(`${baseUrl}/api/tasks/${id}`);
       expect(getResponse.ok).toBe(true);
 
       // Discard the plan
-      const discardResponse = await fetch(`${baseUrl}/api/loops/${id}/plan/discard`, {
+      const discardResponse = await fetch(`${baseUrl}/api/tasks/${id}/plan/discard`, {
         method: "POST",
       });
 
       expect(discardResponse.status).toBe(200);
       await waitForStatus(id, ["deleted"]);
 
-      // Verify loop is marked as deleted (soft delete)
-      getResponse = await fetch(`${baseUrl}/api/loops/${id}`);
+      // Verify task is marked as deleted (soft delete)
+      getResponse = await fetch(`${baseUrl}/api/tasks/${id}`);
       expect(getResponse.ok).toBe(true);
-      const deletedLoop = await getResponse.json();
-      expect(deletedLoop.state.status).toBe("deleted");
+      const deletedTask = await getResponse.json();
+      expect(deletedTask.state.status).toBe("deleted");
     });
 
-    test("returns 404 if loop not found", async () => {
-      const response = await fetch(`${baseUrl}/api/loops/nonexistent/plan/discard`, {
+    test("returns 404 if task not found", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks/nonexistent/plan/discard`, {
         method: "POST",
       });
 

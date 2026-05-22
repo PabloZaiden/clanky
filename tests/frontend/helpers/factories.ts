@@ -5,12 +5,12 @@
  * partial overrides via the spread pattern.
  */
 
-import type { Loop, LoopConfig, LoopState, LoopStatus, ModelConfig } from "@/types/loop";
-import type { GitConfig, GitState, GitCommit, IterationSummary, LoopLogEntry, PersistedMessage, PersistedToolCall, LoopError, SessionInfo } from "@/types/loop";
+import type { Task, TaskConfig, TaskState, TaskStatus, ModelConfig } from "@/types/task";
+import type { GitConfig, GitState, GitCommit, IterationSummary, TaskLogEntry, PersistedMessage, PersistedToolCall, TaskError, SessionInfo } from "@/types/task";
 import type { Workspace } from "@/types/workspace";
 import type { SshSession } from "@/types/ssh-session";
 import type { BranchInfo, ModelInfo, FileDiff } from "@/types/api";
-import type { MessageData, ToolCallData, LoopEvent } from "@/types/events";
+import type { MessageData, ToolCallData, TaskEvent } from "@/types/events";
 import type { ServerSettings } from "@/types/settings";
 
 let counter = 0;
@@ -128,7 +128,7 @@ export function createGitCommit(overrides?: Partial<GitCommit>): GitCommit {
 export function createGitState(overrides?: Partial<GitState>): GitState {
   return {
     originalBranch: "main",
-    workingBranch: "test-loop-a1b2c3d",
+    workingBranch: "test-task-a1b2c3d",
     commits: [],
     ...overrides,
   };
@@ -160,7 +160,7 @@ export function createSshSession(overrides?: {
       connectionMode: "dtach",
       ...overrides?.config,
       useTmux: overrides?.config?.useTmux ?? true,
-      remoteSessionName: overrides?.config?.remoteSessionName ?? `ralpher-${id.replace(/-/g, "").slice(0, 24)}`,
+      remoteSessionName: overrides?.config?.remoteSessionName ?? `clanky-${id.replace(/-/g, "").slice(0, 24)}`,
       createdAt: overrides?.config?.createdAt ?? isoNow(),
       updatedAt: overrides?.config?.updatedAt ?? isoNow(),
     },
@@ -175,7 +175,7 @@ export function createSshSession(overrides?: {
 // Error
 // ============================================
 
-export function createLoopError(overrides?: Partial<LoopError>): LoopError {
+export function createTaskError(overrides?: Partial<TaskError>): TaskError {
   return {
     message: "Test error occurred",
     iteration: 1,
@@ -204,7 +204,7 @@ export function createIterationSummary(overrides?: Partial<IterationSummary>): I
 // Log Entry
 // ============================================
 
-export function createLoopLogEntry(overrides?: Partial<LoopLogEntry>): LoopLogEntry {
+export function createTaskLogEntry(overrides?: Partial<TaskLogEntry>): TaskLogEntry {
   return {
     id: nextId(),
     level: "info",
@@ -244,14 +244,14 @@ export function createPersistedToolCall(overrides?: Partial<PersistedToolCall>):
 }
 
 // ============================================
-// Loop Config
+// Task Config
 // ============================================
 
-export function createLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
+export function createTaskConfig(overrides?: Partial<TaskConfig>): TaskConfig {
   const id = overrides?.id ?? nextId();
   return {
     id,
-    name: "Test Loop",
+    name: "Test Task",
     directory: "/workspaces/test-project",
     prompt: "Write a test function",
     createdAt: isoNow(),
@@ -267,16 +267,16 @@ export function createLoopConfig(overrides?: Partial<LoopConfig>): LoopConfig {
     clearPlanningFolder: false,
     planMode: true,
     autoAcceptPlan: false,
-    mode: "loop",
+    mode: "task",
     ...overrides,
   };
 }
 
 // ============================================
-// Loop State
+// Task State
 // ============================================
 
-export function createLoopState(overrides?: Partial<LoopState>): LoopState {
+export function createTaskState(overrides?: Partial<TaskState>): TaskState {
   const id = overrides?.id ?? nextId();
   return {
     id,
@@ -291,28 +291,28 @@ export function createLoopState(overrides?: Partial<LoopState>): LoopState {
 }
 
 // ============================================
-// Loop (combined config + state)
+// Task (combined config + state)
 // ============================================
 
-export function createLoop(overrides?: {
-  config?: Partial<LoopConfig>;
-  state?: Partial<LoopState>;
-}): Loop {
+export function createTask(overrides?: {
+  config?: Partial<TaskConfig>;
+  state?: Partial<TaskState>;
+}): Task {
   const id = overrides?.config?.id ?? overrides?.state?.id ?? nextId();
   return {
-    config: createLoopConfig({ ...overrides?.config, id }),
-    state: createLoopState({ ...overrides?.state, id }),
+    config: createTaskConfig({ ...overrides?.config, id }),
+    state: createTaskState({ ...overrides?.state, id }),
   };
 }
 
 /**
- * Create a loop in a specific status with appropriate state.
+ * Create a task in a specific status with appropriate state.
  */
-export function createLoopWithStatus(status: LoopStatus, overrides?: {
-  config?: Partial<LoopConfig>;
-  state?: Partial<LoopState>;
-}): Loop {
-  const stateOverrides: Partial<LoopState> = { status };
+export function createTaskWithStatus(status: TaskStatus, overrides?: {
+  config?: Partial<TaskConfig>;
+  state?: Partial<TaskState>;
+}): Task {
+  const stateOverrides: Partial<TaskState> = { status };
 
   switch (status) {
     case "running":
@@ -342,7 +342,7 @@ export function createLoopWithStatus(status: LoopStatus, overrides?: {
       stateOverrides.currentIteration = 3;
       stateOverrides.git = createGitState();
       if (status === "failed") {
-        stateOverrides.error = createLoopError();
+        stateOverrides.error = createTaskError();
       }
       break;
     case "merged":
@@ -369,7 +369,7 @@ export function createLoopWithStatus(status: LoopStatus, overrides?: {
       break;
   }
 
-  return createLoop({
+  return createTask({
     config: overrides?.config,
     state: { ...stateOverrides, ...overrides?.state },
   });
@@ -450,77 +450,77 @@ export function createToolCallData(overrides?: Partial<ToolCallData>): ToolCallD
 }
 
 /**
- * Create a typed LoopEvent.
+ * Create a typed TaskEvent.
  * Use specific factory functions below for convenience.
  */
-export function createLoopCreatedEvent(loopId: string, config?: Partial<LoopConfig>): LoopEvent {
+export function createTaskCreatedEvent(taskId: string, config?: Partial<TaskConfig>): TaskEvent {
   return {
-    type: "loop.created",
-    loopId,
-    config: createLoopConfig({ ...config, id: loopId }),
+    type: "task.created",
+    taskId,
+    config: createTaskConfig({ ...config, id: taskId }),
     timestamp: isoNow(),
   };
 }
 
-export function createLoopStartedEvent(loopId: string, iteration = 1): LoopEvent {
+export function createTaskStartedEvent(taskId: string, iteration = 1): TaskEvent {
   return {
-    type: "loop.started",
-    loopId,
+    type: "task.started",
+    taskId,
     iteration,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopCompletedEvent(loopId: string, totalIterations = 3): LoopEvent {
+export function createTaskCompletedEvent(taskId: string, totalIterations = 3): TaskEvent {
   return {
-    type: "loop.completed",
-    loopId,
+    type: "task.completed",
+    taskId,
     totalIterations,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopSshHandoffEvent(loopId: string, totalIterations = 0): LoopEvent {
+export function createTaskSshHandoffEvent(taskId: string, totalIterations = 0): TaskEvent {
   return {
-    type: "loop.ssh_handoff",
-    loopId,
+    type: "task.ssh_handoff",
+    taskId,
     totalIterations,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopDeletedEvent(loopId: string): LoopEvent {
+export function createTaskDeletedEvent(taskId: string): TaskEvent {
   return {
-    type: "loop.deleted",
-    loopId,
+    type: "task.deleted",
+    taskId,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopMessageEvent(loopId: string, message?: Partial<MessageData>): LoopEvent {
+export function createTaskMessageEvent(taskId: string, message?: Partial<MessageData>): TaskEvent {
   return {
-    type: "loop.message",
-    loopId,
+    type: "task.message",
+    taskId,
     iteration: 1,
     message: createMessageData(message),
     timestamp: isoNow(),
   };
 }
 
-export function createLoopToolCallEvent(loopId: string, tool?: Partial<ToolCallData>): LoopEvent {
+export function createTaskToolCallEvent(taskId: string, tool?: Partial<ToolCallData>): TaskEvent {
   return {
-    type: "loop.tool_call",
-    loopId,
+    type: "task.tool_call",
+    taskId,
     iteration: 1,
     tool: createToolCallData(tool),
     timestamp: isoNow(),
   };
 }
 
-export function createLoopLogEvent(loopId: string, overrides?: Partial<{ id: string; level: string; message: string; details: Record<string, unknown> }>): LoopEvent {
+export function createTaskLogEvent(taskId: string, overrides?: Partial<{ id: string; level: string; message: string; details: Record<string, unknown> }>): TaskEvent {
   return {
-    type: "loop.log",
-    loopId,
+    type: "task.log",
+    taskId,
     id: overrides?.id ?? nextId(),
     level: (overrides?.level ?? "info") as "info",
     message: overrides?.message ?? "Test log message",
@@ -529,56 +529,56 @@ export function createLoopLogEvent(loopId: string, overrides?: Partial<{ id: str
   };
 }
 
-export function createLoopProgressEvent(loopId: string, content = "Streaming..."): LoopEvent {
+export function createTaskProgressEvent(taskId: string, content = "Streaming..."): TaskEvent {
   return {
-    type: "loop.progress",
-    loopId,
+    type: "task.progress",
+    taskId,
     iteration: 1,
     content,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopPlanReadyEvent(loopId: string, planContent = "# Plan\n\n1. Do something"): LoopEvent {
+export function createTaskPlanReadyEvent(taskId: string, planContent = "# Plan\n\n1. Do something"): TaskEvent {
   return {
-    type: "loop.plan.ready",
-    loopId,
+    type: "task.plan.ready",
+    taskId,
     planContent,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopErrorEvent(loopId: string, error = "Something went wrong", iteration = 1): LoopEvent {
+export function createTaskErrorEvent(taskId: string, error = "Something went wrong", iteration = 1): TaskEvent {
   return {
-    type: "loop.error",
-    loopId,
+    type: "task.error",
+    taskId,
     error,
     iteration,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopAcceptedEvent(loopId: string): LoopEvent {
+export function createTaskAcceptedEvent(taskId: string): TaskEvent {
   return {
-    type: "loop.accepted",
-    loopId,
+    type: "task.accepted",
+    taskId,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopPushedEvent(loopId: string, remoteBranch = "origin/test-loop-a1b2c3d"): LoopEvent {
+export function createTaskPushedEvent(taskId: string, remoteBranch = "origin/test-task-a1b2c3d"): TaskEvent {
   return {
-    type: "loop.pushed",
-    loopId,
+    type: "task.pushed",
+    taskId,
     remoteBranch,
     timestamp: isoNow(),
   };
 }
 
-export function createLoopPendingUpdatedEvent(loopId: string, overrides?: { pendingPrompt?: string; pendingModel?: ModelConfig }): LoopEvent {
+export function createTaskPendingUpdatedEvent(taskId: string, overrides?: { pendingPrompt?: string; pendingModel?: ModelConfig }): TaskEvent {
   return {
-    type: "loop.pending.updated",
-    loopId,
+    type: "task.pending.updated",
+    taskId,
     ...overrides,
     timestamp: isoNow(),
   };

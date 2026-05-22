@@ -31,7 +31,7 @@ export function SshServerSection({
         <div>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Standalone SSH Servers</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            Saved server metadata stays on the Ralpher server, while passwords stay encrypted in this browser.
+            Saved server metadata stays on the Clanky server, while passwords stay encrypted in this browser.
           </p>
         </div>
         <Button size="sm" onClick={onOpenCreateServer}>

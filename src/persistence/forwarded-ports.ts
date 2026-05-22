@@ -10,7 +10,7 @@ const log = createLogger("persistence:forwarded-ports");
 
 const ALLOWED_FORWARDED_PORT_COLUMNS = new Set([
   "id",
-  "loop_id",
+  "task_id",
   "workspace_id",
   "ssh_session_id",
   "remote_host",
@@ -35,7 +35,7 @@ function validateColumnNames(columns: string[]): void {
 function portForwardToRow(forward: PortForward): Record<string, number | string | null> {
   return {
     id: forward.config.id,
-    loop_id: forward.config.loopId,
+    task_id: forward.config.taskId,
     workspace_id: forward.config.workspaceId,
     ssh_session_id: forward.config.sshSessionId ?? null,
     remote_host: forward.config.remoteHost,
@@ -54,7 +54,7 @@ function rowToPortForward(row: Record<string, unknown>): PortForward {
   return {
     config: {
       id: row["id"] as string,
-      loopId: row["loop_id"] as string,
+      taskId: row["task_id"] as string,
       workspaceId: row["workspace_id"] as string,
       sshSessionId: (row["ssh_session_id"] as string | null) ?? undefined,
       remoteHost: row["remote_host"] as string,
@@ -92,7 +92,7 @@ export async function savePortForward(forward: PortForward): Promise<void> {
   );
   log.debug("Saved forwarded port", {
     id: forward.config.id,
-    loopId: forward.config.loopId,
+    taskId: forward.config.taskId,
     status: forward.state.status,
   });
 }
@@ -103,11 +103,11 @@ export async function getPortForward(id: string): Promise<PortForward | null> {
   return row ? rowToPortForward(row) : null;
 }
 
-export async function listPortForwardsByLoopId(loopId: string): Promise<PortForward[]> {
+export async function listPortForwardsByTaskId(taskId: string): Promise<PortForward[]> {
   const db = getDatabase();
   const rows = db.query(
-    "SELECT * FROM forwarded_ports WHERE loop_id = ? ORDER BY created_at DESC",
-  ).all(loopId) as Record<string, unknown>[];
+    "SELECT * FROM forwarded_ports WHERE task_id = ? ORDER BY created_at DESC",
+  ).all(taskId) as Record<string, unknown>[];
   return rows.map(rowToPortForward);
 }
 

@@ -129,7 +129,7 @@ export function CreateSshServerModal({
             {...PASSWORD_INPUT_PROPS}
           />
           <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Passwords are encrypted in the browser and never stored on the Ralpher server.
+            Passwords are encrypted in the browser and never stored on the Clanky server.
           </p>
         </div>
       </form>

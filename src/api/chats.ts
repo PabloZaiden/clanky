@@ -15,7 +15,7 @@ import {
   EmptyChatTranscriptError,
   InvalidChatBaseBranchError,
   InvalidCurrentPlanError,
-  isLoopChat,
+  isTaskChat,
 } from "../types/chat";
 import type { ChatConfig } from "../types/chat";
 import {
@@ -23,7 +23,7 @@ import {
   InterruptChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
   SendChatMessageRequestSchema,
-  SpawnCurrentPlanLoopRequestSchema,
+  SpawnCurrentPlanTaskRequestSchema,
   UpdateChatRequestSchema,
 } from "../types/schemas";
 import { requireWorkspace, errorResponse, successResponse } from "./helpers";
@@ -48,8 +48,8 @@ function createChatActionErrorResponse(error: unknown): Response | null {
   return null;
 }
 
-function mapChatUpdates(body: Partial<ChatConfig>): Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "loopId">> {
-  const updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "loopId">> = {};
+function mapChatUpdates(body: Partial<ChatConfig>): Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId">> {
+  const updates: Partial<Omit<ChatConfig, "id" | "createdAt" | "workspaceId" | "mode" | "scope" | "taskId">> = {};
 
   if (body.name !== undefined) {
     updates.name = body.name.trim();
@@ -175,8 +175,8 @@ export const chatsRoutes = {
       if (!existing) {
         return errorResponse("not_found", "Chat not found", 404);
       }
-      if (isLoopChat(existing)) {
-        return errorResponse("loop_chat_managed_by_loop", "Loop chats are managed from their owning loop", 409);
+      if (isTaskChat(existing)) {
+        return errorResponse("task_chat_managed_by_task", "Task chats are managed from their owning task", 409);
       }
 
       const validation = await parseAndValidate(UpdateChatRequestSchema, req);
@@ -216,8 +216,8 @@ export const chatsRoutes = {
       if (!chat) {
         return errorResponse("not_found", "Chat not found", 404);
       }
-      if (isLoopChat(chat)) {
-        return errorResponse("loop_chat_managed_by_loop", "Loop chats are deleted with their owning loop", 409);
+      if (isTaskChat(chat)) {
+        return errorResponse("task_chat_managed_by_task", "Task chats are deleted with their owning task", 409);
       }
 
       try {
@@ -346,7 +346,7 @@ export const chatsRoutes = {
     },
   },
 
-  "/api/chats/:id/spawn-loop": {
+  "/api/chats/:id/spawn-task": {
     async POST(req: Request & { params: { id: string } }): Promise<Response> {
       const chat = await chatManager.getChat(req.params.id);
       if (!chat) {
@@ -372,23 +372,23 @@ export const chatsRoutes = {
       }
 
       try {
-        const loop = await chatManager.spawnLoopFromChat(req.params.id);
-        return Response.json(loop, { status: 201 });
+        const task = await chatManager.spawnTaskFromChat(req.params.id);
+        return Response.json(task, { status: 201 });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {
           return knownErrorResponse;
         }
         const message = error instanceof Error ? error.message : String(error);
-        log.error("Failed to spawn loop from chat", { chatId: req.params.id, error: message });
+        log.error("Failed to spawn task from chat", { chatId: req.params.id, error: message });
         return errorResponse("spawn_failed", message, 500);
       }
     },
   },
 
-  "/api/chats/:id/spawn-loop-from-current-plan": {
+  "/api/chats/:id/spawn-task-from-current-plan": {
     async POST(req: Request & { params: { id: string } }): Promise<Response> {
-      const validation = await parseAndValidate(SpawnCurrentPlanLoopRequestSchema, req, {
+      const validation = await parseAndValidate(SpawnCurrentPlanTaskRequestSchema, req, {
         allowEmptyBody: true,
       });
       if (!validation.success) {
@@ -419,15 +419,15 @@ export const chatsRoutes = {
       }
 
       try {
-        const loop = await chatManager.spawnLoopFromCurrentPlan(req.params.id, validation.data.planFilePath);
-        return Response.json(loop, { status: 201 });
+        const task = await chatManager.spawnTaskFromCurrentPlan(req.params.id, validation.data.planFilePath);
+        return Response.json(task, { status: 201 });
       } catch (error) {
         const knownErrorResponse = createChatActionErrorResponse(error);
         if (knownErrorResponse) {
           return knownErrorResponse;
         }
         const message = error instanceof Error ? error.message : String(error);
-        log.error("Failed to spawn loop from current plan", { chatId: req.params.id, error: message });
+        log.error("Failed to spawn task from current plan", { chatId: req.params.id, error: message });
         return errorResponse("spawn_failed", message, 500);
       }
     },

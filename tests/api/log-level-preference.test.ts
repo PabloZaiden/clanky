@@ -17,8 +17,8 @@ describe("Log Level Preference API", () => {
 
   beforeEach(async () => {
     // Create a temp directory for each test
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
     
     // Initialize the database
     const { ensureDataDirectories } = await import("../../src/persistence/database");
@@ -27,7 +27,7 @@ describe("Log Level Preference API", () => {
 
   afterEach(async () => {
     // Restore the log level that was active before tests ran
-    // (e.g., "fatal" when running under RALPHER_LOG_LEVEL=fatal)
+    // (e.g., "fatal" when running under CLANKY_LOG_LEVEL=fatal)
     setLogLevel(originalActiveLevel);
 
     // Close the database before cleaning up
@@ -35,7 +35,7 @@ describe("Log Level Preference API", () => {
     closeDatabase();
 
     // Clean up
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true });
   });
 

@@ -19,7 +19,7 @@ const target = targetArg?.split('=')[1] as
   | 'bun-windows-x64'
   | undefined;
 
-const outfile = target?.startsWith('bun-windows') ? `${outDir}/ralpher.exe` : `${outDir}/ralpher`;
+const outfile = target?.startsWith('bun-windows') ? `${outDir}/clanky.exe` : `${outDir}/clanky`;
 let buildSucceeded = false;
 
 try {
@@ -61,7 +61,7 @@ try {
     await Bun.$`mkdir -p ${finalOutDir}`.quiet();
 
     log.info('Copying built file to dist directory...');
-    const destName = target ? `ralpher-${target.replace('bun-', '')}` : 'ralpher';
+    const destName = target ? `clanky-${target.replace('bun-', '')}` : 'clanky';
     const destPath = `${finalOutDir}/${destName}`;
     await Bun.write(destPath, Bun.file(outfile));
 

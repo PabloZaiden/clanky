@@ -1,5 +1,5 @@
 /**
- * WebSocket handlers for Ralph Loops Management System.
+ * WebSocket handlers for Clanky Tasks Management System.
  * Re-exports from sub-modules in `./websocket/`.
  *
  * @module api/websocket

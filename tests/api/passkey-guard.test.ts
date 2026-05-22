@@ -9,18 +9,18 @@ import { setupTestContext, teardownTestContext, type TestContext } from "../setu
 
 describe("passkey guard", () => {
   let context: TestContext;
-  const originalDisablePasskey = process.env["RALPHER_DISABLE_PASSKEY"];
+  const originalDisablePasskey = process.env["CLANKY_DISABLE_PASSKEY"];
 
   beforeEach(async () => {
-    delete process.env["RALPHER_DISABLE_PASSKEY"];
+    delete process.env["CLANKY_DISABLE_PASSKEY"];
     context = await setupTestContext();
   });
 
   afterEach(async () => {
     if (originalDisablePasskey === undefined) {
-      delete process.env["RALPHER_DISABLE_PASSKEY"];
+      delete process.env["CLANKY_DISABLE_PASSKEY"];
     } else {
-      process.env["RALPHER_DISABLE_PASSKEY"] = originalDisablePasskey;
+      process.env["CLANKY_DISABLE_PASSKEY"] = originalDisablePasskey;
     }
     await teardownTestContext(context);
   });
@@ -133,7 +133,7 @@ describe("passkey guard", () => {
     expect(registrationResponse.headers.get(PASSKEY_AUTH_REQUIRED_HEADER)).toBe("true");
   });
 
-  test("bypasses passkey guard when RALPHER_DISABLE_PASSKEY is enabled", async () => {
+  test("bypasses passkey guard when CLANKY_DISABLE_PASSKEY is enabled", async () => {
     await savePasskey({
       id: "pk-1",
       name: "Primary passkey",
@@ -143,7 +143,7 @@ describe("passkey guard", () => {
       deviceType: "singleDevice",
       backedUp: false,
     });
-    process.env["RALPHER_DISABLE_PASSKEY"] = "true";
+    process.env["CLANKY_DISABLE_PASSKEY"] = "true";
 
     const wrappedRoutes = wrapRoutesWithPasskeyAuth({
       "/api/protected": {

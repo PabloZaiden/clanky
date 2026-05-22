@@ -17,16 +17,16 @@ import {
   countSshSessionsByWorkspace,
   deleteSshSession,
   getSshSession,
-  getSshSessionByLoopId,
+  getSshSessionByTaskId,
   listSshSessions,
   listSshSessionsByWorkspace,
   saveSshSession,
 } from "../persistence/ssh-sessions";
-import { loadLoop } from "../persistence/loops";
+import { loadTask } from "../persistence/tasks";
 import { backendManager } from "./backend-manager";
 import { sshSessionEventEmitter } from "./event-emitter";
 import { createLogger } from "./logger";
-import { buildDefaultSshSessionName, buildLoopSshSessionName } from "../utils";
+import { buildDefaultSshSessionName, buildTaskSshSessionName } from "../utils";
 import { isPersistentSshSession } from "../utils";
 import { portForwardManager } from "./port-forward-manager";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
@@ -34,7 +34,7 @@ import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
 const log = createLogger("core:ssh-session-manager");
 
 function buildRemoteSessionName(id: string): string {
-  return `ralpher-${id.replace(/-/g, "").slice(0, 24)}`;
+  return `clanky-${id.replace(/-/g, "").slice(0, 24)}`;
 }
 
 async function requireSshWorkspace(workspaceId: string): Promise<Workspace> {
@@ -60,8 +60,8 @@ export class SshSessionManager {
     return await getSshSession(id);
   }
 
-  async getSessionByLoopId(loopId: string): Promise<SshSession | null> {
-    return await getSshSessionByLoopId(loopId);
+  async getSessionByTaskId(taskId: string): Promise<SshSession | null> {
+    return await getSshSessionByTaskId(taskId);
   }
 
   async createSession(request: CreateSshSessionRequest): Promise<SshSession> {
@@ -119,40 +119,40 @@ export class SshSessionManager {
     return deleted;
   }
 
-  async getOrCreateLoopSession(loopId: string): Promise<SshSession> {
-    const existingSession = await getSshSessionByLoopId(loopId);
+  async getOrCreateTaskSession(taskId: string): Promise<SshSession> {
+    const existingSession = await getSshSessionByTaskId(taskId);
     if (existingSession) {
       return existingSession;
     }
 
-    const { loopManager } = await import("./loop-manager");
-    const loop = await loopManager.getLoop(loopId) ?? await loadLoop(loopId);
-    if (!loop) {
-      throw new Error(`Loop not found: ${loopId}`);
+    const { taskManager } = await import("./task-manager");
+    const task = await taskManager.getTask(taskId) ?? await loadTask(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
     }
 
-    const workspace = await requireSshWorkspace(loop.config.workspaceId);
+    const workspace = await requireSshWorkspace(task.config.workspaceId);
     await touchWorkspace(workspace.id);
 
-    const directory = loop.config.useWorktree
-      ? loop.state.git?.worktreePath ?? null
-      : loop.config.directory;
+    const directory = task.config.useWorktree
+      ? task.state.git?.worktreePath ?? null
+      : task.config.directory;
     if (!directory) {
-      throw new Error("Loop working directory is not available");
+      throw new Error("Task working directory is not available");
     }
 
     return await this.createAndSaveSession({
       workspace,
-      name: buildLoopSshSessionName(loop.config.name),
+      name: buildTaskSshSessionName(task.config.name),
       directory,
-      loopId,
+      taskId,
       connectionMode: DEFAULT_SSH_CONNECTION_MODE,
       useTmux: DEFAULT_SSH_SESSION_USE_TMUX,
     });
   }
 
-  async deleteSessionByLoopId(loopId: string): Promise<boolean> {
-    const session = await getSshSessionByLoopId(loopId);
+  async deleteSessionByTaskId(taskId: string): Promise<boolean> {
+    const session = await getSshSessionByTaskId(taskId);
     if (!session) {
       return false;
     }
@@ -221,7 +221,7 @@ export class SshSessionManager {
     workspace: Workspace;
     name: string;
     directory: string;
-    loopId?: string;
+    taskId?: string;
     connectionMode: SshConnectionMode;
     useTmux: boolean;
   }): Promise<SshSession> {
@@ -232,7 +232,7 @@ export class SshSessionManager {
         id: sessionId,
         name: options.name,
         workspaceId: options.workspace.id,
-        loopId: options.loopId,
+        taskId: options.taskId,
         directory: options.directory,
         connectionMode: options.connectionMode,
         useTmux: options.useTmux,
@@ -248,8 +248,8 @@ export class SshSessionManager {
     try {
       await saveSshSession(session);
     } catch (error) {
-      if (options.loopId && String(error).includes("ssh_sessions.loop_id")) {
-        const existingSession = await getSshSessionByLoopId(options.loopId);
+      if (options.taskId && String(error).includes("ssh_sessions.task_id")) {
+        const existingSession = await getSshSessionByTaskId(options.taskId);
         if (existingSession) {
           return existingSession;
         }

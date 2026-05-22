@@ -7,4 +7,4 @@ export {
   getConfiguredPublicBasePath,
   PASSKEY_AUTH_REQUIRED_EVENT,
   setConfiguredPublicBasePath,
-} from "@ralpher/client-sdk/public-path";
+} from "@clanky/client-sdk/public-path";

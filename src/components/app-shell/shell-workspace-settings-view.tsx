@@ -38,10 +38,10 @@ export function WorkspaceSettingsView({
     workspaceSettingsWorkspaceId,
     workspaceSettingsFormValid,
     setWorkspaceSettingsFormValid,
-    workspaceArchivedLoopsPurging,
-    handlePurgeArchivedLoops,
-    selectedWorkspaceArchivedLoopCount,
-    selectedWorkspaceLoopCount,
+    workspaceArchivedTasksPurging,
+    handlePurgeArchivedTasks,
+    selectedWorkspaceArchivedTaskCount,
+    selectedWorkspaceTaskCount,
   } = workspaceSettings;
 
   return (
@@ -86,9 +86,9 @@ export function WorkspaceSettingsView({
               return success;
             }}
             onTest={testWorkspaceConnection}
-            onPurgeArchivedLoops={
+            onPurgeArchivedTasks={
               workspaceSettingsWorkspaceId
-                ? async () => await handlePurgeArchivedLoops(workspaceSettingsWorkspaceId)
+                ? async () => await handlePurgeArchivedTasks(workspaceSettingsWorkspaceId)
                 : undefined
             }
             onDeleteWorkspace={
@@ -96,11 +96,11 @@ export function WorkspaceSettingsView({
                 ? async (options) => await deleteWorkspace(workspaceSettingsWorkspaceId, options)
                 : undefined
             }
-            purgeableLoopCount={selectedWorkspaceArchivedLoopCount}
-            workspaceLoopCount={selectedWorkspaceLoopCount}
+            purgeableTaskCount={selectedWorkspaceArchivedTaskCount}
+            workspaceTaskCount={selectedWorkspaceTaskCount}
             saving={workspaceSettingsSaving}
             testing={workspaceSettingsTesting}
-            purgingPurgeableLoops={workspaceArchivedLoopsPurging}
+            purgingPurgeableTasks={workspaceArchivedTasksPurging}
             remoteOnly={dashboardData.remoteOnly}
             showConnectionStatus={false}
             formId="workspace-settings-shell-form"

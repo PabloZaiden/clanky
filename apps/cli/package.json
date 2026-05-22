@@ -1,5 +1,5 @@
 {
-  "name": "@ralpher/cli",
+  "name": "@clanky/cli",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,8 +7,8 @@
     "build": "bun src/build.ts"
   },
   "dependencies": {
-    "@ralpher/client-sdk": "workspace:*",
-    "@ralpher/contracts": "workspace:*",
-    "@ralpher/shared": "workspace:*"
+    "@clanky/client-sdk": "workspace:*",
+    "@clanky/contracts": "workspace:*",
+    "@clanky/shared": "workspace:*"
   }
 }

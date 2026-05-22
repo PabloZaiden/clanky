@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Chat } from "@/types";
 import { CodeExplorerView } from "@/components/app-shell/code-explorer-view";
 import { renderWithUser, waitFor } from "../helpers/render";
-import { createLoopWithStatus, createWorkspace } from "../helpers/factories";
+import { createTaskWithStatus, createWorkspace } from "../helpers/factories";
 
 function createChat(overrides?: {
   config?: Partial<Chat["config"]>;
@@ -25,7 +25,7 @@ function createChat(overrides?: {
       mode: "chat",
       ...overrides?.config,
       scope: overrides?.config?.scope ?? "workspace",
-      loopId: overrides?.config?.loopId,
+      taskId: overrides?.config?.taskId,
     },
     state: {
       id: "chat-1",
@@ -45,10 +45,10 @@ describe("CodeExplorerView", () => {
       name: "Picker Workspace",
       directory: "/workspaces/picker",
     });
-    const loop = createLoopWithStatus("idle", {
+    const task = createTaskWithStatus("idle", {
       config: {
-        id: "picker-loop",
-        name: "Picker Loop",
+        id: "picker-task",
+        name: "Picker Task",
         workspaceId: workspace.id,
         directory: workspace.directory,
       },
@@ -66,7 +66,7 @@ describe("CodeExplorerView", () => {
 
     const { getByLabelText, getByRole, getByText } = renderWithUser(
       <CodeExplorerView
-        loops={[loop]}
+        tasks={[task]}
         chats={[chat]}
         workspaces={[workspace]}
         sessions={[]}
@@ -89,12 +89,12 @@ describe("CodeExplorerView", () => {
     const select = getByLabelText("Select code explorer content") as HTMLSelectElement;
     const optgroups = Array.from(select.querySelectorAll("optgroup")).map((group) => group.label);
 
-    expect(optgroups).toEqual(["Workspaces", "Loops", "Chats"]);
+    expect(optgroups).toEqual(["Workspaces", "Tasks", "Chats"]);
     expect(getByText("Workspaces")).toBeInTheDocument();
-    expect(getByText("Loops")).toBeInTheDocument();
+    expect(getByText("Tasks")).toBeInTheDocument();
     expect(getByText("Chats")).toBeInTheDocument();
     expect(getByRole("button", { name: /Picker Workspace/i })).toBeInTheDocument();
-    expect(getByRole("button", { name: /Picker Loop/i })).toBeInTheDocument();
+    expect(getByRole("button", { name: /Picker Task/i })).toBeInTheDocument();
     expect(getByRole("button", { name: /Picker Chat/i })).toBeInTheDocument();
   });
 
@@ -104,10 +104,10 @@ describe("CodeExplorerView", () => {
       name: "Picker Workspace",
       directory: "/workspaces/picker",
     });
-    const loop = createLoopWithStatus("idle", {
+    const task = createTaskWithStatus("idle", {
       config: {
-        id: "picker-loop",
-        name: "Picker Loop",
+        id: "picker-task",
+        name: "Picker Task",
         workspaceId: workspace.id,
         directory: workspace.directory,
       },
@@ -116,7 +116,7 @@ describe("CodeExplorerView", () => {
 
     const { getByLabelText, getByRole, user } = renderWithUser(
       <CodeExplorerView
-        loops={[loop]}
+        tasks={[task]}
         chats={[]}
         workspaces={[workspace]}
         sessions={[]}
@@ -138,13 +138,13 @@ describe("CodeExplorerView", () => {
       expect(getByRole("heading", { name: "Code explorer" })).toBeInTheDocument();
     });
 
-    await user.selectOptions(getByLabelText("Select code explorer content"), "loop:picker-loop");
+    await user.selectOptions(getByLabelText("Select code explorer content"), "task:picker-task");
 
     expect(navigations).toEqual([{
       view: "code-explorer",
       target: {
-        contentType: "loop",
-        loopId: "picker-loop",
+        contentType: "task",
+        taskId: "picker-task",
       },
     }]);
   });

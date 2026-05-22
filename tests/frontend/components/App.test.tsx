@@ -6,7 +6,7 @@ import type { Chat } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor, act, within } from "../helpers/render";
-import { createLoop, createLoopWithStatus, createSshSession, createWorkspace } from "../helpers/factories";
+import { createTask, createTaskWithStatus, createSshSession, createWorkspace } from "../helpers/factories";
 import { expectHamburgerIcon } from "../helpers/icon-assertions";
 
 const api = createMockApi();
@@ -72,7 +72,7 @@ function createStandaloneSession(serverId: string, overrides?: Partial<{ id: str
       sshServerId: serverId,
       name: overrides?.name ?? "Standalone SSH",
       connectionMode: "dtach" as const,
-      remoteSessionName: "ralpher-standalone",
+      remoteSessionName: "clanky-standalone",
       createdAt: isoNow(),
       updatedAt: isoNow(),
     },
@@ -104,7 +104,7 @@ function createChat(overrides?: {
       mode: "chat",
       ...(overrides?.config ?? {}),
       scope: overrides?.config?.scope ?? "workspace",
-      loopId: overrides?.config?.loopId,
+      taskId: overrides?.config?.taskId,
     },
     state: {
       id: overrides?.state?.id ?? overrides?.config?.id ?? "chat-1",
@@ -118,21 +118,21 @@ function createChat(overrides?: {
 }
 
 function setupDefaultApi(options?: {
-  loops?: ReturnType<typeof createLoop>[];
+  tasks?: ReturnType<typeof createTask>[];
   chats?: Chat[];
   workspaces?: ReturnType<typeof createWorkspace>[];
   sshSessions?: ReturnType<typeof createSshSession>[];
   sshServers?: ReturnType<typeof createSshServer>[];
   standaloneSessionsByServerId?: Record<string, ReturnType<typeof createStandaloneSession>[]>;
 }) {
-  const loops = options?.loops ?? [];
+  const tasks = options?.tasks ?? [];
   const chats = options?.chats ?? [];
   const workspaces = options?.workspaces ?? [];
   const sshSessions = options?.sshSessions ?? [];
   const sshServers = options?.sshServers ?? [];
   const standaloneSessionsByServerId = options?.standaloneSessionsByServerId ?? {};
 
-  api.get("/api/loops", () => loops);
+  api.get("/api/tasks", () => tasks);
   api.get("/api/chats", () => chats);
   api.get("/api/workspaces", () => workspaces);
   api.get("/api/ssh-sessions", () => sshSessions);
@@ -144,25 +144,25 @@ function setupDefaultApi(options?: {
   api.get("/api/preferences/log-level", () => ({ level: "info" }));
   api.get("/api/preferences/markdown-rendering", () => ({ enabled: true }));
   api.get("/api/models", () => []);
-  api.get("/api/loops/:id", (req) => {
-    return loops.find((loop) => loop.config.id === req.params["id"])
-      ?? createLoop({ config: { id: req.params["id"], name: `Loop ${req.params["id"]}` } });
+  api.get("/api/tasks/:id", (req) => {
+    return tasks.find((task) => task.config.id === req.params["id"])
+      ?? createTask({ config: { id: req.params["id"], name: `Task ${req.params["id"]}` } });
   });
   api.get("/api/chats/:id", (req) => {
     const chatId = req.params["id"]!;
     return chats.find((chat) => chat.config.id === chatId)
       ?? createChat({ config: { id: chatId, name: `Chat ${chatId}` } });
   });
-  api.get("/api/loops/:id/comments", () => ({ success: true, comments: [] }));
-  api.get("/api/loops/:id/diff", () => []);
-  api.get("/api/loops/:id/plan", () => ({ exists: false, content: "" }));
-  api.get("/api/loops/:id/status-file", () => ({ exists: false, content: "" }));
-  api.get("/api/loops/:id/pull-request", () => ({
+  api.get("/api/tasks/:id/comments", () => ({ success: true, comments: [] }));
+  api.get("/api/tasks/:id/diff", () => []);
+  api.get("/api/tasks/:id/plan", () => ({ exists: false, content: "" }));
+  api.get("/api/tasks/:id/status-file", () => ({ exists: false, content: "" }));
+  api.get("/api/tasks/:id/pull-request", () => ({
     enabled: false,
     destinationType: "disabled",
     disabledReason: "disabled",
   }));
-  api.get("/api/loops/:id/port-forwards", () => []);
+  api.get("/api/tasks/:id/port-forwards", () => []);
   api.get("/api/ssh-sessions/:id", (req) => {
     return sshSessions.find((session) => session.config.id === req.params["id"])
       ?? createSshSession({ config: { id: req.params["id"]!, name: `SSH ${req.params["id"]!}` } });
@@ -215,7 +215,7 @@ describe("App shell", () => {
     const { getByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Unlock Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Unlock Clanky" })).toBeTruthy();
       expect(api.calls("/api/preferences/theme", "GET")).toHaveLength(0);
     });
 
@@ -235,7 +235,7 @@ describe("App shell", () => {
     const { getByRole, getByText, queryByText } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
       expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
       expect(getByText("Server maps")).toBeTruthy();
       expect(getByText("Workspaces map")).toBeTruthy();
@@ -248,34 +248,34 @@ describe("App shell", () => {
     expect(activeWorkHeading.compareDocumentPosition(serverMapsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(serverMapsHeading.compareDocumentPosition(workspacesMapHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(queryByText("Tracked repositories and hosts.")).toBeNull();
-    expect(queryByText("Task-oriented Ralph loops.")).toBeNull();
+    expect(queryByText("Task-oriented Clanky tasks.")).toBeNull();
     expect(queryByText("Interactive conversations.")).toBeNull();
   });
 
   test("uses one global app event WebSocket across shell routes", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend" });
-    const loop = createLoop({
-      config: { id: "loop-1", name: "Fix navbar", workspaceId: "workspace-1" },
-      state: { id: "loop-1", status: "running" },
+    const task = createTask({
+      config: { id: "task-1", name: "Fix navbar", workspaceId: "workspace-1" },
+      state: { id: "task-1", status: "running" },
     });
     const chat = createChat({ config: { id: "chat-1", workspaceId: "workspace-1" } });
-    setupDefaultApi({ workspaces: [workspace], loops: [loop], chats: [chat] });
+    setupDefaultApi({ workspaces: [workspace], tasks: [task], chats: [chat] });
 
     const { getByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
       expect(ws.getConnections("/api/ws")).toHaveLength(1);
     });
 
-    window.location.hash = "#/loop/loop-1";
+    window.location.hash = "#/task/task-1";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Fix navbar" })).toBeTruthy();
     });
     expect(ws.getConnections("/api/ws")).toHaveLength(1);
-    expect(ws.getConnections("/api/ws?loopId=loop-1")).toHaveLength(0);
+    expect(ws.getConnections("/api/ws?taskId=task-1")).toHaveLength(0);
 
     window.location.hash = "#/chat/chat-1";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -290,7 +290,7 @@ describe("App shell", () => {
   test("wraps long server map and active work text inside the shell overview cards", async () => {
     const longServerName = `Server ${"super-long-hostname-".repeat(6)}`;
     const longAddress = `${"edge-node-".repeat(6)}example.internal`;
-    const longLoopName = `Loop ${"very-long-conversation-title-".repeat(5)}`;
+    const longTaskName = `Task ${"very-long-conversation-title-".repeat(5)}`;
     const longWorkspaceName = `Workspace ${"deeply-nested-project-".repeat(6)}repo`;
 
     const server = createSshServer({
@@ -304,10 +304,10 @@ describe("App shell", () => {
       name: longWorkspaceName,
       directory: "/workspaces/wrap-lab",
     });
-    const loop = createLoop({
+    const task = createTask({
       config: {
-        id: "loop-wrap-1",
-        name: longLoopName,
+        id: "task-wrap-1",
+        name: longTaskName,
         directory: "/workspaces/wrap-lab",
         workspaceId: workspace.id,
       },
@@ -320,7 +320,7 @@ describe("App shell", () => {
 
     setupDefaultApi({
       workspaces: [workspace],
-      loops: [loop],
+      tasks: [task],
       sshServers: [server],
       standaloneSessionsByServerId: {
         [server.config.id]: [createStandaloneSession(server.config.id, { id: "standalone-wrap-1" })],
@@ -331,7 +331,7 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getAllByText(longServerName).length).toBeGreaterThan(0);
-      expect(getAllByText(longLoopName).length).toBeGreaterThan(0);
+      expect(getAllByText(longTaskName).length).toBeGreaterThan(0);
     });
 
     const serverName = getAllByText(longServerName).find((element) =>
@@ -354,28 +354,28 @@ describe("App shell", () => {
     expect(serverTarget.className).toContain("[overflow-wrap:anywhere]");
     expect(serverTarget.className.includes("truncate")).toBe(false);
 
-    const loopName = getAllByText(longLoopName).find((element) =>
+    const taskName = getAllByText(longTaskName).find((element) =>
       element instanceof HTMLElement && element.className.includes("break-words")
     );
-    expect(loopName).toBeTruthy();
-    if (!(loopName instanceof HTMLElement)) {
-      throw new Error("Expected wrapped loop name in active work");
+    expect(taskName).toBeTruthy();
+    if (!(taskName instanceof HTMLElement)) {
+      throw new Error("Expected wrapped task name in active work");
     }
-    expect(loopName.className).toContain("[overflow-wrap:anywhere]");
-    expect(loopName.className.includes("truncate")).toBe(false);
+    expect(taskName.className).toContain("[overflow-wrap:anywhere]");
+    expect(taskName.className.includes("truncate")).toBe(false);
 
-    const loopWorkspace = getAllByText(longWorkspaceName).find((element) =>
+    const taskWorkspace = getAllByText(longWorkspaceName).find((element) =>
       element instanceof HTMLElement && element.className.includes("break-words")
     );
-    expect(loopWorkspace).toBeTruthy();
-    if (!(loopWorkspace instanceof HTMLElement)) {
+    expect(taskWorkspace).toBeTruthy();
+    if (!(taskWorkspace instanceof HTMLElement)) {
       throw new Error("Expected wrapped workspace name in active work");
     }
-    expect(loopWorkspace.className).toContain("[overflow-wrap:anywhere]");
-    expect(loopWorkspace.className.includes("truncate")).toBe(false);
+    expect(taskWorkspace.className).toContain("[overflow-wrap:anywhere]");
+    expect(taskWorkspace.className.includes("truncate")).toBe(false);
   });
 
-  test("orders the workspaces map by loop count from high to low", async () => {
+  test("orders the workspaces map by task count from high to low", async () => {
     const alphaWorkspace = createWorkspace({
       id: "workspace-alpha",
       name: "Project Alpha",
@@ -392,20 +392,20 @@ describe("App shell", () => {
       directory: "/workspaces/gamma",
     });
 
-    const loops = [
-      createLoopWithStatus("running", {
-        config: { id: "loop-beta-1", name: "Beta One", workspaceId: betaWorkspace.id },
+    const tasks = [
+      createTaskWithStatus("running", {
+        config: { id: "task-beta-1", name: "Beta One", workspaceId: betaWorkspace.id },
       }),
-      createLoopWithStatus("planning", {
-        config: { id: "loop-beta-2", name: "Beta Two", workspaceId: betaWorkspace.id },
+      createTaskWithStatus("planning", {
+        config: { id: "task-beta-2", name: "Beta Two", workspaceId: betaWorkspace.id },
       }),
-      createLoopWithStatus("completed", {
-        config: { id: "loop-alpha-1", name: "Alpha One", workspaceId: alphaWorkspace.id },
+      createTaskWithStatus("completed", {
+        config: { id: "task-alpha-1", name: "Alpha One", workspaceId: alphaWorkspace.id },
       }),
     ];
 
     setupDefaultApi({
-      loops,
+      tasks,
       workspaces: [alphaWorkspace, betaWorkspace, gammaWorkspace],
     });
 
@@ -465,13 +465,13 @@ describe("App shell", () => {
     const { getByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     fireEvent.keyDown(window, { key: "l", metaKey: true, shiftKey: true });
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Start a new loop" })).toBeTruthy();
-      expect(window.location.hash).toBe("#/new/loop");
+      expect(getByRole("heading", { name: "Start a new task" })).toBeTruthy();
+      expect(window.location.hash).toBe("#/new/task");
     });
 
     fireEvent.keyDown(window, { key: "c", metaKey: true, shiftKey: true });
@@ -503,7 +503,7 @@ describe("App shell", () => {
     const { getByLabelText, getByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     const searchInput = getByLabelText("Search");
@@ -521,7 +521,7 @@ describe("App shell", () => {
       const { getByLabelText, getByRole } = renderWithUser(<App />);
 
       await waitFor(() => {
-        expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+        expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
       });
 
       fireEvent.click(getByRole("button", { name: "Hide sidebar" }));
@@ -541,34 +541,34 @@ describe("App shell", () => {
     }
   });
 
-  test("renders loop details inside the shell without a back button", async () => {
-    const loop = createLoop({
-      config: { id: "loop-1", name: "Shell Loop", workspaceId: "workspace-1" },
+  test("renders task details inside the shell without a back button", async () => {
+    const task = createTask({
+      config: { id: "task-1", name: "Shell Task", workspaceId: "workspace-1" },
     });
-    setupDefaultApi({ loops: [loop] });
-    const { getAllByText, queryByRole } = renderWithUser(<App />, { route: "#/loop/loop-1" });
+    setupDefaultApi({ tasks: [task] });
+    const { getAllByText, queryByRole } = renderWithUser(<App />, { route: "#/task/task-1" });
 
     await waitFor(() => {
-      expect(getAllByText("Shell Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Shell Task").length).toBeGreaterThan(0);
     });
     expect(queryByRole("button", { name: /Back/ })).toBeNull();
   });
 
-  test("remounts loop details on route switches so stale finalize UI is cleared", async () => {
-    const firstLoop = createLoopWithStatus("completed", {
-      config: { id: "loop-1", name: "Loop One", workspaceId: "workspace-1" },
-      state: { id: "loop-1" },
+  test("remounts task details on route switches so stale finalize UI is cleared", async () => {
+    const firstTask = createTaskWithStatus("completed", {
+      config: { id: "task-1", name: "Task One", workspaceId: "workspace-1" },
+      state: { id: "task-1" },
     });
-    const secondLoop = createLoopWithStatus("completed", {
-      config: { id: "loop-2", name: "Loop Two", workspaceId: "workspace-1" },
-      state: { id: "loop-2" },
+    const secondTask = createTaskWithStatus("completed", {
+      config: { id: "task-2", name: "Task Two", workspaceId: "workspace-1" },
+      state: { id: "task-2" },
     });
-    setupDefaultApi({ loops: [firstLoop, secondLoop] });
+    setupDefaultApi({ tasks: [firstTask, secondTask] });
 
-    const { getAllByText, getByRole, queryByText, user } = renderWithUser(<App />, { route: "#/loop/loop-1" });
+    const { getAllByText, getByRole, queryByText, user } = renderWithUser(<App />, { route: "#/task/task-1" });
 
     await waitFor(() => {
-      expect(getAllByText("Loop One").length).toBeGreaterThan(0);
+      expect(getAllByText("Task One").length).toBeGreaterThan(0);
     });
 
     await user.click(getByRole("button", { name: /Actions/ }));
@@ -586,25 +586,25 @@ describe("App shell", () => {
     await user.click(finalizeButton!);
 
     await waitFor(() => {
-      expect(queryByText("Finalize Loop")).toBeTruthy();
+      expect(queryByText("Finalize Task")).toBeTruthy();
     });
 
     await act(async () => {
-      window.location.hash = "#/loop/loop-2";
+      window.location.hash = "#/task/task-2";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
 
     await waitFor(() => {
-      expect(getAllByText("Loop Two").length).toBeGreaterThan(0);
-      expect(queryByText("Finalize Loop")).toBeNull();
+      expect(getAllByText("Task Two").length).toBeGreaterThan(0);
+      expect(queryByText("Finalize Task")).toBeNull();
     });
 
     await waitFor(() => {
-      const openLoopConnections = ws.connections().filter(
+      const openTaskConnections = ws.connections().filter(
         (connection) => connection.isOpen && connection.url.includes("/api/ws") && !connection.url.includes("?"),
       );
-      expect(openLoopConnections).toHaveLength(1);
-      expect(openLoopConnections[0]!.url).toContain("/api/ws");
+      expect(openTaskConnections).toHaveLength(1);
+      expect(openTaskConnections[0]!.url).toContain("/api/ws");
     });
   });
 
@@ -645,7 +645,7 @@ describe("App shell", () => {
         worktree: {
           originalBranch: "main",
           workingBranch: "chat-repo-pairing-chat1",
-          worktreePath: "/workspaces/frontend/.ralph-worktrees/chat-1",
+          worktreePath: "/workspaces/frontend/.clanky-worktrees/chat-1",
         },
         messages: [
           {
@@ -716,7 +716,7 @@ describe("App shell", () => {
   test("lets users delete an SSH server from the shell settings route", async () => {
     const server = createSshServer({ id: "server-1", name: "Deploy host" });
     setupDefaultApi({ sshServers: [server] });
-    localStorage.setItem("ralpher.sshServerCredential.server-1", JSON.stringify({
+    localStorage.setItem("clanky.sshServerCredential.server-1", JSON.stringify({
       encryptedCredential: {
         algorithm: server.publicKey.algorithm,
         fingerprint: server.publicKey.fingerprint,
@@ -751,7 +751,7 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getByRole("dialog")).toBeTruthy();
-      expect(getByText('Delete "Deploy host"? This removes the saved SSH server metadata from Ralpher and any saved browser credential for this server.')).toBeTruthy();
+      expect(getByText('Delete "Deploy host"? This removes the saved SSH server metadata from Clanky and any saved browser credential for this server.')).toBeTruthy();
     });
 
     const deleteDialog = getByRole("dialog");
@@ -760,40 +760,40 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(api.calls("/api/ssh-servers/:id", "DELETE")).toHaveLength(1);
       expect(window.location.hash).toBe("#/");
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-      expect(localStorage.getItem("ralpher.sshServerCredential.server-1")).toBeNull();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
+      expect(localStorage.getItem("clanky.sshServerCredential.server-1")).toBeNull();
       expect(queryByRole("dialog")).toBeNull();
     });
   });
 
-  test("navigates to a loop when a sidebar item is clicked", async () => {
+  test("navigates to a task when a sidebar item is clicked", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
-    const loop = createLoop({
-      config: { id: "loop-1", name: "Sidebar Loop", workspaceId: workspace.id },
+    const task = createTask({
+      config: { id: "task-1", name: "Sidebar Task", workspaceId: workspace.id },
       state: { status: "running", startedAt: isoNow(), currentIteration: 1 },
     });
-    setupDefaultApi({ workspaces: [workspace], loops: [loop] });
+    setupDefaultApi({ workspaces: [workspace], tasks: [task] });
 
     const { getAllByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getAllByText("Sidebar Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Sidebar Task").length).toBeGreaterThan(0);
     });
 
-    await user.click(getAllByText("Sidebar Loop")[0]!);
+    await user.click(getAllByText("Sidebar Task")[0]!);
 
     await waitFor(() => {
-      expect(window.location.hash).toBe("#/loop/loop-1");
+      expect(window.location.hash).toBe("#/task/task-1");
     });
   });
 
-  test("opens a sidebar loop in a new tab on cmd-click", async () => {
+  test("opens a sidebar task in a new tab on cmd-click", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
-    const loop = createLoop({
-      config: { id: "loop-1", name: "Sidebar Loop", workspaceId: workspace.id },
+    const task = createTask({
+      config: { id: "task-1", name: "Sidebar Task", workspaceId: workspace.id },
       state: { status: "running", startedAt: isoNow(), currentIteration: 1 },
     });
-    setupDefaultApi({ workspaces: [workspace], loops: [loop] });
+    setupDefaultApi({ workspaces: [workspace], tasks: [task] });
 
     const openCalls: Array<{ url: string | URL | undefined; target: string | undefined; features: string | undefined }> = [];
     const originalWindowOpen = window.open;
@@ -806,31 +806,31 @@ describe("App shell", () => {
       const { getAllByText } = renderWithUser(<App />);
 
       await waitFor(() => {
-        expect(getAllByText("Sidebar Loop").length).toBeGreaterThan(0);
+        expect(getAllByText("Sidebar Task").length).toBeGreaterThan(0);
       });
 
-      fireEvent.click(getAllByText("Sidebar Loop")[0]!, { metaKey: true });
+      fireEvent.click(getAllByText("Sidebar Task")[0]!, { metaKey: true });
 
       expect(openCalls).toEqual([
         {
-          url: "http://localhost:3000/#/loop/loop-1",
+          url: "http://localhost:3000/#/task/task-1",
           target: "_blank",
           features: "noopener,noreferrer",
         },
       ]);
-      expect(window.location.hash).not.toBe("#/loop/loop-1");
+      expect(window.location.hash).not.toBe("#/task/task-1");
     } finally {
       window.open = originalWindowOpen;
     }
   });
 
-  test("opens a sidebar loop in a new tab on ctrl-click", async () => {
+  test("opens a sidebar task in a new tab on ctrl-click", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
-    const loop = createLoop({
-      config: { id: "loop-1", name: "Sidebar Loop", workspaceId: workspace.id },
+    const task = createTask({
+      config: { id: "task-1", name: "Sidebar Task", workspaceId: workspace.id },
       state: { status: "running", startedAt: isoNow(), currentIteration: 1 },
     });
-    setupDefaultApi({ workspaces: [workspace], loops: [loop] });
+    setupDefaultApi({ workspaces: [workspace], tasks: [task] });
 
     const openCalls: Array<{ url: string | URL | undefined; target: string | undefined; features: string | undefined }> = [];
     const originalWindowOpen = window.open;
@@ -843,28 +843,28 @@ describe("App shell", () => {
       const { getAllByText } = renderWithUser(<App />);
 
       await waitFor(() => {
-        expect(getAllByText("Sidebar Loop").length).toBeGreaterThan(0);
+        expect(getAllByText("Sidebar Task").length).toBeGreaterThan(0);
       });
 
-      fireEvent.click(getAllByText("Sidebar Loop")[0]!, { ctrlKey: true });
+      fireEvent.click(getAllByText("Sidebar Task")[0]!, { ctrlKey: true });
 
       expect(openCalls).toEqual([
         {
-          url: "http://localhost:3000/#/loop/loop-1",
+          url: "http://localhost:3000/#/task/task-1",
           target: "_blank",
           features: "noopener,noreferrer",
         },
       ]);
-      expect(window.location.hash).not.toBe("#/loop/loop-1");
+      expect(window.location.hash).not.toBe("#/task/task-1");
     } finally {
       window.open = originalWindowOpen;
     }
   });
 
-  test("shows 'Plan Ready' for ready planning loops in the sidebar", async () => {
+  test("shows 'Plan Ready' for ready planning tasks in the sidebar", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
-    const readyPlanningLoop = createLoopWithStatus("planning", {
-      config: { id: "loop-plan-ready", name: "Plan Ready Loop", workspaceId: workspace.id },
+    const readyPlanningTask = createTaskWithStatus("planning", {
+      config: { id: "task-plan-ready", name: "Plan Ready Task", workspaceId: workspace.id },
       state: {
         planMode: {
           active: true,
@@ -875,24 +875,24 @@ describe("App shell", () => {
       },
     });
 
-    setupDefaultApi({ workspaces: [workspace], loops: [readyPlanningLoop] });
+    setupDefaultApi({ workspaces: [workspace], tasks: [readyPlanningTask] });
 
     const { getByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
       const sidebar = document.querySelector("aside");
       expect(sidebar).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getAllByText("Plan Ready Loop").length).toBeGreaterThan(0);
+      expect(within(sidebar as HTMLElement).getAllByText("Plan Ready Task").length).toBeGreaterThan(0);
       expect(within(sidebar as HTMLElement).getAllByText("Plan Ready").length).toBeGreaterThan(0);
     });
 
     expect(getByRole("button", { name: /Collapse Workspaces section/ })).toBeTruthy();
   });
 
-  test("keeps non-ready planning loops labeled 'Planning' in the sidebar", async () => {
+  test("keeps non-ready planning tasks labeled 'Planning' in the sidebar", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
-    const planningLoop = createLoopWithStatus("planning", {
-      config: { id: "loop-planning", name: "Planning Loop", workspaceId: workspace.id },
+    const planningTask = createTaskWithStatus("planning", {
+      config: { id: "task-planning", name: "Planning Task", workspaceId: workspace.id },
       state: {
         planMode: {
           active: true,
@@ -902,18 +902,18 @@ describe("App shell", () => {
         },
       },
     });
-    const runningLoop = createLoopWithStatus("running", {
-      config: { id: "loop-running", name: "Running Loop", workspaceId: workspace.id },
+    const runningTask = createTaskWithStatus("running", {
+      config: { id: "task-running", name: "Running Task", workspaceId: workspace.id },
     });
 
-    setupDefaultApi({ workspaces: [workspace], loops: [planningLoop, runningLoop] });
+    setupDefaultApi({ workspaces: [workspace], tasks: [planningTask, runningTask] });
 
     renderWithUser(<App />);
 
     await waitFor(() => {
       const sidebar = document.querySelector("aside");
       expect(sidebar).toBeTruthy();
-      expect(within(sidebar as HTMLElement).getAllByText("Planning Loop").length).toBeGreaterThan(0);
+      expect(within(sidebar as HTMLElement).getAllByText("Planning Task").length).toBeGreaterThan(0);
       expect(within(sidebar as HTMLElement).getAllByText("Planning").length).toBeGreaterThan(0);
       expect(within(sidebar as HTMLElement).getAllByText("Running").length).toBeGreaterThan(0);
     });
@@ -923,7 +923,7 @@ describe("App shell", () => {
     const { getByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     await act(async () => {
@@ -961,7 +961,7 @@ describe("App shell", () => {
       expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
       expect(queryByText("Active")).toBeNull();
       expect(queryByText("All")).toBeNull();
-      expect(window.localStorage.getItem("ralpher.sidebarSectionCollapseState")).toBeNull();
+      expect(window.localStorage.getItem("clanky.sidebarSectionCollapseState")).toBeNull();
     });
   });
 
@@ -992,10 +992,10 @@ describe("App shell", () => {
   });
 
   test("drops stale and expanded sidebar keys from browser storage", async () => {
-    window.localStorage.setItem("ralpher.sidebarSectionCollapseState", JSON.stringify({
+    window.localStorage.setItem("clanky.sidebarSectionCollapseState", JSON.stringify({
       workspaces: true,
       drafts: true,
-      loops: false,
+      tasks: false,
     }));
 
     const { getByRole } = renderWithUser(<App />);
@@ -1005,29 +1005,29 @@ describe("App shell", () => {
     });
 
     await waitFor(() => {
-      const persistedState = JSON.parse(window.localStorage.getItem("ralpher.sidebarSectionCollapseState") ?? "{}") as Record<string, boolean>;
+      const persistedState = JSON.parse(window.localStorage.getItem("clanky.sidebarSectionCollapseState") ?? "{}") as Record<string, boolean>;
       expect(persistedState["workspaces"]).toBe(true);
-      expect("loops" in persistedState).toBe(false);
+      expect("tasks" in persistedState).toBe(false);
       expect("drafts" in persistedState).toBe(false);
     });
   });
 
-  test("shows draft loops under workspace sections without reviving legacy draft buckets", async () => {
+  test("shows draft tasks under workspace sections without reviving legacy draft buckets", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
-    const draftLoop = createLoopWithStatus("draft", {
-      config: { id: "loop-draft", name: "Sprint Draft", workspaceId: workspace.id },
+    const draftTask = createTaskWithStatus("draft", {
+      config: { id: "task-draft", name: "Sprint Draft", workspaceId: workspace.id },
     });
-    const runningLoop = createLoopWithStatus("running", {
-      config: { id: "loop-running", name: "Shipping Loop", workspaceId: workspace.id },
+    const runningTask = createTaskWithStatus("running", {
+      config: { id: "task-running", name: "Shipping Task", workspaceId: workspace.id },
     });
-    setupDefaultApi({ workspaces: [workspace], loops: [draftLoop, runningLoop] });
+    setupDefaultApi({ workspaces: [workspace], tasks: [draftTask, runningTask] });
 
     const { getAllByText, getByRole, queryByText } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Collapse Workspaces section" })).toBeTruthy();
       expect(getAllByText("Sprint Draft").length).toBeGreaterThan(0);
-      expect(getAllByText("Shipping Loop").length).toBeGreaterThan(0);
+      expect(getAllByText("Shipping Task").length).toBeGreaterThan(0);
     });
 
     expect(queryByText("Drafts")).toBeNull();
@@ -1158,7 +1158,7 @@ describe("App shell", () => {
     const { getByLabelText, getByRole, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     await user.click(getByLabelText("Open settings"));
@@ -1176,11 +1176,11 @@ describe("App shell", () => {
       expect(getByRole("heading", { name: "Settings" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: /ralpher/i }));
+    await user.click(getByRole("button", { name: /clanky/i }));
 
     await waitFor(() => {
       expect(window.location.hash).toBe("#/");
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
   });
 
@@ -1231,7 +1231,7 @@ describe("App shell", () => {
     const { getByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     await act(() => {
@@ -1258,7 +1258,7 @@ describe("App shell", () => {
     const { getByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
     });
 
     await act(() => {

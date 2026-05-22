@@ -1,5 +1,5 @@
 /**
- * Git API endpoints for Ralph Loops Management System.
+ * Git API endpoints for Clanky Tasks Management System.
  * 
  * This module provides git-related endpoints for querying repository information.
  * All git operations use the deterministic CommandExecutor abstraction

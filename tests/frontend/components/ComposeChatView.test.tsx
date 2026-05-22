@@ -5,7 +5,7 @@ import type { Chat, CreateChatRequest } from "@/types";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createBranchInfo, createModelInfo, createWorkspace } from "../helpers/factories";
 
-const CHAT_MODEL_STORAGE_KEY = "ralpher.chatModelPreference";
+const CHAT_MODEL_STORAGE_KEY = "clanky.chatModelPreference";
 
 function createDashboardData(
   overrides?: Partial<UseDashboardDataResult>,
@@ -27,10 +27,10 @@ function createDashboardData(
     defaultBranch: "",
     appSettingsResetting: false,
     appSettingsKilling: false,
-    appSettingsPurgingTerminalLoops: false,
+    appSettingsPurgingTerminalTasks: false,
     resetAllSettings: mock(async () => false),
     killServer: mock(async () => false),
-    purgeTerminalLoops: mock(async () => null),
+    purgeTerminalTasks: mock(async () => null),
     handleWorkspaceChange: mock(() => {}),
     resetCreateModalState: mock(() => {}),
     ...overrides,
@@ -43,7 +43,7 @@ function createChat(overrides?: Partial<Chat>): Chat {
       id: "chat-1",
       name: "Repository pairing session",
       workspaceId: "workspace-1",
-      directory: "/workspaces/ralpher",
+      directory: "/workspaces/clanky",
       model: {
         providerID: "copilot",
         modelID: "gpt-5.4",
@@ -73,8 +73,8 @@ describe("ComposeChatView", () => {
   test("loads workspace data only once for equivalent rerenders", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
-      name: "Ralpher",
-      directory: "/workspaces/ralpher",
+      name: "Clanky",
+      directory: "/workspaces/clanky",
     });
     const handleWorkspaceChange = mock(() => {});
     const resetCreateModalState = mock(() => {});
@@ -122,7 +122,7 @@ describe("ComposeChatView", () => {
   test("preserves a user-selected branch across steady-state rerenders", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
-      directory: "/workspaces/ralpher",
+      directory: "/workspaces/clanky",
     });
     const handleWorkspaceChange = mock(() => {});
     const resetCreateModalState = mock(() => {});
@@ -202,7 +202,7 @@ describe("ComposeChatView", () => {
   test("keeps chat creation disabled while workspace data is still loading", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
-      directory: "/workspaces/ralpher",
+      directory: "/workspaces/clanky",
     });
     const { getByLabelText, getByRole, user } = renderWithUser(
       <ComposeChatView
@@ -249,7 +249,7 @@ describe("ComposeChatView", () => {
     );
     const workspace = createWorkspace({
       id: "workspace-1",
-      directory: "/workspaces/ralpher",
+      directory: "/workspaces/clanky",
     });
     const models = [
       createModelInfo({
@@ -305,7 +305,7 @@ describe("ComposeChatView", () => {
     );
     const workspace = createWorkspace({
       id: "workspace-1",
-      directory: "/workspaces/ralpher",
+      directory: "/workspaces/clanky",
     });
     const models = [
       createModelInfo({
@@ -345,7 +345,7 @@ describe("ComposeChatView", () => {
   test("persists the selected chat model locally after a successful creation", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
-      directory: "/workspaces/ralpher",
+      directory: "/workspaces/clanky",
     });
     const setLastModel = mock(() => {});
     const createChatRequest = mock(async (_request: CreateChatRequest) => createChat());
@@ -411,12 +411,12 @@ describe("ComposeChatView", () => {
   test("submits chat creation without a name so the API can generate one", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
-      directory: "/workspaces/ralpher",
+      directory: "/workspaces/clanky",
     });
     const createChatRequest = mock(async (_request: CreateChatRequest) => createChat({
       config: {
         ...createChat().config,
-        name: "Ralpher - 1",
+        name: "Clanky - 1",
       },
     }));
 
@@ -461,7 +461,7 @@ describe("ComposeChatView", () => {
   test("submits disabled auto-approval when the checkbox is unchecked", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
-      directory: "/workspaces/ralpher",
+      directory: "/workspaces/clanky",
     });
     const createChatRequest = mock(async (_request: CreateChatRequest) => createChat());
 

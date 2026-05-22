@@ -2,7 +2,7 @@
  * Shared image attachment types and limits.
  *
  * Attachments are passed from the browser to ACP as inline image data and may
- * be persisted with loop messages so refreshed log views can still render them.
+ * be persisted with task messages so refreshed log views can still render them.
  */
 
 export const MESSAGE_IMAGE_ATTACHMENT_LIMIT = 8;

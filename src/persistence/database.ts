@@ -1,5 +1,5 @@
 /**
- * SQLite database layer for Ralph Loops Management System.
+ * SQLite database layer for Clanky Tasks Management System.
  * Provides centralized database connection and schema management.
  * Uses Bun's native SQLite support.
  */
@@ -16,17 +16,17 @@ let db: Database | null = null;
 
 /**
  * Get the root data directory path.
- * Can be overridden via RALPHER_DATA_DIR environment variable.
+ * Can be overridden via CLANKY_DATA_DIR environment variable.
  */
 export function getDataDir(): string {
-  return process.env["RALPHER_DATA_DIR"] ?? "./data";
+  return process.env["CLANKY_DATA_DIR"] ?? "./data";
 }
 
 /**
  * Get the path to the SQLite database file.
  */
 export function getDatabasePath(): string {
-  return join(getDataDir(), "ralpher.db");
+  return join(getDataDir(), "clanky.db");
 }
 
 function getSshServerKeyStorePath(): string {
@@ -103,30 +103,13 @@ export async function initializeDatabase(): Promise<void> {
  * Create all database tables if they don't exist.
  * Uses a transaction to ensure atomicity of schema creation.
  *
- * This base schema is the frozen baseline after the latest clean-cut reset.
- * All legacy migrations (v1-v16, then v1-v13) have been folded into it.
- *
- * The current database schema = this baseline + any migrations in migrations/index.ts.
- *
- * New columns and tables should be added ONLY as migrations. The base schema
- * here should only be updated during future clean-cut resets that fold
- * accumulated migrations back in.
- *
- * Exception: the chats, passkey_credentials, auth_device_requests, and
- * auth_refresh_sessions tables, plus the workspaces and loops compatibility
- * repairs for devcontainer_subpath, auto_accept_plan, pull_request_monitoring,
- * automatic_pr_flow, fully_autonomous, fully_autonomous_pending, and
- * cheap_model,
- * intentionally remain here because older databases can already contain reused
- * schema_migrations version numbers from pre-reset eras. Recreating or
- * repairing these schema objects during baseline startup is the repair path
- * that keeps the app working even when newer migration IDs collide with legacy
- * history.
+ * This base schema is the Clanky reset baseline. Historical migrations and
+ * legacy compatibility repairs are intentionally not preserved.
  */
 function createTables(database: Database): void {
   // Wrap all schema creation in a transaction
   const createAllTables = database.transaction(() => {
-    // Workspaces table - groups loops by workspace/directory
+    // Workspaces table - groups tasks by workspace/directory
     database.run(`
       CREATE TABLE IF NOT EXISTS workspaces (
         id TEXT PRIMARY KEY,
@@ -144,11 +127,10 @@ function createTables(database: Database): void {
         provider TEXT
       )
     `);
-    ensureWorkspaceSchema(database);
 
-    // Loops table - stores both config and state
+    // Tasks table - stores both config and state
     database.run(`
-      CREATE TABLE IF NOT EXISTS loops (
+      CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         -- Config fields
         name TEXT NOT NULL,
@@ -164,12 +146,14 @@ function createTables(database: Database): void {
         activity_timeout_seconds INTEGER,
         stop_pattern TEXT NOT NULL,
         git_branch_prefix TEXT NOT NULL,
-        git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
+        git_commit_scope TEXT NOT NULL DEFAULT 'clanky',
         base_branch TEXT,
         clear_planning_folder INTEGER DEFAULT 0,
         plan_mode INTEGER DEFAULT 0,
-        mode TEXT DEFAULT 'loop',
+        auto_accept_plan INTEGER NOT NULL DEFAULT 0,
+        mode TEXT DEFAULT 'task',
         workspace_id TEXT REFERENCES workspaces(id),
+        cheap_model TEXT,
         -- State fields
         status TEXT NOT NULL DEFAULT 'idle',
         current_iteration INTEGER NOT NULL DEFAULT 0,
@@ -205,6 +189,10 @@ function createTables(database: Database): void {
         plan_is_ready INTEGER DEFAULT 0,
         -- Review mode state
         review_mode TEXT,
+        pull_request_monitoring TEXT,
+        automatic_pr_flow TEXT,
+        fully_autonomous INTEGER NOT NULL DEFAULT 0,
+        fully_autonomous_pending INTEGER NOT NULL DEFAULT 0,
         -- Worktree setting
         use_worktree INTEGER NOT NULL DEFAULT 1,
         -- Plan question persistence
@@ -212,18 +200,15 @@ function createTables(database: Database): void {
         pending_plan_question TEXT
       )
     `);
-    ensureLoopSchema(database);
 
     // Chats table - stores long-lived ACP-backed chat sessions.
-    // Keep this in the base schema so startup repairs legacy databases whose
-    // schema_migrations versions collide with earlier clean-cut resets.
     database.run(`
       CREATE TABLE IF NOT EXISTS chats (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
         scope TEXT NOT NULL DEFAULT 'workspace',
-        loop_id TEXT,
+        task_id TEXT,
         directory TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -256,19 +241,18 @@ function createTables(database: Database): void {
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       )
     `);
-    ensureChatSchema(database);
 
-    // Sessions table - maps loops to backend sessions
-    // Uses composite primary key (backend_name, loop_id) since id was unused
+    // Sessions table - maps tasks to backend sessions
+    // Uses composite primary key (backend_name, task_id) since id was unused
     // and this combination is already unique
     database.run(`
       CREATE TABLE IF NOT EXISTS sessions (
         backend_name TEXT NOT NULL,
-        loop_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
         session_id TEXT NOT NULL,
         server_url TEXT,
         created_at TEXT NOT NULL,
-        PRIMARY KEY (backend_name, loop_id)
+        PRIMARY KEY (backend_name, task_id)
       )
     `);
 
@@ -281,8 +265,6 @@ function createTables(database: Database): void {
     `);
 
     // Passkey credentials table - stores the app-wide WebAuthn credential.
-    // Keep this in the base schema so startup repairs legacy databases whose
-    // schema_migrations versions may already include the passkey migration ID.
     database.run(`
       CREATE TABLE IF NOT EXISTS passkey_credentials (
         id TEXT PRIMARY KEY,
@@ -300,8 +282,6 @@ function createTables(database: Database): void {
     `);
 
     // Device authorization requests - stores RFC 8628-style device flow state.
-    // Keep this in the base schema so startup repairs legacy databases whose
-    // schema_migrations versions may already include later auth migration IDs.
     database.run(`
       CREATE TABLE IF NOT EXISTS auth_device_requests (
         id TEXT PRIMARY KEY,
@@ -322,8 +302,6 @@ function createTables(database: Database): void {
       )
     `);
     // Refresh sessions - stores revocable rotating refresh-token chains.
-    // Keep this in the base schema so startup repairs legacy databases whose
-    // schema_migrations versions may already include later auth migration IDs.
     database.run(`
       CREATE TABLE IF NOT EXISTS auth_refresh_sessions (
         id TEXT PRIMARY KEY,
@@ -343,17 +321,17 @@ function createTables(database: Database): void {
       )
     `);
 
-    // Review comments table - stores reviewer feedback for loops
+    // Review comments table - stores reviewer feedback for tasks
     database.run(`
       CREATE TABLE IF NOT EXISTS review_comments (
         id TEXT PRIMARY KEY,
-        loop_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
         review_cycle INTEGER NOT NULL,
         comment_text TEXT NOT NULL,
         created_at TEXT NOT NULL,
         status TEXT DEFAULT 'pending',
         addressed_at TEXT,
-        FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
       )
     `);
 
@@ -370,8 +348,9 @@ function createTables(database: Database): void {
         status TEXT NOT NULL DEFAULT 'ready',
         last_connected_at TEXT,
         error_message TEXT,
-        loop_id TEXT,
+        task_id TEXT,
         connection_mode TEXT NOT NULL DEFAULT 'dtach',
+        use_tmux INTEGER NOT NULL DEFAULT 0,
         runtime_connection_mode TEXT,
         notice_message TEXT,
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
@@ -404,6 +383,7 @@ function createTables(database: Database): void {
         last_connected_at TEXT,
         error_message TEXT,
         connection_mode TEXT NOT NULL DEFAULT 'dtach',
+        use_tmux INTEGER NOT NULL DEFAULT 0,
         runtime_connection_mode TEXT,
         notice_message TEXT,
         FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE
@@ -414,7 +394,7 @@ function createTables(database: Database): void {
     database.run(`
       CREATE TABLE IF NOT EXISTS forwarded_ports (
         id TEXT PRIMARY KEY,
-        loop_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
         ssh_session_id TEXT,
         remote_host TEXT NOT NULL,
@@ -426,15 +406,15 @@ function createTables(database: Database): void {
         pid INTEGER,
         connected_at TEXT,
         error_message TEXT,
-        FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
         FOREIGN KEY (ssh_session_id) REFERENCES ssh_sessions(id) ON DELETE CASCADE
       )
     `);
 
-    // Create index for faster loop listing
+    // Create index for faster task listing
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_loops_created_at ON loops(created_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC)
     `);
 
     // Create composite index for workspace lookups by directory and server_fingerprint.
@@ -449,17 +429,17 @@ function createTables(database: Database): void {
       DROP INDEX IF EXISTS idx_workspaces_directory
     `);
 
-    // Create index for loops by workspace
+    // Create index for tasks by workspace
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_loops_workspace_id ON loops(workspace_id)
+      CREATE INDEX IF NOT EXISTS idx_tasks_workspace_id ON tasks(workspace_id)
     `);
 
     // Create indexes for review comments
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_review_comments_loop_id ON review_comments(loop_id)
+      CREATE INDEX IF NOT EXISTS idx_review_comments_task_id ON review_comments(task_id)
     `);
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_review_comments_loop_cycle ON review_comments(loop_id, review_cycle)
+      CREATE INDEX IF NOT EXISTS idx_review_comments_task_cycle ON review_comments(task_id, review_cycle)
     `);
 
     // Chat indexes
@@ -471,9 +451,9 @@ function createTables(database: Database): void {
       ON chats(workspace_id, created_at DESC)
     `);
     database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_loop_id_unique
-      ON chats(loop_id)
-      WHERE loop_id IS NOT NULL
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_task_id_unique
+      ON chats(task_id)
+      WHERE task_id IS NOT NULL
     `);
     database.run(`
       CREATE INDEX IF NOT EXISTS idx_chats_directory_workspace_status
@@ -496,9 +476,9 @@ function createTables(database: Database): void {
       ON ssh_sessions(created_at DESC)
     `);
     database.run(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_ssh_sessions_loop_id_unique
-      ON ssh_sessions(loop_id)
-      WHERE loop_id IS NOT NULL
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ssh_sessions_task_id_unique
+      ON ssh_sessions(task_id)
+      WHERE task_id IS NOT NULL
     `);
 
     // SSH servers indexes
@@ -519,8 +499,8 @@ function createTables(database: Database): void {
 
     // Forwarded ports indexes
     database.run(`
-      CREATE INDEX IF NOT EXISTS idx_forwarded_ports_loop_id
-      ON forwarded_ports(loop_id, created_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_forwarded_ports_task_id
+      ON forwarded_ports(task_id, created_at DESC)
     `);
     database.run(`
       CREATE INDEX IF NOT EXISTS idx_forwarded_ports_ssh_session_id
@@ -566,63 +546,11 @@ function createTables(database: Database): void {
       ON auth_refresh_sessions(subject, created_at DESC)
     `);
 
-    // Note: No index needed for sessions - composite primary key (backend_name, loop_id)
+    // Note: No index needed for sessions - composite primary key (backend_name, task_id)
     // already provides efficient lookup
   });
   
   createAllTables();
-}
-
-function ensureWorkspaceSchema(database: Database): void {
-  const columns = database.query("PRAGMA table_info(workspaces)").all() as Array<{ name: string }>;
-  if (columns.some((column) => column.name === "devcontainer_subpath")) {
-    return;
-  }
-  database.run("ALTER TABLE workspaces ADD COLUMN devcontainer_subpath TEXT");
-}
-
-function ensureLoopSchema(database: Database): void {
-  const columns = database.query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === "auto_accept_plan")) {
-    database.run("ALTER TABLE loops ADD COLUMN auto_accept_plan INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!columns.some((column) => column.name === "pull_request_monitoring")) {
-    database.run("ALTER TABLE loops ADD COLUMN pull_request_monitoring TEXT");
-  }
-  if (!columns.some((column) => column.name === "automatic_pr_flow")) {
-    database.run("ALTER TABLE loops ADD COLUMN automatic_pr_flow TEXT");
-  }
-  if (!columns.some((column) => column.name === "fully_autonomous")) {
-    database.run("ALTER TABLE loops ADD COLUMN fully_autonomous INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!columns.some((column) => column.name === "fully_autonomous_pending")) {
-    database.run("ALTER TABLE loops ADD COLUMN fully_autonomous_pending INTEGER NOT NULL DEFAULT 0");
-  }
-  if (!columns.some((column) => column.name === "cheap_model")) {
-    database.run("ALTER TABLE loops ADD COLUMN cheap_model TEXT");
-  }
-  if (!columns.some((column) => column.name === "pending_prompt_mode")) {
-    database.run("ALTER TABLE loops ADD COLUMN pending_prompt_mode TEXT");
-  }
-}
-
-function ensureChatSchema(database: Database): void {
-  const columns = database.query("PRAGMA table_info(chats)").all() as Array<{ name: string }>;
-  if (!columns.some((column) => column.name === "scope")) {
-    database.run("ALTER TABLE chats ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace'");
-  }
-  if (!columns.some((column) => column.name === "loop_id")) {
-    database.run("ALTER TABLE chats ADD COLUMN loop_id TEXT");
-  }
-  if (!columns.some((column) => column.name === "auto_approve_permissions")) {
-    database.run("ALTER TABLE chats ADD COLUMN auto_approve_permissions INTEGER NOT NULL DEFAULT 1");
-  }
-  if (!columns.some((column) => column.name === "pending_permission_requests")) {
-    database.run("ALTER TABLE chats ADD COLUMN pending_permission_requests TEXT");
-  }
-  if (!columns.some((column) => column.name === "skip_base_branch_sync")) {
-    database.run("ALTER TABLE chats ADD COLUMN skip_base_branch_sync INTEGER NOT NULL DEFAULT 0");
-  }
 }
 
 /**
@@ -658,8 +586,8 @@ export function resetDatabase(): void {
   log.warn("Resetting database - dropping all tables");
   
   // Wrap DROP operations in a transaction.
-  // FK dependency order: review_comments → loops/chats → workspaces.
-  // review_comments references loops(id), and loops/chats reference
+  // FK dependency order: review_comments → tasks/chats → workspaces.
+  // review_comments references tasks(id), and tasks/chats reference
   // workspaces(id), so we must drop in reverse dependency order to satisfy
   // FK constraints.
   const dropAllTables = db.transaction(() => {
@@ -667,7 +595,7 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS review_comments");
     db!.run("DROP TABLE IF EXISTS ssh_server_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_sessions");
-    db!.run("DROP TABLE IF EXISTS loops");
+    db!.run("DROP TABLE IF EXISTS tasks");
     db!.run("DROP TABLE IF EXISTS chats");
     db!.run("DROP TABLE IF EXISTS ssh_servers");
     db!.run("DROP TABLE IF EXISTS workspaces");

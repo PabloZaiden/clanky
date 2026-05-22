@@ -1183,7 +1183,7 @@ describe("WorkspaceFilesView", () => {
         },
       },
     });
-    const longSessionName = "Show only workspace names in loop creation worktrees terminal session";
+    const longSessionName = "Show only workspace names in task creation worktrees terminal session";
     const session = createSshSession({
       config: {
         id: "session-long-name",

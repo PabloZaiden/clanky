@@ -1,7 +1,7 @@
 /**
  * E2E Scenario: Draft Workflow
  *
- * Tests the shell-native draft workflow: listing draft loops in the sidebar, opening the inline editor,
+ * Tests the shell-native draft workflow: listing draft tasks in the sidebar, opening the inline editor,
  * updating, starting, deleting, and creating a draft.
  */
 
@@ -10,7 +10,7 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor } from "../helpers/render";
 import {
-  createLoopWithStatus,
+  createTaskWithStatus,
   createWorkspace,
   createModelInfo,
 } from "../helpers/factories";
@@ -35,8 +35,8 @@ function connectedModel() {
   });
 }
 
-function draftLoop(id = "draft-1", name = "My Draft", planMode = false) {
-  return createLoopWithStatus("draft", {
+function draftTask(id = "draft-1", name = "My Draft", planMode = false) {
+  return createTaskWithStatus("draft", {
     config: {
       id,
       name,
@@ -65,7 +65,7 @@ function setupBaseApi() {
   }));
   api.get("/api/git/default-branch", () => ({ defaultBranch: "main" }));
   api.get("/api/check-planning-dir", () => ({ warning: null }));
-  api.get("/api/loops/:id/port-forwards", () => []);
+  api.get("/api/tasks/:id/port-forwards", () => []);
 }
 
 beforeEach(() => {
@@ -85,7 +85,7 @@ afterEach(() => {
 describe("draft workflow scenario", () => {
   test("clicking a draft opens the inline draft editor", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => [draftLoop()]);
+    api.get("/api/tasks", () => [draftTask()]);
     api.get("/api/workspaces", () => [WORKSPACE]);
 
     const { getByRole, user } = renderWithUser(<App />);
@@ -103,15 +103,15 @@ describe("draft workflow scenario", () => {
     });
   });
 
-  test("starting a draft loop exits the draft editor immediately", async () => {
+  test("starting a draft task exits the draft editor immediately", async () => {
     setupBaseApi();
-    const draft = draftLoop();
-    api.get("/api/loops", () => [draft]);
+    const draft = draftTask();
+    api.get("/api/tasks", () => [draft]);
     api.get("/api/workspaces", () => [WORKSPACE]);
-    api.put("/api/loops/:id", () => draft);
-    api.post("/api/loops/:id/draft/start", () => ({ success: true }));
+    api.put("/api/tasks/:id", () => draft);
+    api.post("/api/tasks/:id/draft/start", () => ({ success: true }));
 
-    const { getByRole, user } = renderWithUser(<App />, { route: "#/loop/draft-1" });
+    const { getByRole, user } = renderWithUser(<App />, { route: "#/task/draft-1" });
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Start" })).toBeTruthy();
@@ -138,18 +138,18 @@ describe("draft workflow scenario", () => {
     });
 
     await waitFor(() => {
-      const calls = api.calls("/api/loops/:id/draft/start", "POST");
+      const calls = api.calls("/api/tasks/:id/draft/start", "POST");
       expect(calls.length).toBeGreaterThan(0);
     });
   });
 
   test("inline draft editor can delete an existing draft", async () => {
     setupBaseApi();
-    api.get("/api/loops", () => [draftLoop()]);
+    api.get("/api/tasks", () => [draftTask()]);
     api.get("/api/workspaces", () => [WORKSPACE]);
-    api.post("/api/loops/:id/purge", () => ({ success: true }));
+    api.post("/api/tasks/:id/purge", () => ({ success: true }));
 
-    const { getByRole, getByText, user } = renderWithUser(<App />, { route: "#/loop/draft-1" });
+    const { getByRole, getByText, user } = renderWithUser(<App />, { route: "#/task/draft-1" });
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Edit My Draft" })).toBeTruthy();
@@ -169,28 +169,28 @@ describe("draft workflow scenario", () => {
     await user.click(confirmButton!);
 
     await waitFor(() => {
-      const calls = api.calls("/api/loops/:id/purge", "POST");
+      const calls = api.calls("/api/tasks/:id/purge", "POST");
       expect(calls.length).toBeGreaterThan(0);
     });
   });
 
-  test("save as draft from the shell create loop form", async () => {
+  test("save as draft from the shell create task form", async () => {
     setupBaseApi();
-    let loops = [] as ReturnType<typeof draftLoop>[];
-    api.get("/api/loops", () => loops);
+    let tasks = [] as ReturnType<typeof draftTask>[];
+    api.get("/api/tasks", () => tasks);
     api.get("/api/workspaces", () => [WORKSPACE]);
-    api.post("/api/loops", () => {
-      const loop = draftLoop("new-draft", "New Draft");
-      loops = [loop];
-      return loop;
+    api.post("/api/tasks", () => {
+      const task = draftTask("new-draft", "New Draft");
+      tasks = [task];
+      return task;
     });
     api.put("/api/preferences/last-model", () => ({ success: true }));
     api.put("/api/preferences/last-directory", () => ({ success: true }));
 
-    const { getByRole, getByLabelText, user } = renderWithUser(<App />, { route: "#/new/loop" });
+    const { getByRole, getByLabelText, user } = renderWithUser(<App />, { route: "#/new/task" });
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Start a new loop" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Start a new task" })).toBeTruthy();
     });
 
     await waitFor(() => {
@@ -209,12 +209,12 @@ describe("draft workflow scenario", () => {
     await user.click(getByRole("button", { name: "Save as Draft" }));
 
     await waitFor(() => {
-      const calls = api.calls("/api/loops", "POST");
+      const calls = api.calls("/api/tasks", "POST");
       expect(calls.length).toBeGreaterThan(0);
       const body = calls[0]!.body as Record<string, unknown>;
       expect(body["draft"]).toBe(true);
       expect(body["name"]).toBe("New Draft");
-      expect(window.location.hash).toBe("#/loop/new-draft");
+      expect(window.location.hash).toBe("#/task/new-draft");
       expect(getByRole("heading", { name: "Edit New Draft" })).toBeTruthy();
     });
   });

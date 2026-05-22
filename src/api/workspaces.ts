@@ -1,5 +1,5 @@
 /**
- * Workspace API endpoints for Ralph Loops Management System.
+ * Workspace API endpoints for Clanky Tasks Management System.
  *
  * @module api/workspaces
  */

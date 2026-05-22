@@ -148,8 +148,8 @@ describe("Standalone SSH servers API integration", () => {
   let executorFactory: () => TestCommandExecutor;
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-servers-api-"));
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-servers-api-"));
+    process.env["CLANKY_DATA_DIR"] = dataDir;
     await ensureDataDirectories();
     executorFactory = () => new SshServerApiExecutor();
     sshServerManager.setExecutorFactoryForTesting(() => executorFactory());
@@ -166,7 +166,7 @@ describe("Standalone SSH servers API integration", () => {
   afterAll(async () => {
     server.stop();
     sshServerManager.setExecutorFactoryForTesting(null);
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
   });
 

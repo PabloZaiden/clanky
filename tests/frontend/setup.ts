@@ -102,7 +102,7 @@ class DefaultMockWebSocket extends EventTarget {
 globalThis.WebSocket = DefaultMockWebSocket as unknown as typeof WebSocket;
 window.WebSocket = DefaultMockWebSocket as unknown as typeof WebSocket;
 
-// Set a proper base URL so relative fetch URLs (e.g. "/api/loops") work correctly.
+// Set a proper base URL so relative fetch URLs (e.g. "/api/tasks") work correctly.
 // Without this, document.location is "about:blank" and new Request("/api/...") throws.
 if (window.location.href === "about:blank") {
   window.location.href = "http://localhost:3000/";

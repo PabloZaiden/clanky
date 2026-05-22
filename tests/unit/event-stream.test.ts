@@ -213,7 +213,7 @@ describe("createEventStream", () => {
       end();
     });
 
-    test("full producer/consumer loop", async () => {
+    test("full producer/consumer task", async () => {
       const { stream, push, end } = createEventStream<number>();
 
       // Producer

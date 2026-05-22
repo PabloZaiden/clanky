@@ -1,6 +1,6 @@
 /**
- * Loop engine for Ralph Loops Management System.
- * Handles the execution of Ralph Loop iterations.
+ * Task engine for Clanky Tasks Management System.
+ * Handles the execution of Clanky Task iterations.
  * Each iteration sends a prompt to the AI agent and checks for completion.
  *
  * Types and helpers are organized into:
@@ -15,16 +15,16 @@
 
 import type {
   FollowUpPromptMode,
-  LoopConfig,
-  LoopState,
-  Loop,
+  TaskConfig,
+  TaskState,
+  Task,
   IterationSummary,
-  LoopLogEntry,
+  TaskLogEntry,
   ModelConfig,
-} from "../../types/loop";
-import { DEFAULT_LOOP_CONFIG } from "../../types/loop";
+} from "../../types/task";
+import { DEFAULT_TASK_CONFIG } from "../../types/task";
 import type {
-  LoopEvent,
+  TaskEvent,
   MessageData,
   ToolCallData,
   LogLevel,
@@ -37,62 +37,62 @@ import type {
 } from "../../backends/types";
 import { backendManager } from "../backend-manager";
 import type { GitService } from "../git-service";
-import { SimpleEventEmitter, loopEventEmitter } from "../event-emitter";
+import { SimpleEventEmitter, taskEventEmitter } from "../event-emitter";
 import { log } from "../logger";
 import { markCommentsAsAddressed } from "../../persistence/review-comments";
-import { assertValidTransition } from "../loop-state-machine";
+import { assertValidTransition } from "../task-state-machine";
 import { ensurePlanningDirectory } from "../planning-directory";
 import { getPlanFilePath } from "../../lib/planning-files";
 
 import {
-  type LoopBackend,
-  type LoopEngineOptions,
+  type TaskBackend,
+  type TaskEngineOptions,
   type IterationResult,
   type IterationContext,
 } from "./engine-types";
 import { resolveToolCallImagePreview, getImageViewToolPath } from "../tool-call-image-preview";
 import { upsertToolCallExtra } from "../../types/tool-call";
 import { StopPatternDetector, nextWithTimeout } from "./engine-helpers";
-import { logToConsole, persistLoopLog, persistLoopMessage, persistLoopToolCall } from "./engine-events";
-import { buildLoopPrompt, evaluateLoopOutcome, type PromptBuildContext } from "./engine-prompt";
+import { logToConsole, persistTaskLog, persistTaskMessage, persistTaskToolCall } from "./engine-events";
+import { buildTaskPrompt, evaluateTaskOutcome, type PromptBuildContext } from "./engine-prompt";
 import {
-  clearLoopPlanningFolder,
-  setupLoopGitBranch,
-  commitLoopIteration,
+  clearTaskPlanningFolder,
+  setupTaskGitBranch,
+  commitTaskIteration,
   type GitOperationContext,
   type GitCommitContext,
 } from "./engine-git";
 import {
-  setupLoopSession,
-  reconnectLoopSession,
+  setupTaskSession,
+  reconnectTaskSession,
   recreateSessionAfterLoss,
   handleModelChange,
   isSessionNotFoundError,
   resetIterationContextForRetry,
   type SessionOperationContext,
 } from "./engine-session";
-import { processLoopAgentEvent, handleQuestionAsked as handleLoopQuestionAsked, type ToolProcessingContext } from "./engine-tools";
+import { processTaskAgentEvent, handleQuestionAsked as handleTaskQuestionAsked, type ToolProcessingContext } from "./engine-tools";
 import type { EventStream } from "../../utils/event-stream";
 
-export class LoopEngine {
-  private loop: Loop;
-  private backend: LoopBackend;
+export class TaskEngine {
+  private task: Task;
+  private backend: TaskBackend;
   private git: GitService;
-  private emitter: SimpleEventEmitter<LoopEvent>;
+  private emitter: SimpleEventEmitter<TaskEvent>;
   private stopDetector: StopPatternDetector;
   private aborted = false;
   private sessionId: string | null = null;
-  private onPersistState?: (state: LoopState) => Promise<void>;
+  private onPersistState?: (state: TaskState) => Promise<void>;
   private onPlanReady?: () => Promise<void>;
   private onCompleted?: () => Promise<void>;
-  /** Guard to prevent concurrent runLoop() executions */
-  private isLoopRunning = false;
+  /** Guard to prevent concurrent runTask() executions */
+  private isTaskRunning = false;
   /** Skip git branch setup (for review cycles) */
   private skipGitSetup: boolean;
   /**
    * Flag to indicate that a pending prompt/model was injected and the current
    * iteration should be aborted to immediately start a new one with the injected values.
-   * This is different from `aborted` which stops the loop entirely.
+   * This is different from `aborted` which stops the task entirely.
    */
   private injectionPending = false;
   private initialPromptAttachments: MessageImageAttachment[];
@@ -100,12 +100,12 @@ export class LoopEngine {
   private currentEventStream: EventStream<AgentEvent> | null = null;
   private activeSessionInterrupt: Promise<void> | null = null;
 
-  constructor(options: LoopEngineOptions) {
-    this.loop = options.loop;
+  constructor(options: TaskEngineOptions) {
+    this.task = options.task;
     this.backend = options.backend;
     this.git = options.gitService;
-    this.emitter = options.eventEmitter ?? loopEventEmitter;
-    this.stopDetector = new StopPatternDetector(options.loop.config.stopPattern);
+    this.emitter = options.eventEmitter ?? taskEventEmitter;
+    this.stopDetector = new StopPatternDetector(options.task.config.stopPattern);
     this.onPersistState = options.onPersistState;
     this.onPlanReady = options.onPlanReady;
     this.onCompleted = options.onCompleted;
@@ -114,21 +114,21 @@ export class LoopEngine {
   }
 
   /**
-   * Get the current loop state.
+   * Get the current task state.
    */
-  get state(): LoopState {
-    return this.loop.state;
+  get state(): TaskState {
+    return this.task.state;
   }
 
   /**
-   * Get the loop configuration.
+   * Get the task configuration.
    */
-  get config(): LoopConfig {
-    return this.loop.config;
+  get config(): TaskConfig {
+    return this.task.config;
   }
 
   /**
-   * Get the effective working directory for this loop.
+   * Get the effective working directory for this task.
    * Returns the worktree path when worktrees are enabled, otherwise the
    * repository directory itself.
    */
@@ -136,11 +136,11 @@ export class LoopEngine {
     if (!this.config.useWorktree) {
       return this.config.directory;
     }
-    const worktreePath = this.loop.state.git?.worktreePath;
+    const worktreePath = this.task.state.git?.worktreePath;
     if (!worktreePath) {
       throw new Error(
-        `Loop ${this.config.id} has no worktree path. ` +
-        `This loop is configured to use a dedicated worktree. ` +
+        `Task ${this.config.id} has no worktree path. ` +
+        `This task is configured to use a dedicated worktree. ` +
         `This is a bug -- workingDirectory was accessed before setupGitBranch() set the worktree path.`
       );
     }
@@ -154,7 +154,7 @@ export class LoopEngine {
   setPendingPrompt(
     prompt: string,
     attachments: MessageImageAttachment[] = [],
-    promptMode: FollowUpPromptMode = "loop_context",
+    promptMode: FollowUpPromptMode = "task_context",
   ): void {
     this.updateState({ pendingPrompt: prompt, pendingPromptMode: promptMode });
     this.pendingPromptAttachments = [...attachments];
@@ -176,8 +176,8 @@ export class LoopEngine {
     this.updateState({ pendingModel: model });
     // Emit event for UI update
     this.emitter.emit({
-      type: "loop.pending.updated",
-      loopId: this.loop.config.id,
+      type: "task.pending.updated",
+      taskId: this.task.config.id,
       pendingModel: model,
       timestamp: createTimestamp(),
     });
@@ -190,8 +190,8 @@ export class LoopEngine {
     this.updateState({ pendingModel: undefined });
     // Emit event for UI update
     this.emitter.emit({
-      type: "loop.pending.updated",
-      loopId: this.loop.config.id,
+      type: "task.pending.updated",
+      taskId: this.task.config.id,
       pendingModel: undefined,
       timestamp: createTimestamp(),
     });
@@ -205,8 +205,8 @@ export class LoopEngine {
     this.pendingPromptAttachments = [];
     // Emit event for UI update
     this.emitter.emit({
-      type: "loop.pending.updated",
-      loopId: this.loop.config.id,
+      type: "task.pending.updated",
+      taskId: this.task.config.id,
       pendingPrompt: undefined,
       pendingModel: undefined,
       timestamp: createTimestamp(),
@@ -215,7 +215,7 @@ export class LoopEngine {
 
   /**
    * Inject pending prompt and/or model immediately.
-   * Running loops abort the current iteration so the replacement values are
+   * Running tasks abort the current iteration so the replacement values are
    * applied on the next iteration without resetting the conversation history.
    *
    * The session is preserved (conversation history maintained), only the current
@@ -230,7 +230,7 @@ export class LoopEngine {
   }): Promise<void> {
     // Set the pending values first
     if (options.message !== undefined) {
-      this.updateState({ pendingPrompt: options.message, pendingPromptMode: "loop_context" });
+      this.updateState({ pendingPrompt: options.message, pendingPromptMode: "task_context" });
       this.pendingPromptAttachments = [...(options.attachments ?? [])];
     } else if (options.attachments) {
       this.pendingPromptAttachments = [...options.attachments];
@@ -241,16 +241,16 @@ export class LoopEngine {
 
     // Emit event for UI update
     this.emitter.emit({
-      type: "loop.pending.updated",
-      loopId: this.loop.config.id,
+      type: "task.pending.updated",
+      taskId: this.task.config.id,
       pendingPrompt: options.message,
       pendingModel: options.model,
       timestamp: createTimestamp(),
     });
 
-    // If the loop is not actively running an iteration, no need to abort
-    if (!this.isLoopRunning) {
-      this.emitLog("debug", "Pending values set, loop not actively running - will apply on next iteration");
+    // If the task is not actively running an iteration, no need to abort
+    if (!this.isTaskRunning) {
+      this.emitLog("debug", "Pending values set, task not actively running - will apply on next iteration");
       return;
     }
 
@@ -343,41 +343,41 @@ export class LoopEngine {
   }
 
   /**
-   * Wait for any ongoing loop iteration to complete.
+   * Wait for any ongoing task iteration to complete.
    * Used to ensure state modifications happen between iterations.
    */
-  async waitForLoopIdle(timeoutMs = 30000): Promise<void> {
+  async waitForTaskIdle(timeoutMs = 30000): Promise<void> {
     const startTime = Date.now();
-    while (this.isLoopRunning) {
+    while (this.isTaskRunning) {
       if (Date.now() - startTime > timeoutMs) {
-        throw new Error(`Timed out waiting for loop to become idle after ${timeoutMs}ms`);
+        throw new Error(`Timed out waiting for task to become idle after ${timeoutMs}ms`);
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
 
   /**
-   * Start the loop execution.
+   * Start the task execution.
    * This sets up the git branch and backend session.
    */
   async start(): Promise<void> {
     // Allow starting from idle, stopped, planning (for plan mode), or resolving_conflicts (for conflict resolution)
-    if (this.loop.state.status !== "idle" && this.loop.state.status !== "stopped" && this.loop.state.status !== "planning" && this.loop.state.status !== "resolving_conflicts") {
-      throw new Error(`Cannot start loop in status: ${this.loop.state.status}`);
+    if (this.task.state.status !== "idle" && this.task.state.status !== "stopped" && this.task.state.status !== "planning" && this.task.state.status !== "resolving_conflicts") {
+      throw new Error(`Cannot start task in status: ${this.task.state.status}`);
     }
 
-    this.emitLog("info", "Starting loop execution", { loopName: this.config.name });
+    this.emitLog("info", "Starting task execution", { taskName: this.config.name });
 
     this.resetRestartFlags();
 
     // Only update status if not in plan mode (preserve "planning" status)
-    const isInPlanMode = this.loop.state.status === "planning";
+    const isInPlanMode = this.task.state.status === "planning";
     this.updateState({
       status: isInPlanMode ? "planning" : "starting",
       // Preserve existing startedAt (e.g., set by startPlanMode, or from a previous run
       // during jumpstart/review). Only set if not already present, so the timestamp
       // used for branch naming stays consistent with the persisted startedAt.
-      startedAt: this.loop.state.startedAt ?? createTimestamp(),
+      startedAt: this.task.state.startedAt ?? createTimestamp(),
       currentIteration: 0,
       recentIterations: [],
       error: undefined,
@@ -389,9 +389,9 @@ export class LoopEngine {
       // Skip git setup for review cycles - branch is already set up
       if (!isInPlanMode && !this.skipGitSetup) {
         this.emitLog("info", "Setting up git branch...");
-        log.debug("[LoopEngine] Starting setupGitBranch...");
+        log.debug("[TaskEngine] Starting setupGitBranch...");
         await this.setupGitBranch();
-        log.debug("[LoopEngine] setupGitBranch completed successfully");
+        log.debug("[TaskEngine] setupGitBranch completed successfully");
       } else if (this.skipGitSetup) {
         this.emitLog("info", "Skipping git branch setup (review cycle)");
       }
@@ -399,56 +399,56 @@ export class LoopEngine {
       const planningExecutor = await backendManager.getCommandExecutorAsync(this.config.workspaceId, this.workingDirectory);
       await ensurePlanningDirectory(planningExecutor, this.workingDirectory);
 
-      // Clear .ralph-planning folder if requested (after branch setup, so deletions are on the new branch)
+      // Clear .clanky-planning folder if requested (after branch setup, so deletions are on the new branch)
       // NEVER clear if plan mode already cleared it
-      if (this.loop.state.planMode?.planningFolderCleared) {
-        this.emitLog("info", "Skipping .ralph-planning folder clear - already cleared during plan mode");
+      if (this.task.state.planMode?.planningFolderCleared) {
+        this.emitLog("info", "Skipping .clanky-planning folder clear - already cleared during plan mode");
       } else if (this.config.clearPlanningFolder) {
-        this.emitLog("info", "Clearing .ralph-planning folder...");
+        this.emitLog("info", "Clearing .clanky-planning folder...");
         await this.clearPlanningFolder();
       }
 
       // Create backend session
       this.emitLog("info", "Connecting to AI backend...");
-      log.debug("[LoopEngine] Starting setupSession...");
+      log.debug("[TaskEngine] Starting setupSession...");
       await this.setupSession();
-      log.debug("[LoopEngine] setupSession completed successfully");
+      log.debug("[TaskEngine] setupSession completed successfully");
 
       // Emit started event (skip in plan mode - will emit when plan is accepted)
       if (!isInPlanMode) {
-        log.debug("[LoopEngine] About to emit loop.started event");
+        log.debug("[TaskEngine] About to emit task.started event");
         this.emit({
-          type: "loop.started",
-          loopId: this.config.id,
+          type: "task.started",
+          taskId: this.config.id,
           iteration: 0,
           timestamp: createTimestamp(),
         });
-        log.debug("[LoopEngine] loop.started event emitted");
+        log.debug("[TaskEngine] task.started event emitted");
       }
 
-      log.debug("[LoopEngine] About to emit 'Loop started successfully' log");
-      this.emitLog("info", "Loop started successfully, beginning iterations");
-      log.debug("[LoopEngine] 'Loop started successfully' log emitted");
+      log.debug("[TaskEngine] About to emit 'Task started successfully' log");
+      this.emitLog("info", "Task started successfully, beginning iterations");
+      log.debug("[TaskEngine] 'Task started successfully' log emitted");
 
-      // Start the iteration loop
-      log.debug("[LoopEngine] About to call runLoop");
-      await this.runLoop();
-      log.debug("[LoopEngine] runLoop completed");
+      // Start the iteration task
+      log.debug("[TaskEngine] About to call runTask");
+      await this.runTask();
+      log.debug("[TaskEngine] runTask completed");
     } catch (error) {
-      this.emitLog("error", `Failed to start loop: ${String(error)}`);
+      this.emitLog("error", `Failed to start task: ${String(error)}`);
       this.handleError(error);
     }
   }
 
   /**
-   * Stop the loop execution.
+   * Stop the task execution.
    */
   async stop(reason = "User requested stop"): Promise<void> {
-    this.emitLog("info", `Stopping loop: ${reason}`);
+    this.emitLog("info", `Stopping task: ${reason}`);
     this.aborted = true;
 
     // Clear the persistence callback to prevent stale async operations
-    // from overwriting state after the loop is stopped/deleted
+    // from overwriting state after the task is stopped/deleted
     this.onPersistState = undefined;
 
     await this.interruptActiveSession({
@@ -457,7 +457,7 @@ export class LoopEngine {
       forceDisconnect: true,
       markAborted: true,
       disconnectMessage: "Disconnecting the backend so the active turn stops immediately",
-      disconnectWarnMessage: "Failed to disconnect the backend while stopping the loop",
+      disconnectWarnMessage: "Failed to disconnect the backend while stopping the task",
     });
 
     this.updateState({
@@ -466,19 +466,19 @@ export class LoopEngine {
     });
 
     this.emit({
-      type: "loop.stopped",
-      loopId: this.config.id,
+      type: "task.stopped",
+      taskId: this.config.id,
       reason,
       timestamp: createTimestamp(),
     });
 
-    this.emitLog("info", "Loop stopped");
+    this.emitLog("info", "Task stopped");
   }
 
   /**
-   * Abort the backend session without changing loop status.
-   * Used during force reset to preserve planning loops while cleaning up resources.
-   * The engine will be cleared from memory, but the loop status remains unchanged.
+   * Abort the backend session without changing task status.
+   * Used during force reset to preserve planning tasks while cleaning up resources.
+   * The engine will be cleared from memory, but the task status remains unchanged.
    */
   async abortSessionOnly(reason = "Connection reset requested"): Promise<void> {
     this.emitLog("info", `Aborting session only (preserving status): ${reason}`);
@@ -497,8 +497,8 @@ export class LoopEngine {
     }
 
     this.emit({
-      type: "loop.session_aborted",
-      loopId: this.config.id,
+      type: "task.session_aborted",
+      taskId: this.config.id,
       reason,
       timestamp: createTimestamp(),
     });
@@ -507,7 +507,7 @@ export class LoopEngine {
   }
 
   /**
-   * Set up git branch and optional worktree for the loop (public method for plan mode).
+   * Set up git branch and optional worktree for the task (public method for plan mode).
    * Called from startPlanMode() before the AI session starts.
    */
   async setupGitBranchForPlanAcceptance(): Promise<void> {
@@ -520,28 +520,28 @@ export class LoopEngine {
    * The engine must already be in planning status.
    */
   async runPlanIteration(): Promise<void> {
-    if (this.loop.state.status !== "planning") {
-      throw new Error(`Cannot run plan iteration in status: ${this.loop.state.status}`);
+    if (this.task.state.status !== "planning") {
+      throw new Error(`Cannot run plan iteration in status: ${this.task.state.status}`);
     }
 
     this.resetRestartFlags();
 
-    // Run the loop (will run one iteration and return on plan_ready or error)
-    await this.runLoop();
+    // Run the task (will run one iteration and return on plan_ready or error)
+    await this.runTask();
   }
 
   /**
    * Inject plan feedback immediately.
    *
-   * If the loop is actively running an iteration, the current turn is interrupted
-   * so the feedback is applied on the next iteration. If the loop is idle
+   * If the task is actively running an iteration, the current turn is interrupted
+   * so the feedback is applied on the next iteration. If the task is idle
    * (e.g., plan was already ready), starts a new plan iteration as a
    * fire-and-forget operation.
    *
-   * The caller (LoopManager.sendPlanFeedback) is responsible for:
+   * The caller (TaskManager.sendPlanFeedback) is responsible for:
    * - Incrementing feedbackRounds and resetting isPlanReady before calling this
    * - Persisting state changes
-   * - Emitting the loop.plan.feedback event
+   * - Emitting the task.plan.feedback event
    *
    * @param feedback - The user's feedback message
    */
@@ -552,15 +552,15 @@ export class LoopEngine {
 
     // Emit event for UI update
     this.emitter.emit({
-      type: "loop.pending.updated",
-      loopId: this.loop.config.id,
+      type: "task.pending.updated",
+      taskId: this.task.config.id,
       pendingPrompt: feedback,
       timestamp: createTimestamp(),
     });
 
-    if (this.isLoopRunning) {
-      // Loop is actively running an iteration — inject by aborting current processing.
-      // The runLoop() while-loop detects injectionPending after abort, resets the
+    if (this.isTaskRunning) {
+      // Task is actively running an iteration — inject by aborting current processing.
+      // The runTask() while-task detects injectionPending after abort, resets the
       // flags, and continues to the next iteration which picks up pendingPrompt.
       this.injectionPending = true;
 
@@ -573,7 +573,7 @@ export class LoopEngine {
         }
       }
     } else {
-      // Loop is idle (plan was ready, or between iterations) — start a new plan iteration.
+      // Task is idle (plan was ready, or between iterations) — start a new plan iteration.
       // Fire-and-forget: the plan iteration runs asynchronously and will emit events/update state.
       // This matches the pattern used by engine.start() and continueExecution() fire-and-forget calls.
       this.emitLog("info", "Injecting plan feedback - starting new plan iteration");
@@ -584,53 +584,53 @@ export class LoopEngine {
   }
 
   /**
-   * Continue loop execution after plan acceptance.
+   * Continue task execution after plan acceptance.
    * Used to start the execution phase after a plan has been accepted.
    * The engine must be in running status with a pending prompt set.
    */
   async continueExecution(): Promise<void> {
-    if (this.loop.state.status !== "running") {
-      throw new Error(`Cannot continue execution in status: ${this.loop.state.status}`);
+    if (this.task.state.status !== "running") {
+      throw new Error(`Cannot continue execution in status: ${this.task.state.status}`);
     }
 
     // Check if already running (guard against duplicate calls)
-    if (this.isLoopRunning) {
-      log.warn("[LoopEngine] continueExecution: Loop is already running, ignoring duplicate call");
+    if (this.isTaskRunning) {
+      log.warn("[TaskEngine] continueExecution: Task is already running, ignoring duplicate call");
       this.emitLog("warn", "Execution already in progress, ignoring duplicate continueExecution call");
       return;
     }
 
-    log.debug("[LoopEngine] continueExecution: Starting execution loop");
+    log.debug("[TaskEngine] continueExecution: Starting execution task");
     this.emitLog("info", "Starting execution after plan acceptance");
 
     this.resetRestartFlags();
 
-    // Run the loop
-    await this.runLoop();
+    // Run the task
+    await this.runTask();
   }
 
   /**
-   * Run exactly one plain chat turn without applying normal loop completion-marker semantics.
+   * Run exactly one plain chat turn without applying normal task completion-marker semantics.
    */
   async runSingleTurn(): Promise<void> {
-    if (this.loop.state.status !== "running") {
-      throw new Error(`Cannot run a single turn in status: ${this.loop.state.status}`);
+    if (this.task.state.status !== "running") {
+      throw new Error(`Cannot run a single turn in status: ${this.task.state.status}`);
     }
 
-    if (this.isLoopRunning) {
-      log.warn("[LoopEngine] runSingleTurn: Loop is already running, ignoring duplicate call");
+    if (this.isTaskRunning) {
+      log.warn("[TaskEngine] runSingleTurn: Task is already running, ignoring duplicate call");
       this.emitLog("warn", "Execution already in progress, ignoring duplicate single-turn call");
       return;
     }
 
     this.resetRestartFlags();
-    this.isLoopRunning = true;
+    this.isTaskRunning = true;
 
     try {
       this.emitLog("info", "Starting single-turn plain chat execution");
       const result = await this.runIteration();
 
-      const currentStatus = this.loop.state.status as LoopState["status"];
+      const currentStatus = this.task.state.status as TaskState["status"];
       if (this.aborted || currentStatus === "stopped") {
         await this.triggerPersistence();
         return;
@@ -644,15 +644,15 @@ export class LoopEngine {
           completedAt: createTimestamp(),
           error: {
             message,
-            iteration: this.loop.state.currentIteration,
+            iteration: this.task.state.currentIteration,
             timestamp: createTimestamp(),
           },
         });
         this.emit({
-          type: "loop.error",
-          loopId: this.config.id,
+          type: "task.error",
+          taskId: this.config.id,
           error: message,
-          iteration: this.loop.state.currentIteration,
+          iteration: this.task.state.currentIteration,
           timestamp: createTimestamp(),
         });
         await this.triggerPersistence();
@@ -666,14 +666,14 @@ export class LoopEngine {
         consecutiveErrors: undefined,
       });
       this.emit({
-        type: "loop.stopped",
-        loopId: this.config.id,
+        type: "task.stopped",
+        taskId: this.config.id,
         reason: "Plain chat turn finished",
         timestamp: createTimestamp(),
       });
       await this.triggerPersistence();
     } finally {
-      this.isLoopRunning = false;
+      this.isTaskRunning = false;
     }
   }
 
@@ -682,18 +682,18 @@ export class LoopEngine {
   // ---------------------------------------------------------------------------
 
   /**
-   * Clear the .ralph-planning folder contents (except .gitkeep).
+   * Clear the .clanky-planning folder contents (except .gitkeep).
    * If any tracked files were deleted, commits the changes.
    */
   private async clearPlanningFolder(): Promise<void> {
-    await clearLoopPlanningFolder(this.makeGitContext());
+    await clearTaskPlanningFolder(this.makeGitContext());
   }
 
   /**
-   * Set up git branch for the loop using either a dedicated worktree or the main checkout.
+   * Set up git branch for the task using either a dedicated worktree or the main checkout.
    */
   private async setupGitBranch(_allowPlanningFolderChanges = false): Promise<void> {
-    await setupLoopGitBranch(this.makeGitContext(), _allowPlanningFolderChanges);
+    await setupTaskGitBranch(this.makeGitContext(), _allowPlanningFolderChanges);
   }
 
   /**
@@ -701,16 +701,16 @@ export class LoopEngine {
    * Uses workspace-specific server settings.
    */
   private async setupSession(): Promise<void> {
-    await setupLoopSession(this.makeSessionContext());
+    await setupTaskSession(this.makeSessionContext());
   }
 
   /**
    * Reconnect to an existing session for plan mode feedback.
    * This is called when the engine is recreated after a server restart
-   * while a loop is still in planning mode.
+   * while a task is still in planning mode.
    */
   async reconnectSession(): Promise<void> {
-    await reconnectLoopSession(this.makeSessionContext());
+    await reconnectTaskSession(this.makeSessionContext());
   }
 
   /**
@@ -754,7 +754,7 @@ export class LoopEngine {
       await this.handleQuestionAsked(event);
       return;
     }
-    await processLoopAgentEvent(event, ctx, this.makeToolContext());
+    await processTaskAgentEvent(event, ctx, this.makeToolContext());
   }
 
   /**
@@ -762,28 +762,28 @@ export class LoopEngine {
    * Exposed as a private method for testability.
    */
   private async handleQuestionAsked(event: AgentEvent & { type: "question.asked" }): Promise<void> {
-    await handleLoopQuestionAsked(event, this.makeToolContext());
+    await handleTaskQuestionAsked(event, this.makeToolContext());
   }
 
   /**
    * Build the prompt for an iteration.
    */
   private buildPrompt(_iteration: number): PromptInput {
-    return buildLoopPrompt(this.makePromptContext(), _iteration);
+    return buildTaskPrompt(this.makePromptContext(), _iteration);
   }
 
   /**
    * Evaluate the iteration outcome by checking stop patterns.
    */
   private evaluateOutcome(ctx: IterationContext): void {
-    evaluateLoopOutcome(ctx, this.makePromptContext());
+    evaluateTaskOutcome(ctx, this.makePromptContext());
   }
 
   /**
    * Commit changes after an iteration.
    */
   private async commitIteration(iteration: number, responseContent: string): Promise<void> {
-    await commitLoopIteration(this.makeGitCommitContext(), iteration, responseContent);
+    await commitTaskIteration(this.makeGitCommitContext(), iteration, responseContent);
   }
 
   // ---------------------------------------------------------------------------
@@ -791,38 +791,38 @@ export class LoopEngine {
   // ---------------------------------------------------------------------------
 
   /**
-   * Persist a log entry in the loop state.
+   * Persist a log entry in the task state.
    * If isUpdate is true, update an existing entry; otherwise append.
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_LOGS.
    */
-  private persistLog(entry: LoopLogEntry, isUpdate: boolean): void {
-    const logs = this.loop.state.logs ?? [];
-    this.updateState({ logs: persistLoopLog(logs, entry, isUpdate) });
+  private persistLog(entry: TaskLogEntry, isUpdate: boolean): void {
+    const logs = this.task.state.logs ?? [];
+    this.updateState({ logs: persistTaskLog(logs, entry, isUpdate) });
   }
 
   /**
-   * Persist a message in the loop state for page refresh recovery.
+   * Persist a message in the task state for page refresh recovery.
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_MESSAGES.
    */
   private persistMessage(message: MessageData): void {
-    const messages = this.loop.state.messages ?? [];
-    this.updateState({ messages: persistLoopMessage(messages, message) });
+    const messages = this.task.state.messages ?? [];
+    this.updateState({ messages: persistTaskMessage(messages, message) });
   }
 
   /**
-   * Persist a tool call in the loop state for page refresh recovery.
+   * Persist a tool call in the task state for page refresh recovery.
    * Updates existing tool call if it exists (by ID), otherwise adds new.
    * Evicts oldest entries when buffer exceeds MAX_PERSISTED_TOOL_CALLS.
    */
   private persistToolCall(toolCall: ToolCallData): void {
-    const toolCalls = this.loop.state.toolCalls ?? [];
-    this.updateState({ toolCalls: persistLoopToolCall(toolCalls, toolCall) });
+    const toolCalls = this.task.state.toolCalls ?? [];
+    this.updateState({ toolCalls: persistTaskToolCall(toolCalls, toolCall) });
   }
 
   /**
    * Emit an application log event.
-   * Used to communicate internal loop engine operations to the UI.
-   * Also persists the log in the loop state for page refresh recovery.
+   * Used to communicate internal task engine operations to the UI.
+   * Also persists the log in the task state for page refresh recovery.
    * @param level - The log level for the event (used for SSE events and persistence)
    * @param message - The log message
    * @param details - Optional additional details
@@ -842,13 +842,13 @@ export class LoopEngine {
     const logId = id ?? `log-${this.config.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const timestamp = createTimestamp();
 
-    const loopPrefix = `[Loop:${this.config.name}]`;
+    const taskPrefix = `[Task:${this.config.name}]`;
     const detailsStr = details ? ` ${JSON.stringify(details)}` : "";
 
-    logToConsole(level, loopPrefix, message, detailsStr, consoleLevel);
+    logToConsole(level, taskPrefix, message, detailsStr, consoleLevel);
 
-    // Persist log in loop state (for page refresh recovery)
-    const logEntry: LoopLogEntry = {
+    // Persist log in task state (for page refresh recovery)
+    const logEntry: TaskLogEntry = {
       id: logId,
       level,
       message,
@@ -859,8 +859,8 @@ export class LoopEngine {
 
     // Emit log event for real-time updates
     this.emit({
-      type: "loop.log",
-      loopId: this.config.id,
+      type: "task.log",
+      taskId: this.config.id,
       id: logId,
       level,
       message,
@@ -880,11 +880,11 @@ export class LoopEngine {
     const workingDirectory =
       !this.config.useWorktree
         ? this.config.directory
-        : (this.loop.state.git?.worktreePath ?? this.config.directory);
+        : (this.task.state.git?.worktreePath ?? this.config.directory);
     return {
       git: this.git,
-      config: this.loop.config,
-      state: this.loop.state,
+      config: this.task.config,
+      state: this.task.state,
       workingDirectory,
       emitLog: this.emitLog.bind(this),
       updateState: this.updateState.bind(this),
@@ -907,11 +907,11 @@ export class LoopEngine {
     const workingDirectory =
       !this.config.useWorktree
         ? this.config.directory
-        : (this.loop.state.git?.worktreePath ?? this.config.directory);
+        : (this.task.state.git?.worktreePath ?? this.config.directory);
     return {
       backend: this.backend,
-      config: this.loop.config,
-      state: this.loop.state,
+      config: this.task.config,
+      state: this.task.state,
       workingDirectory,
       emitLog: this.emitLog.bind(this),
       updateState: this.updateState.bind(this),
@@ -922,8 +922,8 @@ export class LoopEngine {
 
   private makePromptContext(): PromptBuildContext {
     return {
-      config: this.loop.config,
-      state: this.loop.state,
+      config: this.task.config,
+      state: this.task.state,
       workingDirectory: this.workingDirectory,
       stopDetector: this.stopDetector,
       emitUserMessage: this.emitUserMessage.bind(this),
@@ -936,9 +936,9 @@ export class LoopEngine {
 
   private makeToolContext(): ToolProcessingContext {
     return {
-      loopId: this.config.id,
-      config: this.loop.config,
-      state: this.loop.state,
+      taskId: this.config.id,
+      config: this.task.config,
+      state: this.task.state,
       backend: this.backend,
       sessionId: this.sessionId,
       emitLog: this.emitLog.bind(this),
@@ -970,7 +970,7 @@ export class LoopEngine {
           return;
         }
 
-        const currentTool = this.loop.state.toolCalls.find((entry) => entry.id === toolCall.id);
+        const currentTool = this.task.state.toolCalls.find((entry) => entry.id === toolCall.id);
         if (!currentTool) {
           return;
         }
@@ -980,8 +980,8 @@ export class LoopEngine {
           extras: upsertToolCallExtra(currentTool.extras, extra),
         });
         this.emit({
-          type: "loop.tool_call.extra",
-          loopId: this.config.id,
+          type: "task.tool_call.extra",
+          taskId: this.config.id,
           iteration,
           toolId: toolCall.id,
           extra,
@@ -998,57 +998,57 @@ export class LoopEngine {
   }
 
   // ---------------------------------------------------------------------------
-  // Core loop methods (unchanged from original)
+  // Core task methods (unchanged from original)
   // ---------------------------------------------------------------------------
 
   /**
-   * Run the main iteration loop.
+   * Run the main iteration task.
    * Now continues on errors unless max consecutive identical errors is reached.
-   * Protected by isLoopRunning guard to prevent concurrent executions.
+   * Protected by isTaskRunning guard to prevent concurrent executions.
    */
-  private async runLoop(): Promise<void> {
-    log.debug("[LoopEngine] runLoop: Entry point");
+  private async runTask(): Promise<void> {
+    log.debug("[TaskEngine] runTask: Entry point");
 
-    // Guard against concurrent runLoop() calls
-    if (this.isLoopRunning) {
-      log.warn("[LoopEngine] runLoop: Already running, skipping duplicate call");
-      this.emitLog("warn", "Loop execution already in progress, ignoring duplicate call");
+    // Guard against concurrent runTask() calls
+    if (this.isTaskRunning) {
+      log.warn("[TaskEngine] runTask: Already running, skipping duplicate call");
+      this.emitLog("warn", "Task execution already in progress, ignoring duplicate call");
       return;
     }
 
-    this.isLoopRunning = true;
-    log.debug("[LoopEngine] runLoop: Set isLoopRunning = true");
+    this.isTaskRunning = true;
+    log.debug("[TaskEngine] runTask: Set isTaskRunning = true");
 
     try {
-      this.emitLog("debug", "Entering runLoop", {
+      this.emitLog("debug", "Entering runTask", {
         aborted: this.aborted,
-        status: this.loop.state.status,
+        status: this.task.state.status,
         shouldContinue: this.shouldContinue(),
       });
-      log.debug("[LoopEngine] runLoop: Emitted debug log, checking while condition", {
+      log.debug("[TaskEngine] runTask: Emitted debug log, checking while condition", {
         aborted: this.aborted,
         shouldContinue: this.shouldContinue(),
       });
 
       while (!this.aborted && this.shouldContinue()) {
-        log.debug("[LoopEngine] runLoop: Entered while loop, about to call runIteration");
-        this.emitLog("debug", "Loop iteration check passed", {
+        log.debug("[TaskEngine] runTask: Entered while task, about to call runIteration");
+        this.emitLog("debug", "Task iteration check passed", {
           aborted: this.aborted,
-          status: this.loop.state.status,
+          status: this.task.state.status,
         });
 
         const iterationResult = await this.runIteration();
-        log.debug("[LoopEngine] runLoop: runIteration completed", { outcome: iterationResult.outcome });
+        log.debug("[TaskEngine] runTask: runIteration completed", { outcome: iterationResult.outcome });
 
-        // Delegate outcome handling — returns true if the loop should exit
+        // Delegate outcome handling — returns true if the task should exit
         const shouldExit = await this.handleIterationOutcome(iterationResult);
         if (shouldExit) {
           // Check if an injection arrived during outcome handling (e.g., plan feedback
           // arrived between evaluateOutcome and handlePlanReadyOutcome, while
-          // isLoopRunning was still true). If so, clear the flags and continue
-          // the while loop to process the injected prompt instead of exiting.
+          // isTaskRunning was still true). If so, clear the flags and continue
+          // the while task to process the injected prompt instead of exiting.
           if (this.injectionPending && this.shouldContinue()) {
-            this.emitLog("debug", "Injection pending during outcome handling - continuing loop to process injected prompt");
+            this.emitLog("debug", "Injection pending during outcome handling - continuing task to process injected prompt");
             this.aborted = false;
             this.injectionPending = false;
             continue;
@@ -1066,31 +1066,31 @@ export class LoopEngine {
           // Check if this was an injection abort (not a user stop)
           if (this.injectionPending) {
             this.emitLog("debug", "Injection abort detected, restarting iteration with pending values");
-            // Reset both flags to allow the loop to continue
+            // Reset both flags to allow the task to continue
             this.aborted = false;
             this.injectionPending = false;
-            // Continue the while loop - next iteration will use pending values
+            // Continue the while task - next iteration will use pending values
             continue;
           }
-          this.emitLog("debug", "Aborted during iteration, exiting runLoop");
+          this.emitLog("debug", "Aborted during iteration, exiting runTask");
           return; // Stop method already updated status
         }
       }
 
-      this.emitLog("debug", "Exiting runLoop - loop condition not met", {
+      this.emitLog("debug", "Exiting runTask - task condition not met", {
         aborted: this.aborted,
-        status: this.loop.state.status,
+        status: this.task.state.status,
         shouldContinue: this.shouldContinue(),
       });
     } finally {
-      this.isLoopRunning = false;
-      log.debug("[LoopEngine] runLoop: Set isLoopRunning = false");
+      this.isTaskRunning = false;
+      log.debug("[TaskEngine] runTask: Set isTaskRunning = false");
     }
   }
 
   /**
    * Handle the outcome of a single iteration.
-   * Returns true if the loop should exit, false to continue iterating.
+   * Returns true if the task should exit, false to continue iterating.
    */
   private async handleIterationOutcome(result: IterationResult): Promise<boolean> {
     if (result.outcome === "complete") {
@@ -1113,11 +1113,11 @@ export class LoopEngine {
   /**
    * Handle a "complete" iteration outcome.
    * Updates state, marks review comments as addressed, emits completion event.
-   * Always returns true (loop should exit).
+   * Always returns true (task should exit).
    */
   private async handleCompletedOutcome(): Promise<boolean> {
-    this.emitLog("info", "Stop pattern detected - loop completed successfully", {
-      totalIterations: this.loop.state.currentIteration,
+    this.emitLog("info", "Stop pattern detected - task completed successfully", {
+      totalIterations: this.task.state.currentIteration,
     });
     // Clear consecutive error tracker on success
     this.updateState({
@@ -1127,24 +1127,24 @@ export class LoopEngine {
     });
 
     // Keep review-cycle comment state in sync before observers handle completion.
-    if (this.loop.state.reviewMode && this.loop.state.reviewMode.reviewCycles > 0) {
+    if (this.task.state.reviewMode && this.task.state.reviewMode.reviewCycles > 0) {
       try {
         const addressedAt = new Date().toISOString();
         markCommentsAsAddressed(
           this.config.id,
-          this.loop.state.reviewMode.reviewCycles,
+          this.task.state.reviewMode.reviewCycles,
           addressedAt,
         );
-        log.debug(`Marked comments as addressed for loop ${this.config.id}, cycle ${this.loop.state.reviewMode.reviewCycles}`);
+        log.debug(`Marked comments as addressed for task ${this.config.id}, cycle ${this.task.state.reviewMode.reviewCycles}`);
       } catch (error) {
         log.error(`Failed to mark comments as addressed: ${String(error)}`);
       }
     }
 
     this.emit({
-      type: "loop.completed",
-      loopId: this.config.id,
-      totalIterations: this.loop.state.currentIteration,
+      type: "task.completed",
+      taskId: this.config.id,
+      totalIterations: this.task.state.currentIteration,
       timestamp: createTimestamp(),
     });
 
@@ -1164,16 +1164,16 @@ export class LoopEngine {
 
   /**
    * Handle a "plan_ready" iteration outcome.
-   * Reads plan content from the .ralph-planning folder, updates plan mode state,
-   * emits the plan ready event, and exits the loop (waits for user feedback).
-   * Always returns true (loop should exit).
+   * Reads plan content from the .clanky-planning folder, updates plan mode state,
+   * emits the plan ready event, and exits the task (waits for user feedback).
+   * Always returns true (task should exit).
    */
   private async handlePlanReadyOutcome(result: IterationResult): Promise<boolean> {
     this.emitLog("info", "Plan ready - waiting for user feedback or acceptance", {
-      iteration: this.loop.state.currentIteration,
+      iteration: this.task.state.currentIteration,
     });
 
-    // Read plan content from .ralph-planning/plan.md if possible
+    // Read plan content from .clanky-planning/plan.md if possible
     let planContent: string | undefined;
     try {
       const planExecutor = await backendManager.getCommandExecutorAsync(this.config.workspaceId, this.workingDirectory);
@@ -1190,17 +1190,17 @@ export class LoopEngine {
     // Update plan mode state with the plan content, and clear consecutive
     // error tracker since this iteration succeeded (prevents stale error
     // context from leaking into subsequent plan feedback prompts).
-    if (this.loop.state.planMode) {
-      log.trace(`[LoopEngine] runLoop: Before updateState, isPlanReady:`, this.loop.state.planMode.isPlanReady);
+    if (this.task.state.planMode) {
+      log.trace(`[TaskEngine] runTask: Before updateState, isPlanReady:`, this.task.state.planMode.isPlanReady);
         this.updateState({
           planMode: {
-            ...this.loop.state.planMode,
+            ...this.task.state.planMode,
             planContent: effectivePlanContent,
-            isPlanReady: this.loop.state.planMode.isPlanReady,
+            isPlanReady: this.task.state.planMode.isPlanReady,
           },
           consecutiveErrors: undefined,
         });
-      log.trace(`[LoopEngine] runLoop: After updateState, isPlanReady:`, this.loop.state.planMode?.isPlanReady);
+      log.trace(`[TaskEngine] runTask: After updateState, isPlanReady:`, this.task.state.planMode?.isPlanReady);
     } else {
       // Even without planMode state, clear the error tracker on success
       this.updateState({ consecutiveErrors: undefined });
@@ -1208,15 +1208,15 @@ export class LoopEngine {
 
     // Emit plan ready event
     this.emit({
-      type: "loop.plan.ready",
-      loopId: this.config.id,
+      type: "task.plan.ready",
+      taskId: this.config.id,
       planContent: effectivePlanContent,
       timestamp: createTimestamp(),
     });
 
     await this.triggerPersistence();
 
-    if (this.loop.config.autoAcceptPlan === true && this.onPlanReady) {
+    if (this.task.config.autoAcceptPlan === true && this.onPlanReady) {
       this.emitLog("info", "Auto-accept plan enabled - continuing into execution");
       queueMicrotask(() => {
         void this.onPlanReady?.().catch(async (error) => {
@@ -1226,15 +1226,15 @@ export class LoopEngine {
       });
     }
 
-    // Exit the loop but stay in "planning" status
-    // The loop will be resumed when user sends feedback or accepts the plan
+    // Exit the task but stay in "planning" status
+    // The task will be resumed when user sends feedback or accepts the plan
     return true;
   }
 
   /**
    * Handle an "error" iteration outcome.
    * Tracks consecutive errors and triggers failsafe exit if the limit is reached.
-   * Returns true if the loop should exit (failsafe), false to retry.
+   * Returns true if the task should exit (failsafe), false to retry.
    */
   private async handleErrorOutcome(result: IterationResult): Promise<boolean> {
     const errorMessage = result.error ?? "Unknown error";
@@ -1242,7 +1242,7 @@ export class LoopEngine {
     // Error iterations don't count towards maxIterations - roll back the counter
     // This treats the error as a retry, not a completed iteration
     this.updateState({
-      currentIteration: this.loop.state.currentIteration - 1,
+      currentIteration: this.task.state.currentIteration - 1,
     });
 
     if (this.injectionPending) {
@@ -1255,7 +1255,7 @@ export class LoopEngine {
     const shouldFailsafe = this.trackConsecutiveError(errorMessage);
 
     if (shouldFailsafe) {
-      const maxErrors = this.config.maxConsecutiveErrors ?? DEFAULT_LOOP_CONFIG.maxConsecutiveErrors;
+      const maxErrors = this.config.maxConsecutiveErrors ?? DEFAULT_TASK_CONFIG.maxConsecutiveErrors;
       this.emitLog("error", `Failsafe exit: ${maxErrors} consecutive identical errors`, {
         errorMessage,
       });
@@ -1264,16 +1264,16 @@ export class LoopEngine {
         completedAt: createTimestamp(),
         error: {
           message: `Failsafe: ${maxErrors} consecutive identical errors - ${errorMessage}`,
-          iteration: this.loop.state.currentIteration,
+          iteration: this.task.state.currentIteration,
           timestamp: createTimestamp(),
         },
       });
 
       this.emit({
-        type: "loop.error",
-        loopId: this.config.id,
+        type: "task.error",
+        taskId: this.config.id,
         error: `Failsafe: ${maxErrors} consecutive identical errors - ${errorMessage}`,
-        iteration: this.loop.state.currentIteration,
+        iteration: this.task.state.currentIteration,
         timestamp: createTimestamp(),
       });
       await this.triggerPersistence();
@@ -1283,16 +1283,16 @@ export class LoopEngine {
     // Log that we're continuing despite the error (as a retry)
     this.emitLog("warn", "Error occurred, retrying iteration", {
       errorMessage,
-      consecutiveErrors: this.loop.state.consecutiveErrors?.count ?? 1,
+      consecutiveErrors: this.task.state.consecutiveErrors?.count ?? 1,
       maxConsecutiveErrors: this.config.maxConsecutiveErrors ?? "unlimited",
     });
 
     // Emit error event but don't stop
     this.emit({
-      type: "loop.error",
-      loopId: this.config.id,
+      type: "task.error",
+      taskId: this.config.id,
       error: errorMessage,
-      iteration: this.loop.state.currentIteration,
+      iteration: this.task.state.currentIteration,
       timestamp: createTimestamp(),
     });
     void this.triggerPersistence();
@@ -1302,13 +1302,13 @@ export class LoopEngine {
   }
 
   /**
-   * Check if the loop has reached the maximum iteration limit.
+   * Check if the task has reached the maximum iteration limit.
    * If so, updates state to "max_iterations", persists, emits event, and returns true.
    */
   private async hasReachedMaxIterations(): Promise<boolean> {
     if (
       this.config.maxIterations &&
-      this.loop.state.currentIteration >= this.config.maxIterations
+      this.task.state.currentIteration >= this.config.maxIterations
     ) {
       this.emitLog("warn", `Reached maximum iterations limit: ${this.config.maxIterations}`);
       this.updateState({
@@ -1317,8 +1317,8 @@ export class LoopEngine {
       });
 
       this.emit({
-        type: "loop.stopped",
-        loopId: this.config.id,
+        type: "task.stopped",
+        taskId: this.config.id,
         reason: `Reached maximum iterations: ${this.config.maxIterations}`,
         timestamp: createTimestamp(),
       });
@@ -1334,7 +1334,7 @@ export class LoopEngine {
    * Returns false if maxConsecutiveErrors is undefined or 0 (unlimited).
    */
   private trackConsecutiveError(errorMessage: string): boolean {
-    const tracker = this.loop.state.consecutiveErrors;
+    const tracker = this.task.state.consecutiveErrors;
     const maxErrors = this.config.maxConsecutiveErrors;
 
     // If maxErrors is undefined or 0, errors are unlimited - never failsafe
@@ -1385,12 +1385,12 @@ export class LoopEngine {
    * Run a single iteration with real-time event streaming.
    */
   private async runIteration(): Promise<IterationResult> {
-    log.debug("[LoopEngine] runIteration: Entry point");
-    const iteration = this.loop.state.currentIteration + 1;
+    log.debug("[TaskEngine] runIteration: Entry point");
+    const iteration = this.task.state.currentIteration + 1;
     const startedAt = createTimestamp();
 
     // Check if we're in plan mode - need to check before updating status
-    const isInPlanMode = this.loop.state.status === "planning" && this.loop.state.planMode?.active;
+    const isInPlanMode = this.task.state.status === "planning" && this.task.state.planMode?.active;
 
     this.emitLog("info", `Starting iteration ${iteration}`, {
       maxIterations: this.config.maxIterations,
@@ -1404,8 +1404,8 @@ export class LoopEngine {
     });
 
     this.emit({
-      type: "loop.iteration.start",
-      loopId: this.config.id,
+      type: "task.iteration.start",
+      taskId: this.config.id,
       iteration,
       timestamp: startedAt,
     });
@@ -1467,12 +1467,12 @@ export class LoopEngine {
     await this.handlePendingModelChange();
 
     // Build the prompt
-    log.debug("[LoopEngine] runIteration: Building prompt");
+    log.debug("[TaskEngine] runIteration: Building prompt");
     this.emitLog("debug", "Building prompt for AI agent");
     const prompt = this.buildPrompt(ctx.iteration);
 
     // Log the prompt for debugging
-    log.debug("[LoopEngine] runIteration: Prompt details", {
+    log.debug("[TaskEngine] runIteration: Prompt details", {
       partsCount: prompt.parts.length,
       model: prompt.model ? `${prompt.model.providerID}/${prompt.model.modelID}` : "default",
       textLength: prompt.parts[0]?.type === "text" ? prompt.parts[0].text.length : 0,
@@ -1503,23 +1503,23 @@ export class LoopEngine {
       // IMPORTANT: We must await the subscription to ensure the SSE connection is established
       // before sending the prompt. This prevents a race condition where events are emitted
       // by the server before we're ready to receive them.
-      log.debug("[LoopEngine] runIteration: About to subscribe to events");
+      log.debug("[TaskEngine] runIteration: About to subscribe to events");
       this.emitLog("debug", "Subscribing to AI response stream");
       const eventStream = await this.backend.subscribeToEvents(activeSessionId);
       this.currentEventStream = eventStream;
-      log.debug("[LoopEngine] runIteration: Subscription established, got event stream");
+      log.debug("[TaskEngine] runIteration: Subscription established, got event stream");
 
       try {
         // Now send prompt asynchronously (subscription is definitely active)
-        log.debug("[LoopEngine] runIteration: About to send prompt async");
+        log.debug("[TaskEngine] runIteration: About to send prompt async");
         this.emitLog("info", "Sending prompt to AI agent...");
         await this.backend.sendPromptAsync(activeSessionId, prompt);
-        log.debug("[LoopEngine] runIteration: sendPromptAsync completed");
+        log.debug("[TaskEngine] runIteration: sendPromptAsync completed");
 
-        log.debug("[LoopEngine] runIteration: About to start event iteration loop");
+        log.debug("[TaskEngine] runIteration: About to start event iteration task");
 
         const activityTimeoutSeconds =
-          this.config.activityTimeoutSeconds ?? DEFAULT_LOOP_CONFIG.activityTimeoutSeconds;
+          this.config.activityTimeoutSeconds ?? DEFAULT_TASK_CONFIG.activityTimeoutSeconds;
         const nextEvent = async (): Promise<AgentEvent | null> => {
           if (activityTimeoutSeconds === null) {
             return eventStream.next();
@@ -1529,7 +1529,7 @@ export class LoopEngine {
 
         let event: AgentEvent | null = await nextEvent();
         while (event !== null) {
-          log.trace("[LoopEngine] runIteration: Received event", { type: event.type });
+          log.trace("[TaskEngine] runIteration: Received event", { type: event.type });
           // Check if aborted
           if (this.aborted) {
             if (this.injectionPending) {
@@ -1584,13 +1584,13 @@ export class LoopEngine {
       }
     }
 
-    this.emitLog("debug", "Exited event stream loop", { outcome: ctx.outcome, error: ctx.error });
+    this.emitLog("debug", "Exited event stream task", { outcome: ctx.outcome, error: ctx.error });
   }
 
   /**
    * Emit a user message so it appears in the conversation thread.
-   * Persists the message with role "user" in loop.state.messages and
-   * emits a loop.message event for real-time WebSocket delivery.
+   * Persists the message with role "user" in task.state.messages and
+   * emits a task.message event for real-time WebSocket delivery.
    *
    * Uses a deterministic ID so that retries of the same iteration
    * (after transient errors) do not create duplicate messages —
@@ -1617,7 +1617,7 @@ export class LoopEngine {
     idSuffix?: string,
     attachments: MessageImageAttachment[] = [],
   ): void {
-    const suffix = idSuffix ?? `iter-${this.loop.state.currentIteration}`;
+    const suffix = idSuffix ?? `iter-${this.task.state.currentIteration}`;
     const messageData: MessageData = {
       id: `user-msg-${this.config.id}-${suffix}`,
       role: "user",
@@ -1627,16 +1627,16 @@ export class LoopEngine {
     };
     this.persistMessage(messageData);
     this.emit({
-      type: "loop.message",
-      loopId: this.config.id,
-      iteration: this.loop.state.currentIteration,
+      type: "task.message",
+      taskId: this.config.id,
+      iteration: this.task.state.currentIteration,
       message: messageData,
       timestamp: createTimestamp(),
     });
     // Also log to server console for observability
-    const loopPrefix = `[Loop:${this.config.name}]`;
+    const taskPrefix = `[Task:${this.config.name}]`;
     const preview = content.length > 100 ? content.slice(0, 100) + "..." : content;
-    log.info(`${loopPrefix} [user] ${preview}`);
+    log.info(`${taskPrefix} [user] ${preview}`);
   }
 
   /**
@@ -1658,7 +1658,7 @@ export class LoopEngine {
 
     this.updateState({
       lastActivityAt: completedAt,
-      recentIterations: [...this.loop.state.recentIterations.slice(-9), summary],
+      recentIterations: [...this.task.state.recentIterations.slice(-9), summary],
     });
 
     this.emitLog("info", `Iteration ${ctx.iteration} completed`, {
@@ -1668,8 +1668,8 @@ export class LoopEngine {
     });
 
     this.emit({
-      type: "loop.iteration.end",
-      loopId: this.config.id,
+      type: "task.iteration.end",
+      taskId: this.config.id,
       iteration: ctx.iteration,
       outcome: ctx.outcome,
       timestamp: completedAt,
@@ -1693,10 +1693,10 @@ export class LoopEngine {
   }
 
   /**
-   * Check if the loop should continue running.
+   * Check if the task should continue running.
    */
   private shouldContinue(): boolean {
-    const status = this.loop.state.status;
+    const status = this.task.state.status;
     const isActive = status === "running" || status === "starting" || status === "planning";
     if (!isActive) {
       return false;
@@ -1705,7 +1705,7 @@ export class LoopEngine {
   }
 
   /**
-   * Handle an error during loop execution.
+   * Handle an error during task execution.
    */
   private handleError(error: unknown): void {
     const message = String(error);
@@ -1715,29 +1715,29 @@ export class LoopEngine {
       completedAt: createTimestamp(),
       error: {
         message,
-        iteration: this.loop.state.currentIteration,
+        iteration: this.task.state.currentIteration,
         timestamp: createTimestamp(),
       },
     });
 
     this.emit({
-      type: "loop.error",
-      loopId: this.config.id,
+      type: "task.error",
+      taskId: this.config.id,
       error: message,
-      iteration: this.loop.state.currentIteration,
+      iteration: this.task.state.currentIteration,
       timestamp: createTimestamp(),
     });
   }
 
   /**
-   * Update the loop state.
+   * Update the task state.
    * Validates status transitions against the state machine when a status change is included.
    */
-  private updateState(update: Partial<LoopState>): void {
-    if (update.status !== undefined && update.status !== this.loop.state.status) {
-      assertValidTransition(this.loop.state.status, update.status, "LoopEngine.updateState");
+  private updateState(update: Partial<TaskState>): void {
+    if (update.status !== undefined && update.status !== this.task.state.status) {
+      assertValidTransition(this.task.state.status, update.status, "TaskEngine.updateState");
     }
-    Object.assign(this.loop.state, update);
+    Object.assign(this.task.state, update);
   }
 
   /**
@@ -1747,17 +1747,17 @@ export class LoopEngine {
   private async triggerPersistence(): Promise<void> {
     if (this.onPersistState) {
       try {
-        await this.onPersistState(this.loop.state);
+        await this.onPersistState(this.task.state);
       } catch (error) {
-        log.error(`Failed to persist loop state: ${String(error)}`);
+        log.error(`Failed to persist task state: ${String(error)}`);
       }
     }
   }
 
   /**
-   * Emit a loop event.
+   * Emit a task event.
    */
-  private emit(event: LoopEvent): void {
+  private emit(event: TaskEvent): void {
     this.emitter.emit(event);
   }
 }

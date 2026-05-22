@@ -114,15 +114,15 @@ describe("AppSettingsPanel", () => {
     const { getByText, user } = renderWithUser(
       <ThemePreferenceProvider>
         <AppSettingsPanel
-          onPurgeTerminalLoops={async () => {
+          onPurgeTerminalTasks={async () => {
             purgeCalls.push("purged");
             return {
               success: true,
               totalWorkspaces: 2,
               totalArchived: 3,
               purgedCount: 2,
-              purgedLoopIds: ["loop-1", "loop-2"],
-              failures: [{ workspaceId: "ws-2", loopId: "loop-3", error: "permission denied" }],
+              purgedTaskIds: ["task-1", "task-2"],
+              failures: [{ workspaceId: "ws-2", taskId: "task-3", error: "permission denied" }],
               workspaces: [],
             };
           }}
@@ -131,13 +131,13 @@ describe("AppSettingsPanel", () => {
     );
 
     await user.click(getByText("Danger Zone"));
-    await user.click(getByText("Purge terminal-state loops"));
-    await user.click(getByText("Yes, purge loops"));
+    await user.click(getByText("Purge terminal-state tasks"));
+    await user.click(getByText("Yes, purge tasks"));
 
     await waitFor(() => {
       expect(purgeCalls).toEqual(["purged"]);
-      expect(getByText("Purged 2 of 3 terminal-state loops across 2 workspaces.")).toBeInTheDocument();
-      expect(getByText("Failed loop IDs: loop-3")).toBeInTheDocument();
+      expect(getByText("Purged 2 of 3 terminal-state tasks across 2 workspaces.")).toBeInTheDocument();
+      expect(getByText("Failed task IDs: task-3")).toBeInTheDocument();
     });
   });
 });

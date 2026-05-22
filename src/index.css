@@ -3,7 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @font-face {
-  font-family: "Ralpher Terminal Nerd Font";
+  font-family: "Clanky Terminal Nerd Font";
   src: url("./assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");
   font-style: normal;
   font-weight: 400;

@@ -2,15 +2,15 @@
  * Central export for all hooks.
  */
 
-export { useWebSocket, useGlobalEvents, useLoopEvents, type WebSocketConnectionStatus, type UseWebSocketOptions, type UseWebSocketResult } from "./useWebSocket";
-export { AppEventsProvider, isChatEvent, isLoopEvent, isSshSessionEvent, useAppEvents } from "./useAppEvents";
+export { useWebSocket, useGlobalEvents, useTaskEvents, type WebSocketConnectionStatus, type UseWebSocketOptions, type UseWebSocketResult } from "./useWebSocket";
+export { AppEventsProvider, isChatEvent, isTaskEvent, isSshSessionEvent, useAppEvents } from "./useAppEvents";
 export { useChats, type UseChatsResult } from "./useChats";
-export { useLoops, type UseLoopsResult, type CreateLoopResult } from "./useLoops";
-export { useLoop, type UseLoopResult } from "./useLoop";
+export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
+export { useTask, type UseTaskResult } from "./useTask";
 export { useSshSessions, type UseSshSessionsResult } from "./useSshSessions";
 export { useSshSession, type UseSshSessionResult } from "./useSshSession";
 export { useSshServers, type UseSshServersResult } from "./useSshServers";
-export { useLoopPortForwards, type UseLoopPortForwardsResult } from "./useLoopPortForwards";
+export { useTaskPortForwards, type UseTaskPortForwardsResult } from "./useTaskPortForwards";
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useMarkdownPreference, type UseMarkdownPreferenceResult } from "./useMarkdownPreference";
 export {
@@ -29,7 +29,7 @@ export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdSta
 export { useCountdownReload, computeProgressPercent, KILL_SERVER_COUNTDOWN_SECONDS, type UseCountdownReloadResult } from "./useCountdownReload";
 export { useToast, type ToastContextValue, type Toast, type ToastOptions } from "./useToast";
 export { usePasskeyAuth, type UsePasskeyAuthResult } from "./usePasskeyAuth";
-export { useLoopGrouping, groupLoopsByStatus, sectionConfig, type StatusGroups, type StatusSectionKey, type SectionConfig, type WorkspaceGroup, type UseLoopGroupingResult } from "./useLoopGrouping";
+export { useTaskGrouping, groupTasksByStatus, sectionConfig, type StatusGroups, type StatusSectionKey, type SectionConfig, type WorkspaceGroup, type UseTaskGroupingResult } from "./useTaskGrouping";
 export { useDashboardModals, type ModalState, type UncommittedModalState, type UseDashboardModalsResult } from "./useDashboardModals";
 export { useDashboardData, type UseDashboardDataResult } from "./useDashboardData";
 export { useViewModePreference, type UseViewModePreferenceResult, type DashboardViewMode } from "./useViewModePreference";
@@ -52,23 +52,23 @@ export {
   type UseWorkspaceFilesResult,
   type WorkspaceFileConflictState,
 } from "./useWorkspaceFiles";
-// Shared loop action API functions
+// Shared task action API functions
 export {
-  acceptLoopApi,
-  pushLoopApi,
-  createLoopPortForwardApi,
-  deleteLoopPortForwardApi,
-  listLoopPortForwardsApi,
+  acceptTaskApi,
+  pushTaskApi,
+  createTaskPortForwardApi,
+  deleteTaskPortForwardApi,
+  listTaskPortForwardsApi,
   updateBranchApi,
-  stopLoopApi,
-  discardLoopApi,
-  deleteLoopApi,
-  purgeLoopApi,
-  manualCompleteLoopApi,
-  purgeArchivedWorkspaceLoopsApi,
-  purgeTerminalLoopsApi,
-  getLoopSshSessionApi,
-  getOrCreateLoopSshSessionApi,
+  stopTaskApi,
+  discardTaskApi,
+  deleteTaskApi,
+  purgeTaskApi,
+  manualCompleteTaskApi,
+  purgeArchivedWorkspaceTasksApi,
+  purgeTerminalTasksApi,
+  getTaskSshSessionApi,
+  getOrCreateTaskSshSessionApi,
   setPendingPromptApi,
   clearPendingPromptApi,
   markMergedApi,
@@ -80,13 +80,13 @@ export {
   setPendingApi,
   clearPendingApi,
   type CreatePortForwardRequest,
-  type AcceptLoopResult,
-  type PushLoopResult,
+  type AcceptTaskResult,
+  type PushTaskResult,
   type AddressCommentsResult,
   type SetPendingResult,
-  type PurgeArchivedLoopsResult,
-  type PurgeTerminalLoopsResult,
-} from "./loopActions";
+  type PurgeArchivedTasksResult,
+  type PurgeTerminalTasksResult,
+} from "./taskActions";
 export {
   getSshServerApi,
   createSshServerApi,

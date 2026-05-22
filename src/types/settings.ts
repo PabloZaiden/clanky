@@ -1,5 +1,5 @@
 /**
- * Server settings types for Ralph Loops Management System.
+ * Server settings types for Clanky Tasks Management System.
  * Defines workspace settings for agent and deterministic execution channels.
  */
 
@@ -19,7 +19,7 @@ export type {
 /**
  * Get default server settings.
  * @param remoteOnly - If true, defaults to `ssh` transport instead of `stdio`.
- *                     This should be passed from the server config (RALPHER_REMOTE_ONLY env var).
+ *                     This should be passed from the server config (CLANKY_REMOTE_ONLY env var).
  */
 export function getDefaultServerSettings(remoteOnly: boolean = false): ServerSettings {
   const defaultAgent = remoteOnly

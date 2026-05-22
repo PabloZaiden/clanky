@@ -6,7 +6,7 @@ import { formatCookieHeader, parseCookieHeader } from "./http-cookies";
 
 const DEFAULT_SCOPE = "";
 const DEFAULT_LOCAL_BASE_URL = "http://localhost:3000";
-const CLI_STATE_DIRECTORY = ".ralpher";
+const CLI_STATE_DIRECTORY = ".clanky";
 const CLI_CREDENTIALS_FILE = "cli-auth.json";
 const inFlightRefreshes = new Map<string, Promise<StoredCliCredentials | null>>();
 
@@ -131,14 +131,14 @@ export function normalizeCookieHeaderValue(rawValue?: string): string | undefine
 }
 
 function getCliStateDir(): string {
-  const explicitCliHome = process.env["RALPHER_CLI_HOME"]?.trim();
+  const explicitCliHome = process.env["CLANKY_CLI_HOME"]?.trim();
   if (explicitCliHome) {
     return explicitCliHome;
   }
 
   const resolvedHome = process.env["HOME"]?.trim() || homedir().trim();
   if (!resolvedHome) {
-    throw new Error("Could not determine the CLI state directory. Set HOME or RALPHER_CLI_HOME.");
+    throw new Error("Could not determine the CLI state directory. Set HOME or CLANKY_CLI_HOME.");
   }
 
   return join(resolvedHome, CLI_STATE_DIRECTORY);

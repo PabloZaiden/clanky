@@ -1,4 +1,4 @@
-import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace, countWorkspaceLoops } from "../persistence/workspaces";
+import { deleteWorkspace as deleteWorkspaceRecord, getWorkspace, countWorkspaceTasks } from "../persistence/workspaces";
 import type { Workspace } from "../types/workspace";
 import { sshCredentialManager } from "./ssh-credential-manager";
 import { sshServerManager } from "./ssh-server-manager";
@@ -66,20 +66,20 @@ export async function deleteWorkspaceWithOptions(
     return { success: false, reason: "Workspace not found" };
   }
 
-  const loopCount = await countWorkspaceLoops(id);
-  if (loopCount > 0) {
+  const taskCount = await countWorkspaceTasks(id);
+  if (taskCount > 0) {
     return {
       success: false,
-      reason: `Workspace has ${loopCount} loop(s). Delete all loops first.`,
+      reason: `Workspace has ${taskCount} task(s). Delete all tasks first.`,
     };
   }
 
   workspaceDeletionLocks.add(id);
   try {
-    if ((await countWorkspaceLoops(id)) > 0) {
+    if ((await countWorkspaceTasks(id)) > 0) {
       return {
         success: false,
-        reason: "Workspace has loop(s). Delete all loops first.",
+        reason: "Workspace has task(s). Delete all tasks first.",
       };
     }
 

@@ -11,7 +11,7 @@ import { serve, type Server } from "bun";
 import { apiRoutes } from "../../src/api";
 import { websocketHandlers, type WebSocketData } from "../../src/api/websocket";
 import { ensureDataDirectories } from "../../src/persistence/database";
-import { chatEventEmitter, loopEventEmitter } from "../../src/core/event-emitter";
+import { chatEventEmitter, taskEventEmitter } from "../../src/core/event-emitter";
 
 describe("Events WebSocket API Integration", () => {
   let testDataDir: string;
@@ -22,11 +22,11 @@ describe("Events WebSocket API Integration", () => {
 
   beforeAll(async () => {
     // Create temp directories
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-api-events-test-data-"));
-    testWorkDir = await mkdtemp(join(tmpdir(), "ralpher-api-events-test-work-"));
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-api-events-test-data-"));
+    testWorkDir = await mkdtemp(join(tmpdir(), "clanky-api-events-test-work-"));
 
     // Set env var for persistence
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     // Ensure directories exist
     await ensureDataDirectories();
@@ -38,11 +38,11 @@ describe("Events WebSocket API Integration", () => {
         ...apiRoutes,
         "/api/ws": (req: Request, server: Server<WebSocketData>) => {
           const url = new URL(req.url);
-          const loopId = url.searchParams.get("loopId") ?? undefined;
+          const taskId = url.searchParams.get("taskId") ?? undefined;
           const chatId = url.searchParams.get("chatId") ?? undefined;
 
           const upgraded = server.upgrade(req, {
-            data: { loopId, chatId } as WebSocketData,
+            data: { taskId, chatId } as WebSocketData,
           });
 
           if (upgraded) {
@@ -67,7 +67,7 @@ describe("Events WebSocket API Integration", () => {
     await rm(testWorkDir, { recursive: true, force: true });
 
     // Clear env
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
   describe("WS /api/ws", () => {
@@ -98,7 +98,7 @@ describe("Events WebSocket API Integration", () => {
     test("receives connection confirmation", async () => {
       const ws = new WebSocket(`${wsUrl}/api/ws`);
 
-      const message = await new Promise<{ type: string; loopId: string | null; chatId: string | null } | null>((resolve) => {
+      const message = await new Promise<{ type: string; taskId: string | null; chatId: string | null } | null>((resolve) => {
         const timeout = setTimeout(() => {
           ws.close();
           resolve(null);
@@ -121,7 +121,7 @@ describe("Events WebSocket API Integration", () => {
 
       expect(message).not.toBeNull();
       expect(message?.type).toBe("connected");
-      expect(message?.loopId).toBeNull();
+      expect(message?.taskId).toBeNull();
       expect(message?.chatId).toBeNull();
       ws.close();
     });
@@ -154,12 +154,12 @@ describe("Events WebSocket API Integration", () => {
         };
       });
 
-      loopEventEmitter.emit({
-        type: "loop.log",
-        loopId: "other-loop",
-        id: "other-loop-log",
+      taskEventEmitter.emit({
+        type: "task.log",
+        taskId: "other-task",
+        id: "other-task-log",
         level: "info",
-        message: "Other loop message",
+        message: "Other task message",
         timestamp: new Date().toISOString(),
       });
 
@@ -210,8 +210,8 @@ describe("Events WebSocket API Integration", () => {
 
       // Emit a test event
       const testEvent = {
-        type: "loop.log" as const,
-        loopId: "test-loop-id",
+        type: "task.log" as const,
+        taskId: "test-task-id",
         id: "log-1",
         level: "info" as const,
         message: "Test log message",
@@ -235,7 +235,7 @@ describe("Events WebSocket API Integration", () => {
       });
 
       // Emit the event
-      loopEventEmitter.emit(testEvent);
+      taskEventEmitter.emit(testEvent);
 
       const received = await receivedEvent;
       expect(received).toEqual(testEvent);
@@ -271,8 +271,8 @@ describe("Events WebSocket API Integration", () => {
 
       chatEventEmitter.emit({
         type: "chat.status",
-        chatId: "loop-chat",
-        scope: "loop",
+        chatId: "task-chat",
+        scope: "task",
         status: "streaming",
         timestamp: new Date().toISOString(),
       });
@@ -286,15 +286,15 @@ describe("Events WebSocket API Integration", () => {
 
       expect(await receivedEvent).toMatchObject({
         type: "chat.status",
-        chatId: "loop-chat",
-        scope: "loop",
+        chatId: "task-chat",
+        scope: "task",
       });
 
       ws.close();
     });
 
-    test("still forwards loop chat status events to chat-scoped subscribers", async () => {
-      const targetChatId = "loop-chat";
+    test("still forwards task chat status events to chat-scoped subscribers", async () => {
+      const targetChatId = "task-chat";
       const ws = new WebSocket(`${wsUrl}/api/ws?chatId=${targetChatId}`);
 
       await new Promise<void>((resolve) => {
@@ -307,7 +307,7 @@ describe("Events WebSocket API Integration", () => {
 
       const receivedEvent = new Promise<unknown>((resolve, reject) => {
         const timeout = setTimeout(() => {
-          reject(new Error("Timed out waiting for loop chat status event"));
+          reject(new Error("Timed out waiting for task chat status event"));
         }, 1000);
 
         ws.onmessage = (event) => {
@@ -323,7 +323,7 @@ describe("Events WebSocket API Integration", () => {
       chatEventEmitter.emit({
         type: "chat.status",
         chatId: targetChatId,
-        scope: "loop",
+        scope: "task",
         status: "streaming",
         timestamp: new Date().toISOString(),
       });
@@ -331,34 +331,34 @@ describe("Events WebSocket API Integration", () => {
       expect(await receivedEvent).toMatchObject({
         type: "chat.status",
         chatId: targetChatId,
-        scope: "loop",
+        scope: "task",
       });
 
       ws.close();
     });
 
-    test("filters events by loopId when specified", async () => {
-      const targetLoopId = "target-loop";
-      const otherLoopId = "other-loop";
+    test("filters events by taskId when specified", async () => {
+      const targetTaskId = "target-task";
+      const otherTaskId = "other-task";
 
-      const ws = new WebSocket(`${wsUrl}/api/ws?loopId=${targetLoopId}`);
+      const ws = new WebSocket(`${wsUrl}/api/ws?taskId=${targetTaskId}`);
 
       // Wait for connection
       await new Promise<void>((resolve) => {
         ws.onopen = () => resolve();
       });
 
-      // Skip connection message (should have loopId set)
-      const connMsg = await new Promise<{ loopId: string | null }>((resolve) => {
+      // Skip connection message (should have taskId set)
+      const connMsg = await new Promise<{ taskId: string | null }>((resolve) => {
         ws.onmessage = (event) => {
           resolve(JSON.parse(event.data));
         };
       });
-      expect(connMsg.loopId).toBe(targetLoopId);
+      expect(connMsg.taskId).toBe(targetTaskId);
 
       const receivedEvent = new Promise<unknown>((resolve, reject) => {
         const timeout = setTimeout(() => {
-          reject(new Error("Timed out waiting for filtered loop event"));
+          reject(new Error("Timed out waiting for filtered task event"));
         }, 1000);
 
         ws.onmessage = (event) => {
@@ -379,28 +379,28 @@ describe("Events WebSocket API Integration", () => {
         timestamp: new Date().toISOString(),
       });
 
-      // Emit events for different loops
-      loopEventEmitter.emit({
-        type: "loop.log",
-        loopId: otherLoopId,
+      // Emit events for different tasks
+      taskEventEmitter.emit({
+        type: "task.log",
+        taskId: otherTaskId,
         id: "log-other",
         level: "info",
-        message: "Other loop message",
+        message: "Other task message",
         timestamp: new Date().toISOString(),
       });
 
-      loopEventEmitter.emit({
-        type: "loop.log",
-        loopId: targetLoopId,
+      taskEventEmitter.emit({
+        type: "task.log",
+        taskId: targetTaskId,
         id: "log-target",
         level: "info",
-        message: "Target loop message",
+        message: "Target task message",
         timestamp: new Date().toISOString(),
       });
 
       expect(await receivedEvent).toMatchObject({
-        type: "loop.log",
-        loopId: targetLoopId,
+        type: "task.log",
+        taskId: targetTaskId,
       });
 
       ws.close();
@@ -497,9 +497,9 @@ describe("Events WebSocket API Integration", () => {
 
       // Emit an event — should not cause errors on the server
       // (unsubscribe should have been called in the close handler)
-      loopEventEmitter.emit({
-        type: "loop.log",
-        loopId: "after-disconnect",
+      taskEventEmitter.emit({
+        type: "task.log",
+        taskId: "after-disconnect",
         id: "log-after",
         level: "info",
         message: "Should not crash",
@@ -512,11 +512,11 @@ describe("Events WebSocket API Integration", () => {
       expect(true).toBe(true);
     });
 
-    test("connection confirmation includes loopId when specified", async () => {
-      const testLoopId = "my-test-loop-123";
-      const ws = new WebSocket(`${wsUrl}/api/ws?loopId=${testLoopId}`);
+    test("connection confirmation includes taskId when specified", async () => {
+      const testTaskId = "my-test-task-123";
+      const ws = new WebSocket(`${wsUrl}/api/ws?taskId=${testTaskId}`);
 
-      const message = await new Promise<{ type: string; loopId: string | null } | null>((resolve) => {
+      const message = await new Promise<{ type: string; taskId: string | null } | null>((resolve) => {
         const timeout = setTimeout(() => {
           ws.close();
           resolve(null);
@@ -539,7 +539,7 @@ describe("Events WebSocket API Integration", () => {
 
       expect(message).not.toBeNull();
       expect(message?.type).toBe("connected");
-      expect(message?.loopId).toBe(testLoopId);
+      expect(message?.taskId).toBe(testTaskId);
       ws.close();
     });
 
@@ -632,14 +632,14 @@ describe("Events WebSocket API Integration", () => {
 
       // Emit event
       const testEvent = {
-        type: "loop.log" as const,
-        loopId: "multi-client-loop",
+        type: "task.log" as const,
+        taskId: "multi-client-task",
         id: "log-multi",
         level: "info" as const,
         message: "Multi-client test",
         timestamp: new Date().toISOString(),
       };
-      loopEventEmitter.emit(testEvent);
+      taskEventEmitter.emit(testEvent);
 
       const [r1, r2] = await Promise.all([received1, received2]);
       expect(r1).toEqual(testEvent);
@@ -649,19 +649,19 @@ describe("Events WebSocket API Integration", () => {
       ws2.close();
     });
 
-    test("events without loopId are delivered to all clients", async () => {
-      // A client filtering for a specific loop
-      const filteredWs = new WebSocket(`${wsUrl}/api/ws?loopId=specific-loop`);
+    test("events without taskId are delivered to all clients", async () => {
+      // A client filtering for a specific task
+      const filteredWs = new WebSocket(`${wsUrl}/api/ws?taskId=specific-task`);
       // A client with no filter
       const unfilteredWs = new WebSocket(`${wsUrl}/api/ws`);
       const expectedEventIds = new Set(["log-match", "log-other"]);
 
       // Set up message collectors immediately to avoid race conditions.
-      const filteredEvents: Array<{ loopId: string; id: string }> = [];
-      const unfilteredEvents: Array<{ loopId: string; id: string }> = [];
+      const filteredEvents: Array<{ taskId: string; id: string }> = [];
+      const unfilteredEvents: Array<{ taskId: string; id: string }> = [];
       const trackExpectedEvent = (
         rawEvent: MessageEvent<string>,
-        target: Array<{ loopId: string; id: string }>,
+        target: Array<{ taskId: string; id: string }>,
       ) => {
         const data = JSON.parse(rawEvent.data);
         if (
@@ -670,10 +670,10 @@ describe("Events WebSocket API Integration", () => {
           && "id" in data
           && typeof data.id === "string"
           && expectedEventIds.has(data.id)
-          && "loopId" in data
-          && typeof data.loopId === "string"
+          && "taskId" in data
+          && typeof data.taskId === "string"
         ) {
-          target.push({ loopId: data.loopId, id: data.id });
+          target.push({ taskId: data.taskId, id: data.id });
         }
       };
       const waitForExpectedEvents = async (
@@ -728,23 +728,23 @@ describe("Events WebSocket API Integration", () => {
         trackExpectedEvent(event, unfilteredEvents);
       };
 
-      // Emit event that has no loopId — should pass through the filter
-      // because the filter checks `"loopId" in event` and only skips if loopId differs
-      loopEventEmitter.emit({
-        type: "loop.log",
-        loopId: "specific-loop",
+      // Emit event that has no taskId — should pass through the filter
+      // because the filter checks `"taskId" in event` and only skips if taskId differs
+      taskEventEmitter.emit({
+        type: "task.log",
+        taskId: "specific-task",
         id: "log-match",
         level: "info",
-        message: "Matching loop",
+        message: "Matching task",
         timestamp: new Date().toISOString(),
       });
 
-      loopEventEmitter.emit({
-        type: "loop.log",
-        loopId: "other-loop",
+      taskEventEmitter.emit({
+        type: "task.log",
+        taskId: "other-task",
         id: "log-other",
         level: "info",
-        message: "Non-matching loop",
+        message: "Non-matching task",
         timestamp: new Date().toISOString(),
       });
 
@@ -752,7 +752,7 @@ describe("Events WebSocket API Integration", () => {
 
       // Filtered client should only get the matching event
       expect(filteredEvents.length).toBe(1);
-      expect(filteredEvents[0]?.loopId).toBe("specific-loop");
+      expect(filteredEvents[0]?.taskId).toBe("specific-task");
       expect(filteredEvents[0]?.id).toBe("log-match");
 
       // Unfiltered client should get both events

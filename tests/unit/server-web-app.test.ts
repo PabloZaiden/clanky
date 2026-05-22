@@ -6,27 +6,27 @@ import index from "../../src/index.html";
 import { getWebAppRoute, serveWebApp } from "../../src/server";
 
 describe("serveWebApp", () => {
-  const originalWebDistDir = process.env["RALPHER_WEB_DIST_DIR"];
+  const originalWebDistDir = process.env["CLANKY_WEB_DIST_DIR"];
   let webDistDir = "";
 
   beforeEach(async () => {
-    webDistDir = await mkdtemp(join(tmpdir(), "ralpher-web-dist-"));
-    process.env["RALPHER_WEB_DIST_DIR"] = webDistDir;
+    webDistDir = await mkdtemp(join(tmpdir(), "clanky-web-dist-"));
+    process.env["CLANKY_WEB_DIST_DIR"] = webDistDir;
   });
 
   afterEach(async () => {
     await rm(webDistDir, { recursive: true, force: true });
 
     if (originalWebDistDir === undefined) {
-      delete process.env["RALPHER_WEB_DIST_DIR"];
+      delete process.env["CLANKY_WEB_DIST_DIR"];
       return;
     }
 
-    process.env["RALPHER_WEB_DIST_DIR"] = originalWebDistDir;
+    process.env["CLANKY_WEB_DIST_DIR"] = originalWebDistDir;
   });
 
   test("uses Bun's HTML bundle route when no web dist is configured", () => {
-    delete process.env["RALPHER_WEB_DIST_DIR"];
+    delete process.env["CLANKY_WEB_DIST_DIR"];
 
     expect(getWebAppRoute()).toBe(index);
   });

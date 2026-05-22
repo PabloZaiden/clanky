@@ -204,7 +204,7 @@ describe("rubber duck agent tool inference", () => {
       description: "Critique fix plan",
       agent_type: "rubber-duck",
       name: "quick-chat-review-duck",
-      prompt: "We are in repo /workspaces/ralpher. Critique the fix plan.",
+      prompt: "We are in repo /workspaces/clanky. Critique the fix plan.",
     });
 
     expect(inferToolKind(tool)).toBe("rubber_duck");
@@ -226,7 +226,7 @@ describe("rubber duck agent tool inference", () => {
       {
         type: "text",
         title: "Prompt",
-        content: "We are in repo /workspaces/ralpher. Critique the fix plan.",
+        content: "We are in repo /workspaces/clanky. Critique the fix plan.",
       },
     ]);
   });

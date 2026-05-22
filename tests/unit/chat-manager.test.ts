@@ -5,7 +5,7 @@ import { ChatManager } from "../../src/core/chat-manager";
 import { backendManager } from "../../src/core/backend-manager";
 import { SimpleEventEmitter } from "../../src/core/event-emitter";
 import { GitService } from "../../src/core/git-service";
-import { loopManager } from "../../src/core";
+import { taskManager } from "../../src/core";
 import { getPlanFilePath, getStatusFilePath } from "../../src/lib/planning-files";
 import * as chatPersistence from "../../src/persistence/chats";
 import { loadChat } from "../../src/persistence/chats";
@@ -1741,12 +1741,12 @@ describe("ChatManager", () => {
     expect(completed.state.session?.id).toBeString();
     expect(completed.state.worktree?.originalBranch).toBeString();
     expect(completed.state.worktree?.workingBranch).toContain("chat-runtime-chat-");
-    expect(completed.state.worktree?.worktreePath).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+    expect(completed.state.worktree?.worktreePath).toBe(`${context.workDir}/.clanky-worktrees/${chat.config.id}`);
     expect(context.mockBackend?.getDirectory()).toBe(completed.state.worktree?.worktreePath);
     expect(
       await context.git.worktreeExists(
         context.workDir,
-        `${context.workDir}/.ralph-worktrees/${chat.config.id}`,
+        `${context.workDir}/.clanky-worktrees/${chat.config.id}`,
       ),
     ).toBe(true);
     expect(completed.state.messages.map((message) => message.content)).toEqual([
@@ -1771,7 +1771,7 @@ describe("ChatManager", () => {
     });
 
     const persisted = await loadChat(chat.config.id);
-    const expectedWorktreePath = `${context.workDir}/.ralph-worktrees/${chat.config.id}`;
+    const expectedWorktreePath = `${context.workDir}/.clanky-worktrees/${chat.config.id}`;
 
     expect(await context.git.hasRemote(context.workDir)).toBe(false);
     expect(chat.config.useWorktree).toBe(true);
@@ -1800,7 +1800,7 @@ describe("ChatManager", () => {
       ...testModelFields,
     });
 
-    const expectedWorktreePath = `${context.workDir}/.ralph-worktrees/${chat.config.id}`;
+    const expectedWorktreePath = `${context.workDir}/.clanky-worktrees/${chat.config.id}`;
 
     expect(await context.git.hasRemote(context.workDir)).toBe(false);
     expect(chat.state.worktree?.originalBranch).toBeString();
@@ -2018,7 +2018,7 @@ describe("ChatManager", () => {
         "pull:main",
         `createWorktree:chat-runtime-chat-${chat.config.id.slice(0, 8)}:main`,
       ]);
-      expect(context.mockBackend?.getDirectory()).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+      expect(context.mockBackend?.getDirectory()).toBe(`${context.workDir}/.clanky-worktrees/${chat.config.id}`);
     } finally {
       withExecutorSpy.mockRestore();
     }
@@ -2066,7 +2066,7 @@ describe("ChatManager", () => {
         `createWorktree:chat-quick-chat-${chat.config.id.slice(0, 8)}:main`,
       ]);
       expect(chat.config.skipBaseBranchSync).toBe(true);
-      expect(chat.state.worktree?.worktreePath).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+      expect(chat.state.worktree?.worktreePath).toBe(`${context.workDir}/.clanky-worktrees/${chat.config.id}`);
     } finally {
       withExecutorSpy.mockRestore();
     }
@@ -2135,7 +2135,7 @@ describe("ChatManager", () => {
         `createWorktree:start:chat-deferred-quick-chat-${chat.config.id.slice(0, 8)}:main`,
         `createWorktree:end:chat-deferred-quick-chat-${chat.config.id.slice(0, 8)}:main`,
       ]);
-      expect(context.mockBackend?.getDirectory()).toBe(`${context.workDir}/.ralph-worktrees/${chat.config.id}`);
+      expect(context.mockBackend?.getDirectory()).toBe(`${context.workDir}/.clanky-worktrees/${chat.config.id}`);
     } finally {
       withExecutorSpy.mockRestore();
     }
@@ -2700,14 +2700,14 @@ describe("ChatManager", () => {
     });
   });
 
-  test("spawns a loop using the chat's updated model", async () => {
+  test("spawns a task using the chat's updated model", async () => {
     context = await setupTestContext({
       useMockBackend: true,
       mockResponses: ["Chat response"],
       initGit: true,
     });
 
-    const startPlanModeSpy = spyOn(loopManager, "startPlanMode");
+    const startPlanModeSpy = spyOn(taskManager, "startPlanMode");
     startPlanModeSpy.mockResolvedValue();
 
     try {
@@ -2723,7 +2723,7 @@ describe("ChatManager", () => {
       });
 
       await manager.sendMessage(chat.config.id, {
-        message: "Turn this into a loop",
+        message: "Turn this into a task",
       });
       await waitForChat(chat.config.id, (current) => current.state.status === "idle");
 
@@ -2735,7 +2735,7 @@ describe("ChatManager", () => {
         },
       });
 
-      const spawned = await manager.spawnLoopFromChat(chat.config.id);
+      const spawned = await manager.spawnTaskFromChat(chat.config.id);
 
       expect(spawned.config.model).toEqual({
         providerID: testModelFields.modelProviderID,
@@ -2750,7 +2750,7 @@ describe("ChatManager", () => {
     }
   });
 
-  test("spawns a plan-ready loop from the chat's current plan worktree", async () => {
+  test("spawns a plan-ready task from the chat's current plan worktree", async () => {
     context = await setupTestContext({
       useMockBackend: true,
       mockResponses: ["Chat response"],
@@ -2769,7 +2769,7 @@ describe("ChatManager", () => {
     });
 
     await manager.sendMessage(chat.config.id, {
-      message: "Turn this chat into a seeded plan loop",
+      message: "Turn this chat into a seeded plan task",
     });
     const settled = await waitForChat(
       chat.config.id,
@@ -2781,20 +2781,20 @@ describe("ChatManager", () => {
     await writeFile(join(chatWorktreePath, "plans", "imported-plan.md"), "# Imported plan\n\n1. Do the seeded work.\n");
     await writeFile(join(chatWorktreePath, "plans", "status.md"), "# Imported status\n\nReady to review.");
 
-    const spawned = await manager.spawnLoopFromCurrentPlan(chat.config.id, "plans/imported-plan.md");
+    const spawned = await manager.spawnTaskFromCurrentPlan(chat.config.id, "plans/imported-plan.md");
 
     expect(spawned.config.autoAcceptPlan).toBe(false);
     expect(spawned.config.fullyAutonomous).toBe(false);
-    expect(spawned.config.prompt).toBe("Implement the existing plan in .ralph-planning/plan.md.");
-    expect(spawned.config.prompt).not.toContain("Turn this chat into a seeded plan loop");
+    expect(spawned.config.prompt).toBe("Implement the existing plan in .clanky-planning/plan.md.");
+    expect(spawned.config.prompt).not.toContain("Turn this chat into a seeded plan task");
     expect(spawned.state.status).toBe("planning");
     expect(spawned.state.planMode?.isPlanReady).toBe(true);
     expect(spawned.state.planMode?.planContent).toContain("Imported plan");
     expect(spawned.state.session).toBeUndefined();
 
-    const loopWorkDir = spawned.state.git?.worktreePath ?? spawned.config.directory;
-    expect(await Bun.file(getPlanFilePath(loopWorkDir)).text()).toContain("Imported plan");
-    expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toBe("# Imported status\n\nReady to review.");
+    const taskWorkDir = spawned.state.git?.worktreePath ?? spawned.config.directory;
+    expect(await Bun.file(getPlanFilePath(taskWorkDir)).text()).toContain("Imported plan");
+    expect(await Bun.file(getStatusFilePath(taskWorkDir)).text()).toBe("# Imported status\n\nReady to review.");
   });
 
   test("allows selected absolute plan paths outside the chat workspace", async () => {
@@ -2816,7 +2816,7 @@ describe("ChatManager", () => {
     });
 
     await manager.sendMessage(chat.config.id, {
-      message: "Turn this chat into a seeded plan loop",
+      message: "Turn this chat into a seeded plan task",
     });
     await waitForChat(
       chat.config.id,
@@ -2829,12 +2829,12 @@ describe("ChatManager", () => {
     await writeFile(importedPlanPath, "# Imported plan\n\n1. Use an absolute path.\n");
     await writeFile(join(importedPlanDir, "status.md"), "# Imported status\n\nReady from outside workspace.");
 
-    const spawned = await manager.spawnLoopFromCurrentPlan(chat.config.id, importedPlanPath);
+    const spawned = await manager.spawnTaskFromCurrentPlan(chat.config.id, importedPlanPath);
 
     expect(spawned.state.planMode?.planContent).toBe("# Imported plan\n\n1. Use an absolute path.");
-    const loopWorkDir = spawned.state.git?.worktreePath ?? spawned.config.directory;
-    expect(await Bun.file(getPlanFilePath(loopWorkDir)).text()).toContain("# Imported plan\n\n1. Use an absolute path.");
-    expect(await Bun.file(getStatusFilePath(loopWorkDir)).text()).toBe("# Imported status\n\nReady from outside workspace.");
+    const taskWorkDir = spawned.state.git?.worktreePath ?? spawned.config.directory;
+    expect(await Bun.file(getPlanFilePath(taskWorkDir)).text()).toContain("# Imported plan\n\n1. Use an absolute path.");
+    expect(await Bun.file(getStatusFilePath(taskWorkDir)).text()).toBe("# Imported status\n\nReady from outside workspace.");
   });
 
   test("treats uninitialized database errors by error message instead of String(error)", async () => {

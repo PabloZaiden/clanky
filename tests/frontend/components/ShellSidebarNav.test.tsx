@@ -10,7 +10,7 @@ import {
   buildWorkspaceSidebarGroups,
   type ShellRoute,
 } from "@/components/app-shell/shell-types";
-import { createLoop, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
+import { createTask, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 
 function createChat(overrides?: {
@@ -34,7 +34,7 @@ function createChat(overrides?: {
       mode: "chat",
       ...overrides?.config,
       scope: overrides?.config?.scope ?? "workspace",
-      loopId: overrides?.config?.loopId,
+      taskId: overrides?.config?.taskId,
     },
     state: {
       id: overrides?.state?.id ?? overrides?.config?.id ?? "chat-1",
@@ -107,21 +107,21 @@ function createSidebarData() {
       repoUrl: "https://example.com/workspace-2.git",
     }),
   ];
-  const loops = [
-    createLoop({
+  const tasks = [
+    createTask({
       config: {
-        id: "loop-1",
-        name: "Feature Loop",
+        id: "task-1",
+        name: "Feature Task",
         workspaceId: "workspace-1",
       },
       state: {
         status: "running",
       },
     }),
-    createLoop({
+    createTask({
       config: {
-        id: "loop-2",
-        name: "Loop With SSH",
+        id: "task-2",
+        name: "Task With SSH",
         workspaceId: "workspace-1",
       },
       state: {
@@ -134,10 +134,10 @@ function createSidebarData() {
         },
       },
     }),
-    createLoop({
+    createTask({
       config: {
-        id: "loop-3",
-        name: "Completed Loop",
+        id: "task-3",
+        name: "Completed Task",
         workspaceId: "workspace-1",
       },
       state: {
@@ -158,9 +158,9 @@ function createSidebarData() {
     createSshSession({
       config: {
         id: "workspace-session-1",
-        name: "Loop SSH Session",
+        name: "Task SSH Session",
         workspaceId: "workspace-1",
-        loopId: "loop-2",
+        taskId: "task-2",
         createdAt: "2026-04-16T11:00:00.000Z",
       },
       state: {
@@ -190,7 +190,7 @@ function createSidebarData() {
     workspaces,
     workspaceGroups: buildWorkspaceSidebarGroups({
       workspaces,
-      loops,
+      tasks,
       chats,
       sessions: workspaceSessions,
     }),
@@ -264,7 +264,7 @@ describe("ShellSidebarNav", () => {
     expect(getByText("Inactive")).toBeInTheDocument();
     expect(getAllByText("Workspace 1").length).toBeGreaterThan(0);
     expect(getByText("Workspace 2")).toBeInTheDocument();
-    expect(getAllByText("Feature Loop").length).toBeGreaterThan(0);
+    expect(getAllByText("Feature Task").length).toBeGreaterThan(0);
     expect(getByText("Server 1")).toBeInTheDocument();
     expect(getByText("Standalone Server Session")).toBeInTheDocument();
   });
@@ -273,20 +273,20 @@ describe("ShellSidebarNav", () => {
     const { workspaceGroups } = createSidebarData();
 
     expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => {
-      if (item.kind === "loop") {
-        return `${item.kind}:${item.loopNode.title}:${item.workspaceName}`;
+      if (item.kind === "task") {
+        return `${item.kind}:${item.taskNode.title}:${item.workspaceName}`;
       }
       if (item.kind === "chat") {
         return `${item.kind}:${item.chatNode.title}:${item.workspaceName}`;
       }
       return `${item.kind}:${item.sessionNode.title}:${item.workspaceName}`;
     })).toEqual([
-      "loop:Feature Loop:Workspace 1",
-      "loop:Loop With SSH:Workspace 1",
-      "loop:Completed Loop:Workspace 1",
+      "task:Feature Task:Workspace 1",
+      "task:Task With SSH:Workspace 1",
+      "task:Completed Task:Workspace 1",
       "chat:Workspace Chat:Workspace 1",
       "ssh-session:Workspace SSH:Workspace 1",
-      "ssh-session:Loop SSH Session:Workspace 1",
+      "ssh-session:Task SSH Session:Workspace 1",
     ]);
   });
 
@@ -301,8 +301,8 @@ describe("ShellSidebarNav", () => {
     expect(queryByRole("button", { name: "Collapse Active Work section" })).not.toBeInTheDocument();
     expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
 
-    await user.click(getByTextButton(getAllByText("Feature Loop")[0]!));
-    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "loop", loopId: "loop-1" });
+    await user.click(getByTextButton(getAllByText("Feature Task")[0]!));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "task", taskId: "task-1" });
 
     await user.click(getByTextButton(getAllByText("Workspace Chat")[0]!));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "chat", chatId: "chat-1" });
@@ -338,7 +338,7 @@ describe("ShellSidebarNav", () => {
 
     expect(getByText("Workspace 2")).toBeInTheDocument();
     expect(queryByRole("button", { name: "Collapse Workspace 2" })).toBeInTheDocument();
-    expect(getAllByText("Loops")[1]!.closest("button")).toBeNull();
+    expect(getAllByText("Tasks")[1]!.closest("button")).toBeNull();
     expect(getAllByText("Chats")[1]!.closest("button")).toBeNull();
     expect(getAllByText("SSH sessions")[1]!.closest("button")).toBeNull();
 
@@ -356,7 +356,7 @@ describe("ShellSidebarNav", () => {
           directory: "/workspaces/actions",
         }),
       ],
-      loops: [],
+      tasks: [],
       chats: [
         createChat({
           config: {
@@ -372,18 +372,18 @@ describe("ShellSidebarNav", () => {
       <SidebarHarness workspaceGroups={workspaceGroups} />,
     );
 
-    const loopsHeading = getAllByText("Loops")[0]!;
-    expect(loopsHeading.closest("button")).toBeNull();
-    expect(getByRole("button", { name: "New Loops" })).toBeInTheDocument();
+    const tasksHeading = getAllByText("Tasks")[0]!;
+    expect(tasksHeading.closest("button")).toBeNull();
+    expect(getByRole("button", { name: "New Tasks" })).toBeInTheDocument();
     const chatsHeading = getAllByText("Chats")[0]!;
     expect(chatsHeading.closest("button")).not.toBeNull();
   });
 
-  test("renders workspace SSH sessions only in the SSH sessions section, not nested under loops", () => {
+  test("renders workspace SSH sessions only in the SSH sessions section, not nested under tasks", () => {
     const { getAllByText, queryAllByText } = renderWithUser(<SidebarHarness />);
 
-    expect(getAllByText("Loop SSH Session")).toHaveLength(3);
-    expect(queryAllByText("Expand Loop With SSH")).toHaveLength(0);
+    expect(getAllByText("Task SSH Session")).toHaveLength(3);
+    expect(queryAllByText("Expand Task With SSH")).toHaveLength(0);
   });
 
   test("does not render sidebar count pills for sections or server rows", () => {
@@ -394,7 +394,7 @@ describe("ShellSidebarNav", () => {
     expect(queryByText("1")).toBeNull();
   });
 
-  test("keeps pushed and completed loops in regular workspace groups while routing archived terminal loops to history", () => {
+  test("keeps pushed and completed tasks in regular workspace groups while routing archived terminal tasks to history", () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-1",
@@ -404,41 +404,41 @@ describe("ShellSidebarNav", () => {
     ];
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces,
-      loops: [
-        createLoop({
+      tasks: [
+        createTask({
           config: {
-            id: "loop-running",
-            name: "Feature Loop",
+            id: "task-running",
+            name: "Feature Task",
             workspaceId: "workspace-1",
           },
           state: {
             status: "running",
           },
         }),
-        createLoop({
+        createTask({
           config: {
-            id: "loop-pushed",
-            name: "Pushed Loop",
+            id: "task-pushed",
+            name: "Pushed Task",
             workspaceId: "workspace-1",
           },
           state: {
             status: "pushed",
           },
         }),
-        createLoop({
+        createTask({
           config: {
-            id: "loop-merged",
-            name: "Merged Loop",
+            id: "task-merged",
+            name: "Merged Task",
             workspaceId: "workspace-1",
           },
           state: {
             status: "merged",
           },
         }),
-        createLoop({
+        createTask({
           config: {
-            id: "loop-completed",
-            name: "Completed Loop",
+            id: "task-completed",
+            name: "Completed Task",
             workspaceId: "workspace-1",
           },
           state: {
@@ -453,22 +453,22 @@ describe("ShellSidebarNav", () => {
       .find((group) => group.key === "active")
       ?.workspaces.find((workspaceNode) => workspaceNode.workspace.id === "workspace-1");
 
-    expect(activeWorkspace?.loops.map((loopNode) => loopNode.title)).toEqual([
-      "Feature Loop",
-      "Pushed Loop",
-      "Completed Loop",
+    expect(activeWorkspace?.tasks.map((taskNode) => taskNode.title)).toEqual([
+      "Feature Task",
+      "Pushed Task",
+      "Completed Task",
     ]);
-    expect(activeWorkspace?.historyLoops.map((loopNode) => loopNode.title)).toEqual(["Merged Loop"]);
+    expect(activeWorkspace?.historyTasks.map((taskNode) => taskNode.title)).toEqual(["Merged Task"]);
 
     const { getAllByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
 
     expect(getAllByText("History")).toHaveLength(1);
-    expect(getAllByText("Pushed Loop")).toHaveLength(2);
-    expect(getAllByText("Merged Loop")).toHaveLength(1);
-    expect(getAllByText("Completed Loop")).toHaveLength(2);
+    expect(getAllByText("Pushed Task")).toHaveLength(2);
+    expect(getAllByText("Merged Task")).toHaveLength(1);
+    expect(getAllByText("Completed Task")).toHaveLength(2);
   });
 
-  test("nests history inside loops so collapsing loops hides the whole history branch", async () => {
+  test("nests history inside tasks so collapsing tasks hides the whole history branch", async () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-1",
@@ -478,21 +478,21 @@ describe("ShellSidebarNav", () => {
     ];
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces,
-      loops: [
-        createLoop({
+      tasks: [
+        createTask({
           config: {
-            id: "loop-running",
-            name: "Feature Loop",
+            id: "task-running",
+            name: "Feature Task",
             workspaceId: "workspace-1",
           },
           state: {
             status: "running",
           },
         }),
-        createLoop({
+        createTask({
           config: {
-            id: "loop-merged",
-            name: "Merged Loop",
+            id: "task-merged",
+            name: "Merged Task",
             workspaceId: "workspace-1",
           },
           state: {
@@ -508,14 +508,14 @@ describe("ShellSidebarNav", () => {
     );
 
     expect(getAllByText("History")).toHaveLength(1);
-    expect(getAllByText("Feature Loop")).toHaveLength(2);
-    expect(getAllByText("Merged Loop")).toHaveLength(1);
+    expect(getAllByText("Feature Task")).toHaveLength(2);
+    expect(getAllByText("Merged Task")).toHaveLength(1);
 
-    await user.click(getByTextButton(getAllByText("Loops")[0]!));
+    await user.click(getByTextButton(getAllByText("Tasks")[0]!));
 
-    expect(getAllByText("Feature Loop")).toHaveLength(1);
+    expect(getAllByText("Feature Task")).toHaveLength(1);
     expect(queryByText("History")).not.toBeInTheDocument();
-    expect(queryByText("Merged Loop")).not.toBeInTheDocument();
+    expect(queryByText("Merged Task")).not.toBeInTheDocument();
   });
 
   test("keeps workspaces with only history items in the active group", () => {
@@ -528,11 +528,11 @@ describe("ShellSidebarNav", () => {
     ];
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces,
-      loops: [
-        createLoop({
+      tasks: [
+        createTask({
           config: {
-            id: "loop-history",
-            name: "Merged Loop",
+            id: "task-history",
+            name: "Merged Task",
             workspaceId: "workspace-history",
           },
           state: {
@@ -559,11 +559,11 @@ describe("ShellSidebarNav", () => {
     ];
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces,
-      loops: [
-        createLoop({
+      tasks: [
+        createTask({
           config: {
-            id: "loop-history",
-            name: "Merged Loop",
+            id: "task-history",
+            name: "Merged Task",
             workspaceId: "workspace-history",
           },
           state: {
@@ -582,10 +582,10 @@ describe("ShellSidebarNav", () => {
     expect(queryByText("Inactive")).not.toBeInTheDocument();
     expect(getAllByText("History Workspace")).toHaveLength(1);
     expect(getAllByText("History")).toHaveLength(1);
-    expect(getAllByText("Merged Loop")).toHaveLength(1);
+    expect(getAllByText("Merged Task")).toHaveLength(1);
   });
 
-  test("keeps workspaces with only completed loops in the active group", () => {
+  test("keeps workspaces with only completed tasks in the active group", () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-completed",
@@ -595,11 +595,11 @@ describe("ShellSidebarNav", () => {
     ];
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces,
-      loops: [
-        createLoop({
+      tasks: [
+        createTask({
           config: {
-            id: "loop-completed",
-            name: "Completed Loop",
+            id: "task-completed",
+            name: "Completed Task",
             workspaceId: "workspace-completed",
           },
           state: {
@@ -645,8 +645,8 @@ describe("ShellSidebarNav", () => {
     await user.click(getByRole("button", { name: "New Sessions" }));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "ssh-session", scopeId: "server-1" });
 
-    await user.click(getAllByRole("button", { name: "New Loops" })[0]!);
-    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-2" });
+    await user.click(getAllByRole("button", { name: "New Tasks" })[0]!);
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "task", scopeId: "workspace-2" });
   });
 
   test("uses the same shared action slot and button styling for every sidebar new action", () => {
@@ -668,7 +668,7 @@ describe("ShellSidebarNav", () => {
     expect(getByRole("button", { name: "Open code explorer" })).toHaveAttribute("title", "Code explorer (Ctrl/Cmd+Shift+E)");
     expect(getByRole("button", { name: "Open settings" })).toHaveAttribute("title", "Settings (Ctrl/Cmd+Shift+,)");
     expect(getByLabelText("Search")).toHaveAttribute("title", "Search (Ctrl/Cmd+Shift+F)");
-    expect(getAllByRole("button", { name: "New Loops" })[0]).toHaveAttribute("title", "New loop (Ctrl/Cmd+Shift+L)");
+    expect(getAllByRole("button", { name: "New Tasks" })[0]).toHaveAttribute("title", "New task (Ctrl/Cmd+Shift+L)");
     expect(getAllByRole("button", { name: "New Chats" })[0]).toHaveAttribute("title", "New chat (Ctrl/Cmd+Shift+C)");
     expect(getAllByRole("button", { name: "New SSH sessions" })[0]).toHaveAttribute(
       "title",
@@ -735,7 +735,7 @@ describe("ShellSidebarNav", () => {
 
     expect(defaultPrevented).toBe(true);
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "New Loop",
+      "New Task",
       "New Chat",
       "Open code explorer",
       "Pull Latest Changes",
@@ -744,8 +744,8 @@ describe("ShellSidebarNav", () => {
       "Workspace Settings",
     ]);
 
-    await user.click(getByRole("menuitem", { name: "New Loop" }));
-    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "loop", scopeId: "workspace-1" });
+    await user.click(getByRole("menuitem", { name: "New Task" }));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "task", scopeId: "workspace-1" });
     expect(queryByRole("menu")).not.toBeInTheDocument();
 
     openContextMenuForButton(workspaceButton);
@@ -765,7 +765,7 @@ describe("ShellSidebarNav", () => {
     ));
 
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "New Loop",
+      "New Task",
       "New Chat",
       "Open code explorer",
       "Pull Latest Changes",
@@ -847,8 +847,8 @@ describe("ShellSidebarNav", () => {
     expect(getAllByText("Workspace Chat")).toHaveLength(2);
     expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
     expect(getAllByText("/workspaces/workspace-1")).toHaveLength(1);
-    expect(getAllByText("Feature Loop")).toHaveLength(2);
-    expect(getAllByText("Loop SSH Session")).toHaveLength(3);
+    expect(getAllByText("Feature Task")).toHaveLength(2);
+    expect(getAllByText("Task SSH Session")).toHaveLength(3);
 
     await user.type(getByLabelText("Search"), "workspace chat");
 
@@ -866,8 +866,8 @@ describe("ShellSidebarNav", () => {
         return {
           ...workspaceNode,
           chats: [],
-          hasActivity: workspaceNode.loops.length > 0
-            || workspaceNode.historyLoops.length > 0
+          hasActivity: workspaceNode.tasks.length > 0
+            || workspaceNode.historyTasks.length > 0
             || workspaceNode.sshSessions.length > 0,
         };
       }),
@@ -902,7 +902,7 @@ describe("ShellSidebarNav", () => {
     ];
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces,
-      loops: [],
+      tasks: [],
       chats: [],
       sessions: [],
     });
@@ -918,7 +918,7 @@ describe("ShellSidebarNav", () => {
   test("hides the inactive group when there are no workspaces", () => {
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces: [],
-      loops: [],
+      tasks: [],
       chats: [],
       sessions: [],
     });
@@ -936,7 +936,7 @@ describe("ShellSidebarNav", () => {
 
     expect(getAllByText("Workspace 1").length).toBeGreaterThan(0);
     expect(getByText("Workspace 2")).toBeInTheDocument();
-    expect(getByText("Feature Loop")).toBeInTheDocument();
+    expect(getByText("Feature Task")).toBeInTheDocument();
     expect(getAllByText("Workspace Chat").length).toBeGreaterThan(0);
     expect(queryByRole("button", { name: "New Workspaces" })).not.toBeInTheDocument();
   });
@@ -952,11 +952,11 @@ describe("ShellSidebarNav", () => {
     ];
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces,
-      loops: [
-        createLoop({
+      tasks: [
+        createTask({
           config: {
-            id: "loop-shared",
-            name: "Shared Loop",
+            id: "task-shared",
+            name: "Shared Task",
             workspaceId: "workspace-shared",
           },
           state: {
@@ -1042,7 +1042,7 @@ describe("ShellSidebarNav", () => {
     const searchSectionTitles = getAllByRole("heading", { level: 2 }).map((node) => node.textContent?.trim());
     expect(searchSectionTitles).toEqual([
       "Workspaces",
-      "Loops",
+      "Tasks",
       "Chats",
       "SSH sessions",
       "SSH servers",
@@ -1056,8 +1056,8 @@ describe("ShellSidebarNav", () => {
     await user.type(searchInput, "feature");
 
     const filteredSectionTitles = getAllByRole("heading", { level: 2 }).map((node) => node.textContent?.trim());
-    expect(filteredSectionTitles).toEqual(["Loops"]);
-    expect(getByText("Feature Loop")).toBeInTheDocument();
+    expect(filteredSectionTitles).toEqual(["Tasks"]);
+    expect(getByText("Feature Task")).toBeInTheDocument();
 
     await user.keyboard("{Backspace}".repeat(searchInput.value.length));
 
@@ -1079,15 +1079,15 @@ describe("ShellSidebarNav", () => {
         <SidebarHarness navigateWithinShell={navigateWithinShell} />,
       );
 
-      const [loopLabel] = getAllByText("Feature Loop");
-      expect(loopLabel).toBeDefined();
-      const loopButton = getByTextButton(loopLabel!);
-      fireEvent.click(loopButton);
-      expect(navigateWithinShell).toHaveBeenCalledWith({ view: "loop", loopId: "loop-1" });
+      const [taskLabel] = getAllByText("Feature Task");
+      expect(taskLabel).toBeDefined();
+      const taskButton = getByTextButton(taskLabel!);
+      fireEvent.click(taskButton);
+      expect(navigateWithinShell).toHaveBeenCalledWith({ view: "task", taskId: "task-1" });
 
-      fireEvent.click(loopButton, { ctrlKey: true });
+      fireEvent.click(taskButton, { ctrlKey: true });
       expect(openSpy).toHaveBeenCalledWith(
-        "http://localhost:3000/#/loop/loop-1",
+        "http://localhost:3000/#/task/task-1",
         "_blank",
         "noopener,noreferrer",
       );

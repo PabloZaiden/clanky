@@ -23,7 +23,7 @@ export interface UseLogLevelPreferenceResult {
   saving: boolean;
   /** Set the log level preference */
   setLevel: (level: LogLevelName) => Promise<void>;
-  /** Whether the log level is controlled by RALPHER_LOG_LEVEL environment variable */
+  /** Whether the log level is controlled by CLANKY_LOG_LEVEL environment variable */
   isFromEnv: boolean;
 }
 

@@ -7,7 +7,7 @@ import { getChatTemplateById } from "@/lib/chat-prompt-templates";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { act, renderWithUser, waitFor } from "../helpers/render";
-import { createLoop } from "../helpers/factories";
+import { createTask } from "../helpers/factories";
 import { mockComposerSoftWrap } from "../helpers/composer-measurement";
 import {
   createTestFile,
@@ -53,7 +53,7 @@ function createChat(overrides?: Partial<Chat>): Chat {
       mode: "chat",
       ...(overrides?.config ?? {}),
       scope: overrides?.config?.scope ?? "workspace",
-      loopId: overrides?.config?.loopId,
+      taskId: overrides?.config?.taskId,
     },
     state: {
       id: CHAT_ID,
@@ -648,14 +648,14 @@ describe("ChatDetails", () => {
     });
   });
 
-  test("spawns a loop from the current chat transcript", async () => {
+  test("spawns a task from the current chat transcript", async () => {
     const initialChat = createChat();
-    const spawnedLoop = createLoop({
+    const spawnedTask = createTask({
       config: {
-        id: "loop-1",
+        id: "task-1",
         name: "Plan from Repo pairing",
         workspaceId: initialChat.config.workspaceId,
-        prompt: "Use the following chat transcript as background context for this loop.",
+        prompt: "Use the following chat transcript as background context for this task.",
         planMode: true,
       },
       state: {
@@ -668,16 +668,16 @@ describe("ChatDetails", () => {
         },
       },
     });
-    let openedLoopId: string | null = null;
+    let openedTaskId: string | null = null;
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/spawn-loop", () => spawnedLoop);
+    api.post("/api/chats/:id/spawn-task", () => spawnedTask);
 
     const { getByRole, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
-        onOpenLoop={(loopId) => {
-          openedLoopId = loopId;
+        onOpenTask={(taskId) => {
+          openedTaskId = taskId;
         }}
       />,
     );
@@ -687,20 +687,20 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn Loop" }));
+    await user.click(getByRole("menuitem", { name: "Spawn Task" }));
 
     await waitFor(() => {
-      expect(openedLoopId).toBe("loop-1");
+      expect(openedTaskId).toBe("task-1");
     });
 
-    expect(api.calls("/api/chats/:id/spawn-loop", "POST")).toHaveLength(1);
+    expect(api.calls("/api/chats/:id/spawn-task", "POST")).toHaveLength(1);
   });
 
-  test("spawns a loop from the current plan", async () => {
+  test("spawns a task from the current plan", async () => {
     const initialChat = createChat();
-    const spawnedLoop = createLoop({
+    const spawnedTask = createTask({
       config: {
-        id: "loop-plan",
+        id: "task-plan",
         name: "Plan from Repo pairing",
         workspaceId: initialChat.config.workspaceId,
         planMode: true,
@@ -716,16 +716,16 @@ describe("ChatDetails", () => {
         },
       },
     });
-    let openedLoopId: string | null = null;
+    let openedTaskId: string | null = null;
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/spawn-loop-from-current-plan", () => spawnedLoop);
+    api.post("/api/chats/:id/spawn-task-from-current-plan", () => spawnedTask);
 
     const { getByLabelText, getByRole, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
-        onOpenLoop={(loopId) => {
-          openedLoopId = loopId;
+        onOpenTask={(taskId) => {
+          openedTaskId = taskId;
         }}
       />,
     );
@@ -735,25 +735,25 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
     await user.type(getByLabelText("Plan file path"), "plans/current-plan.md");
-    await user.click(getByRole("button", { name: "Spawn loop" }));
+    await user.click(getByRole("button", { name: "Spawn task" }));
 
     await waitFor(() => {
-      expect(openedLoopId).toBe("loop-plan");
+      expect(openedTaskId).toBe("task-plan");
     });
 
-    expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")).toHaveLength(1);
-    expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")[0]?.body).toEqual({
+    expect(api.calls("/api/chats/:id/spawn-task-from-current-plan", "POST")).toHaveLength(1);
+    expect(api.calls("/api/chats/:id/spawn-task-from-current-plan", "POST")[0]?.body).toEqual({
       planFilePath: "plans/current-plan.md",
     });
   });
 
   test("falls back to the default plan file when the modal input is blank", async () => {
     const initialChat = createChat();
-    const spawnedLoop = createLoop({
+    const spawnedTask = createTask({
       config: {
-        id: "loop-default-plan",
+        id: "task-default-plan",
         name: "Plan from Repo pairing",
         workspaceId: initialChat.config.workspaceId,
         planMode: true,
@@ -761,7 +761,7 @@ describe("ChatDetails", () => {
     });
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/spawn-loop-from-current-plan", () => spawnedLoop);
+    api.post("/api/chats/:id/spawn-task-from-current-plan", () => spawnedTask);
 
     const { getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -770,22 +770,22 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
-    await user.click(getByRole("button", { name: "Spawn loop" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.click(getByRole("button", { name: "Spawn task" }));
 
     await waitFor(() => {
-      expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")).toHaveLength(1);
+      expect(api.calls("/api/chats/:id/spawn-task-from-current-plan", "POST")).toHaveLength(1);
     });
 
-    expect(api.calls("/api/chats/:id/spawn-loop-from-current-plan", "POST")[0]?.body).toEqual({});
+    expect(api.calls("/api/chats/:id/spawn-task-from-current-plan", "POST")[0]?.body).toEqual({});
   });
 
-  test("keeps the current-plan modal open until loop creation finishes and preserves the path after an error", async () => {
+  test("keeps the current-plan modal open until task creation finishes and preserves the path after an error", async () => {
     const initialChat = createChat();
-    const pendingSpawn = Promise.withResolvers<ReturnType<typeof createLoop>>();
+    const pendingSpawn = Promise.withResolvers<ReturnType<typeof createTask>>();
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/spawn-loop-from-current-plan", async () => await pendingSpawn.promise);
+    api.post("/api/chats/:id/spawn-task-from-current-plan", async () => await pendingSpawn.promise);
 
     const { getByDisplayValue, getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
@@ -794,24 +794,24 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
     await user.type(getByLabelText("Plan file path"), "plans/current-plan.md");
-    await user.click(getByRole("button", { name: "Spawn loop" }));
+    await user.click(getByRole("button", { name: "Spawn task" }));
 
     await waitFor(() => {
-      expect((getByRole("button", { name: "Spawn loop" }) as HTMLButtonElement).disabled).toBe(true);
+      expect((getByRole("button", { name: "Spawn task" }) as HTMLButtonElement).disabled).toBe(true);
     });
 
-    expect(getByRole("heading", { name: "Spawn loop from plan file" })).toBeTruthy();
+    expect(getByRole("heading", { name: "Spawn task from plan file" })).toBeTruthy();
     expect(getByDisplayValue("plans/current-plan.md")).toBeTruthy();
 
     pendingSpawn.reject(new Error("Selected plan file was not found."));
 
     await waitFor(() => {
-      expect((getByRole("button", { name: "Spawn loop" }) as HTMLButtonElement).disabled).toBe(false);
+      expect((getByRole("button", { name: "Spawn task" }) as HTMLButtonElement).disabled).toBe(false);
     });
 
-    expect(getByRole("heading", { name: "Spawn loop from plan file" })).toBeTruthy();
+    expect(getByRole("heading", { name: "Spawn task from plan file" })).toBeTruthy();
     expect(getByDisplayValue("plans/current-plan.md")).toBeTruthy();
   });
 
@@ -822,7 +822,7 @@ describe("ChatDetails", () => {
         worktree: {
           originalBranch: "main",
           workingBranch: "chat-1",
-          worktreePath: "/workspace/repo/.ralph-worktrees/chat-1",
+          worktreePath: "/workspace/repo/.clanky-worktrees/chat-1",
         },
       },
     });
@@ -836,11 +836,11 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
 
-    expect(getByText("Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .ralph-planning/plan.md.")).toBeTruthy();
+    expect(getByText("Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .clanky-planning/plan.md.")).toBeTruthy();
     expect(getByText(/Relative paths resolve from the current chat workspace\./)).toBeTruthy();
-    expect(getByText("/workspace/repo/.ralph-worktrees/chat-1/.ralph-planning/plan.md")).toBeTruthy();
+    expect(getByText("/workspace/repo/.clanky-worktrees/chat-1/.clanky-planning/plan.md")).toBeTruthy();
   });
 
   test("shows the parsed current-plan spawn failure message without the Error prefix", async () => {
@@ -848,10 +848,10 @@ describe("ChatDetails", () => {
 
     api.get("/api/chats/:id", () => initialChat);
     api.post(
-      "/api/chats/:id/spawn-loop-from-current-plan",
+      "/api/chats/:id/spawn-task-from-current-plan",
       () => ({
         error: "invalid_current_plan",
-        message: "No Ralpher plan file was found in the current chat workspace.",
+        message: "No Clanky plan file was found in the current chat workspace.",
       }),
       400,
     );
@@ -863,18 +863,18 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn loop from current plan" }));
-    await user.click(getByRole("button", { name: "Spawn loop" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.click(getByRole("button", { name: "Spawn task" }));
 
     await waitFor(() => {
-      expect(getByRole("alert").textContent).toContain("No Ralpher plan file was found in the current chat workspace.");
+      expect(getByRole("alert").textContent).toContain("No Clanky plan file was found in the current chat workspace.");
       expect(getByRole("alert").textContent).not.toContain("Error:");
     });
   });
 
-  test("applies a chat model change before spawning a loop", async () => {
+  test("applies a chat model change before spawning a task", async () => {
     let currentChat = createChat();
-    let openedLoopId: string | null = null;
+    let openedTaskId: string | null = null;
 
     api.get("/api/chats/:id", () => currentChat);
     api.patch("/api/chats/:id", (req) => {
@@ -889,9 +889,9 @@ describe("ChatDetails", () => {
       });
       return currentChat;
     }, 200);
-    api.post("/api/chats/:id/spawn-loop", () => createLoop({
+    api.post("/api/chats/:id/spawn-task", () => createTask({
       config: {
-        id: "loop-2",
+        id: "task-2",
         name: "Plan from Repo pairing",
         workspaceId: currentChat.config.workspaceId,
         model: currentChat.config.model,
@@ -902,8 +902,8 @@ describe("ChatDetails", () => {
     const { getByLabelText, getByRole, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
-        onOpenLoop={(loopId) => {
-          openedLoopId = loopId;
+        onOpenTask={(taskId) => {
+          openedTaskId = taskId;
         }}
       />,
     );
@@ -925,10 +925,10 @@ describe("ChatDetails", () => {
     expect(api.calls("/api/chats/:id/messages", "POST")).toHaveLength(0);
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn Loop" }));
+    await user.click(getByRole("menuitem", { name: "Spawn Task" }));
 
     await waitFor(() => {
-      expect(openedLoopId).toBe("loop-2");
+      expect(openedTaskId).toBe("task-2");
     });
 
     expect(currentChat.config.model).toEqual({
@@ -989,25 +989,25 @@ describe("ChatDetails", () => {
     });
   });
 
-  test("uses the latest onOpenLoop handler for the header action menu spawn action", async () => {
+  test("uses the latest onOpenTask handler for the header action menu spawn action", async () => {
     const initialChat = createChat();
-    const spawnedLoop = createLoop({
+    const spawnedTask = createTask({
       config: {
-        id: "loop-1",
+        id: "task-1",
         workspaceId: "workspace-1",
         name: "Created from chat",
       },
     });
-    const openedLoopIds: string[] = [];
+    const openedTaskIds: string[] = [];
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/spawn-loop", () => spawnedLoop);
+    api.post("/api/chats/:id/spawn-task", () => spawnedTask);
 
     const { getByRole, rerender, user } = renderWithAppEvents(
       <ChatDetails
         chatId={CHAT_ID}
-        onOpenLoop={(loopId) => {
-          openedLoopIds.push(`initial:${loopId}`);
+        onOpenTask={(taskId) => {
+          openedTaskIds.push(`initial:${taskId}`);
         }}
       />,
     );
@@ -1019,17 +1019,17 @@ describe("ChatDetails", () => {
     rerender(
       <ChatDetails
         chatId={CHAT_ID}
-        onOpenLoop={(loopId) => {
-          openedLoopIds.push(`updated:${loopId}`);
+        onOpenTask={(taskId) => {
+          openedTaskIds.push(`updated:${taskId}`);
         }}
       />,
     );
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn Loop" }));
+    await user.click(getByRole("menuitem", { name: "Spawn Task" }));
 
     await waitFor(() => {
-      expect(openedLoopIds).toEqual(["updated:loop-1"]);
+      expect(openedTaskIds).toEqual(["updated:task-1"]);
     });
   });
 
@@ -1673,13 +1673,13 @@ describe("ChatDetails", () => {
         worktree: {
           originalBranch: "main",
           workingBranch: "chat-worktree",
-          worktreePath: "/workspace/repo/.ralph-worktrees/chat-worktree",
+          worktreePath: "/workspace/repo/.clanky-worktrees/chat-worktree",
         },
         logs: [],
         toolCalls: [{
           id: "tool-1",
           name: "read",
-          input: { path: "/workspace/repo/.ralph-worktrees/chat-worktree/src/persistence/auth.ts", view_range: [20, 330] },
+          input: { path: "/workspace/repo/.clanky-worktrees/chat-worktree/src/persistence/auth.ts", view_range: [20, 330] },
           status: "completed",
           timestamp: "2025-01-01T00:00:02.000Z",
         }],
@@ -1692,7 +1692,7 @@ describe("ChatDetails", () => {
     await waitFor(() => {
       expect(getByText("View src/persistence/auth.ts:20-330")).toBeTruthy();
     });
-    expect(queryByText("View .ralph-worktrees/chat-worktree/src/persistence/auth.ts:20-330")).toBeNull();
+    expect(queryByText("View .clanky-worktrees/chat-worktree/src/persistence/auth.ts:20-330")).toBeNull();
   });
 
   test("preserves newer local state when chat.updated carries a stale snapshot", async () => {
@@ -1996,7 +1996,7 @@ describe("ChatDetails", () => {
       state: {
         ...baseChat.state,
         worktree: {
-          worktreePath: "/workspaces/retailstoreagent/.ralph-worktrees/96635141-fc99-4798-8cbb-7b94e3dfc905",
+          worktreePath: "/workspaces/retailstoreagent/.clanky-worktrees/96635141-fc99-4798-8cbb-7b94e3dfc905",
           workingBranch: "chat-ltimos-cambios-en-prompts-96635141",
           originalBranch: "main",
         },
@@ -2011,14 +2011,14 @@ describe("ChatDetails", () => {
 
     expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
     expect(queryByRole("button", { name: "Enter focus mode" })).toBeNull();
-    expect(queryByRole("button", { name: /spawn loop/i })).toBeNull();
+    expect(queryByRole("button", { name: /spawn task/i })).toBeNull();
     expect(queryByRole("button", { name: "Delete chat" })).toBeNull();
     expect(queryByRole("button", { name: "Code explorer" })).toBeNull();
     expect(queryByRole("button", { name: "Rename" })).toBeNull();
 
     await user.click(getByRole("button", { name: "Chat actions" }));
 
-    expect(getByRole("menuitem", { name: "Spawn Loop" })).toBeTruthy();
+    expect(getByRole("menuitem", { name: "Spawn Task" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Code explorer" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Rename" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Delete" })).toBeTruthy();

@@ -1,5 +1,5 @@
 /**
- * Command execution abstraction for Ralph Loops Management System.
+ * Command execution abstraction for Clanky Tasks Management System.
  * Provides a unified interface for running shell commands and file operations
  * that works both locally (`stdio` transport) and remotely (`ssh` transport).
  */

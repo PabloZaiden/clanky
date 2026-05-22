@@ -7,15 +7,15 @@ import {
 describe("same-origin guard", () => {
   test("returns 403 for mutating requests with a foreign Origin header", async () => {
     const wrappedRoutes = wrapRoutesWithSameOriginProtection({
-      "/api/loops": {
+      "/api/tasks": {
         POST: async () => Response.json({ ok: true }),
       },
     });
-    const route = wrappedRoutes["/api/loops"] as {
+    const route = wrappedRoutes["/api/tasks"] as {
       POST: (req: Request) => Promise<Response>;
     };
 
-    const response = await route.POST(new Request("https://ralpher.example.test/api/loops", {
+    const response = await route.POST(new Request("https://clanky.example.test/api/tasks", {
       method: "POST",
       headers: {
         origin: "https://attacker.example.test",
@@ -31,18 +31,18 @@ describe("same-origin guard", () => {
 
   test("accepts mutating requests with a matching Origin header", async () => {
     const wrappedRoutes = wrapRoutesWithSameOriginProtection({
-      "/api/loops": {
+      "/api/tasks": {
         POST: async () => Response.json({ ok: true }),
       },
     });
-    const route = wrappedRoutes["/api/loops"] as {
+    const route = wrappedRoutes["/api/tasks"] as {
       POST: (req: Request) => Promise<Response>;
     };
 
-    const response = await route.POST(new Request("https://ralpher.example.test/api/loops", {
+    const response = await route.POST(new Request("https://clanky.example.test/api/tasks", {
       method: "POST",
       headers: {
-        origin: "https://ralpher.example.test",
+        origin: "https://clanky.example.test",
       },
     }));
 
@@ -52,17 +52,17 @@ describe("same-origin guard", () => {
 
   test("allows cross-origin mutating requests when protection is disabled", async () => {
     const wrappedRoutes = wrapRoutesWithSameOriginProtection({
-      "/api/loops": {
+      "/api/tasks": {
         POST: async () => Response.json({ ok: true }),
       },
     }, {
       disabled: true,
     });
-    const route = wrappedRoutes["/api/loops"] as {
+    const route = wrappedRoutes["/api/tasks"] as {
       POST: (req: Request) => Promise<Response>;
     };
 
-    const response = await route.POST(new Request("https://ralpher.example.test/api/loops", {
+    const response = await route.POST(new Request("https://clanky.example.test/api/tasks", {
       method: "POST",
       headers: {
         origin: "https://attacker.example.test",
@@ -75,18 +75,18 @@ describe("same-origin guard", () => {
 
   test("falls back to Referer when Origin is missing", async () => {
     const wrappedRoutes = wrapRoutesWithSameOriginProtection({
-      "/api/loops": {
+      "/api/tasks": {
         DELETE: async () => Response.json({ ok: true }),
       },
     });
-    const route = wrappedRoutes["/api/loops"] as {
+    const route = wrappedRoutes["/api/tasks"] as {
       DELETE: (req: Request) => Promise<Response>;
     };
 
-    const response = await route.DELETE(new Request("https://ralpher.example.test/api/loops", {
+    const response = await route.DELETE(new Request("https://clanky.example.test/api/tasks", {
       method: "DELETE",
       headers: {
-        referer: "https://ralpher.example.test/dashboard",
+        referer: "https://clanky.example.test/dashboard",
       },
     }));
 
@@ -96,15 +96,15 @@ describe("same-origin guard", () => {
 
   test("does not require origin headers for normal GET requests", async () => {
     const wrappedRoutes = wrapRoutesWithSameOriginProtection({
-      "/api/loops": {
+      "/api/tasks": {
         GET: async () => Response.json({ ok: true }),
       },
     });
-    const route = wrappedRoutes["/api/loops"] as {
+    const route = wrappedRoutes["/api/tasks"] as {
       GET: (req: Request) => Promise<Response>;
     };
 
-    const response = await route.GET(new Request("https://ralpher.example.test/api/loops"));
+    const response = await route.GET(new Request("https://clanky.example.test/api/tasks"));
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
@@ -122,7 +122,7 @@ describe("same-origin guard", () => {
     );
 
     const response = await wrappedHandler(
-      new Request("https://ralpher.example.test/api/ws", {
+      new Request("https://clanky.example.test/api/ws", {
         headers: {
           origin: "https://attacker.example.test",
         },
@@ -137,14 +137,14 @@ describe("same-origin guard", () => {
   test("protects websocket upgrade requests for wrapped function routes", async () => {
     let handlerCalled = false;
     const wrappedRoutes = wrapRoutesWithSameOriginProtection({
-      "/loop/:loopId/port/:forwardId": async () => {
+      "/task/:taskId/port/:forwardId": async () => {
         handlerCalled = true;
         return Response.json({ ok: true });
       },
     });
-    const route = wrappedRoutes["/loop/:loopId/port/:forwardId"] as (req: Request) => Promise<Response | undefined>;
+    const route = wrappedRoutes["/task/:taskId/port/:forwardId"] as (req: Request) => Promise<Response | undefined>;
 
-    const response = await route(new Request("https://ralpher.example.test/loop/test/port/test", {
+    const response = await route(new Request("https://clanky.example.test/task/test/port/test", {
       headers: {
         origin: "https://attacker.example.test",
         upgrade: "websocket",
@@ -170,7 +170,7 @@ describe("same-origin guard", () => {
     );
 
     const response = await wrappedHandler(
-      new Request("https://ralpher.example.test/api/ws", {
+      new Request("https://clanky.example.test/api/ws", {
         headers: {
           origin: "https://attacker.example.test",
         },

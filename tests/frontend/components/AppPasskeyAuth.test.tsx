@@ -95,7 +95,7 @@ function setupDefaultApi(authState: PasskeyAuthState) {
     publicBasePath: null,
   }));
   api.get("/api/health", () => ({ status: "ok", version: "1.0.0" }));
-  api.get("/api/loops", () => []);
+  api.get("/api/tasks", () => []);
   api.get("/api/chats", () => []);
   api.get("/api/workspaces", () => []);
   api.get("/api/ssh-sessions", () => []);
@@ -158,14 +158,14 @@ describe("App passkey auth", () => {
     const { user, getByRole, queryByRole } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Unlock Ralpher" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Unlock Clanky" })).toBeTruthy();
     });
 
     await user.click(getByRole("button", { name: "Continue with passkey" }));
 
     await waitFor(() => {
-      expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-      expect(queryByRole("heading", { name: "Unlock Ralpher" })).toBeNull();
+      expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
+      expect(queryByRole("heading", { name: "Unlock Clanky" })).toBeNull();
     });
 
     expect(api.calls("/api/passkey-auth/authentication/options", "GET")).toHaveLength(1);
@@ -188,13 +188,13 @@ describe("App passkey auth", () => {
     api.get("/api/passkey-auth/registration/options", () => ({
       challenge: "AQID",
       rp: {
-        name: "Ralpher",
+        name: "Clanky",
         id: "example.test",
       },
       user: {
         id: "cmFscGhlcg",
-        name: "ralpher",
-        displayName: "Ralpher",
+        name: "clanky",
+        displayName: "Clanky",
       },
       pubKeyCredParams: [{ alg: -7, type: "public-key" }],
     }));
@@ -381,7 +381,7 @@ describe("App passkey auth", () => {
 
     await user.click(getByRole("button", { name: "Logout" }));
 
-    expect(await findByRole("heading", { name: "Unlock Ralpher" })).toBeTruthy();
+    expect(await findByRole("heading", { name: "Unlock Clanky" })).toBeTruthy();
     expect(api.calls("/api/passkey-auth/logout", "POST")).toHaveLength(1);
   });
 });

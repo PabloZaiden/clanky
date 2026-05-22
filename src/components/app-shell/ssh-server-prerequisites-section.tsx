@@ -70,7 +70,7 @@ export function SshServerPrerequisitesSection({
         <div className="space-y-1">
           <h2 className="text-base font-semibold text-gray-950 dark:text-gray-100">Server prerequisites</h2>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Check whether this host exposes the tools Ralpher expects for standalone SSH,
+            Check whether this host exposes the tools Clanky expects for standalone SSH,
             persistent sessions, and automatic provisioning.
           </p>
         </div>

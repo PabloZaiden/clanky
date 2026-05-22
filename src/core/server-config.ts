@@ -12,12 +12,12 @@ const DEFAULT_PORT = 3000;
 export const DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS = 120;
 const MAX_PORT = 65535;
 const SAME_ORIGIN_DISABLED_MESSAGE =
-  "Same-origin protection is disabled because RALPHER_DISABLE_SAME_ORIGIN_CHECK was set. Use this only for development setups where browser and backend origins intentionally differ.";
+  "Same-origin protection is disabled because CLANKY_DISABLE_SAME_ORIGIN_CHECK was set. Use this only for development setups where browser and backend origins intentionally differ.";
 
 export interface ServerRuntimeConfig {
   host: string;
   port: number;
-  hostSource: "RALPHER_HOST" | "default";
+  hostSource: "CLANKY_HOST" | "default";
   sameOriginProtection: {
     disabled: boolean;
   };
@@ -39,25 +39,25 @@ function parsePort(value: string | undefined): number {
   }
 
   if (!/^\d+$/.test(trimmedValue)) {
-    throw new Error(`RALPHER_PORT must be an integer between 0 and ${String(MAX_PORT)}; received "${trimmedValue}".`);
+    throw new Error(`CLANKY_PORT must be an integer between 0 and ${String(MAX_PORT)}; received "${trimmedValue}".`);
   }
 
   const port = Number(trimmedValue);
   if (!Number.isInteger(port) || port < 0 || port > MAX_PORT) {
-    throw new Error(`RALPHER_PORT must be an integer between 0 and ${String(MAX_PORT)}; received "${trimmedValue}".`);
+    throw new Error(`CLANKY_PORT must be an integer between 0 and ${String(MAX_PORT)}; received "${trimmedValue}".`);
   }
 
   return port;
 }
 
 export function getServerRuntimeConfig(): ServerRuntimeConfig {
-  const hostFromEnv = getTrimmedEnv("RALPHER_HOST");
-  const port = parsePort(process.env["RALPHER_PORT"]);
+  const hostFromEnv = getTrimmedEnv("CLANKY_HOST");
+  const port = parsePort(process.env["CLANKY_PORT"]);
 
   return {
     host: hostFromEnv || DEFAULT_HOST,
     port,
-    hostSource: hostFromEnv ? "RALPHER_HOST" : "default",
+    hostSource: hostFromEnv ? "CLANKY_HOST" : "default",
     sameOriginProtection: {
       disabled: isSameOriginCheckDisabled(),
     },
@@ -78,9 +78,9 @@ export function getServerDevelopmentConfig(
 }
 
 export function getServerStartupMessages(config: ServerRuntimeConfig): string[] {
-  const listenMessage = config.hostSource === "RALPHER_HOST"
-    ? `Listening on http://${config.host}:${String(config.port)} from RALPHER_HOST. Change RALPHER_HOST to choose which interfaces accept requests.`
-    : `Listening on http://${config.host}:${String(config.port)} using the default host because RALPHER_HOST was not set. Set RALPHER_HOST to the interface you want to bind (e.g. RALPHER_HOST=0.0.0.0 to listen on all interfaces).`;
+  const listenMessage = config.hostSource === "CLANKY_HOST"
+    ? `Listening on http://${config.host}:${String(config.port)} from CLANKY_HOST. Change CLANKY_HOST to choose which interfaces accept requests.`
+    : `Listening on http://${config.host}:${String(config.port)} using the default host because CLANKY_HOST was not set. Set CLANKY_HOST to the interface you want to bind (e.g. CLANKY_HOST=0.0.0.0 to listen on all interfaces).`;
 
   const messages = [listenMessage];
 

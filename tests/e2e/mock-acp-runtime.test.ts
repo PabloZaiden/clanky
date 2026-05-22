@@ -4,7 +4,7 @@ import { join } from "path";
 import {
   setupTestContext,
   teardownTestContext,
-  waitForLoopStatus,
+  waitForTaskStatus,
   waitForPlanReady,
   testModelFields,
   type TestContext,
@@ -35,39 +35,39 @@ describe("Mock ACP runtime integration", () => {
     await teardownTestContext(ctx);
   });
 
-  test("completes a standard loop through the real ACP transport", async () => {
-    const loop = await ctx.manager.createLoop({
+  test("completes a standard task through the real ACP transport", async () => {
+    const task = await ctx.manager.createTask({
       ...testModelFields,
       directory: ctx.workDir,
       prompt: "Implement the requested mock ACP changes",
-      name: "Mock ACP Execution Loop",
+      name: "Mock ACP Execution Task",
       workspaceId: "test-workspace-id",
       planMode: false,
     });
 
-    await ctx.manager.startLoop(loop.config.id);
-    const completed = await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+    await ctx.manager.startTask(task.config.id);
+    const completed = await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
 
     expect(completed.state.status).toBe("completed");
     expect(completed.state.currentIteration).toBe(1);
   }, { timeout: 60_000 });
 
   test("reaches PLAN_READY and then completes accepted-plan execution", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
       ...testModelFields,
       directory: ctx.workDir,
       prompt: "Plan and then execute the mock ACP work",
-      name: "Mock ACP Plan Loop",
+      name: "Mock ACP Plan Task",
       workspaceId: "test-workspace-id",
       planMode: true,
     });
 
-    await ctx.manager.startPlanMode(loop.config.id);
-    const readyLoop = await waitForPlanReady(ctx.manager, loop.config.id);
-    expect(readyLoop.state.planMode?.isPlanReady).toBe(true);
+    await ctx.manager.startPlanMode(task.config.id);
+    const readyTask = await waitForPlanReady(ctx.manager, task.config.id);
+    expect(readyTask.state.planMode?.isPlanReady).toBe(true);
 
-    await ctx.manager.acceptPlan(loop.config.id);
-    const completed = await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
+    await ctx.manager.acceptPlan(task.config.id);
+    const completed = await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
     expect(completed.state.status).toBe("completed");
   }, { timeout: 60_000 });
 });

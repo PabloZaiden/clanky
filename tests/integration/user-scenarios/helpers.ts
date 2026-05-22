@@ -10,10 +10,10 @@ import { serve, type Server } from "bun";
 import { apiRoutes } from "../../../src/api";
 import { ensureDataDirectories } from "../../../src/persistence/database";
 import { backendManager } from "../../../src/core/backend-manager";
-import { loopManager } from "../../../src/core/loop-manager";
+import { taskManager } from "../../../src/core/task-manager";
 import { closeDatabase } from "../../../src/persistence/database";
 import { TestCommandExecutor } from "../../mocks/mock-executor";
-import type { LoopBackend } from "../../../src/core/loop-engine";
+import type { TaskBackend } from "../../../src/core/task-engine";
 import type {
   AgentSession,
   AgentResponse,
@@ -23,7 +23,7 @@ import type {
   PromptInput,
 } from "../../../src/backends/types";
 import { createEventStream, type EventStream } from "../../../src/utils/event-stream";
-import type { Loop } from "../../../src/types/loop";
+import type { Task } from "../../../src/types/task";
 
 /**
  * Test context containing all test dependencies.
@@ -51,7 +51,7 @@ export interface TestServerContext {
  * Configurable mock backend that allows dynamic response configuration.
  * This enables tests to control iteration outcomes.
  */
-export class ConfigurableMockBackend implements LoopBackend {
+export class ConfigurableMockBackend implements TaskBackend {
   readonly name = "acp";
 
   private connected = false;
@@ -275,7 +275,7 @@ export interface SetupServerOptions {
   withRemote?: boolean;
   /** Initial files to create in the work directory */
   initialFiles?: Record<string, string>;
-  /** Create .ralph-planning directory with default files */
+  /** Create .clanky-planning directory with default files */
   withPlanningDir?: boolean;
 }
 
@@ -292,11 +292,11 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
 
   // Create temp directories
   // Resolve symlinks (macOS /var → /private/var) to match git's resolved paths
-  const dataDir = await realpath(await mkdtemp(join(tmpdir(), "ralpher-scenario-data-")));
-  const workDir = await realpath(await mkdtemp(join(tmpdir(), "ralpher-scenario-work-")));
+  const dataDir = await realpath(await mkdtemp(join(tmpdir(), "clanky-scenario-data-")));
+  const workDir = await realpath(await mkdtemp(join(tmpdir(), "clanky-scenario-work-")));
 
   // Set env var for persistence
-  process.env["RALPHER_DATA_DIR"] = dataDir;
+  process.env["CLANKY_DATA_DIR"] = dataDir;
   await ensureDataDirectories();
 
   // Create initial files
@@ -319,9 +319,9 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   const defaultBranchResult = await Bun.$`git -C ${workDir} branch --show-current`.quiet();
   const defaultBranch = defaultBranchResult.text().trim() || "main";
 
-  // Create .ralph-planning directory if requested
+  // Create .clanky-planning directory if requested
   if (withPlanningDir) {
-    const planningDir = join(workDir, ".ralph-planning");
+    const planningDir = join(workDir, ".clanky-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "# Plan\n\nThis is the plan.");
     await writeFile(join(planningDir, "status.md"), "# Status\n\nIn progress.");
@@ -332,7 +332,7 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
   // Create local git remote if requested
   let remoteDir: string | undefined;
   if (withRemote) {
-    remoteDir = await realpath(await mkdtemp(join(tmpdir(), "ralpher-scenario-remote-")));
+    remoteDir = await realpath(await mkdtemp(join(tmpdir(), "clanky-scenario-remote-")));
     await Bun.$`git init --bare ${remoteDir}`.quiet();
     await Bun.$`git -C ${workDir} remote add origin ${remoteDir}`.quiet();
     await Bun.$`git -C ${workDir} push -u origin ${defaultBranch}`.quiet();
@@ -340,8 +340,8 @@ export async function setupTestServer(options: SetupServerOptions = {}): Promise
     await Bun.$`git --git-dir=${remoteDir} symbolic-ref HEAD refs/heads/${defaultBranch}`.quiet();
   }
 
-  // Reset loop manager to clear any stale engines from previous tests
-  loopManager.resetForTesting();
+  // Reset task manager to clear any stale engines from previous tests
+  taskManager.resetForTesting();
 
   // Set up mock backend
   const mockBackend = new ConfigurableMockBackend(mockResponses);
@@ -384,8 +384,8 @@ export async function teardownTestServer(ctx?: TestServerContext | null): Promis
   // Stop server
   ctx.server?.stop(true);
 
-  // Reset loop manager (clear engines map)
-  loopManager.resetForTesting();
+  // Reset task manager (clear engines map)
+  taskManager.resetForTesting();
 
   // Reset backend manager
   backendManager.resetForTesting();
@@ -394,7 +394,7 @@ export async function teardownTestServer(ctx?: TestServerContext | null): Promis
   closeDatabase();
 
   // Clean up env
-  delete process.env["RALPHER_DATA_DIR"];
+  delete process.env["CLANKY_DATA_DIR"];
 
   // Remove temp directories
   await rm(ctx.dataDir, { recursive: true, force: true });
@@ -436,7 +436,7 @@ export async function getOrCreateWorkspace(
 }
 
 /**
- * Default test model for API-based loop creation.
+ * Default test model for API-based task creation.
  */
 export const testModelForAPI = {
   providerID: "test-provider",
@@ -444,12 +444,12 @@ export const testModelForAPI = {
   variant: "",
 };
 
-let testLoopNameCounter = 0;
+let testTaskNameCounter = 0;
 
 /**
- * Create a loop via the API.
+ * Create a task via the API.
  */
-export async function createLoopViaAPI(
+export async function createTaskViaAPI(
   baseUrl: string,
   options: {
     directory: string;
@@ -464,26 +464,26 @@ export async function createLoopViaAPI(
     fullyAutonomous?: boolean;
     baseBranch?: string;
   }
-): Promise<{ status: number; body: Loop | { error: string; message: string } }> {
+): Promise<{ status: number; body: Task | { error: string; message: string } }> {
   // First, get or create a workspace for the directory
   const workspaceId = await getOrCreateWorkspace(baseUrl, options.directory);
 
-  // Now create the loop with workspaceId instead of directory
+  // Now create the task with workspaceId instead of directory
   const { directory: _directory, ...restOptions } = options;
   
   // Use provided model or default test model
   const model = restOptions.model || testModelForAPI;
   
-  const response = await fetch(`${baseUrl}/api/loops`, {
+  const response = await fetch(`${baseUrl}/api/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       ...restOptions,
-      name: restOptions.name ?? `Test Loop ${++testLoopNameCounter}`,
+      name: restOptions.name ?? `Test Task ${++testTaskNameCounter}`,
       workspaceId,
       model,
       attachments: [],
-      cheapModel: { mode: "same-as-loop" },
+      cheapModel: { mode: "same-as-task" },
       maxIterations: restOptions.maxIterations ?? null,
       maxConsecutiveErrors: 10,
       activityTimeoutSeconds: 300,
@@ -506,39 +506,39 @@ export async function createLoopViaAPI(
 }
 
 /**
- * Get a loop via the API.
+ * Get a task via the API.
  */
-export async function getLoopViaAPI(
+export async function getTaskViaAPI(
   baseUrl: string,
-  loopId: string
-): Promise<{ status: number; body: Loop | { error: string; message: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}`);
+  taskId: string
+): Promise<{ status: number; body: Task | { error: string; message: string } }> {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}`);
   const body = await response.json();
   return { status: response.status, body };
 }
 
 /**
- * Wait for a loop to reach a specific status.
+ * Wait for a task to reach a specific status.
  */
-export async function waitForLoopStatus(
+export async function waitForTaskStatus(
   baseUrl: string,
-  loopId: string,
+  taskId: string,
   expectedStatus: string | string[],
   timeoutMs = 15000
-): Promise<Loop> {
+): Promise<Task> {
   const statuses = Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus];
   const startTime = Date.now();
   let lastStatus = "";
-  let lastLoop: Loop | null = null;
+  let lastTask: Task | null = null;
 
   while (Date.now() - startTime < timeoutMs) {
-    const { status, body } = await getLoopViaAPI(baseUrl, loopId);
+    const { status, body } = await getTaskViaAPI(baseUrl, taskId);
     if (status === 200) {
-      const loop = body as Loop;
-      lastLoop = loop;
-      lastStatus = loop.state?.status ?? "no state";
-      if (statuses.includes(loop.state.status)) {
-        return loop;
+      const task = body as Task;
+      lastTask = task;
+      lastStatus = task.state?.status ?? "no state";
+      if (statuses.includes(task.state.status)) {
+        return task;
       }
     } else {
       lastStatus = `HTTP ${status}`;
@@ -547,29 +547,29 @@ export async function waitForLoopStatus(
   }
 
   throw new Error(
-    `Loop ${loopId} did not reach status [${statuses.join(", ")}] within ${timeoutMs}ms. Last status: ${lastStatus}${lastLoop?.state?.error ? `, error: ${lastLoop.state.error.message}` : ""}`
+    `Task ${taskId} did not reach status [${statuses.join(", ")}] within ${timeoutMs}ms. Last status: ${lastStatus}${lastTask?.state?.error ? `, error: ${lastTask.state.error.message}` : ""}`
   );
 }
 
-export async function waitForLoopCondition(
+export async function waitForTaskCondition(
   baseUrl: string,
-  loopId: string,
-  predicate: (loop: Loop) => boolean,
+  taskId: string,
+  predicate: (task: Task) => boolean,
   description: string,
   timeoutMs = 15000,
-): Promise<Loop> {
+): Promise<Task> {
   const startTime = Date.now();
   let lastStatus = "";
-  let lastLoop: Loop | null = null;
+  let lastTask: Task | null = null;
 
   while (Date.now() - startTime < timeoutMs) {
-    const { status, body } = await getLoopViaAPI(baseUrl, loopId);
+    const { status, body } = await getTaskViaAPI(baseUrl, taskId);
     if (status === 200) {
-      const loop = body as Loop;
-      lastLoop = loop;
-      lastStatus = loop.state?.status ?? "no state";
-      if (predicate(loop)) {
-        return loop;
+      const task = body as Task;
+      lastTask = task;
+      lastStatus = task.state?.status ?? "no state";
+      if (predicate(task)) {
+        return task;
       }
     } else {
       lastStatus = `HTTP ${status}`;
@@ -578,7 +578,7 @@ export async function waitForLoopCondition(
   }
 
   throw new Error(
-    `Loop ${loopId} did not satisfy condition "${description}" within ${timeoutMs}ms. Last status: ${lastStatus}${lastLoop?.state?.error ? `, error: ${lastLoop.state.error.message}` : ""}`,
+    `Task ${taskId} did not satisfy condition "${description}" within ${timeoutMs}ms. Last status: ${lastStatus}${lastTask?.state?.error ? `, error: ${lastTask.state.error.message}` : ""}`,
   );
 }
 
@@ -587,39 +587,39 @@ export async function waitForLoopCondition(
  */
 export async function waitForPlanReady(
   baseUrl: string,
-  loopId: string,
+  taskId: string,
   timeoutMs = 15000
-): Promise<Loop> {
+): Promise<Task> {
   const startTime = Date.now();
   let lastIsPlanReady: boolean | undefined;
-  let lastLoop: Loop | null = null;
+  let lastTask: Task | null = null;
 
   while (Date.now() - startTime < timeoutMs) {
-    const { status, body } = await getLoopViaAPI(baseUrl, loopId);
+    const { status, body } = await getTaskViaAPI(baseUrl, taskId);
     if (status === 200) {
-      const loop = body as Loop;
-      lastLoop = loop;
-      lastIsPlanReady = loop.state.planMode?.isPlanReady;
+      const task = body as Task;
+      lastTask = task;
+      lastIsPlanReady = task.state.planMode?.isPlanReady;
       if (lastIsPlanReady === true) {
-        return loop;
+        return task;
       }
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
   throw new Error(
-    `Loop ${loopId} plan did not become ready within ${timeoutMs}ms. Last isPlanReady: ${lastIsPlanReady}, status: ${lastLoop?.state.status}`
+    `Task ${taskId} plan did not become ready within ${timeoutMs}ms. Last isPlanReady: ${lastIsPlanReady}, status: ${lastTask?.state.status}`
   );
 }
 
 /**
- * Accept a loop via the API.
+ * Accept a task via the API.
  */
-export async function acceptLoopViaAPI(
+export async function acceptTaskViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/accept`, {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/accept`, {
     method: "POST",
   });
   const body = await response.json();
@@ -627,13 +627,13 @@ export async function acceptLoopViaAPI(
 }
 
 /**
- * Push a loop via the API.
+ * Push a task via the API.
  */
-export async function pushLoopViaAPI(
+export async function pushTaskViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { success: boolean; remoteBranch?: string; syncStatus?: string; error?: string; message?: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/push`, {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/push`, {
     method: "POST",
   });
   const body = await response.json();
@@ -641,13 +641,13 @@ export async function pushLoopViaAPI(
 }
 
 /**
- * Update branch (sync with base) for a pushed loop via the API.
+ * Update branch (sync with base) for a pushed task via the API.
  */
 export async function updateBranchViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { success: boolean; remoteBranch?: string; syncStatus?: string; error?: string; message?: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/update-branch`, {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/update-branch`, {
     method: "POST",
   });
   const body = await response.json();
@@ -655,13 +655,13 @@ export async function updateBranchViaAPI(
 }
 
 /**
- * Discard a loop via the API.
+ * Discard a task via the API.
  */
-export async function discardLoopViaAPI(
+export async function discardTaskViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/discard`, {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/discard`, {
     method: "POST",
   });
   const body = await response.json();
@@ -673,10 +673,10 @@ export async function discardLoopViaAPI(
  */
 export async function sendPlanFeedbackViaAPI(
   baseUrl: string,
-  loopId: string,
+  taskId: string,
   feedback: string
 ): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/plan/feedback`, {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/plan/feedback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ feedback, attachments: [] }),
@@ -690,12 +690,12 @@ export async function sendPlanFeedbackViaAPI(
  */
 export async function acceptPlanViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/plan/accept`, {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/plan/accept`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode: "start_loop" }),
+    body: JSON.stringify({ mode: "start_task" }),
   });
   const body = await response.json();
   return { status: response.status, body };
@@ -706,9 +706,9 @@ export async function acceptPlanViaAPI(
  */
 export async function discardPlanViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { success: boolean; error?: string; message?: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/plan/discard`, {
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/plan/discard`, {
     method: "POST",
   });
   const body = await response.json();
@@ -716,37 +716,37 @@ export async function discardPlanViaAPI(
 }
 
 /**
- * Get the diff for a loop via the API.
+ * Get the diff for a task via the API.
  */
-export async function getLoopDiffViaAPI(
+export async function getTaskDiffViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: unknown }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/diff`);
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/diff`);
   const body = await response.json();
   return { status: response.status, body };
 }
 
 /**
- * Get the plan content for a loop via the API.
+ * Get the plan content for a task via the API.
  */
-export async function getLoopPlanViaAPI(
+export async function getTaskPlanViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { content: string; exists: boolean } | { error: string; message: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/plan`);
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/plan`);
   const body = await response.json();
   return { status: response.status, body };
 }
 
 /**
- * Get the status file content for a loop via the API.
+ * Get the status file content for a task via the API.
  */
-export async function getLoopStatusFileViaAPI(
+export async function getTaskStatusFileViaAPI(
   baseUrl: string,
-  loopId: string
+  taskId: string
 ): Promise<{ status: number; body: { content: string; exists: boolean } | { error: string; message: string } }> {
-  const response = await fetch(`${baseUrl}/api/loops/${loopId}/status-file`);
+  const response = await fetch(`${baseUrl}/api/tasks/${taskId}/status-file`);
   const body = await response.json();
   return { status: response.status, body };
 }
@@ -810,10 +810,10 @@ export async function remoteBranchExists(workDir: string, branchName: string, re
 }
 
 /**
- * Validate loop state for UI display.
+ * Validate task state for UI display.
  * Returns an array of validation errors, or empty array if valid.
  */
-export function validateLoopState(loop: Loop, expectations: {
+export function validateTaskState(task: Task, expectations: {
   status?: string;
   iterationCount?: number;
   hasGitBranch?: boolean;
@@ -825,23 +825,23 @@ export function validateLoopState(loop: Loop, expectations: {
 }): string[] {
   const errors: string[] = [];
 
-  if (expectations.status !== undefined && loop.state.status !== expectations.status) {
-    errors.push(`Expected status "${expectations.status}" but got "${loop.state.status}"`);
+  if (expectations.status !== undefined && task.state.status !== expectations.status) {
+    errors.push(`Expected status "${expectations.status}" but got "${task.state.status}"`);
   }
 
-  if (expectations.iterationCount !== undefined && loop.state.currentIteration !== expectations.iterationCount) {
-    errors.push(`Expected ${expectations.iterationCount} iterations but got ${loop.state.currentIteration}`);
+  if (expectations.iterationCount !== undefined && task.state.currentIteration !== expectations.iterationCount) {
+    errors.push(`Expected ${expectations.iterationCount} iterations but got ${task.state.currentIteration}`);
   }
 
   if (expectations.hasGitBranch !== undefined) {
-    const hasGit = !!loop.state.git?.workingBranch;
+    const hasGit = !!task.state.git?.workingBranch;
     if (expectations.hasGitBranch !== hasGit) {
       errors.push(`Expected hasGitBranch=${expectations.hasGitBranch} but got ${hasGit}`);
     }
   }
 
   if (expectations.hasError !== undefined) {
-    const hasError = !!loop.state.error;
+    const hasError = !!task.state.error;
     if (expectations.hasError !== hasError) {
       errors.push(`Expected hasError=${expectations.hasError} but got ${hasError}`);
     }
@@ -849,13 +849,13 @@ export function validateLoopState(loop: Loop, expectations: {
 
   if (expectations.planMode !== undefined) {
     if (expectations.planMode.active !== undefined) {
-      const active = loop.state.planMode?.active ?? false;
+      const active = task.state.planMode?.active ?? false;
       if (expectations.planMode.active !== active) {
         errors.push(`Expected planMode.active=${expectations.planMode.active} but got ${active}`);
       }
     }
     if (expectations.planMode.feedbackRounds !== undefined) {
-      const rounds = loop.state.planMode?.feedbackRounds ?? 0;
+      const rounds = task.state.planMode?.feedbackRounds ?? 0;
       if (expectations.planMode.feedbackRounds !== rounds) {
         errors.push(`Expected planMode.feedbackRounds=${expectations.planMode.feedbackRounds} but got ${rounds}`);
       }
@@ -866,12 +866,12 @@ export function validateLoopState(loop: Loop, expectations: {
 }
 
 /**
- * Assert loop state matches expectations.
+ * Assert task state matches expectations.
  * Throws if validation fails.
  */
-export function assertLoopState(loop: Loop, expectations: Parameters<typeof validateLoopState>[1]): void {
-  const errors = validateLoopState(loop, expectations);
+export function assertTaskState(task: Task, expectations: Parameters<typeof validateTaskState>[1]): void {
+  const errors = validateTaskState(task, expectations);
   if (errors.length > 0) {
-    throw new Error(`Loop state validation failed:\n${errors.join("\n")}`);
+    throw new Error(`Task state validation failed:\n${errors.join("\n")}`);
   }
 }

@@ -10,7 +10,7 @@ export { DEFAULT_THEME_PREFERENCE } from "../types/preferences";
 
 const log = createLogger("theme");
 
-export const THEME_STORAGE_KEY = "ralpher.themePreference";
+export const THEME_STORAGE_KEY = "clanky.themePreference";
 export const THEME_DARK_CLASS = "dark";
 export const THEME_MEDIA_QUERY = "(prefers-color-scheme: dark)";
 

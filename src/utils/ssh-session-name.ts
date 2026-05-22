@@ -8,7 +8,7 @@ export function buildDefaultSshSessionName(workspaceName: string, existingSessio
   return `${normalizedWorkspaceName} ${String(normalizedCount + 1)}`;
 }
 
-export function buildLoopSshSessionName(loopName: string): string {
-  const normalizedLoopName = loopName.trim() || "Loop";
-  return `${normalizedLoopName} SSH`;
+export function buildTaskSshSessionName(taskName: string): string {
+  const normalizedTaskName = taskName.trim() || "Task";
+  return `${normalizedTaskName} SSH`;
 }

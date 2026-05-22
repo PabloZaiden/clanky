@@ -4,7 +4,7 @@
 
 import type { ServerSettings, ConnectionStatus } from "../../types/settings";
 import type { DeleteWorkspaceRequest, Workspace } from "../../types/workspace";
-import type { PurgeArchivedLoopsResult } from "../../hooks";
+import type { PurgeArchivedTasksResult } from "../../hooks";
 
 export interface WorkspaceSettingsModalProps {
   /** Whether the modal is open */
@@ -19,21 +19,21 @@ export interface WorkspaceSettingsModalProps {
   onSave: (name: string, settings: ServerSettings) => Promise<boolean>;
   /** Callback to test connection */
   onTest: (settings: ServerSettings) => Promise<{ success: boolean; error?: string }>;
-  /** Callback to purge the workspace loops covered by the terminal-state settings action */
-  onPurgeArchivedLoops?: () => Promise<PurgeArchivedLoopsResult>;
+  /** Callback to purge the workspace tasks covered by the terminal-state settings action */
+  onPurgeArchivedTasks?: () => Promise<PurgeArchivedTasksResult>;
   /** Callback to delete the workspace */
   onDeleteWorkspace?: (options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-  /** Number of purgeable loops shown in the terminal-state section */
-  purgeableLoopCount?: number;
-  /** Total number of loops still assigned to the selected workspace */
-  workspaceLoopCount?: number;
+  /** Number of purgeable tasks shown in the terminal-state section */
+  purgeableTaskCount?: number;
+  /** Total number of tasks still assigned to the selected workspace */
+  workspaceTaskCount?: number;
   /** Whether saving is in progress */
   saving?: boolean;
   /** Whether testing is in progress */
   testing?: boolean;
   /** Whether the terminal-state purge action is in progress */
-  purgingPurgeableLoops?: boolean;
-  /** Whether remote-only mode is enabled (RALPHER_REMOTE_ONLY) */
+  purgingPurgeableTasks?: boolean;
+  /** Whether remote-only mode is enabled (CLANKY_REMOTE_ONLY) */
   remoteOnly?: boolean;
 }
 
@@ -49,21 +49,21 @@ export interface WorkspaceSettingsFormProps {
   onSave: (name: string, settings: ServerSettings) => Promise<boolean>;
   /** Callback to test connection */
   onTest: (settings: ServerSettings) => Promise<{ success: boolean; error?: string }>;
-  /** Callback to purge the workspace loops covered by the terminal-state settings action */
-  onPurgeArchivedLoops?: () => Promise<PurgeArchivedLoopsResult>;
+  /** Callback to purge the workspace tasks covered by the terminal-state settings action */
+  onPurgeArchivedTasks?: () => Promise<PurgeArchivedTasksResult>;
   /** Callback to delete the workspace */
   onDeleteWorkspace?: (options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-  /** Number of purgeable loops shown in the terminal-state section */
-  purgeableLoopCount?: number;
-  /** Total number of loops still assigned to the selected workspace */
-  workspaceLoopCount?: number;
+  /** Number of purgeable tasks shown in the terminal-state section */
+  purgeableTaskCount?: number;
+  /** Total number of tasks still assigned to the selected workspace */
+  workspaceTaskCount?: number;
   /** Whether saving is in progress */
   saving?: boolean;
   /** Whether testing is in progress */
   testing?: boolean;
   /** Whether the terminal-state purge action is in progress */
-  purgingPurgeableLoops?: boolean;
-  /** Whether remote-only mode is enabled (RALPHER_REMOTE_ONLY) */
+  purgingPurgeableTasks?: boolean;
+  /** Whether remote-only mode is enabled (CLANKY_REMOTE_ONLY) */
   remoteOnly?: boolean;
   /** Whether to render the inline connection status summary */
   showConnectionStatus?: boolean;

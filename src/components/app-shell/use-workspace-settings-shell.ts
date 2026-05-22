@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import type { PurgeArchivedLoopsResult } from "../../hooks";
-import type { WorkspaceGroup } from "../../hooks/useLoopGrouping";
+import type { PurgeArchivedTasksResult } from "../../hooks";
+import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "../../hooks/useWorkspaceServerSettings";
 import type { ShellRoute } from "./shell-types";
 
@@ -8,30 +8,30 @@ export interface UseWorkspaceSettingsShellResult extends UseWorkspaceServerSetti
   workspaceSettingsWorkspaceId: string | null;
   workspaceSettingsFormValid: boolean;
   setWorkspaceSettingsFormValid: (valid: boolean) => void;
-  workspaceArchivedLoopsPurging: boolean;
-  handlePurgeArchivedLoops: (workspaceId: string) => Promise<PurgeArchivedLoopsResult>;
-  selectedWorkspaceArchivedLoopCount: number;
-  selectedWorkspaceLoopCount: number;
+  workspaceArchivedTasksPurging: boolean;
+  handlePurgeArchivedTasks: (workspaceId: string) => Promise<PurgeArchivedTasksResult>;
+  selectedWorkspaceArchivedTaskCount: number;
+  selectedWorkspaceTaskCount: number;
 }
 
 interface UseWorkspaceSettingsShellOptions {
   route: ShellRoute;
   workspaceGroups: WorkspaceGroup[];
-  purgeArchivedWorkspaceLoops: (workspaceId: string) => Promise<PurgeArchivedLoopsResult>;
+  purgeArchivedWorkspaceTasks: (workspaceId: string) => Promise<PurgeArchivedTasksResult>;
 }
 
 export function useWorkspaceSettingsShell({
   route,
   workspaceGroups,
-  purgeArchivedWorkspaceLoops,
+  purgeArchivedWorkspaceTasks,
 }: UseWorkspaceSettingsShellOptions): UseWorkspaceSettingsShellResult {
   const workspaceSettingsWorkspaceId = route.view === "workspace-settings" ? route.workspaceId : null;
   const [workspaceSettingsFormValid, setWorkspaceSettingsFormValid] = useState(false);
-  const [workspaceArchivedLoopsPurging, setWorkspaceArchivedLoopsPurging] = useState(false);
+  const [workspaceArchivedTasksPurging, setWorkspaceArchivedTasksPurging] = useState(false);
 
   const workspaceServerSettings = useWorkspaceServerSettings(workspaceSettingsWorkspaceId);
 
-  const selectedWorkspaceArchivedLoopCount = useMemo(() => {
+  const selectedWorkspaceArchivedTaskCount = useMemo(() => {
     if (!workspaceSettingsWorkspaceId) {
       return 0;
     }
@@ -41,11 +41,11 @@ export function useWorkspaceSettingsShell({
     );
   }, [workspaceGroups, workspaceSettingsWorkspaceId]);
 
-  const selectedWorkspaceLoopCount = useMemo(() => {
+  const selectedWorkspaceTaskCount = useMemo(() => {
     if (!workspaceSettingsWorkspaceId) {
       return 0;
     }
-    return workspaceGroups.find((group) => group.workspace.id === workspaceSettingsWorkspaceId)?.loops.length ?? 0;
+    return workspaceGroups.find((group) => group.workspace.id === workspaceSettingsWorkspaceId)?.tasks.length ?? 0;
   }, [workspaceGroups, workspaceSettingsWorkspaceId]);
 
   useEffect(() => {
@@ -58,12 +58,12 @@ export function useWorkspaceSettingsShell({
     setWorkspaceSettingsFormValid(false);
   }, [workspaceSettingsWorkspaceId]);
 
-  async function handlePurgeArchivedLoops(workspaceId: string): Promise<PurgeArchivedLoopsResult> {
+  async function handlePurgeArchivedTasks(workspaceId: string): Promise<PurgeArchivedTasksResult> {
     try {
-      setWorkspaceArchivedLoopsPurging(true);
-      return await purgeArchivedWorkspaceLoops(workspaceId);
+      setWorkspaceArchivedTasksPurging(true);
+      return await purgeArchivedWorkspaceTasks(workspaceId);
     } finally {
-      setWorkspaceArchivedLoopsPurging(false);
+      setWorkspaceArchivedTasksPurging(false);
     }
   }
 
@@ -72,9 +72,9 @@ export function useWorkspaceSettingsShell({
     workspaceSettingsWorkspaceId,
     workspaceSettingsFormValid,
     setWorkspaceSettingsFormValid,
-    workspaceArchivedLoopsPurging,
-    handlePurgeArchivedLoops,
-    selectedWorkspaceArchivedLoopCount,
-    selectedWorkspaceLoopCount,
+    workspaceArchivedTasksPurging,
+    handlePurgeArchivedTasks,
+    selectedWorkspaceArchivedTaskCount,
+    selectedWorkspaceTaskCount,
   };
 }

@@ -42,9 +42,9 @@ import { isPasskeyAuthRequired, isPasskeySessionAuthenticated } from "./passkey-
 
 const log = createLogger("core:token-auth");
 
-const AUTH_SUBJECT = "ralpher-user";
-const DEFAULT_CLIENT_ID = "ralpher-cli";
-const ACCESS_TOKEN_AUDIENCE = "ralpher-api";
+const AUTH_SUBJECT = "clanky-user";
+const DEFAULT_CLIENT_ID = "clanky-cli";
+const ACCESS_TOKEN_AUDIENCE = "clanky-api";
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 10;
 const REFRESH_SESSION_TOUCH_THROTTLE_MS = 60 * 1000;
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
@@ -229,7 +229,7 @@ async function getEffectiveIssuer(): Promise<string> {
     return canonical;
   }
   const instanceId = await getOrCreateInstanceId();
-  return `urn:ralpher:instance:${instanceId}`;
+  return `urn:clanky:instance:${instanceId}`;
 }
 
 function assertPasskeyBackedAuthEnabled(passkeyRequired: boolean): void {

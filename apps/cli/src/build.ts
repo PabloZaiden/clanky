@@ -11,8 +11,8 @@ const target = targetArg?.split("=")[1] as
   | "bun-windows-x64"
   | undefined;
 const outfile = target?.startsWith("bun-windows")
-  ? `${tempOutputDir}/ralpher-cli.exe`
-  : `${tempOutputDir}/ralpher-cli`;
+  ? `${tempOutputDir}/clanky-cli.exe`
+  : `${tempOutputDir}/clanky-cli`;
 
 let buildSucceeded = false;
 
@@ -40,7 +40,7 @@ try {
     process.exitCode = 1;
   } else {
     await Bun.$`mkdir -p ${outputDir}`.quiet();
-    const destName = target ? `ralpher-cli-${target.replace("bun-", "")}` : "ralpher-cli";
+    const destName = target ? `clanky-cli-${target.replace("bun-", "")}` : "clanky-cli";
     const destPath = `${outputDir}/${destName}`;
     await Bun.write(destPath, Bun.file(outfile));
     if (!target?.startsWith("bun-windows")) {

@@ -1,5 +1,5 @@
 /**
- * Main server startup for the Ralpher web application.
+ * Main server startup for the Clanky web application.
  */
 
 import { serve, type Server } from "bun";
@@ -17,7 +17,7 @@ import {
 } from "./api/same-origin-guard";
 import { portForwardProxyRoutes } from "./api/port-forwards";
 import { ensureDataDirectories } from "./persistence/database";
-import { resetStaleLoops } from "./persistence/loops";
+import { resetStaleTasks } from "./persistence/tasks";
 import { backendManager } from "./core/backend-manager";
 import { websocketHandlers, type WebSocketData } from "./api/websocket";
 import {
@@ -28,7 +28,7 @@ import {
 } from "./core/server-config";
 import { log, setLogLevel, isLogLevelFromEnv } from "./core/logger";
 import { getLogLevelPreference } from "./persistence/preferences";
-import { pushedLoopMonitor } from "./core/pushed-loop-monitor";
+import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { parseSensitiveFlag } from "./lib/sensitive-data";
 
 type StoppableServer = {
@@ -36,7 +36,7 @@ type StoppableServer = {
 };
 
 function getConfiguredWebDistDir(): string | undefined {
-  const configuredDir = process.env["RALPHER_WEB_DIST_DIR"]?.trim();
+  const configuredDir = process.env["CLANKY_WEB_DIST_DIR"]?.trim();
   return configuredDir ? configuredDir.replace(/\/+$/, "") : undefined;
 }
 
@@ -59,7 +59,7 @@ function decodeWebPathname(pathname: string): string | undefined {
 export async function serveWebApp(req: Request) {
   const distDir = getConfiguredWebDistDir();
   if (!distDir) {
-    return new Response("RALPHER_WEB_DIST_DIR is not configured.", { status: 500 });
+    return new Response("CLANKY_WEB_DIST_DIR is not configured.", { status: 500 });
   }
 
   const url = new URL(req.url);
@@ -112,14 +112,14 @@ export async function startServer(): Promise<void> {
     setLogLevel(savedLogLevel);
     log.debug(`Log level set from saved preference: ${savedLogLevel}`);
   } else {
-    log.debug("Log level set from RALPHER_LOG_LEVEL environment variable");
+    log.debug("Log level set from CLANKY_LOG_LEVEL environment variable");
   }
 
   await backendManager.initialize();
 
-  const staleLoopsReset = await resetStaleLoops();
-  if (staleLoopsReset > 0) {
-    log.info(`Reconciled ${staleLoopsReset} stale loops during startup`);
+  const staleTasksReset = await resetStaleTasks();
+  if (staleTasksReset > 0) {
+    log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
   }
 
   const runtimeConfig = getServerRuntimeConfig();
@@ -153,7 +153,7 @@ export async function startServer(): Promise<void> {
     wrapRouteHandlerWithSameOriginProtection(
       wrapRouteHandlerWithApplicationAuth((req: Request, server: Server<WebSocketData>) => {
         const url = new URL(req.url);
-        const loopId = url.searchParams.get("loopId") ?? undefined;
+        const taskId = url.searchParams.get("taskId") ?? undefined;
         const chatId = url.searchParams.get("chatId") ?? undefined;
         const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
         const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
@@ -162,7 +162,7 @@ export async function startServer(): Promise<void> {
 
         const upgraded = server.upgrade(req, {
           data: {
-            loopId,
+            taskId,
             chatId,
             sshSessionId,
             sshServerSessionId,
@@ -229,12 +229,12 @@ export async function startServer(): Promise<void> {
     development,
   });
 
-  pushedLoopMonitor.start();
+  pushedTaskMonitor.start();
 
-  registerServerShutdown([server, pushedLoopMonitor]);
+  registerServerShutdown([server, pushedTaskMonitor]);
 
   for (const message of getServerStartupMessages(runtimeConfig)) {
     log.info(message);
   }
-  log.info(`Ralpher server running at ${server.url}`);
+  log.info(`Clanky server running at ${server.url}`);
 }

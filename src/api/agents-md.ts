@@ -2,7 +2,7 @@
  * AGENTS.md optimization API endpoints.
  *
  * Provides endpoints for reading, previewing, and applying
- * Ralpher optimization to a workspace's AGENTS.md file.
+ * Clanky optimization to a workspace's AGENTS.md file.
  *
  * Endpoints:
  * - GET  /api/workspaces/:id/agents-md          - Read current AGENTS.md
@@ -123,7 +123,7 @@ export const agentsMdRoutes = {
   /**
    * POST /api/workspaces/:id/agents-md/optimize
    *
-   * Applies the Ralpher optimization to the workspace's AGENTS.md.
+   * Applies the Clanky optimization to the workspace's AGENTS.md.
    * Creates the file if it doesn't exist, appends section if missing,
    * or updates the section if an older version is present.
    */

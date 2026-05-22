@@ -1,12 +1,12 @@
 {
-  "name": "@ralpher/tui",
+  "name": "@clanky/tui",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "bunx tsc -p tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
-    "@ralpher/client-sdk": "workspace:*",
-    "@ralpher/contracts": "workspace:*"
+    "@clanky/client-sdk": "workspace:*",
+    "@clanky/contracts": "workspace:*"
   }
 }

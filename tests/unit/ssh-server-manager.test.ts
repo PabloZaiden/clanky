@@ -154,8 +154,8 @@ async function issueCredentialToken(serverId: string, password = "secret"): Prom
 
 describe("SshServerManager", () => {
   beforeEach(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-server-manager-"));
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-server-manager-"));
+    process.env["CLANKY_DATA_DIR"] = dataDir;
     await ensureDataDirectories();
     executor = new SshServerTestExecutor();
     sshServerManager.setExecutorFactoryForTesting(() => executor);
@@ -164,7 +164,7 @@ describe("SshServerManager", () => {
   afterEach(async () => {
     sshServerManager.setExecutorFactoryForTesting(null);
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
   });
 

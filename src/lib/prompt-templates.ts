@@ -1,10 +1,10 @@
 /**
- * Prompt templates for loop creation and chat composition.
+ * Prompt templates for task creation and chat composition.
  *
  * Each template provides a predefined prompt that can be selected from
- * loop creation or chat composition. Templates may also specify
- * loop-only default form values (e.g., planMode) that are applied only
- * when selected from the loop creation form.
+ * task creation or chat composition. Templates may also specify
+ * task-only default form values (e.g., planMode) that are applied only
+ * when selected from the task creation form.
  *
  * To add a new template, append an entry to the `PROMPT_TEMPLATES` array.
  */
@@ -15,7 +15,7 @@ export interface PromptTemplateDefaults {
   planMode?: boolean;
 }
 
-/** A predefined prompt template shared by loop creation and chat composition. */
+/** A predefined prompt template shared by task creation and chat composition. */
 export interface PromptTemplate {
   /** Unique identifier for the template. */
   id: string;
@@ -25,8 +25,8 @@ export interface PromptTemplate {
   description: string;
   /** The full prompt text that autofills the textarea. */
   prompt: string;
-  /** Optional loop form defaults applied when selected from loop creation. */
-  loopDefaults?: PromptTemplateDefaults;
+  /** Optional task form defaults applied when selected from task creation. */
+  taskDefaults?: PromptTemplateDefaults;
 }
 
 /**
@@ -116,7 +116,7 @@ Be thorough and concrete. Reference specific files and directories where they cl
 - Use severity levels consistently: Critical (data loss, security), Major (correctness, maintainability), Minor (style, convention), Suggestion (improvements)
 - Cross-reference findings across documents where they overlap
 - Consider the project's existing conventions and architecture when evaluating code`,
-    loopDefaults: {
+    taskDefaults: {
       planMode: true,
     },
   },
@@ -139,7 +139,7 @@ Be thorough and concrete. Reference specific files and directories where they cl
 - Follow the project's existing coding conventions
 - If a fix requires a larger refactor, note it in the plan but implement it incrementally
 - Track which issues you've fixed in your status updates`,
-    loopDefaults: {
+    taskDefaults: {
       planMode: true,
     },
   },
@@ -164,7 +164,7 @@ Be thorough and concrete. Reference specific files and directories where they cl
 - Never delete or skip tests to make the suite pass
 - Run the full suite (not individual tests) for final verification
 - Follow the project's existing coding conventions`,
-    loopDefaults: {
+    taskDefaults: {
       planMode: false,
     },
   },
@@ -172,13 +172,13 @@ Be thorough and concrete. Reference specific files and directories where they cl
     id: "continue-planned-tasks",
     name: "Continue Planned Tasks",
     description:
-      "Reads the .ralph-planning/ folder and continues executing the next pending task.",
+      "Reads the .clanky-planning/ folder and continues executing the next pending task.",
     prompt: `Continue working on the planned tasks.
 
-Read \`.ralph-planning/plan.md\` for the full plan and \`.ralph-planning/status.md\` for current progress. Pick up the next pending task and continue implementation.
+Read \`.clanky-planning/plan.md\` for the full plan and \`.clanky-planning/status.md\` for current progress. Pick up the next pending task and continue implementation.
 
 Follow the standard workflow in the planning files — update status after each completed task.`,
-    loopDefaults: {
+    taskDefaults: {
       planMode: false,
     },
   },
@@ -191,7 +191,7 @@ Follow the standard workflow in the planning files — update status after each 
 
 **Phase 1: Discovery**
 Find all documentation artifacts in the codebase:
-- \`README.md\` and any other \`*.md\` files (excluding dependency directories, \`code_review/\`, and \`.ralph-planning/\`)
+- \`README.md\` and any other \`*.md\` files (excluding dependency directories, \`code_review/\`, and \`.clanky-planning/\`)
 - Doc comment blocks (e.g., Javadoc, docstrings, GoDoc, Rustdoc, XML doc comments, or similar) on public functions, classes, and types
 - Significant inline comments that describe behavior, constraints, or architecture
 - Configuration file comments (e.g., build configs, project manifests, CI/CD pipelines)
@@ -232,7 +232,7 @@ After making fixes, re-read the updated documentation to confirm:
 - Do not add excessive documentation — keep it concise and useful
 - Follow the project's existing conventions if they are evident in the codebase and documentation
 - Run the project's build command after all changes to verify nothing is broken`,
-    loopDefaults: {
+    taskDefaults: {
       planMode: true,
     },
   },
@@ -259,7 +259,7 @@ After making fixes, re-read the updated documentation to confirm:
 - Do not ignore failing validation. Fix compatibility issues caused by dependency updates, or revert the specific problematic update and document why.
 - Keep changes focused on dependency updates and required compatibility fixes.
 - Summarize the updated dependency groups, important major-version changes, validation commands run, and any remaining blockers.`,
-    loopDefaults: {
+    taskDefaults: {
       planMode: true,
     },
   },

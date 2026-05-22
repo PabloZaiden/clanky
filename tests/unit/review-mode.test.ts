@@ -1,16 +1,16 @@
 /**
- * Unit tests for review mode functionality in LoopManager.
- * Tests the review mode features: accept/push loop, address comments, purge.
+ * Unit tests for review mode functionality in TaskManager.
+ * Tests the review mode features: accept/push task, address comments, purge.
  */
 
 import { test, expect, describe } from "bun:test";
-import { setupTestContext, teardownTestContext, waitForEvent, waitForLoopStatus, testModelFields } from "../setup";
+import { setupTestContext, teardownTestContext, waitForEvent, waitForTaskStatus, testModelFields } from "../setup";
 import { join } from "path";
-import { saveLoop } from "../../src/persistence/loops";
+import { saveTask } from "../../src/persistence/tasks";
 import {
   constructAutomaticPrReviewCommentText,
   constructAutomaticPrReviewPrompt,
-} from "../../src/core/loop/loop-review";
+} from "../../src/core/task/task-review";
 
 const testWorkspaceId = "test-workspace-id";
 
@@ -38,8 +38,8 @@ describe("Review Mode", () => {
     expect(prompt).toContain("Add a missing edge-case test.");
   });
 
-  describe("acceptLoop with review mode", () => {
-    test("initializes review mode after accepting (merging) a loop", async () => {
+  describe("acceptTask with review mode", () => {
+    test("initializes review mode after accepting (merging) a task", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -48,43 +48,43 @@ describe("Review Mode", () => {
       });
 
       try {
-        // Create and complete a loop
-        const loop = await ctx.manager.createLoop({
+        // Create and complete a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        // Start loop and wait for completion
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        // Start task and wait for completion
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
         // Update state to completed
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(completedLoop).not.toBeNull();
-        expect(completedLoop!.state.git?.workingBranch).toBeDefined();
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        expect(completedTask).not.toBeNull();
+        expect(completedTask!.state.git?.workingBranch).toBeDefined();
 
-        // Accept the loop locally
-        const acceptResult = await ctx.manager.acceptLoop(loop.config.id);
+        // Accept the task locally
+        const acceptResult = await ctx.manager.acceptTask(task.config.id);
         expect(acceptResult.success).toBe(true);
 
         // Verify review mode is initialized
-        const acceptedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(acceptedLoop).not.toBeNull();
-        expect(acceptedLoop!.state.status).toBe("accepted_local");
-        expect(acceptedLoop!.state.reviewMode).toBeDefined();
-        expect(acceptedLoop!.state.reviewMode!.addressable).toBe(true);
-        expect(acceptedLoop!.state.reviewMode!.completionAction).toBe("local");
-        expect(acceptedLoop!.state.reviewMode!.reviewCycles).toBe(0);
+        const acceptedTask = await ctx.manager.getTask(task.config.id);
+        expect(acceptedTask).not.toBeNull();
+        expect(acceptedTask!.state.status).toBe("accepted_local");
+        expect(acceptedTask!.state.reviewMode).toBeDefined();
+        expect(acceptedTask!.state.reviewMode!.addressable).toBe(true);
+        expect(acceptedTask!.state.reviewMode!.completionAction).toBe("local");
+        expect(acceptedTask!.state.reviewMode!.reviewCycles).toBe(0);
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("does not delete branch after accepting loop", async () => {
+    test("does not delete branch after accepting task", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -93,24 +93,24 @@ describe("Review Mode", () => {
       });
 
       try {
-        // Create and complete a loop
-        const loop = await ctx.manager.createLoop({
+        // Create and complete a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
-        const beforeAccept = await ctx.manager.getLoop(loop.config.id);
+        const beforeAccept = await ctx.manager.getTask(task.config.id);
         const branchName = beforeAccept!.state.git?.workingBranch!;
 
-        // Accept the loop
-        await ctx.manager.acceptLoop(loop.config.id);
+        // Accept the task
+        await ctx.manager.acceptTask(task.config.id);
 
         // Verify branch still exists
         const branches = await ctx.git.getLocalBranches(ctx.workDir);
@@ -121,8 +121,8 @@ describe("Review Mode", () => {
     });
   });
 
-  describe("pushLoop with review mode", () => {
-    test("initializes review mode after pushing a loop", async () => {
+  describe("pushTask with review mode", () => {
+    test("initializes review mode after pushing a task", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -140,39 +140,39 @@ describe("Review Mode", () => {
         // Push current branch first (this will set up the remote properly)
         await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
 
-        // Create and complete a loop
-        const loop = await ctx.manager.createLoop({
+        // Create and complete a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
-        // Push the loop
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        // Push the task
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
 
         // Verify review mode is initialized
-        const pushedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(pushedLoop).not.toBeNull();
-        expect(pushedLoop!.state.status).toBe("pushed");
-        expect(pushedLoop!.state.reviewMode).toBeDefined();
-        expect(pushedLoop!.state.reviewMode!.addressable).toBe(true);
-        expect(pushedLoop!.state.reviewMode!.completionAction).toBe("push");
-        expect(pushedLoop!.state.reviewMode!.reviewCycles).toBe(0);
+        const pushedTask = await ctx.manager.getTask(task.config.id);
+        expect(pushedTask).not.toBeNull();
+        expect(pushedTask!.state.status).toBe("pushed");
+        expect(pushedTask!.state.reviewMode).toBeDefined();
+        expect(pushedTask!.state.reviewMode!.addressable).toBe(true);
+        expect(pushedTask!.state.reviewMode!.completionAction).toBe("push");
+        expect(pushedTask!.state.reviewMode!.reviewCycles).toBe(0);
       } finally {
         await teardownTestContext(ctx);
       }
     });
   });
 
-  describe("purgeLoop with review mode", () => {
-    test("purges a merged loop completely", async () => {
+  describe("purgeTask with review mode", () => {
+    test("purges a merged task completely", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -181,29 +181,29 @@ describe("Review Mode", () => {
       });
 
       try {
-        // Create, complete, and accept a loop
-        const loop = await ctx.manager.createLoop({
+        // Create, complete, and accept a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
-        await ctx.manager.acceptLoop(loop.config.id);
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
+        await ctx.manager.acceptTask(task.config.id);
 
-        const beforePurge = await ctx.manager.getLoop(loop.config.id);
+        const beforePurge = await ctx.manager.getTask(task.config.id);
         expect(beforePurge!.state.reviewMode!.addressable).toBe(true);
 
-        // Purge the loop
-        const purgeResult = await ctx.manager.purgeLoop(loop.config.id);
+        // Purge the task
+        const purgeResult = await ctx.manager.purgeTask(task.config.id);
         expect(purgeResult.success).toBe(true);
 
-        // Verify loop is deleted (purged completely removes it)
-        const afterPurge = await ctx.manager.getLoop(loop.config.id);
+        // Verify task is deleted (purged completely removes it)
+        const afterPurge = await ctx.manager.getTask(task.config.id);
         expect(afterPurge).toBeNull();
       } finally {
         await teardownTestContext(ctx);
@@ -212,7 +212,7 @@ describe("Review Mode", () => {
   });
 
   describe("addressReviewComments", () => {
-    test("fails to address comments on non-addressable loop", async () => {
+    test("fails to address comments on non-addressable task", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -221,19 +221,19 @@ describe("Review Mode", () => {
       });
 
       try {
-        // Create a loop but don't accept/push it
-        const loop = await ctx.manager.createLoop({
+        // Create a task but don't accept/push it
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
         // Try to address comments
         const result = await ctx.manager.addressReviewComments(
-          loop.config.id,
+          task.config.id,
           "This should fail"
         );
 
@@ -253,23 +253,23 @@ describe("Review Mode", () => {
       });
 
       try {
-        // Create, complete, and accept a loop
-        const loop = await ctx.manager.createLoop({
+        // Create, complete, and accept a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
-        await ctx.manager.acceptLoop(loop.config.id);
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
+        await ctx.manager.acceptTask(task.config.id);
 
         // Try to address with empty comments - this should fail validation
-        // Note: The validation checks addressable first, so we need the loop to be addressable
-        const result = await ctx.manager.addressReviewComments(loop.config.id, "");
+        // Note: The validation checks addressable first, so we need the task to be addressable
+        const result = await ctx.manager.addressReviewComments(task.config.id, "");
 
         expect(result.success).toBe(false);
         expect(result.error).toBeDefined();
@@ -280,7 +280,7 @@ describe("Review Mode", () => {
   });
 
   describe("sendFollowUp", () => {
-    test("sends completed-loop LogViewer follow-up as a plain chat turn in the existing session", async () => {
+    test("sends completed-task LogViewer follow-up as a plain chat turn in the existing session", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -290,45 +290,45 @@ describe("Review Mode", () => {
       });
 
       try {
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Plain Chat Loop",
+          name: "Plain Chat Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const originalSessionId = completedLoop!.state.session!.id;
+        await ctx.manager.startTask(task.config.id);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const originalSessionId = completedTask!.state.session!.id;
 
-        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+        const followUpResult = await ctx.manager.sendFollowUp(task.config.id, {
           message: "What did you just change?",
           promptMode: "plain_chat",
         });
 
         expect(followUpResult.success).toBe(true);
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["stopped"]);
 
-        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(resumedLoop!.state.session!.id).toBe(originalSessionId);
-        expect(resumedLoop!.state.currentIteration).toBe(2);
+        const resumedTask = await ctx.manager.getTask(task.config.id);
+        expect(resumedTask!.state.session!.id).toBe(originalSessionId);
+        expect(resumedTask!.state.currentIteration).toBe(2);
 
         const sentPrompts = ctx.mockBackend!.getSentPrompts();
         const lastPrompt = sentPrompts[sentPrompts.length - 1]!;
         expect(lastPrompt.parts[0]).toEqual({ type: "text", text: "What did you just change?" });
         const promptText = lastPrompt.parts[0]?.type === "text" ? lastPrompt.parts[0].text : "";
         expect(promptText).not.toContain("Original Goal");
-        expect(promptText).not.toContain(".ralph-planning");
+        expect(promptText).not.toContain(".clanky-planning");
         expect(promptText).not.toContain("<promise>COMPLETE</promise>");
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("sends pushed-loop textbox follow-up as a plain chat turn in the existing session", async () => {
+    test("sends pushed-task textbox follow-up as a plain chat turn in the existing session", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -344,33 +344,33 @@ describe("Review Mode", () => {
         const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
         await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
 
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Pushed Plain Chat Loop",
+          name: "Pushed Plain Chat Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const originalSessionId = completedLoop!.state.session!.id;
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        await ctx.manager.startTask(task.config.id);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const originalSessionId = completedTask!.state.session!.id;
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
 
-        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+        const followUpResult = await ctx.manager.sendFollowUp(task.config.id, {
           message: "What happened after the push?",
           promptMode: "plain_chat",
         });
 
         expect(followUpResult.success).toBe(true);
         expect(followUpResult.reviewCycle).toBeUndefined();
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["stopped"]);
 
-        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(resumedLoop!.state.session!.id).toBe(originalSessionId);
+        const resumedTask = await ctx.manager.getTask(task.config.id);
+        expect(resumedTask!.state.session!.id).toBe(originalSessionId);
 
         const sentPrompts = ctx.mockBackend!.getSentPrompts();
         const lastPrompt = sentPrompts[sentPrompts.length - 1]!;
@@ -390,37 +390,37 @@ describe("Review Mode", () => {
       });
 
       try {
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Expired Session Loop",
+          name: "Expired Session Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed"]);
-        const completedLoop = await ctx.manager.getLoop(loop.config.id);
-        const originalSessionId = completedLoop!.state.session!.id;
+        await ctx.manager.startTask(task.config.id);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
+        const completedTask = await ctx.manager.getTask(task.config.id);
+        const originalSessionId = completedTask!.state.session!.id;
         await ctx.mockBackend!.deleteSession(originalSessionId);
 
-        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+        const followUpResult = await ctx.manager.sendFollowUp(task.config.id, {
           message: "Continue anyway",
           promptMode: "plain_chat",
         });
 
         expect(followUpResult.success).toBe(true);
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["stopped"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["stopped"]);
 
-        const resumedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(resumedLoop!.state.session!.id).not.toBe(originalSessionId);
+        const resumedTask = await ctx.manager.getTask(task.config.id);
+        expect(resumedTask!.state.session!.id).not.toBe(originalSessionId);
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("plain chat follow-up is rejected for non-completed terminal loops", async () => {
+    test("plain chat follow-up is rejected for non-completed terminal tasks", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -429,18 +429,18 @@ describe("Review Mode", () => {
       });
 
       try {
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Stopped Loop",
+          name: "Stopped Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
-        loop.state.status = "stopped";
-        await saveLoop(loop);
+        task.state.status = "stopped";
+        await saveTask(task);
 
-        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+        const followUpResult = await ctx.manager.sendFollowUp(task.config.id, {
           message: "Resume with context",
           promptMode: "plain_chat",
         });
@@ -452,7 +452,7 @@ describe("Review Mode", () => {
       }
     });
 
-    test("restarts a pushed loop on the existing review branch", async () => {
+    test("restarts a pushed task on the existing review branch", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -467,24 +467,24 @@ describe("Review Mode", () => {
         const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
         await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
 
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
 
-        const pushedLoop = await ctx.manager.getLoop(loop.config.id);
-        const workingBranch = pushedLoop!.state.git!.workingBranch;
+        const pushedTask = await ctx.manager.getTask(task.config.id);
+        const workingBranch = pushedTask!.state.git!.workingBranch;
 
-        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+        const followUpResult = await ctx.manager.sendFollowUp(task.config.id, {
           message: "Please make another pass",
         });
 
@@ -492,13 +492,13 @@ describe("Review Mode", () => {
         expect(followUpResult.reviewCycle).toBe(1);
         expect(followUpResult.branch).toBe(workingBranch);
 
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed", "max_iterations"]);
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("restarts a merged loop on a new review branch", async () => {
+    test("restarts a merged task on a new review branch", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -507,24 +507,24 @@ describe("Review Mode", () => {
       });
 
       try {
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
-        const accepted = await ctx.manager.acceptLoop(loop.config.id);
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
+        const accepted = await ctx.manager.acceptTask(task.config.id);
         expect(accepted.success).toBe(true);
 
-        const mergedLoop = await ctx.manager.getLoop(loop.config.id);
-        const originalBranch = mergedLoop!.state.git!.workingBranch;
+        const mergedTask = await ctx.manager.getTask(task.config.id);
+        const originalBranch = mergedTask!.state.git!.workingBranch;
 
-        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+        const followUpResult = await ctx.manager.sendFollowUp(task.config.id, {
           message: "Please refine the merged result",
         });
 
@@ -533,13 +533,13 @@ describe("Review Mode", () => {
         expect(followUpResult.branch).toBeDefined();
         expect(followUpResult.branch).toBe(originalBranch);
 
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed", "max_iterations"]);
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("revives a deleted loop with the same loop id", async () => {
+    test("revives a deleted task with the same task id", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -548,35 +548,35 @@ describe("Review Mode", () => {
       });
 
       try {
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
-        const deleted = await ctx.manager.deleteLoop(loop.config.id);
+        const deleted = await ctx.manager.deleteTask(task.config.id);
         expect(deleted).toBe(true);
 
-        const deletedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(deletedLoop!.state.status).toBe("deleted");
+        const deletedTask = await ctx.manager.getTask(task.config.id);
+        expect(deletedTask!.state.status).toBe("deleted");
 
-        const followUpResult = await ctx.manager.sendFollowUp(loop.config.id, {
+        const followUpResult = await ctx.manager.sendFollowUp(task.config.id, {
           message: "Please try again",
         });
 
         expect(followUpResult.success).toBe(true);
 
-        const restartedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(restartedLoop!.config.id).toBe(loop.config.id);
-        expect(restartedLoop!.state.status).not.toBe("deleted");
+        const restartedTask = await ctx.manager.getTask(task.config.id);
+        expect(restartedTask!.config.id).toBe(task.config.id);
+        expect(restartedTask!.state.status).not.toBe("deleted");
 
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed", "max_iterations"]);
       } finally {
         await teardownTestContext(ctx);
       }
@@ -599,23 +599,23 @@ describe("Review Mode", () => {
         const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
         await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
 
-        const loop = await ctx.manager.createLoop({
+        const task = await ctx.manager.createTask({
           ...testModelFields,
           directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
 
-        const pushedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(pushedLoop).not.toBeNull();
-        pushedLoop!.state.automaticPrFlow = {
+        const pushedTask = await ctx.manager.getTask(task.config.id);
+        expect(pushedTask).not.toBeNull();
+        pushedTask!.state.automaticPrFlow = {
           enabled: true,
           status: "monitoring",
           startedAt: "2026-04-13T22:45:39.694Z",
@@ -627,7 +627,7 @@ describe("Review Mode", () => {
           activeBatch: undefined,
           stoppedAt: undefined,
         };
-        await saveLoop(pushedLoop!);
+        await saveTask(pushedTask!);
 
         const sourceItems = [
           {
@@ -658,7 +658,7 @@ describe("Review Mode", () => {
         ];
 
         const expectedCommentText = constructAutomaticPrReviewCommentText(feedbackItems, sourceItems);
-        const reviewCycleResult = await ctx.manager.startAutomaticPrReviewCycle(loop.config.id, {
+        const reviewCycleResult = await ctx.manager.startAutomaticPrReviewCycle(task.config.id, {
           batchId: "batch-1",
           sourceItems,
           feedbackItems,
@@ -668,7 +668,7 @@ describe("Review Mode", () => {
         expect(reviewCycleResult.reviewCycle).toBe(1);
         expect(reviewCycleResult.commentIds).toHaveLength(1);
 
-        const pendingComment = ctx.manager.getReviewComments(loop.config.id).find(
+        const pendingComment = ctx.manager.getReviewComments(task.config.id).find(
           (comment) => comment.id === reviewCycleResult.commentIds?.[0]
         );
         expect(pendingComment).toBeDefined();
@@ -676,9 +676,9 @@ describe("Review Mode", () => {
         expect(pendingComment?.status).toBe("pending");
         expect(pendingComment?.commentText).toBe(expectedCommentText);
 
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed", "max_iterations"]);
 
-        const addressedComment = ctx.manager.getReviewComments(loop.config.id).find(
+        const addressedComment = ctx.manager.getReviewComments(task.config.id).find(
           (comment) => comment.id === reviewCycleResult.commentIds?.[0]
         );
         expect(addressedComment).toBeDefined();
@@ -691,7 +691,7 @@ describe("Review Mode", () => {
   });
 
   describe("getReviewHistory", () => {
-    test("returns review history for a loop with review mode", async () => {
+    test("returns review history for a task with review mode", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -700,22 +700,22 @@ describe("Review Mode", () => {
       });
 
       try {
-        // Create, complete, and accept a loop
-        const loop = await ctx.manager.createLoop({
+        // Create, complete, and accept a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
-        await ctx.manager.acceptLoop(loop.config.id);
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
+        await ctx.manager.acceptTask(task.config.id);
 
         // Get review history
-        const result = await ctx.manager.getReviewHistory(loop.config.id);
+        const result = await ctx.manager.getReviewHistory(task.config.id);
 
         expect(result.success).toBe(true);
         expect(result.history).toBeDefined();
@@ -727,7 +727,7 @@ describe("Review Mode", () => {
       }
     });
 
-    test("returns success with default history for loop without review mode", async () => {
+    test("returns success with default history for task without review mode", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -736,18 +736,18 @@ describe("Review Mode", () => {
       });
 
       try {
-        // Create a loop but don't accept/push it
-        const loop = await ctx.manager.createLoop({
+        // Create a task but don't accept/push it
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
         // Get review history
-        const result = await ctx.manager.getReviewHistory(loop.config.id);
+        const result = await ctx.manager.getReviewHistory(task.config.id);
 
         expect(result.success).toBe(true);
         expect(result.history).toBeDefined();
@@ -757,7 +757,7 @@ describe("Review Mode", () => {
       }
     });
 
-    test("returns error for non-existent loop", async () => {
+    test("returns error for non-existent task", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -768,7 +768,7 @@ describe("Review Mode", () => {
       try {
         const result = await ctx.manager.getReviewHistory("non-existent-id");
         expect(result.success).toBe(false);
-        expect(result.error).toBe("Loop not found");
+        expect(result.error).toBe("Task not found");
       } finally {
         await teardownTestContext(ctx);
       }
@@ -776,7 +776,7 @@ describe("Review Mode", () => {
   });
 
   describe("Completion Action Enforcement", () => {
-    test("acceptLoop allows local acceptance after a pushed review cycle", async () => {
+    test("acceptTask allows local acceptance after a pushed review cycle", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -792,46 +792,46 @@ describe("Review Mode", () => {
         const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
         await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
 
-        // Create, complete, and push a loop
-        const loop = await ctx.manager.createLoop({
+        // Create, complete, and push a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
-        // Push the loop (sets completionAction to "push")
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        // Push the task (sets completionAction to "push")
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
 
         // Verify it was pushed
-        const pushedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(pushedLoop!.state.reviewMode?.completionAction).toBe("push");
+        const pushedTask = await ctx.manager.getTask(task.config.id);
+        expect(pushedTask!.state.reviewMode?.completionAction).toBe("push");
 
         // Address comments to start a new review cycle
         const addressResult = await ctx.manager.addressReviewComments(
-          loop.config.id,
+          task.config.id,
           "Please fix this issue"
         );
         expect(addressResult.success).toBe(true);
 
         // Wait for the review cycle to complete
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed", "max_iterations"]);
 
         // Now accept locally; review cycles can choose local or push each time
-        const acceptResult = await ctx.manager.acceptLoop(loop.config.id);
+        const acceptResult = await ctx.manager.acceptTask(task.config.id);
         expect(acceptResult.success).toBe(true);
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("pushLoop allows pushing after a locally accepted review cycle", async () => {
+    test("pushTask allows pushing after a locally accepted review cycle", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -847,46 +847,46 @@ describe("Review Mode", () => {
         const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
         await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
 
-        // Create, complete, and merge a loop
-        const loop = await ctx.manager.createLoop({
+        // Create, complete, and merge a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
-        // Accept (merge) the loop (sets completionAction to "merge")
-        const acceptResult = await ctx.manager.acceptLoop(loop.config.id);
+        // Accept (merge) the task (sets completionAction to "merge")
+        const acceptResult = await ctx.manager.acceptTask(task.config.id);
         expect(acceptResult.success).toBe(true);
 
         // Verify it was merged
-        const mergedLoop = await ctx.manager.getLoop(loop.config.id);
-        expect(mergedLoop!.state.reviewMode?.completionAction).toBe("local");
+        const mergedTask = await ctx.manager.getTask(task.config.id);
+        expect(mergedTask!.state.reviewMode?.completionAction).toBe("local");
 
         // Address comments to start a new review cycle
         const addressResult = await ctx.manager.addressReviewComments(
-          loop.config.id,
+          task.config.id,
           "Please fix this issue"
         );
         expect(addressResult.success).toBe(true);
 
         // Wait for the review cycle to complete
-        await waitForLoopStatus(ctx.manager, loop.config.id, ["completed", "max_iterations"]);
+        await waitForTaskStatus(ctx.manager, task.config.id, ["completed", "max_iterations"]);
 
         // Now push; review cycles can choose local or push each time
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("acceptLoop allows merge on first completion (no prior completionAction)", async () => {
+    test("acceptTask allows merge on first completion (no prior completionAction)", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -895,36 +895,36 @@ describe("Review Mode", () => {
       });
 
       try {
-        // Create and complete a loop
-        const loop = await ctx.manager.createLoop({
+        // Create and complete a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
         // Verify no prior reviewMode
-        const beforeAccept = await ctx.manager.getLoop(loop.config.id);
+        const beforeAccept = await ctx.manager.getTask(task.config.id);
         expect(beforeAccept!.state.reviewMode).toBeUndefined();
 
         // Accept (merge) should succeed
-        const acceptResult = await ctx.manager.acceptLoop(loop.config.id);
+        const acceptResult = await ctx.manager.acceptTask(task.config.id);
         expect(acceptResult.success).toBe(true);
 
         // Verify completionAction is now set
-        const afterAccept = await ctx.manager.getLoop(loop.config.id);
+        const afterAccept = await ctx.manager.getTask(task.config.id);
         expect(afterAccept!.state.reviewMode?.completionAction).toBe("local");
       } finally {
         await teardownTestContext(ctx);
       }
     });
 
-    test("pushLoop allows push on first completion (no prior completionAction)", async () => {
+    test("pushTask allows push on first completion (no prior completionAction)", async () => {
       const ctx = await setupTestContext({
         initGit: true,
         initialFiles: {
@@ -940,29 +940,29 @@ describe("Review Mode", () => {
         const currentBranch = (await Bun.$`git -C ${ctx.workDir} branch --show-current`.text()).trim();
         await Bun.$`git -C ${ctx.workDir} push origin ${currentBranch}`.quiet();
 
-        // Create and complete a loop
-        const loop = await ctx.manager.createLoop({
+        // Create and complete a task
+        const task = await ctx.manager.createTask({
         ...testModelFields,
         directory: ctx.workDir,
           prompt: "Make changes",
-          name: "Test Loop",
+          name: "Test Task",
           planMode: false,
           workspaceId: testWorkspaceId,
         });
 
-        await ctx.manager.startLoop(loop.config.id);
-        await waitForEvent(ctx.events, "loop.completed");
+        await ctx.manager.startTask(task.config.id);
+        await waitForEvent(ctx.events, "task.completed");
 
         // Verify no prior reviewMode
-        const beforePush = await ctx.manager.getLoop(loop.config.id);
+        const beforePush = await ctx.manager.getTask(task.config.id);
         expect(beforePush!.state.reviewMode).toBeUndefined();
 
         // Push should succeed
-        const pushResult = await ctx.manager.pushLoop(loop.config.id);
+        const pushResult = await ctx.manager.pushTask(task.config.id);
         expect(pushResult.success).toBe(true);
 
         // Verify completionAction is now set
-        const afterPush = await ctx.manager.getLoop(loop.config.id);
+        const afterPush = await ctx.manager.getTask(task.config.id);
         expect(afterPush!.state.reviewMode?.completionAction).toBe("push");
       } finally {
         await teardownTestContext(ctx);

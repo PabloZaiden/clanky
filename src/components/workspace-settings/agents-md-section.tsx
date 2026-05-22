@@ -54,7 +54,7 @@ export function AgentsMdSection({ workspace }: AgentsMdSectionProps) {
       </div>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Add planning and progress tracking conventions to the workspace&apos;s AGENTS.md
-        so Ralpher loops can track their work reliably across iterations.
+        so Clanky tasks can track their work reliably across iterations.
       </p>
 
       {optimizerLoading && !optimizerStatus && (
@@ -95,7 +95,7 @@ export function AgentsMdSection({ workspace }: AgentsMdSectionProps) {
           <DocumentIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
           <span className="text-sm text-gray-600 dark:text-gray-400">
             {optimizerStatus.fileExists
-              ? "AGENTS.md exists but is not optimized for Ralpher."
+              ? "AGENTS.md exists but is not optimized for Clanky."
               : "No AGENTS.md file found. One will be created."}
           </span>
         </div>
@@ -104,7 +104,7 @@ export function AgentsMdSection({ workspace }: AgentsMdSectionProps) {
       {optimizerStatus?.analysis.updateAvailable && optimizerStatus.analysis.isOptimized && (
         <div className="flex items-center gap-2 mb-3 p-3 rounded-md bg-blue-50 dark:bg-neutral-900/40 border border-blue-200 dark:border-gray-700">
           <span className="text-sm text-blue-700 dark:text-blue-300">
-            An updated version of the Ralpher guidelines is available.
+            An updated version of the Clanky guidelines is available.
           </span>
         </div>
       )}

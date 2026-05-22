@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { spawn } from "node:child_process";
-import { LoopManager } from "../../src/core/loop-manager";
+import { TaskManager } from "../../src/core/task-manager";
 import { backendManager } from "../../src/core/backend-manager";
 import { portForwardManager } from "../../src/core/port-forward-manager";
 import { createMockBackend } from "../mocks/mock-backend";
@@ -17,7 +17,7 @@ import type { PortForward } from "../../src/types";
 describe("PortForwardManager", () => {
   let dataDir: string;
   let workDir: string;
-  let manager: LoopManager;
+  let manager: TaskManager;
   let createdForwardId: string | null = null;
   const workspaceId = "workspace-1";
   const modelFields = {
@@ -27,9 +27,9 @@ describe("PortForwardManager", () => {
   };
 
   beforeEach(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-port-forward-manager-data-"));
-    workDir = await mkdtemp(join(tmpdir(), "ralpher-port-forward-manager-work-"));
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-port-forward-manager-data-"));
+    workDir = await mkdtemp(join(tmpdir(), "clanky-port-forward-manager-work-"));
+    process.env["CLANKY_DATA_DIR"] = dataDir;
 
     await ensureDataDirectories();
     await Bun.$`git init ${workDir}`.quiet();
@@ -59,7 +59,7 @@ describe("PortForwardManager", () => {
     portForwardManager.setSpawnFactoryForTesting(() => spawn("sleep", ["60"], { stdio: "ignore" }));
     portForwardManager.setLocalPortAllocatorForTesting(null);
 
-    manager = new LoopManager();
+    manager = new TaskManager();
   });
 
   afterEach(async () => {
@@ -72,17 +72,17 @@ describe("PortForwardManager", () => {
     portForwardManager.setLocalPortAllocatorForTesting(null);
     portForwardManager.setSpawnFactoryForTesting(null);
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
   });
 
   test("retries local port reservation when the active-port unique constraint is hit", async () => {
-    const loop = await manager.createLoop({
+    const task = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Create a forwarded port",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
@@ -93,7 +93,7 @@ describe("PortForwardManager", () => {
     const reservedForward: PortForward = {
       config: {
         id: "existing-forward",
-        loopId: loop.config.id,
+        taskId: task.config.id,
         workspaceId,
         remoteHost: "127.0.0.1",
         remotePort: 8080,
@@ -116,8 +116,8 @@ describe("PortForwardManager", () => {
       return nextPort;
     });
 
-    const created = await portForwardManager.createLoopPortForward({
-      loopId: loop.config.id,
+    const created = await portForwardManager.createTaskPortForward({
+      taskId: task.config.id,
       remotePort: 3000,
     });
     createdForwardId = created.config.id;
@@ -128,45 +128,45 @@ describe("PortForwardManager", () => {
   });
 
   test("rejects duplicate remote ports for the same workspace", async () => {
-    const firstLoop = await manager.createLoop({
+    const firstTask = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Create first forwarded port",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
     });
-    const secondLoop = await manager.createLoop({
+    const secondTask = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Create duplicate forwarded port",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
     });
 
-    const firstForward = await portForwardManager.createLoopPortForward({
-      loopId: firstLoop.config.id,
+    const firstForward = await portForwardManager.createTaskPortForward({
+      taskId: firstTask.config.id,
       remotePort: 3000,
     });
     createdForwardId = firstForward.config.id;
 
     await expect(
-      portForwardManager.createLoopPortForward({
-        loopId: secondLoop.config.id,
+      portForwardManager.createTaskPortForward({
+        taskId: secondTask.config.id,
         remotePort: 3000,
       }),
     ).rejects.toThrow("Port 3000 is already being forwarded for this workspace");
   });
 
   test("ignores unexpected exit callbacks after the database is closed", async () => {
-    const loop = await manager.createLoop({
+    const task = await manager.createTask({
       ...modelFields,
       directory: workDir,
       prompt: "Create a forwarded port",
-      name: "Test Loop",
+      name: "Test Task",
       workspaceId,
       planMode: false,
       useWorktree: true,
@@ -174,7 +174,7 @@ describe("PortForwardManager", () => {
     const forward: PortForward = {
       config: {
         id: "closed-db-forward",
-        loopId: loop.config.id,
+        taskId: task.config.id,
         workspaceId,
         remoteHost: "localhost",
         remotePort: 3000,

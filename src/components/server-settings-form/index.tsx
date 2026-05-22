@@ -25,7 +25,7 @@ export interface ServerSettingsFormProps {
   onTest?: (settings: ServerSettings) => Promise<{ success: boolean; error?: string }>;
   /** Whether testing is in progress */
   testing?: boolean;
-  /** Whether remote-only mode is enabled (RALPHER_REMOTE_ONLY) */
+  /** Whether remote-only mode is enabled (CLANKY_REMOTE_ONLY) */
   remoteOnly?: boolean;
   /** Optional list of registered SSH servers for hostname selection */
   registeredSshServers?: readonly SshServer[];

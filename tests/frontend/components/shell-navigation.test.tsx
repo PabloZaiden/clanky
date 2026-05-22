@@ -8,7 +8,7 @@ import {
 
 describe("shell navigation helpers", () => {
   test("builds hash routes for shell destinations", () => {
-    expect(getHashForShellRoute({ view: "loop", loopId: "loop-1" })).toBe("/loop/loop-1");
+    expect(getHashForShellRoute({ view: "task", taskId: "task-1" })).toBe("/task/task-1");
     expect(getHashForShellRoute({ view: "code-explorer" })).toBe("/code-explorer");
     expect(
       getHashForShellRoute({
@@ -23,11 +23,11 @@ describe("shell navigation helpers", () => {
     ).toBe("/code-explorer/chat/chat-1?startDirectory=%2Fworkspaces%2Ffrontend%2F.chat-worktree&filePath=src%2Findex.ts");
     expect(
       getHashForShellRoute({
-        view: "loop-files",
-        loopId: "loop-1",
-        startDirectory: "/workspaces/frontend/.ralph-worktrees/loop-1",
+        view: "task-files",
+        taskId: "task-1",
+        startDirectory: "/workspaces/frontend/.clanky-worktrees/task-1",
       }),
-    ).toBe("/loop-files/loop-1?startDirectory=%2Fworkspaces%2Ffrontend%2F.ralph-worktrees%2Floop-1");
+    ).toBe("/task-files/task-1?startDirectory=%2Fworkspaces%2Ffrontend%2F.clanky-worktrees%2Ftask-1");
     expect(
       getHashForShellRoute({
         view: "workspace-files",

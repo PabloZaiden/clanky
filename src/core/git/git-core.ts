@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 const DEFAULT_GIT_SSH_COMMAND = "ssh";
 const ACCEPT_NEW_HOST_KEY_OPTION = "-o StrictHostKeyChecking=accept-new";
 const KNOWN_HOSTS_OPTION_NAME = "UserKnownHostsFile";
-const RALPHER_KNOWN_HOSTS_FILENAME = "ralpher-known-hosts";
+const CLANKY_KNOWN_HOSTS_FILENAME = "clanky-known-hosts";
 
 function quoteShellArg(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
@@ -123,7 +123,7 @@ async function getConfiguredGitSshCommand(executor: CommandExecutor, directory: 
 async function getGitKnownHostsPath(executor: CommandExecutor, directory: string): Promise<string | null> {
   const result = await executor.exec(
     "git",
-    ["-C", directory, "rev-parse", "--git-path", RALPHER_KNOWN_HOSTS_FILENAME],
+    ["-C", directory, "rev-parse", "--git-path", CLANKY_KNOWN_HOSTS_FILENAME],
     { cwd: directory }
   );
   if (!result.success) {

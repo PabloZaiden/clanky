@@ -7,8 +7,8 @@ import { portForwardManager } from "../core/port-forward-manager";
 import { errorResponse } from "./helpers";
 import type { WebSocketData } from "./websocket";
 
-function getBasePath(loopId: string, forwardId: string): string {
-  return `/loop/${loopId}/port/${forwardId}`;
+function getBasePath(taskId: string, forwardId: string): string {
+  return `/task/${taskId}/port/${forwardId}`;
 }
 
 function normalizeProxyPath(rawPath?: string): string {
@@ -28,11 +28,11 @@ function appendTrailingSlash(urlString: string): string {
 
 function extractWildcardPath(
   req: Request,
-  loopId: string,
+  taskId: string,
   forwardId: string,
 ): string {
   const pathname = new URL(req.url).pathname;
-  const basePath = `${getBasePath(loopId, forwardId)}/`;
+  const basePath = `${getBasePath(taskId, forwardId)}/`;
   if (!pathname.startsWith(basePath)) {
     return "/";
   }
@@ -88,9 +88,9 @@ function rewriteHtmlResponse(html: string, basePath: string): string {
   return `<base href="${basePathWithSlash}">${rewritten}`;
 }
 
-async function requireActiveForward(loopId: string, forwardId: string) {
+async function requireActiveForward(taskId: string, forwardId: string) {
   const forward = await portForwardManager.getPortForward(forwardId);
-  if (!forward || forward.config.loopId !== loopId) {
+  if (!forward || forward.config.taskId !== taskId) {
     return errorResponse("not_found", "Port forward not found", 404);
   }
   if (forward.state.status !== "active") {
@@ -101,17 +101,17 @@ async function requireActiveForward(loopId: string, forwardId: string) {
 
 async function proxyHttpRequest(
   req: Request,
-  loopId: string,
+  taskId: string,
   forwardId: string,
   rawPath?: string,
 ): Promise<Response> {
-  const forwardOrResponse = await requireActiveForward(loopId, forwardId);
+  const forwardOrResponse = await requireActiveForward(taskId, forwardId);
   if (forwardOrResponse instanceof Response) {
     return forwardOrResponse;
   }
 
   const forward = forwardOrResponse;
-  const basePath = getBasePath(loopId, forwardId);
+  const basePath = getBasePath(taskId, forwardId);
   const upstreamPath = normalizeProxyPath(rawPath);
   const url = new URL(req.url);
   const targetUrl = new URL(`http://${"127.0.0.1"}:${String(forward.config.localPort)}${upstreamPath}${url.search}`);
@@ -152,11 +152,11 @@ async function proxyHttpRequest(
 async function upgradeProxyWebSocket(
   req: Request,
   server: Server<WebSocketData>,
-  loopId: string,
+  taskId: string,
   forwardId: string,
   rawPath?: string,
 ): Promise<Response | undefined> {
-  const forwardOrResponse = await requireActiveForward(loopId, forwardId);
+  const forwardOrResponse = await requireActiveForward(taskId, forwardId);
   if (forwardOrResponse instanceof Response) {
     return forwardOrResponse;
   }
@@ -166,7 +166,7 @@ async function upgradeProxyWebSocket(
   const targetUrl = `ws://127.0.0.1:${String(forward.config.localPort)}${normalizeProxyPath(rawPath)}${url.search}`;
   const upgraded = server.upgrade(req, {
     data: {
-      loopId,
+      taskId,
       portForwardId: forwardId,
       portForwardMode: true,
       proxyTargetUrl: targetUrl,
@@ -181,36 +181,36 @@ async function upgradeProxyWebSocket(
 }
 
 export const portForwardProxyRoutes = {
-  "/loop/:loopId/port/:forwardId": async (
-    req: Request & { params: { loopId: string; forwardId: string } },
+  "/task/:taskId/port/:forwardId": async (
+    req: Request & { params: { taskId: string; forwardId: string } },
     server: Server<WebSocketData>,
   ): Promise<Response | undefined> => {
     if (req.method === "GET" && !req.url.endsWith("/")) {
       return Response.redirect(appendTrailingSlash(req.url), 307);
     }
     if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-      return await upgradeProxyWebSocket(req, server, req.params.loopId, req.params.forwardId);
+      return await upgradeProxyWebSocket(req, server, req.params.taskId, req.params.forwardId);
     }
-    return await proxyHttpRequest(req, req.params.loopId, req.params.forwardId);
+    return await proxyHttpRequest(req, req.params.taskId, req.params.forwardId);
   },
 
-  "/loop/:loopId/port/:forwardId/*": async (
-    req: Request & { params: { loopId: string; forwardId: string } },
+  "/task/:taskId/port/:forwardId/*": async (
+    req: Request & { params: { taskId: string; forwardId: string } },
     server: Server<WebSocketData>,
   ): Promise<Response | undefined> => {
-    const wildcardPath = extractWildcardPath(req, req.params.loopId, req.params.forwardId);
+    const wildcardPath = extractWildcardPath(req, req.params.taskId, req.params.forwardId);
     if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
       return await upgradeProxyWebSocket(
         req,
         server,
-        req.params.loopId,
+        req.params.taskId,
         req.params.forwardId,
         wildcardPath,
       );
     }
     return await proxyHttpRequest(
       req,
-      req.params.loopId,
+      req.params.taskId,
       req.params.forwardId,
       wildcardPath,
     );

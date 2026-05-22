@@ -2,7 +2,7 @@
  * WorkspaceSelector component for selecting existing workspaces.
  * 
  * Provides a dropdown to select an existing workspace.
- * Workspace creation should be done from the Dashboard, not from within loop creation.
+ * Workspace creation should be done from the Dashboard, not from within task creation.
  */
 
 import type { ChangeEvent } from "react";

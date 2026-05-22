@@ -10,7 +10,7 @@ export const DEFAULT_PULL_REQUEST_METADATA_TIMEOUT_MS = 30_000;
 const MAX_PULL_REQUEST_TITLE_LENGTH = 120;
 const MAX_PULL_REQUEST_BODY_LENGTH = 8_000;
 const BANNED_METADATA_PATTERNS = [
-  /\bralpher\b/i,
+  /\bclanky\b/i,
   /\bautopr\b/i,
   /\bgenerated automatically\b/i,
   /\bautomatically generated\b/i,
@@ -30,7 +30,7 @@ export interface PullRequestMetadataChangedFile {
 }
 
 export interface PullRequestMetadataInput {
-  loopName: string;
+  taskName: string;
   originalPrompt: string;
   baseBranch: string;
   workingBranch: string;
@@ -158,8 +158,8 @@ function inferFallbackFocus(input: PullRequestMetadataInput): string | null {
     return humanizeFilePath(firstFile);
   }
 
-  const loopName = collapseWhitespace(input.loopName);
-  return loopName || null;
+  const taskName = collapseWhitespace(input.taskName);
+  return taskName || null;
 }
 
 function sanitizeTitle(title: string): string {
@@ -269,11 +269,11 @@ Requirements:
 - Output ONLY strict JSON with this shape: {"title":"...","body":"..."}
 - Title: concise, specific, no surrounding quotes, max 120 characters
 - Body: plain Markdown, concise but informative
-- Do NOT mention Ralpher, autopr, automation, or that the pull request was generated automatically
+- Do NOT mention Clanky, autopr, automation, or that the pull request was generated automatically
 - Do NOT simply restate the original request; describe the implemented changes
 
-Loop name:
-${input.loopName.trim() || "(not provided)"}
+Task name:
+${input.taskName.trim() || "(not provided)"}
 
 Base branch: ${input.baseBranch}
 Head branch: ${input.workingBranch}

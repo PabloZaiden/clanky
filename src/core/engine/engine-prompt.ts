@@ -1,9 +1,9 @@
 /**
- * Prompt building helpers for LoopEngine.
+ * Prompt building helpers for TaskEngine.
  */
 
 import { log } from "../logger";
-import type { LoopConfig, LoopState, ModelConfig } from "../../types/loop";
+import type { TaskConfig, TaskState, ModelConfig } from "../../types/task";
 import type { MessageImageAttachment } from "../../types/message-attachments";
 import type { LogLevel } from "../../types/events";
 import type { PromptInput } from "../../backends/types";
@@ -11,13 +11,13 @@ import type { IterationContext } from "./engine-types";
 import { StopPatternDetector } from "./engine-helpers";
 
 export interface PromptBuildContext {
-  config: LoopConfig;
-  state: LoopState;
+  config: TaskConfig;
+  state: TaskState;
   workingDirectory: string;
   stopDetector: StopPatternDetector;
   emitUserMessage: (content: string, idSuffix?: string, attachments?: MessageImageAttachment[]) => void;
   emitLog: (level: LogLevel, message: string, details?: Record<string, unknown>) => string;
-  updateState: (update: Partial<LoopState>) => void;
+  updateState: (update: Partial<TaskState>) => void;
   consumeInitialPromptAttachments: () => MessageImageAttachment[];
   consumePendingPromptAttachments: () => MessageImageAttachment[];
 }
@@ -42,14 +42,14 @@ function consumePendingOrInitialAttachments(ctx: PromptBuildContext): MessageIma
   return ctx.consumeInitialPromptAttachments();
 }
 
-export function buildErrorContext(consecutiveErrors: LoopState["consecutiveErrors"]): string {
+export function buildErrorContext(consecutiveErrors: TaskState["consecutiveErrors"]): string {
   if (!consecutiveErrors) {
     return "";
   }
   return `\n- **Previous Iteration Error**: The previous iteration failed with the following error (occurred ${consecutiveErrors.count} time(s) consecutively). Please try a different approach to avoid this error:\n\n  Error: ${consecutiveErrors.lastErrorMessage}\n`;
 }
 
-export function buildLoopPrompt(ctx: PromptBuildContext, _iteration: number): PromptInput {
+export function buildTaskPrompt(ctx: PromptBuildContext, _iteration: number): PromptInput {
   let model = ctx.config.model;
   if (ctx.state.pendingModel) {
     model = ctx.state.pendingModel;
@@ -82,7 +82,7 @@ function buildPlanModePrompt(ctx: PromptBuildContext, model: ModelConfig | undef
     const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
     const text = `- Goal: ${ctx.config.prompt}
 ${errorContext}
-- Create a detailed plan to achieve this goal. Write the plan to \`./.ralph-planning/plan.md\`.
+- Create a detailed plan to achieve this goal. Write the plan to \`./.clanky-planning/plan.md\`.
 
 - The plan should include:
   - Clear objectives
@@ -90,7 +90,7 @@ ${errorContext}
   - Any dependencies between tasks
   - Estimated complexity per task
 
-- Create a \`./.ralph-planning/status.md\` file to track progress.
+- Create a \`./.clanky-planning/status.md\` file to track progress.
 
 - Do NOT start implementing yet. Only create the plan.
 
@@ -118,9 +118,9 @@ ${errorContext}
 ${feedback}
 ---
 ${errorContext}
-**FIRST**: Immediately add this feedback as a pending item in \`./.ralph-planning/status.md\` so it is tracked and preserved even if the conversation context is compacted.
+**FIRST**: Immediately add this feedback as a pending item in \`./.clanky-planning/status.md\` so it is tracked and preserved even if the conversation context is compacted.
 
-Then, update the plan in \`./.ralph-planning/plan.md\` based on this feedback.
+Then, update the plan in \`./.clanky-planning/plan.md\` based on this feedback.
 
 When the updated plan is ready, end your response with:
 
@@ -157,16 +157,16 @@ function buildExecutionPrompt(ctx: PromptBuildContext, model: ModelConfig | unde
   }
 
   const userMessageSection = userMessage
-    ? `\n- **User Message**: The user has added the following message. This should be your primary focus for this iteration. Address it while keeping the original goal in mind. **Before starting work on this message, immediately add it as a pending task in \`./.ralph-planning/status.md\`** so it is tracked and preserved even if the conversation context is compacted:\n\n${userMessage}\n`
+    ? `\n- **User Message**: The user has added the following message. This should be your primary focus for this iteration. Address it while keeping the original goal in mind. **Before starting work on this message, immediately add it as a pending task in \`./.clanky-planning/status.md\`** so it is tracked and preserved even if the conversation context is compacted:\n\n${userMessage}\n`
     : "";
 
   const errorContext = buildErrorContext(ctx.state.consecutiveErrors);
 
   const text = `- Original Goal: ${ctx.config.prompt}
 ${userMessageSection}${errorContext}
-- Read the documents in the \`./.ralph-planning\` folder, pick up the most important task to continue with, and make sure you make a plan with coding tasks that includes updating the docs with your progress and what the next steps to work on are, at the end. Don't ask for confirmation and start working on it right away.
+- Read the documents in the \`./.clanky-planning\` folder, pick up the most important task to continue with, and make sure you make a plan with coding tasks that includes updating the docs with your progress and what the next steps to work on are, at the end. Don't ask for confirmation and start working on it right away.
 
-- If the \`./.ralph-planning\` folder does not exist or is empty, create it and add a file called \`plan.md\` where you outline your plan to achieve the goal, and a \`status.md\` file to track progress.
+- If the \`./.clanky-planning\` folder does not exist or is empty, create it and add a file called \`plan.md\` where you outline your plan to achieve the goal, and a \`status.md\` file to track progress.
 
 - If the user added a new message above, prioritize addressing it. It may change or add to the plan. If it contradicts something in the original goal or plan, follow the user's latest message.
 
@@ -176,9 +176,9 @@ ${userMessageSection}${errorContext}
 
 - Never ask for input from the user or any questions. This will always run unattended
 
-- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update \`./.ralph-planning/status.md\` to mark the task as completed and note any relevant findings or context. Do NOT wait until the end of the iteration to update status — update it after every task so that progress is preserved even if the iteration is interrupted or the conversation context is compacted mid-work.
+- **IMPORTANT — Incremental progress tracking**: After completing each individual task, immediately update \`./.clanky-planning/status.md\` to mark the task as completed and note any relevant findings or context. Do NOT wait until the end of the iteration to update status — update it after every task so that progress is preserved even if the iteration is interrupted or the conversation context is compacted mid-work.
 
-- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update \`./.ralph-planning/status.md\` with:
+- **IMPORTANT — Pre-compaction persistence**: Before ending your response, you MUST also update \`./.clanky-planning/status.md\` with:
   - The task you are currently working on and its current state
   - Updated status of all tasks in the plan
   - Any new learnings, discoveries, or important context gathered during this iteration
@@ -219,7 +219,7 @@ function buildPlainChatPrompt(ctx: PromptBuildContext, model: ModelConfig | unde
   };
 }
 
-export function evaluateLoopOutcome(ctx: IterationContext, buildCtx: PromptBuildContext): void {
+export function evaluateTaskOutcome(ctx: IterationContext, buildCtx: PromptBuildContext): void {
   buildCtx.emitLog("info", "Evaluating stop pattern...");
 
   if (ctx.outcome === "error") {
@@ -234,7 +234,7 @@ export function evaluateLoopOutcome(ctx: IterationContext, buildCtx: PromptBuild
     ctx.outcome = "plan_ready";
     if (buildCtx.state.planMode) {
       buildCtx.state.planMode.isPlanReady = true;
-      log.debug(`[LoopEngine] runIteration: Set isPlanReady = true, planMode:`, JSON.stringify(buildCtx.state.planMode));
+      log.debug(`[TaskEngine] runIteration: Set isPlanReady = true, planMode:`, JSON.stringify(buildCtx.state.planMode));
     }
   } else if (buildCtx.stopDetector.matches(ctx.responseContent)) {
     buildCtx.emitLog("info", "Stop pattern matched - task is complete");

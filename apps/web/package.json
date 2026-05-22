@@ -1,5 +1,5 @@
 {
-  "name": "@ralpher/web",
+  "name": "@clanky/web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,9 +7,9 @@
     "watch": "bun --watch src/build.ts"
   },
   "dependencies": {
-    "@ralpher/client-sdk": "workspace:*",
-    "@ralpher/contracts": "workspace:*",
-    "@ralpher/shared": "workspace:*",
+    "@clanky/client-sdk": "workspace:*",
+    "@clanky/contracts": "workspace:*",
+    "@clanky/shared": "workspace:*",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   }

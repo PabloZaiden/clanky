@@ -34,7 +34,7 @@ export function WorkspaceFilesView({
   return (
     <CodeExplorerView
       routeTarget={{ contentType: "workspace", workspaceId: workspace.id, startDirectory }}
-      loops={[]}
+      tasks={[]}
       chats={[]}
       workspaces={[workspace]}
       sessions={sessions}

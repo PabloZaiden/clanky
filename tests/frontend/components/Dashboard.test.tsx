@@ -1,7 +1,7 @@
 /**
  * Tests for Dashboard component.
  *
- * Tests loop grid rendering grouped by workspace/status, header elements,
+ * Tests task grid rendering grouped by workspace/status, header elements,
  * modal flows, navigation, connection status, and error display.
  */
 
@@ -9,7 +9,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor } from "../helpers/render";
-import { createLoopWithStatus, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
+import { createTaskWithStatus, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
 import { Dashboard } from "@/components/Dashboard";
 import { AppEventsProvider, ThemePreferenceProvider } from "@/hooks";
 
@@ -25,7 +25,7 @@ function renderWithAppEvents(
 
 /** Set up the default API routes Dashboard requires. */
 function setupDefaultApi() {
-  api.get("/api/loops", () => []);
+  api.get("/api/tasks", () => []);
   api.get("/api/workspaces", () => []);
   api.get("/api/ssh-sessions", () => []);
   api.get("/api/ssh-servers", () => []);
@@ -116,15 +116,15 @@ describe("ssh section", () => {
 
   test("renders a single collapsed SSH section that can reveal workspace sessions", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const loop = createLoopWithStatus("running", {
-      config: { id: "loop-1", name: "Visible Loop", workspaceId: "ws-1" },
+    const task = createTaskWithStatus("running", {
+      config: { id: "task-1", name: "Visible Task", workspaceId: "ws-1" },
     });
     const session = createSshSession({
       config: { id: "ssh-1", name: "Remote Shell" },
       state: { status: "connected" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => [session]);
 
@@ -142,21 +142,21 @@ describe("ssh section", () => {
     await waitFor(() => {
       expect(queryByText("Remote Shell")).toBeTruthy();
       expect(queryByText("Workspace SSH Sessions")).toBeTruthy();
-      expect(queryByText("Visible Loop")).toBeTruthy();
+      expect(queryByText("Visible Task")).toBeTruthy();
     });
   });
 
-  test("can collapse the unified ssh section without hiding loops", async () => {
+  test("can collapse the unified ssh section without hiding tasks", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const loop = createLoopWithStatus("running", {
-      config: { id: "loop-1", name: "Loop Still Visible", workspaceId: "ws-1" },
+    const task = createTaskWithStatus("running", {
+      config: { id: "task-1", name: "Task Still Visible", workspaceId: "ws-1" },
     });
     const session = createSshSession({
       config: { id: "ssh-1", name: "Collapsible SSH" },
       state: { status: "connected" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/ssh-sessions", () => [session]);
 
@@ -167,13 +167,13 @@ describe("ssh section", () => {
     });
 
     await waitFor(() => {
-      expect(getByText("Loop Still Visible")).toBeTruthy();
+      expect(getByText("Task Still Visible")).toBeTruthy();
     });
 
     expect(queryByText("Collapsible SSH")).toBeNull();
 
     await waitFor(() => {
-      expect(getByText("Loop Still Visible")).toBeTruthy();
+      expect(getByText("Task Still Visible")).toBeTruthy();
     });
 
     await user.click(getByRole("button", { name: /SSH \(1\)/ }));
@@ -188,7 +188,7 @@ describe("ssh section", () => {
       expect(queryByText("Collapsible SSH")).toBeNull();
     });
 
-    expect(getByText("Loop Still Visible")).toBeTruthy();
+    expect(getByText("Task Still Visible")).toBeTruthy();
   });
  
   test("renders standalone servers and workspace sessions inside the same SSH section", async () => {
@@ -221,7 +221,7 @@ describe("ssh section", () => {
         sshServerId: "server-1",
         name: "Deploy shell",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-serversession1",
+        remoteSessionName: "clanky-serversession1",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -305,7 +305,7 @@ describe("ssh section", () => {
 describe("standalone ssh servers section", () => {
 
   test("creates a standalone session using a browser-stored encrypted credential", async () => {
-    globalThis.localStorage?.setItem("ralpher.sshServerCredential.server-1", JSON.stringify({
+    globalThis.localStorage?.setItem("clanky.sshServerCredential.server-1", JSON.stringify({
       encryptedCredential: {
         algorithm: "RSA-OAEP-256",
         fingerprint: "fp-1",
@@ -339,7 +339,7 @@ describe("standalone ssh servers section", () => {
         sshServerId: req.params["id"]!,
         name: (req.body as { name?: string }).name ?? "Deploy shell",
         connectionMode: "dtach",
-        remoteSessionName: "ralpher-serversession1",
+        remoteSessionName: "clanky-serversession1",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -378,20 +378,20 @@ describe("standalone ssh servers section", () => {
   });
 });
 
-// ─── Loop grid rendering ────────────────────────────────────────────────────
+// ─── Task grid rendering ────────────────────────────────────────────────────
 
-describe("loop grid rendering", () => {
-  test("renders loops grouped by workspace", async () => {
+describe("task grid rendering", () => {
+  test("renders tasks grouped by workspace", async () => {
     const ws1 = createWorkspace({ id: "ws-1", name: "Frontend" });
     const ws2 = createWorkspace({ id: "ws-2", name: "Backend" });
-    const loop1 = createLoopWithStatus("running", {
+    const task1 = createTaskWithStatus("running", {
       config: { id: "l1", name: "Fix UI bug", workspaceId: "ws-1" },
     });
-    const loop2 = createLoopWithStatus("completed", {
+    const task2 = createTaskWithStatus("completed", {
       config: { id: "l2", name: "Add API endpoint", workspaceId: "ws-2" },
     });
 
-    api.get("/api/loops", () => [loop1, loop2]);
+    api.get("/api/tasks", () => [task1, task2]);
     api.get("/api/workspaces", () => [ws1, ws2]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -404,17 +404,17 @@ describe("loop grid rendering", () => {
     expect(getByText("Add API endpoint")).toBeTruthy();
   });
 
-  test("renders workspace directory and loop count", async () => {
+  test("renders workspace directory and task count", async () => {
     const workspace = createWorkspace({
       id: "ws-1",
       name: "My Project",
       directory: "/home/user/my-project",
     });
-    const loop = createLoopWithStatus("running", {
+    const task = createTaskWithStatus("running", {
       config: { id: "l1", name: "Task 1", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -422,19 +422,19 @@ describe("loop grid rendering", () => {
     await waitFor(() => {
       expect(getByText("/home/user/my-project")).toBeTruthy();
     });
-    expect(getByText("(1 loop)")).toBeTruthy();
+    expect(getByText("(1 task)")).toBeTruthy();
   });
 
-  test("renders status group headers for active loops", async () => {
+  test("renders status group headers for active tasks", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const runningLoop = createLoopWithStatus("running", {
+    const runningTask = createTaskWithStatus("running", {
       config: { id: "l1", name: "Running Task", workspaceId: "ws-1" },
     });
-    const completedLoop = createLoopWithStatus("completed", {
+    const completedTask = createTaskWithStatus("completed", {
       config: { id: "l2", name: "Done Task", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [runningLoop, completedLoop]);
+    api.get("/api/tasks", () => [runningTask, completedTask]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -445,13 +445,13 @@ describe("loop grid rendering", () => {
     expect(getByText("Completed (1)")).toBeTruthy();
   });
 
-  test("renders draft loops in Drafts section", async () => {
+  test("renders draft tasks in Drafts section", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const draftLoop = createLoopWithStatus("draft", {
+    const draftTask = createTaskWithStatus("draft", {
       config: { id: "l1", name: "Draft Task", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [draftLoop]);
+    api.get("/api/tasks", () => [draftTask]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -462,9 +462,9 @@ describe("loop grid rendering", () => {
     expect(getByText("Draft Task")).toBeTruthy();
   });
 
-  test("renders awaiting feedback loops in correct section", async () => {
+  test("renders awaiting feedback tasks in correct section", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const pushedLoop = createLoopWithStatus("pushed", {
+    const pushedTask = createTaskWithStatus("pushed", {
       config: { id: "l1", name: "Pushed Task", workspaceId: "ws-1" },
       state: {
         reviewMode: {
@@ -475,7 +475,7 @@ describe("loop grid rendering", () => {
       },
     });
 
-    api.get("/api/loops", () => [pushedLoop]);
+    api.get("/api/tasks", () => [pushedTask]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -485,12 +485,12 @@ describe("loop grid rendering", () => {
     });
   });
 
-  test("renders unassigned loops when loop has no workspace", async () => {
-    const loop = createLoopWithStatus("running", {
-      config: { id: "l1", name: "Orphan Loop", workspaceId: "" },
+  test("renders unassigned tasks when task has no workspace", async () => {
+    const task = createTaskWithStatus("running", {
+      config: { id: "l1", name: "Orphan Task", workspaceId: "" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => []);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -498,15 +498,15 @@ describe("loop grid rendering", () => {
     await waitFor(() => {
       expect(getByText("Unassigned")).toBeTruthy();
     });
-    expect(getByText("Orphan Loop")).toBeTruthy();
+    expect(getByText("Orphan Task")).toBeTruthy();
   });
 
-  test("renders loops with a missing workspace in the unassigned section", async () => {
-    const loop = createLoopWithStatus("running", {
-      config: { id: "l2", name: "Missing Workspace Loop", workspaceId: "missing-workspace" },
+  test("renders tasks with a missing workspace in the unassigned section", async () => {
+    const task = createTaskWithStatus("running", {
+      config: { id: "l2", name: "Missing Workspace Task", workspaceId: "missing-workspace" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => []);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -514,39 +514,39 @@ describe("loop grid rendering", () => {
     await waitFor(() => {
       expect(getByText("Unassigned")).toBeTruthy();
       expect(
-        getByText("Loops appear here when they are not assigned to a workspace or when their saved workspace is no longer available.")
+        getByText("Tasks appear here when they are not assigned to a workspace or when their saved workspace is no longer available.")
       ).toBeTruthy();
     });
-    expect(getByText("Missing Workspace Loop")).toBeTruthy();
+    expect(getByText("Missing Workspace Task")).toBeTruthy();
   });
 
-  test("does not classify missing-workspace loops as unassigned before workspaces finish loading", async () => {
-    const loop = createLoopWithStatus("running", {
-      config: { id: "l3", name: "Loading Workspace Loop", workspaceId: "missing-workspace" },
+  test("does not classify missing-workspace tasks as unassigned before workspaces finish loading", async () => {
+    const task = createTaskWithStatus("running", {
+      config: { id: "l3", name: "Loading Workspace Task", workspaceId: "missing-workspace" },
     });
     let resolveWorkspaces: (value: ReturnType<typeof createWorkspace>[]) => void = () => {};
     const workspacesPromise = new Promise<ReturnType<typeof createWorkspace>[]>((resolve) => {
       resolveWorkspaces = resolve;
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", async () => await workspacesPromise);
 
     const { queryByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
-      expect(api.calls("/api/loops", "GET").length).toBe(1);
+      expect(api.calls("/api/tasks", "GET").length).toBe(1);
       expect(api.calls("/api/workspaces", "GET").length).toBe(1);
     });
 
     expect(queryByText("Unassigned")).toBeNull();
-    expect(queryByText("Loading Workspace Loop")).toBeNull();
+    expect(queryByText("Loading Workspace Task")).toBeNull();
 
     resolveWorkspaces([]);
 
     await waitFor(() => {
       expect(queryByText("Unassigned")).toBeTruthy();
-      expect(queryByText("Loading Workspace Loop")).toBeTruthy();
+      expect(queryByText("Loading Workspace Task")).toBeTruthy();
     });
   });
 
@@ -624,13 +624,13 @@ describe("loop grid rendering", () => {
     });
   });
 
-  test("renders archived loops (merged/pushed/deleted)", async () => {
+  test("renders archived tasks (merged/pushed/deleted)", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const mergedLoop = createLoopWithStatus("merged", {
-      config: { id: "l1", name: "Merged Loop", workspaceId: "ws-1" },
+    const mergedTask = createTaskWithStatus("merged", {
+      config: { id: "l1", name: "Merged Task", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [mergedLoop]);
+    api.get("/api/tasks", () => [mergedTask]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -641,21 +641,21 @@ describe("loop grid rendering", () => {
   });
 });
 
-// ─── Loop card click navigation ─────────────────────────────────────────────
+// ─── Task card click navigation ─────────────────────────────────────────────
 
-describe("loop card click navigation", () => {
-  test("calls onSelectLoop when an active loop card is clicked", async () => {
+describe("task card click navigation", () => {
+  test("calls onSelectTask when an active task card is clicked", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const loop = createLoopWithStatus("running", {
-      config: { id: "loop-123", name: "Click Me", workspaceId: "ws-1" },
+    const task = createTaskWithStatus("running", {
+      config: { id: "task-123", name: "Click Me", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => [workspace]);
 
-    let selectedLoopId: string | undefined;
+    let selectedTaskId: string | undefined;
     const { getByText, user } = renderWithAppEvents(
-      <Dashboard onSelectLoop={(id) => { selectedLoopId = id; }} />,
+      <Dashboard onSelectTask={(id) => { selectedTaskId = id; }} />,
     );
 
     await waitFor(() => {
@@ -664,95 +664,95 @@ describe("loop card click navigation", () => {
 
     await user.click(getByText("Click Me"));
 
-    expect(selectedLoopId).toBe("loop-123");
+    expect(selectedTaskId).toBe("task-123");
   });
 
-  test("calls onSelectLoop when a completed loop card is clicked", async () => {
+  test("calls onSelectTask when a completed task card is clicked", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const loop = createLoopWithStatus("completed", {
-      config: { id: "loop-456", name: "Done Loop", workspaceId: "ws-1" },
+    const task = createTaskWithStatus("completed", {
+      config: { id: "task-456", name: "Done Task", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => [workspace]);
 
-    let selectedLoopId: string | undefined;
+    let selectedTaskId: string | undefined;
     const { getByText, user } = renderWithAppEvents(
-      <Dashboard onSelectLoop={(id) => { selectedLoopId = id; }} />,
+      <Dashboard onSelectTask={(id) => { selectedTaskId = id; }} />,
     );
 
     await waitFor(() => {
-      expect(getByText("Done Loop")).toBeTruthy();
+      expect(getByText("Done Task")).toBeTruthy();
     });
 
-    await user.click(getByText("Done Loop"));
+    await user.click(getByText("Done Task"));
 
-    expect(selectedLoopId).toBe("loop-456");
+    expect(selectedTaskId).toBe("task-456");
   });
 });
 
-// ─── Create loop modal ──────────────────────────────────────────────────────
+// ─── Create task modal ──────────────────────────────────────────────────────
 
-describe("create loop modal", () => {
-  test("opens create loop modal when 'New Loop' is clicked", async () => {
+describe("create task modal", () => {
+  test("opens create task modal when 'New Task' is clicked", async () => {
     const { getByRole, getByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "New Loop" })).toBeTruthy();
+      expect(getByRole("button", { name: "New Task" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "New Loop" }));
+    await user.click(getByRole("button", { name: "New Task" }));
 
     await waitFor(() => {
-      expect(getByText("Create New Loop")).toBeTruthy();
+      expect(getByText("Create New Task")).toBeTruthy();
     });
   });
 
-  test("closes create loop modal on cancel", async () => {
+  test("closes create task modal on cancel", async () => {
     const { getByRole, getByText, queryByText, user } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
-      expect(getByRole("button", { name: "New Loop" })).toBeTruthy();
+      expect(getByRole("button", { name: "New Task" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "New Loop" }));
+    await user.click(getByRole("button", { name: "New Task" }));
 
     await waitFor(() => {
-      expect(getByText("Create New Loop")).toBeTruthy();
+      expect(getByText("Create New Task")).toBeTruthy();
     });
 
     // The modal has a Cancel button in footer
     await user.click(getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => {
-      expect(queryByText("Create New Loop")).toBeNull();
+      expect(queryByText("Create New Task")).toBeNull();
     });
   });
 });
 
-// ─── Delete loop modal ──────────────────────────────────────────────────────
+// ─── Delete task modal ──────────────────────────────────────────────────────
 // Delete/Accept/Purge/Address Comments action buttons were removed from dashboard
-// cards in a prior refactor. These actions are now available only in LoopDetails.
+// cards in a prior refactor. These actions are now available only in TaskDetails.
 
-// ─── Accept loop modal ──────────────────────────────────────────────────────
-// Accept action was removed from dashboard cards (now in LoopDetails).
+// ─── Accept task modal ──────────────────────────────────────────────────────
+// Accept action was removed from dashboard cards (now in TaskDetails).
 
-// ─── Purge loop modal ───────────────────────────────────────────────────────
-// Purge action was removed from dashboard cards (now in LoopDetails).
+// ─── Purge task modal ───────────────────────────────────────────────────────
+// Purge action was removed from dashboard cards (now in TaskDetails).
 
 // ─── Address comments modal ─────────────────────────────────────────────────
-// Address comments action was removed from dashboard cards (now in LoopDetails).
+// Address comments action was removed from dashboard cards (now in TaskDetails).
 
-// ─── Loop rename restrictions ────────────────────────────────────────────────
+// ─── Task rename restrictions ────────────────────────────────────────────────
 
-describe("loop rename restrictions", () => {
-  test("does not expose rename controls for started loops", async () => {
+describe("task rename restrictions", () => {
+  test("does not expose rename controls for started tasks", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project" });
-    const loop = createLoopWithStatus("running", {
+    const task = createTaskWithStatus("running", {
       config: { id: "l1", name: "Rename Me", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -761,7 +761,7 @@ describe("loop rename restrictions", () => {
       expect(getByText("Rename Me")).toBeTruthy();
     });
 
-    const renameBtn = document.querySelector('button[aria-label="Rename loop"]');
+    const renameBtn = document.querySelector('button[aria-label="Rename task"]');
     expect(renameBtn).toBeNull();
   });
 });
@@ -809,10 +809,10 @@ describe("create workspace modal", () => {
 // ─── Empty workspaces section ───────────────────────────────────────────────
 
 describe("empty workspaces section", () => {
-  test("shows empty workspaces that have no loops", async () => {
+  test("shows empty workspaces that have no tasks", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Empty Project" });
 
-    api.get("/api/loops", () => []);
+    api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -827,17 +827,17 @@ describe("empty workspaces section", () => {
 // ─── Error display ──────────────────────────────────────────────────────────
 
 describe("error display", () => {
-  test("displays error message when loops fail to load", async () => {
-    // Override the default loops handler to return an error
-    api.get("/api/loops", () => {
+  test("displays error message when tasks fail to load", async () => {
+    // Override the default tasks handler to return an error
+    api.get("/api/tasks", () => {
       throw { status: 500, body: { error: "server_error" } };
     });
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
 
     await waitFor(() => {
-      // The useLoops hook sets an error string on failed fetch
-      expect(getByText(/Failed to fetch loops/)).toBeTruthy();
+      // The useTasks hook sets an error string on failed fetch
+      expect(getByText(/Failed to fetch tasks/)).toBeTruthy();
     });
   });
 });
@@ -845,19 +845,19 @@ describe("error display", () => {
 // ─── Multiple status groups ─────────────────────────────────────────────────
 
 describe("multiple status groups in same workspace", () => {
-  test("renders all status groups for a workspace with mixed loops", async () => {
+  test("renders all status groups for a workspace with mixed tasks", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Full Project" });
-    const draft = createLoopWithStatus("draft", {
+    const draft = createTaskWithStatus("draft", {
       config: { id: "d1", name: "Draft 1", workspaceId: "ws-1" },
     });
-    const running = createLoopWithStatus("running", {
+    const running = createTaskWithStatus("running", {
       config: { id: "r1", name: "Running 1", workspaceId: "ws-1" },
     });
-    const completed = createLoopWithStatus("completed", {
+    const completed = createTaskWithStatus("completed", {
       config: { id: "c1", name: "Completed 1", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [draft, running, completed]);
+    api.get("/api/tasks", () => [draft, running, completed]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -873,19 +873,19 @@ describe("multiple status groups in same workspace", () => {
     expect(getByText("Completed 1")).toBeTruthy();
   });
 
-  test("renders multiple loops count in section headers", async () => {
+  test("renders multiple tasks count in section headers", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Busy Project" });
-    const r1 = createLoopWithStatus("running", {
+    const r1 = createTaskWithStatus("running", {
       config: { id: "r1", name: "Run 1", workspaceId: "ws-1" },
     });
-    const r2 = createLoopWithStatus("running", {
+    const r2 = createTaskWithStatus("running", {
       config: { id: "r2", name: "Run 2", workspaceId: "ws-1" },
     });
-    const r3 = createLoopWithStatus("running", {
+    const r3 = createTaskWithStatus("running", {
       config: { id: "r3", name: "Run 3", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [r1, r2, r3]);
+    api.get("/api/tasks", () => [r1, r2, r3]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByText } = renderWithAppEvents(<Dashboard />);
@@ -893,18 +893,18 @@ describe("multiple status groups in same workspace", () => {
     await waitFor(() => {
       expect(getByText("Active (3)")).toBeTruthy();
     });
-    expect(getByText("(3 loops)")).toBeTruthy();
+    expect(getByText("(3 tasks)")).toBeTruthy();
   });
 });
 
 // ─── Edit draft flow ────────────────────────────────────────────────────────
 // Edit button was removed from dashboard cards. Drafts are edited by clicking
-// the card itself, which triggers onEditDraft via LoopGrid.
+// the card itself, which triggers onEditDraft via TaskGrid.
 
 describe("edit draft flow", () => {
   test("keeps Cancel before draft actions in the edit draft modal", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Project", directory: "/workspaces/project" });
-    const draftLoop = createLoopWithStatus("draft", {
+    const draftTask = createTaskWithStatus("draft", {
       config: {
         id: "draft-1",
         name: "Draft Task",
@@ -914,7 +914,7 @@ describe("edit draft flow", () => {
       },
     });
 
-    api.get("/api/loops", () => [draftLoop]);
+    api.get("/api/tasks", () => [draftTask]);
     api.get("/api/workspaces", () => [workspace]);
 
     const { getByRole, getByText, user } = renderWithAppEvents(<Dashboard />);
@@ -926,7 +926,7 @@ describe("edit draft flow", () => {
     await user.click(getByText("Draft Task"));
 
     await waitFor(() => {
-      expect(getByText("Edit Draft Loop")).toBeTruthy();
+      expect(getByText("Edit Draft Task")).toBeTruthy();
       expect(getByRole("button", { name: "Cancel" })).toBeTruthy();
       expect(getByRole("button", { name: "Delete" })).toBeTruthy();
       expect(getByRole("button", { name: "Update" })).toBeTruthy();
@@ -946,11 +946,11 @@ describe("edit draft flow", () => {
 describe("workspace settings modal", () => {
   test("opens workspace settings when gear icon is clicked", async () => {
     const workspace = createWorkspace({ id: "ws-1", name: "Settings Project" });
-    const loop = createLoopWithStatus("running", {
+    const task = createTaskWithStatus("running", {
       config: { id: "l1", name: "Task", workspaceId: "ws-1" },
     });
 
-    api.get("/api/loops", () => [loop]);
+    api.get("/api/tasks", () => [task]);
     api.get("/api/workspaces", () => [workspace]);
     api.get("/api/workspaces/:id", () => workspace);
     api.get("/api/workspaces/:id/status", () => ({ connected: true }));

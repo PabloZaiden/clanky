@@ -7,7 +7,7 @@
  */
 
 import { z } from "zod";
-import { DEFAULT_QUICK_CHAT_SETTINGS, THEME_PREFERENCES, type QuickChatSettings } from "@ralpher/shared";
+import { DEFAULT_QUICK_CHAT_SETTINGS, THEME_PREFERENCES, type QuickChatSettings } from "@clanky/shared";
 import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
 
 /**

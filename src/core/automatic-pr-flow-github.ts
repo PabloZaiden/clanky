@@ -3,7 +3,7 @@
  */
 
 import type { CommandExecutor } from "./command-executor";
-import type { AutomaticPrFlowMergeStateStatus, Loop } from "../types/loop";
+import type { AutomaticPrFlowMergeStateStatus, Task } from "../types/task";
 import type { PullRequestNavigationGitService } from "./pull-request-navigation";
 import { backendManager } from "./backend-manager";
 import { getDiff, getDiffSummary } from "./git/git-diff";
@@ -22,8 +22,8 @@ import {
 
 const log = createLogger("core:automatic-pr-flow-github");
 
-const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the loop environment.";
-const NO_GITHUB_REMOTE_REASON = "Could not determine a GitHub origin remote for this loop.";
+const GH_UNAVAILABLE_REASON = "GitHub CLI is not available in the task environment.";
+const NO_GITHUB_REMOTE_REASON = "Could not determine a GitHub origin remote for this task.";
 
 interface PullRequestView {
   number?: unknown;
@@ -129,18 +129,18 @@ export interface AutomaticPrFlowSnapshot {
   actionableItems: AutomaticPrFlowFeedbackItem[];
 }
 
-function getWorkingBranch(loop: Loop): string | null {
-  const workingBranch = loop.state.git?.workingBranch?.trim();
+function getWorkingBranch(task: Task): string | null {
+  const workingBranch = task.state.git?.workingBranch?.trim();
   return workingBranch ? workingBranch : null;
 }
 
-function getBaseBranch(loop: Loop): string | null {
-  const configuredBaseBranch = loop.config.baseBranch?.trim();
+function getBaseBranch(task: Task): string | null {
+  const configuredBaseBranch = task.config.baseBranch?.trim();
   if (configuredBaseBranch) {
     return configuredBaseBranch;
   }
 
-  const originalBranch = loop.state.git?.originalBranch?.trim();
+  const originalBranch = task.state.git?.originalBranch?.trim();
   return originalBranch ? originalBranch : null;
 }
 
@@ -269,7 +269,7 @@ function isNoPullRequestError(stderr: string): boolean {
 }
 
 async function buildPullRequestMetadataInput(
-  loop: Loop,
+  task: Task,
   directory: string,
   executor: CommandExecutor,
   baseBranch: string,
@@ -285,7 +285,7 @@ async function buildPullRequestMetadataInput(
     changedFiles = await getDiff(executor, directory, baseBranch);
   } catch (error) {
     log.warn("Failed to load diff details for automatic PR metadata", {
-      loopId: loop.config.id,
+      taskId: task.config.id,
       baseBranch,
       error: String(error),
     });
@@ -295,39 +295,39 @@ async function buildPullRequestMetadataInput(
     diffSummary = await getDiffSummary(executor, directory, baseBranch);
   } catch (error) {
     log.warn("Failed to load diff summary for automatic PR metadata", {
-      loopId: loop.config.id,
+      taskId: task.config.id,
       baseBranch,
       error: String(error),
     });
   }
 
   return {
-    loopName: loop.config.name,
-    originalPrompt: loop.config.prompt,
+    taskName: task.config.name,
+    originalPrompt: task.config.prompt,
     baseBranch,
-    workingBranch: loop.state.git?.workingBranch ?? "",
-    commitMessages: loop.state.git?.commits.map((commit) => commit.message) ?? [],
+    workingBranch: task.state.git?.workingBranch ?? "",
+    commitMessages: task.state.git?.commits.map((commit) => commit.message) ?? [],
     changedFiles,
     diffSummary,
   };
 }
 
 async function generateAutomaticPrMetadata(
-  loop: Loop,
+  task: Task,
   directory: string,
   executor: CommandExecutor,
   baseBranch: string,
 ): Promise<PullRequestMetadata> {
-  const metadataInput = await buildPullRequestMetadataInput(loop, directory, executor, baseBranch);
+  const metadataInput = await buildPullRequestMetadataInput(task, directory, executor, baseBranch);
   try {
-    let backend = backendManager.getInitializedBackend(loop.config.workspaceId);
+    let backend = backendManager.getInitializedBackend(task.config.workspaceId);
     if (
       !backend
-      || !backendManager.isWorkspaceConnected(loop.config.workspaceId)
+      || !backendManager.isWorkspaceConnected(task.config.workspaceId)
       || backend.getDirectory() !== directory
     ) {
-      await backendManager.connect(loop.config.workspaceId, directory);
-      backend = backendManager.getBackend(loop.config.workspaceId);
+      await backendManager.connect(task.config.workspaceId, directory);
+      backend = backendManager.getBackend(task.config.workspaceId);
     }
 
     const tempSession = await backend.createSession({
@@ -337,10 +337,10 @@ async function generateAutomaticPrMetadata(
 
     try {
       const helperModel = await resolveEffectiveCheapModel({
-        workspaceId: loop.config.workspaceId,
+        workspaceId: task.config.workspaceId,
         directory,
-        model: loop.config.model,
-        cheapModel: loop.config.cheapModel,
+        model: task.config.model,
+        cheapModel: task.config.cheapModel,
         operation: "pull_request_metadata_generation",
       });
       return await generatePullRequestMetadata({
@@ -354,14 +354,14 @@ async function generateAutomaticPrMetadata(
         await backend.abortSession(tempSession.id);
       } catch (cleanupError) {
         log.warn("Failed to clean up temporary PR metadata session", {
-          loopId: loop.config.id,
+          taskId: task.config.id,
           error: String(cleanupError),
         });
       }
     }
   } catch (error) {
     log.warn("Failed to generate automatic PR metadata via backend, using fallback", {
-      loopId: loop.config.id,
+      taskId: task.config.id,
       error: String(error),
     });
     return buildFallbackPullRequestMetadata(metadataInput);
@@ -419,14 +419,14 @@ async function getExistingPullRequest(
 }
 
 export async function ensureAutomaticPrFlowPullRequest(
-  loop: Loop,
+  task: Task,
   directory: string,
   executor: CommandExecutor,
   git: PullRequestNavigationGitService,
 ): Promise<AutomaticPrFlowPullRequest> {
-  const workingBranch = getWorkingBranch(loop);
+  const workingBranch = getWorkingBranch(task);
   if (!workingBranch) {
-    throw new Error("This loop does not have a working branch to open a pull request for.");
+    throw new Error("This task does not have a working branch to open a pull request for.");
   }
 
   if (!(await isGhAvailable(executor, directory))) {
@@ -440,8 +440,8 @@ export async function ensureAutomaticPrFlowPullRequest(
     return existingPullRequest;
   }
 
-  const baseBranch = getBaseBranch(loop) ?? await git.getDefaultBranch(directory);
-  const metadata = await generateAutomaticPrMetadata(loop, directory, executor, baseBranch);
+  const baseBranch = getBaseBranch(task) ?? await git.getDefaultBranch(directory);
+  const metadata = await generateAutomaticPrMetadata(task, directory, executor, baseBranch);
   const createResult = await executor.exec(
     "gh",
     [
@@ -471,14 +471,14 @@ export async function ensureAutomaticPrFlowPullRequest(
 }
 
 export async function enableExistingPullRequestAutoMerge(
-  loop: Loop,
+  task: Task,
   directory: string,
   executor: CommandExecutor,
   git: PullRequestNavigationGitService,
 ): Promise<AutomaticPrFlowPullRequest> {
-  const workingBranch = getWorkingBranch(loop);
+  const workingBranch = getWorkingBranch(task);
   if (!workingBranch) {
-    throw new Error("This loop does not have a working branch to enable automatic merge for.");
+    throw new Error("This task does not have a working branch to enable automatic merge for.");
   }
 
   if (!(await isGhAvailable(executor, directory))) {
@@ -489,7 +489,7 @@ export async function enableExistingPullRequestAutoMerge(
 
   const existingPullRequest = await getExistingPullRequest(workingBranch, directory, executor);
   if (!existingPullRequest) {
-    throw new Error("This loop does not have an existing GitHub pull request yet.");
+    throw new Error("This task does not have an existing GitHub pull request yet.");
   }
 
   if (existingPullRequest.state !== "OPEN") {

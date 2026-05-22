@@ -3,14 +3,12 @@
  */
 
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { Database } from "bun:sqlite";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import type { Loop, LoopStatus } from "../../src/types/loop";
-import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
+import type { Task, TaskStatus } from "../../src/types/task";
+import { DEFAULT_TASK_CONFIG } from "../../src/types/task";
 import { getDefaultServerSettings } from "../../src/types/settings";
-import { getDatabasePath } from "../../src/persistence/database";
 
 // We need to set the env var before importing the module
 let testDataDir: string;
@@ -25,7 +23,7 @@ async function setupPersistence(): Promise<void> {
   
   await ensureDataDirectories();
   
-  // Create the test workspace (required for loops with workspaceId)
+  // Create the test workspace (required for tasks with workspaceId)
   await createWorkspace({
     id: testWorkspaceId,
     name: "Test Workspace",
@@ -37,17 +35,17 @@ async function setupPersistence(): Promise<void> {
 }
 
 /**
- * Helper function to create a test loop with all required fields.
+ * Helper function to create a test task with all required fields.
  */
-function createTestLoop(overrides: {
+function createTestTask(overrides: {
   id: string;
   name?: string;
   directory?: string;
   prompt?: string;
-  status?: LoopStatus;
+  status?: TaskStatus;
   currentIteration?: number;
   createdAt?: string;
-}): Loop {
+}): Task {
   const now = new Date().toISOString();
   return {
     config: {
@@ -63,12 +61,12 @@ function createTestLoop(overrides: {
       git: { branchPrefix: "", commitScope: "" },
       maxIterations: Infinity,
        maxConsecutiveErrors: 10,
-       activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
-       useWorktree: DEFAULT_LOOP_CONFIG.useWorktree,
+       activityTimeoutSeconds: DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
+       useWorktree: DEFAULT_TASK_CONFIG.useWorktree,
        clearPlanningFolder: false,
        planMode: false,
        autoAcceptPlan: false,
-       mode: "loop",
+       mode: "task",
      },
     state: {
       id: overrides.id,
@@ -85,8 +83,8 @@ function createTestLoop(overrides: {
 describe("Persistence", () => {
   beforeEach(async () => {
     // Create a temp directory for each test
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
   });
 
   afterEach(async () => {
@@ -95,7 +93,7 @@ describe("Persistence", () => {
     closeDatabase();
 
     // Clean up
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true });
   });
 
@@ -108,7 +106,7 @@ describe("Persistence", () => {
 
     test("getDatabasePath returns correct path", async () => {
       const { getDatabasePath } = await import("../../src/persistence/database");
-      expect(getDatabasePath()).toBe(join(testDataDir, "ralpher.db"));
+      expect(getDatabasePath()).toBe(join(testDataDir, "clanky.db"));
     });
 
     test("ensureDataDirectories creates database", async () => {
@@ -120,831 +118,46 @@ describe("Persistence", () => {
       expect(ready).toBe(true);
     });
 
-    test("initializeDatabase repairs the chats table when legacy schema_migrations versions already exist", async () => {
-      const { Database } = await import("bun:sqlite");
-      const databasePath = join(testDataDir, "ralpher.db");
-      const legacyDb = new Database(databasePath);
-
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        1,
-        "legacy_reset_one",
-        "2025-01-01T00:00:00.000Z",
-      ]);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        2,
-        "legacy_reset_two",
-        "2025-01-01T00:00:00.000Z",
-      ]);
-      legacyDb.close();
-
+    test("initializeDatabase creates the clean Clanky reset schema", async () => {
       const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
+      const { getSchemaVersion } = await import("../../src/persistence/migrations");
+
       await initializeDatabase();
 
-      const row = getDatabase().query(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'chats'",
-      ).get() as { name: string } | null;
-      const columns = getDatabase().query("PRAGMA table_info(chats)").all() as Array<{ name: string }>;
-      const loopIndex = getDatabase().query(
-        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_chats_loop_id_unique'",
-      ).get() as { name: string } | null;
-
-      expect(row?.name).toBe("chats");
-      expect(columns.some((column) => column.name === "scope")).toBe(true);
-      expect(columns.some((column) => column.name === "loop_id")).toBe(true);
-      expect(columns.some((column) => column.name === "auto_approve_permissions")).toBe(true);
-      expect(columns.some((column) => column.name === "pending_permission_requests")).toBe(true);
-      expect(loopIndex?.name).toBe("idx_chats_loop_id_unique");
-    });
-
-    test("initializeDatabase repairs passkey credentials when a legacy migration version collides", async () => {
-      const { Database } = await import("bun:sqlite");
-      const databasePath = join(testDataDir, "ralpher.db");
-      const legacyDb = new Database(databasePath);
-
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        3,
-        "legacy_reset_three",
-        "2025-01-01T00:00:00.000Z",
-      ]);
-      legacyDb.close();
-
-      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
-      const { hasRegisteredPasskeys } = await import("../../src/persistence/passkey-auth");
-      await initializeDatabase();
-
-      const row = getDatabase().query(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'passkey_credentials'",
-      ).get() as { name: string } | null;
-      const index = getDatabase().query(
-        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_passkey_credentials_credential_id'",
-      ).get() as { name: string } | null;
-
-      expect(row?.name).toBe("passkey_credentials");
-      expect(index?.name).toBe("idx_passkey_credentials_credential_id");
-      await expect(hasRegisteredPasskeys()).resolves.toBe(false);
-    });
-
-    test("initializeDatabase repairs auth tables when a legacy migration version collides", async () => {
-      const { Database } = await import("bun:sqlite");
-      const databasePath = join(testDataDir, "ralpher.db");
-      const legacyDb = new Database(databasePath);
-
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        10,
-        "legacy_reset_ten",
-        "2025-01-01T00:00:00.000Z",
-      ]);
-      legacyDb.run(`
-        CREATE TABLE auth_device_requests (
-          id TEXT PRIMARY KEY,
-          client_id TEXT NOT NULL,
-          device_code_hash TEXT NOT NULL UNIQUE,
-          user_code TEXT NOT NULL UNIQUE,
-          scope TEXT NOT NULL DEFAULT '',
-          status TEXT NOT NULL,
-          expires_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run(`
-        CREATE UNIQUE INDEX idx_auth_device_requests_device_code_hash
-        ON auth_device_requests(device_code_hash)
-      `);
-      legacyDb.run(`
-        CREATE UNIQUE INDEX idx_auth_device_requests_user_code
-        ON auth_device_requests(user_code)
-      `);
-      legacyDb.run(`
-        CREATE TABLE auth_refresh_sessions (
-          id TEXT PRIMARY KEY,
-          family_id TEXT NOT NULL,
-          subject TEXT NOT NULL,
-          client_id TEXT NOT NULL,
-          scope TEXT NOT NULL DEFAULT '',
-          refresh_token_hash TEXT NOT NULL UNIQUE,
-          refresh_expires_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run(`
-        CREATE UNIQUE INDEX idx_auth_refresh_sessions_token_hash
-        ON auth_refresh_sessions(refresh_token_hash)
-      `);
-      legacyDb.close();
-
-      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
-      await initializeDatabase();
-
-      const deviceTable = getDatabase().query(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_device_requests'",
-      ).get() as { name: string } | null;
-      const refreshTable = getDatabase().query(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'auth_refresh_sessions'",
-      ).get() as { name: string } | null;
-      const refreshColumns = getDatabase().query("PRAGMA table_info(auth_refresh_sessions)").all() as Array<{ name: string }>;
-      const redundantIndexes = getDatabase().query(`
+      const db = getDatabase();
+      const tableNames = (db.query(`
         SELECT name
         FROM sqlite_master
-        WHERE type = 'index'
-          AND name IN (
-            'idx_auth_device_requests_device_code_hash',
-            'idx_auth_device_requests_user_code',
-            'idx_auth_refresh_sessions_token_hash'
-          )
-      `).all() as Array<{ name: string }>;
+        WHERE type = 'table'
+        ORDER BY name
+      `).all() as Array<{ name: string }>).map((row) => row.name);
+      const taskColumns = (db.query("PRAGMA table_info(tasks)").all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      );
+      const chatColumns = (db.query("PRAGMA table_info(chats)").all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      );
+      const sshSessionColumns = (db.query("PRAGMA table_info(ssh_sessions)").all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      );
+      const sshServerSessionColumns = (db.query("PRAGMA table_info(ssh_server_sessions)").all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      );
 
-      expect(deviceTable?.name).toBe("auth_device_requests");
-      expect(refreshTable?.name).toBe("auth_refresh_sessions");
-      expect(refreshColumns.some((column) => column.name === "scope")).toBe(true);
-      expect(redundantIndexes).toHaveLength(0);
-    });
-
-    test("initializeDatabase repairs workspaces when a legacy migration version collides", async () => {
-      const { Database } = await import("bun:sqlite");
-      const databasePath = join(testDataDir, "ralpher.db");
-      const legacyDb = new Database(databasePath);
-
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        4,
-        "legacy_reset_four",
-        "2025-01-01T00:00:00.000Z",
-      ]);
-      legacyDb.run(`
-        CREATE TABLE workspaces (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          directory TEXT NOT NULL,
-          server_fingerprint TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          server_settings TEXT NOT NULL DEFAULT '{}',
-          source_directory TEXT,
-          ssh_server_id TEXT,
-          repo_url TEXT,
-          base_path TEXT,
-          provider TEXT
-        )
-      `);
-      legacyDb.close();
-
-      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
-      const { createWorkspace } = await import("../../src/persistence/workspaces");
-      await initializeDatabase();
-
-      await expect(createWorkspace({
-        id: "repaired-workspace",
-        name: "Repaired Workspace",
-        directory: "/tmp/repaired",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serverSettings: getDefaultServerSettings(),
-        devcontainerSubpath: "backend",
-      })).resolves.toBeUndefined();
-
-      const columns = getDatabase().query("PRAGMA table_info(workspaces)").all() as Array<{ name: string }>;
-      const workspaceRow = getDatabase().query(
-        "SELECT devcontainer_subpath FROM workspaces WHERE id = ?",
-      ).get("repaired-workspace") as { devcontainer_subpath: string | null } | null;
-
-      expect(columns.some((column) => column.name === "devcontainer_subpath")).toBe(true);
-      expect(workspaceRow?.devcontainer_subpath).toBe("backend");
-    });
-
-    test("initializeDatabase repairs loops when a legacy migration version collides", async () => {
-      const { Database } = await import("bun:sqlite");
-      const databasePath = join(testDataDir, "ralpher.db");
-      const legacyDb = new Database(databasePath);
-
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        5,
-        "legacy_reset_five",
-        "2025-01-01T00:00:00.000Z",
-      ]);
-      legacyDb.run(`
-        CREATE TABLE loops (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          directory TEXT NOT NULL,
-          prompt TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          model_provider_id TEXT,
-          model_model_id TEXT,
-          model_variant TEXT,
-          max_iterations INTEGER,
-          max_consecutive_errors INTEGER,
-          activity_timeout_seconds INTEGER,
-          stop_pattern TEXT NOT NULL,
-          git_branch_prefix TEXT NOT NULL,
-          git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
-          base_branch TEXT,
-          clear_planning_folder INTEGER DEFAULT 0,
-          plan_mode INTEGER DEFAULT 0,
-          mode TEXT DEFAULT 'loop',
-          workspace_id TEXT REFERENCES workspaces(id),
-          status TEXT NOT NULL DEFAULT 'idle',
-          current_iteration INTEGER NOT NULL DEFAULT 0,
-          started_at TEXT,
-          completed_at TEXT,
-          last_activity_at TEXT,
-          session_id TEXT,
-          session_server_url TEXT,
-          error_message TEXT,
-          error_iteration INTEGER,
-          error_timestamp TEXT,
-          git_original_branch TEXT,
-          git_working_branch TEXT,
-          git_worktree_path TEXT,
-          git_commits TEXT,
-          recent_iterations TEXT,
-          logs TEXT,
-          messages TEXT,
-          tool_calls TEXT,
-          consecutive_errors TEXT,
-          pending_prompt TEXT,
-          pending_model_provider_id TEXT,
-          pending_model_model_id TEXT,
-          pending_model_variant TEXT,
-          plan_mode_active INTEGER DEFAULT 0,
-          plan_session_id TEXT,
-          plan_server_url TEXT,
-          plan_feedback_rounds INTEGER DEFAULT 0,
-          plan_content TEXT,
-          planning_folder_cleared INTEGER DEFAULT 0,
-          plan_is_ready INTEGER DEFAULT 0,
-          review_mode TEXT,
-          use_worktree INTEGER NOT NULL DEFAULT 1,
-          plan_mode_auto_reply INTEGER NOT NULL DEFAULT 1,
-          pending_plan_question TEXT
-        )
-      `);
-      legacyDb.close();
-
-      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
-      const { createWorkspace } = await import("../../src/persistence/workspaces");
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
-      await initializeDatabase();
-
-      await createWorkspace({
-        id: testWorkspaceId,
-        name: "Test Workspace",
-        directory: "/tmp/test",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serverSettings: getDefaultServerSettings(),
-      });
-
-      const repairedLoop = createTestLoop({
-        id: "repaired-auto-accept-loop",
-        name: "repaired-auto-accept-loop",
-      });
-      repairedLoop.config.autoAcceptPlan = true;
-
-      await expect(saveLoop(repairedLoop)).resolves.toBeUndefined();
-
-      const columns = getDatabase().query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
-      const loopRow = getDatabase().query(
-        "SELECT auto_accept_plan FROM loops WHERE id = ?",
-      ).get("repaired-auto-accept-loop") as { auto_accept_plan: number } | null;
-      const loadedLoop = await loadLoop("repaired-auto-accept-loop");
-
-      expect(columns.some((column) => column.name === "auto_accept_plan")).toBe(true);
-      expect(loopRow?.auto_accept_plan).toBe(1);
-      expect(loadedLoop?.config.autoAcceptPlan).toBe(true);
-    });
-
-    test("initializeDatabase repairs pull request monitoring when a legacy migration version collides", async () => {
-      const { Database } = await import("bun:sqlite");
-      const databasePath = join(testDataDir, "ralpher.db");
-      const legacyDb = new Database(databasePath);
-
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        6,
-        "legacy_reset_six",
-        "2025-01-01T00:00:00.000Z",
-      ]);
-      legacyDb.run(`
-        CREATE TABLE loops (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          directory TEXT NOT NULL,
-          prompt TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          model_provider_id TEXT,
-          model_model_id TEXT,
-          model_variant TEXT,
-          max_iterations INTEGER,
-          max_consecutive_errors INTEGER,
-          activity_timeout_seconds INTEGER,
-          stop_pattern TEXT NOT NULL,
-          git_branch_prefix TEXT NOT NULL,
-          git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
-          base_branch TEXT,
-          clear_planning_folder INTEGER DEFAULT 0,
-          plan_mode INTEGER DEFAULT 0,
-          mode TEXT DEFAULT 'loop',
-          workspace_id TEXT REFERENCES workspaces(id),
-          status TEXT NOT NULL DEFAULT 'idle',
-          current_iteration INTEGER NOT NULL DEFAULT 0,
-          started_at TEXT,
-          completed_at TEXT,
-          last_activity_at TEXT,
-          session_id TEXT,
-          session_server_url TEXT,
-          error_message TEXT,
-          error_iteration INTEGER,
-          error_timestamp TEXT,
-          git_original_branch TEXT,
-          git_working_branch TEXT,
-          git_worktree_path TEXT,
-          git_commits TEXT,
-          recent_iterations TEXT,
-          logs TEXT,
-          messages TEXT,
-          tool_calls TEXT,
-          consecutive_errors TEXT,
-          pending_prompt TEXT,
-          pending_model_provider_id TEXT,
-          pending_model_model_id TEXT,
-          pending_model_variant TEXT,
-          plan_mode_active INTEGER DEFAULT 0,
-          plan_session_id TEXT,
-          plan_server_url TEXT,
-          plan_feedback_rounds INTEGER DEFAULT 0,
-          plan_content TEXT,
-          planning_folder_cleared INTEGER DEFAULT 0,
-          plan_is_ready INTEGER DEFAULT 0,
-          review_mode TEXT,
-          use_worktree INTEGER NOT NULL DEFAULT 1,
-          plan_mode_auto_reply INTEGER NOT NULL DEFAULT 1,
-          pending_plan_question TEXT
-        )
-      `);
-      legacyDb.close();
-
-      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
-      const { createWorkspace } = await import("../../src/persistence/workspaces");
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
-      await initializeDatabase();
-
-      await createWorkspace({
-        id: testWorkspaceId,
-        name: "Test Workspace",
-        directory: "/tmp/test",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serverSettings: getDefaultServerSettings(),
-      });
-
-      const repairedLoop = createTestLoop({
-        id: "repaired-pr-monitor-loop",
-        name: "repaired-pr-monitor-loop",
-        status: "pushed",
-      });
-      repairedLoop.state.git = {
-        originalBranch: "main",
-        workingBranch: "feature/repaired-pr-monitor-loop",
-        commits: [],
-      };
-      repairedLoop.state.reviewMode = {
-        addressable: true,
-        completionAction: "push",
-        reviewCycles: 0,
-      };
-      repairedLoop.state.pullRequestMonitoring = {
-        status: "open",
-        lastCheckedAt: "2026-04-11T04:00:00.000Z",
-        pullRequestNumber: 42,
-        pullRequestUrl: "https://github.com/owner/repo/pull/42",
-      };
-
-      await expect(saveLoop(repairedLoop)).resolves.toBeUndefined();
-
-      const columns = getDatabase().query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
-      const loopRow = getDatabase().query(
-        "SELECT pull_request_monitoring FROM loops WHERE id = ?",
-      ).get("repaired-pr-monitor-loop") as { pull_request_monitoring: string | null } | null;
-      const loadedLoop = await loadLoop("repaired-pr-monitor-loop");
-
-      expect(columns.some((column) => column.name === "pull_request_monitoring")).toBe(true);
-      expect(loopRow?.pull_request_monitoring).toBe(JSON.stringify(repairedLoop.state.pullRequestMonitoring));
-      expect(loadedLoop?.state.pullRequestMonitoring).toEqual(repairedLoop.state.pullRequestMonitoring);
-    });
-
-    test("initializeDatabase repairs automatic PR flow when a legacy migration version collides", async () => {
-      const { Database } = await import("bun:sqlite");
-      const databasePath = join(testDataDir, "ralpher.db");
-      const legacyDb = new Database(databasePath);
-
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        7,
-        "legacy_reset_seven",
-        "2025-01-01T00:00:00.000Z",
-      ]);
-      legacyDb.run(`
-        CREATE TABLE loops (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          directory TEXT NOT NULL,
-          prompt TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          model_provider_id TEXT,
-          model_model_id TEXT,
-          model_variant TEXT,
-          max_iterations INTEGER,
-          max_consecutive_errors INTEGER,
-          activity_timeout_seconds INTEGER,
-          stop_pattern TEXT NOT NULL,
-          git_branch_prefix TEXT NOT NULL,
-          git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
-          base_branch TEXT,
-          clear_planning_folder INTEGER DEFAULT 0,
-          plan_mode INTEGER DEFAULT 0,
-          mode TEXT DEFAULT 'loop',
-          workspace_id TEXT REFERENCES workspaces(id),
-          status TEXT NOT NULL DEFAULT 'idle',
-          current_iteration INTEGER NOT NULL DEFAULT 0,
-          started_at TEXT,
-          completed_at TEXT,
-          last_activity_at TEXT,
-          session_id TEXT,
-          session_server_url TEXT,
-          error_message TEXT,
-          error_iteration INTEGER,
-          error_timestamp TEXT,
-          git_original_branch TEXT,
-          git_working_branch TEXT,
-          git_worktree_path TEXT,
-          git_commits TEXT,
-          recent_iterations TEXT,
-          logs TEXT,
-          messages TEXT,
-          tool_calls TEXT,
-          consecutive_errors TEXT,
-          pending_prompt TEXT,
-          pending_model_provider_id TEXT,
-          pending_model_model_id TEXT,
-          pending_model_variant TEXT,
-          plan_mode_active INTEGER DEFAULT 0,
-          plan_session_id TEXT,
-          plan_server_url TEXT,
-          plan_feedback_rounds INTEGER DEFAULT 0,
-          plan_content TEXT,
-          planning_folder_cleared INTEGER DEFAULT 0,
-          plan_is_ready INTEGER DEFAULT 0,
-          review_mode TEXT,
-          use_worktree INTEGER NOT NULL DEFAULT 1,
-          plan_mode_auto_reply INTEGER NOT NULL DEFAULT 1,
-          pending_plan_question TEXT,
-          auto_accept_plan INTEGER NOT NULL DEFAULT 0,
-          pull_request_monitoring TEXT
-        )
-      `);
-      legacyDb.close();
-
-      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
-      const { createWorkspace } = await import("../../src/persistence/workspaces");
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
-      await initializeDatabase();
-
-      await createWorkspace({
-        id: testWorkspaceId,
-        name: "Test Workspace",
-        directory: "/tmp/test",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serverSettings: getDefaultServerSettings(),
-      });
-
-      const repairedLoop = createTestLoop({
-        id: "repaired-auto-pr-flow-loop",
-        name: "repaired-auto-pr-flow-loop",
-        status: "pushed",
-      });
-      repairedLoop.state.git = {
-        originalBranch: "main",
-        workingBranch: "feature/repaired-auto-pr-flow-loop",
-        commits: [],
-      };
-      repairedLoop.state.reviewMode = {
-        addressable: true,
-        completionAction: "push",
-        reviewCycles: 0,
-      };
-      repairedLoop.state.automaticPrFlow = {
-        enabled: true,
-        status: "monitoring",
-        startedAt: "2026-04-11T04:00:00.000Z",
-        updatedAt: "2026-04-11T04:05:00.000Z",
-        lastCheckedAt: "2026-04-11T04:05:00.000Z",
-        pullRequestNumber: 42,
-        pullRequestUrl: "https://github.com/owner/repo/pull/42",
-        handledItems: [],
-      };
-
-      await expect(saveLoop(repairedLoop)).resolves.toBeUndefined();
-
-      const columns = getDatabase().query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
-      const loopRow = getDatabase().query(
-        "SELECT automatic_pr_flow FROM loops WHERE id = ?",
-      ).get("repaired-auto-pr-flow-loop") as { automatic_pr_flow: string | null } | null;
-      const loadedLoop = await loadLoop("repaired-auto-pr-flow-loop");
-
-      expect(columns.some((column) => column.name === "automatic_pr_flow")).toBe(true);
-      expect(loopRow?.automatic_pr_flow).toBe(JSON.stringify(repairedLoop.state.automaticPrFlow));
-      expect(loadedLoop?.state.automaticPrFlow).toEqual(repairedLoop.state.automaticPrFlow);
-    });
-
-    test("initializeDatabase repairs fully autonomous fields when a legacy migration version collides", async () => {
-      const legacyDb = new Database(getDatabasePath());
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        8,
-        "legacy_collision",
-        new Date().toISOString(),
-      ]);
-      legacyDb.run(`
-        CREATE TABLE loops (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          directory TEXT NOT NULL,
-          prompt TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          workspace_id TEXT REFERENCES workspaces(id),
-          model_provider_id TEXT,
-          model_model_id TEXT,
-          model_variant TEXT,
-          max_iterations INTEGER,
-          max_consecutive_errors INTEGER,
-          activity_timeout_seconds INTEGER,
-          stop_pattern TEXT NOT NULL,
-          git_branch_prefix TEXT NOT NULL DEFAULT '',
-          git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
-          base_branch TEXT,
-          clear_planning_folder INTEGER DEFAULT 0,
-          plan_mode INTEGER DEFAULT 0,
-          mode TEXT DEFAULT 'loop',
-          status TEXT NOT NULL DEFAULT 'idle',
-          current_iteration INTEGER NOT NULL DEFAULT 0,
-          started_at TEXT,
-          completed_at TEXT,
-          last_activity_at TEXT,
-          session_id TEXT,
-          session_server_url TEXT,
-          error_message TEXT,
-          error_iteration INTEGER,
-          error_timestamp TEXT,
-          git_original_branch TEXT,
-          git_working_branch TEXT,
-          git_worktree_path TEXT,
-          git_commits TEXT,
-          recent_iterations TEXT,
-          logs TEXT,
-          messages TEXT,
-          tool_calls TEXT,
-          consecutive_errors TEXT,
-          pending_prompt TEXT,
-          pending_model_provider_id TEXT,
-          pending_model_model_id TEXT,
-          pending_model_variant TEXT,
-          plan_mode_active INTEGER DEFAULT 0,
-          plan_session_id TEXT,
-          plan_server_url TEXT,
-          plan_feedback_rounds INTEGER DEFAULT 0,
-          plan_content TEXT,
-          planning_folder_cleared INTEGER DEFAULT 0,
-          plan_is_ready INTEGER DEFAULT 0,
-          review_mode TEXT,
-          use_worktree INTEGER NOT NULL DEFAULT 1,
-          plan_mode_auto_reply INTEGER NOT NULL DEFAULT 1,
-          pending_plan_question TEXT,
-          auto_accept_plan INTEGER NOT NULL DEFAULT 0,
-          pull_request_monitoring TEXT,
-          automatic_pr_flow TEXT
-        )
-      `);
-      legacyDb.close();
-
-      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
-      const { createWorkspace } = await import("../../src/persistence/workspaces");
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
-      await initializeDatabase();
-
-      await createWorkspace({
-        id: testWorkspaceId,
-        name: "Test Workspace",
-        directory: "/tmp/test",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serverSettings: getDefaultServerSettings(),
-      });
-
-      const repairedLoop = createTestLoop({
-        id: "repaired-fully-autonomous-loop",
-        name: "repaired-fully-autonomous-loop",
-        status: "completed",
-      });
-      repairedLoop.config.planMode = true;
-      repairedLoop.config.autoAcceptPlan = true;
-      repairedLoop.config.fullyAutonomous = true;
-      repairedLoop.state.fullyAutonomousPending = true;
-
-      await expect(saveLoop(repairedLoop)).resolves.toBeUndefined();
-
-      const columns = getDatabase().query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
-      const loopRow = getDatabase().query(
-        "SELECT fully_autonomous, fully_autonomous_pending FROM loops WHERE id = ?",
-      ).get("repaired-fully-autonomous-loop") as {
-        fully_autonomous: number;
-        fully_autonomous_pending: number;
-      } | null;
-      const loadedLoop = await loadLoop("repaired-fully-autonomous-loop");
-
-      expect(columns.some((column) => column.name === "fully_autonomous")).toBe(true);
-      expect(columns.some((column) => column.name === "fully_autonomous_pending")).toBe(true);
-      expect(loopRow?.fully_autonomous).toBe(1);
-      expect(loopRow?.fully_autonomous_pending).toBe(1);
-      expect(loadedLoop?.config.fullyAutonomous).toBe(true);
-      expect(loadedLoop?.state.fullyAutonomousPending).toBe(true);
-    });
-
-    test("initializeDatabase repairs cheap model when a legacy migration version collides", async () => {
-      const legacyDb = new Database(getDatabasePath());
-      legacyDb.run(`
-        CREATE TABLE schema_migrations (
-          version INTEGER PRIMARY KEY,
-          name TEXT NOT NULL,
-          applied_at TEXT NOT NULL
-        )
-      `);
-      legacyDb.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)", [
-        9,
-        "legacy_collision",
-        new Date().toISOString(),
-      ]);
-      legacyDb.run(`
-        CREATE TABLE loops (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          directory TEXT NOT NULL,
-          prompt TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          workspace_id TEXT REFERENCES workspaces(id),
-          model_provider_id TEXT,
-          model_model_id TEXT,
-          model_variant TEXT,
-          max_iterations INTEGER,
-          max_consecutive_errors INTEGER,
-          activity_timeout_seconds INTEGER,
-          stop_pattern TEXT NOT NULL,
-          git_branch_prefix TEXT NOT NULL DEFAULT '',
-          git_commit_scope TEXT NOT NULL DEFAULT 'ralph',
-          base_branch TEXT,
-          clear_planning_folder INTEGER DEFAULT 0,
-          plan_mode INTEGER DEFAULT 0,
-          mode TEXT DEFAULT 'loop',
-          status TEXT NOT NULL DEFAULT 'idle',
-          current_iteration INTEGER NOT NULL DEFAULT 0,
-          started_at TEXT,
-          completed_at TEXT,
-          last_activity_at TEXT,
-          session_id TEXT,
-          session_server_url TEXT,
-          error_message TEXT,
-          error_iteration INTEGER,
-          error_timestamp TEXT,
-          git_original_branch TEXT,
-          git_working_branch TEXT,
-          git_worktree_path TEXT,
-          git_commits TEXT,
-          recent_iterations TEXT,
-          logs TEXT,
-          messages TEXT,
-          tool_calls TEXT,
-          consecutive_errors TEXT,
-          pending_prompt TEXT,
-          pending_model_provider_id TEXT,
-          pending_model_model_id TEXT,
-          pending_model_variant TEXT,
-          plan_mode_active INTEGER DEFAULT 0,
-          plan_session_id TEXT,
-          plan_server_url TEXT,
-          plan_feedback_rounds INTEGER DEFAULT 0,
-          plan_content TEXT,
-          planning_folder_cleared INTEGER DEFAULT 0,
-          plan_is_ready INTEGER DEFAULT 0,
-          review_mode TEXT,
-          use_worktree INTEGER NOT NULL DEFAULT 1,
-          plan_mode_auto_reply INTEGER NOT NULL DEFAULT 1,
-          pending_plan_question TEXT,
-          auto_accept_plan INTEGER NOT NULL DEFAULT 0,
-          pull_request_monitoring TEXT,
-          automatic_pr_flow TEXT,
-          fully_autonomous INTEGER NOT NULL DEFAULT 0,
-          fully_autonomous_pending INTEGER NOT NULL DEFAULT 0
-        )
-      `);
-      legacyDb.close();
-
-      const { initializeDatabase, getDatabase } = await import("../../src/persistence/database");
-      const { createWorkspace } = await import("../../src/persistence/workspaces");
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
-      await initializeDatabase();
-
-      await createWorkspace({
-        id: testWorkspaceId,
-        name: "Test Workspace",
-        directory: "/tmp/test",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        serverSettings: getDefaultServerSettings(),
-      });
-
-      const repairedLoop = createTestLoop({
-        id: "repaired-cheap-model-loop",
-        name: "repaired-cheap-model-loop",
-      });
-      repairedLoop.config.cheapModel = {
-        mode: "custom",
-        model: {
-          providerID: "openai",
-          modelID: "gpt-4o-mini",
-          variant: "fast",
-        },
-      };
-
-      await expect(saveLoop(repairedLoop)).resolves.toBeUndefined();
-
-      const columns = getDatabase().query("PRAGMA table_info(loops)").all() as Array<{ name: string }>;
-      const loopRow = getDatabase().query(
-        "SELECT cheap_model FROM loops WHERE id = ?",
-      ).get("repaired-cheap-model-loop") as { cheap_model: string | null } | null;
-      const loadedLoop = await loadLoop("repaired-cheap-model-loop");
-
-      expect(columns.some((column) => column.name === "cheap_model")).toBe(true);
-      expect(loopRow?.cheap_model).toBe(JSON.stringify(repairedLoop.config.cheapModel));
-      expect(loadedLoop?.config.cheapModel).toEqual(repairedLoop.config.cheapModel);
+      expect(tableNames).toContain("tasks");
+      expect(getSchemaVersion(db)).toBe(0);
+      expect(taskColumns).toEqual(expect.arrayContaining([
+        "auto_accept_plan",
+        "pull_request_monitoring",
+        "automatic_pr_flow",
+        "fully_autonomous",
+        "fully_autonomous_pending",
+        "cheap_model",
+        "pending_prompt_mode",
+      ]));
+      expect(chatColumns).toContain("task_id");
+      expect(sshSessionColumns).toContain("use_tmux");
+      expect(sshServerSessionColumns).toContain("use_tmux");
     });
 
     test("resetDatabase drops chats and passkey credentials before recreating the schema", async () => {
@@ -1001,104 +214,104 @@ describe("Persistence", () => {
     });
   });
 
-  describe("loops", () => {
-    test("saveLoop and loadLoop work correctly", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+  describe("tasks", () => {
+    test("saveTask and loadTask work correctly", async () => {
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "test-loop-123",
-        name: "test-loop",
+      const testTask = createTestTask({
+        id: "test-task-123",
+        name: "test-task",
         prompt: "Do something",
       });
 
-      await saveLoop(testLoop);
-      const loaded = await loadLoop("test-loop-123");
+      await saveTask(testTask);
+      const loaded = await loadTask("test-task-123");
 
       expect(loaded).not.toBeNull();
       expect(loaded!.state.status).toBe("idle");
     });
 
-    test("saveLoop and loadLoop preserve pending prompt mode", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+    test("saveTask and loadTask preserve pending prompt mode", async () => {
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "pending-prompt-mode-loop",
-        name: "pending-prompt-mode-loop",
+      const testTask = createTestTask({
+        id: "pending-prompt-mode-task",
+        name: "pending-prompt-mode-task",
       });
-      testLoop.state.pendingPrompt = "Answer directly";
-      testLoop.state.pendingPromptMode = "plain_chat";
+      testTask.state.pendingPrompt = "Answer directly";
+      testTask.state.pendingPromptMode = "plain_chat";
 
-      await saveLoop(testLoop);
-      const loaded = await loadLoop("pending-prompt-mode-loop");
+      await saveTask(testTask);
+      const loaded = await loadTask("pending-prompt-mode-task");
 
       expect(loaded).not.toBeNull();
       expect(loaded!.state.pendingPrompt).toBe("Answer directly");
       expect(loaded!.state.pendingPromptMode).toBe("plain_chat");
     });
 
-    test("loadLoop normalizes legacy generic ralph commit scope", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+    test("loadTask normalizes legacy generic clanky commit scope", async () => {
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "legacy-scope-loop",
-        name: "legacy-scope-loop",
+      const testTask = createTestTask({
+        id: "legacy-scope-task",
+        name: "legacy-scope-task",
       });
-      testLoop.config.git.commitScope = "ralph";
+      testTask.config.git.commitScope = "clanky";
 
-      await saveLoop(testLoop);
-      const loaded = await loadLoop("legacy-scope-loop");
+      await saveTask(testTask);
+      const loaded = await loadTask("legacy-scope-task");
 
       expect(loaded).not.toBeNull();
       expect(loaded!.config.git.commitScope).toBe("");
     });
 
-    test("loadLoop coerces legacy persisted chat mode to loop", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+    test("loadTask coerces legacy persisted chat mode to task", async () => {
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
       const { getDatabase } = await import("../../src/persistence/database");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "legacy-mode-loop",
-        name: "legacy-mode-loop",
+      const testTask = createTestTask({
+        id: "legacy-mode-task",
+        name: "legacy-mode-task",
       });
 
-      await saveLoop(testLoop);
-      getDatabase().run("UPDATE loops SET mode = 'chat' WHERE id = ?", ["legacy-mode-loop"]);
+      await saveTask(testTask);
+      getDatabase().run("UPDATE tasks SET mode = 'chat' WHERE id = ?", ["legacy-mode-task"]);
 
-      const loaded = await loadLoop("legacy-mode-loop");
+      const loaded = await loadTask("legacy-mode-task");
 
       expect(loaded).not.toBeNull();
-      expect(loaded!.config.mode).toBe("loop");
+      expect(loaded!.config.mode).toBe("task");
     });
 
     test("ignores legacy pending plan questions and clears them on save", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
       const { getDatabase } = await import("../../src/persistence/database");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "pending-question-loop",
+      const testTask = createTestTask({
+        id: "pending-question-task",
         status: "planning",
       });
-      testLoop.config.planMode = true;
-      testLoop.state.planMode = {
+      testTask.config.planMode = true;
+      testTask.state.planMode = {
         active: true,
         feedbackRounds: 0,
         planningFolderCleared: false,
         isPlanReady: false,
       };
 
-      await saveLoop(testLoop);
+      await saveTask(testTask);
       getDatabase().run(
-        "UPDATE loops SET pending_plan_question = ? WHERE id = ?",
+        "UPDATE tasks SET pending_plan_question = ? WHERE id = ?",
         [
           JSON.stringify({
             requestId: "question-1",
@@ -1115,47 +328,47 @@ describe("Persistence", () => {
               },
             ],
           }),
-          "pending-question-loop",
+          "pending-question-task",
         ],
       );
-      const loaded = await loadLoop("pending-question-loop");
+      const loaded = await loadTask("pending-question-task");
 
       expect(loaded?.state.planMode).toBeDefined();
       expect("pendingQuestion" in (loaded?.state.planMode ?? {})).toBe(false);
 
-      await saveLoop(loaded!);
+      await saveTask(loaded!);
       const row = getDatabase()
-        .query("SELECT pending_plan_question FROM loops WHERE id = ?")
-        .get("pending-question-loop") as Record<string, unknown>;
+        .query("SELECT pending_plan_question FROM tasks WHERE id = ?")
+        .get("pending-question-task") as Record<string, unknown>;
       expect(row["pending_plan_question"]).toBeNull();
     });
 
     test("persists auto-accept plan setting", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "auto-accept-loop",
+      const testTask = createTestTask({
+        id: "auto-accept-task",
       });
-      testLoop.config.planMode = true;
-      testLoop.config.autoAcceptPlan = true;
+      testTask.config.planMode = true;
+      testTask.config.autoAcceptPlan = true;
 
-      await saveLoop(testLoop);
-      const loaded = await loadLoop("auto-accept-loop");
+      await saveTask(testTask);
+      const loaded = await loadTask("auto-accept-task");
 
       expect(loaded?.config.autoAcceptPlan).toBe(true);
     });
 
     test("persists cheap helper model selection", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "cheap-model-loop",
+      const testTask = createTestTask({
+        id: "cheap-model-task",
       });
-      testLoop.config.cheapModel = {
+      testTask.config.cheapModel = {
         mode: "custom",
         model: {
           providerID: "openai",
@@ -1164,64 +377,64 @@ describe("Persistence", () => {
         },
       };
 
-      await saveLoop(testLoop);
-      const loaded = await loadLoop("cheap-model-loop");
+      await saveTask(testTask);
+      const loaded = await loadTask("cheap-model-task");
 
-      expect(loaded?.config.cheapModel).toEqual(testLoop.config.cheapModel);
+      expect(loaded?.config.cheapModel).toEqual(testTask.config.cheapModel);
     });
 
     test("persists pull request monitoring state", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "pr-monitor-loop",
+      const testTask = createTestTask({
+        id: "pr-monitor-task",
         status: "pushed",
       });
-      testLoop.state.git = {
+      testTask.state.git = {
         originalBranch: "main",
-        workingBranch: "feature/pr-monitor-loop",
+        workingBranch: "feature/pr-monitor-task",
         commits: [],
       };
-      testLoop.state.reviewMode = {
+      testTask.state.reviewMode = {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
       };
-      testLoop.state.pullRequestMonitoring = {
+      testTask.state.pullRequestMonitoring = {
         status: "open",
         lastCheckedAt: "2026-04-11T04:00:00.000Z",
         pullRequestNumber: 42,
         pullRequestUrl: "https://github.com/owner/repo/pull/42",
       };
 
-      await saveLoop(testLoop);
-      const loaded = await loadLoop("pr-monitor-loop");
+      await saveTask(testTask);
+      const loaded = await loadTask("pr-monitor-task");
 
-      expect(loaded?.state.pullRequestMonitoring).toEqual(testLoop.state.pullRequestMonitoring);
+      expect(loaded?.state.pullRequestMonitoring).toEqual(testTask.state.pullRequestMonitoring);
     });
 
     test("persists automatic PR flow state", async () => {
-      const { saveLoop, loadLoop } = await import("../../src/persistence/loops");
+      const { saveTask, loadTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({
-        id: "automatic-pr-flow-loop",
+      const testTask = createTestTask({
+        id: "automatic-pr-flow-task",
         status: "pushed",
       });
-      testLoop.state.git = {
+      testTask.state.git = {
         originalBranch: "main",
-        workingBranch: "feature/automatic-pr-flow-loop",
+        workingBranch: "feature/automatic-pr-flow-task",
         commits: [],
       };
-      testLoop.state.reviewMode = {
+      testTask.state.reviewMode = {
         addressable: true,
         completionAction: "push",
         reviewCycles: 0,
       };
-      testLoop.state.automaticPrFlow = {
+      testTask.state.automaticPrFlow = {
         enabled: true,
         status: "processing_feedback",
         startedAt: "2026-04-11T04:00:00.000Z",
@@ -1249,20 +462,20 @@ describe("Persistence", () => {
         ],
       };
 
-      await saveLoop(testLoop);
-      const loaded = await loadLoop("automatic-pr-flow-loop");
+      await saveTask(testTask);
+      const loaded = await loadTask("automatic-pr-flow-task");
 
-      expect(loaded?.state.automaticPrFlow).toEqual(testLoop.state.automaticPrFlow);
+      expect(loaded?.state.automaticPrFlow).toEqual(testTask.state.automaticPrFlow);
     });
 
     test("ignores undefined automatic PR flow values from legacy or partial rows", async () => {
-      const { loopToRow, rowToLoop } = await import("../../src/persistence/loops/helpers");
+      const { taskToRow, rowToTask } = await import("../../src/persistence/tasks/helpers");
 
-      const testLoop = createTestLoop({
+      const testTask = createTestTask({
         id: "legacy-auto-pr-flow-row",
         status: "pushed",
       });
-      testLoop.state.automaticPrFlow = {
+      testTask.state.automaticPrFlow = {
         enabled: true,
         status: "monitoring",
         startedAt: "2026-04-11T04:00:00.000Z",
@@ -1270,73 +483,73 @@ describe("Persistence", () => {
         handledItems: [],
       };
 
-      const row = loopToRow(testLoop);
+      const row = taskToRow(testTask);
       row["automatic_pr_flow"] = undefined;
 
-      const loaded = rowToLoop(row);
+      const loaded = rowToTask(row);
 
       expect(loaded.state.automaticPrFlow).toBeUndefined();
     });
 
     test("ignores undefined pull request monitoring values from legacy or partial rows", async () => {
-      const { loopToRow, rowToLoop } = await import("../../src/persistence/loops/helpers");
+      const { taskToRow, rowToTask } = await import("../../src/persistence/tasks/helpers");
 
-      const testLoop = createTestLoop({
+      const testTask = createTestTask({
         id: "legacy-pr-monitor-row",
         status: "pushed",
       });
-      testLoop.state.pullRequestMonitoring = {
+      testTask.state.pullRequestMonitoring = {
         status: "open",
         lastCheckedAt: "2026-04-11T04:00:00.000Z",
       };
 
-      const row = loopToRow(testLoop);
+      const row = taskToRow(testTask);
       row["pull_request_monitoring"] = undefined;
 
-      const loaded = rowToLoop(row);
+      const loaded = rowToTask(row);
 
       expect(loaded.state.pullRequestMonitoring).toBeUndefined();
     });
 
-    test("loadLoop returns null for non-existent loop", async () => {
-      const { loadLoop } = await import("../../src/persistence/loops");
+    test("loadTask returns null for non-existent task", async () => {
+      const { loadTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const loaded = await loadLoop("non-existent");
+      const loaded = await loadTask("non-existent");
       expect(loaded).toBeNull();
     });
 
-    test("deleteLoop removes the loop", async () => {
-      const { saveLoop, loadLoop, deleteLoop } = await import("../../src/persistence/loops");
+    test("deleteTask removes the task", async () => {
+      const { saveTask, loadTask, deleteTask } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      const testLoop = createTestLoop({ id: "delete-me" });
+      const testTask = createTestTask({ id: "delete-me" });
 
-      await saveLoop(testLoop);
-      expect(await loadLoop("delete-me")).not.toBeNull();
+      await saveTask(testTask);
+      expect(await loadTask("delete-me")).not.toBeNull();
 
-      const deleted = await deleteLoop("delete-me");
+      const deleted = await deleteTask("delete-me");
       expect(deleted).toBe(true);
-      expect(await loadLoop("delete-me")).toBeNull();
+      expect(await loadTask("delete-me")).toBeNull();
     });
 
-    test("listLoops returns all loops", async () => {
-      const { saveLoop, listLoops } = await import("../../src/persistence/loops");
+    test("listTasks returns all tasks", async () => {
+      const { saveTask, listTasks } = await import("../../src/persistence/tasks");
 
       await setupPersistence();
 
-      // Save two loops
-      const loop1 = createTestLoop({
-        id: "loop-1",
+      // Save two tasks
+      const task1 = createTestTask({
+        id: "task-1",
         directory: "/tmp/1",
         prompt: "Test 1",
         createdAt: "2024-01-01T00:00:00Z",
       });
 
-      const loop2 = createTestLoop({
-        id: "loop-2",
+      const task2 = createTestTask({
+        id: "task-2",
         directory: "/tmp/2",
         prompt: "Test 2",
         status: "running",
@@ -1344,105 +557,105 @@ describe("Persistence", () => {
         createdAt: "2024-01-02T00:00:00Z",
       });
 
-      await saveLoop(loop1);
-      await saveLoop(loop2);
+      await saveTask(task1);
+      await saveTask(task2);
 
-      const loops = await listLoops();
-      expect(loops.length).toBe(2);
+      const tasks = await listTasks();
+      expect(tasks.length).toBe(2);
 
       // Should be sorted by createdAt, newest first
-      expect(loops[0]!.config.id).toBe("loop-2");
-      expect(loops[1]!.config.id).toBe("loop-1");
+      expect(tasks[0]!.config.id).toBe("task-2");
+      expect(tasks[1]!.config.id).toBe("task-1");
     });
 
-    describe("getActiveLoopByDirectory", () => {
-      test("returns null when no loops exist for directory", async () => {
-        const { getActiveLoopByDirectory } = await import("../../src/persistence/loops");
+    describe("getActiveTaskByDirectory", () => {
+      test("returns null when no tasks exist for directory", async () => {
+        const { getActiveTaskByDirectory } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const result = await getActiveLoopByDirectory("/tmp/test", "test-workspace-id");
+        const result = await getActiveTaskByDirectory("/tmp/test", "test-workspace-id");
         expect(result).toBeNull();
       });
 
-      test("returns null when only draft loops exist for directory", async () => {
-        const { saveLoop, getActiveLoopByDirectory } = await import("../../src/persistence/loops");
+      test("returns null when only draft tasks exist for directory", async () => {
+        const { saveTask, getActiveTaskByDirectory } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const draftLoop = createTestLoop({ id: "draft-loop", status: "draft" });
-        await saveLoop(draftLoop);
+        const draftTask = createTestTask({ id: "draft-task", status: "draft" });
+        await saveTask(draftTask);
 
-        const result = await getActiveLoopByDirectory("/tmp/test", "test-workspace-id");
+        const result = await getActiveTaskByDirectory("/tmp/test", "test-workspace-id");
         expect(result).toBeNull();
       });
 
-      test("returns null when only terminal state loops exist for directory", async () => {
-        const { saveLoop, getActiveLoopByDirectory } = await import("../../src/persistence/loops");
+      test("returns null when only terminal state tasks exist for directory", async () => {
+        const { saveTask, getActiveTaskByDirectory } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const terminalStatuses: LoopStatus[] = ["completed", "stopped", "failed", "max_iterations", "merged", "pushed", "deleted"];
+        const terminalStatuses: TaskStatus[] = ["completed", "stopped", "failed", "max_iterations", "merged", "pushed", "deleted"];
 
         for (let i = 0; i < terminalStatuses.length; i++) {
-          const loop = createTestLoop({
-            id: `terminal-loop-${i}`,
+          const task = createTestTask({
+            id: `terminal-task-${i}`,
             status: terminalStatuses[i],
           });
-          await saveLoop(loop);
+          await saveTask(task);
         }
 
-        const result = await getActiveLoopByDirectory("/tmp/test", "test-workspace-id");
+        const result = await getActiveTaskByDirectory("/tmp/test", "test-workspace-id");
         expect(result).toBeNull();
       });
 
-      test("returns the active loop when one exists", async () => {
-        const { saveLoop, getActiveLoopByDirectory, deleteLoop } = await import("../../src/persistence/loops");
+      test("returns the active task when one exists", async () => {
+        const { saveTask, getActiveTaskByDirectory, deleteTask } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const activeStatuses: LoopStatus[] = ["idle", "planning", "starting", "running", "waiting"];
+        const activeStatuses: TaskStatus[] = ["idle", "planning", "starting", "running", "waiting"];
 
         for (const status of activeStatuses) {
-          const testLoop = createTestLoop({
-            id: `active-loop-${status}`,
+          const testTask = createTestTask({
+            id: `active-task-${status}`,
             directory: `/tmp/active-test-${status}`,
             status,
           });
 
-          await saveLoop(testLoop);
+          await saveTask(testTask);
 
-          const result = await getActiveLoopByDirectory(`/tmp/active-test-${status}`, "test-workspace-id");
+          const result = await getActiveTaskByDirectory(`/tmp/active-test-${status}`, "test-workspace-id");
           expect(result).not.toBeNull();
-          expect(result!.config.id).toBe(`active-loop-${status}`);
+          expect(result!.config.id).toBe(`active-task-${status}`);
           expect(result!.state.status).toBe(status);
 
           // Clean up
-          await deleteLoop(testLoop.config.id);
+          await deleteTask(testTask.config.id);
         }
       });
 
-      test("does not return loops from different directories", async () => {
-        const { saveLoop, getActiveLoopByDirectory } = await import("../../src/persistence/loops");
+      test("does not return tasks from different directories", async () => {
+        const { saveTask, getActiveTaskByDirectory } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        // Save a running loop in a different directory
-        const otherDirLoop = createTestLoop({
-          id: "other-dir-loop",
+        // Save a running task in a different directory
+        const otherDirTask = createTestTask({
+          id: "other-dir-task",
           directory: "/tmp/other-dir",
           status: "running",
         });
 
-        await saveLoop(otherDirLoop);
+        await saveTask(otherDirTask);
 
         // Query for a different directory
-        const result = await getActiveLoopByDirectory("/tmp/my-dir", "test-workspace-id");
+        const result = await getActiveTaskByDirectory("/tmp/my-dir", "test-workspace-id");
         expect(result).toBeNull();
       });
 
-      test("does not return loops from different workspaces with the same directory", async () => {
-        const { saveLoop, getActiveLoopByDirectory } = await import("../../src/persistence/loops");
+      test("does not return tasks from different workspaces with the same directory", async () => {
+        const { saveTask, getActiveTaskByDirectory } = await import("../../src/persistence/tasks");
         const { createWorkspace } = await import("../../src/persistence/workspaces");
 
         await setupPersistence();
@@ -1458,228 +671,228 @@ describe("Persistence", () => {
           serverSettings: getDefaultServerSettings(),
         });
 
-        // Save a running loop in the other workspace's directory
-        const otherWsLoop = createTestLoop({
-          id: "other-ws-loop",
+        // Save a running task in the other workspace's directory
+        const otherWsTask = createTestTask({
+          id: "other-ws-task",
           directory: "/tmp/test",
           status: "running",
         });
         // Override workspaceId to point to the other workspace
-        otherWsLoop.config.workspaceId = otherWorkspaceId;
-        await saveLoop(otherWsLoop);
+        otherWsTask.config.workspaceId = otherWorkspaceId;
+        await saveTask(otherWsTask);
 
         // Query should NOT find it when looking for test-workspace-id
-        const result = await getActiveLoopByDirectory("/tmp/test", "test-workspace-id");
+        const result = await getActiveTaskByDirectory("/tmp/test", "test-workspace-id");
         expect(result).toBeNull();
 
         // But SHOULD find it when looking for other-workspace-id
-        const otherResult = await getActiveLoopByDirectory("/tmp/test", otherWorkspaceId);
+        const otherResult = await getActiveTaskByDirectory("/tmp/test", otherWorkspaceId);
         expect(otherResult).not.toBeNull();
-        expect(otherResult!.config.id).toBe("other-ws-loop");
+        expect(otherResult!.config.id).toBe("other-ws-task");
       });
 
-      test("returns the active loop even when other loops exist for same directory", async () => {
-        const { saveLoop, getActiveLoopByDirectory } = await import("../../src/persistence/loops");
+      test("returns the active task even when other tasks exist for same directory", async () => {
+        const { saveTask, getActiveTaskByDirectory } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        // Save a draft loop
-        const draftLoop = createTestLoop({
-          id: "draft-loop",
+        // Save a draft task
+        const draftTask = createTestTask({
+          id: "draft-task",
           directory: "/tmp/multi-test",
           status: "draft",
         });
-        await saveLoop(draftLoop);
+        await saveTask(draftTask);
 
-        // Save a completed loop
-        const completedLoop = createTestLoop({
-          id: "completed-loop",
+        // Save a completed task
+        const completedTask = createTestTask({
+          id: "completed-task",
           directory: "/tmp/multi-test",
           status: "completed",
           currentIteration: 5,
         });
-        await saveLoop(completedLoop);
+        await saveTask(completedTask);
 
-        // Save a running loop
-        const runningLoop = createTestLoop({
-          id: "running-loop",
+        // Save a running task
+        const runningTask = createTestTask({
+          id: "running-task",
           directory: "/tmp/multi-test",
           status: "running",
           currentIteration: 2,
         });
-        await saveLoop(runningLoop);
+        await saveTask(runningTask);
 
-        const result = await getActiveLoopByDirectory("/tmp/multi-test", "test-workspace-id");
+        const result = await getActiveTaskByDirectory("/tmp/multi-test", "test-workspace-id");
         expect(result).not.toBeNull();
-        expect(result!.config.id).toBe("running-loop");
+        expect(result!.config.id).toBe("running-task");
         expect(result!.state.status).toBe("running");
       });
     });
 
-    describe("resetStaleLoops", () => {
-      test("resetStaleLoop resets a single stale loop without touching planning loops", async () => {
-        const { saveLoop, loadLoop, resetStaleLoop } = await import("../../src/persistence/loops");
+    describe("resetStaleTasks", () => {
+      test("resetStaleTask resets a single stale task without touching planning tasks", async () => {
+        const { saveTask, loadTask, resetStaleTask } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const runningLoop = createTestLoop({
-          id: "single-running-loop",
+        const runningTask = createTestTask({
+          id: "single-running-task",
           directory: "/tmp/test-single-running",
           status: "running",
         });
-        await saveLoop(runningLoop);
+        await saveTask(runningTask);
 
-        const planningLoop = createTestLoop({
-          id: "single-planning-loop",
+        const planningTask = createTestTask({
+          id: "single-planning-task",
           directory: "/tmp/test-single-planning",
           status: "planning",
         });
-        await saveLoop(planningLoop);
+        await saveTask(planningTask);
 
-        const runningReset = await resetStaleLoop("single-running-loop");
-        const planningReset = await resetStaleLoop("single-planning-loop");
+        const runningReset = await resetStaleTask("single-running-task");
+        const planningReset = await resetStaleTask("single-planning-task");
 
         expect(runningReset).toBe(true);
         expect(planningReset).toBe(false);
 
-        const loadedRunning = await loadLoop("single-running-loop");
+        const loadedRunning = await loadTask("single-running-task");
         expect(loadedRunning).not.toBeNull();
         expect(loadedRunning!.state.status).toBe("stopped");
         expect(loadedRunning!.state.error?.message).toBe("Forcefully stopped by connection reset");
         expect(loadedRunning!.state.error?.iteration).toBe(0);
 
-        const loadedPlanning = await loadLoop("single-planning-loop");
+        const loadedPlanning = await loadTask("single-planning-task");
         expect(loadedPlanning).not.toBeNull();
         expect(loadedPlanning!.state.status).toBe("planning");
       });
 
-      test("resets idle loops to stopped", async () => {
-        const { saveLoop, loadLoop, resetStaleLoops } = await import("../../src/persistence/loops");
+      test("resets idle tasks to stopped", async () => {
+        const { saveTask, loadTask, resetStaleTasks } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const idleLoop = createTestLoop({
-          id: "idle-loop",
+        const idleTask = createTestTask({
+          id: "idle-task",
           status: "idle",
         });
-        await saveLoop(idleLoop);
+        await saveTask(idleTask);
 
-        const resetCount = await resetStaleLoops();
+        const resetCount = await resetStaleTasks();
         expect(resetCount).toBe(1);
 
-        const loaded = await loadLoop("idle-loop");
+        const loaded = await loadTask("idle-task");
         expect(loaded).not.toBeNull();
         expect(loaded!.state.status).toBe("stopped");
         expect(loaded!.state.error?.message).toBe("Forcefully stopped by connection reset");
         expect(loaded!.state.error?.iteration).toBe(0);
       });
 
-      test("resets running and waiting loops to stopped", async () => {
-        const { saveLoop, loadLoop, resetStaleLoops } = await import("../../src/persistence/loops");
+      test("resets running and waiting tasks to stopped", async () => {
+        const { saveTask, loadTask, resetStaleTasks } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const runningLoop = createTestLoop({
-          id: "running-loop",
+        const runningTask = createTestTask({
+          id: "running-task",
           directory: "/tmp/test-running",
           status: "running",
         });
-        await saveLoop(runningLoop);
+        await saveTask(runningTask);
 
-        const waitingLoop = createTestLoop({
-          id: "waiting-loop",
+        const waitingTask = createTestTask({
+          id: "waiting-task",
           directory: "/tmp/test-waiting",
           status: "waiting",
         });
-        await saveLoop(waitingLoop);
+        await saveTask(waitingTask);
 
-        const startingLoop = createTestLoop({
-          id: "starting-loop",
+        const startingTask = createTestTask({
+          id: "starting-task",
           directory: "/tmp/test-starting",
           status: "starting",
         });
-        await saveLoop(startingLoop);
+        await saveTask(startingTask);
 
-        const resetCount = await resetStaleLoops();
+        const resetCount = await resetStaleTasks();
         expect(resetCount).toBe(3);
 
-        const loadedRunning = await loadLoop("running-loop");
+        const loadedRunning = await loadTask("running-task");
         expect(loadedRunning!.state.status).toBe("stopped");
         expect(loadedRunning!.state.error?.iteration).toBe(0);
 
-        const loadedWaiting = await loadLoop("waiting-loop");
+        const loadedWaiting = await loadTask("waiting-task");
         expect(loadedWaiting!.state.status).toBe("stopped");
         expect(loadedWaiting!.state.error?.iteration).toBe(0);
 
-        const loadedStarting = await loadLoop("starting-loop");
+        const loadedStarting = await loadTask("starting-task");
         expect(loadedStarting!.state.status).toBe("stopped");
         expect(loadedStarting!.state.error?.iteration).toBe(0);
       });
 
-      test("does NOT reset planning loops", async () => {
-        const { saveLoop, loadLoop, resetStaleLoops } = await import("../../src/persistence/loops");
+      test("does NOT reset planning tasks", async () => {
+        const { saveTask, loadTask, resetStaleTasks } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const planningLoop = createTestLoop({
-          id: "planning-loop",
+        const planningTask = createTestTask({
+          id: "planning-task",
           status: "planning",
         });
-        await saveLoop(planningLoop);
+        await saveTask(planningTask);
 
-        const resetCount = await resetStaleLoops();
+        const resetCount = await resetStaleTasks();
         expect(resetCount).toBe(0);
 
-        const loaded = await loadLoop("planning-loop");
+        const loaded = await loadTask("planning-task");
         expect(loaded).not.toBeNull();
         expect(loaded!.state.status).toBe("planning");
       });
 
-      test("does NOT reset terminal state loops", async () => {
-        const { saveLoop, loadLoop, resetStaleLoops } = await import("../../src/persistence/loops");
+      test("does NOT reset terminal state tasks", async () => {
+        const { saveTask, loadTask, resetStaleTasks } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const completedLoop = createTestLoop({
-          id: "completed-loop",
+        const completedTask = createTestTask({
+          id: "completed-task",
           directory: "/tmp/test-completed",
           status: "completed",
         });
-        await saveLoop(completedLoop);
+        await saveTask(completedTask);
 
-        const stoppedLoop = createTestLoop({
-          id: "stopped-loop",
+        const stoppedTask = createTestTask({
+          id: "stopped-task",
           directory: "/tmp/test-stopped",
           status: "stopped",
         });
-        await saveLoop(stoppedLoop);
+        await saveTask(stoppedTask);
 
-        const failedLoop = createTestLoop({
-          id: "failed-loop",
+        const failedTask = createTestTask({
+          id: "failed-task",
           directory: "/tmp/test-failed",
           status: "failed",
         });
-        await saveLoop(failedLoop);
+        await saveTask(failedTask);
 
-        const resetCount = await resetStaleLoops();
+        const resetCount = await resetStaleTasks();
         expect(resetCount).toBe(0);
 
-        const loadedCompleted = await loadLoop("completed-loop");
+        const loadedCompleted = await loadTask("completed-task");
         expect(loadedCompleted!.state.status).toBe("completed");
 
-        const loadedStopped = await loadLoop("stopped-loop");
+        const loadedStopped = await loadTask("stopped-task");
         expect(loadedStopped!.state.status).toBe("stopped");
 
-        const loadedFailed = await loadLoop("failed-loop");
+        const loadedFailed = await loadTask("failed-task");
         expect(loadedFailed!.state.status).toBe("failed");
       });
 
-      test("returns 0 when no stale loops exist", async () => {
-        const { resetStaleLoops } = await import("../../src/persistence/loops");
+      test("returns 0 when no stale tasks exist", async () => {
+        const { resetStaleTasks } = await import("../../src/persistence/tasks");
 
         await setupPersistence();
 
-        const resetCount = await resetStaleLoops();
+        const resetCount = await resetStaleTasks();
         expect(resetCount).toBe(0);
       });
     });

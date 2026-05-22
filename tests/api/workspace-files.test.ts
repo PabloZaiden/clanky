@@ -17,10 +17,10 @@ describe("workspace files API integration", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-workspace-files-data-"));
-    workDir = await mkdtemp(join(tmpdir(), "ralpher-workspace-files-work-"));
-    alternateRootDir = await mkdtemp(join(tmpdir(), "ralpher-workspace-files-alt-"));
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-workspace-files-data-"));
+    workDir = await mkdtemp(join(tmpdir(), "clanky-workspace-files-work-"));
+    alternateRootDir = await mkdtemp(join(tmpdir(), "clanky-workspace-files-alt-"));
+    process.env["CLANKY_DATA_DIR"] = dataDir;
 
     await ensureDataDirectories();
     await Bun.$`git init ${workDir}`.quiet();
@@ -54,7 +54,7 @@ describe("workspace files API integration", () => {
     await rm(dataDir, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
     await rm(alternateRootDir, { recursive: true, force: true });
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
   beforeEach(() => {

@@ -151,7 +151,7 @@ describe("sanitizeBranchName", () => {
     expect(sanitizeBranchName("123-feature")).toBe("123-feature");
   });
 
-  test("realistic branch name from loop name", () => {
+  test("realistic branch name from task name", () => {
     expect(sanitizeBranchName("Fix the login page CSS issue")).toBe("fix-the-login-page-css-issue");
   });
 

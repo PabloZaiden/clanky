@@ -44,20 +44,20 @@ jobs:
       - name: Smoke test app startup
         run: |
           set -e
-          rm -f /tmp/ralpher-pr-smoke.log /tmp/ralpher-pr-index.html /tmp/ralpher-pr-app.css
-          RALPHER_PORT=3018 bun run dev > /tmp/ralpher-pr-smoke.log 2>&1 &
+          rm -f /tmp/clanky-pr-smoke.log /tmp/clanky-pr-index.html /tmp/clanky-pr-app.css
+          CLANKY_PORT=3018 bun run dev > /tmp/clanky-pr-smoke.log 2>&1 &
           APP_PID=$!
           trap 'kill $APP_PID 2>/dev/null || true' EXIT
           sleep 2
 
           if ! kill -0 "$APP_PID" 2>/dev/null; then
-            echo "Ralpher exited during startup"
-            cat /tmp/ralpher-pr-smoke.log
+            echo "Clanky exited during startup"
+            cat /tmp/clanky-pr-smoke.log
             exit 1
           fi
 
           curl -v --fail http://127.0.0.1:3018/api/health
-          curl -v --fail http://127.0.0.1:3018/ -o /tmp/ralpher-pr-index.html
-          css_path=$(grep -oE '/[^" ]+\.css' /tmp/ralpher-pr-index.html | head -n1)
+          curl -v --fail http://127.0.0.1:3018/ -o /tmp/clanky-pr-index.html
+          css_path=$(grep -oE '/[^" ]+\.css' /tmp/clanky-pr-index.html | head -n1)
           test -n "$css_path"
-          curl -v --fail "http://127.0.0.1:3018$css_path" -o /tmp/ralpher-pr-app.css
+          curl -v --fail "http://127.0.0.1:3018$css_path" -o /tmp/clanky-pr-app.css

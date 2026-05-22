@@ -1,5 +1,5 @@
 /**
- * Core manager for loop-scoped SSH port forwards.
+ * Core manager for task-scoped SSH port forwards.
  */
 
 import { spawn } from "node:child_process";
@@ -8,12 +8,12 @@ import { getWorkspace, touchWorkspace } from "../../persistence/workspaces";
 import {
   deletePortForward,
   getPortForward,
-  listPortForwardsByLoopId,
+  listPortForwardsByTaskId,
   listPortForwardsBySshSessionId,
   listPortForwardsByStatuses,
   savePortForward,
 } from "../../persistence/forwarded-ports";
-import { loadLoop } from "../../persistence/loops";
+import { loadTask } from "../../persistence/tasks";
 import { createLogger } from "../logger";
 import { sshSessionEventEmitter } from "../event-emitter";
 import {
@@ -67,9 +67,9 @@ export class PortForwardManager {
     }
   }
 
-  async listLoopPortForwards(loopId: string): Promise<PortForward[]> {
+  async listTaskPortForwards(taskId: string): Promise<PortForward[]> {
     await this.initialize();
-    return await listPortForwardsByLoopId(loopId);
+    return await listPortForwardsByTaskId(taskId);
   }
 
   async getPortForward(id: string): Promise<PortForward | null> {
@@ -77,28 +77,28 @@ export class PortForwardManager {
     return await getPortForward(id);
   }
 
-  async createLoopPortForward(options: {
-    loopId: string;
+  async createTaskPortForward(options: {
+    taskId: string;
     remotePort: number;
   }): Promise<PortForward> {
     await this.initialize();
 
-    const loop = await loadLoop(options.loopId);
-    if (!loop) {
-      throw new Error(`Loop not found: ${options.loopId}`);
+    const task = await loadTask(options.taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${options.taskId}`);
     }
 
-    const workspace = await getWorkspace(loop.config.workspaceId);
+    const workspace = await getWorkspace(task.config.workspaceId);
     if (!workspace) {
-      throw new Error(`Workspace not found: ${loop.config.workspaceId}`);
+      throw new Error(`Workspace not found: ${task.config.workspaceId}`);
     }
 
     await assertWorkspaceRemotePortAvailable(workspace.id, options.remotePort);
     await touchWorkspace(workspace.id);
     const { sshSessionManager } = await import("../ssh-session-manager");
-    const linkedSession = await sshSessionManager.getSessionByLoopId(options.loopId);
+    const linkedSession = await sshSessionManager.getSessionByTaskId(options.taskId);
     const forward = await this.reserveStartingForward({
-      loopId: options.loopId,
+      taskId: options.taskId,
       workspaceId: workspace.id,
       sshSessionId: linkedSession?.config.id,
       remoteHost: REMOTE_FORWARD_HOST,
@@ -156,7 +156,7 @@ export class PortForwardManager {
       sshSessionEventEmitter.emit({
         type: "ssh_session.port_forward.deleted",
         portForwardId: id,
-        loopId: forward.config.loopId,
+        taskId: forward.config.taskId,
         sshSessionId: forward.config.sshSessionId,
         timestamp: new Date().toISOString(),
       });
@@ -164,8 +164,8 @@ export class PortForwardManager {
     return deleted;
   }
 
-  async deleteForwardsByLoopId(loopId: string): Promise<void> {
-    const forwards = await listPortForwardsByLoopId(loopId);
+  async deleteForwardsByTaskId(taskId: string): Promise<void> {
+    const forwards = await listPortForwardsByTaskId(taskId);
     for (const forward of forwards) {
       await this.deletePortForward(forward.config.id);
     }
@@ -196,7 +196,7 @@ export class PortForwardManager {
     const spawnConfig = buildSpawnConfig(workspace, forward);
     log.debug("Starting port forward", {
       portForwardId: forward.config.id,
-      loopId: forward.config.loopId,
+      taskId: forward.config.taskId,
       localPort: forward.config.localPort,
       remoteHost: forward.config.remoteHost,
       remotePort: forward.config.remotePort,
@@ -318,7 +318,7 @@ export class PortForwardManager {
   }
 
   private async reserveStartingForward(options: {
-    loopId: string;
+    taskId: string;
     workspaceId: string;
     sshSessionId?: string;
     remoteHost: string;
@@ -331,7 +331,7 @@ export class PortForwardManager {
       const forward: PortForward = {
         config: {
           id: crypto.randomUUID(),
-          loopId: options.loopId,
+          taskId: options.taskId,
           workspaceId: options.workspaceId,
           sshSessionId: options.sshSessionId,
           remoteHost: options.remoteHost,
@@ -356,7 +356,7 @@ export class PortForwardManager {
           throw error;
         }
         log.debug("Retrying port-forward reservation after local port conflict", {
-          loopId: options.loopId,
+          taskId: options.taskId,
           remoteHost: options.remoteHost,
           remotePort: options.remotePort,
           localPort,
@@ -398,7 +398,7 @@ export class PortForwardManager {
     sshSessionEventEmitter.emit({
       type: "ssh_session.port_forward.created",
       portForwardId: forward.config.id,
-      loopId: forward.config.loopId,
+      taskId: forward.config.taskId,
       sshSessionId: forward.config.sshSessionId,
       forward,
       timestamp: forward.config.createdAt,
@@ -409,7 +409,7 @@ export class PortForwardManager {
     sshSessionEventEmitter.emit({
       type: "ssh_session.port_forward.updated",
       portForwardId: forward.config.id,
-      loopId: forward.config.loopId,
+      taskId: forward.config.taskId,
       sshSessionId: forward.config.sshSessionId,
       forward,
       timestamp: forward.config.updatedAt,
@@ -417,7 +417,7 @@ export class PortForwardManager {
     sshSessionEventEmitter.emit({
       type: "ssh_session.port_forward.status",
       portForwardId: forward.config.id,
-      loopId: forward.config.loopId,
+      taskId: forward.config.taskId,
       sshSessionId: forward.config.sshSessionId,
       status: forward.state.status,
       error: forward.state.error,

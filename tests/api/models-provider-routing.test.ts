@@ -23,8 +23,8 @@ class FailOnCopilotExecutionExecutor extends TestCommandExecutor {
 
 describe("GET /api/models provider routing", () => {
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-model-routing-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-model-routing-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
 
     const { backendManager } = await import("../../src/core/backend-manager");
     const { ensureDataDirectories } = await import("../../src/persistence/database");
@@ -39,12 +39,12 @@ describe("GET /api/models provider routing", () => {
     backendManager.resetForTesting();
     closeDatabase();
 
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true, force: true });
   });
 
   test("uses ACP backend model list for copilot workspaces", async () => {
-    const workDir = await mkdtemp(join(tmpdir(), "ralpher-model-routing-workdir-"));
+    const workDir = await mkdtemp(join(tmpdir(), "clanky-model-routing-workdir-"));
     try {
       const { backendManager } = await import("../../src/core/backend-manager");
       backendManager.setBackendForTesting(new MockAcpBackend({

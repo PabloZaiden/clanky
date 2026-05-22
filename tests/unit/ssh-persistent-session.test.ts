@@ -21,7 +21,7 @@ describe("buildPersistentSessionDeleteCommand", () => {
   const session = {
     config: {
       id: "test-session-id",
-      remoteSessionName: "ralpher-test123",
+      remoteSessionName: "clanky-test123",
     },
   };
 
@@ -72,7 +72,7 @@ describe("buildPersistentSessionAttachCommand stale session cleanup", () => {
   const session = {
     config: {
       id: "test-attach-id",
-      remoteSessionName: "ralpher-attach123",
+      remoteSessionName: "clanky-attach123",
       directory: "/tmp/test",
     },
   };

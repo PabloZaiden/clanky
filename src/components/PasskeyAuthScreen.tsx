@@ -20,7 +20,7 @@ export function PasskeyAuthScreen({
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
             Passkey login
           </p>
-          <h1 className="text-2xl font-semibold">Unlock Ralpher</h1>
+          <h1 className="text-2xl font-semibold">Unlock Clanky</h1>
           <p className="text-sm text-gray-600 dark:text-gray-300">
             This browser needs a valid passkey session before it can access the app.
           </p>

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import { formatRalpherVersion } from "../../src/version";
+import { formatClankyVersion } from "../../src/version";
 import {
   findApiEndpoint,
   getValidatedCredentials,
@@ -17,26 +17,26 @@ import {
 
 const CLI_USAGE = [
   "Usage:",
-  "  ralpher-cli help",
-  "  ralpher-cli version",
-  "  ralpher-cli update [--check] [--version <version>]",
-  "  ralpher-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
-  "  ralpher-cli status [base-url]",
-  "  ralpher-cli api",
-  "  ralpher-cli api <endpoint> [--method <method>] [--payload <json>]",
-  "  ralpher-cli schema <endpoint>",
-  "  ralpher-cli ws [base-url] [--loop-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
+  "  clanky-cli help",
+  "  clanky-cli version",
+  "  clanky-cli update [--check] [--version <version>]",
+  "  clanky-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]",
+  "  clanky-cli status [base-url]",
+  "  clanky-cli api",
+  "  clanky-cli api <endpoint> [--method <method>] [--payload <json>]",
+  "  clanky-cli schema <endpoint>",
+  "  clanky-cli ws [base-url] [--task-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
 ].join("\n");
 
 const CLI_COMMAND_ENTRIES = [
   ["help", "Show the CLI help and available commands."],
-  ["version", "Print the current ralpher-cli version."],
-  ["update", "Check for or install newer Ralpher release binaries."],
-  ["auth", "Authenticate against a Ralpher server and store credentials."],
+  ["version", "Print the current clanky-cli version."],
+  ["update", "Check for or install newer Clanky release binaries."],
+  ["auth", "Authenticate against a Clanky server and store credentials."],
   ["status", "Show the current authentication status for a server."],
   ["api", "List API endpoints or send an authenticated API request."],
   ["schema", "Show the request schema metadata for an API endpoint."],
-  ["ws", "Stream live WebSocket events for loops, chats, SSH, or provisioning."],
+  ["ws", "Stream live WebSocket events for tasks, chats, SSH, or provisioning."],
 ] as const;
 
 const CLI_COMMAND_WIDTH = CLI_COMMAND_ENTRIES.reduce(
@@ -50,7 +50,7 @@ const CLI_COMMANDS = [
     ([name, description]) => `  ${name.padEnd(CLI_COMMAND_WIDTH)} ${description}`,
   ),
 ].join("\n");
-const CLI_HELP = [formatRalpherVersion("ralpher-cli"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
+const CLI_HELP = [formatClankyVersion("clanky-cli"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -93,7 +93,7 @@ function createFetchMock(
   }) as typeof fetch;
 }
 
-describe("ralpher cli", () => {
+describe("clanky cli", () => {
   let dataDir: string;
   let homeDir: string;
   let originalDataDir: string | undefined;
@@ -101,26 +101,26 @@ describe("ralpher cli", () => {
   let originalHome: string | undefined;
 
   beforeEach(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-cli-test-"));
-    homeDir = await mkdtemp(join(tmpdir(), "ralpher-cli-home-"));
-    originalDataDir = process.env["RALPHER_DATA_DIR"];
-    originalCliHome = process.env["RALPHER_CLI_HOME"];
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-cli-test-"));
+    homeDir = await mkdtemp(join(tmpdir(), "clanky-cli-home-"));
+    originalDataDir = process.env["CLANKY_DATA_DIR"];
+    originalCliHome = process.env["CLANKY_CLI_HOME"];
     originalHome = process.env["HOME"];
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    process.env["CLANKY_DATA_DIR"] = dataDir;
     process.env["HOME"] = homeDir;
-    delete process.env["RALPHER_CLI_HOME"];
+    delete process.env["CLANKY_CLI_HOME"];
   });
 
   afterEach(async () => {
     if (originalDataDir === undefined) {
-      delete process.env["RALPHER_DATA_DIR"];
+      delete process.env["CLANKY_DATA_DIR"];
     } else {
-      process.env["RALPHER_DATA_DIR"] = originalDataDir;
+      process.env["CLANKY_DATA_DIR"] = originalDataDir;
     }
     if (originalCliHome === undefined) {
-      delete process.env["RALPHER_CLI_HOME"];
+      delete process.env["CLANKY_CLI_HOME"];
     } else {
-      process.env["RALPHER_CLI_HOME"] = originalCliHome;
+      process.env["CLANKY_CLI_HOME"] = originalCliHome;
     }
     if (originalHome === undefined) {
       delete process.env["HOME"];
@@ -152,7 +152,7 @@ describe("ralpher cli", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(output).toEqual([formatRalpherVersion("ralpher-cli")]);
+    expect(output).toEqual([formatClankyVersion("clanky-cli")]);
   });
 
   test("shows the current version in help output", async () => {
@@ -220,13 +220,13 @@ describe("ralpher cli", () => {
     });
   });
 
-  test("auth falls back to ralpher-cli when the local host name is blank", () => {
+  test("auth falls back to clanky-cli when the local host name is blank", () => {
     expect(parseCliCommand(["auth", "https://example.test:9090/path"], {
       getHostname: () => "   ",
     })).toEqual({
       action: "auth",
       baseUrl: "https://example.test:9090/path",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       cookies: undefined,
     });
   });
@@ -249,8 +249,8 @@ describe("ralpher cli", () => {
     expect(parseCliCommand([
       "ws",
       "https://example.test/app",
-      "--loop-id",
-      "loop-1",
+      "--task-id",
+      "task-1",
       "--chat-id",
       "chat-2",
       "--ssh-session-id",
@@ -262,7 +262,7 @@ describe("ralpher cli", () => {
     ])).toEqual({
       action: "ws",
       baseUrl: "https://example.test/app",
-      loopId: "loop-1",
+      taskId: "task-1",
       chatId: "chat-2",
       sshSessionId: "ssh-3",
       sshServerSessionId: "ssh-server-4",
@@ -406,7 +406,7 @@ describe("ralpher cli", () => {
     ]);
     expect(fetchCalls.every((call) => call.origin === "http://example.test")).toBe(true);
     expect(fetchCalls.every((call) => call.cookie === "authentik_proxy=proxy-cookie-value; session_hint=browser")).toBe(true);
-    expect(await Bun.file(join(homeDir, ".ralpher", "cli-auth.json")).exists()).toBe(true);
+    expect(await Bun.file(join(homeDir, ".clanky", "cli-auth.json")).exists()).toBe(true);
     expect(await Bun.file(join(dataDir, "cli-auth.json")).exists()).toBe(false);
   });
 
@@ -546,7 +546,7 @@ describe("ralpher cli", () => {
 
     const expiredCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "expired-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -597,8 +597,8 @@ describe("ralpher cli", () => {
           return jsonResponse(200, {
             authenticated: true,
             authKind: "bearer",
-            subject: "ralpher-user",
-            clientId: "ralpher-cli",
+            subject: "clanky-user",
+            clientId: "clanky-cli",
             scope: "",
           });
         }
@@ -609,7 +609,7 @@ describe("ralpher cli", () => {
 
     expect(exitCode).toBe(0);
     expect(output).toEqual([
-      "Logged in to http://override.test as ralpher-cli.",
+      "Logged in to http://override.test as clanky-cli.",
     ]);
     expect(requests).toEqual([
       {
@@ -658,7 +658,7 @@ describe("ralpher cli", () => {
   test("concurrent credential validation shares one refresh result and stores its rotated refresh token", async () => {
     const expiredCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "expired-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -723,7 +723,7 @@ describe("ralpher cli", () => {
   test("refresh reuses newer stored credentials instead of refreshing again with a stale token", async () => {
     const staleCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "expired-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -758,7 +758,7 @@ describe("ralpher cli", () => {
   test("refresh keeps the previous credential file readable when persistence is interrupted", async () => {
     const existingCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "expired-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -811,7 +811,7 @@ describe("ralpher cli", () => {
   test("refresh preserves the original persistence failure when temp-file cleanup also fails", async () => {
     const existingCredentials: StoredCliCredentials = {
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "expired-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -881,7 +881,7 @@ describe("ralpher cli", () => {
     let fetchCalled = false;
     await saveStoredCliCredentials({
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "expired-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -922,7 +922,7 @@ describe("ralpher cli", () => {
 
     await saveStoredCliCredentials({
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "active-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -933,7 +933,7 @@ describe("ralpher cli", () => {
       updatedAt: "2026-04-21T17:00:00.000Z",
     });
 
-    const exitCode = await runCli(["api", "loops/test-loop", "--method", "GET"], {
+    const exitCode = await runCli(["api", "tasks/test-task", "--method", "GET"], {
       out: (message: string) => output.push(message),
       err: (message: string) => output.push(`ERR:${message}`),
       now: () => new Date("2026-04-21T17:15:00.000Z"),
@@ -959,7 +959,7 @@ describe("ralpher cli", () => {
           body: typeof init?.body === "string" ? init.body : undefined,
         });
         return jsonResponse(200, {
-          id: "test-loop",
+          id: "test-task",
           status: "running",
         });
       }),
@@ -968,7 +968,7 @@ describe("ralpher cli", () => {
     expect(exitCode).toBe(0);
     expect(requests).toEqual([
       {
-        url: "http://example.test/api/loops/test-loop",
+        url: "http://example.test/api/tasks/test-task",
         method: "GET",
         authorization: "Bearer active-access",
         cookie: "authentik_proxy=proxy-cookie-value",
@@ -982,7 +982,7 @@ describe("ralpher cli", () => {
         text: "OK",
         ok: true,
       }, {
-        id: "test-loop",
+        id: "test-task",
         status: "running",
       }),
     ]);
@@ -1087,7 +1087,7 @@ describe("ralpher cli", () => {
 
     await saveStoredCliCredentials({
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "active-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -1119,7 +1119,7 @@ describe("ralpher cli", () => {
 
     await saveStoredCliCredentials({
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "active-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -1151,7 +1151,7 @@ describe("ralpher cli", () => {
 
     await saveStoredCliCredentials({
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "active-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -1162,12 +1162,12 @@ describe("ralpher cli", () => {
       updatedAt: "2026-04-21T17:00:00.000Z",
     });
 
-    const exitCode = await runCli(["api", "loops/missing-loop", "--method", "GET"], {
+    const exitCode = await runCli(["api", "tasks/missing-task", "--method", "GET"], {
       out: (message: string) => output.push(message),
       err: (message: string) => output.push(`ERR:${message}`),
       fetchFn: createFetchMock(async () => jsonResponse(404, {
         error: "not_found",
-        message: "Loop not found",
+        message: "Task not found",
       })),
     });
 
@@ -1179,7 +1179,7 @@ describe("ralpher cli", () => {
         ok: false,
       }, {
         error: "not_found",
-        message: "Loop not found",
+        message: "Task not found",
       }),
     ]);
   });
@@ -1196,7 +1196,7 @@ describe("ralpher cli", () => {
 
     await saveStoredCliCredentials({
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "active-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -1207,7 +1207,7 @@ describe("ralpher cli", () => {
       updatedAt: "2026-04-21T17:00:00.000Z",
     });
 
-    const exitCode = await runCli(["api", "loops/test-loop?view=full#details", "--method", "GET"], {
+    const exitCode = await runCli(["api", "tasks/test-task?view=full#details", "--method", "GET"], {
       out: (message: string) => output.push(message),
       err: (message: string) => output.push(`ERR:${message}`),
       now: () => new Date("2026-04-21T17:15:00.000Z"),
@@ -1232,7 +1232,7 @@ describe("ralpher cli", () => {
               : null,
         });
         return jsonResponse(200, {
-          id: "test-loop",
+          id: "test-task",
           status: "running",
         });
       }),
@@ -1241,7 +1241,7 @@ describe("ralpher cli", () => {
     expect(exitCode).toBe(0);
     expect(requests).toEqual([
       {
-        url: "http://example.test/api/loops/test-loop?view=full#details",
+        url: "http://example.test/api/tasks/test-task?view=full#details",
         method: "GET",
         authorization: "Bearer active-access",
         cookie: "authentik_proxy=proxy-cookie-value",
@@ -1254,7 +1254,7 @@ describe("ralpher cli", () => {
         text: "OK",
         ok: true,
       }, {
-        id: "test-loop",
+        id: "test-task",
         status: "running",
       }),
     ]);
@@ -1264,7 +1264,7 @@ describe("ralpher cli", () => {
     const output: string[] = [];
     await saveStoredCliCredentials({
       baseUrl: "http://example.test",
-      clientId: "ralpher-cli",
+      clientId: "clanky-cli",
       accessToken: "active-access",
       refreshToken: "refresh-token-1",
       tokenType: "Bearer",
@@ -1275,7 +1275,7 @@ describe("ralpher cli", () => {
       updatedAt: "2026-04-21T17:00:00.000Z",
     });
 
-    const exitCode = await runCli(["api", "loops/test-loop", "--method", "POST", "--payload", "{\"broken\""], {
+    const exitCode = await runCli(["api", "tasks/test-task", "--method", "POST", "--payload", "{\"broken\""], {
       out: (message: string) => output.push(message),
       err: (message: string) => output.push(`ERR:${message}`),
     });

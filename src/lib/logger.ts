@@ -43,7 +43,7 @@ export { type LogLevelName, LOG_LEVELS, LOG_LEVEL_NAMES, DEFAULT_LOG_LEVEL };
  * Configured for browser environment with pretty output.
  */
 export const log: Logger<ILogObj> = new Logger({
-  name: "ralpher-ui",
+  name: "clanky-ui",
   minLevel: LOG_LEVELS[DEFAULT_LOG_LEVEL],
   type: "pretty",
   // Browser-specific settings
@@ -73,7 +73,7 @@ const subLoggers: Map<string, Logger<ILogObj>> = new Map();
  * when setLogLevel() is called (tslog sub-loggers don't automatically
  * inherit level changes from the parent).
  * 
- * @param name - The name for the sub-logger (e.g., "Dashboard", "CreateLoopForm")
+ * @param name - The name for the sub-logger (e.g., "Dashboard", "CreateTaskForm")
  * @returns A Logger instance for the given name (cached)
  */
 export function createLogger(name: string): Logger<ILogObj> {

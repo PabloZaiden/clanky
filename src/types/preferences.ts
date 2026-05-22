@@ -1,5 +1,5 @@
 /**
- * Shared preference types for Ralph Loops Management System.
+ * Shared preference types for Clanky Tasks Management System.
  *
  * Types in this module are shared between the frontend (hooks)
  * and backend (persistence layer). They are the single source

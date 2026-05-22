@@ -25,7 +25,7 @@ describe("entrypoint", () => {
   test("docker runs the standalone server binary", async () => {
     const dockerfile = await Bun.file(new URL("../../Dockerfile", import.meta.url)).text();
     expect(dockerfile).toContain("RUN cd apps/server && bun run build");
-    expect(dockerfile).toContain('COPY --from=builder /app/apps/server/dist/ralpher /app/ralpher');
-    expect(dockerfile).toContain('CMD ["/app/ralpher"]');
+    expect(dockerfile).toContain('COPY --from=builder /app/apps/server/dist/clanky /app/clanky');
+    expect(dockerfile).toContain('CMD ["/app/clanky"]');
   });
 });

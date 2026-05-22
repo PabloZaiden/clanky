@@ -31,8 +31,8 @@ describe("BackendManager workspace state hydration", () => {
   let testDataDir: string;
 
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-backend-manager-state-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-backend-manager-state-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
     backendManager.resetForTesting();
     await ensureDataDirectories();
   });
@@ -40,7 +40,7 @@ describe("BackendManager workspace state hydration", () => {
   afterEach(async () => {
     backendManager.resetForTesting();
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true, force: true });
   });
 

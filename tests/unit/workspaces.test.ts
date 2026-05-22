@@ -9,7 +9,7 @@ import { join } from "path";
 import { randomUUID } from "crypto";
 import type { Workspace } from "../../src/types/workspace";
 import { getDefaultServerSettings } from "../../src/types/settings";
-import { DEFAULT_LOOP_CONFIG } from "../../src/types/loop";
+import { DEFAULT_TASK_CONFIG } from "../../src/types/task";
 
 // We need to set the env var before importing the module
 let testDataDir: string;
@@ -63,8 +63,8 @@ async function pathExists(path: string): Promise<boolean> {
 describe("Workspace Persistence", () => {
   beforeEach(async () => {
     // Create a temp directory for each test
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-workspace-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-workspace-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
   });
 
   afterEach(async () => {
@@ -73,7 +73,7 @@ describe("Workspace Persistence", () => {
     closeDatabase();
 
     // Clean up
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true, force: true });
   });
 
@@ -332,10 +332,10 @@ describe("Workspace Persistence", () => {
     });
   });
 
-  describe("getWorkspaceLoopCount", () => {
-    test("returns 0 when workspace has no loops", async () => {
+  describe("getWorkspaceTaskCount", () => {
+    test("returns 0 when workspace has no tasks", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const { createWorkspace, getWorkspaceLoopCount } = await import("../../src/persistence/workspaces");
+      const { createWorkspace, getWorkspaceTaskCount } = await import("../../src/persistence/workspaces");
 
       await ensureDataDirectories();
 
@@ -345,30 +345,30 @@ describe("Workspace Persistence", () => {
       });
       await createWorkspace(workspace);
 
-      const count = await getWorkspaceLoopCount(workspace.id);
+      const count = await getWorkspaceTaskCount(workspace.id);
       expect(count).toBe(0);
     });
 
-    test("returns correct count when workspace has loops", async () => {
+    test("returns correct count when workspace has tasks", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
-      const { createWorkspace, getWorkspaceLoopCount } = await import("../../src/persistence/workspaces");
-      const { saveLoop } = await import("../../src/persistence/loops");
+      const { createWorkspace, getWorkspaceTaskCount } = await import("../../src/persistence/workspaces");
+      const { saveTask } = await import("../../src/persistence/tasks");
 
       await ensureDataDirectories();
 
       const workspace = createTestWorkspace({
-        name: "Workspace With Loops",
-        directory: "/tmp/workspace-with-loops",
+        name: "Workspace With Tasks",
+        directory: "/tmp/workspace-with-tasks",
       });
       await createWorkspace(workspace);
 
-      // Create loops with this workspace_id
+      // Create tasks with this workspace_id
       const now = new Date().toISOString();
       for (let i = 0; i < 3; i++) {
-        await saveLoop({
+        await saveTask({
           config: {
-            id: `loop-${i}`,
-            name: `Loop ${i}`,
+            id: `task-${i}`,
+            name: `Task ${i}`,
             directory: workspace.directory,
             prompt: "Test",
             createdAt: now,
@@ -378,15 +378,15 @@ describe("Workspace Persistence", () => {
             git: { branchPrefix: "", commitScope: "" },
             maxIterations: Infinity,
             maxConsecutiveErrors: 10,
-            activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
-            useWorktree: DEFAULT_LOOP_CONFIG.useWorktree,
+            activityTimeoutSeconds: DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
+            useWorktree: DEFAULT_TASK_CONFIG.useWorktree,
             clearPlanningFolder: false,
             planMode: false,
-            mode: "loop",
+            mode: "task",
             workspaceId: workspace.id,
           },
           state: {
-            id: `loop-${i}`,
+            id: `task-${i}`,
             status: "idle",
             currentIteration: 0,
             recentIterations: [],
@@ -397,29 +397,29 @@ describe("Workspace Persistence", () => {
         });
       }
 
-      const count = await getWorkspaceLoopCount(workspace.id);
+      const count = await getWorkspaceTaskCount(workspace.id);
       expect(count).toBe(3);
     });
 
-    test("deleteWorkspace fails when workspace has loops", async () => {
+    test("deleteWorkspace fails when workspace has tasks", async () => {
       const { ensureDataDirectories } = await import("../../src/persistence/database");
       const { createWorkspace, deleteWorkspace, getWorkspace } = await import("../../src/persistence/workspaces");
-      const { saveLoop } = await import("../../src/persistence/loops");
+      const { saveTask } = await import("../../src/persistence/tasks");
 
       await ensureDataDirectories();
 
       const workspace = createTestWorkspace({
-        name: "Workspace With Loops",
-        directory: "/tmp/ws-with-loops",
+        name: "Workspace With Tasks",
+        directory: "/tmp/ws-with-tasks",
       });
       await createWorkspace(workspace);
 
-      // Create a loop with this workspace_id
+      // Create a task with this workspace_id
       const now = new Date().toISOString();
-      await saveLoop({
+      await saveTask({
         config: {
-          id: "loop-1",
-          name: "Loop 1",
+          id: "task-1",
+          name: "Task 1",
           directory: workspace.directory,
           prompt: "Test",
           createdAt: now,
@@ -429,15 +429,15 @@ describe("Workspace Persistence", () => {
           git: { branchPrefix: "", commitScope: "" },
           maxIterations: Infinity,
           maxConsecutiveErrors: 10,
-          activityTimeoutSeconds: DEFAULT_LOOP_CONFIG.activityTimeoutSeconds,
-          useWorktree: DEFAULT_LOOP_CONFIG.useWorktree,
+          activityTimeoutSeconds: DEFAULT_TASK_CONFIG.activityTimeoutSeconds,
+          useWorktree: DEFAULT_TASK_CONFIG.useWorktree,
           clearPlanningFolder: false,
           planMode: false,
-          mode: "loop",
+          mode: "task",
           workspaceId: workspace.id,
         },
         state: {
-          id: "loop-1",
+          id: "task-1",
           status: "idle",
           currentIteration: 0,
           recentIterations: [],
@@ -450,7 +450,7 @@ describe("Workspace Persistence", () => {
       // Attempt to delete should fail
       const result = await deleteWorkspace(workspace.id);
       expect(result.success).toBe(false);
-      expect(result.reason).toContain("1 loop");
+      expect(result.reason).toContain("1 task");
 
       // Workspace should still exist
       expect(await getWorkspace(workspace.id)).not.toBeNull();
@@ -968,8 +968,8 @@ describe("Workspace Persistence", () => {
       expect(await pathExists(originalDataDir)).toBe(false);
 
       // Need fresh DB
-      testDataDir = await mkdtemp(join(tmpdir(), "ralpher-workspace-test-"));
-      process.env["RALPHER_DATA_DIR"] = testDataDir;
+      testDataDir = await mkdtemp(join(tmpdir(), "clanky-workspace-test-"));
+      process.env["CLANKY_DATA_DIR"] = testDataDir;
 
       // Re-import persistence modules with fresh DB
       // Dynamic re-import won't give us a fresh module, so we use the functions we already have

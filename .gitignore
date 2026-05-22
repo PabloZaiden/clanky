@@ -39,10 +39,10 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# Ralpher data directory (Docker volume mountable)
+# Clanky data directory (Docker volume mountable)
 # Keep .gitkeep files but ignore all data
 data/*
 apps/server/data
 
-# Ralpher planning directory
-.ralph-planning/*
+# Clanky planning directory
+.clanky-planning/*

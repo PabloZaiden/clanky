@@ -11,15 +11,15 @@ import {
 
 describe("run-tests helpers", () => {
   test("defaults the runner log level to fatal without mutating explicit values", () => {
-    expect(buildEnv({ CI: "true" })["RALPHER_LOG_LEVEL"]).toBe("fatal");
-    expect(buildEnv({ RALPHER_LOG_LEVEL: "debug" })["RALPHER_LOG_LEVEL"]).toBe("debug");
+    expect(buildEnv({ CI: "true" })["CLANKY_LOG_LEVEL"]).toBe("fatal");
+    expect(buildEnv({ CLANKY_LOG_LEVEL: "debug" })["CLANKY_LOG_LEVEL"]).toBe("debug");
   });
 
   test("retries failed buckets only in CI unless overridden", () => {
     expect(shouldRetryFailedBuckets({ CI: "true" })).toBe(true);
     expect(shouldRetryFailedBuckets({})).toBe(false);
-    expect(shouldRetryFailedBuckets({ CI: "true", RALPHER_TEST_RETRY_FAILED_BUCKETS: "0" })).toBe(false);
-    expect(shouldRetryFailedBuckets({ RALPHER_TEST_RETRY_FAILED_BUCKETS: "1" })).toBe(true);
+    expect(shouldRetryFailedBuckets({ CI: "true", CLANKY_TEST_RETRY_FAILED_BUCKETS: "0" })).toBe(false);
+    expect(shouldRetryFailedBuckets({ CLANKY_TEST_RETRY_FAILED_BUCKETS: "1" })).toBe(true);
   });
 
   test("forces retry buckets to run with max concurrency 1", () => {
@@ -189,7 +189,7 @@ describe("run-tests helpers", () => {
       },
     ];
 
-    const exitCodePromise = runTestBuckets("all", { RALPHER_TEST_MAX_WORKERS: "2" }, {
+    const exitCodePromise = runTestBuckets("all", { CLANKY_TEST_MAX_WORKERS: "2" }, {
       buildBuckets: async () => buckets,
       runBucket: async (bucket) => {
         startedBuckets.push(bucket.id);

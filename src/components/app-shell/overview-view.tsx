@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { SshServer, SshServerSession } from "../../types";
-import type { useLoopGrouping } from "../../hooks";
+import type { useTaskGrouping } from "../../hooks";
 import { StatusBadge, type BadgeVariant } from "../common";
 import {
   buildActiveWorkSidebarItems,
@@ -13,8 +13,8 @@ import { ShellPanel } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
 
 function getActiveWorkRoute(item: SidebarActiveWorkItem): ShellRoute {
-  if (item.kind === "loop") {
-    return { view: "loop", loopId: item.loopNode.loop.config.id };
+  if (item.kind === "task") {
+    return { view: "task", taskId: item.taskNode.task.config.id };
   }
   if (item.kind === "chat") {
     return { view: "chat", chatId: item.chatNode.chat.config.id };
@@ -23,8 +23,8 @@ function getActiveWorkRoute(item: SidebarActiveWorkItem): ShellRoute {
 }
 
 function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
-  if (item.kind === "loop") {
-    return item.loopNode.title;
+  if (item.kind === "task") {
+    return item.taskNode.title;
   }
   if (item.kind === "chat") {
     return item.chatNode.title;
@@ -36,8 +36,8 @@ function getActiveWorkBadge(item: SidebarActiveWorkItem): {
   label: string;
   variant: BadgeVariant;
 } {
-  if (item.kind === "loop") {
-    return { label: item.loopNode.badge, variant: item.loopNode.badgeVariant };
+  if (item.kind === "task") {
+    return { label: item.taskNode.badge, variant: item.taskNode.badgeVariant };
   }
   if (item.kind === "chat") {
     return { label: item.chatNode.badge, variant: item.chatNode.badgeVariant };
@@ -56,7 +56,7 @@ export function OverviewView({
 }: {
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
-  workspaceGroups: ReturnType<typeof useLoopGrouping>["workspaceGroups"];
+  workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   quickChatWorkspace: SidebarWorkspaceNode | null;
   headerOffsetClassName?: string;
@@ -76,7 +76,7 @@ export function OverviewView({
   return (
     <ShellPanel
       eyebrow="Overview"
-      title="Ralpher"
+      title="Clanky"
       variant="compact"
       headerOffsetClassName={headerOffsetClassName}
     >
@@ -88,12 +88,12 @@ export function OverviewView({
           <div>
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Jump back into the same active loops, chats, and terminals shown in the sidebar.
+              Jump back into the same active tasks, chats, and terminals shown in the sidebar.
             </p>
           </div>
           <div className="space-y-2">
             {activeWorkItems.length === 0 ? (
-              <EmptySection message="Active work will appear here as you start loops, chats, and terminals." />
+              <EmptySection message="Active work will appear here as you start tasks, chats, and terminals." />
             ) : (
               activeWorkItems.map((item) => {
                 const badge = getActiveWorkBadge(item);
@@ -161,7 +161,7 @@ export function OverviewView({
           <div>
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Workspaces map</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Browse workspaces first, then branch into loops and terminals from there.
+              Browse workspaces first, then branch into tasks and terminals from there.
             </p>
           </div>
           <div className="space-y-2">
@@ -184,7 +184,7 @@ export function OverviewView({
                     </span>
                   </span>
                   <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-600 dark:bg-neutral-800 dark:text-gray-300">
-                    {group.loops.length} loop{group.loops.length === 1 ? "" : "s"}
+                    {group.tasks.length} task{group.tasks.length === 1 ? "" : "s"}
                   </span>
                 </button>
               ))

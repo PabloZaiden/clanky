@@ -22,7 +22,7 @@ import { parseAndValidate, validateRequest } from "./validation";
 import { createFileDownloadResponse } from "./file-download-response";
 
 const log = createLogger("api:ssh-server-files");
-const SSH_CREDENTIAL_TOKEN_HEADER = "x-ralpher-ssh-credential-token";
+const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
 
 function createInlineImageResponse(
   data: Uint8Array,

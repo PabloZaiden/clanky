@@ -48,7 +48,7 @@ import { parseDevboxTemplatesOutput } from "./ssh-server-devbox-templates";
 type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;
 
 function buildRemoteSessionName(id: string): string {
-  return `ralpher-${id.replace(/-/g, "").slice(0, 24)}`;
+  return `clanky-${id.replace(/-/g, "").slice(0, 24)}`;
 }
 
 export class SshServerManager {

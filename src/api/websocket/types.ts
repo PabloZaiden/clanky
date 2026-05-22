@@ -5,8 +5,8 @@ import type { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
  * Stored in the WebSocket's data property for per-connection state.
  */
 export interface WebSocketData {
-  /** Optional loop ID to filter events - only events for this loop are sent */
-  loopId?: string;
+  /** Optional task ID to filter events - only events for this task are sent */
+  taskId?: string;
   /** Optional chat ID to filter chat events */
   chatId?: string;
   /** Optional SSH session ID to filter session events or attach a terminal */

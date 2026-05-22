@@ -66,9 +66,9 @@ describe("SSH sessions API integration", () => {
   let baseUrl: string;
 
   beforeAll(async () => {
-    dataDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-sessions-data-"));
-    workDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-sessions-work-"));
-    process.env["RALPHER_DATA_DIR"] = dataDir;
+    dataDir = await mkdtemp(join(tmpdir(), "clanky-ssh-sessions-data-"));
+    workDir = await mkdtemp(join(tmpdir(), "clanky-ssh-sessions-work-"));
+    process.env["CLANKY_DATA_DIR"] = dataDir;
 
     await ensureDataDirectories();
     await Bun.$`git init ${workDir}`.quiet();
@@ -95,13 +95,13 @@ describe("SSH sessions API integration", () => {
     backendManager.resetForTesting();
     await rm(dataDir, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
   });
 
   beforeEach(() => {
     const db = getDatabase();
     db.run("DELETE FROM ssh_sessions");
-    db.run("DELETE FROM loops WHERE workspace_id IS NOT NULL");
+    db.run("DELETE FROM tasks WHERE workspace_id IS NOT NULL");
     db.run("DELETE FROM workspaces");
     backendManager.setExecutorFactoryForTesting(() => new SshSessionTestExecutor());
   });
@@ -167,7 +167,7 @@ describe("SSH sessions API integration", () => {
     const getResponse = await fetch(`${baseUrl}/api/ssh-sessions/${created.config.id}`);
     expect(getResponse.ok).toBe(true);
     const fetched = await getResponse.json() as { config: { remoteSessionName: string; useTmux: boolean } };
-    expect(fetched.config.remoteSessionName).toContain("ralpher-");
+    expect(fetched.config.remoteSessionName).toContain("clanky-");
     expect(fetched.config.useTmux).toBe(false);
 
     const deleteResponse = await fetch(`${baseUrl}/api/ssh-sessions/${created.config.id}`, {
@@ -246,7 +246,7 @@ describe("SSH sessions API integration", () => {
 
   test("creates SSH sessions with explicitly provided names", async () => {
     const workspace = await createWorkspace({ transport: "ssh" });
-    const otherWorkspaceDir = await mkdtemp(join(tmpdir(), "ralpher-ssh-sessions-work-"));
+    const otherWorkspaceDir = await mkdtemp(join(tmpdir(), "clanky-ssh-sessions-work-"));
     try {
       await Bun.$`git init ${otherWorkspaceDir}`.quiet();
       await Bun.$`git -C ${otherWorkspaceDir} config user.email "test@test.com"`.quiet();

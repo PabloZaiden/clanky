@@ -1,6 +1,6 @@
 /**
- * Standalone utility helpers for LoopEngine.
- * These have no dependency on the LoopEngine class itself.
+ * Standalone utility helpers for TaskEngine.
+ * These have no dependency on the TaskEngine class itself.
  */
 
 import { createLogger } from "../logger";

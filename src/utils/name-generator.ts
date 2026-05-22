@@ -1,25 +1,25 @@
 /**
- * Loop title generation utility.
- * Generates AI-assisted loop titles from prompts using the configured agent backend.
+ * Task title generation utility.
+ * Generates AI-assisted task titles from prompts using the configured agent backend.
  */
 
 import type { PromptInput, AgentResponse } from "../backends/types";
 import type { ModelConfig } from "../types";
 
-export const DEFAULT_LOOP_TITLE_TIMEOUT_MS = 30_000;
+export const DEFAULT_TASK_TITLE_TIMEOUT_MS = 30_000;
 
 /**
  * Backend interface for name generation.
- * Matches the interface used by LoopEngine.
+ * Matches the interface used by TaskEngine.
  */
 export interface BackendInterface {
   sendPrompt(sessionId: string, prompt: PromptInput): Promise<AgentResponse>;
 }
 
 /**
- * Options for generating a loop name.
+ * Options for generating a task name.
  */
-export interface GenerateLoopNameOptions {
+export interface GenerateTaskNameOptions {
   /** The prompt describing the task */
   prompt: string;
   /** Backend instance to use for generation */
@@ -28,12 +28,12 @@ export interface GenerateLoopNameOptions {
   sessionId: string;
   /** Optional model override for helper generation */
   model?: ModelConfig;
-  /** Timeout in milliseconds (default: 30_000ms / 30s, see DEFAULT_LOOP_TITLE_TIMEOUT_MS) */
+  /** Timeout in milliseconds (default: 30_000ms / 30s, see DEFAULT_TASK_TITLE_TIMEOUT_MS) */
   timeoutMs?: number;
 }
 
 /**
- * Sanitize a generated loop name.
+ * Sanitize a generated task name.
  * - Removes markdown formatting (backticks, asterisks, etc.)
  * - Removes control characters
  * - Collapses consecutive whitespace to single spaces
@@ -41,7 +41,7 @@ export interface GenerateLoopNameOptions {
  * - Truncates to max 100 characters
  * - Preserves spaces and natural casing for readability
  */
-export function sanitizeLoopName(name: string): string {
+export function sanitizeTaskName(name: string): string {
   return name
     .replace(/[`*~#]/g, "")            // Remove markdown formatting
     .replace(/[\x00-\x1F\x7F]/g, "")   // Remove control characters
@@ -51,18 +51,18 @@ export function sanitizeLoopName(name: string): string {
 }
 
 /**
- * Generate a loop title from a prompt using the configured agent backend.
+ * Generate a task title from a prompt using the configured agent backend.
  *
  * This function sends a prompt to the backend asking it to generate a short,
  * descriptive title for a coding task. The title is sanitized and validated
  * before being returned.
  *
  * @param options - Options for name generation
- * @returns A sanitized loop title (max 100 chars, preserves spaces and casing)
+ * @returns A sanitized task title (max 100 chars, preserves spaces and casing)
  * @throws Error if prompt is empty, the backend call fails, or the response is unusable
  */
-export async function generateLoopName(options: GenerateLoopNameOptions): Promise<string> {
-  const { prompt, backend, sessionId, model, timeoutMs = DEFAULT_LOOP_TITLE_TIMEOUT_MS } = options;
+export async function generateTaskName(options: GenerateTaskNameOptions): Promise<string> {
+  const { prompt, backend, sessionId, model, timeoutMs = DEFAULT_TASK_TITLE_TIMEOUT_MS } = options;
 
   // Validate inputs
   if (!prompt || !prompt.trim()) {
@@ -113,13 +113,13 @@ Output ONLY the title, nothing else. No quotes, no formatting, no explanation.`
       throw new Error("Title generation returned an empty response");
     }
 
-    const sanitized = sanitizeLoopName(generatedName);
+    const sanitized = sanitizeTaskName(generatedName);
     if (!sanitized) {
       throw new Error("Title generation returned an unusable title");
     }
 
     return sanitized;
   } catch (error) {
-    throw new Error(`Failed to generate loop title: ${String(error)}`, { cause: error });
+    throw new Error(`Failed to generate task title: ${String(error)}`, { cause: error });
   }
 }

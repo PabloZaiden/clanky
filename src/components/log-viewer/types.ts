@@ -77,13 +77,13 @@ export interface LogViewerProps {
   showTools?: boolean;
   /** Whether to render response log content as markdown (default: false) */
   markdownEnabled?: boolean;
-  /** Whether the loop is actively working (shows a spinner at the bottom). Default: false */
+  /** Whether the task is actively working (shows a spinner at the bottom). Default: false */
   isActive?: boolean;
   /** ID for the root element (for accessibility) */
   id?: string;
-  /** Root directory used to display tool file paths relative to the active chat/loop context. */
+  /** Root directory used to display tool file paths relative to the active chat/task context. */
   toolPathDisplayRoot?: string;
-  /** Optional chat/loop-aware context for turning inline code paths into code explorer links. */
+  /** Optional chat/task-aware context for turning inline code paths into code explorer links. */
   fileLinkContext?: TranscriptFileLinkContext;
   /** Optional surface class override for the scroll container that owns the transcript background. */
   surfaceClassName?: string;

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderWithUser, waitFor } from "../helpers/render";
-import { createLoop, createWorkspace } from "../helpers/factories";
+import { createTask, createWorkspace } from "../helpers/factories";
 
 import { WorkspaceView } from "@/components/app-shell/workspace-view";
 
@@ -23,7 +23,7 @@ describe("WorkspaceView", () => {
       const { getByRole, user } = renderWithUser(
         <WorkspaceView
           workspace={workspace}
-          relatedLoops={[]}
+          relatedTasks={[]}
           relatedChats={[]}
           relatedSessions={[]}
           registeredSshServers={[]}
@@ -64,7 +64,7 @@ describe("WorkspaceView", () => {
     const { getByRole, queryByRole, user } = renderWithUser(
       <WorkspaceView
         workspace={workspace}
-        relatedLoops={[]}
+        relatedTasks={[]}
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}
@@ -80,13 +80,13 @@ describe("WorkspaceView", () => {
     expect(queryByRole("menuitem", { name: "Open in GitHub" })).toBeNull();
   });
 
-  test("renders plan-ready loop pills with the shared plan-ready badge variant", () => {
+  test("renders plan-ready task pills with the shared plan-ready badge variant", () => {
     const workspace = createWorkspace({
       id: "workspace-1",
       name: "Frontend",
       directory: "/workspaces/frontend",
     });
-    const planReadyLoop = createLoop({
+    const planReadyTask = createTask({
       config: {
         workspaceId: workspace.id,
         name: "Review generated plan",
@@ -105,7 +105,7 @@ describe("WorkspaceView", () => {
     const { getByText } = renderWithUser(
       <WorkspaceView
         workspace={workspace}
-        relatedLoops={[planReadyLoop]}
+        relatedTasks={[planReadyTask]}
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}
@@ -131,7 +131,7 @@ describe("WorkspaceView", () => {
     const { getByRole, user } = renderWithUser(
       <WorkspaceView
         workspace={workspace}
-        relatedLoops={[]}
+        relatedTasks={[]}
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}
@@ -161,7 +161,7 @@ describe("WorkspaceView", () => {
     const { getByRole, user } = renderWithUser(
       <WorkspaceView
         workspace={workspace}
-        relatedLoops={[]}
+        relatedTasks={[]}
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}

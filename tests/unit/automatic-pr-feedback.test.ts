@@ -8,13 +8,13 @@ import {
   extractAutomaticPrFeedbackWithSession,
 } from "../../src/core/automatic-pr-feedback";
 import { backendManager } from "../../src/core/backend-manager";
-import { createLoopWithStatus, createModelInfo } from "../frontend/helpers/factories";
+import { createTaskWithStatus, createModelInfo } from "../frontend/helpers/factories";
 import { MockAcpBackend } from "../mocks/mock-backend";
 
 let testDataDir: string;
 
-function createPushedLoop() {
-  return createLoopWithStatus("pushed", {
+function createPushedTask() {
+  return createTaskWithStatus("pushed", {
     config: {
       name: "Automatic PR Flow",
       prompt: "Implement the automatic PR flow end to end.",
@@ -32,8 +32,8 @@ function createPushedLoop() {
 
 describe("automatic PR feedback extraction", () => {
   beforeEach(async () => {
-    testDataDir = await mkdtemp(join(tmpdir(), "ralpher-automatic-pr-feedback-test-"));
-    process.env["RALPHER_DATA_DIR"] = testDataDir;
+    testDataDir = await mkdtemp(join(tmpdir(), "clanky-automatic-pr-feedback-test-"));
+    process.env["CLANKY_DATA_DIR"] = testDataDir;
     backendManager.resetForTesting();
     const { ensureDataDirectories, closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
@@ -54,7 +54,7 @@ describe("automatic PR feedback extraction", () => {
     backendManager.resetForTesting();
     const { closeDatabase } = await import("../../src/persistence/database");
     closeDatabase();
-    delete process.env["RALPHER_DATA_DIR"];
+    delete process.env["CLANKY_DATA_DIR"];
     await rm(testDataDir, { recursive: true, force: true });
   });
 
@@ -101,9 +101,9 @@ describe("automatic PR feedback extraction", () => {
   });
 
   test("extractAutomaticPrFeedbackWithSession parses extracted feedback and defaults missing items to ignored", async () => {
-    const loop = createPushedLoop();
+    const task = createPushedTask();
     const result = await extractAutomaticPrFeedbackWithSession({
-      loop,
+      task,
       directory: "/tmp/repo",
       feedbackItems: [
         {
@@ -144,11 +144,11 @@ describe("automatic PR feedback extraction", () => {
   });
 
   test("extractAutomaticPrFeedbackWithSession relies on the helper prompt to ignore low-confidence suppression notices", async () => {
-    const loop = createPushedLoop();
+    const task = createPushedTask();
     let promptText = "";
 
     const result = await extractAutomaticPrFeedbackWithSession({
-      loop,
+      task,
       directory: "/tmp/repo",
       feedbackItems: [
         {
@@ -196,11 +196,11 @@ describe("automatic PR feedback extraction", () => {
   });
 
   test("extractAutomaticPrFeedbackWithSession processes source items beyond the prompt batch limit", async () => {
-    const loop = createPushedLoop();
+    const task = createPushedTask();
     let sendPromptCalls = 0;
 
     const result = await extractAutomaticPrFeedbackWithSession({
-      loop,
+      task,
       directory: "/tmp/repo",
       feedbackItems: Array.from({ length: 26 }, (_, index) => ({
         id: `item-${index + 1}`,
@@ -262,13 +262,13 @@ describe("automatic PR feedback extraction", () => {
   });
 
   test("extractAutomaticPrFeedback uses the configured cheap model when it is available", async () => {
-    const loop = createPushedLoop();
-    loop.config.model = {
+    const task = createPushedTask();
+    task.config.model = {
       providerID: "anthropic",
       modelID: "claude-sonnet",
       variant: "",
     };
-    loop.config.cheapModel = {
+    task.config.cheapModel = {
       mode: "custom",
       model: {
         providerID: "openai",
@@ -313,7 +313,7 @@ describe("automatic PR feedback extraction", () => {
     };
     backendManager.setBackendForTesting(backend);
 
-    const result = await extractAutomaticPrFeedback(loop, "/tmp/repo", [{
+    const result = await extractAutomaticPrFeedback(task, "/tmp/repo", [{
       id: "thread-1",
       source: "review_thread",
       body: "Please add a missing edge-case test.",

@@ -8,7 +8,7 @@ import {
 } from "../../src/core/pull-request-metadata";
 
 const metadataInput: PullRequestMetadataInput = {
-  loopName: "Automatic PR Flow",
+  taskName: "Automatic PR Flow",
   originalPrompt: "Implement automatic PR title and description generation.",
   baseBranch: "main",
   workingBranch: "feature/automatic-pr-flow",
@@ -64,20 +64,20 @@ describe("pull request metadata helpers", () => {
     const metadata = buildFallbackPullRequestMetadata({
       ...metadataInput,
       commitMessages: [
-        "feat(pr): improve Ralpher pull request summary generation",
+        "feat(pr): improve Clanky pull request summary generation",
         "test(pr): remove generated automatically AutoPR wording from metadata",
       ],
     });
 
     expect(metadata.title).toBe("Improve pull request summary generation and remove wording from metadata");
-    expect(metadata.title).not.toMatch(/ralpher|autopr|generated automatically/i);
+    expect(metadata.title).not.toMatch(/clanky|autopr|generated automatically/i);
     expect(metadata.body).toContain("## Summary");
     expect(metadata.body).toContain("- Improve pull request summary generation");
     expect(metadata.body).toContain("- Remove wording from metadata");
     expect(metadata.body).toContain("## Changes");
     expect(metadata.body).toContain("## Files");
     expect(metadata.body).toContain("## Branches");
-    expect(metadata.body).not.toMatch(/ralpher|autopr|generated automatically/i);
+    expect(metadata.body).not.toMatch(/clanky|autopr|generated automatically/i);
   });
 
   test("generatePullRequestMetadata parses strict JSON responses", async () => {
@@ -100,8 +100,8 @@ describe("pull request metadata helpers", () => {
     await expect(generatePullRequestMetadata({
       metadata: metadataInput,
       backend: new StaticResponseBackend(JSON.stringify({
-        title: "AutoPR by Ralpher",
-        body: "Opened by Ralpher.",
+        title: "AutoPR by Clanky",
+        body: "Opened by Clanky.",
       })),
       sessionId: "session-1",
     })).rejects.toThrow("Failed to generate pull request metadata");

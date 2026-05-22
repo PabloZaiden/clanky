@@ -13,7 +13,7 @@ export interface DashboardHeaderProps {
   onToggleViewMode: () => void;
   onOpenServerSettings: () => void;
   onOpenCreateWorkspace: () => void;
-  onOpenCreateLoop: () => void;
+  onOpenCreateTask: () => void;
   onCreateSshSession: () => void;
 }
 
@@ -23,7 +23,7 @@ export function DashboardHeader({
   onToggleViewMode,
   onOpenServerSettings,
   onOpenCreateWorkspace,
-  onOpenCreateLoop,
+  onOpenCreateTask,
   onCreateSshSession,
 }: DashboardHeaderProps) {
   // Memoize action menu items to avoid re-creating on every render
@@ -31,9 +31,9 @@ export function DashboardHeader({
         () => [
           { label: "New Workspace", onClick: onOpenCreateWorkspace },
           { label: "New SSH Session", onClick: onCreateSshSession },
-          { label: "New Loop", onClick: onOpenCreateLoop },
+          { label: "New Task", onClick: onOpenCreateTask },
         ],
-    [onOpenCreateWorkspace, onCreateSshSession, onOpenCreateLoop],
+    [onOpenCreateWorkspace, onCreateSshSession, onOpenCreateTask],
   );
 
   return (
@@ -43,7 +43,7 @@ export function DashboardHeader({
           {/* Left: Title + version */}
           <div className="min-w-0 flex-1">
             <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">
-              Ralpher
+              Clanky
             </h1>
             {version && (
               <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -105,8 +105,8 @@ export function DashboardHeader({
               >
                 New SSH Session
               </Button>
-              <Button onClick={onOpenCreateLoop} className="whitespace-nowrap">
-                New Loop
+              <Button onClick={onOpenCreateTask} className="whitespace-nowrap">
+                New Task
               </Button>
             </div>
             {/* App Settings Button */}

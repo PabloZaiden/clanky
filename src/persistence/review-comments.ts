@@ -1,5 +1,5 @@
 /**
- * Review comments persistence for Ralph Loops Management System.
+ * Review comments persistence for Clanky Tasks Management System.
  * Handles reading and writing review comments to the SQLite database.
  */
 
@@ -13,20 +13,20 @@ const log = createLogger("persistence:review-comments");
  */
 export function insertReviewComment(comment: {
   id: string;
-  loopId: string;
+  taskId: string;
   reviewCycle: number;
   commentText: string;
   createdAt: string;
   status?: string;
 }): void {
-  log.debug("Inserting review comment", { id: comment.id, loopId: comment.loopId, reviewCycle: comment.reviewCycle });
+  log.debug("Inserting review comment", { id: comment.id, taskId: comment.taskId, reviewCycle: comment.reviewCycle });
   const db = getDatabase();
   db.run(
-    `INSERT INTO review_comments (id, loop_id, review_cycle, comment_text, created_at, status)
+    `INSERT INTO review_comments (id, task_id, review_cycle, comment_text, created_at, status)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
       comment.id,
-      comment.loopId,
+      comment.taskId,
       comment.reviewCycle,
       comment.commentText,
       comment.createdAt,
@@ -37,27 +37,27 @@ export function insertReviewComment(comment: {
 }
 
 /**
- * Get all review comments for a loop.
+ * Get all review comments for a task.
  * Returns comments ordered by review_cycle DESC, created_at ASC.
  */
-export function getReviewComments(loopId: string): Array<{
+export function getReviewComments(taskId: string): Array<{
   id: string;
-  loop_id: string;
+  task_id: string;
   review_cycle: number;
   comment_text: string;
   created_at: string;
   status: string;
   addressed_at: string | null;
 }> {
-  log.debug("Getting review comments", { loopId });
+  log.debug("Getting review comments", { taskId });
   const db = getDatabase();
   const comments = db.query(
     `SELECT * FROM review_comments 
-     WHERE loop_id = ? 
+     WHERE task_id = ? 
      ORDER BY review_cycle DESC, created_at ASC`
-  ).all(loopId) as Array<{
+  ).all(taskId) as Array<{
     id: string;
-    loop_id: string;
+    task_id: string;
     review_cycle: number;
     comment_text: string;
     created_at: string;
@@ -65,22 +65,22 @@ export function getReviewComments(loopId: string): Array<{
     addressed_at: string | null;
   }>;
   
-  log.debug("Review comments retrieved", { loopId, count: comments.length });
+  log.debug("Review comments retrieved", { taskId, count: comments.length });
   return comments;
 }
 
 /**
- * Update the status of all pending comments for a specific loop and review cycle.
- * Used to mark comments as "addressed" when a loop completes.
+ * Update the status of all pending comments for a specific task and review cycle.
+ * Used to mark comments as "addressed" when a task completes.
  */
-export function markCommentsAsAddressed(loopId: string, reviewCycle: number, addressedAt: string): void {
-  log.debug("Marking comments as addressed", { loopId, reviewCycle });
+export function markCommentsAsAddressed(taskId: string, reviewCycle: number, addressedAt: string): void {
+  log.debug("Marking comments as addressed", { taskId, reviewCycle });
   const db = getDatabase();
   db.run(
     `UPDATE review_comments 
      SET status = 'addressed', addressed_at = ?
-     WHERE loop_id = ? AND review_cycle = ? AND status = 'pending'`,
-    [addressedAt, loopId, reviewCycle]
+     WHERE task_id = ? AND review_cycle = ? AND status = 'pending'`,
+    [addressedAt, taskId, reviewCycle]
   );
-  log.debug("Comments marked as addressed", { loopId, reviewCycle, addressedAt });
+  log.debug("Comments marked as addressed", { taskId, reviewCycle, addressedAt });
 }

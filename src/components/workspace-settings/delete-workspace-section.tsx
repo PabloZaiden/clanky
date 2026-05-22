@@ -13,7 +13,7 @@ import { TrashIcon } from "./icons";
 interface DeleteWorkspaceSectionProps {
   workspace: Workspace;
   onDeleteWorkspace: (options?: DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-  workspaceLoopCount: number;
+  workspaceTaskCount: number;
   saving: boolean;
   onDeleted?: () => void;
 }
@@ -21,7 +21,7 @@ interface DeleteWorkspaceSectionProps {
 export function DeleteWorkspaceSection({
   workspace,
   onDeleteWorkspace,
-  workspaceLoopCount,
+  workspaceTaskCount,
   saving,
   onDeleted,
 }: DeleteWorkspaceSectionProps) {
@@ -31,7 +31,7 @@ export function DeleteWorkspaceSection({
   const [deleteServerDirectory, setDeleteServerDirectory] = useState(true);
   const canDeleteServerDirectory = isAutoProvisionedWorkspace(workspace);
 
-  const disabled = saving || deleting || workspaceLoopCount > 0;
+  const disabled = saving || deleting || workspaceTaskCount > 0;
 
   async function handleDelete() {
     setDeleting(true);
@@ -66,9 +66,9 @@ export function DeleteWorkspaceSection({
           Delete Workspace
         </h3>
         <p className="text-sm text-red-700 dark:text-red-300 mb-4">
-          {workspaceLoopCount > 0
-            ? `Delete the remaining ${workspaceLoopCount} loop${workspaceLoopCount === 1 ? "" : "s"} in this workspace before removing it from Ralpher.`
-            : "Remove this workspace from Ralpher now that it no longer contains loops."}
+          {workspaceTaskCount > 0
+            ? `Delete the remaining ${workspaceTaskCount} task${workspaceTaskCount === 1 ? "" : "s"} in this workspace before removing it from Clanky.`
+            : "Remove this workspace from Clanky now that it no longer contains tasks."}
           {" "}This only removes the workspace record and does not delete files on disk.
         </p>
         <Button
@@ -94,8 +94,8 @@ export function DeleteWorkspaceSection({
         title="Delete Workspace"
         message={
           canDeleteServerDirectory
-            ? `Are you sure you want to delete workspace "${workspace.name}"? This removes it from Ralpher.`
-            : `Are you sure you want to delete workspace "${workspace.name}"? This only removes it from Ralpher and does not delete files on disk.`
+            ? `Are you sure you want to delete workspace "${workspace.name}"? This removes it from Clanky.`
+            : `Are you sure you want to delete workspace "${workspace.name}"? This only removes it from Clanky and does not delete files on disk.`
         }
         confirmLabel="Delete"
         loading={deleting}

@@ -33,12 +33,12 @@ import { getRequestOriginInfo } from "../utils/request-origin";
 
 const log = createLogger("core:passkey-auth");
 
-const PASSKEY_RP_NAME = "Ralpher";
-const PASSKEY_USER_NAME = "ralpher";
-const PASSKEY_USER_DISPLAY_NAME = "Ralpher";
-const PASSKEY_USER_ID = new Uint8Array(Buffer.from("ralpher"));
-const PASSKEY_SESSION_COOKIE = "ralpher_passkey_session";
-const PASSKEY_CHALLENGE_COOKIE = "ralpher_passkey_challenge";
+const PASSKEY_RP_NAME = "Clanky";
+const PASSKEY_USER_NAME = "clanky";
+const PASSKEY_USER_DISPLAY_NAME = "Clanky";
+const PASSKEY_USER_ID = new Uint8Array(Buffer.from("clanky"));
+const PASSKEY_SESSION_COOKIE = "clanky_passkey_session";
+const PASSKEY_CHALLENGE_COOKIE = "clanky_passkey_challenge";
 const PASSKEY_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const PASSKEY_CHALLENGE_MAX_AGE_SECONDS = 60 * 10;
 
@@ -96,7 +96,7 @@ function isTruthyEnvFlag(name: string): boolean {
 }
 
 export function isPasskeyAuthDisabled(): boolean {
-  return isTruthyEnvFlag("RALPHER_DISABLE_PASSKEY");
+  return isTruthyEnvFlag("CLANKY_DISABLE_PASSKEY");
 }
 
 function getCookiePath(req: Request): string {

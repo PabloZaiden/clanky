@@ -6,12 +6,12 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
-import { setupTestContext, teardownTestContext, waitForPlanReady, waitForPersistedPlanReady, waitForLoopStatus, testModelFields } from "../setup";
+import { setupTestContext, teardownTestContext, waitForPlanReady, waitForPersistedPlanReady, waitForTaskStatus, testModelFields } from "../setup";
 import type { TestContext } from "../setup";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { backendManager } from "../../src/core/backend-manager";
-import { loadLoop } from "../../src/persistence/loops";
+import { loadTask } from "../../src/persistence/tasks";
 import { updateWorkspace } from "../../src/persistence/workspaces";
 
 class SshReadyExecutor extends TestCommandExecutor {
@@ -66,19 +66,19 @@ async function addRemoteCommit(
   }
 }
 
-async function waitForSyncStateToClear(ctx: TestContext, loopId: string, timeoutMs = 10000) {
+async function waitForSyncStateToClear(ctx: TestContext, taskId: string, timeoutMs = 10000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const loop = await ctx.manager.getLoop(loopId);
-    if (loop && loop.state.syncState === undefined && loop.state.status !== "resolving_conflicts") {
-      return loop;
+    const task = await ctx.manager.getTask(taskId);
+    if (task && task.state.syncState === undefined && task.state.status !== "resolving_conflicts") {
+      return task;
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
-  const lastLoop = await ctx.manager.getLoop(loopId);
+  const lastTask = await ctx.manager.getTask(taskId);
   throw new Error(
-    `Loop ${loopId} did not clear sync state within ${timeoutMs}ms. Last status: ${lastLoop?.state.status ?? "missing"}`,
+    `Task ${taskId} did not clear sync state within ${timeoutMs}ms. Last status: ${lastTask?.state.status ?? "missing"}`,
   );
 }
 
@@ -99,25 +99,25 @@ describe("Plan Mode - Clear Planning Folder", () => {
     await teardownTestContext(ctx);
   });
 
-  test("clears .ralph-planning folder before plan creation when clearPlanningFolder is true", async () => {
+  test("clears .clanky-planning folder before plan creation when clearPlanningFolder is true", async () => {
     // Setup: Create existing plan files and commit them to git
     // (files must be committed so they appear in the worktree checkout)
-    const planningDir = join(ctx.workDir, ".ralph-planning");
+    const planningDir = join(ctx.workDir, ".clanky-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "old-plan.md"), "Old plan content");
     await writeFile(join(planningDir, "status.md"), "Old status");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
     await Bun.$`git -C ${ctx.workDir} commit -m "Add planning files"`.quiet();
 
-    // Verify files exist before loop creation
+    // Verify files exist before task creation
     expect(await exists(join(planningDir, "old-plan.md"))).toBe(true);
     expect(await exists(join(planningDir, "status.md"))).toBe(true);
 
-    // Create loop with plan mode + clear folder
-    const loop = await ctx.manager.createLoop({
+    // Create task with plan mode + clear folder
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a simple plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
@@ -125,34 +125,34 @@ describe("Plan Mode - Clear Planning Folder", () => {
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode (this is when clearing happens — in the worktree)
-    await ctx.manager.startPlanMode(loopId);
+    await ctx.manager.startPlanMode(taskId);
 
     // Wait for plan to be ready (polling instead of fixed delay)
-    await waitForPlanReady(ctx.manager, loopId);
+    await waitForPlanReady(ctx.manager, taskId);
 
-    // Get the loop state
-    const loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData).toBeDefined();
+    // Get the task state
+    const taskData = await ctx.manager.getTask(taskId);
+    expect(taskData).toBeDefined();
 
     // Verify worktree was created
-    const worktreePath = loopData!.state.git?.worktreePath;
+    const worktreePath = taskData!.state.git?.worktreePath;
     expect(worktreePath).toBeDefined();
 
     // Verify the folder was cleared in the worktree (old files gone)
-    const wtPlanningDir = join(worktreePath!, ".ralph-planning");
+    const wtPlanningDir = join(worktreePath!, ".clanky-planning");
     expect(await exists(join(wtPlanningDir, "old-plan.md"))).toBe(false);
     expect(await exists(join(wtPlanningDir, "status.md"))).toBe(false);
 
     // Verify state tracks that clearing happened
-    expect(loopData!.state.planMode?.planningFolderCleared).toBe(true);
+    expect(taskData!.state.planMode?.planningFolderCleared).toBe(true);
   });
 
-  test("does not clear .ralph-planning folder if clearPlanningFolder is false", async () => {
+  test("does not clear .clanky-planning folder if clearPlanningFolder is false", async () => {
     // Setup existing files and commit them so they appear in the worktree
-    const planningDir = join(ctx.workDir, ".ralph-planning");
+    const planningDir = join(ctx.workDir, ".clanky-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "existing-plan.md"), "Existing content");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
@@ -161,11 +161,11 @@ describe("Plan Mode - Clear Planning Folder", () => {
     // Verify file exists
     expect(await exists(join(planningDir, "existing-plan.md"))).toBe(true);
 
-    // Create loop without clear option
-    const loop = await ctx.manager.createLoop({
+    // Create task without clear option
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
@@ -173,20 +173,20 @@ describe("Plan Mode - Clear Planning Folder", () => {
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode and wait for plan to be ready
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Verify folder was NOT cleared in the worktree
-    const loopData = await ctx.manager.getLoop(loopId);
-    const worktreePath = loopData!.state.git?.worktreePath;
+    const taskData = await ctx.manager.getTask(taskId);
+    const worktreePath = taskData!.state.git?.worktreePath;
     expect(worktreePath).toBeDefined();
-    expect(await exists(join(worktreePath!, ".ralph-planning", "existing-plan.md"))).toBe(true);
+    expect(await exists(join(worktreePath!, ".clanky-planning", "existing-plan.md"))).toBe(true);
 
     // Verify state shows clearing did not happen
-    expect(loopData!.state.planMode?.planningFolderCleared).toBe(false);
+    expect(taskData!.state.planMode?.planningFolderCleared).toBe(false);
   });
 
 });
@@ -207,20 +207,20 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
 
   test("clears plan.md when starting plan mode even with clearPlanningFolder: false", async () => {
     // Setup: Create existing plan.md and commit to git
-    const planningDir = join(ctx.workDir, ".ralph-planning");
+    const planningDir = join(ctx.workDir, ".clanky-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "Old stale plan content");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
     await Bun.$`git -C ${ctx.workDir} commit -m "Add stale plan"`.quiet();
 
-    // Verify file exists before loop creation
+    // Verify file exists before task creation
     expect(await exists(join(planningDir, "plan.md"))).toBe(true);
 
-    // Create loop with plan mode but WITHOUT clearPlanningFolder
-    const loop = await ctx.manager.createLoop({
+    // Create task with plan mode but WITHOUT clearPlanningFolder
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a simple plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
@@ -228,25 +228,25 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode - this should clear plan.md regardless of clearPlanningFolder
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Get the worktree path and check there
-    const loopData = await ctx.manager.getLoop(loopId);
-    const worktreePath = loopData!.state.git?.worktreePath;
+    const taskData = await ctx.manager.getTask(taskId);
+    const worktreePath = taskData!.state.git?.worktreePath;
     expect(worktreePath).toBeDefined();
 
     // The plan file in the worktree should not have old content
-    const planContent = await Bun.file(join(worktreePath!, ".ralph-planning", "plan.md")).text().catch(() => "");
+    const planContent = await Bun.file(join(worktreePath!, ".clanky-planning", "plan.md")).text().catch(() => "");
     expect(planContent).not.toContain("Old stale plan content");
   });
 
   test("does NOT clear status.md when clearPlanningFolder is false", async () => {
     // Setup: Create both plan.md and status.md and commit to git
-    const planningDir = join(ctx.workDir, ".ralph-planning");
+    const planningDir = join(ctx.workDir, ".clanky-planning");
     await mkdir(planningDir, { recursive: true });
     await writeFile(join(planningDir, "plan.md"), "Old plan");
     await writeFile(join(planningDir, "status.md"), "Important status tracking info");
@@ -257,11 +257,11 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
     expect(await exists(join(planningDir, "plan.md"))).toBe(true);
     expect(await exists(join(planningDir, "status.md"))).toBe(true);
 
-    // Create loop with plan mode but WITHOUT clearPlanningFolder
-    const loop = await ctx.manager.createLoop({
+    // Create task with plan mode but WITHOUT clearPlanningFolder
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a simple plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
@@ -269,19 +269,19 @@ describe("Plan Mode - Always Clear plan.md on Start", () => {
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode - should only clear plan.md, not status.md
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Get worktree path and check there
-    const loopData = await ctx.manager.getLoop(loopId);
-    const worktreePath = loopData!.state.git?.worktreePath;
+    const taskData = await ctx.manager.getTask(taskId);
+    const worktreePath = taskData!.state.git?.worktreePath;
     expect(worktreePath).toBeDefined();
 
     // Verify status.md still exists with original content in the worktree
-    const wtStatusPath = join(worktreePath!, ".ralph-planning", "status.md");
+    const wtStatusPath = join(worktreePath!, ".clanky-planning", "status.md");
     expect(await exists(wtStatusPath)).toBe(true);
     const statusContent = await Bun.file(wtStatusPath).text();
     expect(statusContent).toBe("Important status tracking info");
@@ -311,76 +311,76 @@ describe("Plan Mode - State Transitions", () => {
   });
 
   test("increments feedback rounds on each feedback", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 5, // Need enough iterations for multiple feedbacks
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode and wait for plan to be ready
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Initial feedback rounds should be 0
-    let loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.planMode?.feedbackRounds).toBe(0);
+    let taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.planMode?.feedbackRounds).toBe(0);
 
     // Send first feedback (returns quickly — injection pattern)
-    await ctx.manager.sendPlanFeedback(loopId, "Please add more details");
+    await ctx.manager.sendPlanFeedback(taskId, "Please add more details");
 
     // feedbackRounds is incremented synchronously before the async injection
-    loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.planMode?.feedbackRounds).toBe(1);
+    taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.planMode?.feedbackRounds).toBe(1);
 
     // Wait for the feedback iteration to complete before sending more feedback
-    await waitForPlanReady(ctx.manager, loopId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Send second feedback
-    await ctx.manager.sendPlanFeedback(loopId, "Add time estimates");
+    await ctx.manager.sendPlanFeedback(taskId, "Add time estimates");
 
-    loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.planMode?.feedbackRounds).toBe(2);
+    taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.planMode?.feedbackRounds).toBe(2);
   });
 
   test("reuses session from plan creation when starting execution", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode and wait for plan to be ready
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Get the plan session info from state.session (where it's stored during planning)
-    let loopData = await ctx.manager.getLoop(loopId);
-    const planSessionId = loopData!.state.session?.id;
+    let taskData = await ctx.manager.getTask(taskId);
+    const planSessionId = taskData!.state.session?.id;
     expect(planSessionId).toBeDefined();
 
     // Accept the plan
-    await ctx.manager.acceptPlan(loopId);
+    await ctx.manager.acceptPlan(taskId);
     
     // Wait for transition from planning
-    await waitForLoopStatus(ctx.manager, loopId, ["running", "completed", "max_iterations", "stopped"]);
+    await waitForTaskStatus(ctx.manager, taskId, ["running", "completed", "max_iterations", "stopped"]);
 
     // Verify the session is still the same (session continuity)
     // After acceptance, it should be copied to planMode.planSessionId for persistence
-    loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.planMode?.planSessionId).toBe(planSessionId);
-    expect(loopData!.state.session?.id).toBe(planSessionId);
+    taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.planMode?.planSessionId).toBe(planSessionId);
+    expect(taskData!.state.session?.id).toBe(planSessionId);
   });
 });
 
@@ -404,103 +404,103 @@ describe("Plan Mode - isPlanReady Flag", () => {
   });
 
   test("isPlanReady is false when plan mode starts", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a simple plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Verify isPlanReady is false initially
-    const loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.planMode?.isPlanReady).toBe(false);
+    const taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.planMode?.isPlanReady).toBe(false);
   });
 
   test("isPlanReady becomes true after PLAN_READY marker detected", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a simple plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode
-    await ctx.manager.startPlanMode(loopId);
+    await ctx.manager.startPlanMode(taskId);
     
     // Wait for the mock backend to emit PLAN_READY
-    const loopData = await waitForPlanReady(ctx.manager, loopId);
-    expect(loopData!.state.planMode?.isPlanReady).toBe(true);
+    const taskData = await waitForPlanReady(ctx.manager, taskId);
+    expect(taskData!.state.planMode?.isPlanReady).toBe(true);
   });
 
   test("isPlanReady resets to false when feedback is sent", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a simple plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 5, // Increase max iterations to allow feedback iteration
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode and wait for PLAN_READY
-    await ctx.manager.startPlanMode(loopId);
-    let loopData = await waitForPlanReady(ctx.manager, loopId);
-    expect(loopData.state.planMode?.isPlanReady).toBe(true);
+    await ctx.manager.startPlanMode(taskId);
+    let taskData = await waitForPlanReady(ctx.manager, taskId);
+    expect(taskData.state.planMode?.isPlanReady).toBe(true);
 
     // Send feedback - this resets isPlanReady to false internally,
     // but with fast mocks the new plan might be ready by the time this returns
-    await ctx.manager.sendPlanFeedback(loopId, "Please add more details");
+    await ctx.manager.sendPlanFeedback(taskId, "Please add more details");
     
     // After feedback, wait for the plan to be ready again
-    loopData = await waitForPlanReady(ctx.manager, loopId);
+    taskData = await waitForPlanReady(ctx.manager, taskId);
     
     // The important thing is that after feedback, we can still accept the plan
     // and feedback rounds should have incremented
-    expect(loopData.state.planMode?.feedbackRounds).toBe(1);
-    expect(loopData.state.planMode?.isPlanReady).toBe(true);
+    expect(taskData.state.planMode?.feedbackRounds).toBe(1);
+    expect(taskData.state.planMode?.isPlanReady).toBe(true);
   });
 
   test("isPlanReady persists in database across restarts", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a simple plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode and wait for PLAN_READY
-    await ctx.manager.startPlanMode(loopId);
-    let loopData = await waitForPlanReady(ctx.manager, loopId);
-    expect(loopData.state.planMode?.isPlanReady).toBe(true);
+    await ctx.manager.startPlanMode(taskId);
+    let taskData = await waitForPlanReady(ctx.manager, taskId);
+    expect(taskData.state.planMode?.isPlanReady).toBe(true);
 
-    // Stop the loop
-    await ctx.manager.stopLoop(loopId);
-    await waitForLoopStatus(ctx.manager, loopId, ["stopped", "paused"]);
+    // Stop the task
+    await ctx.manager.stopTask(taskId);
+    await waitForTaskStatus(ctx.manager, taskId, ["stopped", "paused"]);
 
-    // Retrieve the loop from database (simulating restart)
-    const retrievedLoop = await ctx.manager.getLoop(loopId);
+    // Retrieve the task from database (simulating restart)
+    const retrievedTask = await ctx.manager.getTask(taskId);
     
     // Verify isPlanReady is still true
-    expect(retrievedLoop).not.toBeNull();
-    expect(retrievedLoop!.state.planMode?.isPlanReady).toBe(true);
+    expect(retrievedTask).not.toBeNull();
+    expect(retrievedTask!.state.planMode?.isPlanReady).toBe(true);
   });
 
 });
@@ -525,34 +525,34 @@ describe("Plan Mode - Rejection Paths", () => {
   });
 
   test("rejects plan acceptance when isPlanReady is false", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a simple plan",
-        name: "Test Loop",
+        name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 5,  // Allow multiple iterations
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Verify isPlanReady is false initially
-    let loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.planMode?.isPlanReady).toBe(false);
+    let taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.planMode?.isPlanReady).toBe(false);
 
     // Start plan mode - the mock will NOT return PLAN_READY marker
-    await ctx.manager.startPlanMode(loopId);
+    await ctx.manager.startPlanMode(taskId);
 
-    // Wait for the first iteration to complete (loop should still be in planning)
-    await waitForLoopStatus(ctx.manager, loopId, ["planning", "max_iterations", "stopped"]);
+    // Wait for the first iteration to complete (task should still be in planning)
+    await waitForTaskStatus(ctx.manager, taskId, ["planning", "max_iterations", "stopped"]);
 
     // Verify isPlanReady is still false (no PLAN_READY marker was detected)
-    loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.planMode?.isPlanReady).toBe(false);
+    taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.planMode?.isPlanReady).toBe(false);
 
     // Try to accept the plan while isPlanReady is false - should throw
-    await expect(ctx.manager.acceptPlan(loopId)).rejects.toThrow(
+    await expect(ctx.manager.acceptPlan(taskId)).rejects.toThrow(
       "Plan is not ready yet"
     );
   });
@@ -580,25 +580,25 @@ describe("Plan Mode - Worktree Isolation", () => {
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
     await Bun.$`git -C ${ctx.workDir} commit -m "Add original file"`.quiet();
 
-    // Create a plan mode loop and start it
-    const loop = await ctx.manager.createLoop({
+    // Create a plan mode task and start it
+    const task = await ctx.manager.createTask({
       ...testModelFields,
       prompt: "Create a plan",
-      name: "Test Loop",
+      name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Verify the worktree was created
-    const loopData = await ctx.manager.getLoop(loopId);
-    const worktreePath = loopData!.state.git?.worktreePath;
+    const taskData = await ctx.manager.getTask(taskId);
+    const worktreePath = taskData!.state.git?.worktreePath;
     expect(worktreePath).toBeDefined();
     expect(worktreePath).not.toBe(ctx.workDir);
 
@@ -620,37 +620,37 @@ describe("Plan Mode - Worktree Isolation", () => {
     expect(originalContent).toBe("Original content");
   });
 
-  test("multiple plan mode loops have separate worktrees", async () => {
+  test("multiple plan mode tasks have separate worktrees", async () => {
     // Override mock backend with responses for two plan iterations.
-    const multiLoopMock = new MockAcpBackend({
+    const multiTaskMock = new MockAcpBackend({
       responses: [
-        "<promise>PLAN_READY</promise>",    // Plan iteration for loop 1
-        "<promise>PLAN_READY</promise>",    // Plan iteration for loop 2
+        "<promise>PLAN_READY</promise>",    // Plan iteration for task 1
+        "<promise>PLAN_READY</promise>",    // Plan iteration for task 2
       ],
       models: [defaultTestModel],
     });
-    backendManager.setBackendForTesting(multiLoopMock);
+    backendManager.setBackendForTesting(multiTaskMock);
 
     // Create a baseline commit
     await writeFile(join(ctx.workDir, "shared-file.txt"), "Shared content");
     await Bun.$`git -C ${ctx.workDir} add .`.quiet();
     await Bun.$`git -C ${ctx.workDir} commit -m "Add shared file"`.quiet();
 
-    // Create and start two plan mode loops
-    const loop1 = await ctx.manager.createLoop({
+    // Create and start two plan mode tasks
+    const task1 = await ctx.manager.createTask({
       ...testModelFields,
       prompt: "Plan A",
-      name: "Test Loop",
+      name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loop2 = await ctx.manager.createLoop({
+    const task2 = await ctx.manager.createTask({
       ...testModelFields,
       prompt: "Plan B",
-      name: "Test Loop",
+      name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
@@ -658,35 +658,35 @@ describe("Plan Mode - Worktree Isolation", () => {
       autoAcceptPlan: false,
     });
 
-    await ctx.manager.startPlanMode(loop1.config.id);
-    await ctx.manager.startPlanMode(loop2.config.id);
+    await ctx.manager.startPlanMode(task1.config.id);
+    await ctx.manager.startPlanMode(task2.config.id);
 
-    await waitForPlanReady(ctx.manager, loop1.config.id);
-    await waitForPlanReady(ctx.manager, loop2.config.id);
+    await waitForPlanReady(ctx.manager, task1.config.id);
+    await waitForPlanReady(ctx.manager, task2.config.id);
 
     // Verify each has its own worktree
-    const loopData1 = await ctx.manager.getLoop(loop1.config.id);
-    const loopData2 = await ctx.manager.getLoop(loop2.config.id);
-    const wt1 = loopData1!.state.git?.worktreePath;
-    const wt2 = loopData2!.state.git?.worktreePath;
+    const taskData1 = await ctx.manager.getTask(task1.config.id);
+    const taskData2 = await ctx.manager.getTask(task2.config.id);
+    const wt1 = taskData1!.state.git?.worktreePath;
+    const wt2 = taskData2!.state.git?.worktreePath;
 
     expect(wt1).toBeDefined();
     expect(wt2).toBeDefined();
     expect(wt1).not.toBe(wt2);
 
     // Write different files to each worktree
-    await writeFile(join(wt1!, "loop1-file.txt"), "Loop 1 content");
-    await writeFile(join(wt2!, "loop2-file.txt"), "Loop 2 content");
+    await writeFile(join(wt1!, "task1-file.txt"), "Task 1 content");
+    await writeFile(join(wt2!, "task2-file.txt"), "Task 2 content");
 
     // Verify files are isolated between worktrees
-    expect(await exists(join(wt1!, "loop1-file.txt"))).toBe(true);
-    expect(await exists(join(wt1!, "loop2-file.txt"))).toBe(false);
-    expect(await exists(join(wt2!, "loop2-file.txt"))).toBe(true);
-    expect(await exists(join(wt2!, "loop1-file.txt"))).toBe(false);
+    expect(await exists(join(wt1!, "task1-file.txt"))).toBe(true);
+    expect(await exists(join(wt1!, "task2-file.txt"))).toBe(false);
+    expect(await exists(join(wt2!, "task2-file.txt"))).toBe(true);
+    expect(await exists(join(wt2!, "task1-file.txt"))).toBe(false);
 
     // Verify original repo dir is still clean
-    expect(await exists(join(ctx.workDir, "loop1-file.txt"))).toBe(false);
-    expect(await exists(join(ctx.workDir, "loop2-file.txt"))).toBe(false);
+    expect(await exists(join(ctx.workDir, "task1-file.txt"))).toBe(false);
+    expect(await exists(join(ctx.workDir, "task2-file.txt"))).toBe(false);
     const gitStatus = await Bun.$`git -C ${ctx.workDir} status --porcelain`.text();
     expect(gitStatus.trim()).toBe("");
   });
@@ -717,49 +717,49 @@ describe("Plan Mode - Engine Recovery After Server Restart", () => {
   });
 
   test("acceptPlan recovers engine after server restart", async () => {
-    // Create and start plan mode loop
-    const loop = await ctx.manager.createLoop({
+    // Create and start plan mode task
+    const task = await ctx.manager.createTask({
       ...testModelFields,
       prompt: "Create a plan",
-      name: "Test Loop",
+      name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 5,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode and wait for plan to be ready (in-memory)
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Verify plan is ready in memory
-    let loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.status).toBe("planning");
-    expect(loopData!.state.planMode?.isPlanReady).toBe(true);
+    let taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.status).toBe("planning");
+    expect(taskData!.state.planMode?.isPlanReady).toBe(true);
 
     // Wait for isPlanReady to be persisted to DB before resetting.
-    // This ensures recoverPlanningEngine() (which reads from loadLoop) sees the correct state.
-    await waitForPersistedPlanReady(loopId);
+    // This ensures recoverPlanningEngine() (which reads from loadTask) sees the correct state.
+    await waitForPersistedPlanReady(taskId);
 
     // Simulate server restart: clear all in-memory engines
     ctx.manager.resetForTesting();
 
-    // Verify engine is gone (the loop is still in the DB in planning status)
+    // Verify engine is gone (the task is still in the DB in planning status)
     // Now try to accept the plan — this should recover the engine and succeed
-    await ctx.manager.acceptPlan(loopId);
+    await ctx.manager.acceptPlan(taskId);
 
     // Wait for transition from planning to running/completed
-    loopData = await waitForLoopStatus(ctx.manager, loopId, ["running", "completed", "max_iterations", "stopped"]);
-    expect(["running", "completed", "max_iterations", "stopped"]).toContain(loopData!.state.status);
+    taskData = await waitForTaskStatus(ctx.manager, taskId, ["running", "completed", "max_iterations", "stopped"]);
+    expect(["running", "completed", "max_iterations", "stopped"]).toContain(taskData!.state.status);
   });
 
-  test("acceptPlan recovers a branch-only planning loop after server restart", async () => {
-    const loop = await ctx.manager.createLoop({
+  test("acceptPlan recovers a branch-only planning task after server restart", async () => {
+    const task = await ctx.manager.createTask({
       ...testModelFields,
       prompt: "Create a branch-only plan",
-      name: "Test Loop",
+      name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 5,
@@ -767,72 +767,72 @@ describe("Plan Mode - Engine Recovery After Server Restart", () => {
       autoAcceptPlan: false,
       useWorktree: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
-    await waitForPersistedPlanReady(loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
+    await waitForPersistedPlanReady(taskId);
 
-    let loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.git?.workingBranch).toBeDefined();
-    expect(loopData!.state.git?.originalBranch).toBeDefined();
+    let taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.git?.workingBranch).toBeDefined();
+    expect(taskData!.state.git?.originalBranch).toBeDefined();
 
-    await ctx.git.checkoutBranch(ctx.workDir, loopData!.state.git!.originalBranch);
+    await ctx.git.checkoutBranch(ctx.workDir, taskData!.state.git!.originalBranch);
 
     ctx.manager.resetForTesting();
 
-    await ctx.manager.acceptPlan(loopId);
+    await ctx.manager.acceptPlan(taskId);
 
-    loopData = await waitForLoopStatus(ctx.manager, loopId, ["running", "completed", "max_iterations", "stopped"]);
-    expect(["running", "completed", "max_iterations", "stopped"]).toContain(loopData!.state.status);
+    taskData = await waitForTaskStatus(ctx.manager, taskId, ["running", "completed", "max_iterations", "stopped"]);
+    expect(["running", "completed", "max_iterations", "stopped"]).toContain(taskData!.state.status);
   });
 
   test("sendPlanFeedback recovers engine after server restart", async () => {
-    // Create and start plan mode loop
-    const loop = await ctx.manager.createLoop({
+    // Create and start plan mode task
+    const task = await ctx.manager.createTask({
       ...testModelFields,
       prompt: "Create a plan",
-      name: "Test Loop",
+      name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 5,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
     // Start plan mode and wait for plan to be ready (in-memory)
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     // Verify plan is ready in memory
-    let loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.status).toBe("planning");
-    expect(loopData!.state.planMode?.isPlanReady).toBe(true);
+    let taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.status).toBe("planning");
+    expect(taskData!.state.planMode?.isPlanReady).toBe(true);
 
     // Wait for isPlanReady to be persisted to DB before resetting.
-    // This ensures recoverPlanningEngine() (which reads from loadLoop) sees the correct state.
-    await waitForPersistedPlanReady(loopId);
+    // This ensures recoverPlanningEngine() (which reads from loadTask) sees the correct state.
+    await waitForPersistedPlanReady(taskId);
 
     // Simulate server restart: clear all in-memory engines
     ctx.manager.resetForTesting();
 
     // Send feedback — should recover the engine from persisted state
-    await ctx.manager.sendPlanFeedback(loopId, "Add more detail to step 3");
+    await ctx.manager.sendPlanFeedback(taskId, "Add more detail to step 3");
 
     // feedbackRounds is incremented synchronously before the async injection
-    loopData = await ctx.manager.getLoop(loopId);
-    expect(loopData!.state.status).toBe("planning");
-    expect(loopData!.state.planMode?.feedbackRounds).toBe(1);
+    taskData = await ctx.manager.getTask(taskId);
+    expect(taskData!.state.status).toBe("planning");
+    expect(taskData!.state.planMode?.feedbackRounds).toBe(1);
 
     // Wait for the feedback iteration to complete (engine was recovered and started a new iteration)
-    await waitForPlanReady(ctx.manager, loopId);
+    await waitForPlanReady(ctx.manager, taskId);
   });
 
 });
 
 describe("Plan Mode - Seeded plan recovery", () => {
-  test("acceptPlan recovers a seeded plan loop without a prior planning session", async () => {
+  test("acceptPlan recovers a seeded plan task without a prior planning session", async () => {
     const ctx = await setupTestContext({
       initGit: true,
       mockResponses: ["<promise>COMPLETE</promise>"],
@@ -840,61 +840,61 @@ describe("Plan Mode - Seeded plan recovery", () => {
 
     try {
       await setupRemote(ctx);
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a seeded plan",
-        name: "Seeded Plan Loop",
+        name: "Seeded Plan Task",
         directory: ctx.workDir,
         workspaceId: testWorkspaceId,
         planMode: true,
         autoAcceptPlan: false,
       });
 
-      await ctx.manager.seedPlanFiles(loop.config.id, {
+      await ctx.manager.seedPlanFiles(task.config.id, {
         planContent: "# Imported plan\n\n1. Execute the imported work.\n",
       });
 
-      const seededLoop = await loadLoop(loop.config.id);
-      expect(seededLoop?.state.session).toBeUndefined();
-      expect(seededLoop?.state.planMode?.isPlanReady).toBe(true);
+      const seededTask = await loadTask(task.config.id);
+      expect(seededTask?.state.session).toBeUndefined();
+      expect(seededTask?.state.planMode?.isPlanReady).toBe(true);
 
       ctx.manager.resetForTesting();
 
-      await ctx.manager.acceptPlan(loop.config.id);
+      await ctx.manager.acceptPlan(task.config.id);
 
-      const updated = await waitForLoopStatus(ctx.manager, loop.config.id, ["running", "completed", "max_iterations", "stopped"]);
+      const updated = await waitForTaskStatus(ctx.manager, task.config.id, ["running", "completed", "max_iterations", "stopped"]);
       expect(["running", "completed", "max_iterations", "stopped"]).toContain(updated.state.status);
     } finally {
       await teardownTestContext(ctx);
     }
   });
 
-  test("sendPlanFeedback recovers a seeded plan loop without a prior planning session", async () => {
+  test("sendPlanFeedback recovers a seeded plan task without a prior planning session", async () => {
     const ctx = await setupTestContext({
       initGit: true,
       mockResponses: ["<promise>PLAN_READY</promise>"],
     });
 
     try {
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a seeded plan",
-        name: "Seeded Feedback Loop",
+        name: "Seeded Feedback Task",
         directory: ctx.workDir,
         workspaceId: testWorkspaceId,
         planMode: true,
         autoAcceptPlan: false,
       });
 
-      await ctx.manager.seedPlanFiles(loop.config.id, {
+      await ctx.manager.seedPlanFiles(task.config.id, {
         planContent: "# Imported plan\n\n1. Initial step.\n",
       });
 
       ctx.manager.resetForTesting();
 
-      await ctx.manager.sendPlanFeedback(loop.config.id, "Add more detail to the imported plan");
+      await ctx.manager.sendPlanFeedback(task.config.id, "Add more detail to the imported plan");
 
-      const updated = await waitForPlanReady(ctx.manager, loop.config.id);
+      const updated = await waitForPlanReady(ctx.manager, task.config.id);
       expect(updated.state.planMode?.isPlanReady).toBe(true);
       expect(updated.state.planMode?.feedbackRounds).toBe(1);
     } finally {
@@ -929,56 +929,56 @@ describe("Plan Mode - Open SSH acceptance", () => {
   });
 
   test("acceptPlan in open_ssh mode clears pending execution state and emits an SSH handoff event", async () => {
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
       ...testModelFields,
       prompt: "Create a plan",
-      name: "Test Loop",
+      name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
-    const result = await ctx.manager.acceptPlan(loopId, { mode: "open_ssh" });
+    const result = await ctx.manager.acceptPlan(taskId, { mode: "open_ssh" });
     expect(result.mode).toBe("open_ssh");
     if (result.mode !== "open_ssh") {
       throw new Error(`Expected open_ssh mode, received ${result.mode}`);
     }
-    expect(result.sshSession.config.loopId).toBe(loopId);
+    expect(result.sshSession.config.taskId).toBe(taskId);
 
-    const loopData = await waitForLoopStatus(ctx.manager, loopId, ["completed"]);
-    expect(loopData.state.status).toBe("completed");
-    expect(loopData.state.pendingPrompt).toBeUndefined();
+    const taskData = await waitForTaskStatus(ctx.manager, taskId, ["completed"]);
+    expect(taskData.state.status).toBe("completed");
+    expect(taskData.state.pendingPrompt).toBeUndefined();
 
-    const sshHandoffEvents = ctx.events.filter((event) => event.type === "loop.ssh_handoff" && event.loopId === loopId);
+    const sshHandoffEvents = ctx.events.filter((event) => event.type === "task.ssh_handoff" && event.taskId === taskId);
     expect(sshHandoffEvents).toHaveLength(1);
 
-    const completionEvents = ctx.events.filter((event) => event.type === "loop.completed" && event.loopId === loopId);
+    const completionEvents = ctx.events.filter((event) => event.type === "task.completed" && event.taskId === taskId);
     expect(completionEvents).toHaveLength(0);
   });
 
   test("open_ssh acceptance does not run the post-accept base branch sync", async () => {
     const { remoteDir, currentBranch } = await setupRemote(ctx);
 
-    const loop = await ctx.manager.createLoop({
+    const task = await ctx.manager.createTask({
       ...testModelFields,
       prompt: "Create a plan",
-      name: "Test Loop",
+      name: "Test Task",
       directory: ctx.workDir,
       workspaceId: testWorkspaceId,
       maxIterations: 1,
       planMode: true,
       autoAcceptPlan: false,
     });
-    const loopId = loop.config.id;
+    const taskId = task.config.id;
 
-    await ctx.manager.startPlanMode(loopId);
-    await waitForPlanReady(ctx.manager, loopId);
+    await ctx.manager.startPlanMode(taskId);
+    await waitForPlanReady(ctx.manager, taskId);
 
     await addRemoteCommit(
       remoteDir,
@@ -988,12 +988,12 @@ describe("Plan Mode - Open SSH acceptance", () => {
       ctx.dataDir,
     );
 
-    await ctx.manager.acceptPlan(loopId, { mode: "open_ssh" });
+    await ctx.manager.acceptPlan(taskId, { mode: "open_ssh" });
 
-    const loopData = await waitForLoopStatus(ctx.manager, loopId, ["completed"]);
-    expect(loopData.state.status).toBe("completed");
+    const taskData = await waitForTaskStatus(ctx.manager, taskId, ["completed"]);
+    expect(taskData.state.status).toBe("completed");
 
-    const syncEvents = ctx.events.filter((event) => event.loopId === loopId && event.type.startsWith("loop.sync."));
+    const syncEvents = ctx.events.filter((event) => event.taskId === taskId && event.type.startsWith("task.sync."));
     expect(syncEvents).toHaveLength(0);
   });
 });
@@ -1011,23 +1011,23 @@ describe("Plan Mode - Accept plan base branch sync", () => {
 
     try {
       const { remoteDir, currentBranch } = await setupRemote(ctx);
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a plan",
-        name: "Test Loop",
+        name: "Test Task",
         directory: ctx.workDir,
         workspaceId: testWorkspaceId,
         maxIterations: 2,
         planMode: true,
         autoAcceptPlan: false,
       });
-      const loopId = loop.config.id;
+      const taskId = task.config.id;
 
-      await ctx.manager.startPlanMode(loopId);
-      await waitForPlanReady(ctx.manager, loopId);
+      await ctx.manager.startPlanMode(taskId);
+      await waitForPlanReady(ctx.manager, taskId);
 
-      const loopData = await ctx.manager.getLoop(loopId);
-      const worktreePath = loopData!.state.git!.worktreePath!;
+      const taskData = await ctx.manager.getTask(taskId);
+      const worktreePath = taskData!.state.git!.worktreePath!;
 
       await addRemoteCommit(
         remoteDir,
@@ -1037,16 +1037,16 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         ctx.dataDir,
       );
 
-      await ctx.manager.acceptPlan(loopId);
-      const finalLoop = await waitForLoopStatus(ctx.manager, loopId, ["completed", "running", "max_iterations", "stopped"]);
+      await ctx.manager.acceptPlan(taskId);
+      const finalTask = await waitForTaskStatus(ctx.manager, taskId, ["completed", "running", "max_iterations", "stopped"]);
 
       expect(await exists(join(worktreePath, "remote-only.txt"))).toBe(true);
-      expect(finalLoop.state.planMode?.active).toBe(false);
+      expect(finalTask.state.planMode?.active).toBe(false);
 
-      const syncStarted = ctx.events.find((event) => event.type === "loop.sync.started" && event.loopId === loopId);
-      const syncClean = ctx.events.find((event) => event.type === "loop.sync.clean" && event.loopId === loopId);
-      const syncConflicts = ctx.events.find((event) => event.type === "loop.sync.conflicts" && event.loopId === loopId);
-      const startedEvent = ctx.events.find((event) => event.type === "loop.started" && event.loopId === loopId);
+      const syncStarted = ctx.events.find((event) => event.type === "task.sync.started" && event.taskId === taskId);
+      const syncClean = ctx.events.find((event) => event.type === "task.sync.clean" && event.taskId === taskId);
+      const syncConflicts = ctx.events.find((event) => event.type === "task.sync.conflicts" && event.taskId === taskId);
+      const startedEvent = ctx.events.find((event) => event.type === "task.started" && event.taskId === taskId);
 
       expect(syncStarted).toBeDefined();
       expect(syncClean).toBeDefined();
@@ -1070,27 +1070,27 @@ describe("Plan Mode - Accept plan base branch sync", () => {
 
     try {
       const { remoteDir, currentBranch } = await setupRemote(ctx);
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a plan",
-        name: "Test Loop",
+        name: "Test Task",
         directory: ctx.workDir,
         workspaceId: testWorkspaceId,
         maxIterations: 2,
         planMode: true,
         autoAcceptPlan: false,
       });
-      const loopId = loop.config.id;
+      const taskId = task.config.id;
 
-      await ctx.manager.startPlanMode(loopId);
-      await waitForPlanReady(ctx.manager, loopId);
+      await ctx.manager.startPlanMode(taskId);
+      await waitForPlanReady(ctx.manager, taskId);
 
-      const loopData = await ctx.manager.getLoop(loopId);
-      const worktreePath = loopData!.state.git!.worktreePath!;
+      const taskData = await ctx.manager.getTask(taskId);
+      const worktreePath = taskData!.state.git!.worktreePath!;
 
-      await writeFile(join(worktreePath, "test.txt"), "Modified by loop\n");
+      await writeFile(join(worktreePath, "test.txt"), "Modified by task\n");
       await Bun.$`git -C ${worktreePath} add -A`.quiet();
-      await Bun.$`git -C ${worktreePath} commit -m "Loop changes to test.txt"`.quiet();
+      await Bun.$`git -C ${worktreePath} commit -m "Task changes to test.txt"`.quiet();
 
       await addRemoteCommit(
         remoteDir,
@@ -1100,23 +1100,23 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         ctx.dataDir,
       );
 
-      await ctx.manager.acceptPlan(loopId);
-      const resumedLoop = await waitForSyncStateToClear(ctx, loopId, 10000);
-      const finalLoop = await waitForLoopStatus(ctx.manager, loopId, ["completed", "max_iterations", "stopped"], 10000);
+      await ctx.manager.acceptPlan(taskId);
+      const resumedTask = await waitForSyncStateToClear(ctx, taskId, 10000);
+      const finalTask = await waitForTaskStatus(ctx.manager, taskId, ["completed", "max_iterations", "stopped"], 10000);
 
-      const syncConflicts = ctx.events.find((event) => event.type === "loop.sync.conflicts" && event.loopId === loopId);
-      const sessionAbortedEvents = ctx.events.filter((event) => event.type === "loop.session_aborted" && event.loopId === loopId);
-      const pushedEvent = ctx.events.find((event) => event.type === "loop.pushed" && event.loopId === loopId);
-      const startedEvents = ctx.events.filter((event) => event.type === "loop.started" && event.loopId === loopId);
-      const latestLoop = await ctx.manager.getLoop(loopId);
+      const syncConflicts = ctx.events.find((event) => event.type === "task.sync.conflicts" && event.taskId === taskId);
+      const sessionAbortedEvents = ctx.events.filter((event) => event.type === "task.session_aborted" && event.taskId === taskId);
+      const pushedEvent = ctx.events.find((event) => event.type === "task.pushed" && event.taskId === taskId);
+      const startedEvents = ctx.events.filter((event) => event.type === "task.started" && event.taskId === taskId);
+      const latestTask = await ctx.manager.getTask(taskId);
 
       expect(syncConflicts).toBeDefined();
       expect(sessionAbortedEvents).toHaveLength(1);
       expect(pushedEvent).toBeUndefined();
       expect(startedEvents.length).toBeGreaterThanOrEqual(1);
-      expect(["running", "completed", "max_iterations", "stopped"]).toContain(resumedLoop.state.status);
-      expect(finalLoop.state.status).not.toBe("pushed");
-      expect(latestLoop!.state.syncState).toBeUndefined();
+      expect(["running", "completed", "max_iterations", "stopped"]).toContain(resumedTask.state.status);
+      expect(finalTask.state.status).not.toBe("pushed");
+      expect(latestTask!.state.syncState).toBeUndefined();
     } finally {
       await teardownTestContext(ctx);
     }
@@ -1134,10 +1134,10 @@ describe("Plan Mode - Accept plan base branch sync", () => {
 
     try {
       const { remoteDir, currentBranch } = await setupRemote(ctx);
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a plan",
-        name: "Test Loop",
+        name: "Test Task",
         directory: ctx.workDir,
         workspaceId: testWorkspaceId,
         maxIterations: 2,
@@ -1145,17 +1145,17 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         planMode: true,
         autoAcceptPlan: false,
       });
-      const loopId = loop.config.id;
+      const taskId = task.config.id;
 
-      await ctx.manager.startPlanMode(loopId);
-      await waitForPlanReady(ctx.manager, loopId);
+      await ctx.manager.startPlanMode(taskId);
+      await waitForPlanReady(ctx.manager, taskId);
 
-      const loopData = await ctx.manager.getLoop(loopId);
-      const worktreePath = loopData!.state.git!.worktreePath!;
+      const taskData = await ctx.manager.getTask(taskId);
+      const worktreePath = taskData!.state.git!.worktreePath!;
 
-      await writeFile(join(worktreePath, "test.txt"), "Modified by loop\n");
+      await writeFile(join(worktreePath, "test.txt"), "Modified by task\n");
       await Bun.$`git -C ${worktreePath} add -A`.quiet();
-      await Bun.$`git -C ${worktreePath} commit -m "Loop changes to test.txt"`.quiet();
+      await Bun.$`git -C ${worktreePath} commit -m "Task changes to test.txt"`.quiet();
 
       await addRemoteCommit(
         remoteDir,
@@ -1165,14 +1165,14 @@ describe("Plan Mode - Accept plan base branch sync", () => {
         ctx.dataDir,
       );
 
-      await ctx.manager.acceptPlan(loopId);
+      await ctx.manager.acceptPlan(taskId);
 
-      const failedLoop = await waitForSyncStateToClear(ctx, loopId, 10000);
-      expect(failedLoop.state.status).toBe("failed");
-      expect(failedLoop.state.syncState).toBeUndefined();
-      expect(failedLoop.state.error?.message).toContain("Failed to resolve conflicts");
+      const failedTask = await waitForSyncStateToClear(ctx, taskId, 10000);
+      expect(failedTask.state.status).toBe("failed");
+      expect(failedTask.state.syncState).toBeUndefined();
+      expect(failedTask.state.error?.message).toContain("Failed to resolve conflicts");
 
-      const pushedEvent = ctx.events.find((event) => event.type === "loop.pushed" && event.loopId === loopId);
+      const pushedEvent = ctx.events.find((event) => event.type === "task.pushed" && event.taskId === taskId);
       expect(pushedEvent).toBeUndefined();
     } finally {
       await teardownTestContext(ctx);
@@ -1188,34 +1188,34 @@ describe("Plan Mode - Accept plan base branch sync", () => {
 
     try {
       const { remoteDir } = await setupRemote(ctx);
-      const loop = await ctx.manager.createLoop({
+      const task = await ctx.manager.createTask({
         ...testModelFields,
         prompt: "Create a plan",
-        name: "Test Loop",
+        name: "Test Task",
         directory: ctx.workDir,
         workspaceId: testWorkspaceId,
         maxIterations: 2,
         planMode: true,
         autoAcceptPlan: false,
       });
-      const loopId = loop.config.id;
+      const taskId = task.config.id;
 
-      await ctx.manager.startPlanMode(loopId);
-      await waitForPlanReady(ctx.manager, loopId);
+      await ctx.manager.startPlanMode(taskId);
+      await waitForPlanReady(ctx.manager, taskId);
 
       await Bun.$`rm -rf ${remoteDir}`.quiet();
 
-      await expect(ctx.manager.acceptPlan(loopId)).rejects.toThrow(
+      await expect(ctx.manager.acceptPlan(taskId)).rejects.toThrow(
         "Failed to fetch origin/",
       );
 
-      const failedLoop = await waitForLoopStatus(ctx.manager, loopId, ["failed"]);
-      const syncFailed = ctx.events.find((event) => event.type === "loop.sync.failed" && event.loopId === loopId);
-      const syncClean = ctx.events.find((event) => event.type === "loop.sync.clean" && event.loopId === loopId);
+      const failedTask = await waitForTaskStatus(ctx.manager, taskId, ["failed"]);
+      const syncFailed = ctx.events.find((event) => event.type === "task.sync.failed" && event.taskId === taskId);
+      const syncClean = ctx.events.find((event) => event.type === "task.sync.clean" && event.taskId === taskId);
 
-      expect(failedLoop.state.status).toBe("failed");
-      expect(failedLoop.state.fullyAutonomousPending).toBe(false);
-      expect(failedLoop.state.syncState).toBeUndefined();
+      expect(failedTask.state.status).toBe("failed");
+      expect(failedTask.state.fullyAutonomousPending).toBe(false);
+      expect(failedTask.state.syncState).toBeUndefined();
       expect(syncFailed).toBeDefined();
       expect(syncClean).toBeUndefined();
     } finally {
