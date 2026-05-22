@@ -55,14 +55,10 @@ export function WorkspaceView({
   pullingLatestChanges: boolean;
   onNavigate: (route: ShellRoute) => void;
 }) {
-  const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
   const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
   const activityTasks = relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status));
   const historyTasks = relatedTasks.filter((task) => isWorkspaceHistoryTask(task.state.status));
-  const activityDescription = workspaceSshEnabled
-    ? "Active tasks, chats, and SSH sessions in this workspace."
-    : "Active tasks and chats in this workspace. Legacy SSH sessions may also appear here for non-SSH workspaces.";
   const hasActivity = activityTasks.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
   const activityRowClassName = "flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800";
   const historyDescription = "Merged and deleted tasks from this workspace.";
@@ -131,7 +127,6 @@ export function WorkspaceView({
         >
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Activity</h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">{activityDescription}</p>
           </div>
           {hasActivity ? (
             <div className="space-y-2">

@@ -41,14 +41,12 @@ describe("AppSettingsPanel", () => {
 
     const themeSelect = await waitFor(() => getByLabelText("Theme")) as HTMLSelectElement;
     expect(themeSelect.value).toBe("system");
-    expect(getByText("Match your browser or operating system color scheme.")).toBeInTheDocument();
     expect(getByText("Render Markdown")).toBeInTheDocument();
 
     await user.selectOptions(themeSelect, "dark");
 
     await waitFor(() => {
       expect(themeSelect.value).toBe("dark");
-      expect(getByText("Always use the dark theme.")).toBeInTheDocument();
     });
 
     const themeCalls = api.calls("/api/preferences/theme", "PUT");

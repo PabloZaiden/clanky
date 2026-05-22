@@ -4,8 +4,23 @@ const workspaceDir = `${import.meta.dir}/..`;
 const sharedSrcDir = `${workspaceDir}/../../src`;
 const outDir = `${workspaceDir}/dist`;
 const staticAssets = [
-  "icon-192.png",
-  "icon-512.png",
+  "apple-touch-icon.png",
+  "apple-touch-icon-57x57.png",
+  "apple-touch-icon-72x72.png",
+  "apple-touch-icon-76x76.png",
+  "apple-touch-icon-114x114.png",
+  "apple-touch-icon-120x120.png",
+  "apple-touch-icon-144x144.png",
+  "apple-touch-icon-152x152.png",
+  "apple-touch-icon-167x167.png",
+  "apple-touch-icon-180x180.png",
+  "favicon-96x96.png",
+  "favicon.ico",
+  "favicon.svg",
+  "logo.png",
+  "site.webmanifest",
+  "web-app-manifest-192x192.png",
+  "web-app-manifest-512x512.png",
 ];
 
 await Bun.$`rm -rf ${outDir}`.quiet();

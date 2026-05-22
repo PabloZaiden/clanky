@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button, Modal } from "./common";
 
+const DEFAULT_PLAN_FILE_PATH = ".clanky-planning/plan.md";
+
 export interface SpawnCurrentPlanModalProps {
   isOpen: boolean;
   submitting: boolean;
-  workspaceDirectory: string;
   initialPlanFilePath?: string;
   onClose: () => void;
   onSubmit: (planFilePath: string) => Promise<void>;
@@ -13,27 +14,31 @@ export interface SpawnCurrentPlanModalProps {
 export function SpawnCurrentPlanModal({
   isOpen,
   submitting,
-  workspaceDirectory,
   initialPlanFilePath = "",
   onClose,
   onSubmit,
 }: SpawnCurrentPlanModalProps) {
-  const [planFilePath, setPlanFilePath] = useState(initialPlanFilePath);
+  const [planFilePath, setPlanFilePath] = useState(initialPlanFilePath || DEFAULT_PLAN_FILE_PATH);
   const inputRef = useRef<HTMLInputElement>(null);
+  const normalizedPlanFilePath = planFilePath.trim();
 
   useEffect(() => {
     if (!isOpen) {
       return;
     }
 
-    setPlanFilePath(initialPlanFilePath);
+    setPlanFilePath(initialPlanFilePath || DEFAULT_PLAN_FILE_PATH);
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [initialPlanFilePath, isOpen]);
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>): Promise<void> {
     event?.preventDefault();
-    await onSubmit(planFilePath.trim());
+    if (!normalizedPlanFilePath) {
+      return;
+    }
+
+    await onSubmit(normalizedPlanFilePath);
   }
 
   function handleClose(): void {
@@ -49,7 +54,6 @@ export function SpawnCurrentPlanModal({
       isOpen={isOpen}
       onClose={handleClose}
       title="Spawn task from plan file"
-      description="Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .clanky-planning/plan.md."
       size="sm"
       showCloseButton={!submitting}
       closeOnOverlayClick={!submitting}
@@ -62,6 +66,7 @@ export function SpawnCurrentPlanModal({
             type="submit"
             form="spawn-current-plan-modal-form"
             loading={submitting}
+            disabled={!normalizedPlanFilePath}
           >
             Spawn task
           </Button>
@@ -83,13 +88,10 @@ export function SpawnCurrentPlanModal({
             value={planFilePath}
             onChange={(event) => setPlanFilePath(event.target.value)}
             disabled={submitting}
-            placeholder="/workspaces/shared/feature-plan.md"
+            placeholder={DEFAULT_PLAN_FILE_PATH}
             className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
           />
         </div>
-        <p className="text-sm text-gray-600 dark:text-gray-300">
-          Relative paths resolve from the current chat workspace. Blank input uses <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-neutral-700">{workspaceDirectory}/.clanky-planning/plan.md</code>.
-        </p>
       </form>
     </Modal>
   );

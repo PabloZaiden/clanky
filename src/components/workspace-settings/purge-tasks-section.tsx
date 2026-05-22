@@ -55,10 +55,6 @@ export function PurgeTasksSection({
             {purgeableTaskCount} purgeable
           </Badge>
         </div>
-        <p className="text-sm text-red-700 dark:text-red-300 mb-4">
-          Permanently delete tasks in a terminal state for this workspace once they are no longer awaiting feedback. This currently applies to merged, pushed, and deleted tasks. This removes their task data and cannot be undone.
-        </p>
-
         {purgeError && (
           <div className="mb-3 p-3 rounded-md bg-red-100 dark:bg-red-950/40 border border-red-200 dark:border-red-900">
             <p className="text-sm text-red-700 dark:text-red-300">{purgeError}</p>

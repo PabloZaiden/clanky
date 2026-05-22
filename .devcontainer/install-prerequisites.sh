@@ -28,8 +28,11 @@ sudo apt-get install -y\
     libxrandr2\
     libatspi2.0-0t64
 
+# DISABLED FOR NOW. THERE IS A BUG THAT INSTALLING 
+# THE BROWSER WITH THE CLI CAUSES THE INSTALLATION TO HANG.
+
 # install playwright cli
-npm install -g @playwright/cli@latest
+#npm install -g @playwright/cli@latest
 
 # install playwright chrome
-(cd && playwright-cli install chrome)
+#(cd && playwright-cli install)

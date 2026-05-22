@@ -5,11 +5,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-f9f1e1?style=flat-square&logo=bun)](https://bun.sh)
 
-Clanky is a web dashboard and REST API for running, reviewing, and iterating on Clanky Tasks with ACP-compatible agents such as Copilot and OpenCode. It keeps autonomous coding work manageable by starting each iteration with fresh context while persisting state in `.clanky-planning/`.
+Clanky is a coding agent manager for running, reviewing, and iterating on tasks with ACP-compatible agents such as Copilot and OpenCode.
 
 The repository is organized as a workspace-style monorepo:
 
-- `apps/server` - Bun server that embeds and serves the web app alongside the API
+- `apps/server` - web and API server.
 - `apps/web` - browser bundle workspace for the shared web app assets
 - `apps/cli` - standalone API client CLI
 - `apps/tui` and `apps/electron` - reserved stubs for future client surfaces
@@ -17,10 +17,12 @@ The repository is organized as a workspace-style monorepo:
 
 ## Best way to use Clanky
 
+While Clanky can be used locally, accessing code repositories and running agents on the same machine, it really shines when it is used with SSH-backed workspaces. This allows you to keep your local machine free of agent processes and dependencies while still managing everything through the Clanky dashboard.
+
 The recommended workflow is to treat Clanky as a controller for SSH-backed development environments, even when that SSH host is just your own machine.
 
 1. Register an `ssh` server in Clanky. Using `localhost` is a great default if you want the SSH workflow without needing a separate remote machine.
-2. Create an automatic workspace for each project you want to work on, and let that workspace use your devbox-managed environment so tools and dependencies are ready inside the project context.
+2. Create an automatic workspace for each project you want to work on, and let that workspace use your devbox-managed environment so tools and dependencies are ready inside the project context. Automatic workspaces are docker containers created with [`devbox`](https://github.com/pablozaiden/devbox) and automatically exposed over SSH.
 3. Once the workspace is ready, either open chats to work interactively with the coding agent in that workspace or create a new task, write the task prompt, and let the agent work autonomously.
 
 **[Download the latest release](https://github.com/pablozaiden/clanky/releases/latest)**
@@ -31,10 +33,9 @@ The recommended workflow is to treat Clanky as a controller for SSH-backed devel
 
 ## Why Clanky
 
-- **Fresh context, persistent progress.** Clanky Tasks use `.clanky-planning/plan.md` and `.clanky-planning/status.md` to keep long tasks moving across clean agent context windows.
 - **Safer automation.** Each task works in its own branch/worktree, commits iteration-by-iteration, and can be merged or discarded deliberately.
 - **Operational visibility.** The dashboard gives you logs, diffs, plan review, task controls, and follow-up flows in one place.
-- **Local or remote execution.** Workspaces can use local `stdio` transport or remote `ssh` transports, with optional SSH sessions and port forwarding.
+- **Local or remote execution.** Workspaces can use local `stdio` transport or remote `ssh` transports.
 
 <details>
 <summary><strong>More screenshots</strong></summary>
@@ -76,8 +77,6 @@ clanky-cli update
 clanky-cli update --version v0.8.1
 ```
 
-`clanky-cli update` is currently supported for the published Linux and macOS release binaries only. It updates `clanky-cli`, also updates a sibling `clanky` binary when one is installed beside it, verifies published checksums, and prints progress while release metadata and binary downloads are in flight. If you are running Clanky from source with Bun, use the shared installer or download release binaries instead of self-updating.
-
 ## Quick start
 
 ### Requirements
@@ -85,7 +84,7 @@ clanky-cli update --version v0.8.1
 - Git
 - An ACP-capable CLI in your `PATH` (`opencode` and/or `copilot`)
 - Optional SSH access to remote workspace hosts if you plan to use `ssh` transport
-- [Bun](https://bun.sh) 1.3.5+ only if you want to run Clanky from source
+- [Bun](https://bun.sh) only if you want to run Clanky from source
 
 ### Run Clanky
 
@@ -101,9 +100,6 @@ bun run dev:server
 ```
 
 The UI is available at `http://localhost:3000` by default. Use `CLANKY_PORT` to change the port and `CLANKY_HOST` to change the bind address.
-
-The normal development and published runtime is same-origin: the Bun server hosts the React app and the API together, and the frontend defaults to relative `/api` requests.
-In development, `bun dev` watches the shared web bundle in `apps/web/dist` and serves that processed output from the server so Tailwind/CSS behaves the same way as the bundled app.
 
 ### CLI client commands
 
@@ -141,33 +137,13 @@ clanky-cli schema auth/device
 clanky-cli ws --task-id my-task
 ```
 
-### Create your first task
-
-1. Open the dashboard and click **New Task**.
-2. Pick or create a workspace that points at your repository.
-3. Choose the provider and transport for that workspace.
-4. Write the task prompt, select the model, and create the task.
-5. Review plans, logs, diffs, and final changes from the task details view.
-
-## How a Clanky Task works
-
-A Clanky Task is an external execution task around an AI coding agent. Instead of keeping all history inside one growing chat, each iteration starts fresh and reads the project state from the filesystem.
-
-| Principle | Description |
-| --- | --- |
-| **Fresh context per iteration** | Every iteration starts with a clean agent context window. |
-| **Filesystem state** | Progress lives in `.clanky-planning/plan.md` and `.clanky-planning/status.md`. |
-| **Stop condition** | The task ends when the configured completion pattern is produced. |
-| **Git isolation** | Changes stay isolated in a branch/worktree until you accept, push, or discard them. |
-
 ## Key features
 
 - **Dashboard + API:** manage tasks from the browser or automate them through the REST API.
 - **Plan mode:** review and refine a generated plan before code changes begin.
 - **Review cycles:** continue from completed, pushed, or merged work with follow-up prompts and review comments.
-- **Live observability:** stream logs, inspect diffs, and track task state over WebSocket updates.
+- **Live observability:** stream logs, inspect diffs, and track task state.
 - **Workspace flexibility:** configure provider and transport per workspace, including remote SSH-backed execution.
-- **Testing support:** use `CLANKY_MOCK_ACP=true` to replace local provider launches with the built-in mock ACP runtime.
 
 ## Configuration and deployment
 
@@ -186,14 +162,12 @@ A Clanky Task is an external execution task around an AI coding agent. Instead o
 
 ### Auth notes
 
-- Same-origin protection is enabled by default for mutating API requests and WebSocket upgrades by requiring `Origin` or `Referer` to match the effective request origin.
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
 - `clanky-cli auth` stores bearer credentials in per-user CLI state under the home directory, `clanky-cli status` validates them through `GET /api/auth/status`, `clanky-cli api` sends authenticated REST calls with the stored tokens, `clanky-cli ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky-cli schema` exposes endpoint discoverability data from the built-in API catalog.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
-- In production, Clanky is typically deployed behind a reverse proxy that handles authentication and authorization.
 
 ### Docker
 

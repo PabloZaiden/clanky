@@ -1526,7 +1526,6 @@ describe("WorkspaceFilesView", () => {
       expect(getByLabelText("Explorer root directory")).toHaveValue("/workspaces/root-picker");
       const fullTreeCheckbox = getByRole("checkbox", { name: /Load everything at once/i });
       expect(fullTreeCheckbox).toBeChecked();
-      expect(fullTreeCheckbox.getAttribute("aria-describedby")).toEndWith("-load-full-tree-description");
     });
 
     await user.click(getByRole("checkbox", { name: /Load everything at once/i }));

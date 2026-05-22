@@ -360,7 +360,6 @@ describe("WorkspaceSettingsModal terminal-state task purge", () => {
     await waitFor(() => {
       expect(getByText("Tasks in a Terminal State")).toBeInTheDocument();
       expect(getByText("3 purgeable")).toBeInTheDocument();
-      expect(getByText("Permanently delete tasks in a terminal state for this workspace once they are no longer awaiting feedback. This currently applies to merged, pushed, and deleted tasks. This removes their task data and cannot be undone.")).toBeInTheDocument();
     });
 
     await user.click(getByText("Purge Terminal-State Tasks"));
@@ -501,7 +500,7 @@ describe("WorkspaceSettingsModal workspace deletion", () => {
       await waitFor(() => {
         expect(getByRole("button", { name: "Delete Workspace" })).toBeDisabled();
         expect(
-          getByText("Delete the remaining 2 tasks in this workspace before removing it from Clanky. This only removes the workspace record and does not delete files on disk.")
+          getByText("Delete the remaining 2 tasks in this workspace before removing it from Clanky.")
         ).toBeInTheDocument();
       });
     });

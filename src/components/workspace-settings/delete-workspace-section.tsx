@@ -68,8 +68,7 @@ export function DeleteWorkspaceSection({
         <p className="text-sm text-red-700 dark:text-red-300 mb-4">
           {workspaceTaskCount > 0
             ? `Delete the remaining ${workspaceTaskCount} task${workspaceTaskCount === 1 ? "" : "s"} in this workspace before removing it from Clanky.`
-            : "Remove this workspace from Clanky now that it no longer contains tasks."}
-          {" "}This only removes the workspace record and does not delete files on disk.
+            : "This only removes the workspace record and does not delete files on disk."}
         </p>
         <Button
           type="button"

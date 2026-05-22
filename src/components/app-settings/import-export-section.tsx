@@ -68,10 +68,6 @@ export function ImportExportSection({ onExportConfig, onImportConfig, configSavi
         Import / Export Workspaces
       </h3>
       <div className="space-y-3 p-4 rounded-lg bg-gray-50 dark:bg-neutral-900">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Export all workspace configurations to a JSON file for backup or migration,
-          or import configurations from a previously exported file.
-        </p>
         <p className="text-xs text-amber-600 dark:text-amber-400">
           Warning: exported files contain server settings in plain text, including
           passwords. Store exported files securely.

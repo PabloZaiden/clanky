@@ -192,10 +192,7 @@ export function QuickChatSettingsSection({
           )}
         </div>
 
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Quick chats create a new chat immediately, always use a worktree, and auto-approve chat permissions.
-          </p>
+        <div className="flex justify-end">
           <Button
             type="button"
             variant="ghost"
