@@ -1,33 +1,71 @@
 import { useMemo } from "react";
 import type { SshServer, SshServerSession } from "../../types";
-import type { useLoopGrouping, useLoops } from "../../hooks";
-import { getLoopStatusPill, getRecentActivityTimestamp, shouldShowInRecentActivity } from "../../utils";
-import { StatusBadge } from "../common";
-import type { ShellRoute } from "./shell-types";
+import type { useLoopGrouping } from "../../hooks";
+import { StatusBadge, type BadgeVariant } from "../common";
+import {
+  buildActiveWorkSidebarItems,
+  type ShellRoute,
+  type SidebarActiveWorkItem,
+  type SidebarWorkspaceNode,
+  type SidebarWorkspaceGroupNode,
+} from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
 
+function getActiveWorkRoute(item: SidebarActiveWorkItem): ShellRoute {
+  if (item.kind === "loop") {
+    return { view: "loop", loopId: item.loopNode.loop.config.id };
+  }
+  if (item.kind === "chat") {
+    return { view: "chat", chatId: item.chatNode.chat.config.id };
+  }
+  return { view: "ssh", sshSessionId: item.sessionNode.session.config.id };
+}
+
+function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
+  if (item.kind === "loop") {
+    return item.loopNode.title;
+  }
+  if (item.kind === "chat") {
+    return item.chatNode.title;
+  }
+  return item.sessionNode.title;
+}
+
+function getActiveWorkBadge(item: SidebarActiveWorkItem): {
+  label: string;
+  variant: BadgeVariant;
+} {
+  if (item.kind === "loop") {
+    return { label: item.loopNode.badge, variant: item.loopNode.badgeVariant };
+  }
+  if (item.kind === "chat") {
+    return { label: item.chatNode.badge, variant: item.chatNode.badgeVariant };
+  }
+  return { label: item.sessionNode.badge, variant: item.sessionNode.badgeVariant };
+}
+
 export function OverviewView({
-  loops,
   servers,
   sessionsByServerId,
   workspaceGroups,
+  sidebarWorkspaceGroups,
+  quickChatWorkspace,
   headerOffsetClassName,
   onNavigate,
 }: {
-  loops: ReturnType<typeof useLoops>["loops"];
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   workspaceGroups: ReturnType<typeof useLoopGrouping>["workspaceGroups"];
+  sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
+  quickChatWorkspace: SidebarWorkspaceNode | null;
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
 }) {
-  const recentLoops = useMemo(() => {
-    return loops
-      .filter((loop) => shouldShowInRecentActivity(loop.state.status))
-      .sort((left, right) => getRecentActivityTimestamp(right).localeCompare(getRecentActivityTimestamp(left)))
-      .slice(0, 5);
-  }, [loops]);
+  const activeWorkItems = useMemo(
+    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { quickChatWorkspace }),
+    [quickChatWorkspace, sidebarWorkspaceGroups],
+  );
   const serverMapItems = useMemo(() => {
     return servers.map((server) => ({
       server,
@@ -44,39 +82,38 @@ export function OverviewView({
     >
       <div className="space-y-6">
         <div
-          data-testid="recent-activity-card"
+          data-testid="active-work-card"
           className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50"
         >
           <div>
-            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Recent activity</h2>
+            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Jump back into active and recently finished loops from the overview.
+              Jump back into the same active loops, chats, and terminals shown in the sidebar.
             </p>
           </div>
           <div className="space-y-2">
-            {recentLoops.length === 0 ? (
-              <EmptySection message="Recent activity will appear here as you start and finish work." />
+            {activeWorkItems.length === 0 ? (
+              <EmptySection message="Active work will appear here as you start loops, chats, and terminals." />
             ) : (
-              recentLoops.map((loop) => {
-                const route: ShellRoute = { view: "loop", loopId: loop.config.id };
-                const statusPill = getLoopStatusPill(loop);
+              activeWorkItems.map((item) => {
+                const badge = getActiveWorkBadge(item);
                 return (
                   <button
-                    key={loop.config.id}
+                    key={item.key}
                     type="button"
-                    onClick={() => onNavigate(route)}
+                    onClick={() => onNavigate(getActiveWorkRoute(item))}
                     className="flex w-full min-w-0 items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800"
                   >
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="block break-words text-sm font-medium text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
-                        {loop.config.name}
+                        {getActiveWorkTitle(item)}
                       </span>
                       <span className="mt-1 block break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
-                        {loop.config.directory}
+                        {item.workspaceName}
                       </span>
                     </span>
-                    <StatusBadge variant={statusPill.variant} className="shrink-0">
-                      {statusPill.label}
+                    <StatusBadge variant={badge.variant} className="shrink-0">
+                      {badge.label}
                     </StatusBadge>
                   </button>
                 );

@@ -855,6 +855,36 @@ describe("ShellSidebarNav", () => {
     expect(queryByText("Quick chats")).not.toBeInTheDocument();
   });
 
+  test("hides the quick chats section when the configured workspace has no chats", () => {
+    const { workspaceGroups } = createSidebarData();
+    const workspaceGroupsWithEmptyQuickChats = workspaceGroups.map((group) => ({
+      ...group,
+      workspaces: group.workspaces.map((workspaceNode) => {
+        if (workspaceNode.workspace.id !== "workspace-1") {
+          return workspaceNode;
+        }
+        return {
+          ...workspaceNode,
+          chats: [],
+          hasActivity: workspaceNode.loops.length > 0
+            || workspaceNode.historyLoops.length > 0
+            || workspaceNode.sshSessions.length > 0,
+        };
+      }),
+    }));
+    const quickChatWorkspace = workspaceGroupsWithEmptyQuickChats[0]!.workspaces.find(
+      (workspaceNode) => workspaceNode.workspace.id === "workspace-1",
+    )!;
+
+    const { queryByText } = renderWithUser(
+      <SidebarHarness workspaceGroups={workspaceGroupsWithEmptyQuickChats} quickChatWorkspace={quickChatWorkspace} />,
+    );
+
+    expect(queryByText("Quick chats")).not.toBeInTheDocument();
+    expect(queryByText("No quick chats yet.")).not.toBeInTheDocument();
+    expect(queryByText("Workspace Chat")).not.toBeInTheDocument();
+  });
+
   test("keeps footer reload right aligned when the version is absent", () => {
     const { getByRole, queryByText } = renderWithUser(<SidebarHarness version={undefined} />);
 

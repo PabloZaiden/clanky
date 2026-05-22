@@ -96,6 +96,10 @@ export type SidebarActiveWorkItem =
       sessionNode: SidebarWorkspaceSessionNode;
     };
 
+interface BuildActiveWorkSidebarItemsOptions {
+  quickChatWorkspace?: SidebarWorkspaceNode | null;
+}
+
 export type CodeExplorerTarget =
   | {
       contentType: "workspace";
@@ -353,10 +357,14 @@ export function buildWorkspaceSidebarGroups({
 
 export function buildActiveWorkSidebarItems(
   workspaceGroups: SidebarWorkspaceGroupNode[],
+  options: BuildActiveWorkSidebarItemsOptions = {},
 ): SidebarActiveWorkItem[] {
   const loopItems: SidebarActiveWorkItem[] = [];
   const chatItems: SidebarActiveWorkItem[] = [];
   const sessionItems: SidebarActiveWorkItem[] = [];
+  const quickChatIds = new Set(
+    options.quickChatWorkspace?.chats.map((chatNode) => chatNode.chat.config.id) ?? [],
+  );
 
   for (const group of workspaceGroups) {
     for (const workspaceNode of group.workspaces) {
@@ -391,11 +399,17 @@ export function buildActiveWorkSidebarItems(
     }
   }
 
-  return [
+  const items = [
     ...loopItems,
     ...chatItems,
     ...sessionItems,
   ];
+
+  if (quickChatIds.size === 0) {
+    return items;
+  }
+
+  return items.filter((item) => item.kind !== "chat" || !quickChatIds.has(item.chatNode.chat.config.id));
 }
 
 function createServerSessionNodeFromWorkspaceSession(

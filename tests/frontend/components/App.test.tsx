@@ -236,16 +236,16 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Ralpher" })).toBeTruthy();
-      expect(getByText("Recent activity")).toBeTruthy();
+      expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
       expect(getByText("Server maps")).toBeTruthy();
       expect(getByText("Workspaces map")).toBeTruthy();
     });
 
-    const recentActivityHeading = getByRole("heading", { name: "Recent activity" });
+    const activeWorkHeading = getByRole("heading", { name: "Active Work" });
     const serverMapsHeading = getByRole("heading", { name: "Server maps" });
     const workspacesMapHeading = getByRole("heading", { name: "Workspaces map" });
 
-    expect(recentActivityHeading.compareDocumentPosition(serverMapsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activeWorkHeading.compareDocumentPosition(serverMapsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(serverMapsHeading.compareDocumentPosition(workspacesMapHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(queryByText("Tracked repositories and hosts.")).toBeNull();
     expect(queryByText("Task-oriented Ralph loops.")).toBeNull();
@@ -287,11 +287,11 @@ describe("App shell", () => {
     expect(ws.getConnections("/api/ws?chatId=chat-1")).toHaveLength(0);
   });
 
-  test("wraps long server map and recent activity text inside the shell overview cards", async () => {
+  test("wraps long server map and active work text inside the shell overview cards", async () => {
     const longServerName = `Server ${"super-long-hostname-".repeat(6)}`;
     const longAddress = `${"edge-node-".repeat(6)}example.internal`;
     const longLoopName = `Loop ${"very-long-conversation-title-".repeat(5)}`;
-    const longDirectory = `/workspaces/${"deeply-nested-project-".repeat(6)}repo`;
+    const longWorkspaceName = `Workspace ${"deeply-nested-project-".repeat(6)}repo`;
 
     const server = createSshServer({
       id: "server-wrap-1",
@@ -301,14 +301,14 @@ describe("App shell", () => {
     });
     const workspace = createWorkspace({
       id: "workspace-1",
-      name: "Wrap Lab",
+      name: longWorkspaceName,
       directory: "/workspaces/wrap-lab",
     });
     const loop = createLoop({
       config: {
         id: "loop-wrap-1",
         name: longLoopName,
-        directory: longDirectory,
+        directory: "/workspaces/wrap-lab",
         workspaceId: workspace.id,
       },
       state: {
@@ -359,20 +359,20 @@ describe("App shell", () => {
     );
     expect(loopName).toBeTruthy();
     if (!(loopName instanceof HTMLElement)) {
-      throw new Error("Expected wrapped loop name in recent activity");
+      throw new Error("Expected wrapped loop name in active work");
     }
     expect(loopName.className).toContain("[overflow-wrap:anywhere]");
     expect(loopName.className.includes("truncate")).toBe(false);
 
-    const loopDirectory = getAllByText(longDirectory).find((element) =>
+    const loopWorkspace = getAllByText(longWorkspaceName).find((element) =>
       element instanceof HTMLElement && element.className.includes("break-words")
     );
-    expect(loopDirectory).toBeTruthy();
-    if (!(loopDirectory instanceof HTMLElement)) {
-      throw new Error("Expected wrapped loop directory in recent activity");
+    expect(loopWorkspace).toBeTruthy();
+    if (!(loopWorkspace instanceof HTMLElement)) {
+      throw new Error("Expected wrapped workspace name in active work");
     }
-    expect(loopDirectory.className).toContain("[overflow-wrap:anywhere]");
-    expect(loopDirectory.className.includes("truncate")).toBe(false);
+    expect(loopWorkspace.className).toContain("[overflow-wrap:anywhere]");
+    expect(loopWorkspace.className.includes("truncate")).toBe(false);
   });
 
   test("orders the workspaces map by loop count from high to low", async () => {
