@@ -736,6 +736,7 @@ describe("ChatDetails", () => {
 
     await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.clear(getByLabelText("Plan file path"));
     await user.type(getByLabelText("Plan file path"), "plans/current-plan.md");
     await user.click(getByRole("button", { name: "Spawn task" }));
 
@@ -749,21 +750,15 @@ describe("ChatDetails", () => {
     });
   });
 
-  test("falls back to the default plan file when the modal input is blank", async () => {
+  test("prefills the default plan file and prevents blank submission", async () => {
     const initialChat = createChat();
-    const spawnedTask = createTask({
-      config: {
-        id: "task-default-plan",
-        name: "Plan from Repo pairing",
-        workspaceId: initialChat.config.workspaceId,
-        planMode: true,
-      },
-    });
 
     api.get("/api/chats/:id", () => initialChat);
-    api.post("/api/chats/:id/spawn-task-from-current-plan", () => spawnedTask);
+    api.post("/api/chats/:id/spawn-task-from-current-plan", () => {
+      throw new Error("Should not submit a blank plan path");
+    });
 
-    const { getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
+    const { getByLabelText, getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
@@ -771,13 +766,20 @@ describe("ChatDetails", () => {
 
     await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
-    await user.click(getByRole("button", { name: "Spawn task" }));
+    const planPathInput = getByLabelText("Plan file path") as HTMLInputElement;
+    const spawnButton = getByRole("button", { name: "Spawn task" }) as HTMLButtonElement;
+
+    expect(planPathInput.value).toBe(".clanky-planning/plan.md");
+    expect(spawnButton.disabled).toBe(false);
+
+    await user.click(planPathInput);
+    await user.keyboard("{Control>}a{/Control}{Backspace}");
 
     await waitFor(() => {
-      expect(api.calls("/api/chats/:id/spawn-task-from-current-plan", "POST")).toHaveLength(1);
+      expect(planPathInput.value).toBe("");
+      expect((getByRole("button", { name: "Spawn task" }) as HTMLButtonElement).disabled).toBe(true);
     });
-
-    expect(api.calls("/api/chats/:id/spawn-task-from-current-plan", "POST")[0]?.body).toEqual({});
+    expect(api.calls("/api/chats/:id/spawn-task-from-current-plan", "POST")).toHaveLength(0);
   });
 
   test("keeps the current-plan modal open until task creation finishes and preserves the path after an error", async () => {
@@ -795,6 +797,7 @@ describe("ChatDetails", () => {
 
     await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.clear(getByLabelText("Plan file path"));
     await user.type(getByLabelText("Plan file path"), "plans/current-plan.md");
     await user.click(getByRole("button", { name: "Spawn task" }));
 
@@ -829,7 +832,7 @@ describe("ChatDetails", () => {
 
     api.get("/api/chats/:id", () => initialChat);
 
-    const { getByRole, getByText, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
+    const { getByRole, user } = renderWithAppEvents(<ChatDetails chatId={CHAT_ID} />);
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Chat actions" })).toBeTruthy();
@@ -838,9 +841,8 @@ describe("ChatDetails", () => {
     await user.click(getByRole("button", { name: "Chat actions" }));
     await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
 
-    expect(getByText("Enter an absolute plan path or a relative path from the current chat workspace, or leave the field blank to use .clanky-planning/plan.md.")).toBeTruthy();
-    expect(getByText(/Relative paths resolve from the current chat workspace\./)).toBeTruthy();
-    expect(getByText("/workspace/repo/.clanky-worktrees/chat-1/.clanky-planning/plan.md")).toBeTruthy();
+    const planPathInput = getByRole("textbox", { name: "Plan file path" }) as HTMLInputElement;
+    expect(planPathInput.value).toBe(".clanky-planning/plan.md");
   });
 
   test("shows the parsed current-plan spawn failure message without the Error prefix", async () => {

@@ -167,9 +167,6 @@ export function TokenAuthSection() {
         <div className="space-y-3">
           <div>
             <h4 className="text-sm font-medium text-gray-700 dark:text-gray-200">CLI sessions</h4>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Sessions created through the device flow can be revoked here without waiting for refresh-token expiry.
-            </p>
           </div>
 
           <div className="space-y-3">

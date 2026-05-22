@@ -87,9 +87,6 @@ export function OverviewView({
         >
           <div>
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Jump back into the same active tasks, chats, and terminals shown in the sidebar.
-            </p>
           </div>
           <div className="space-y-2">
             {activeWorkItems.length === 0 ? (
@@ -125,9 +122,6 @@ export function OverviewView({
         <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
           <div>
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Server maps</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Jump into saved SSH servers to review standalone sessions and start new terminals.
-            </p>
           </div>
           <div className="space-y-2">
             {serverMapItems.length === 0 ? (
@@ -160,9 +154,6 @@ export function OverviewView({
         <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
           <div>
             <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Workspaces map</h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              Browse workspaces first, then branch into tasks and terminals from there.
-            </p>
           </div>
           <div className="space-y-2">
             {workspaceGroups.length === 0 ? (

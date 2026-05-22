@@ -952,7 +952,6 @@ export function ChatDetails({
     <SpawnCurrentPlanModal
       isOpen={isSpawnCurrentPlanModalOpen}
       submitting={isSpawnCurrentPlanPending}
-      workspaceDirectory={chatWorkingDirectory}
       initialPlanFilePath={spawnCurrentPlanPath}
       onClose={closeSpawnCurrentPlanModal}
       onSubmit={async (planFilePath) => {

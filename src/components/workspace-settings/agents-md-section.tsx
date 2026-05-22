@@ -52,11 +52,6 @@ export function AgentsMdSection({ workspace }: AgentsMdSectionProps) {
           <Badge variant="success" size="sm">Optimized</Badge>
         )}
       </div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Add planning and progress tracking conventions to the workspace&apos;s AGENTS.md
-        so Clanky tasks can track their work reliably across iterations.
-      </p>
-
       {optimizerLoading && !optimizerStatus && (
         <div className="flex items-center gap-2 mb-3 p-3 rounded-md bg-gray-50 dark:bg-neutral-900">
           <LoadingSpinner className="w-4 h-4 text-gray-400 flex-shrink-0" />

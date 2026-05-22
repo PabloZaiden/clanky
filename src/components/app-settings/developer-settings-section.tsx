@@ -20,10 +20,6 @@ export function DeveloperSettingsSection() {
             >
               Log Level
             </label>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              Controls the verbosity of logging for both frontend and backend.
-              Lower levels show more detailed information for debugging.
-            </p>
             {logLevelFromEnv ? (
               <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-md px-3 py-2">
                 Log level is controlled by the <code className="break-all rounded bg-amber-100 px-1 py-0.5 font-mono text-xs dark:bg-amber-800">CLANKY_LOG_LEVEL</code> environment variable.

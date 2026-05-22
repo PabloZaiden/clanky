@@ -1,23 +1,20 @@
 /** Display Settings section: theme and markdown rendering preferences. */
 
-import type { ThemePreference } from "../../types/preferences";
 import { useMarkdownPreference, useThemePreference } from "../../hooks";
+import type { ThemePreference } from "../../types/preferences";
 
-const THEME_OPTIONS: Array<{ value: ThemePreference; label: string; description: string }> = [
+const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   {
     value: "system",
     label: "System",
-    description: "Match your browser or operating system color scheme.",
   },
   {
     value: "light",
     label: "Light",
-    description: "Always use the light theme.",
   },
   {
     value: "dark",
     label: "Dark",
-    description: "Always use the dark theme.",
   },
 ];
 
@@ -48,9 +45,6 @@ export function DisplaySettingsSection() {
               </option>
             ))}
           </select>
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            {THEME_OPTIONS.find((option) => option.value === theme)?.description}
-          </p>
         </div>
         <label className="flex items-center gap-3 cursor-pointer">
           <input
@@ -64,10 +58,6 @@ export function DisplaySettingsSection() {
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Render Markdown
             </span>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              When enabled, markdown content (plan, status, AI response logs) is rendered as formatted HTML.
-              When disabled, raw markdown text is shown.
-            </p>
           </div>
         </label>
       </div>

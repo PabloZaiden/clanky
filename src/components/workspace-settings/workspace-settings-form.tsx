@@ -114,9 +114,6 @@ export function WorkspaceSettingsForm({
             <div className="w-full break-all rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-mono text-gray-600 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-400">
               {workspace.directory}
             </div>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Directory cannot be changed after workspace creation
-            </p>
           </div>
         )}
 

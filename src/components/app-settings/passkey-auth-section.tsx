@@ -30,9 +30,6 @@ export function PasskeyAuthSection({
       </h3>
       <div className="space-y-4 rounded-lg bg-gray-50 p-4 dark:bg-neutral-900">
         <div className="space-y-1 text-sm text-gray-600 dark:text-gray-300">
-          <p>
-            Passkeys protect the in-app browser session. Bearer tokens are issued through the device flow as an equivalent API authentication option.
-          </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Current state:{" "}
             <strong className="font-medium text-gray-700 dark:text-gray-200">
