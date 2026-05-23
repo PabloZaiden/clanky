@@ -391,7 +391,7 @@ describe("workspace management scenario", () => {
     });
   });
 
-  test("workspace map includes empty workspaces and navigates to workspace details", async () => {
+  test("workspaces section includes empty workspaces and navigates to workspace details", async () => {
     setupBaseApi();
     api.get("/api/tasks", () => []);
     api.get("/api/workspaces", () => [WORKSPACE]);
@@ -399,7 +399,7 @@ describe("workspace management scenario", () => {
     const { getAllByText, getByRole, getByText, user } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByText("Workspaces map")).toBeTruthy();
+      expect(getByRole("heading", { name: "Workspaces" })).toBeTruthy();
     });
 
     await user.click(getWorkspaceSidebarButton(getAllByText("Existing Project")));
