@@ -119,7 +119,7 @@ export function OverviewView({
 
         <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
           <div>
-            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Server maps</h2>
+            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Servers</h2>
           </div>
           <div className="space-y-2">
             {serverMapItems.length === 0 ? (
@@ -151,7 +151,7 @@ export function OverviewView({
 
         <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
           <div>
-            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Workspaces map</h2>
+            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Workspaces</h2>
           </div>
           <div className="space-y-2">
             {workspaceGroups.length === 0 ? (

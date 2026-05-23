@@ -117,7 +117,7 @@ afterEach(() => {
 // ─── Dashboard management scenarios ──────────────────────────────────────────
 
 describe("dashboard management scenario", () => {
-  test("overview shows active work, server maps, and the workspaces map", async () => {
+  test("overview shows active work, servers, and workspaces", async () => {
     setupBaseApi();
 
     const runningTask = createTaskWithStatus("running", {
@@ -136,19 +136,19 @@ describe("dashboard management scenario", () => {
     api.get("/api/tasks", () => [runningTask, completedTask, pushedTask, draftTask]);
     api.get("/api/workspaces", () => [WORKSPACE_A, WORKSPACE_B]);
 
-    const { getAllByText, getByRole, getByTestId, getByText } = renderWithUser(<App />);
+    const { getAllByText, getByRole, getByTestId } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getAllByText("Project Alpha").length).toBeGreaterThan(0);
     });
 
     expect(getAllByText("Project Beta").length).toBeGreaterThan(0);
-    expect(getByRole("heading", { name: "Server maps" })).toBeTruthy();
-    expect(getByText("Workspaces map")).toBeTruthy();
+    expect(getByRole("heading", { name: "Servers" })).toBeTruthy();
+    expect(getByRole("heading", { name: "Workspaces" })).toBeTruthy();
 
     const activeWorkHeading = getByRole("heading", { name: "Active Work" });
-    const serverMapsHeading = getByRole("heading", { name: "Server maps" });
-    const workspacesMapHeading = getByRole("heading", { name: "Workspaces map" });
+    const serversHeading = getByRole("heading", { name: "Servers" });
+    const workspacesHeading = getByRole("heading", { name: "Workspaces" });
     const activeWorkCard = getByTestId("active-work-card");
 
     expect(within(activeWorkCard).getByText("Running Task")).toBeTruthy();
@@ -156,8 +156,8 @@ describe("dashboard management scenario", () => {
     expect(within(activeWorkCard).getByText("Pushed Task")).toBeTruthy();
     expect(within(activeWorkCard).getByText("Draft Task")).toBeTruthy();
 
-    expect(activeWorkHeading.compareDocumentPosition(serverMapsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(serverMapsHeading.compareDocumentPosition(workspacesMapHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activeWorkHeading.compareDocumentPosition(serversHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(serversHeading.compareDocumentPosition(workspacesHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test("clicking a task card navigates to task details", async () => {
@@ -213,7 +213,7 @@ describe("dashboard management scenario", () => {
       expect(getByRole("button", { name: /clanky/i })).toBeTruthy();
       expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
       expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
-      expect(getByRole("heading", { name: "Server maps" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Servers" })).toBeTruthy();
     });
   });
 
@@ -386,12 +386,12 @@ describe("dashboard management scenario", () => {
     ]);
     api.get("/api/workspaces", () => [WORKSPACE_A, WORKSPACE_B]);
 
-    const { getByRole, getByText, queryByText } = renderWithUser(<App />);
+    const { getByRole, queryByText } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
-      expect(getByText("Server maps")).toBeTruthy();
-      expect(getByText("Workspaces map")).toBeTruthy();
+      expect(getByRole("heading", { name: "Servers" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Workspaces" })).toBeTruthy();
     });
 
     expect(queryByText("Tracked repositories and hosts.")).toBeNull();
@@ -403,7 +403,7 @@ describe("dashboard management scenario", () => {
   // the "Connected" text indicator was removed from the Dashboard in PR #118.
   // WebSocket connection status is no longer displayed as a text label.
 
-  test("workspace map includes workspaces with no tasks", async () => {
+  test("workspaces section includes workspaces with no tasks", async () => {
     setupBaseApi();
 
     const taskInA = createTaskWithStatus("running", {
@@ -413,10 +413,10 @@ describe("dashboard management scenario", () => {
     api.get("/api/tasks", () => [taskInA]);
     api.get("/api/workspaces", () => [WORKSPACE_A, WORKSPACE_B]);
 
-    const { getAllByText, getByText } = renderWithUser(<App />);
+    const { getAllByText, getByRole, getByText } = renderWithUser(<App />);
 
     await waitFor(() => {
-      expect(getByText("Workspaces map")).toBeTruthy();
+      expect(getByRole("heading", { name: "Workspaces" })).toBeTruthy();
     });
     expect(getAllByText("Project Beta").length).toBeGreaterThan(0);
     expect(getByText("0 tasks")).toBeTruthy();

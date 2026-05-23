@@ -232,19 +232,19 @@ describe("App shell", () => {
   });
 
   test("renders the shell overview by default without empty active work", async () => {
-    const { getByRole, getByText, queryByRole, queryByText } = renderWithUser(<App />);
+    const { getByRole, queryByRole, queryByText } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
-      expect(getByText("Server maps")).toBeTruthy();
-      expect(getByText("Workspaces map")).toBeTruthy();
+      expect(getByRole("heading", { name: "Servers" })).toBeTruthy();
+      expect(getByRole("heading", { name: "Workspaces" })).toBeTruthy();
     });
 
-    const serverMapsHeading = getByRole("heading", { name: "Server maps" });
-    const workspacesMapHeading = getByRole("heading", { name: "Workspaces map" });
+    const serversHeading = getByRole("heading", { name: "Servers" });
+    const workspacesHeading = getByRole("heading", { name: "Workspaces" });
 
     expect(queryByRole("heading", { name: "Active Work" })).toBeNull();
-    expect(serverMapsHeading.compareDocumentPosition(workspacesMapHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(serversHeading.compareDocumentPosition(workspacesHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(queryByText("Tracked repositories and hosts.")).toBeNull();
     expect(queryByText("Task-oriented Clanky tasks.")).toBeNull();
     expect(queryByText("Interactive conversations.")).toBeNull();
@@ -373,7 +373,7 @@ describe("App shell", () => {
     expect(taskWorkspace.className.includes("truncate")).toBe(false);
   });
 
-  test("orders the workspaces map by task count from high to low", async () => {
+  test("orders the workspaces section by task count from high to low", async () => {
     const alphaWorkspace = createWorkspace({
       id: "workspace-alpha",
       name: "Project Alpha",
@@ -411,11 +411,11 @@ describe("App shell", () => {
 
     let workspaceButtons: HTMLElement[] = [];
     await waitFor(() => {
-      const workspacesMapHeading = getByRole("heading", { name: "Workspaces map" });
-      const workspacesCard = workspacesMapHeading.parentElement?.parentElement;
+      const workspacesHeading = getByRole("heading", { name: "Workspaces" });
+      const workspacesCard = workspacesHeading.parentElement?.parentElement;
       expect(workspacesCard).toBeTruthy();
       if (!(workspacesCard instanceof HTMLElement)) {
-        throw new Error("Expected workspaces map card to be present");
+        throw new Error("Expected workspaces card to be present");
       }
 
       workspaceButtons = within(workspacesCard).getAllByRole("button");
