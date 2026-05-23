@@ -266,7 +266,7 @@ describe("ShellSidebarNav", () => {
     expect(getByText("Workspace 2")).toBeInTheDocument();
     expect(getAllByText("Feature Task").length).toBeGreaterThan(0);
     expect(getByText("Server 1")).toBeInTheDocument();
-    expect(getByText("Standalone Server Session")).toBeInTheDocument();
+    expect(getAllByText("Standalone Server Session").length).toBeGreaterThan(0);
   });
 
   test("builds active work from workspace groups without quick chat input", () => {
@@ -279,7 +279,10 @@ describe("ShellSidebarNav", () => {
       if (item.kind === "chat") {
         return `${item.kind}:${item.chatNode.title}:${item.workspaceName}`;
       }
-      return `${item.kind}:${item.sessionNode.title}:${item.workspaceName}`;
+      if (item.kind === "ssh-session") {
+        return `${item.kind}:${item.sessionNode.title}:${item.workspaceName}`;
+      }
+      return `${item.kind}:${item.sessionNode.title}:${item.serverName}`;
     })).toEqual([
       "task:Feature Task:Workspace 1",
       "task:Task With SSH:Workspace 1",
@@ -287,6 +290,31 @@ describe("ShellSidebarNav", () => {
       "chat:Workspace Chat:Workspace 1",
       "ssh-session:Workspace SSH:Workspace 1",
       "ssh-session:Task SSH Session:Workspace 1",
+    ]);
+  });
+
+  test("builds active work with standalone SSH server sessions without duplicating workspace sessions", () => {
+    const { workspaceGroups, serverNodes } = createSidebarData();
+
+    expect(buildActiveWorkSidebarItems(workspaceGroups, { serverNodes }).map((item) => {
+      if (item.kind === "task") {
+        return `${item.kind}:${item.taskNode.title}:${item.workspaceName}`;
+      }
+      if (item.kind === "chat") {
+        return `${item.kind}:${item.chatNode.title}:${item.workspaceName}`;
+      }
+      if (item.kind === "ssh-session") {
+        return `${item.kind}:${item.sessionNode.title}:${item.workspaceName}`;
+      }
+      return `${item.kind}:${item.sessionNode.title}:${item.serverName}`;
+    })).toEqual([
+      "task:Feature Task:Workspace 1",
+      "task:Task With SSH:Workspace 1",
+      "task:Completed Task:Workspace 1",
+      "chat:Workspace Chat:Workspace 1",
+      "ssh-session:Workspace SSH:Workspace 1",
+      "ssh-session:Task SSH Session:Workspace 1",
+      "ssh-server-session:Standalone Server Session:Server 1",
     ]);
   });
 
@@ -309,6 +337,9 @@ describe("ShellSidebarNav", () => {
 
     await user.click(getByTextButton(getAllByText("Workspace SSH")[0]!));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "ssh", sshSessionId: "workspace-session-2" });
+
+    await user.click(getByTextButton(getAllByText("Standalone Server Session")[0]!));
+    expect(navigateWithinShell).toHaveBeenCalledWith({ view: "ssh", sshSessionId: "server-session-1" });
   });
 
   test("keeps empty parent rows expandable when they expose nested action sections", () => {

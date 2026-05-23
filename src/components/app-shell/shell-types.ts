@@ -94,10 +94,17 @@ export type SidebarActiveWorkItem =
       key: string;
       workspaceName: string;
       sessionNode: SidebarWorkspaceSessionNode;
+    }
+  | {
+      kind: "ssh-server-session";
+      key: string;
+      serverName: string;
+      sessionNode: SidebarServerSessionNode;
     };
 
 interface BuildActiveWorkSidebarItemsOptions {
   quickChatWorkspace?: SidebarWorkspaceNode | null;
+  serverNodes?: SidebarServerNode[];
 }
 
 export type CodeExplorerTarget =
@@ -362,6 +369,7 @@ export function buildActiveWorkSidebarItems(
   const taskItems: SidebarActiveWorkItem[] = [];
   const chatItems: SidebarActiveWorkItem[] = [];
   const sessionItems: SidebarActiveWorkItem[] = [];
+  const workspaceSessionIds = new Set<string>();
   const quickChatIds = new Set(
     options.quickChatWorkspace?.chats.map((chatNode) => chatNode.chat.config.id) ?? [],
   );
@@ -389,6 +397,7 @@ export function buildActiveWorkSidebarItems(
       }
 
       for (const sessionNode of workspaceNode.sshSessions) {
+        workspaceSessionIds.add(sessionNode.session.config.id);
         sessionItems.push({
           kind: "ssh-session",
           key: `ssh-session:${sessionNode.session.config.id}`,
@@ -396,6 +405,21 @@ export function buildActiveWorkSidebarItems(
           sessionNode,
         });
       }
+    }
+  }
+
+  for (const serverNode of options.serverNodes ?? []) {
+    for (const sessionNode of serverNode.sessions) {
+      if (workspaceSessionIds.has(sessionNode.id)) {
+        continue;
+      }
+
+      sessionItems.push({
+        kind: "ssh-server-session",
+        key: `ssh-server-session:${sessionNode.id}`,
+        serverName: serverNode.server.config.name,
+        sessionNode,
+      });
     }
   }
 
