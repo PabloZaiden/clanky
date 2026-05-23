@@ -231,21 +231,19 @@ describe("App shell", () => {
     });
   });
 
-  test("renders the shell overview by default", async () => {
-    const { getByRole, getByText, queryByText } = renderWithUser(<App />);
+  test("renders the shell overview by default without empty active work", async () => {
+    const { getByRole, getByText, queryByRole, queryByText } = renderWithUser(<App />);
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Clanky" })).toBeTruthy();
-      expect(getByRole("heading", { name: "Active Work" })).toBeTruthy();
       expect(getByText("Server maps")).toBeTruthy();
       expect(getByText("Workspaces map")).toBeTruthy();
     });
 
-    const activeWorkHeading = getByRole("heading", { name: "Active Work" });
     const serverMapsHeading = getByRole("heading", { name: "Server maps" });
     const workspacesMapHeading = getByRole("heading", { name: "Workspaces map" });
 
-    expect(activeWorkHeading.compareDocumentPosition(serverMapsHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(queryByRole("heading", { name: "Active Work" })).toBeNull();
     expect(serverMapsHeading.compareDocumentPosition(workspacesMapHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(queryByText("Tracked repositories and hosts.")).toBeNull();
     expect(queryByText("Task-oriented Clanky tasks.")).toBeNull();
