@@ -81,18 +81,16 @@ export function OverviewView({
       headerOffsetClassName={headerOffsetClassName}
     >
       <div className="space-y-6">
-        <div
-          data-testid="active-work-card"
-          className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50"
-        >
-          <div>
-            <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
-          </div>
-          <div className="space-y-2">
-            {activeWorkItems.length === 0 ? (
-              <EmptySection message="Active work will appear here as you start tasks, chats, and terminals." />
-            ) : (
-              activeWorkItems.map((item) => {
+        {activeWorkItems.length > 0 && (
+          <div
+            data-testid="active-work-card"
+            className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50"
+          >
+            <div>
+              <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Work</h2>
+            </div>
+            <div className="space-y-2">
+              {activeWorkItems.map((item) => {
                 const badge = getActiveWorkBadge(item);
                 return (
                   <button
@@ -114,10 +112,10 @@ export function OverviewView({
                     </StatusBadge>
                   </button>
                 );
-              })
-            )}
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
           <div>
