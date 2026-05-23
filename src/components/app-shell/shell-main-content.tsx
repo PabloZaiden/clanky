@@ -22,7 +22,7 @@ import { SshServerSettingsView } from "./ssh-server-settings-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import type { ShellRoute } from "./shell-types";
-import type { SidebarWorkspaceGroupNode, SidebarWorkspaceNode } from "./shell-types";
+import type { SidebarServerNode, SidebarWorkspaceGroupNode, SidebarWorkspaceNode } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
@@ -46,6 +46,7 @@ interface ShellMainContentProps {
   sessions: SshSession[];
   servers: SshServer[];
   sessionsByServerId: Record<string, import("../../types/ssh-server").SshServerSession[]>;
+  serverNodes: SidebarServerNode[];
   workspaceGroups: WorkspaceGroup[];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   quickChatWorkspace: SidebarWorkspaceNode | null;
@@ -130,6 +131,7 @@ function renderMainContent(props: ShellMainContentProps) {
     sessions,
     servers,
     sessionsByServerId,
+    serverNodes,
     workspaceGroups,
     sidebarWorkspaceGroups,
     quickChatWorkspace,
@@ -610,6 +612,7 @@ function renderMainContent(props: ShellMainContentProps) {
     <OverviewView
       servers={servers}
       sessionsByServerId={sessionsByServerId}
+      serverNodes={serverNodes}
       workspaceGroups={workspaceGroups}
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
       quickChatWorkspace={quickChatWorkspace}

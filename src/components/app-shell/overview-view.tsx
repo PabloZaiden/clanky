@@ -6,6 +6,7 @@ import {
   buildActiveWorkSidebarItems,
   type ShellRoute,
   type SidebarActiveWorkItem,
+  type SidebarServerNode,
   type SidebarWorkspaceNode,
   type SidebarWorkspaceGroupNode,
 } from "./shell-types";
@@ -19,7 +20,10 @@ function getActiveWorkRoute(item: SidebarActiveWorkItem): ShellRoute {
   if (item.kind === "chat") {
     return { view: "chat", chatId: item.chatNode.chat.config.id };
   }
-  return { view: "ssh", sshSessionId: item.sessionNode.session.config.id };
+  if (item.kind === "ssh-session") {
+    return { view: "ssh", sshSessionId: item.sessionNode.session.config.id };
+  }
+  return { view: "ssh", sshSessionId: item.sessionNode.id };
 }
 
 function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
@@ -30,6 +34,13 @@ function getActiveWorkTitle(item: SidebarActiveWorkItem): string {
     return item.chatNode.title;
   }
   return item.sessionNode.title;
+}
+
+function getActiveWorkSubtitle(item: SidebarActiveWorkItem): string {
+  if (item.kind === "ssh-server-session") {
+    return item.serverName;
+  }
+  return item.workspaceName;
 }
 
 function getActiveWorkBadge(item: SidebarActiveWorkItem): {
@@ -48,6 +59,7 @@ function getActiveWorkBadge(item: SidebarActiveWorkItem): {
 export function OverviewView({
   servers,
   sessionsByServerId,
+  serverNodes,
   workspaceGroups,
   sidebarWorkspaceGroups,
   quickChatWorkspace,
@@ -56,6 +68,7 @@ export function OverviewView({
 }: {
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
+  serverNodes: SidebarServerNode[];
   workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
   quickChatWorkspace: SidebarWorkspaceNode | null;
@@ -63,8 +76,8 @@ export function OverviewView({
   onNavigate: (route: ShellRoute) => void;
 }) {
   const activeWorkItems = useMemo(
-    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { quickChatWorkspace }),
-    [quickChatWorkspace, sidebarWorkspaceGroups],
+    () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { quickChatWorkspace, serverNodes }),
+    [quickChatWorkspace, serverNodes, sidebarWorkspaceGroups],
   );
   const serverMapItems = useMemo(() => {
     return servers.map((server) => ({
@@ -104,7 +117,7 @@ export function OverviewView({
                         {getActiveWorkTitle(item)}
                       </span>
                       <span className="mt-1 block break-words text-xs text-gray-500 dark:text-gray-400 [overflow-wrap:anywhere]">
-                        {item.workspaceName}
+                        {getActiveWorkSubtitle(item)}
                       </span>
                     </span>
                     <StatusBadge variant={badge.variant} className="shrink-0">

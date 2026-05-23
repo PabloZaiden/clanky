@@ -113,6 +113,13 @@ function getActiveWorkSessionSubtitle(item: Extract<SidebarActiveWorkItem, { kin
   return `${workspaceName} · ${sessionNode.subtitle}`;
 }
 
+function getActiveWorkServerSessionSubtitle(
+  item: Extract<SidebarActiveWorkItem, { kind: "ssh-server-session" }>,
+): string {
+  const { serverName, sessionNode } = item;
+  return `${serverName} · ${sessionNode.subtitle}`;
+}
+
 function SearchResultsSection({
   title,
   bordered = false,
@@ -379,8 +386,8 @@ export function ShellSidebarNav({
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
   const visibleWorkspaceGroups = workspaceGroups.filter((group) => group.workspaces.length > 0);
   const activeWorkItems = useMemo(
-    () => buildActiveWorkSidebarItems(workspaceGroups, { quickChatWorkspace }),
-    [quickChatWorkspace, workspaceGroups],
+    () => buildActiveWorkSidebarItems(workspaceGroups, { quickChatWorkspace, serverNodes }),
+    [quickChatWorkspace, serverNodes, workspaceGroups],
   );
   const sidebarToggleLabel = sidebarOpen
     ? "Close sidebar"
@@ -833,18 +840,36 @@ export function ShellSidebarNav({
                     );
                   }
 
+                  if (item.kind === "ssh-session") {
+                    return (
+                      <SidebarTreeItem
+                        key={item.key}
+                        active={route.view === "ssh" && route.sshSessionId === item.sessionNode.session.config.id}
+                        title={item.sessionNode.title}
+                        subtitle={getActiveWorkSessionSubtitle(item)}
+                        badge={item.sessionNode.badge}
+                        badgeVariant={item.sessionNode.badgeVariant}
+                        indentLevel={1}
+                        onClick={(event) => handleSidebarItemClick(event, {
+                          view: "ssh",
+                          sshSessionId: item.sessionNode.session.config.id,
+                        })}
+                      />
+                    );
+                  }
+
                   return (
                     <SidebarTreeItem
                       key={item.key}
-                      active={route.view === "ssh" && route.sshSessionId === item.sessionNode.session.config.id}
+                      active={route.view === "ssh" && route.sshSessionId === item.sessionNode.id}
                       title={item.sessionNode.title}
-                      subtitle={getActiveWorkSessionSubtitle(item)}
+                      subtitle={getActiveWorkServerSessionSubtitle(item)}
                       badge={item.sessionNode.badge}
                       badgeVariant={item.sessionNode.badgeVariant}
                       indentLevel={1}
                       onClick={(event) => handleSidebarItemClick(event, {
                         view: "ssh",
-                        sshSessionId: item.sessionNode.session.config.id,
+                        sshSessionId: item.sessionNode.id,
                       })}
                     />
                   );

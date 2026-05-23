@@ -372,6 +372,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         sessions={sessions}
         servers={servers}
         sessionsByServerId={sessionsByServerId}
+        serverNodes={serverNodes}
         workspaceGroups={workspaceGroups}
         sidebarWorkspaceGroups={sidebarWorkspaceGroups}
         quickChatWorkspace={quickChatWorkspaceNode}
