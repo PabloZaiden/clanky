@@ -1917,7 +1917,7 @@ describe("log tab", () => {
     expect(queryByRole("button", { name: "Hide logs" })).toBeNull();
     expect(queryByRole("button", { name: "Show logs" })).toBeNull();
     expect(getByRole("textbox", { name: "Task message" })).toBeInTheDocument();
-    expect(getByRole("button", { name: "Autoscroll" })).toBeInTheDocument();
+    expect(queryByRole("button", { name: "Autoscroll" })).toBeNull();
   });
 
   test("restores log focus mode from localStorage on remount", async () => {
