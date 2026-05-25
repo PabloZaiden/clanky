@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState, memo } from "react";
+import { useMemo, useState, memo } from "react";
 import type { ConversationViewerProps, EntryBase } from "./types";
 import {
   annotateDisplayEntries,
@@ -11,6 +11,7 @@ import { MessageEntry } from "./message-entry";
 import { ToolEntry } from "./tool-entry";
 import { ToolGroupEntry } from "./tool-group-entry";
 import { LogEntryItem } from "./log-entry-item";
+import { useStickyBottomScroll } from "./use-sticky-bottom-scroll";
 
 export const INITIAL_TRANSCRIPT_ENTRY_LIMIT = 100;
 export const TRANSCRIPT_ENTRY_CHUNK_SIZE = 100;
@@ -19,7 +20,6 @@ export const ConversationViewer = memo(function ConversationViewer({
   messages,
   toolCalls,
   logs = [],
-  autoScroll = true,
   maxHeight,
   showSystemInfo = false,
   showReasoning = true,
@@ -37,30 +37,7 @@ export const ConversationViewer = memo(function ConversationViewer({
   surfaceClassName,
   transcriptClassName,
 }: ConversationViewerProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const [renderedEntryLimit, setRenderedEntryLimit] = useState(INITIAL_TRANSCRIPT_ENTRY_LIMIT);
-
-  useEffect(() => {
-    if (autoScroll && containerRef.current) {
-      requestAnimationFrame(() => {
-        if (containerRef.current) {
-          containerRef.current.scrollTop = containerRef.current.scrollHeight;
-        }
-      });
-    }
-  }, [
-    messages,
-    toolCalls,
-    logs,
-    autoScroll,
-    showSystemInfo,
-    showReasoning,
-    showTools,
-    markdownEnabled,
-    isActive,
-    showAssistantMessages,
-    showResponseLogs,
-  ]);
 
   const groupedEntries = useMemo(() => {
     const result: EntryBase[] = [];
@@ -135,8 +112,16 @@ export const ConversationViewer = memo(function ConversationViewer({
     [groupedEntries, visibleEntryCount],
   );
   const olderEntryLoadCount = Math.min(TRANSCRIPT_ENTRY_CHUNK_SIZE, hiddenEntryCount);
-
   const isEmpty = groupedEntries.length === 0;
+  const { containerRef, contentRef } = useStickyBottomScroll([
+    visibleEntries,
+    isActive,
+    isEmpty,
+    activeStateMessage,
+    emptyStateMessage,
+    markdownEnabled,
+  ]);
+
   const resolvedSurfaceClassName = surfaceClassName ?? "bg-gray-50 dark:bg-[#171717]";
   const resolvedTranscriptClassName = transcriptClassName ?? "mx-auto flex w-full max-w-7xl flex-col px-3 py-5 sm:px-4 sm:py-6 lg:px-6 xl:px-7";
 
@@ -159,7 +144,7 @@ export const ConversationViewer = memo(function ConversationViewer({
           )}
         </div>
       ) : (
-        <div className={resolvedTranscriptClassName} data-testid="conversation-transcript">
+        <div ref={contentRef} className={resolvedTranscriptClassName} data-testid="conversation-transcript">
           {hiddenEntryCount > 0 && (
             <div className="mb-4 flex justify-center">
               <button
