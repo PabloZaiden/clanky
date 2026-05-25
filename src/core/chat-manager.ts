@@ -468,13 +468,33 @@ export class ChatManager {
       lastActivityAt: createTimestamp(),
     });
 
+    const activeStream = this.activeStreams.get(chatId);
+    if (activeStream) {
+      activeStream.stream.close();
+      this.activeStreams.delete(chatId);
+    }
+
     try {
       await backend.abortSession(chat.state.session.id);
     } catch (error) {
-      const message = String(error);
-      await this.emitChatError(updating, message);
-      throw error;
+      log.warn("Failed to abort chat session during interrupt", {
+        chatId,
+        sessionId: chat.state.session.id,
+        error: String(error),
+      });
     }
+
+    if (activeStream) {
+      try {
+        await backendManager.disconnectChat(chatId);
+      } catch (error) {
+        log.warn("Failed to disconnect chat backend during interrupt", {
+          chatId,
+          error: String(error),
+        });
+      }
+    }
+
     const interrupted = await this.updateChatStateAndReturn(updating, {
       ...updating.state,
       error: reason
@@ -485,10 +505,7 @@ export class ChatManager {
           }
         : updating.state.error,
     });
-    if (!this.activeStreams.has(chatId)) {
-      return this.completeInterruptedChat(interrupted);
-    }
-    return interrupted;
+    return this.completeInterruptedChat(interrupted);
   }
 
   async replyToPermission(chatId: string, requestId: string, decision: ChatPermissionDecision): Promise<Chat | null> {
@@ -1712,6 +1729,15 @@ export class ChatManager {
         resolvedAt: now,
         error: "Interrupted",
       }),
+      toolCalls: chat.state.toolCalls.map((toolCall) =>
+        toolCall.status === "running" || toolCall.status === "pending"
+          ? {
+              ...toolCall,
+              status: "failed",
+              output: toolCall.output ?? "Interrupted",
+            }
+          : toolCall
+      ),
       messages: activeMessageId
         ? chat.state.messages.filter((message) => message.id !== activeMessageId)
         : chat.state.messages,
