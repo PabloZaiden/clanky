@@ -190,6 +190,38 @@ describe("ConversationViewer", () => {
     expect(metrics.scrollTop).toBe(1200);
   });
 
+  test("restores following when content shrink leaves the viewport near the bottom", async () => {
+    const messages = [createMessage(1), createMessage(2)];
+    const { container, rerender } = renderWithUser(
+      <ConversationViewer
+        id="conversation-scroll"
+        messages={messages}
+        logs={[]}
+        toolCalls={[]}
+        showAssistantMessages
+      />,
+    );
+    const scrollContainer = container.querySelector("#conversation-scroll") as HTMLElement;
+    const metrics = { scrollTop: 300, scrollHeight: 1000, clientHeight: 200 };
+    mockScrollMetrics(scrollContainer, metrics);
+    fireEvent.scroll(scrollContainer);
+
+    metrics.scrollHeight = 520;
+    rerender(
+      <ConversationViewer
+        id="conversation-scroll"
+        messages={messages}
+        logs={[]}
+        toolCalls={[]}
+        showAssistantMessages
+        isActive
+      />,
+    );
+    await flushAnimationFrame();
+
+    expect(metrics.scrollTop).toBe(520);
+  });
+
   test("does not jump to the bottom when loading older entries while scrolled up", async () => {
     const messages = Array.from(
       { length: INITIAL_TRANSCRIPT_ENTRY_LIMIT + 50 },

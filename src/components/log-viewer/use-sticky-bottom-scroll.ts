@@ -21,18 +21,24 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   }, []);
 
   const scrollToBottomIfPinned = useCallback(() => {
-    if (!isPinnedToBottomRef.current) {
+    const currentContainer = containerRef.current;
+    if (!isPinnedToBottomRef.current && (!currentContainer || !isNearBottom(currentContainer))) {
       return;
     }
+    isPinnedToBottomRef.current = true;
 
     cancelScheduledScroll();
     animationFrameRef.current = requestAnimationFrame(() => {
       animationFrameRef.current = null;
       const container = containerRef.current;
-      if (!container || !isPinnedToBottomRef.current) {
+      if (!container) {
+        return;
+      }
+      if (!isPinnedToBottomRef.current && !isNearBottom(container)) {
         return;
       }
 
+      isPinnedToBottomRef.current = true;
       container.scrollTop = container.scrollHeight;
       isPinnedToBottomRef.current = isNearBottom(container);
     });
