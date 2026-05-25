@@ -61,8 +61,6 @@ export interface LogViewerProps {
   toolCalls: ToolCallData[];
   /** Application logs to display */
   logs?: LogEntry[];
-  /** Whether to auto-scroll to bottom */
-  autoScroll?: boolean;
   /** Maximum height */
   maxHeight?: string;
   /** Whether to show system information logs (info, warn, error, debug, trace, system agent messages). Default: false */

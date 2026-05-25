@@ -1480,6 +1480,209 @@ class IdleStatusInterruptBackend implements Backend {
   }
 }
 
+class StubbornToolInterruptBackend implements Backend {
+  readonly name = "acp";
+
+  private connected = false;
+  private directory = "";
+  private readonly sessions = new Map<string, AgentSession>();
+  private readonly promptHistory = new Map<string, string[]>();
+  private readonly subscriptions = new Map<string, {
+    stream: EventStream<AgentEvent>;
+    push: (event: AgentEvent) => void;
+    end: () => void;
+  }>();
+
+  async connect(config: BackendConnectionConfig): Promise<void> {
+    this.connected = true;
+    this.directory = config.directory;
+  }
+
+  async disconnect(): Promise<void> {
+    this.connected = false;
+    this.directory = "";
+  }
+
+  isConnected(): boolean {
+    return this.connected;
+  }
+
+  async createSession(options: CreateSessionOptions): Promise<AgentSession> {
+    const session: AgentSession = {
+      id: `stubborn-tool-interrupt-${crypto.randomUUID()}`,
+      title: options.title,
+      createdAt: new Date().toISOString(),
+    };
+    this.sessions.set(session.id, session);
+    this.promptHistory.set(session.id, []);
+    return session;
+  }
+
+  async sendPrompt(_sessionId: string, _prompt: PromptInput): Promise<AgentResponse> {
+    return {
+      id: `msg-${crypto.randomUUID()}`,
+      content: "unused",
+      parts: [{ type: "text", text: "unused" }],
+    };
+  }
+
+  async sendPromptAsync(sessionId: string, prompt: PromptInput): Promise<void> {
+    const subscription = this.subscriptions.get(sessionId);
+    if (!subscription) {
+      throw new Error(`Missing subscription for ${sessionId}`);
+    }
+
+    const promptText = prompt.parts
+      .filter((part): part is Extract<PromptInput["parts"][number], { type: "text" }> => part.type === "text")
+      .map((part) => part.text)
+      .join(" ");
+    const sessionHistory = this.promptHistory.get(sessionId) ?? [];
+    sessionHistory.push(promptText);
+    this.promptHistory.set(sessionId, sessionHistory);
+
+    if (promptText.includes("remember the code word")) {
+      setTimeout(() => {
+        subscription.push({
+          type: "message.start",
+          messageId: `msg-${crypto.randomUUID()}`,
+        });
+        subscription.push({
+          type: "message.delta",
+          content: "I will remember blue-pineapple.",
+        });
+        subscription.push({
+          type: "message.complete",
+          content: "I will remember blue-pineapple.",
+        });
+        subscription.end();
+      }, 0);
+      return;
+    }
+
+    if (promptText.includes("What code word")) {
+      const remembered = sessionHistory.some((entry) => entry.includes("blue-pineapple"));
+      setTimeout(() => {
+        const content = remembered
+          ? "The code word was blue-pineapple."
+          : "I do not have the earlier code word.";
+        subscription.push({
+          type: "message.start",
+          messageId: `msg-${crypto.randomUUID()}`,
+        });
+        subscription.push({
+          type: "message.delta",
+          content,
+        });
+        subscription.push({
+          type: "message.complete",
+          content,
+        });
+        subscription.end();
+      }, 0);
+      return;
+    }
+
+    if (promptText.includes("follow-up")) {
+      setTimeout(() => {
+        subscription.push({
+          type: "message.start",
+          messageId: `msg-${crypto.randomUUID()}`,
+        });
+        subscription.push({
+          type: "message.delta",
+          content: "Second response after stubborn tool interrupt",
+        });
+        subscription.push({
+          type: "message.complete",
+          content: "Second response after stubborn tool interrupt",
+        });
+        subscription.end();
+      }, 0);
+      return;
+    }
+
+    setTimeout(() => {
+      subscription.push({
+        type: "message.start",
+        messageId: `msg-${crypto.randomUUID()}`,
+      });
+      subscription.push({
+        type: "tool.start",
+        toolCallId: `tool-${crypto.randomUUID()}`,
+        toolName: "execute",
+        input: { command: "sleep 45" },
+      });
+    }, 0);
+  }
+
+  async abortSession(_sessionId: string): Promise<void> {}
+
+  async subscribeToEvents(sessionId: string): Promise<EventStream<AgentEvent>> {
+    const { stream, push, end } = createEventStream<AgentEvent>();
+    const subscription = { stream, push, end };
+    this.subscriptions.set(sessionId, subscription);
+
+    return {
+      next: () => stream.next(),
+      close: () => {
+        stream.close();
+        end();
+        if (this.subscriptions.get(sessionId) === subscription) {
+          this.subscriptions.delete(sessionId);
+        }
+      },
+    };
+  }
+
+  async replyToPermission(_requestId: string, _response: string): Promise<void> {}
+
+  async replyToQuestion(_requestId: string, _answers: string[][]): Promise<void> {}
+
+  async setConfigOption(_sessionId: string, _configId: string, _value: string) {
+    return [];
+  }
+
+  async setSessionModel(_sessionId: string, _modelId: string): Promise<void> {}
+
+  abortAllSubscriptions(): void {
+    for (const subscription of this.subscriptions.values()) {
+      subscription.stream.close();
+      subscription.end();
+    }
+    this.subscriptions.clear();
+  }
+
+  getSdkClient(): null {
+    return null;
+  }
+
+  getDirectory(): string {
+    return this.directory;
+  }
+
+  getConnectionInfo(): ConnectionInfo | null {
+    return this.connected
+      ? {
+          baseUrl: "http://stubborn-tool-interrupt-backend",
+          authHeaders: {},
+        }
+      : null;
+  }
+
+  async getSession(id: string): Promise<AgentSession | null> {
+    return this.sessions.get(id) ?? null;
+  }
+
+  async deleteSession(id: string): Promise<void> {
+    this.sessions.delete(id);
+    this.promptHistory.delete(id);
+  }
+
+  async getModels(_directory: string): Promise<ModelInfo[]> {
+    return [];
+  }
+}
+
 class PermissionGateBackend implements Backend {
   readonly name = "acp";
 
@@ -3022,9 +3225,7 @@ describe("ChatManager", () => {
     expect(firstRun.state.status).toBe("streaming");
 
     const interrupted = await manager.interruptChat(chat.config.id);
-    expect(interrupted?.state.status).toBe("interrupting");
-
-    await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    expect(interrupted?.state.status).toBe("idle");
 
     const resumed = await manager.sendMessage(chat.config.id, {
       message: "follow-up request",
@@ -3070,11 +3271,9 @@ describe("ChatManager", () => {
     });
 
     expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(true);
-
     const interrupted = await manager.interruptChat(chat.config.id);
 
-    expect(interrupted?.state.status).toBe("interrupting");
-    await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    expect(interrupted?.state.status).toBe("idle");
     expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(false);
   });
 
@@ -3099,9 +3298,9 @@ describe("ChatManager", () => {
     });
 
     const interrupted = await manager.interruptChat(chat.config.id);
-    expect(interrupted?.state.status).toBe("interrupting");
+    expect(interrupted?.state.status).toBe("idle");
 
-    const settledAfterInterrupt = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    const settledAfterInterrupt = interrupted!;
     expect(
       settledAfterInterrupt.state.messages
         .filter((message) => message.role === "assistant")
@@ -3144,10 +3343,10 @@ describe("ChatManager", () => {
 
     const interrupted = await manager.interruptChat(chat.config.id);
     const sessionId = interrupted?.state.session?.id;
-    expect(interrupted?.state.status).toBe("interrupting");
-    expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(true);
+    expect(interrupted?.state.status).toBe("idle");
+    expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(false);
 
-    const settledAfterInterrupt = await waitForChat(chat.config.id, (current) => current.state.status === "idle");
+    const settledAfterInterrupt = interrupted!;
     expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(false);
     expect(settledAfterInterrupt.state.session?.id).toBe(sessionId);
     expect(
@@ -3169,5 +3368,113 @@ describe("ChatManager", () => {
     expect(settled.state.session?.id).toBe(sessionId);
     expect(settled.state.messages.some((message) => message.content === "Second response after unsupported interrupt")).toBe(true);
     expect(settled.state.messages.some((message) => message.content === "First response that should be discarded after interrupt")).toBe(false);
+  });
+
+  test("accepts an immediate follow-up after interrupting a stubborn running tool", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new StubbornToolInterruptBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Stubborn Tool Interrupt Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "start a long tool",
+    });
+
+    await waitForChat(chat.config.id, (current) =>
+      current.state.status === "streaming"
+      && current.state.toolCalls.some((toolCall) => toolCall.status === "running"),
+    );
+
+    const interrupted = await manager.interruptChat(chat.config.id);
+    expect(interrupted?.state.status).toBe("idle");
+    expect((manager as unknown as ChatManagerInternals).activeStreams.has(chat.config.id)).toBe(false);
+    expect(interrupted?.state.toolCalls).toEqual([
+      expect.objectContaining({
+        name: "execute",
+        status: "failed",
+        output: "Interrupted",
+      }),
+    ]);
+
+    const resumed = await manager.sendMessage(chat.config.id, {
+      message: "follow-up request",
+    });
+    expect(resumed.state.status).toBe("streaming");
+
+    const settled = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "Second response after stubborn tool interrupt"),
+    );
+
+    expect(settled.state.messages.some((message) => message.content === "Second response after stubborn tool interrupt")).toBe(true);
+    expect(settled.state.error).toBeUndefined();
+  });
+
+  test("preserves conversation context after interrupting a stubborn running tool", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new StubbornToolInterruptBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Stubborn Tool Context Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Please remember the code word blue-pineapple for later.",
+    });
+    await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "I will remember blue-pineapple."),
+    );
+
+    await manager.sendMessage(chat.config.id, {
+      message: "start a long tool",
+    });
+    await waitForChat(chat.config.id, (current) =>
+      current.state.status === "streaming"
+      && current.state.toolCalls.some((toolCall) => toolCall.status === "running"),
+    );
+
+    const interrupted = await manager.interruptChat(chat.config.id);
+    expect(interrupted?.state.status).toBe("idle");
+
+    const resumed = await manager.sendMessage(chat.config.id, {
+      message: "What code word did I ask you to remember?",
+    });
+    expect(resumed.state.status).toBe("streaming");
+
+    const settled = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "The code word was blue-pineapple."),
+    );
+
+    expect(settled.state.error).toBeUndefined();
+    expect(
+      settled.state.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content),
+    ).toEqual([
+      "Please remember the code word blue-pineapple for later.",
+      "start a long tool",
+      "What code word did I ask you to remember?",
+    ]);
+    expect(settled.state.messages.some((message) => message.content === "I do not have the earlier code word.")).toBe(false);
   });
 });

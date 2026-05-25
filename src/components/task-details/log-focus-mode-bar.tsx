@@ -10,8 +10,6 @@ export interface LogFocusModeBarProps {
   onShowReasoningChange: (value: boolean) => void;
   showTools: boolean;
   onShowToolsChange: (value: boolean) => void;
-  autoScroll: boolean;
-  onAutoScrollChange: (value: boolean) => void;
   onExitFocusMode: () => void;
   applySafeAreaBottom?: boolean;
 }
@@ -23,8 +21,6 @@ export function LogFocusModeBar({
   onShowReasoningChange,
   showTools,
   onShowToolsChange,
-  autoScroll,
-  onAutoScrollChange,
   onExitFocusMode,
   applySafeAreaBottom = false,
 }: LogFocusModeBarProps) {
@@ -78,15 +74,6 @@ export function LogFocusModeBar({
           aria-pressed={showTools}
         >
           Tools
-        </Button>
-        <Button
-          variant={autoScroll ? "primary" : "secondary"}
-          size="xs"
-          className={buttonClassName}
-          onClick={() => onAutoScrollChange(!autoScroll)}
-          aria-pressed={autoScroll}
-        >
-          Autoscroll
         </Button>
       </div>
     </div>
