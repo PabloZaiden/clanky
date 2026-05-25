@@ -15,8 +15,6 @@ interface LogTabProps {
   onShowReasoningChange: (v: boolean) => void;
   showTools: boolean;
   onShowToolsChange: (v: boolean) => void;
-  autoScroll: boolean;
-  onAutoScrollChange: (v: boolean) => void;
   markdownEnabled: boolean;
   isLogActive: boolean;
   isFocusMode: boolean;
@@ -37,8 +35,6 @@ export function LogTab({
   onShowReasoningChange,
   showTools,
   onShowToolsChange,
-  autoScroll,
-  onAutoScrollChange,
   markdownEnabled,
   isLogActive,
   isFocusMode,
@@ -61,7 +57,6 @@ export function LogTab({
           showSystemInfo={showSystemInfo}
           showReasoning={showReasoning}
           showTools={showTools}
-          autoScroll={autoScroll}
           markdownEnabled={markdownEnabled}
           isActive={isLogActive}
           toolPathDisplayRoot={toolPathDisplayRoot}
@@ -83,8 +78,6 @@ export function LogTab({
           onShowReasoningChange={onShowReasoningChange}
           showTools={showTools}
           onShowToolsChange={onShowToolsChange}
-          autoScroll={autoScroll}
-          onAutoScrollChange={onAutoScrollChange}
           onExitFocusMode={onExitFocusMode}
           applySafeAreaBottom={applySafeAreaBottomToFocusBar}
         />
@@ -128,18 +121,6 @@ export function LogTab({
                   className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
                 />
                 <span>Tools</span>
-              </span>
-            </label>
-            <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
-              <span className="flex items-center gap-1 whitespace-nowrap sm:gap-2">
-                <input
-                  type="checkbox"
-                  checked={autoScroll}
-                  onChange={(e) => onAutoScrollChange(e.target.checked)}
-                  aria-label="Autoscroll"
-                  className="rounded border-gray-300 text-gray-700 focus:ring-gray-500 focus:ring-offset-0 dark:border-gray-600 dark:text-gray-300"
-                />
-                <span>Autoscroll</span>
               </span>
             </label>
             <Button
