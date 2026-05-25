@@ -97,6 +97,69 @@ describe("ConversationViewer", () => {
     expect(metrics.scrollTop).toBe(1200);
   });
 
+  test("keeps following rapid content growth when scroll state updates before the scheduled frame", async () => {
+    const messages = [createMessage(1), createMessage(2)];
+    const { container, rerender } = renderWithUser(
+      <ConversationViewer
+        id="conversation-scroll"
+        messages={messages}
+        logs={[]}
+        toolCalls={[]}
+        showAssistantMessages
+      />,
+    );
+    const scrollContainer = container.querySelector("#conversation-scroll") as HTMLElement;
+    const metrics = { scrollTop: 800, scrollHeight: 1000, clientHeight: 200 };
+    mockScrollMetrics(scrollContainer, metrics);
+    fireEvent.scroll(scrollContainer);
+
+    rerender(
+      <ConversationViewer
+        id="conversation-scroll"
+        messages={[...messages, createMessage(3)]}
+        logs={[]}
+        toolCalls={[]}
+        showAssistantMessages
+      />,
+    );
+    metrics.scrollHeight = 1200;
+    fireEvent.scroll(scrollContainer);
+    await flushAnimationFrame();
+
+    expect(metrics.scrollTop).toBe(1200);
+  });
+
+  test("keeps following new content when slightly above the bottom", async () => {
+    const messages = [createMessage(1), createMessage(2)];
+    const { container, rerender } = renderWithUser(
+      <ConversationViewer
+        id="conversation-scroll"
+        messages={messages}
+        logs={[]}
+        toolCalls={[]}
+        showAssistantMessages
+      />,
+    );
+    const scrollContainer = container.querySelector("#conversation-scroll") as HTMLElement;
+    const metrics = { scrollTop: 766, scrollHeight: 1000, clientHeight: 200 };
+    mockScrollMetrics(scrollContainer, metrics);
+    fireEvent.scroll(scrollContainer);
+
+    rerender(
+      <ConversationViewer
+        id="conversation-scroll"
+        messages={[...messages, createMessage(3)]}
+        logs={[]}
+        toolCalls={[]}
+        showAssistantMessages
+      />,
+    );
+    metrics.scrollHeight = 1200;
+    await flushAnimationFrame();
+
+    expect(metrics.scrollTop).toBe(1200);
+  });
+
   test("scrolls to the bottom on initial render before the user scrolls", async () => {
     const messages = [createMessage(1), createMessage(2)];
     const { container, rerender } = renderWithUser(
