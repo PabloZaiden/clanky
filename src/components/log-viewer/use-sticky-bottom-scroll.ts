@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type DependencyList } from "react";
 
-const BOTTOM_THRESHOLD_PX = 24;
+const BOTTOM_THRESHOLD_PX = 48;
 
 function isNearBottom(element: HTMLElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_THRESHOLD_PX;
@@ -11,6 +11,7 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
   const contentRef = useRef<HTMLDivElement>(null);
   const isPinnedToBottomRef = useRef(true);
   const animationFrameRef = useRef<number | null>(null);
+  const scheduledScrollTopRef = useRef(0);
 
   const cancelScheduledScroll = useCallback(() => {
     if (animationFrameRef.current === null) {
@@ -22,10 +23,16 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
 
   const scrollToBottomIfPinned = useCallback(() => {
     const currentContainer = containerRef.current;
-    if (!isPinnedToBottomRef.current && (!currentContainer || !isNearBottom(currentContainer))) {
+    if (!currentContainer) {
+      return;
+    }
+    const wasPinnedWhenScheduled = isPinnedToBottomRef.current || isNearBottom(currentContainer);
+    const scheduledScrollTop = currentContainer.scrollTop;
+    if (!wasPinnedWhenScheduled) {
       return;
     }
     isPinnedToBottomRef.current = true;
+    scheduledScrollTopRef.current = scheduledScrollTop;
 
     cancelScheduledScroll();
     animationFrameRef.current = requestAnimationFrame(() => {
@@ -34,7 +41,8 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
       if (!container) {
         return;
       }
-      if (!isPinnedToBottomRef.current && !isNearBottom(container)) {
+      const stayedNearScheduledPosition = container.scrollTop >= scheduledScrollTop - BOTTOM_THRESHOLD_PX;
+      if (!isPinnedToBottomRef.current && !isNearBottom(container) && !stayedNearScheduledPosition) {
         return;
       }
 
@@ -51,7 +59,15 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     }
 
     const updatePinnedState = () => {
-      isPinnedToBottomRef.current = isNearBottom(container);
+      const isCurrentlyNearBottom = isNearBottom(container);
+      if (
+        animationFrameRef.current !== null &&
+        !isCurrentlyNearBottom &&
+        Math.abs(container.scrollTop - scheduledScrollTopRef.current) > BOTTOM_THRESHOLD_PX
+      ) {
+        cancelScheduledScroll();
+      }
+      isPinnedToBottomRef.current = isCurrentlyNearBottom;
     };
 
     container.addEventListener("scroll", updatePinnedState, { passive: true });
@@ -59,7 +75,7 @@ export function useStickyBottomScroll(dependencies: DependencyList) {
     return () => {
       container.removeEventListener("scroll", updatePinnedState);
     };
-  }, []);
+  }, [cancelScheduledScroll]);
 
   useLayoutEffect(() => {
     scrollToBottomIfPinned();
