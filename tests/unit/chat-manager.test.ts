@@ -1486,6 +1486,7 @@ class StubbornToolInterruptBackend implements Backend {
   private connected = false;
   private directory = "";
   private readonly sessions = new Map<string, AgentSession>();
+  private readonly promptHistory = new Map<string, string[]>();
   private readonly subscriptions = new Map<string, {
     stream: EventStream<AgentEvent>;
     push: (event: AgentEvent) => void;
@@ -1513,6 +1514,7 @@ class StubbornToolInterruptBackend implements Backend {
       createdAt: new Date().toISOString(),
     };
     this.sessions.set(session.id, session);
+    this.promptHistory.set(session.id, []);
     return session;
   }
 
@@ -1534,6 +1536,51 @@ class StubbornToolInterruptBackend implements Backend {
       .filter((part): part is Extract<PromptInput["parts"][number], { type: "text" }> => part.type === "text")
       .map((part) => part.text)
       .join(" ");
+    const sessionHistory = this.promptHistory.get(sessionId) ?? [];
+    sessionHistory.push(promptText);
+    this.promptHistory.set(sessionId, sessionHistory);
+
+    if (promptText.includes("remember the code word")) {
+      setTimeout(() => {
+        subscription.push({
+          type: "message.start",
+          messageId: `msg-${crypto.randomUUID()}`,
+        });
+        subscription.push({
+          type: "message.delta",
+          content: "I will remember blue-pineapple.",
+        });
+        subscription.push({
+          type: "message.complete",
+          content: "I will remember blue-pineapple.",
+        });
+        subscription.end();
+      }, 0);
+      return;
+    }
+
+    if (promptText.includes("What code word")) {
+      const remembered = sessionHistory.some((entry) => entry.includes("blue-pineapple"));
+      setTimeout(() => {
+        const content = remembered
+          ? "The code word was blue-pineapple."
+          : "I do not have the earlier code word.";
+        subscription.push({
+          type: "message.start",
+          messageId: `msg-${crypto.randomUUID()}`,
+        });
+        subscription.push({
+          type: "message.delta",
+          content,
+        });
+        subscription.push({
+          type: "message.complete",
+          content,
+        });
+        subscription.end();
+      }, 0);
+      return;
+    }
 
     if (promptText.includes("follow-up")) {
       setTimeout(() => {
@@ -1628,6 +1675,7 @@ class StubbornToolInterruptBackend implements Backend {
 
   async deleteSession(id: string): Promise<void> {
     this.sessions.delete(id);
+    this.promptHistory.delete(id);
   }
 
   async getModels(_directory: string): Promise<ModelInfo[]> {
@@ -3370,5 +3418,63 @@ describe("ChatManager", () => {
 
     expect(settled.state.messages.some((message) => message.content === "Second response after stubborn tool interrupt")).toBe(true);
     expect(settled.state.error).toBeUndefined();
+  });
+
+  test("preserves conversation context after interrupting a stubborn running tool", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+
+    backendManager.setBackendForTesting(new StubbornToolInterruptBackend());
+
+    const manager = new ChatManager();
+    const chat = await manager.createChat({
+      name: "Stubborn Tool Context Chat",
+      workspaceId: testWorkspaceId,
+      directory: context.workDir,
+      useWorktree: false,
+      ...testModelFields,
+    });
+
+    await manager.sendMessage(chat.config.id, {
+      message: "Please remember the code word blue-pineapple for later.",
+    });
+    await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "I will remember blue-pineapple."),
+    );
+
+    await manager.sendMessage(chat.config.id, {
+      message: "start a long tool",
+    });
+    await waitForChat(chat.config.id, (current) =>
+      current.state.status === "streaming"
+      && current.state.toolCalls.some((toolCall) => toolCall.status === "running"),
+    );
+
+    const interrupted = await manager.interruptChat(chat.config.id);
+    expect(interrupted?.state.status).toBe("idle");
+
+    const resumed = await manager.sendMessage(chat.config.id, {
+      message: "What code word did I ask you to remember?",
+    });
+    expect(resumed.state.status).toBe("streaming");
+
+    const settled = await waitForChat(chat.config.id, (current) =>
+      current.state.status === "idle"
+      && current.state.messages.some((message) => message.content === "The code word was blue-pineapple."),
+    );
+
+    expect(settled.state.error).toBeUndefined();
+    expect(
+      settled.state.messages
+        .filter((message) => message.role === "user")
+        .map((message) => message.content),
+    ).toEqual([
+      "Please remember the code word blue-pineapple for later.",
+      "start a long tool",
+      "What code word did I ask you to remember?",
+    ]);
+    expect(settled.state.messages.some((message) => message.content === "I do not have the earlier code word.")).toBe(false);
   });
 });
