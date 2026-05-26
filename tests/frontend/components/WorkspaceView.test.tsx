@@ -3,6 +3,7 @@ import { renderWithUser, waitFor } from "../helpers/render";
 import { createTask, createWorkspace } from "../helpers/factories";
 
 import { WorkspaceView } from "@/components/app-shell/workspace-view";
+import { EMPTY_SIDEBAR_PINNING_STATE } from "@/components/app-shell/sidebar-pins";
 
 describe("WorkspaceView", () => {
   test("shows an Open in GitHub action when the workspace has a GitHub URL", async () => {
@@ -31,6 +32,7 @@ describe("WorkspaceView", () => {
           onPullLatestChanges={async () => ({ success: true })}
           pullingLatestChanges={false}
           onNavigate={() => {}}
+          sidebarPinning={EMPTY_SIDEBAR_PINNING_STATE}
         />,
       );
 
@@ -72,6 +74,7 @@ describe("WorkspaceView", () => {
         onPullLatestChanges={async () => ({ success: true })}
         pullingLatestChanges={false}
         onNavigate={() => {}}
+        sidebarPinning={EMPTY_SIDEBAR_PINNING_STATE}
       />,
     );
 
@@ -113,6 +116,7 @@ describe("WorkspaceView", () => {
         onPullLatestChanges={async () => ({ success: true })}
         pullingLatestChanges={false}
         onNavigate={() => {}}
+        sidebarPinning={EMPTY_SIDEBAR_PINNING_STATE}
       />,
     );
 
@@ -141,6 +145,7 @@ describe("WorkspaceView", () => {
         }}
         pullingLatestChanges={false}
         onNavigate={() => {}}
+        sidebarPinning={EMPTY_SIDEBAR_PINNING_STATE}
       />,
     );
 
@@ -171,6 +176,7 @@ describe("WorkspaceView", () => {
         }}
         pullingLatestChanges
         onNavigate={() => {}}
+        sidebarPinning={EMPTY_SIDEBAR_PINNING_STATE}
       />,
     );
 

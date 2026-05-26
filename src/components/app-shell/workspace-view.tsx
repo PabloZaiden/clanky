@@ -12,7 +12,7 @@ import {
   getSshSessionStatusLabel,
 } from "../common";
 import type { ShellRoute } from "./shell-types";
-import { EMPTY_SIDEBAR_PINNING_STATE, type SidebarPinningState } from "./sidebar-pins";
+import type { SidebarPinningState } from "./sidebar-pins";
 import { ShellPanel } from "./shell-panel";
 import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
 import { buildWorkspaceActionItems } from "./shell-action-items";
@@ -44,7 +44,7 @@ export function WorkspaceView({
   onPullLatestChanges,
   pullingLatestChanges,
   onNavigate,
-  sidebarPinning = EMPTY_SIDEBAR_PINNING_STATE,
+  sidebarPinning,
 }: {
   workspace: Workspace;
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
@@ -56,7 +56,7 @@ export function WorkspaceView({
   onPullLatestChanges: () => void;
   pullingLatestChanges: boolean;
   onNavigate: (route: ShellRoute) => void;
-  sidebarPinning?: SidebarPinningState;
+  sidebarPinning: SidebarPinningState;
 }) {
   const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);

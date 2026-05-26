@@ -107,7 +107,11 @@ export function saveSidebarPinnedItems(items: SidebarPinnedItem[]): void {
     return;
   }
 
-  storage.setItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY, JSON.stringify(normalizeSidebarPinnedItems(items)));
+  try {
+    storage.setItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY, JSON.stringify(normalizeSidebarPinnedItems(items)));
+  } catch (error) {
+    console.warn("Failed to save sidebar pinned items", error);
+  }
 }
 
 export function useSidebarPinnedItems(): SidebarPinningState {

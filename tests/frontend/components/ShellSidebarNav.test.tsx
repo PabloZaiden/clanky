@@ -380,6 +380,38 @@ describe("ShellSidebarNav", () => {
     expect(JSON.parse(window.localStorage.getItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY) ?? "[]")).toEqual([]);
   });
 
+  test("keeps pinning UI responsive when localStorage writes fail", async () => {
+    const originalWarn = console.warn;
+    const originalSetItem = window.localStorage.setItem;
+    const failingSetItem = mock(() => {
+      throw new Error("Storage quota exceeded");
+    }) as Storage["setItem"];
+    Object.defineProperty(window.localStorage, "setItem", {
+      configurable: true,
+      value: failingSetItem,
+    });
+    console.warn = mock(() => {}) as typeof console.warn;
+
+    try {
+      const { getAllByText, getByRole, getByText, user } = renderWithUser(<SidebarHarness />);
+
+      fireEvent.contextMenu(getByTextButton(getAllByText("Feature Task")[0]!));
+      await user.click(getByRole("menuitem", { name: "Pin to sidebar" }));
+
+      await waitFor(() => {
+        expect(getByText("Pinned")).toBeInTheDocument();
+      });
+      expect(getAllByText("Feature Task").length).toBeGreaterThan(1);
+      expect(console.warn).toHaveBeenCalledWith("Failed to save sidebar pinned items", expect.any(Error));
+    } finally {
+      Object.defineProperty(window.localStorage, "setItem", {
+        configurable: true,
+        value: originalSetItem,
+      });
+      console.warn = originalWarn;
+    }
+  });
+
   test("renders available pinned items from localStorage below search and ignores unavailable pins", () => {
     window.localStorage.setItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY, JSON.stringify([
       { kind: "workspace", id: "missing-workspace" },

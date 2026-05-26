@@ -32,7 +32,7 @@ import {
 } from "./shell-types";
 import { buildSshServerActionItems, buildWorkspaceActionItems } from "./shell-action-items";
 import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
-import { EMPTY_SIDEBAR_PINNING_STATE, type SidebarPinnedItem, type SidebarPinningState } from "./sidebar-pins";
+import type { SidebarPinnedItem, SidebarPinningState } from "./sidebar-pins";
 
 interface ShellSidebarNavProps {
   route: ShellRoute;
@@ -53,7 +53,7 @@ interface ShellSidebarNavProps {
   sidebarSearchFocusRequest: number;
   pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
   pullingLatestWorkspaceIds: ReadonlySet<string>;
-  sidebarPinning?: SidebarPinningState;
+  sidebarPinning: SidebarPinningState;
 }
 
 const iconButtonBase =
@@ -295,7 +295,7 @@ export function ShellSidebarNav({
   sidebarSearchFocusRequest,
   pullLatestWorkspaceChanges,
   pullingLatestWorkspaceIds,
-  sidebarPinning = EMPTY_SIDEBAR_PINNING_STATE,
+  sidebarPinning,
 }: ShellSidebarNavProps) {
   const [searchInput, setSearchInput] = useState("");
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState | null>(null);
