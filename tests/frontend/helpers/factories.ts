@@ -182,29 +182,38 @@ export function createChat(overrides?: {
 }): Chat {
   const id = overrides?.config?.id ?? overrides?.state?.id ?? nextId();
   const status: ChatStatus = overrides?.state?.status ?? "idle";
+  const config: ChatConfig = {
+    id,
+    name: "Test Chat",
+    workspaceId: "workspace-1",
+    scope: "workspace",
+    directory: "/workspaces/test-project",
+    model: createModelConfig(),
+    useWorktree: true,
+    autoApprovePermissions: true,
+    createdAt: isoNow(),
+    updatedAt: isoNow(),
+    mode: "chat",
+    ...overrides?.config,
+  };
+  const state: ChatState = {
+    id,
+    status,
+    messages: [],
+    logs: [],
+    toolCalls: [],
+    pendingPermissionRequests: [],
+    ...overrides?.state,
+  };
+
   return {
     config: {
+      ...config,
       id,
-      name: "Test Chat",
-      workspaceId: "workspace-1",
-      scope: "workspace",
-      directory: "/workspaces/test-project",
-      model: createModelConfig(),
-      useWorktree: true,
-      autoApprovePermissions: true,
-      createdAt: isoNow(),
-      updatedAt: isoNow(),
-      mode: "chat",
-      ...overrides?.config,
     },
     state: {
+      ...state,
       id,
-      status,
-      messages: [],
-      logs: [],
-      toolCalls: [],
-      pendingPermissionRequests: [],
-      ...overrides?.state,
     },
   };
 }
