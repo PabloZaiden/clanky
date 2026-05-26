@@ -8,6 +8,7 @@
 import type { Task, TaskConfig, TaskState, TaskStatus, ModelConfig } from "@/types/task";
 import type { GitConfig, GitState, GitCommit, IterationSummary, TaskLogEntry, PersistedMessage, PersistedToolCall, TaskError, SessionInfo } from "@/types/task";
 import type { Workspace } from "@/types/workspace";
+import type { Chat, ChatConfig, ChatState, ChatStatus } from "@/types/chat";
 import type { SshSession } from "@/types/ssh-session";
 import type { BranchInfo, ModelInfo, FileDiff } from "@/types/api";
 import type { MessageData, ToolCallData, TaskEvent } from "@/types/events";
@@ -167,6 +168,52 @@ export function createSshSession(overrides?: {
     state: {
       status: "ready",
       ...overrides?.state,
+    },
+  };
+}
+
+// ============================================
+// Chat
+// ============================================
+
+export function createChat(overrides?: {
+  config?: Partial<ChatConfig>;
+  state?: Partial<ChatState>;
+}): Chat {
+  const id = overrides?.config?.id ?? overrides?.state?.id ?? nextId();
+  const status: ChatStatus = overrides?.state?.status ?? "idle";
+  const config: ChatConfig = {
+    id,
+    name: "Test Chat",
+    workspaceId: "workspace-1",
+    scope: "workspace",
+    directory: "/workspaces/test-project",
+    model: createModelConfig(),
+    useWorktree: true,
+    autoApprovePermissions: true,
+    createdAt: isoNow(),
+    updatedAt: isoNow(),
+    mode: "chat",
+    ...overrides?.config,
+  };
+  const state: ChatState = {
+    id,
+    status,
+    messages: [],
+    logs: [],
+    toolCalls: [],
+    pendingPermissionRequests: [],
+    ...overrides?.state,
+  };
+
+  return {
+    config: {
+      ...config,
+      id,
+    },
+    state: {
+      ...state,
+      id,
     },
   };
 }

@@ -244,7 +244,7 @@ describe("App shell", () => {
     const workspacesHeading = getByRole("heading", { name: "Workspaces" });
 
     expect(queryByRole("heading", { name: "Active Work" })).toBeNull();
-    expect(serversHeading.compareDocumentPosition(workspacesHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(workspacesHeading.compareDocumentPosition(serversHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(queryByText("Tracked repositories and hosts.")).toBeNull();
     expect(queryByText("Task-oriented Clanky tasks.")).toBeNull();
     expect(queryByText("Interactive conversations.")).toBeNull();

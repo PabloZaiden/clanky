@@ -156,8 +156,8 @@ describe("dashboard management scenario", () => {
     expect(within(activeWorkCard).getByText("Pushed Task")).toBeTruthy();
     expect(within(activeWorkCard).getByText("Draft Task")).toBeTruthy();
 
-    expect(activeWorkHeading.compareDocumentPosition(serversHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(serversHeading.compareDocumentPosition(workspacesHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activeWorkHeading.compareDocumentPosition(workspacesHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(workspacesHeading.compareDocumentPosition(serversHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test("clicking a task card navigates to task details", async () => {
