@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { isChatBusyStatus, type SshServer, type SshServerSession } from "../../types";
+import type { SshServer, SshServerSession } from "../../types";
 import type { useTaskGrouping } from "../../hooks";
 import { StatusBadge, type BadgeVariant } from "../common";
 import {
@@ -84,8 +84,8 @@ export function OverviewView({
     () => buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { quickChatWorkspace, serverNodes }),
     [quickChatWorkspace, serverNodes, sidebarWorkspaceGroups],
   );
-  const activeQuickChats = useMemo(() => {
-    return quickChatWorkspace?.chats.filter((chatNode) => isChatBusyStatus(chatNode.chat.state.status)) ?? [];
+  const quickChats = useMemo(() => {
+    return quickChatWorkspace?.chats ?? [];
   }, [quickChatWorkspace]);
   const serverMapItems = useMemo(() => {
     return servers.map((server) => ({
@@ -138,13 +138,13 @@ export function OverviewView({
           </div>
         )}
 
-        {activeQuickChats.length > 0 && (
+        {quickChats.length > 0 && (
           <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
             <div>
-              <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Active Quick Chats</h2>
+              <h2 className="text-lg font-semibold text-gray-950 dark:text-gray-100">Quick Chats</h2>
             </div>
             <div className="space-y-2">
-              {activeQuickChats.map((chatNode) => (
+              {quickChats.map((chatNode) => (
                 <button
                   key={chatNode.chat.config.id}
                   type="button"
