@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { fireEvent } from "@testing-library/react";
 import { useState } from "react";
 import type { Chat } from "@/types/chat";
@@ -10,6 +10,11 @@ import {
   buildWorkspaceSidebarGroups,
   type ShellRoute,
 } from "@/components/app-shell/shell-types";
+import {
+  SIDEBAR_PINNED_ITEMS_STORAGE_KEY,
+  useSidebarPinnedItems,
+  type SidebarPinningState,
+} from "@/components/app-shell/sidebar-pins";
 import { createTask, createServerSettings, createSshSession, createWorkspace } from "../helpers/factories";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 
@@ -215,6 +220,7 @@ function SidebarHarness({
   pullLatestWorkspaceChanges,
   pullingLatestWorkspaceIds,
   version,
+  sidebarPinning: sidebarPinningOverride,
 }: {
   route?: ShellRoute;
   navigateWithinShell?: (route: ShellRoute) => void;
@@ -227,8 +233,10 @@ function SidebarHarness({
   pullLatestWorkspaceChanges?: (workspaceId: string) => Promise<void>;
   pullingLatestWorkspaceIds?: ReadonlySet<string>;
   version?: string;
+  sidebarPinning?: SidebarPinningState;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const sidebarPinning = useSidebarPinnedItems();
   const { workspaceGroups, serverNodes } = createSidebarData();
 
   return (
@@ -251,11 +259,16 @@ function SidebarHarness({
       sidebarSearchFocusRequest={0}
       pullLatestWorkspaceChanges={pullLatestWorkspaceChanges ?? mock(async () => {})}
       pullingLatestWorkspaceIds={pullingLatestWorkspaceIds ?? new Set()}
+      sidebarPinning={sidebarPinningOverride ?? sidebarPinning}
     />
   );
 }
 
 describe("ShellSidebarNav", () => {
+  beforeEach(() => {
+    globalThis.window?.localStorage.removeItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY);
+  });
+
   test("renders the workspace and server trees with active and inactive groups", () => {
     const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
 
@@ -340,6 +353,46 @@ describe("ShellSidebarNav", () => {
 
     await user.click(getByTextButton(getAllByText("Standalone Server Session")[0]!));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "ssh", sshSessionId: "server-session-1" });
+  });
+
+  test("pins and unpins sidebar items from context menus with localStorage persistence", async () => {
+    const { getAllByText, getByRole, getByText, queryByText, user } = renderWithUser(<SidebarHarness />);
+
+    expect(queryByText("Pinned")).toBeNull();
+
+    fireEvent.contextMenu(getByTextButton(getAllByText("Feature Task")[0]!));
+    await user.click(getByRole("menuitem", { name: "Pin to sidebar" }));
+
+    await waitFor(() => {
+      expect(getByText("Pinned")).toBeInTheDocument();
+    });
+    expect(JSON.parse(window.localStorage.getItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY) ?? "[]")).toEqual([
+      { kind: "task", id: "task-1" },
+    ]);
+
+    const pinnedTaskButton = getByTextButton(getAllByText("Feature Task")[0]!);
+    fireEvent.contextMenu(pinnedTaskButton);
+    await user.click(getByRole("menuitem", { name: "Unpin from sidebar" }));
+
+    await waitFor(() => {
+      expect(queryByText("Pinned")).toBeNull();
+    });
+    expect(JSON.parse(window.localStorage.getItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY) ?? "[]")).toEqual([]);
+  });
+
+  test("renders available pinned items from localStorage below search and ignores unavailable pins", () => {
+    window.localStorage.setItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY, JSON.stringify([
+      { kind: "workspace", id: "missing-workspace" },
+      { kind: "workspace", id: "workspace-1" },
+      { kind: "ssh-server", id: "server-1" },
+    ]));
+
+    const { getAllByText, getByText, queryByText } = renderWithUser(<SidebarHarness />);
+
+    expect(getByText("Pinned")).toBeInTheDocument();
+    expect(queryByText("missing-workspace")).toBeNull();
+    expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
+    expect(getAllByText("Server 1").length).toBeGreaterThan(1);
   });
 
   test("keeps empty parent rows expandable when they expose nested action sections", () => {
@@ -766,6 +819,7 @@ describe("ShellSidebarNav", () => {
 
     expect(defaultPrevented).toBe(true);
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Pin to sidebar",
       "New Task",
       "New Chat",
       "Open code explorer",
@@ -796,6 +850,7 @@ describe("ShellSidebarNav", () => {
     ));
 
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Pin to sidebar",
       "New Task",
       "New Chat",
       "Open code explorer",
@@ -847,6 +902,7 @@ describe("ShellSidebarNav", () => {
     openContextMenuForButton(getByTextButton(getByText("Server 1")));
 
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Pin to sidebar",
       "Open code explorer",
       "New Session",
       "SSH Server Settings",

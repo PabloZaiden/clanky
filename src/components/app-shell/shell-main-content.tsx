@@ -23,6 +23,7 @@ import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import type { ShellRoute } from "./shell-types";
 import type { SidebarServerNode, SidebarWorkspaceGroupNode, SidebarWorkspaceNode } from "./shell-types";
+import type { SidebarPinningState } from "./sidebar-pins";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
@@ -117,6 +118,7 @@ interface ShellMainContentProps {
 
   // Toast
   toast: import("../../hooks/useToast").ToastContextValue;
+  sidebarPinning: SidebarPinningState;
 }
 
 function renderMainContent(props: ShellMainContentProps) {
@@ -163,6 +165,7 @@ function renderMainContent(props: ShellMainContentProps) {
     exportConfig,
     importConfig,
     workspacesSaving,
+    sidebarPinning,
   } = props;
 
   if (shellLoading && route.view === "home") {
@@ -224,6 +227,7 @@ function renderMainContent(props: ShellMainContentProps) {
           view: "code-explorer",
           target: { contentType: "task", taskId },
         })}
+        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -276,6 +280,7 @@ function renderMainContent(props: ShellMainContentProps) {
         }}
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
+        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -291,6 +296,7 @@ function renderMainContent(props: ShellMainContentProps) {
         }}
         showBackButton={false}
         headerOffsetClassName={shellHeaderOffsetClassName}
+        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -330,6 +336,7 @@ function renderMainContent(props: ShellMainContentProps) {
         }}
         pullingLatestChanges={pullingLatestWorkspaceIds.has(selectedWorkspace.id)}
         onNavigate={navigateWithinShell}
+        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -401,6 +408,7 @@ function renderMainContent(props: ShellMainContentProps) {
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
         onOpenSettings={() => navigateWithinShell({ view: "ssh-server-settings", serverId: selectedServer.config.id })}
+        sidebarPinning={sidebarPinning}
       />
     );
   }

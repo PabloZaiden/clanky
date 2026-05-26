@@ -32,6 +32,7 @@ import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-sna
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
 import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navigation";
+import type { SidebarPinningState } from "./app-shell/sidebar-pins";
 import type {
   Chat,
   ChatEvent,
@@ -112,6 +113,7 @@ export function ChatDetails({
   showBackButton = true,
   headerOffsetClassName,
   embeddedTaskId,
+  sidebarPinning,
 }: {
   chatId: string;
   onBack?: () => void;
@@ -120,6 +122,7 @@ export function ChatDetails({
   showBackButton?: boolean;
   headerOffsetClassName?: string;
   embeddedTaskId?: string;
+  sidebarPinning?: SidebarPinningState;
 }) {
   const toast = useToast();
   const { enabled: markdownEnabled } = useMarkdownPreference();
@@ -646,6 +649,15 @@ export function ChatDetails({
     }
 
     return [
+      ...(sidebarPinning
+        ? [{
+            id: "toggle-sidebar-pin",
+            label: sidebarPinning.isPinned({ kind: "chat", id: chat.config.id })
+              ? "Unpin from sidebar"
+              : "Pin to sidebar",
+            onClick: () => sidebarPinning.togglePinned({ kind: "chat", id: chat.config.id }),
+          }]
+        : []),
       {
         id: "spawn-task",
         label: isSpawnPending ? "Spawning task..." : "Spawn Task",
@@ -676,7 +688,7 @@ export function ChatDetails({
         destructive: true,
       },
     ];
-  }, [chat, handleSpawnTask, hasCodeExplorerAction, isActive, isEmbedded, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal]);
+  }, [chat, handleSpawnTask, hasCodeExplorerAction, isActive, isEmbedded, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal, sidebarPinning]);
 
   const {
     composerRef,

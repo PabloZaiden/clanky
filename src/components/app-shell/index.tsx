@@ -22,6 +22,7 @@ import { isEditableShortcutTarget } from "./use-sidebar";
 import { useWorkspaceCreate } from "./use-workspace-create";
 import { useWorkspaceSettingsShell } from "./use-workspace-settings-shell";
 import { useComposeState } from "./use-compose-state";
+import { useSidebarPinnedItems } from "./sidebar-pins";
 import { Modal } from "../common";
 
 export type { ShellRoute } from "./shell-types";
@@ -86,6 +87,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
   const { workspaceGroups } = useTaskGrouping(tasks, workspaces, !workspacesLoading);
 
   const sidebar = useSidebar(route, onNavigate);
+  const sidebarPinning = useSidebarPinnedItems();
   const { navigateWithinShell, showSidebar } = sidebar;
   const [sidebarSearchFocusRequest, setSidebarSearchFocusRequest] = useState(0);
   const pullingLatestWorkspaceIdsRef = useRef<Set<string>>(new Set());
@@ -356,6 +358,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         sidebarSearchFocusRequest={sidebarSearchFocusRequest}
         pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
         pullingLatestWorkspaceIds={pullingLatestWorkspaceIds}
+        sidebarPinning={sidebarPinning}
       />
 
       <ShellMainContent
@@ -417,6 +420,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         workspaceSettings={workspaceSettings}
         provisioning={provisioning}
         toast={toast}
+        sidebarPinning={sidebarPinning}
       />
 
       <Modal

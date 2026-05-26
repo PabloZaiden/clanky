@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import { Button, ConfirmModal, EditIcon, StatusBadge } from "../common";
+import { ActionMenu, Button, ConfirmModal, EditIcon, StatusBadge, type ActionMenuItem } from "../common";
 import { useSshSession, useToast } from "../../hooks";
 import { RenameSshSessionModal } from "../RenameSshSessionModal";
 import { isPersistentSshSession, writeTextToClipboard } from "../../utils";
@@ -29,6 +29,7 @@ import { useTerminalRenderer } from "./use-terminal-renderer";
 import { useFocusMode } from "./use-focus-mode";
 import { FocusModeBar } from "./focus-mode-bar";
 import { getFocusModeViewportStyle, useVisualViewport } from "./use-visual-viewport";
+import type { SidebarPinningState } from "../app-shell/sidebar-pins";
 
 export interface SshSessionDetailsProps {
   sshSessionId: string;
@@ -37,6 +38,7 @@ export interface SshSessionDetailsProps {
   headerOffsetClassName?: string;
   copyTextToClipboard?: (text: string) => Promise<void>;
   forcedFocusMode?: boolean;
+  sidebarPinning?: SidebarPinningState;
 }
 
 export function SshSessionDetails({
@@ -46,6 +48,7 @@ export function SshSessionDetails({
   headerOffsetClassName,
   copyTextToClipboard = writeTextToClipboard,
   forcedFocusMode = false,
+  sidebarPinning,
 }: SshSessionDetailsProps) {
   const toast = useToast();
   const { error: showErrorToast } = toast;
@@ -241,6 +244,15 @@ export function SshSessionDetails({
     sendEncodedTerminalKey: keyboard.sendEncodedTerminalKey,
     sendCtrlC: keyboard.sendCtrlC,
   };
+  const headerActionItems: ActionMenuItem[] = sidebarPinning
+    ? [{
+        id: "toggle-sidebar-pin",
+        label: sidebarPinning.isPinned({ kind: "ssh-session", id: session.config.id })
+          ? "Unpin from sidebar"
+          : "Pin to sidebar",
+        onClick: () => sidebarPinning.togglePinned({ kind: "ssh-session", id: session.config.id }),
+      }]
+    : [];
 
   function renderClipboardFallback(compact: boolean) {
     if (clipboard.pendingTerminalClipboardText === null) {
@@ -304,6 +316,13 @@ export function SshSessionDetails({
                     Rename
                   </span>
                 </Button>
+              )}
+              {headerActionItems.length > 0 && (
+                <ActionMenu
+                  items={headerActionItems}
+                  ariaLabel={`SSH session actions for ${session.config.name}`}
+                  triggerVariant="ghost"
+                />
               )}
               <Button variant="danger" size="xs" onClick={() => setShowDeleteConfirm(true)}>
                 Delete Session

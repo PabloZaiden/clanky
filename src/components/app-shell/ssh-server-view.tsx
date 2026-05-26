@@ -1,6 +1,7 @@
 import type { SshServer, SshServerSession } from "../../types";
 import { ActionMenu, Badge, Button, GearIcon } from "../common";
 import type { ShellRoute } from "./shell-types";
+import { EMPTY_SIDEBAR_PINNING_STATE, type SidebarPinningState } from "./sidebar-pins";
 import { ShellPanel, SummaryCard } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
 import { buildSshServerActionItems } from "./shell-action-items";
@@ -11,14 +12,24 @@ export function SshServerView({
   headerOffsetClassName,
   onNavigate,
   onOpenSettings,
+  sidebarPinning = EMPTY_SIDEBAR_PINNING_STATE,
 }: {
   server: SshServer;
   sessions: SshServerSession[];
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
   onOpenSettings: () => void;
+  sidebarPinning?: SidebarPinningState;
 }) {
-  const actionItems = buildSshServerActionItems({ server, onNavigate });
+  const serverPinnedItem = { kind: "ssh-server" as const, id: server.config.id };
+  const actionItems = [
+    {
+      id: "toggle-sidebar-pin",
+      label: sidebarPinning.isPinned(serverPinnedItem) ? "Unpin from sidebar" : "Pin to sidebar",
+      onClick: () => sidebarPinning.togglePinned(serverPinnedItem),
+    },
+    ...buildSshServerActionItems({ server, onNavigate }),
+  ];
 
   return (
     <ShellPanel
