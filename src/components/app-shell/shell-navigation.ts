@@ -149,6 +149,21 @@ export function getShellRouteUrl(route: ShellRoute): string {
   return appAbsoluteUrl(`/#${getHashForShellRoute(route)}`);
 }
 
+export function replaceHashRoute(hash: string) {
+  const normalizedHash = hash.startsWith("#") ? hash : `#${hash}`;
+  if (window.location.hash === normalizedHash) {
+    return;
+  }
+
+  const previousUrl = window.location.href;
+  window.history.replaceState(window.history.state, "", normalizedHash);
+  window.dispatchEvent(new HashChangeEvent("hashchange", { oldURL: previousUrl, newURL: window.location.href }));
+}
+
+export function replaceShellRoute(route: ShellRoute) {
+  replaceHashRoute(getHashForShellRoute(route));
+}
+
 export function isModifiedNavigationClick(event: MouseEvent<HTMLElement>): boolean {
   return event.metaKey || event.ctrlKey;
 }

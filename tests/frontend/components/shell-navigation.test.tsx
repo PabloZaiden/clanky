@@ -4,6 +4,8 @@ import {
   getHashForShellRoute,
   getShellRouteUrl,
   isModifiedNavigationClick,
+  replaceHashRoute,
+  replaceShellRoute,
 } from "@/components/app-shell/shell-navigation";
 
 describe("shell navigation helpers", () => {
@@ -44,6 +46,47 @@ describe("shell navigation helpers", () => {
     expect(getShellRouteUrl({ view: "workspace", workspaceId: "workspace-1" })).toBe(
       "http://localhost:3000/#/workspace/workspace-1",
     );
+  });
+
+  test("replaces hash routes without adding history entries", () => {
+    window.history.replaceState({ marker: "initial" }, "", "/#/initial");
+    const initialLength = window.history.length;
+    const hashChanges: HashChangeEvent[] = [];
+    const onHashChange = (event: HashChangeEvent) => hashChanges.push(event);
+
+    window.addEventListener("hashchange", onHashChange);
+    try {
+      replaceShellRoute({ view: "task", taskId: "task-1" });
+    } finally {
+      window.removeEventListener("hashchange", onHashChange);
+    }
+
+    expect(window.location.hash).toBe("#/task/task-1");
+    expect(window.history.length).toBe(initialLength);
+    expect(window.history.state).toEqual({ marker: "initial" });
+    expect(hashChanges).toHaveLength(1);
+    expect(hashChanges[0]!.oldURL).toBe("http://localhost:3000/#/initial");
+    expect(hashChanges[0]!.newURL).toBe("http://localhost:3000/#/task/task-1");
+  });
+
+  test("does not emit duplicate hash changes for the current hash route", () => {
+    window.history.replaceState({}, "", "/#/task/task-1");
+    const initialLength = window.history.length;
+    let hashChangeCount = 0;
+    const onHashChange = () => {
+      hashChangeCount += 1;
+    };
+
+    window.addEventListener("hashchange", onHashChange);
+    try {
+      replaceHashRoute("/task/task-1");
+    } finally {
+      window.removeEventListener("hashchange", onHashChange);
+    }
+
+    expect(window.location.hash).toBe("#/task/task-1");
+    expect(window.history.length).toBe(initialLength);
+    expect(hashChangeCount).toBe(0);
   });
 
   test("detects modified navigation clicks", () => {

@@ -6,7 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AppShell, type ShellRoute } from "./components/AppShell";
 import { DeviceApprovalScreen } from "./components/DeviceApprovalScreen";
 import { PasskeyAuthScreen } from "./components/PasskeyAuthScreen";
-import { getHashForShellRoute } from "./components/app-shell/shell-navigation";
+import { replaceShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
 import { AppEventsProvider, ThemePreferenceProvider, usePasskeyAuth } from "./hooks";
 import "@xterm/xterm/css/xterm.css";
@@ -160,7 +160,7 @@ function parseHash(): ShellRoute {
 }
 
 function navigateTo(route: ShellRoute) {
-  window.location.hash = getHashForShellRoute(route);
+  replaceShellRoute(route);
 }
 
 function isDeviceApprovalRoute(pathname: string): boolean {
