@@ -31,7 +31,7 @@ function createServer(overrides?: Partial<SshServer["config"]>): SshServer {
 }
 
 describe("OverviewView", () => {
-  test("shows only active quick chats and opens the selected chat", async () => {
+  test("shows existing quick chats and opens the selected chat", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Quick Workspace" });
     const activeQuickChat = createChat({
       config: { id: "chat-active", name: "Active quick chat", workspaceId: workspace.id },
@@ -52,7 +52,7 @@ describe("OverviewView", () => {
       .find((node) => node.workspace.id === workspace.id)!;
     const navigatedRoutes: ShellRoute[] = [];
 
-    const { getByRole, queryByText, user } = renderWithUser(
+    const { getByRole, user } = renderWithUser(
       <OverviewView
         servers={[]}
         sessionsByServerId={{}}
@@ -64,13 +64,13 @@ describe("OverviewView", () => {
       />,
     );
 
-    expect(getByRole("heading", { name: "Active Quick Chats" })).toBeTruthy();
+    expect(getByRole("heading", { name: "Quick Chats" })).toBeTruthy();
     expect(getByRole("button", { name: /Active quick chat/ })).toBeTruthy();
-    expect(queryByText("Idle quick chat")).toBeNull();
+    expect(getByRole("button", { name: /Idle quick chat/ })).toBeTruthy();
 
-    await user.click(getByRole("button", { name: /Active quick chat/ }));
+    await user.click(getByRole("button", { name: /Idle quick chat/ }));
 
-    expect(navigatedRoutes).toEqual([{ view: "chat", chatId: "chat-active" }]);
+    expect(navigatedRoutes).toEqual([{ view: "chat", chatId: "chat-idle" }]);
   });
 
   test("renders workspaces before servers", () => {
