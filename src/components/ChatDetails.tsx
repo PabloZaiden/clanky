@@ -31,7 +31,7 @@ import { isChatEvent, useAppEvents, useAvailableModels, useMarkdownPreference, u
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
-import { getHashForShellRoute } from "./app-shell/shell-navigation";
+import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navigation";
 import type {
   Chat,
   ChatEvent,
@@ -620,7 +620,7 @@ export function ChatDetails({
             },
       })}`,
       openFile: ({ path, startDirectory }: TranscriptFileLinkTarget) => {
-        window.location.hash = getHashForShellRoute({
+        replaceShellRoute({
           view: "code-explorer",
           target: embeddedTaskId
             ? {

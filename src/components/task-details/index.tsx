@@ -24,7 +24,7 @@ import { useLogFocusMode } from "./use-log-focus-mode";
 import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
 import { getFocusModeViewportStyle, useVisualViewport } from "../ssh-session/use-visual-viewport";
-import { getHashForShellRoute } from "../app-shell/shell-navigation";
+import { replaceShellRoute } from "../app-shell/shell-navigation";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -80,7 +80,7 @@ export function TaskDetails({
         onOpenTaskFiles(taskId);
         return;
       }
-      window.location.hash = getHashForShellRoute({
+      replaceShellRoute({
         view: "code-explorer",
         target: { contentType: "task", taskId },
       });

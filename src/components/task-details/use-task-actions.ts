@@ -14,6 +14,7 @@ import type {
   PullRequestAutoMergeResult,
 } from "../../hooks/taskActions";
 import { log } from "../../lib/logger";
+import { replaceShellRoute } from "../app-shell/shell-navigation";
 
 interface UseTaskActionsOptions {
   onBack?: () => void;
@@ -136,7 +137,7 @@ export function useTaskActions({
     if (onSelectSshSession) {
       onSelectSshSession(sshSessionId);
     } else {
-      window.location.hash = `/ssh/${sshSessionId}`;
+      replaceShellRoute({ view: "ssh", sshSessionId });
     }
   }
 

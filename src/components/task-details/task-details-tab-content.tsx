@@ -21,7 +21,7 @@ import { PlanTab } from "./plan-tab";
 import { DiffTab } from "./diff-tab";
 import { ActionsTab } from "./actions-tab";
 import { ChatTab } from "./chat-tab";
-import { getHashForShellRoute } from "../app-shell/shell-navigation";
+import { getHashForShellRoute, replaceHashRoute } from "../app-shell/shell-navigation";
 
 interface TaskDetailsTabContentProps {
   activeTab: TabId;
@@ -97,7 +97,7 @@ export function TaskDetailsTabContent({
   }), [taskId]);
 
   const openLinkedTaskFile = useCallback((target: TranscriptFileLinkTarget) => {
-    window.location.hash = getTaskFileHash(target);
+    replaceHashRoute(getTaskFileHash(target));
   }, [getTaskFileHash]);
 
   const fileLinkContext = useMemo(() => ({
