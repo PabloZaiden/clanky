@@ -54,7 +54,12 @@ import { taskManager } from "./task-manager";
 import { createLogger } from "./logger";
 import { buildSeededPlanStatusContent, readValidatedPlanningFiles } from "./planning-file-service";
 import { sanitizeBranchName } from "../utils";
-import { buildSpawnCurrentPlanPrompt, buildSpawnTaskName, buildSpawnTaskPrompt } from "../utils/chat-to-task-prompt";
+import {
+  buildSpawnCurrentPlanPrompt,
+  buildSpawnTaskNameFromChat,
+  buildSpawnTaskNameFromCurrentPlan,
+  buildSpawnTaskPrompt,
+} from "../utils/chat-to-task-prompt";
 import { getImageViewToolPath, resolveToolCallImagePreview } from "./tool-call-image-preview";
 import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
 import { getTaskWorkingDirectory } from "./task/task-types";
@@ -710,7 +715,7 @@ export class ChatManager {
     await touchWorkspace(chat.config.workspaceId);
 
     const task = await taskManager.createTask({
-      name: buildSpawnTaskName(chat.config.name),
+      name: buildSpawnTaskNameFromChat(chat.config.name, chat.state.messages),
       directory: chat.config.directory,
       prompt,
       workspaceId: chat.config.workspaceId,
@@ -771,7 +776,11 @@ export class ChatManager {
     await touchWorkspace(working.chat.config.workspaceId);
 
     const task = await taskManager.createTask({
-      name: buildSpawnTaskName(working.chat.config.name),
+      name: buildSpawnTaskNameFromCurrentPlan(
+        working.chat.config.name,
+        working.chat.state.messages,
+        currentPlan.planContent,
+      ),
       directory: working.chat.config.directory,
       prompt,
       workspaceId: working.chat.config.workspaceId,
