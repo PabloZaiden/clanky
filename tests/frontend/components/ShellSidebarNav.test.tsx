@@ -269,12 +269,12 @@ describe("ShellSidebarNav", () => {
     globalThis.window?.localStorage.removeItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY);
   });
 
-  test("renders the workspace and server trees with active and inactive groups", () => {
-    const { getAllByText, getByText } = renderWithUser(<SidebarHarness />);
+  test("renders the workspace and server trees with one workspace list", () => {
+    const { getAllByText, getByText, queryByText } = renderWithUser(<SidebarHarness />);
 
     expect(getByText("Active Work")).toBeInTheDocument();
-    expect(getByText("Active")).toBeInTheDocument();
-    expect(getByText("Inactive")).toBeInTheDocument();
+    expect(queryByText("Active")).not.toBeInTheDocument();
+    expect(queryByText("Inactive")).not.toBeInTheDocument();
     expect(getAllByText("Workspace 1").length).toBeGreaterThan(0);
     expect(getByText("Workspace 2")).toBeInTheDocument();
     expect(getAllByText("Feature Task").length).toBeGreaterThan(0);
@@ -565,16 +565,14 @@ describe("ShellSidebarNav", () => {
       chats: [],
       sessions: [],
     });
-    const activeWorkspace = workspaceGroups
-      .find((group) => group.key === "active")
-      ?.workspaces.find((workspaceNode) => workspaceNode.workspace.id === "workspace-1");
+    const workspace = workspaceGroups[0]?.workspaces.find((workspaceNode) => workspaceNode.workspace.id === "workspace-1");
 
-    expect(activeWorkspace?.tasks.map((taskNode) => taskNode.title)).toEqual([
+    expect(workspace?.tasks.map((taskNode) => taskNode.title)).toEqual([
       "Feature Task",
       "Pushed Task",
       "Completed Task",
     ]);
-    expect(activeWorkspace?.historyTasks.map((taskNode) => taskNode.title)).toEqual(["Merged Task"]);
+    expect(workspace?.historyTasks.map((taskNode) => taskNode.title)).toEqual(["Merged Task"]);
 
     const { getAllByText } = renderWithUser(<SidebarHarness workspaceGroups={workspaceGroups} />);
 
@@ -634,7 +632,7 @@ describe("ShellSidebarNav", () => {
     expect(queryByText("Merged Task")).not.toBeInTheDocument();
   });
 
-  test("keeps workspaces with only history items in the active group", () => {
+  test("keeps workspaces with only history items in the unified workspace list", () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-history",
@@ -660,12 +658,11 @@ describe("ShellSidebarNav", () => {
       sessions: [],
     });
 
-    expect(workspaceGroups.find((group) => group.key === "active")?.workspaces.map((node) => node.workspace.name))
+    expect(workspaceGroups[0]?.workspaces.map((node) => node.workspace.name))
       .toEqual(["History Workspace"]);
-    expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces).toHaveLength(0);
   });
 
-  test("renders history-only workspaces under active with the nested history branch", () => {
+  test("renders history-only workspaces in the unified list with the nested history branch", () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-history",
@@ -694,14 +691,14 @@ describe("ShellSidebarNav", () => {
       <SidebarHarness workspaceGroups={workspaceGroups} />,
     );
 
-    expect(getAllByText("Active")).toHaveLength(1);
     expect(queryByText("Inactive")).not.toBeInTheDocument();
+    expect(queryByText("Active")).not.toBeInTheDocument();
     expect(getAllByText("History Workspace")).toHaveLength(1);
     expect(getAllByText("History")).toHaveLength(1);
     expect(getAllByText("Merged Task")).toHaveLength(1);
   });
 
-  test("keeps workspaces with only completed tasks in the active group", () => {
+  test("keeps workspaces with only completed tasks in the unified workspace list", () => {
     const workspaces = [
       createWorkspace({
         id: "workspace-completed",
@@ -727,12 +724,11 @@ describe("ShellSidebarNav", () => {
       sessions: [],
     });
 
-    expect(workspaceGroups.find((group) => group.key === "active")?.workspaces.map((node) => node.workspace.name))
+    expect(workspaceGroups[0]?.workspaces.map((node) => node.workspace.name))
       .toEqual(["Completed Workspace"]);
-    expect(workspaceGroups.find((group) => group.key === "inactive")?.workspaces).toHaveLength(0);
   });
 
-  test("collapses groups and routes scoped new actions", async () => {
+  test("collapses workspace nodes and routes scoped new actions", async () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
     const { getAllByRole, getAllByText, getByRole, queryAllByText, user } = renderWithUser(
       <SidebarHarness navigateWithinShell={navigateWithinShell} />,
@@ -740,17 +736,13 @@ describe("ShellSidebarNav", () => {
 
     expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
 
-    const [activeButtonLabel] = getAllByText("Active");
-    expect(activeButtonLabel).toBeDefined();
-    const activeButton = getByTextButton(activeButtonLabel!);
-    expect(activeButton).toHaveAttribute("aria-expanded", "true");
+    const workspaceToggle = getByRole("button", { name: "Collapse Workspace 1" });
+    expect(workspaceToggle).toHaveAttribute("aria-expanded", "true");
     expect(getSidebarButtonByTextAndSubtitle(getAllByText("Workspace 1"), "/workspaces/workspace-1")).toBeInTheDocument();
 
-    await user.click(activeButton);
-    expect(activeButton).toHaveAttribute("aria-expanded", "false");
-    expect(
-      querySidebarButtonByTextAndSubtitle(queryAllByText("Workspace 1"), "/workspaces/workspace-1"),
-    ).not.toBeInTheDocument();
+    await user.click(workspaceToggle);
+    expect(workspaceToggle).toHaveAttribute("aria-expanded", "false");
+    expect(queryAllByText("Feature Task")).toHaveLength(1);
 
     await user.click(getByRole("button", { name: "New Workspaces" }));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "workspace" });
@@ -834,7 +826,7 @@ describe("ShellSidebarNav", () => {
     expect(onQuickChat).not.toHaveBeenCalled();
   });
 
-  test("opens workspace context menu with detail actions plus settings last", async () => {
+  test("opens workspace context menu with pinning last", async () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
     const pullLatestWorkspaceChanges = mock(async (_workspaceId: string) => {});
     const { getAllByRole, getAllByText, getByRole, queryByRole, user } = renderWithUser(
@@ -851,7 +843,6 @@ describe("ShellSidebarNav", () => {
 
     expect(defaultPrevented).toBe(true);
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Pin to sidebar",
       "New Task",
       "New Chat",
       "Open code explorer",
@@ -859,6 +850,7 @@ describe("ShellSidebarNav", () => {
       "Open in GitHub",
       "New SSH Session",
       "Workspace Settings",
+      "Pin to sidebar",
     ]);
 
     await user.click(getByRole("menuitem", { name: "New Task" }));
@@ -882,12 +874,12 @@ describe("ShellSidebarNav", () => {
     ));
 
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Pin to sidebar",
       "New Task",
       "New Chat",
       "Open code explorer",
       "Pull Latest Changes",
       "Workspace Settings",
+      "Pin to sidebar",
     ]);
 
     await user.keyboard("{Escape}");
@@ -924,7 +916,7 @@ describe("ShellSidebarNav", () => {
     }
   });
 
-  test("opens SSH server context menu from search results with detail actions plus settings last", async () => {
+  test("opens SSH server context menu from search results with pinning last", async () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
     const { getAllByRole, getByLabelText, getByRole, getByText, user } = renderWithUser(
       <SidebarHarness navigateWithinShell={navigateWithinShell} />,
@@ -934,10 +926,10 @@ describe("ShellSidebarNav", () => {
     openContextMenuForButton(getByTextButton(getByText("Server 1")));
 
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Pin to sidebar",
       "Open code explorer",
       "New Session",
       "SSH Server Settings",
+      "Pin to sidebar",
     ]);
 
     await user.click(getByRole("menuitem", { name: "New Session" }));
@@ -1030,11 +1022,11 @@ describe("ShellSidebarNav", () => {
     );
 
     expect(queryByText("Active")).not.toBeInTheDocument();
-    expect(getByText("Inactive")).toBeInTheDocument();
+    expect(queryByText("Inactive")).not.toBeInTheDocument();
     expect(getByText("Empty Workspace")).toBeInTheDocument();
   });
 
-  test("hides the inactive group when there are no workspaces", () => {
+  test("shows an empty workspace list message when there are no workspaces", () => {
     const workspaceGroups = buildWorkspaceSidebarGroups({
       workspaces: [],
       tasks: [],
@@ -1045,6 +1037,7 @@ describe("ShellSidebarNav", () => {
 
     expect(queryByText("Active")).not.toBeInTheDocument();
     expect(queryByText("Inactive")).not.toBeInTheDocument();
+    expect(queryByText("No workspaces registered.")).toBeInTheDocument();
   });
 
   test("trims the search input and matches workspace section results without a submit step", async () => {
@@ -1169,7 +1162,7 @@ describe("ShellSidebarNav", () => {
   });
 
   test("omits empty filtered sections and restores the default tree when the query is cleared", async () => {
-    const { getAllByRole, getByLabelText, getByText, user } = renderWithUser(<SidebarHarness />);
+    const { getAllByRole, getAllByText, getByLabelText, getByText, user } = renderWithUser(<SidebarHarness />);
     const searchInput = getByLabelText("Search") as HTMLInputElement;
 
     await user.type(searchInput, "feature");
@@ -1182,8 +1175,8 @@ describe("ShellSidebarNav", () => {
 
     await waitFor(() => {
       expect(searchInput).toHaveValue("");
-      expect(getByText("Active")).toBeInTheDocument();
-      expect(getByText("Inactive")).toBeInTheDocument();
+      expect(getAllByText("Workspace 1").length).toBeGreaterThan(0);
+      expect(getByText("Workspace 2")).toBeInTheDocument();
     });
   });
 

@@ -14,7 +14,7 @@ const log = createLogger("AppShell");
 export const SIDEBAR_SECTION_STORAGE_KEY = "clanky.sidebarSectionCollapseState";
 
 export type SidebarSectionId = "workspaces" | "ssh-servers";
-export type SidebarWorkspaceGroupId = "active" | "inactive";
+export type SidebarWorkspaceGroupId = "all";
 export type SidebarCollapseState = Record<string, boolean>;
 
 export interface SidebarCollapseStateLoadResult {
@@ -350,14 +350,9 @@ export function buildWorkspaceSidebarGroups({
 
   return [
     {
-      key: "active",
-      title: "Active",
-      workspaces: workspaceNodes.filter((workspaceNode) => workspaceNode.hasActivity),
-    },
-    {
-      key: "inactive",
-      title: "Inactive",
-      workspaces: workspaceNodes.filter((workspaceNode) => !workspaceNode.hasActivity),
+      key: "all",
+      title: "Workspaces",
+      workspaces: workspaceNodes,
     },
   ];
 }
