@@ -736,7 +736,7 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from plan file" }));
     await user.clear(getByLabelText("Plan file path"));
     await user.type(getByLabelText("Plan file path"), "plans/current-plan.md");
     await user.click(getByRole("button", { name: "Spawn task" }));
@@ -766,7 +766,7 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from plan file" }));
     const planPathInput = getByLabelText("Plan file path") as HTMLInputElement;
     const spawnButton = getByRole("button", { name: "Spawn task" }) as HTMLButtonElement;
 
@@ -797,7 +797,7 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from plan file" }));
     await user.clear(getByLabelText("Plan file path"));
     await user.type(getByLabelText("Plan file path"), "plans/current-plan.md");
     await user.click(getByRole("button", { name: "Spawn task" }));
@@ -840,7 +840,7 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from plan file" }));
 
     const planPathInput = getByRole("textbox", { name: "Plan file path" }) as HTMLInputElement;
     expect(planPathInput.value).toBe(".clanky-planning/plan.md");
@@ -866,7 +866,7 @@ describe("ChatDetails", () => {
     });
 
     await user.click(getByRole("button", { name: "Chat actions" }));
-    await user.click(getByRole("menuitem", { name: "Spawn task from current plan" }));
+    await user.click(getByRole("menuitem", { name: "Spawn task from plan file" }));
     await user.click(getByRole("button", { name: "Spawn task" }));
 
     await waitFor(() => {
@@ -2038,7 +2038,7 @@ describe("ChatDetails", () => {
 
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "Spawn Task",
-      "Spawn task from current plan",
+      "Spawn task from plan file",
       "Code explorer",
       "Rename",
       "Pin to sidebar",
