@@ -175,10 +175,17 @@ function isRecognizedSidebarCollapseKey(key: string): boolean {
     || key.startsWith("ssh-servers:");
 }
 
+function migrateSidebarCollapseKey(key: string): string {
+  return key.replace(
+    /^workspaces:group:(active|inactive)(?=:|$)/,
+    "workspaces:group:all",
+  );
+}
+
 function normalizeSidebarCollapseState(state: Record<string, unknown>): SidebarCollapseState {
   return Object.entries(state).reduce<SidebarCollapseState>((normalizedState, [key, value]) => {
     if (value === true && isRecognizedSidebarCollapseKey(key)) {
-      normalizedState[key] = true;
+      normalizedState[migrateSidebarCollapseKey(key)] = true;
     }
     return normalizedState;
   }, {});
