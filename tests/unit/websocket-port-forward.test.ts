@@ -71,12 +71,34 @@ describe("websocketHandlers port-forward mode", () => {
       expect(close).not.toHaveBeenCalled();
     });
 
+    test("queues VNC frames while the TCP bridge is opening", () => {
+      const close = mock(() => {});
+      const firstFrame = Buffer.from("rfb-frame");
+      const secondFrame = Buffer.from([1, 2, 3]);
+      const ws = {
+        data: {
+          vncMode: true,
+          vncSessionId: "vnc-closed",
+        } as WebSocketData,
+        close,
+      } as unknown as ServerWebSocket<WebSocketData>;
+
+      websocketHandlers.message(ws, firstFrame);
+      websocketHandlers.message(ws, secondFrame);
+
+      expect(ws.data.pendingVncMessages).toEqual([firstFrame, secondFrame]);
+      expect(close).not.toHaveBeenCalled();
+    });
+
     test("closes VNC sockets when the TCP bridge is unavailable", () => {
       const close = mock(() => {});
       const ws = {
         data: {
           vncMode: true,
           vncSessionId: "vnc-closed",
+          vncSocket: {
+            destroyed: true,
+          } as Socket,
         } as WebSocketData,
         close,
       } as unknown as ServerWebSocket<WebSocketData>;
