@@ -2926,7 +2926,7 @@ describe("ChatManager", () => {
       });
 
       await manager.sendMessage(chat.config.id, {
-        message: "Turn this into a task",
+        message: "Fix flaky model handoff before spawning tasks",
       });
       await waitForChat(chat.config.id, (current) => current.state.status === "idle");
 
@@ -2947,6 +2947,8 @@ describe("ChatManager", () => {
       });
       expect(spawned.config.autoAcceptPlan).toBe(false);
       expect(spawned.config.fullyAutonomous).toBe(false);
+      expect(spawned.config.name).toBe("Fix flaky model handoff before spawning tasks");
+      expect(spawned.config.name).not.toContain("Plan from");
       expect(spawned.state.status).toBe("planning");
     } finally {
       startPlanModeSpy.mockRestore();
@@ -2988,6 +2990,8 @@ describe("ChatManager", () => {
 
     expect(spawned.config.autoAcceptPlan).toBe(false);
     expect(spawned.config.fullyAutonomous).toBe(false);
+    expect(spawned.config.name).toBe("Imported plan");
+    expect(spawned.config.name).not.toContain("Plan from");
     expect(spawned.config.prompt).toBe("Implement the existing plan in .clanky-planning/plan.md.");
     expect(spawned.config.prompt).not.toContain("Turn this chat into a seeded plan task");
     expect(spawned.state.status).toBe("planning");
