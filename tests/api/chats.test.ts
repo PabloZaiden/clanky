@@ -948,6 +948,8 @@ describe("Chats API Integration", () => {
     expect(spawnedTask.config.planMode).toBe(true);
     expect(spawnedTask.config.autoAcceptPlan).toBe(false);
     expect(spawnedTask.config.fullyAutonomous).toBe(false);
+    expect(spawnedTask.config.name).toBe("Turn this debugging conversation into a task plan");
+    expect(spawnedTask.config.name).not.toContain("Plan from");
     expect(spawnedTask.state.status).toBe("planning");
     expect(spawnedTask.config.prompt).toContain("You are creating a new Clanky plan task from an existing chat conversation.");
     expect(spawnedTask.config.prompt).toContain("Chat title: Spawn Source Chat");
@@ -1090,6 +1092,8 @@ describe("Chats API Integration", () => {
     const spawnedTask = await spawnResponse.json();
     expect(spawnedTask.config.autoAcceptPlan).toBe(false);
     expect(spawnedTask.config.fullyAutonomous).toBe(false);
+    expect(spawnedTask.config.name).toBe("Imported plan");
+    expect(spawnedTask.config.name).not.toContain("Plan from");
     expect(spawnedTask.state.status).toBe("planning");
     expect(spawnedTask.state.planMode?.isPlanReady).toBe(true);
     expect(spawnedTask.state.planMode?.planContent).toBe("# Imported plan\n\n1. Do the seeded work.");
