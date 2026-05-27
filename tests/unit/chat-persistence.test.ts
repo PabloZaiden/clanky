@@ -15,6 +15,7 @@ import {
   type TestContext,
 } from "../setup";
 import { getDatabase } from "../../src/persistence/database";
+import { rowToChat } from "../../src/persistence/chats/helpers";
 
 let context: TestContext;
 
@@ -160,5 +161,29 @@ describe("chat persistence", () => {
     expect(loaded?.config.workspaceId).toBe("");
     expect(loaded?.state.connectionStatus).toBe("needs_credentials");
     await expect(listChatSummariesBySshServer("ssh-server-1")).resolves.toHaveLength(1);
+
+    getDatabase().prepare("DELETE FROM ssh_server_sessions WHERE id = ?").run("ssh-session-1");
+
+    await expect(loadChat("remote-chat")).resolves.toBeNull();
+    await expect(listChatSummariesBySshServer("ssh-server-1")).resolves.toHaveLength(0);
+  });
+
+  test("rejects malformed ssh-server chat source rows before mapping", () => {
+    expect(() => rowToChat({
+      id: "remote-chat",
+      name: "Remote chat",
+      source_kind: "ssh_server",
+      workspace_id: null,
+      ssh_server_id: "ssh-server-1",
+      ssh_server_session_id: null,
+      scope: "workspace",
+      directory: "/remote/repo",
+      created_at: "2026-04-28T00:00:00.000Z",
+      updated_at: "2026-04-28T00:00:00.000Z",
+      model_provider_id: "copilot",
+      model_model_id: "gpt-5.5",
+      mode: "chat",
+      status: "idle",
+    })).toThrow("ssh_server_session_id is required");
   });
 });

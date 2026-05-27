@@ -161,7 +161,21 @@ export const migrations: Migration[] = [
           interrupt_requested INTEGER NOT NULL DEFAULT 0,
           FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
           FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE,
-          FOREIGN KEY (ssh_server_session_id) REFERENCES ssh_server_sessions(id) ON DELETE SET NULL
+          FOREIGN KEY (ssh_server_session_id) REFERENCES ssh_server_sessions(id) ON DELETE CASCADE,
+          CHECK (
+            (
+              source_kind = 'workspace'
+              AND workspace_id IS NOT NULL
+              AND ssh_server_id IS NULL
+              AND ssh_server_session_id IS NULL
+            )
+            OR (
+              source_kind = 'ssh_server'
+              AND workspace_id IS NULL
+              AND ssh_server_id IS NOT NULL
+              AND ssh_server_session_id IS NOT NULL
+            )
+          )
         )
       `);
 

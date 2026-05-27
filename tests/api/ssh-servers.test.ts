@@ -367,6 +367,24 @@ describe("Standalone SSH servers API integration", () => {
     expect(listChatsResponse.ok).toBe(true);
     const chats = await listChatsResponse.json() as Array<{ config: { id: string } }>;
     expect(chats.map((item) => item.config.id)).toEqual([chat.config.id]);
+
+    const reconnectResponse = await fetch(`${baseUrl}/api/chats/${chat.config.id}/reconnect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(reconnectResponse.status).toBe(400);
+    await expect(reconnectResponse.json()).resolves.toMatchObject({
+      error: "ssh_credentials_required",
+    });
+
+    const getChatResponse = await fetch(`${baseUrl}/api/chats/${chat.config.id}`);
+    expect(getChatResponse.ok).toBe(true);
+    const reconnectFailedChat = await getChatResponse.json() as {
+      state: { connectionStatus: string; error?: { code?: string } };
+    };
+    expect(reconnectFailedChat.state.connectionStatus).toBe("needs_credentials");
+    expect(reconnectFailedChat.state.error?.code).toBe("ssh_credentials_required");
   });
 
   test("deletes direct standalone SSH sessions", async () => {

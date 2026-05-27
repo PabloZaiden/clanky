@@ -15,6 +15,7 @@ import {
   EmptyChatTranscriptError,
   InvalidChatBaseBranchError,
   InvalidCurrentPlanError,
+  SshCredentialsRequiredError,
   isTaskChat,
 } from "../types/chat";
 import type { ChatConfig } from "../types/chat";
@@ -43,6 +44,7 @@ function createChatActionErrorResponse(error: unknown): Response | null {
     || error instanceof ChatBranchCheckoutError
     || error instanceof ChatPermissionRequestNotFoundError
     || error instanceof ChatPermissionReplyError
+    || error instanceof SshCredentialsRequiredError
   ) {
     return errorResponse(error.code, error.message, error.status);
   }

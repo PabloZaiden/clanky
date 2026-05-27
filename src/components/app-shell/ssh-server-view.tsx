@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Chat, CreateSshServerChatRequest, SshServer, SshServerSession } from "../../types";
 import { ActionMenu, Badge, Button, GearIcon, insertPinActionItem } from "../common";
 import type { ShellRoute } from "./shell-types";
@@ -39,6 +39,15 @@ export function SshServerView({
       label: sidebarPinning.isPinned(serverPinnedItem) ? "Unpin from sidebar" : "Pin to sidebar",
       onClick: () => sidebarPinning.togglePinned(serverPinnedItem),
   });
+
+  useEffect(() => {
+    setShowChatForm(false);
+    setChatName("");
+    setDirectory(defaultDirectory);
+    setProviderID("copilot");
+    setModelID("gpt-5.5");
+    setCreatingChat(false);
+  }, [server.config.id, defaultDirectory]);
 
   return (
     <ShellPanel

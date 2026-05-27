@@ -2,7 +2,7 @@
  * Internal helpers for the chats persistence layer.
  */
 
-import type { Chat, ChatConfig, ChatState } from "../../types";
+import type { Chat, ChatConfig, ChatSource, ChatState } from "../../types";
 import { DEFAULT_CHAT_CONFIG } from "../../types/chat";
 import { createLogger } from "../../core/logger";
 
@@ -66,6 +66,33 @@ export function safeJsonParse<T>(json: string, fallback: T, fieldName: string, r
   }
 }
 
+function requireChatString(row: Record<string, unknown>, columnName: string, rowId: unknown): string {
+  const value = row[columnName];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`Invalid chat row ${String(rowId)}: ${columnName} is required`);
+  }
+  return value;
+}
+
+function rowToChatSource(row: Record<string, unknown>, rowId: unknown): ChatSource {
+  const sourceKind = (row["source_kind"] as string | null) ?? "workspace";
+  if (sourceKind === "workspace") {
+    return {
+      kind: "workspace",
+      workspaceId: requireChatString(row, "workspace_id", rowId),
+    };
+  }
+  if (sourceKind === "ssh_server") {
+    return {
+      kind: "ssh_server",
+      sshServerId: requireChatString(row, "ssh_server_id", rowId),
+      sshServerSessionId: requireChatString(row, "ssh_server_session_id", rowId),
+      directory: requireChatString(row, "directory", rowId),
+    };
+  }
+  throw new Error(`Invalid chat row ${String(rowId)}: unsupported source_kind "${sourceKind}"`);
+}
+
 export function chatToRow(chat: Chat): Record<string, unknown> {
   const { config, state } = chat;
   const source = config.source ?? {
@@ -117,26 +144,16 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
 export function rowToChat(row: Record<string, unknown>): Chat {
   const rowId = row["id"];
 
-  const sourceKind = (row["source_kind"] as string | null) ?? "workspace";
-  const workspaceId = (row["workspace_id"] as string | null) ?? "";
+  const source = rowToChatSource(row, rowId);
+  const workspaceId = source.kind === "workspace" ? source.workspaceId : "";
   const config: ChatConfig = {
-    id: row["id"] as string,
-    name: row["name"] as string,
+    id: requireChatString(row, "id", rowId),
+    name: requireChatString(row, "name", rowId),
     workspaceId,
-    source: sourceKind === "ssh_server"
-      ? {
-          kind: "ssh_server",
-          sshServerId: row["ssh_server_id"] as string,
-          sshServerSessionId: row["ssh_server_session_id"] as string,
-          directory: row["directory"] as string,
-        }
-      : {
-          kind: "workspace",
-          workspaceId: workspaceId ?? "",
-        },
+    source,
     scope: ((row["scope"] as ChatConfig["scope"] | null) ?? DEFAULT_CHAT_CONFIG.scope),
     taskId: (row["task_id"] as string | null) ?? undefined,
-    directory: row["directory"] as string,
+    directory: requireChatString(row, "directory", rowId),
     model: {
       providerID: (row["model_provider_id"] as string) ?? "unknown",
       modelID: (row["model_model_id"] as string) ?? "not-configured",

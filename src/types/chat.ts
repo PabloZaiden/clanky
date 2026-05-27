@@ -199,6 +199,16 @@ export class ChatPermissionReplyError extends Error {
   }
 }
 
+export class SshCredentialsRequiredError extends Error {
+  readonly code = "ssh_credentials_required";
+  readonly status = 400;
+
+  constructor(message = "SSH credentials are required to reconnect this chat", options?: ErrorOptions) {
+    super(message, options);
+    this.name = "SshCredentialsRequiredError";
+  }
+}
+
 export class EmptyChatTranscriptError extends Error {
   readonly code = "empty_transcript";
   readonly status = 400;

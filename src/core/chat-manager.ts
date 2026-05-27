@@ -22,6 +22,7 @@ import {
   createInitialChatState,
   DEFAULT_CHAT_CONFIG,
   InvalidChatBaseBranchError,
+  SshCredentialsRequiredError,
   isChatBusyStatus,
   isSshServerChat,
   isTaskChat,
@@ -582,7 +583,7 @@ export class ChatManager {
 
     if (activeStream) {
       try {
-        await backendManager.disconnectChat(chatId);
+        await this.disconnectChat(chatId);
       } catch (error) {
         log.warn("Failed to disconnect chat backend during interrupt", {
           chatId,
@@ -661,7 +662,7 @@ export class ChatManager {
     this.activeStreams.get(chatId)?.stream.close();
     this.activeStreams.delete(chatId);
     this.activeStreamGenerations.delete(chatId);
-    await backendManager.disconnectChat(chatId);
+    await this.disconnectChat(chatId);
     await this.cleanupWorktree(chat);
 
     const deleted = await deleteChat(chatId);
@@ -798,15 +799,24 @@ export class ChatManager {
 
   async disconnectChat(chatId: string): Promise<void> {
     const sshBackend = this.sshChatBackends.get(chatId);
+    let sshDisconnectError: unknown;
     if (sshBackend) {
-      sshBackend.abortAllSubscriptions();
-      if (sshBackend.isConnected()) {
-        await sshBackend.disconnect();
+      try {
+        sshBackend.abortAllSubscriptions();
+        if (sshBackend.isConnected()) {
+          await sshBackend.disconnect();
+        }
+      } catch (error) {
+        sshDisconnectError = error;
+        log.error("Failed to disconnect SSH chat backend", { chatId, error: String(error) });
+      } finally {
+        this.sshChatBackends.delete(chatId);
       }
-      this.sshChatBackends.delete(chatId);
-      return;
     }
     await backendManager.disconnectChat(chatId);
+    if (sshDisconnectError) {
+      throw sshDisconnectError;
+    }
   }
 
   private assertChatIsAvailable(chat: Chat): void {
@@ -867,12 +877,8 @@ export class ChatManager {
 
     const credentialToken = options.credentialToken?.trim();
     if (!credentialToken) {
-      await this.updateChatStateAndReturn(chat, {
-        ...chat.state,
-        connectionStatus: "needs_credentials",
-        lastActivityAt: createTimestamp(),
-      });
-      throw new Error("SSH credentials are required to reconnect this chat");
+      await this.markSshCredentialsRequired(chat);
+      throw new SshCredentialsRequiredError();
     }
 
     const connectingChat = await this.updateChatStateAndReturn(chat, {
@@ -880,8 +886,24 @@ export class ChatManager {
       connectionStatus: "connecting",
       lastActivityAt: createTimestamp(),
     });
-    const password = sshCredentialManager.getPasswordForToken(source.sshServerId, credentialToken);
-    const config = await this.buildSshChatConnectionConfig(connectingChat, password);
+
+    let password: string;
+    try {
+      password = sshCredentialManager.getPasswordForToken(source.sshServerId, credentialToken);
+    } catch (error) {
+      await this.markSshCredentialsRequired(connectingChat, String(error));
+      throw new SshCredentialsRequiredError(String(error), {
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+
+    let config: BackendConnectionConfig;
+    try {
+      config = await this.buildSshChatConnectionConfig(connectingChat, password);
+    } catch (error) {
+      await this.markSshConnectionFailed(connectingChat, error);
+      throw error;
+    }
 
     if (backend.isConnected()) {
       await backend.disconnect();
@@ -896,18 +918,38 @@ export class ChatManager {
       });
       return backend;
     } catch (error) {
-      await this.updateChatStateAndReturn(connectingChat, {
-        ...connectingChat.state,
-        connectionStatus: "ssh_connection_failed",
-        error: {
-          message: String(error),
-          timestamp: createTimestamp(),
-          code: "ssh_connection_failed",
-        },
-        lastActivityAt: createTimestamp(),
-      });
+      await this.markSshConnectionFailed(connectingChat, error);
       throw error;
     }
+  }
+
+  private async markSshCredentialsRequired(
+    chat: Chat,
+    message = "SSH credentials are required to reconnect this chat",
+  ): Promise<void> {
+    await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      connectionStatus: "needs_credentials",
+      error: {
+        message,
+        timestamp: createTimestamp(),
+        code: "ssh_credentials_required",
+      },
+      lastActivityAt: createTimestamp(),
+    });
+  }
+
+  private async markSshConnectionFailed(chat: Chat, error: unknown): Promise<void> {
+    await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      connectionStatus: "ssh_connection_failed",
+      error: {
+        message: String(error),
+        timestamp: createTimestamp(),
+        code: "ssh_connection_failed",
+      },
+      lastActivityAt: createTimestamp(),
+    });
   }
 
   private async buildSshChatConnectionConfig(chat: Chat, password: string): Promise<BackendConnectionConfig> {

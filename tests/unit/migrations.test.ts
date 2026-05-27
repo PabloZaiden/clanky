@@ -150,6 +150,29 @@ describe("migration infrastructure", () => {
         workspace_id: "workspace-1",
         connection_status: "disconnected",
       });
+      db.run("INSERT INTO ssh_servers (id) VALUES ('ssh-server-1')");
+      db.run("INSERT INTO ssh_server_sessions (id) VALUES ('ssh-session-1')");
+      db.run(`
+        INSERT INTO chats (
+          id, name, source_kind, workspace_id, ssh_server_id, ssh_server_session_id,
+          directory, created_at, updated_at
+        ) VALUES (
+          'remote-chat', 'Remote chat', 'ssh_server', NULL, 'ssh-server-1', 'ssh-session-1',
+          '/repo', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+        )
+      `);
+      expect(() => db.run(`
+        INSERT INTO chats (
+          id, name, source_kind, workspace_id, ssh_server_id, ssh_server_session_id,
+          directory, created_at, updated_at
+        ) VALUES (
+          'bad-remote-chat', 'Bad remote chat', 'ssh_server', NULL, 'ssh-server-1', NULL,
+          '/repo', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+        )
+      `)).toThrow();
+      db.run("DELETE FROM ssh_server_sessions WHERE id = 'ssh-session-1'");
+      const deletedRemote = db.query("SELECT id FROM chats WHERE id = ?").get("remote-chat");
+      expect(deletedRemote).toBeNull();
       expect(runMigrations(db)).toBe(0);
     });
   });
