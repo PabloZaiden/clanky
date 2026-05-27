@@ -119,6 +119,7 @@ export function SidebarTreeSection({
   const generatedContentId = useId();
   const contentId = hasToggle ? generatedContentId : undefined;
   const isCollapsed = collapsed ?? false;
+  const toggleLabel = `${isCollapsed ? "Expand" : "Collapse"} ${title}`;
   const contentVisible = !hasToggle || !isCollapsed;
   const contentClassName =
     "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60";
@@ -132,6 +133,7 @@ export function SidebarTreeSection({
             onClick={onToggle}
             aria-expanded={!isCollapsed}
             aria-controls={contentId}
+            aria-label={toggleLabel}
             className={contentClassName}
           >
             <span className="text-[11px] text-gray-500 dark:text-gray-400">{isCollapsed ? "\u25B6" : "\u25BC"}</span>
@@ -202,10 +204,10 @@ export function SidebarTreeItem({
         onClick={onClick}
         onContextMenu={onContextMenu}
         className={[
-          "flex min-w-0 flex-1 items-center justify-between rounded-xl border py-2 pr-3 text-left transition",
+          "flex min-w-0 flex-1 items-center justify-between rounded-xl border py-2 pl-1 pr-3 text-left transition",
           active
-            ? "border-gray-900 bg-gray-900 pl-2 text-white shadow-sm dark:border-gray-100 dark:bg-neutral-100 dark:text-gray-950"
-            : "border-transparent bg-transparent pl-0 text-gray-700 hover:border-gray-200 hover:bg-gray-100 dark:text-gray-200 dark:hover:border-gray-800 dark:hover:bg-neutral-800/80",
+            ? "border-gray-900 bg-gray-900 text-white shadow-sm dark:border-gray-100 dark:bg-neutral-100 dark:text-gray-950"
+            : "border-transparent bg-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-100 dark:text-gray-200 dark:hover:border-gray-800 dark:hover:bg-neutral-800/80",
         ].join(" ")}
       >
         <span className="min-w-0 flex-1">

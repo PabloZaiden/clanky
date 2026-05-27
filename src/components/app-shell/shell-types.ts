@@ -13,7 +13,7 @@ const log = createLogger("AppShell");
 
 export const SIDEBAR_SECTION_STORAGE_KEY = "clanky.sidebarSectionCollapseState";
 
-export type SidebarSectionId = "workspaces" | "ssh-servers";
+export type SidebarSectionId = "pinned" | "quick-chats" | "active-work" | "workspaces" | "ssh-servers";
 export type SidebarWorkspaceGroupId = "all";
 export type SidebarCollapseState = Record<string, boolean>;
 
@@ -170,7 +170,10 @@ function buildSidebarCollapseKey(...parts: string[]): string {
 }
 
 function isRecognizedSidebarCollapseKey(key: string): boolean {
-  return key === "workspaces"
+  return key === "pinned"
+    || key === "quick-chats"
+    || key === "active-work"
+    || key === "workspaces"
     || key.startsWith("workspaces:")
     || key === "ssh-servers"
     || key.startsWith("ssh-servers:");
