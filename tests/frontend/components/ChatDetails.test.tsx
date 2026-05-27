@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { fireEvent } from "@testing-library/react";
 import { DEFAULT_CHAT_INTERRUPT_REASON, type Chat } from "@/types";
 import { ChatDetails } from "@/components/ChatDetails";
+import { EMPTY_SIDEBAR_PINNING_STATE } from "@/components/app-shell/sidebar-pins";
 import { AppEventsProvider } from "@/hooks";
 import { getChatTemplateById } from "@/lib/chat-prompt-templates";
 import { createMockApi } from "../helpers/mock-api";
@@ -2024,6 +2025,25 @@ describe("ChatDetails", () => {
     expect(getByRole("menuitem", { name: "Code explorer" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Rename" })).toBeTruthy();
     expect(getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+  });
+
+  test("places chat pinning immediately before delete in the header actions menu", async () => {
+    api.get("/api/chats/:id", () => createChat());
+    const { getAllByRole, getByRole, getByText, user } = renderWithAppEvents(
+      <ChatDetails chatId={CHAT_ID} sidebarPinning={EMPTY_SIDEBAR_PINNING_STATE} />,
+    );
+
+    await waitFor(() => getByText("Repo pairing"));
+    await user.click(getByRole("button", { name: "Chat actions" }));
+
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Spawn Task",
+      "Spawn task from current plan",
+      "Code explorer",
+      "Rename",
+      "Pin to sidebar",
+      "Delete",
+    ]);
   });
 
   test("opens rename from the header action menu", async () => {

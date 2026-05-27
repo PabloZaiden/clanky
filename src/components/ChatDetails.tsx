@@ -20,6 +20,7 @@ import {
   Button,
   ConfirmModal,
   FocusPreservingButton,
+  insertPinActionItem,
   StatusBadge,
   type ActionMenuItem,
   getChatStatusBadgeVariant,
@@ -648,16 +649,7 @@ export function ChatDetails({
       return [];
     }
 
-    return [
-      ...(sidebarPinning
-        ? [{
-            id: "toggle-sidebar-pin",
-            label: sidebarPinning.isPinned({ kind: "chat", id: chat.config.id })
-              ? "Unpin from sidebar"
-              : "Pin to sidebar",
-            onClick: () => sidebarPinning.togglePinned({ kind: "chat", id: chat.config.id }),
-          }]
-        : []),
+    const items: ActionMenuItem[] = [
       {
         id: "spawn-task",
         label: isSpawnPending ? "Spawning task..." : "Spawn Task",
@@ -688,6 +680,18 @@ export function ChatDetails({
         destructive: true,
       },
     ];
+
+    if (!sidebarPinning) {
+      return items;
+    }
+
+    return insertPinActionItem(items, {
+      id: "toggle-sidebar-pin",
+      label: sidebarPinning.isPinned({ kind: "chat", id: chat.config.id })
+        ? "Unpin from sidebar"
+        : "Pin to sidebar",
+      onClick: () => sidebarPinning.togglePinned({ kind: "chat", id: chat.config.id }),
+    });
   }, [chat, handleSpawnTask, hasCodeExplorerAction, isActive, isEmbedded, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal, sidebarPinning]);
 
   const {
