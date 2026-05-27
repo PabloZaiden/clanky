@@ -59,6 +59,11 @@ export const GetDevboxTemplatesRequestSchema = z.object({
   credentialToken: SshCredentialTokenSchema.nullable(),
 });
 
+export const CreateVncSessionRequestSchema = z.object({
+  remotePort: z.number().int().min(1).max(65535).default(5900),
+  credentialToken: SshCredentialTokenSchema.nullable(),
+});
+
 export type SshKeyAlgorithm = z.infer<typeof SshKeyAlgorithmSchema>;
 export type CreateSshServerRequest = z.infer<typeof CreateSshServerRequestSchema>;
 export type UpdateSshServerRequest = z.infer<typeof UpdateSshServerRequestSchema>;
@@ -69,3 +74,4 @@ export type CreateSshServerSessionRequest = z.infer<typeof CreateSshServerSessio
 export type DeleteSshServerSessionRequest = z.infer<typeof DeleteSshServerSessionRequestSchema>;
 export type CheckSshServerPrerequisitesRequest = z.infer<typeof CheckSshServerPrerequisitesRequestSchema>;
 export type GetDevboxTemplatesRequest = z.infer<typeof GetDevboxTemplatesRequestSchema>;
+export type CreateVncSessionRequest = z.infer<typeof CreateVncSessionRequestSchema>;

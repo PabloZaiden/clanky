@@ -8,6 +8,7 @@ import type {
   SshConnectionMode,
   SshServerPrerequisiteReport,
   SshServerSession,
+  VncSession,
   UpdateSshServerRequest,
 } from "../types";
 import { createLogger } from "../lib/logger";
@@ -205,4 +206,37 @@ export async function listDevboxTemplatesApi(options: {
     },
     "List devbox templates",
   );
+}
+
+export async function listVncSessionsApi(serverId: string): Promise<VncSession[]> {
+  return await apiCall<VncSession[]>(
+    `/api/ssh-servers/${serverId}/vnc-sessions`,
+    { method: "GET" },
+    "List VNC sessions",
+  );
+}
+
+export async function createOrResumeVncSessionApi(options: {
+  serverId: string;
+  remotePort: number;
+  password?: string;
+}): Promise<VncSession> {
+  const credentialToken = await resolveCredentialToken(options.serverId, options.password);
+  return await apiCall<VncSession>(
+    `/api/ssh-servers/${options.serverId}/vnc-sessions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        remotePort: options.remotePort,
+        credentialToken,
+      }),
+    },
+    "Start VNC session",
+  );
+}
+
+export async function closeVncSessionApi(sessionId: string): Promise<boolean> {
+  await apiCall(`/api/vnc-sessions/${sessionId}`, { method: "DELETE" }, "Close VNC session");
+  return true;
 }

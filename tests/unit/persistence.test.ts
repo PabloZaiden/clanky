@@ -145,7 +145,7 @@ describe("Persistence", () => {
       );
 
       expect(tableNames).toContain("tasks");
-      expect(getSchemaVersion(db)).toBe(1);
+      expect(getSchemaVersion(db)).toBe(2);
       expect(taskColumns).toEqual(expect.arrayContaining([
         "auto_accept_plan",
         "pull_request_monitoring",
@@ -158,6 +158,7 @@ describe("Persistence", () => {
       expect(chatColumns).toContain("task_id");
       expect(sshSessionColumns).toContain("use_tmux");
       expect(sshServerSessionColumns).toContain("use_tmux");
+      expect(tableNames).toContain("vnc_sessions");
     });
 
     test("resetDatabase drops chats and passkey credentials before recreating the schema", async () => {

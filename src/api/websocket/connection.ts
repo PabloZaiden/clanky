@@ -5,6 +5,7 @@ import { sanitizeProvisioningEvent } from "../../lib/sensitive-data";
 import type { ChatEvent, TaskEvent, ProvisioningEvent, SshSessionEvent } from "../../types";
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
+import { vncSessionManager } from "../../core/vnc-session-manager";
 
 const log = createLogger("api:websocket");
 
@@ -32,6 +33,8 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     portForwardMode,
     proxyTargetUrl,
     portForwardId,
+    vncMode,
+    vncSessionId,
   } = ws.data;
 
   // Enforce connection limit — close oldest connection if at capacity
@@ -91,6 +94,28 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
       } catch {
         // Ignore close errors during websocket proxy cleanup.
       }
+    });
+    return;
+  }
+
+  if (vncMode && vncSessionId) {
+    void vncSessionManager.openTcpSocket(vncSessionId).then(({ socket }) => {
+      ws.data.vncSocket = socket;
+      socket.on("data", (chunk) => {
+        try {
+          ws.send(chunk);
+        } catch (sendError) {
+          log.trace("Failed to send VNC socket payload", { vncSessionId, error: String(sendError) });
+        }
+      });
+      socket.once("close", () => ws.close(1000));
+      socket.once("error", (socketError) => {
+        log.warn("VNC TCP bridge error", { vncSessionId, error: String(socketError) });
+        ws.close(1011, "VNC TCP bridge error");
+      });
+    }).catch((bridgeError: Error) => {
+      log.warn("Failed to open VNC TCP bridge", { vncSessionId, error: String(bridgeError) });
+      ws.close(1011, "VNC session unavailable");
     });
     return;
   }
@@ -201,6 +226,11 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     ws.data.proxySocket = undefined;
   }
 
+  if (ws.data.vncSocket) {
+    ws.data.vncSocket.destroy();
+    ws.data.vncSocket = undefined;
+  }
+
   if (ws.data.unsubscribers) {
     for (const unsubscribe of ws.data.unsubscribers) {
       unsubscribe();
@@ -232,6 +262,10 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
   if (ws.data.proxySocket) {
     ws.data.proxySocket.close();
     ws.data.proxySocket = undefined;
+  }
+  if (ws.data.vncSocket) {
+    ws.data.vncSocket.destroy();
+    ws.data.vncSocket = undefined;
   }
   if (ws.data.unsubscribers) {
     for (const unsubscribe of ws.data.unsubscribers) {

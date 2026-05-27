@@ -89,6 +89,35 @@ export interface SshServerSession {
   state: SshSessionState;
 }
 
+export type VncSessionStatus =
+  | "starting"
+  | "active"
+  | "stopping"
+  | "stopped"
+  | "failed";
+
+export interface VncSessionConfig {
+  id: string;
+  sshServerId: string;
+  remoteHost: "127.0.0.1";
+  remotePort: number;
+  localPort: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VncSessionState {
+  status: VncSessionStatus;
+  pid?: number;
+  connectedAt?: string;
+  error?: string;
+}
+
+export interface VncSession {
+  config: VncSessionConfig;
+  state: VncSessionState;
+}
+
 export type SshServerPrerequisiteId =
   | "ssh_connection"
   | "bash"

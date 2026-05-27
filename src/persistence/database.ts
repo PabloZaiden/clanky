@@ -390,6 +390,33 @@ function createTables(database: Database): void {
       )
     `);
 
+    database.run(`
+      CREATE TABLE IF NOT EXISTS vnc_sessions (
+        id TEXT PRIMARY KEY,
+        ssh_server_id TEXT NOT NULL,
+        remote_host TEXT NOT NULL DEFAULT '127.0.0.1',
+        remote_port INTEGER NOT NULL,
+        local_port INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        pid INTEGER,
+        connected_at TEXT,
+        error_message TEXT,
+        FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE
+      )
+    `);
+    database.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_server_port
+      ON vnc_sessions(ssh_server_id, remote_port)
+      WHERE status IN ('starting', 'active', 'stopping')
+    `);
+    database.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_local_port
+      ON vnc_sessions(local_port)
+      WHERE status IN ('starting', 'active', 'stopping')
+    `);
+
     // Forwarded ports table - port forwarding for SSH sessions
     database.run(`
       CREATE TABLE IF NOT EXISTS forwarded_ports (
