@@ -658,7 +658,7 @@ export function ChatDetails({
       },
       {
         id: "spawn-task-from-current-plan",
-        label: isSpawnCurrentPlanPending ? "Spawning task from current plan..." : "Spawn task from current plan",
+        label: isSpawnCurrentPlanPending ? "Spawning task from plan file..." : "Spawn task from plan file",
         onClick: () => void openSpawnCurrentPlanModal(),
         disabled: isActive || isSpawnPending || isSpawnCurrentPlanPending || chat.state.messages.length === 0,
       },
