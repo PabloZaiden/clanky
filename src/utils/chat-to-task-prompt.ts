@@ -4,6 +4,8 @@ import type { PersistedMessage } from "../types/task";
 const MAX_SPAWN_TASK_NAME_LENGTH = 100;
 const MAX_SPAWN_TASK_PROMPT_LENGTH = 32_000;
 const MAX_COMPACT_MESSAGE_CONTENT_LENGTH = 280;
+const PLAN_READY_PROMISE_PATTERN = /<promise>\s*PLAN_READY\s*<\/promise>/gi;
+const GENERIC_SPAWN_INSTRUCTION_PATTERN = /\b(?:turn|convert|make|create|write|produce)\s+(?:this|everything|it|the chat|the conversation)\s+(?:into|to)\s+(?:a\s+)?(?:concrete implementation plan|implementation plan|plan-ready task|task|plan)\b/i;
 
 interface TranscriptMessageSection {
   role: PersistedMessage["role"];
@@ -30,6 +32,77 @@ function truncateContent(content: string, maxLength: number): string {
   }
 
   return `${content.slice(0, maxLength).trimEnd()}...`;
+}
+
+function normalizeTitleContent(content: string): string {
+  return content
+    .replace(/^\uFEFF/, "")
+    .replace(PLAN_READY_PROMISE_PATTERN, "")
+    .replace(/[`*_~>#]/g, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+[.)]\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncateTaskName(name: string): string {
+  if (name.length <= MAX_SPAWN_TASK_NAME_LENGTH) {
+    return name;
+  }
+
+  const truncated = name.slice(0, MAX_SPAWN_TASK_NAME_LENGTH).trimEnd();
+  const lastSpace = truncated.lastIndexOf(" ");
+  if (lastSpace >= 40) {
+    return truncated.slice(0, lastSpace);
+  }
+
+  return truncated;
+}
+
+function createTaskNameFromContent(content: string, fallback: string): string {
+  const normalized = normalizeTitleContent(content);
+  const sentenceBoundary = normalized.search(/[.!?](\s|$)/);
+  const candidate = sentenceBoundary > 20
+    ? normalized.slice(0, sentenceBoundary)
+    : normalized;
+  const title = truncateTaskName(candidate.trim() || normalizeTitleContent(fallback) || "Untitled chat");
+
+  return title || "Untitled chat";
+}
+
+function findPlanTitle(planContent: string): string | null {
+  const lines = planContent
+    .replace(PLAN_READY_PROMISE_PATTERN, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const heading = line.match(/^#{1,6}\s+(.+)$/);
+    if (heading?.[1]) {
+      return heading[1];
+    }
+  }
+
+  return lines[0] ?? null;
+}
+
+function isGenericSpawnInstruction(content: string): boolean {
+  const normalized = normalizeTitleContent(content);
+  return GENERIC_SPAWN_INSTRUCTION_PATTERN.test(normalized);
+}
+
+function findChatTitleSource(messages: readonly PersistedMessage[]): string | null {
+  const userMessages = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content)
+    .filter((content) => normalizeTitleContent(content).length > 0);
+
+  const specificUserMessage = [...userMessages]
+    .reverse()
+    .find((content) => !isGenericSpawnInstruction(content));
+
+  return specificUserMessage ?? null;
 }
 
 function formatMessage(message: PersistedMessage): TranscriptMessageSection | null {
@@ -112,11 +185,18 @@ function buildPrompt(chatTitle: string, transcriptSections: readonly string[]): 
   ].join("\n");
 }
 
-export function buildSpawnTaskName(chatName: string): string {
-  const trimmed = chatName.trim() || "Untitled chat";
-  const prefix = "Plan from ";
-  const available = MAX_SPAWN_TASK_NAME_LENGTH - prefix.length;
-  return `${prefix}${trimmed.slice(0, available)}`;
+export function buildSpawnTaskNameFromChat(chatName: string, messages: readonly PersistedMessage[]): string {
+  const source = findChatTitleSource(messages);
+  return createTaskNameFromContent(source ?? "", chatName);
+}
+
+export function buildSpawnTaskNameFromCurrentPlan(
+  chatName: string,
+  messages: readonly PersistedMessage[],
+  planContent: string,
+): string {
+  const source = findPlanTitle(planContent) ?? findChatTitleSource(messages);
+  return createTaskNameFromContent(source ?? "", chatName);
 }
 
 export function buildSpawnCurrentPlanPrompt(): string {
