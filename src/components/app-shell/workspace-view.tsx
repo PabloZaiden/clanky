@@ -12,6 +12,7 @@ import {
   getSshSessionStatusLabel,
 } from "../common";
 import type { ShellRoute } from "./shell-types";
+import type { SidebarPinningState } from "./sidebar-pins";
 import { ShellPanel } from "./shell-panel";
 import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
 import { buildWorkspaceActionItems } from "./shell-action-items";
@@ -43,6 +44,7 @@ export function WorkspaceView({
   onPullLatestChanges,
   pullingLatestChanges,
   onNavigate,
+  sidebarPinning,
 }: {
   workspace: Workspace;
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
@@ -54,6 +56,7 @@ export function WorkspaceView({
   onPullLatestChanges: () => void;
   pullingLatestChanges: boolean;
   onNavigate: (route: ShellRoute) => void;
+  sidebarPinning: SidebarPinningState;
 }) {
   const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
@@ -70,6 +73,15 @@ export function WorkspaceView({
     onPullLatestChanges,
     onOpenGitHub: (url) => window.open(url, "_blank", "noopener,noreferrer"),
   });
+  const workspacePinnedItem = { kind: "workspace" as const, id: workspace.id };
+  const actionItems = [
+    {
+      id: "toggle-sidebar-pin",
+      label: sidebarPinning.isPinned(workspacePinnedItem) ? "Unpin from sidebar" : "Pin to sidebar",
+      onClick: () => sidebarPinning.togglePinned(workspacePinnedItem),
+    },
+    ...createActionItems,
+  ];
 
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
     const route: ShellRoute = { view: "task", taskId: task.config.id };
@@ -116,7 +128,7 @@ export function WorkspaceView({
           >
             {null}
           </Button>
-          <ActionMenu items={createActionItems} ariaLabel={`Workspace actions for ${workspace.name}`} />
+          <ActionMenu items={actionItems} ariaLabel={`Workspace actions for ${workspace.name}`} />
         </>
       )}
     >

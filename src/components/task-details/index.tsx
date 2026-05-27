@@ -3,7 +3,7 @@
  */
 
 import { useTask, useTaskPortForwards, useMarkdownPreference, useToast } from "../../hooks";
-import { Button, StatusBadge } from "../common";
+import { ActionMenu, Button, StatusBadge, type ActionMenuItem } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
 import {
   getTaskStatusPill,
@@ -25,6 +25,7 @@ import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
 import { getFocusModeViewportStyle, useVisualViewport } from "../ssh-session/use-visual-viewport";
 import { replaceShellRoute } from "../app-shell/shell-navigation";
+import type { SidebarPinningState } from "../app-shell/sidebar-pins";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -39,6 +40,8 @@ export interface TaskDetailsProps {
   onSelectSshSession?: (sshSessionId: string) => void;
   /** Navigate to the task-scoped code explorer view */
   onOpenTaskFiles?: (taskId: string) => void;
+  /** Shared sidebar pinning state for shell action menus */
+  sidebarPinning?: SidebarPinningState;
 }
 
 export function TaskDetails({
@@ -48,6 +51,7 @@ export function TaskDetails({
   headerOffsetClassName,
   onSelectSshSession,
   onOpenTaskFiles,
+  sidebarPinning,
 }: TaskDetailsProps) {
    const {
       task, loading, error, messages, toolCalls, logs, gitChangeCounter,
@@ -131,6 +135,13 @@ export function TaskDetails({
   const visibleTabs = tabs;
   const showActionBar = activeTab !== "chat" && (isActive || isPlanning || canTerminalFollowUp);
   const errorBannerSpacingClassName = isLogFocusActive ? "mx-3 mt-3 mb-3" : "mx-3 mt-3 mb-3 sm:mx-4";
+  const headerActionItems: ActionMenuItem[] = sidebarPinning
+    ? [{
+        id: "toggle-sidebar-pin",
+        label: sidebarPinning.isPinned({ kind: "task", id: config.id }) ? "Unpin from sidebar" : "Pin to sidebar",
+        onClick: () => sidebarPinning.togglePinned({ kind: "task", id: config.id }),
+      }]
+    : [];
 
   return (
     <div
@@ -155,6 +166,11 @@ export function TaskDetails({
                   {statusPill.label}
                 </StatusBadge>
               </div>
+              {headerActionItems.length > 0 && (
+                <div className="ml-auto flex shrink-0 items-center justify-end">
+                  <ActionMenu items={headerActionItems} ariaLabel={`Task actions for ${config.name}`} />
+                </div>
+              )}
             </div>
           </div>
         </header>
