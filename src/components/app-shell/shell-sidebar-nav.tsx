@@ -105,20 +105,75 @@ type SidebarContextMenuState =
       position: ContextMenuPosition;
     }
   | {
-      kind: "pin-only";
+      kind: "task";
+      taskNode: SidebarTaskNode;
       pinnedItem: SidebarPinnedItem;
-      ariaLabel: string;
+      position: ContextMenuPosition;
+    }
+  | {
+      kind: "chat";
+      chatNode: SidebarChatNode;
+      pinnedItem: SidebarPinnedItem;
+      position: ContextMenuPosition;
+    }
+  | {
+      kind: "ssh-session";
+      sessionNode: SidebarWorkspaceSessionNode | SidebarServerSessionNode;
+      pinnedItem: SidebarPinnedItem;
       position: ContextMenuPosition;
     };
 
-interface PinnedSidebarRenderNode {
-  pinnedItem: SidebarPinnedItem;
-  title: string;
-  subtitle?: string;
-  badge?: string;
-  badgeVariant?: BadgeVariant;
-  route: ShellRoute;
-}
+type PinnedSidebarRenderNode =
+  | {
+      kind: "workspace";
+      pinnedItem: SidebarPinnedItem;
+      title: string;
+      subtitle?: string;
+      badge?: string;
+      badgeVariant?: BadgeVariant;
+      route: ShellRoute;
+      workspace: SidebarWorkspaceNode["workspace"];
+    }
+  | {
+      kind: "task";
+      pinnedItem: SidebarPinnedItem;
+      title: string;
+      subtitle?: string;
+      badge?: string;
+      badgeVariant?: BadgeVariant;
+      route: ShellRoute;
+      taskNode: SidebarTaskNode;
+    }
+  | {
+      kind: "chat";
+      pinnedItem: SidebarPinnedItem;
+      title: string;
+      subtitle?: string;
+      badge?: string;
+      badgeVariant?: BadgeVariant;
+      route: ShellRoute;
+      chatNode: SidebarChatNode;
+    }
+  | {
+      kind: "ssh-server";
+      pinnedItem: SidebarPinnedItem;
+      title: string;
+      subtitle?: string;
+      badge?: string;
+      badgeVariant?: BadgeVariant;
+      route: ShellRoute;
+      server: SidebarServerNode["server"];
+    }
+  | {
+      kind: "ssh-session";
+      pinnedItem: SidebarPinnedItem;
+      title: string;
+      subtitle?: string;
+      badge?: string;
+      badgeVariant?: BadgeVariant;
+      route: ShellRoute;
+      sessionNode: SidebarWorkspaceSessionNode | SidebarServerSessionNode;
+    };
 
 function matchesSearchText(label: string, query: string): boolean {
   return query.length > 0 && label.toLowerCase().includes(query);
@@ -251,25 +306,47 @@ function SshServerSidebarContextMenu({
   );
 }
 
-function PinOnlySidebarContextMenu({
+function ItemSidebarContextMenu({
+  kind,
+  title,
   pinnedItem,
-  ariaLabel,
   position,
   onClose,
+  onNavigate,
   sidebarPinning,
 }: {
+  kind: "task" | "chat" | "ssh-session";
+  title: string;
   pinnedItem: SidebarPinnedItem;
-  ariaLabel: string;
   position: ContextMenuPosition;
   onClose: () => void;
+  onNavigate: (route: ShellRoute) => void;
   sidebarPinning: SidebarPinningState;
 }) {
+  const items = kind === "task"
+    ? [{
+        id: "code-explorer",
+        label: "Open code explorer",
+        onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "task", taskId: pinnedItem.id } }),
+      }]
+    : kind === "chat"
+      ? [{
+          id: "code-explorer",
+          label: "Open code explorer",
+          onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "chat", chatId: pinnedItem.id } }),
+        }]
+      : [{
+          id: "open-session",
+          label: "Open session",
+          onClick: () => onNavigate({ view: "ssh", sshSessionId: pinnedItem.id }),
+        }];
+
   return (
     <ContextMenu
-      ariaLabel={ariaLabel}
+      ariaLabel={`${title} actions`}
       position={position}
       onClose={onClose}
-      items={[getPinMenuItem(sidebarPinning, pinnedItem)]}
+      items={insertPinActionItem(items, getPinMenuItem(sidebarPinning, pinnedItem))}
     />
   );
 }
@@ -345,18 +422,64 @@ export function ShellSidebarNav({
     });
   }
 
-  function openPinOnlyContextMenu(
+  function openTaskContextMenu(
     event: MouseEvent<HTMLButtonElement>,
-    pinnedItem: SidebarPinnedItem,
-    ariaLabel: string,
+    taskNode: SidebarTaskNode,
   ) {
     event.preventDefault();
     setContextMenu({
-      kind: "pin-only",
-      pinnedItem,
-      ariaLabel,
+      kind: "task",
+      taskNode,
+      pinnedItem: { kind: "task", id: taskNode.task.config.id },
       position: { x: event.clientX, y: event.clientY },
     });
+  }
+
+  function openChatContextMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    chatNode: SidebarChatNode,
+  ) {
+    event.preventDefault();
+    setContextMenu({
+      kind: "chat",
+      chatNode,
+      pinnedItem: { kind: "chat", id: chatNode.chat.config.id },
+      position: { x: event.clientX, y: event.clientY },
+    });
+  }
+
+  function openSessionContextMenu(
+    event: MouseEvent<HTMLButtonElement>,
+    sessionNode: SidebarWorkspaceSessionNode | SidebarServerSessionNode,
+  ) {
+    event.preventDefault();
+    const sessionId = getSidebarSessionId(sessionNode);
+    setContextMenu({
+      kind: "ssh-session",
+      sessionNode,
+      pinnedItem: { kind: "ssh-session", id: sessionId },
+      position: { x: event.clientX, y: event.clientY },
+    });
+  }
+
+  function openPinnedContextMenu(event: MouseEvent<HTMLButtonElement>, node: PinnedSidebarRenderNode) {
+    if (node.kind === "workspace") {
+      openWorkspaceContextMenu(event, node.workspace);
+      return;
+    }
+    if (node.kind === "ssh-server") {
+      openServerContextMenu(event, node.server);
+      return;
+    }
+    if (node.kind === "task") {
+      openTaskContextMenu(event, node.taskNode);
+      return;
+    }
+    if (node.kind === "chat") {
+      openChatContextMenu(event, node.chatNode);
+      return;
+    }
+    openSessionContextMenu(event, node.sessionNode);
   }
 
   function isWorkspaceActive(workspaceId: string): boolean {
@@ -431,11 +554,7 @@ export function ShellSidebarNav({
           view: "task",
           taskId: taskNode.task.config.id,
         })}
-        onContextMenu={(event) => openPinOnlyContextMenu(
-          event,
-          { kind: "task", id: taskNode.task.config.id },
-          `Task actions for ${taskNode.title}`,
-        )}
+        onContextMenu={(event) => openTaskContextMenu(event, taskNode)}
       />
     ));
   }
@@ -459,11 +578,7 @@ export function ShellSidebarNav({
           view: "chat",
           chatId: chatNode.chat.config.id,
         })}
-        onContextMenu={(event) => openPinOnlyContextMenu(
-          event,
-          { kind: "chat", id: chatNode.chat.config.id },
-          `Chat actions for ${chatNode.title}`,
-        )}
+        onContextMenu={(event) => openChatContextMenu(event, chatNode)}
       />
     ));
   }
@@ -486,42 +601,50 @@ export function ShellSidebarNav({
     for (const group of workspaceGroups) {
       for (const workspaceNode of group.workspaces) {
         addNode({
+          kind: "workspace",
           pinnedItem: { kind: "workspace", id: workspaceNode.workspace.id },
           title: workspaceNode.workspace.name,
           subtitle: workspaceNode.workspace.directory,
           route: { view: "workspace", workspaceId: workspaceNode.workspace.id },
+          workspace: workspaceNode.workspace,
         });
 
         for (const taskNode of [...workspaceNode.tasks, ...workspaceNode.historyTasks]) {
           addNode({
+            kind: "task",
             pinnedItem: { kind: "task", id: taskNode.task.config.id },
             title: taskNode.title,
             subtitle: workspaceNode.workspace.name,
             badge: taskNode.badge,
             badgeVariant: taskNode.badgeVariant,
             route: { view: "task", taskId: taskNode.task.config.id },
+            taskNode,
           });
         }
 
         for (const chatNode of workspaceNode.chats) {
           addNode({
+            kind: "chat",
             pinnedItem: { kind: "chat", id: chatNode.chat.config.id },
             title: chatNode.title,
             subtitle: workspaceNode.workspace.name,
             badge: chatNode.badge,
             badgeVariant: chatNode.badgeVariant,
             route: { view: "chat", chatId: chatNode.chat.config.id },
+            chatNode,
           });
         }
 
         for (const sessionNode of workspaceNode.sshSessions) {
           addNode({
+            kind: "ssh-session",
             pinnedItem: { kind: "ssh-session", id: sessionNode.session.config.id },
             title: sessionNode.title,
             subtitle: `${workspaceNode.workspace.name} · ${sessionNode.subtitle}`,
             badge: sessionNode.badge,
             badgeVariant: sessionNode.badgeVariant,
             route: { view: "ssh", sshSessionId: sessionNode.session.config.id },
+            sessionNode,
           });
         }
       }
@@ -529,20 +652,24 @@ export function ShellSidebarNav({
 
     for (const serverNode of serverNodes) {
       addNode({
+        kind: "ssh-server",
         pinnedItem: { kind: "ssh-server", id: serverNode.server.config.id },
         title: serverNode.server.config.name,
         subtitle: `${serverNode.server.config.username}@${serverNode.server.config.address}`,
         route: { view: "ssh-server", serverId: serverNode.server.config.id },
+        server: serverNode.server,
       });
 
       for (const sessionNode of serverNode.sessions) {
         addNode({
+          kind: "ssh-session",
           pinnedItem: { kind: "ssh-session", id: sessionNode.id },
           title: sessionNode.title,
           subtitle: `${serverNode.server.config.name} · ${sessionNode.subtitle}`,
           badge: sessionNode.badge,
           badgeVariant: sessionNode.badgeVariant,
           route: { view: "ssh", sshSessionId: sessionNode.id },
+          sessionNode,
         });
       }
     }
@@ -782,11 +909,7 @@ export function ShellSidebarNav({
                 badgeVariant={node.badgeVariant}
                 indentLevel={1}
                 onClick={(event) => handleSidebarItemClick(event, node.route)}
-                onContextMenu={(event) => openPinOnlyContextMenu(
-                  event,
-                  node.pinnedItem,
-                  `${node.title} actions`,
-                )}
+                onContextMenu={(event) => openPinnedContextMenu(event, node)}
               />
             ))}
           </SidebarTreeSection>
@@ -839,11 +962,7 @@ export function ShellSidebarNav({
                                 view: "chat",
                                 chatId: chatNode.chat.config.id,
                               })}
-                              onContextMenu={(event) => openPinOnlyContextMenu(
-                                event,
-                                { kind: "chat", id: chatNode.chat.config.id },
-                                `Chat actions for ${chatNode.title}`,
-                              )}
+                              onContextMenu={(event) => openChatContextMenu(event, chatNode)}
                             />
                           ))}
                         </SidebarTreeSection>
@@ -863,11 +982,7 @@ export function ShellSidebarNav({
                                 view: "ssh",
                                 sshSessionId: sessionNode.session.config.id,
                               })}
-                              onContextMenu={(event) => openPinOnlyContextMenu(
-                                event,
-                                { kind: "ssh-session", id: sessionNode.session.config.id },
-                                `SSH session actions for ${sessionNode.title}`,
-                              )}
+                              onContextMenu={(event) => openSessionContextMenu(event, sessionNode)}
                             />
                           ))}
                         </SidebarTreeSection>
@@ -891,11 +1006,7 @@ export function ShellSidebarNav({
                         view: "task",
                         taskId: taskNode.task.config.id,
                       })}
-                      onContextMenu={(event) => openPinOnlyContextMenu(
-                        event,
-                        { kind: "task", id: taskNode.task.config.id },
-                        `Task actions for ${taskNode.title}`,
-                      )}
+                      onContextMenu={(event) => openTaskContextMenu(event, taskNode)}
                     />
                   ))}
                 </SearchResultsSection>
@@ -918,11 +1029,7 @@ export function ShellSidebarNav({
                         view: "chat",
                         chatId: chatNode.chat.config.id,
                       })}
-                      onContextMenu={(event) => openPinOnlyContextMenu(
-                        event,
-                        { kind: "chat", id: chatNode.chat.config.id },
-                        `Chat actions for ${chatNode.title}`,
-                      )}
+                      onContextMenu={(event) => openChatContextMenu(event, chatNode)}
                     />
                   ))}
                 </SearchResultsSection>
@@ -949,11 +1056,7 @@ export function ShellSidebarNav({
                           view: "ssh",
                           sshSessionId: sessionId,
                         })}
-                        onContextMenu={(event) => openPinOnlyContextMenu(
-                          event,
-                          { kind: "ssh-session", id: sessionId },
-                          `SSH session actions for ${sessionNode.title}`,
-                        )}
+                        onContextMenu={(event) => openSessionContextMenu(event, sessionNode)}
                       />
                     );
                   })}
@@ -995,11 +1098,7 @@ export function ShellSidebarNav({
                                 view: "ssh",
                                 sshSessionId: sessionNode.id,
                               })}
-                              onContextMenu={(event) => openPinOnlyContextMenu(
-                                event,
-                                { kind: "ssh-session", id: sessionNode.id },
-                                `SSH session actions for ${sessionNode.title}`,
-                              )}
+                              onContextMenu={(event) => openSessionContextMenu(event, sessionNode)}
                             />
                           ))}
                         </SidebarTreeSection>
@@ -1042,11 +1141,7 @@ export function ShellSidebarNav({
                           view: "task",
                           taskId: item.taskNode.task.config.id,
                         })}
-                        onContextMenu={(event) => openPinOnlyContextMenu(
-                          event,
-                          { kind: "task", id: item.taskNode.task.config.id },
-                          `Task actions for ${item.taskNode.title}`,
-                        )}
+                        onContextMenu={(event) => openTaskContextMenu(event, item.taskNode)}
                       />
                     );
                   }
@@ -1065,11 +1160,7 @@ export function ShellSidebarNav({
                           view: "chat",
                           chatId: item.chatNode.chat.config.id,
                         })}
-                        onContextMenu={(event) => openPinOnlyContextMenu(
-                          event,
-                          { kind: "chat", id: item.chatNode.chat.config.id },
-                          `Chat actions for ${item.chatNode.title}`,
-                        )}
+                        onContextMenu={(event) => openChatContextMenu(event, item.chatNode)}
                       />
                     );
                   }
@@ -1088,11 +1179,7 @@ export function ShellSidebarNav({
                           view: "ssh",
                           sshSessionId: item.sessionNode.session.config.id,
                         })}
-                        onContextMenu={(event) => openPinOnlyContextMenu(
-                          event,
-                          { kind: "ssh-session", id: item.sessionNode.session.config.id },
-                          `SSH session actions for ${item.sessionNode.title}`,
-                        )}
+                        onContextMenu={(event) => openSessionContextMenu(event, item.sessionNode)}
                       />
                     );
                   }
@@ -1110,11 +1197,7 @@ export function ShellSidebarNav({
                         view: "ssh",
                         sshSessionId: item.sessionNode.id,
                       })}
-                      onContextMenu={(event) => openPinOnlyContextMenu(
-                        event,
-                        { kind: "ssh-session", id: item.sessionNode.id },
-                        `SSH session actions for ${item.sessionNode.title}`,
-                      )}
+                      onContextMenu={(event) => openSessionContextMenu(event, item.sessionNode)}
                     />
                   );
                 })}
@@ -1253,11 +1336,7 @@ export function ShellSidebarNav({
                                       view: "ssh",
                                       sshSessionId: sessionNode.session.config.id,
                                     })}
-                                    onContextMenu={(event) => openPinOnlyContextMenu(
-                                      event,
-                                      { kind: "ssh-session", id: sessionNode.session.config.id },
-                                      `SSH session actions for ${sessionNode.title}`,
-                                    )}
+                                    onContextMenu={(event) => openSessionContextMenu(event, sessionNode)}
                                   />
                                 ))}
                               </SidebarTreeSection>
@@ -1328,11 +1407,7 @@ export function ShellSidebarNav({
                                 view: "ssh",
                                 sshSessionId: sessionNode.id,
                               })}
-                              onContextMenu={(event) => openPinOnlyContextMenu(
-                                event,
-                                { kind: "ssh-session", id: sessionNode.id },
-                                `SSH session actions for ${sessionNode.title}`,
-                              )}
+                              onContextMenu={(event) => openSessionContextMenu(event, sessionNode)}
                             />
                           ))}
                         </SidebarTreeSection>
@@ -1383,12 +1458,20 @@ export function ShellSidebarNav({
             sidebarPinning={sidebarPinning}
           />
         )}
-        {contextMenu?.kind === "pin-only" && (
-          <PinOnlySidebarContextMenu
+        {(contextMenu?.kind === "task" || contextMenu?.kind === "chat" || contextMenu?.kind === "ssh-session") && (
+          <ItemSidebarContextMenu
+            kind={contextMenu.kind}
+            title={
+              contextMenu.kind === "task"
+                ? contextMenu.taskNode.title
+                : contextMenu.kind === "chat"
+                  ? contextMenu.chatNode.title
+                  : contextMenu.sessionNode.title
+            }
             pinnedItem={contextMenu.pinnedItem}
-            ariaLabel={contextMenu.ariaLabel}
             position={contextMenu.position}
             onClose={closeContextMenu}
+            onNavigate={navigateWithinShell}
             sidebarPinning={sidebarPinning}
           />
         )}
