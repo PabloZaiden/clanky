@@ -944,6 +944,73 @@ describe("ShellSidebarNav", () => {
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "ssh-server-settings", serverId: "server-1" });
   });
 
+  test("uses the same task context menu from active work, workspace tree, search, and pinned", async () => {
+    window.localStorage.setItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY, JSON.stringify([
+      { kind: "task", id: "task-1" },
+    ]));
+    const { getAllByRole, getAllByText, getByLabelText, user } = renderWithUser(<SidebarHarness />);
+    const expectedPinnedItems = ["Open code explorer", "Unpin from sidebar"];
+
+    openContextMenuForButton(getByTextButton(getAllByText("Feature Task")[0]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+
+    await user.keyboard("{Escape}");
+    openContextMenuForButton(getByTextButton(getAllByText("Feature Task")[1]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+
+    await user.keyboard("{Escape}");
+    openContextMenuForButton(getByTextButton(getAllByText("Feature Task")[2]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+
+    await user.keyboard("{Escape}");
+    await user.type(getByLabelText("Search"), "feature task");
+    openContextMenuForButton(getByTextButton(getAllByText("Feature Task")[0]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+  });
+
+  test("uses the same chat context menu from quick chats, workspace tree, and pinned", async () => {
+    window.localStorage.setItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY, JSON.stringify([
+      { kind: "chat", id: "chat-1" },
+    ]));
+    const { workspaceGroups } = createSidebarData();
+    const quickChatWorkspace = workspaceGroups[0]!.workspaces[0]!;
+    const { getAllByRole, getAllByText, user } = renderWithUser(
+      <SidebarHarness quickChatWorkspace={quickChatWorkspace} />,
+    );
+    const expectedPinnedItems = ["Open code explorer", "Unpin from sidebar"];
+
+    openContextMenuForButton(getByTextButton(getAllByText("Workspace Chat")[0]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+
+    await user.keyboard("{Escape}");
+    openContextMenuForButton(getByTextButton(getAllByText("Workspace Chat")[1]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+
+    await user.keyboard("{Escape}");
+    openContextMenuForButton(getByTextButton(getAllByText("Workspace Chat")[2]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+
+  });
+
+  test("uses the same SSH session context menu from active work, server tree, and pinned", async () => {
+    window.localStorage.setItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY, JSON.stringify([
+      { kind: "ssh-session", id: "server-session-1" },
+    ]));
+    const { getAllByRole, getAllByText, user } = renderWithUser(<SidebarHarness />);
+    const expectedPinnedItems = ["Open session", "Unpin from sidebar"];
+
+    openContextMenuForButton(getByTextButton(getAllByText("Standalone Server Session")[0]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+
+    await user.keyboard("{Escape}");
+    openContextMenuForButton(getByTextButton(getAllByText("Standalone Server Session")[1]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+
+    await user.keyboard("{Escape}");
+    openContextMenuForButton(getByTextButton(getAllByText("Standalone Server Session")[2]!));
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
+  });
+
   test("pins quick chats before the regular workspaces without showing the workspace", async () => {
     const { workspaceGroups } = createSidebarData();
     const quickChatWorkspace = workspaceGroups[0]!.workspaces.find(
