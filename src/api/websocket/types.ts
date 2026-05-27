@@ -19,10 +19,18 @@ export interface WebSocketData {
   sensitive?: boolean;
   /** Optional forwarded port ID for proxied websocket traffic */
   portForwardId?: string;
+  /** Optional VNC session ID for raw RFB websocket traffic */
+  vncSessionId?: string;
   /** Whether this socket is a terminal transport socket */
   terminalMode?: boolean;
   /** Whether this socket proxies a forwarded port websocket */
   portForwardMode?: boolean;
+  /** Whether this socket bridges noVNC RFB traffic to a local TCP tunnel */
+  vncMode?: boolean;
+  /** Active TCP socket for VNC bridge traffic */
+  vncSocket?: import("node:net").Socket;
+  /** RFB payloads received before the VNC TCP socket is ready */
+  pendingVncMessages?: Buffer[];
   /** Active terminal bridge for terminal-mode sockets */
   terminalBridge?: SshTerminalBridge;
   /** Outbound websocket for proxied forwarded-port traffic */

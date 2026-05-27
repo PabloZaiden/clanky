@@ -12,6 +12,7 @@ import {
   CreateProvisioningJobRequestSchema,
   CreateSshServerRequestSchema,
   CreateSshServerSessionRequestSchema,
+  CreateVncSessionRequestSchema,
   CreateSshSessionRequestSchema,
   CreateWorkspaceRequestSchema,
   DeleteSshServerSessionRequestSchema,
@@ -443,6 +444,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
     description: "List or create standalone SSH server sessions.",
     requestSchema: CreateSshServerSessionRequestSchema,
   },
+  "/api/ssh-servers/:id/vnc-sessions": {
+    description: "List or create VNC sessions for a standalone SSH server.",
+    requestSchema: CreateVncSessionRequestSchema,
+  },
   "/api/ssh-servers/:id/chats": {
     description: "List or create chats owned by a standalone SSH server.",
     requestSchema: CreateSshServerChatRequestSchema,
@@ -516,6 +521,9 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
       UpdateSshSessionRequestSchema,
       DeleteSshServerSessionRequestSchema,
     ]),
+  },
+  "/api/vnc-sessions/:id": {
+    description: "Read or close a VNC session.",
   },
   "/api/provisioning-jobs": {
     description: "Start a remote provisioning job.",

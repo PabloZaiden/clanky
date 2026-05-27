@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { ServerWebSocket } from "bun";
+import type { Socket } from "node:net";
 import { websocketHandlers, type WebSocketData } from "../../src/api/websocket";
 
 function createTerminalSocket(data: WebSocketData): ServerWebSocket<WebSocketData> & {
@@ -45,6 +46,67 @@ describe("websocketHandlers port-forward mode", () => {
       throw new Error("Expected upstream proxy payload to be a Uint8Array");
     }
     expect(Array.from(payload)).toEqual([1, 2, 3]);
+  });
+
+  describe("websocketHandlers VNC mode", () => {
+    test("forwards raw frames to the VNC TCP bridge without requiring port-forward mode", () => {
+      const write = mock(() => true);
+      const close = mock(() => {});
+      const vncSocket = {
+        destroyed: false,
+        write,
+      } as unknown as Socket;
+      const ws = {
+        data: {
+          vncMode: true,
+          vncSessionId: "vnc-open",
+          vncSocket,
+        } as WebSocketData,
+        close,
+      } as unknown as ServerWebSocket<WebSocketData>;
+
+      websocketHandlers.message(ws, Buffer.from([1, 2, 3]));
+
+      expect(write).toHaveBeenCalledWith(Buffer.from([1, 2, 3]));
+      expect(close).not.toHaveBeenCalled();
+    });
+
+    test("queues VNC frames while the TCP bridge is opening", () => {
+      const close = mock(() => {});
+      const firstFrame = Buffer.from("rfb-frame");
+      const secondFrame = Buffer.from([1, 2, 3]);
+      const ws = {
+        data: {
+          vncMode: true,
+          vncSessionId: "vnc-closed",
+        } as WebSocketData,
+        close,
+      } as unknown as ServerWebSocket<WebSocketData>;
+
+      websocketHandlers.message(ws, firstFrame);
+      websocketHandlers.message(ws, secondFrame);
+
+      expect(ws.data.pendingVncMessages).toEqual([firstFrame, secondFrame]);
+      expect(close).not.toHaveBeenCalled();
+    });
+
+    test("closes VNC sockets when the TCP bridge is unavailable", () => {
+      const close = mock(() => {});
+      const ws = {
+        data: {
+          vncMode: true,
+          vncSessionId: "vnc-closed",
+          vncSocket: {
+            destroyed: true,
+          } as Socket,
+        } as WebSocketData,
+        close,
+      } as unknown as ServerWebSocket<WebSocketData>;
+
+      websocketHandlers.message(ws, "rfb-frame");
+
+      expect(close).toHaveBeenCalledWith(1011, "VNC TCP bridge is not open");
+    });
   });
 
   test("silently drops messages when the upstream proxy is still connecting", () => {

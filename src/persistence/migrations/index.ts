@@ -65,6 +65,7 @@ const KNOWN_TABLE_NAMES = new Set([
   "ssh_sessions",
   "ssh_servers",
   "ssh_server_sessions",
+  "vnc_sessions",
   "forwarded_ports",
   "workspaces",
   "preferences",
@@ -209,6 +210,38 @@ export const migrations: Migration[] = [
       db.run("CREATE INDEX IF NOT EXISTS idx_chats_ssh_server_created_at ON chats(ssh_server_id, created_at DESC)");
       db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_task_id_unique ON chats(task_id) WHERE task_id IS NOT NULL");
       db.run("CREATE INDEX IF NOT EXISTS idx_chats_directory_workspace_status ON chats(directory, workspace_id, status)");
+    },
+  },
+  {
+    version: 2,
+    name: "add_vnc_sessions",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS vnc_sessions (
+          id TEXT PRIMARY KEY,
+          ssh_server_id TEXT NOT NULL,
+          remote_host TEXT NOT NULL DEFAULT '127.0.0.1',
+          remote_port INTEGER NOT NULL,
+          local_port INTEGER NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          status TEXT NOT NULL,
+          pid INTEGER,
+          connected_at TEXT,
+          error_message TEXT,
+          FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_server_port
+        ON vnc_sessions(ssh_server_id, remote_port)
+        WHERE status IN ('starting', 'active', 'stopping')
+      `);
+      db.run(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_vnc_sessions_active_local_port
+        ON vnc_sessions(local_port)
+        WHERE status IN ('starting', 'active', 'stopping')
+      `);
     },
   },
 ];

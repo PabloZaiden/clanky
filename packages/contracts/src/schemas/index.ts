@@ -129,6 +129,7 @@ export {
   DeleteSshServerSessionRequestSchema,
   CheckSshServerPrerequisitesRequestSchema,
   GetDevboxTemplatesRequestSchema,
+  CreateVncSessionRequestSchema,
   type SshKeyAlgorithm,
   type CreateSshServerRequest,
   type UpdateSshServerRequest,
@@ -139,6 +140,7 @@ export {
   type DeleteSshServerSessionRequest,
   type CheckSshServerPrerequisitesRequest,
   type GetDevboxTemplatesRequest,
+  type CreateVncSessionRequest,
 } from "./ssh-server";
 
 // Provisioning schemas

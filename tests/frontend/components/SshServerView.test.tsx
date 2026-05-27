@@ -1,7 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { SshServerView } from "@/components/app-shell/ssh-server-view";
 import type { SshServer } from "@/types";
 import { renderWithUser } from "../helpers/render";
+
+mock.module("@/hooks/sshServerActions", () => ({
+  listVncSessionsApi: async () => [],
+  createOrResumeVncSessionApi: async () => {
+    throw new Error("not implemented in this test");
+  },
+  closeVncSessionApi: async () => true,
+}));
 
 function createServer(id: string, repositoriesBasePath: string | null): SshServer {
   return {
@@ -46,5 +54,28 @@ describe("SshServerView", () => {
 
     expect(queryByRole("button", { name: "Start chat" })).toBeNull();
     expect(queryByText("Remote chats")).toBeNull();
+  });
+
+  test("exposes VNC connection from the server action menu", async () => {
+    const sidebarPinning = {
+      pinnedItems: [],
+      isPinned: () => false,
+      pinItem: () => {},
+      unpinItem: () => {},
+      togglePinned: () => {},
+    };
+
+    const { user, getByRole } = renderWithUser(
+      <SshServerView
+        server={createServer("server-1", "/workspaces/one")}
+        sessions={[]}
+        onNavigate={() => {}}
+        onOpenSettings={() => {}}
+        sidebarPinning={sidebarPinning}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: /SSH server actions/ }));
+    expect(getByRole("menuitem", { name: "Start VNC Session" })).toBeTruthy();
   });
 });

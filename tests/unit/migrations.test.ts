@@ -37,7 +37,8 @@ describe("migration infrastructure", () => {
 
   describe("reset baseline", () => {
     test("starts with chat source migration", () => {
-      expect(migrations).toHaveLength(1);
+      expect(migrations).toHaveLength(2);
+      expect(migrations[1]?.name).toBe("add_vnc_sessions");
     });
   });
 
@@ -138,7 +139,7 @@ describe("migration infrastructure", () => {
         )
       `);
 
-      expect(runMigrations(db)).toBe(1);
+      expect(runMigrations(db)).toBe(2);
       expect(getTableColumns(db, "chats")).toContain("source_kind");
       expect(getTableColumns(db, "chats")).toContain("ssh_server_id");
       expect(getTableColumns(db, "chats")).toContain("ssh_server_session_id");
@@ -215,9 +216,11 @@ describe("migration infrastructure", () => {
       db.run("CREATE TABLE auth_refresh_sessions (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE review_comments (id TEXT PRIMARY KEY)");
       db.run("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)");
+      db.run("CREATE TABLE vnc_sessions (id TEXT PRIMARY KEY)");
 
       expect(getTableColumns(db, "chats")).toContain("id");
       expect(getTableColumns(db, "tasks")).toContain("id");
+      expect(getTableColumns(db, "vnc_sessions")).toContain("id");
       expect(getTableColumns(db, "ssh_sessions")).toContain("id");
       expect(getTableColumns(db, "ssh_servers")).toContain("id");
       expect(getTableColumns(db, "ssh_server_sessions")).toContain("id");
@@ -263,7 +266,7 @@ describe("migration infrastructure", () => {
       });
 
       try {
-        expect(runMigrations(db)).toBe(2);
+        expect(runMigrations(db)).toBe(3);
         expect(getTableColumns(db, "tasks")).toContain("test_column");
         expect(getSchemaVersion(db)).toBe(version);
       } finally {
@@ -304,7 +307,7 @@ describe("migration infrastructure", () => {
       migrations.push({ version: version2, name: "second", up: () => { appliedOrder.push(2); } });
 
       try {
-        expect(runMigrations(db)).toBe(4);
+        expect(runMigrations(db)).toBe(5);
         expect(appliedOrder).toEqual([1, 2, 3]);
       } finally {
         migrations.length = originalLength;

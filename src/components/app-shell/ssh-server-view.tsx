@@ -22,7 +22,14 @@ export function SshServerView({
   sidebarPinning: SidebarPinningState;
 }) {
   const serverPinnedItem = { kind: "ssh-server" as const, id: server.config.id };
-  const actionItems = insertPinActionItem(buildSshServerActionItems({ server, onNavigate }), {
+  const actionItems = insertPinActionItem([
+    ...buildSshServerActionItems({ server, onNavigate }),
+    {
+      id: "start-vnc-session",
+      label: "Start VNC Session",
+      onClick: () => onNavigate({ view: "vnc-session", serverId: server.config.id }),
+    },
+  ], {
       id: "toggle-sidebar-pin",
       label: sidebarPinning.isPinned(serverPinnedItem) ? "Unpin from sidebar" : "Pin to sidebar",
       onClick: () => sidebarPinning.togglePinned(serverPinnedItem),

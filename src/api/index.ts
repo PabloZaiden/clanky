@@ -35,6 +35,7 @@ import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats";
 import { passkeyAuthRoutes } from "./passkey-auth";
 import { authRoutes } from "./auth";
+import { vncSessionRoutes } from "./vnc-sessions";
 
 /**
  * All API routes combined.
@@ -67,6 +68,7 @@ export const apiRoutes = {
   ...chatsRoutes,
   ...passkeyAuthRoutes,
   ...authRoutes,
+  ...vncSessionRoutes,
 };
 
 // Re-export individual route modules
@@ -87,4 +89,5 @@ export * from "./provisioning";
 export * from "./chats";
 export * from "./passkey-auth";
 export * from "./auth";
+export * from "./vnc-sessions";
 export * from "./same-origin-guard";

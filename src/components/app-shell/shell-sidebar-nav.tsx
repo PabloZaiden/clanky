@@ -522,6 +522,7 @@ export function ShellSidebarNav({
     return (
       ((
         route.view === "ssh-server"
+        || route.view === "vnc-session"
         || route.view === "ssh-server-settings"
         || route.view === "server-files"
         || route.view === "server-arise"

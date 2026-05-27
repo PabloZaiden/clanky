@@ -213,6 +213,26 @@ export async function startServer(): Promise<void> {
     ),
     "/api/ssh-terminal",
   );
+  const vncRoute = wrapRouteHandlerWithLogging(
+    wrapRouteHandlerWithSameOriginProtection(
+      wrapRouteHandlerWithApplicationAuth((req: Request, server: Server<WebSocketData>) => {
+        const url = new URL(req.url);
+        const vncSessionId = url.searchParams.get("vncSessionId") ?? undefined;
+        if (!vncSessionId) {
+          return new Response("vncSessionId is required", { status: 400 });
+        }
+        const upgraded = server.upgrade(req, {
+          data: { vncSessionId, vncMode: true } as WebSocketData,
+        });
+        return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+      }),
+      {
+        ...sameOriginProtectionOptions,
+        alwaysProtect: true,
+      },
+    ),
+    "/api/vnc",
+  );
 
   const server = serve<WebSocketData>({
     hostname: runtimeConfig.host,
@@ -223,6 +243,7 @@ export async function startServer(): Promise<void> {
       ...sameOriginProtectedPortForwardRoutes,
       "/api/ws": websocketRoute,
       "/api/ssh-terminal": sshTerminalRoute,
+      "/api/vnc": vncRoute,
       "/*": getWebAppRoute(),
     },
     websocket: websocketHandlers,

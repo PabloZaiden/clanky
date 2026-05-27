@@ -118,6 +118,13 @@ function parseHash(): ShellRoute {
     }
   }
 
+  if (hash.startsWith("/server/") && hash.endsWith("/vnc")) {
+    const serverId = hash.slice(8, -4);
+    if (serverId) {
+      return { view: "vnc-session", serverId };
+    }
+  }
+
   if (hash.startsWith("/server/")) {
     const serverId = hash.slice(8);
     if (serverId) {

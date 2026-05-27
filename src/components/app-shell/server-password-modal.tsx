@@ -5,6 +5,7 @@ interface ServerPasswordModalProps {
   isOpen: boolean;
   serverName: string;
   password: string;
+  description?: string;
   error: string | null;
   submitting: boolean;
   onPasswordChange: (password: string) => void;
@@ -16,6 +17,7 @@ export function ServerPasswordModal({
   isOpen,
   serverName,
   password,
+  description,
   error,
   submitting,
   onPasswordChange,
@@ -40,7 +42,7 @@ export function ServerPasswordModal({
       isOpen={isOpen}
       onClose={handleClose}
       title="SSH password required"
-      description={`Enter the SSH password for ${serverName} before opening its code explorer.`}
+      description={description ?? `Enter the SSH password for ${serverName} before opening its code explorer.`}
       size="sm"
       showCloseButton={!submitting}
       closeOnOverlayClick={!submitting}
