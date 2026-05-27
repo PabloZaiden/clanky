@@ -31,6 +31,7 @@ export { ToastProvider } from "./Toast";
 export {
   ActionMenu,
   ContextMenu,
+  insertPinActionItem,
   type ActionMenuProps,
   type ActionMenuItem,
   type ContextMenuPosition,

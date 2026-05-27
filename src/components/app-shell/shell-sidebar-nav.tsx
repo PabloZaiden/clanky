@@ -6,6 +6,7 @@ import {
   GearIcon,
   RefreshIcon,
   SidebarIcon,
+  insertPinActionItem,
   type BadgeVariant,
   type ContextMenuPosition,
 } from "../common";
@@ -204,15 +205,14 @@ function WorkspaceSidebarContextMenu({
       ariaLabel={`Workspace actions for ${workspace.name}`}
       position={position}
       onClose={onClose}
-      items={[
+      items={insertPinActionItem([
         ...items,
         {
           id: "workspace-settings",
           label: "Workspace Settings",
           onClick: () => onNavigate({ view: "workspace-settings", workspaceId: workspace.id }),
         },
-        getPinMenuItem(sidebarPinning, pinnedItem),
-      ]}
+      ], getPinMenuItem(sidebarPinning, pinnedItem))}
     />
   );
 }
@@ -239,15 +239,14 @@ function SshServerSidebarContextMenu({
       ariaLabel={`SSH server actions for ${server.config.name}`}
       position={position}
       onClose={onClose}
-      items={[
+      items={insertPinActionItem([
         ...items,
         {
           id: "ssh-server-settings",
           label: "SSH Server Settings",
           onClick: () => onNavigate({ view: "ssh-server-settings", serverId: server.config.id }),
         },
-        getPinMenuItem(sidebarPinning, pinnedItem),
-      ]}
+      ], getPinMenuItem(sidebarPinning, pinnedItem))}
     />
   );
 }

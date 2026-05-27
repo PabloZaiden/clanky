@@ -155,6 +155,39 @@ describe("WorkspaceView", () => {
     expect(callCount).toBe(1);
   });
 
+  test("places pinning last in the workspace actions menu", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Frontend",
+      directory: "/workspaces/frontend",
+    });
+
+    const { getAllByRole, getByRole, user } = renderWithUser(
+      <WorkspaceView
+        workspace={workspace}
+        relatedTasks={[]}
+        relatedChats={[]}
+        relatedSessions={[]}
+        registeredSshServers={[]}
+        onOpenSettings={() => {}}
+        onPullLatestChanges={() => {}}
+        pullingLatestChanges={false}
+        onNavigate={() => {}}
+        sidebarPinning={EMPTY_SIDEBAR_PINNING_STATE}
+      />,
+    );
+
+    await user.click(getByRole("button", { name: "Workspace actions for Frontend" }));
+
+    expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "New Task",
+      "New Chat",
+      "Open code explorer",
+      "Pull Latest Changes",
+      "Pin to sidebar",
+    ]);
+  });
+
   test("disables the pull latest action while pending", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",

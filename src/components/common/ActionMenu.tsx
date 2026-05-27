@@ -55,6 +55,19 @@ export interface ContextMenuProps {
   ariaLabel?: string;
 }
 
+export function insertPinActionItem(items: ActionMenuItem[], pinItem: ActionMenuItem): ActionMenuItem[] {
+  const deleteIndex = items.findIndex((item) => item.id === "delete");
+  if (deleteIndex === -1) {
+    return [...items, pinItem];
+  }
+
+  return [
+    ...items.slice(0, deleteIndex),
+    pinItem,
+    ...items.slice(deleteIndex),
+  ];
+}
+
 function ActionMenuItems({
   items,
   onItemClick,

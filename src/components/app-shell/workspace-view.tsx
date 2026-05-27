@@ -7,6 +7,7 @@ import {
   Button,
   GearIcon,
   StatusBadge,
+  insertPinActionItem,
   getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
@@ -74,14 +75,11 @@ export function WorkspaceView({
     onOpenGitHub: (url) => window.open(url, "_blank", "noopener,noreferrer"),
   });
   const workspacePinnedItem = { kind: "workspace" as const, id: workspace.id };
-  const actionItems = [
-    {
+  const actionItems = insertPinActionItem(createActionItems, {
       id: "toggle-sidebar-pin",
       label: sidebarPinning.isPinned(workspacePinnedItem) ? "Unpin from sidebar" : "Pin to sidebar",
       onClick: () => sidebarPinning.togglePinned(workspacePinnedItem),
-    },
-    ...createActionItems,
-  ];
+  });
 
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
     const route: ShellRoute = { view: "task", taskId: task.config.id };
