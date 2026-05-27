@@ -27,23 +27,23 @@ function getProxyMessagePayload(msg: string | Buffer): string | Uint8Array<Array
  */
 export function createMessageHandler(helpers: TerminalHelpers) {
   return function message(ws: ServerWebSocket<WebSocketData>, msg: string | Buffer): void {
+    if (ws.data.vncMode) {
+      if (ws.data.vncSocket && !ws.data.vncSocket.destroyed) {
+        ws.data.vncSocket.write(typeof msg === "string" ? Buffer.from(msg) : msg);
+        return;
+      }
+      log.warn("Closing VNC WebSocket because TCP bridge is not open", {
+        vncSessionId: ws.data.vncSessionId,
+      });
+      ws.close(1011, "VNC TCP bridge is not open");
+      return;
+    }
+
     if (ws.data.portForwardMode) {
       const proxySocket = ws.data.proxySocket;
 
       if (proxySocket?.readyState === WebSocket.OPEN) {
         proxySocket.send(getProxyMessagePayload(msg));
-        return;
-      }
-
-      if (ws.data.vncMode) {
-        if (ws.data.vncSocket && !ws.data.vncSocket.destroyed) {
-          ws.data.vncSocket.write(typeof msg === "string" ? Buffer.from(msg) : msg);
-          return;
-        }
-        log.warn("Closing VNC WebSocket because TCP bridge is not open", {
-          vncSessionId: ws.data.vncSessionId,
-        });
-        ws.close(1011, "VNC TCP bridge is not open");
         return;
       }
 

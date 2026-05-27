@@ -13,6 +13,11 @@ export function VncViewer({
   onDisconnect: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const onDisconnectRef = useRef(onDisconnect);
+
+  useEffect(() => {
+    onDisconnectRef.current = onDisconnect;
+  }, [onDisconnect]);
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -24,12 +29,15 @@ export function VncViewer({
     });
     rfb.scaleViewport = true;
     rfb.resizeSession = false;
-    rfb.addEventListener("disconnect", onDisconnect);
+    const handleDisconnect = () => {
+      onDisconnectRef.current();
+    };
+    rfb.addEventListener("disconnect", handleDisconnect);
     return () => {
-      rfb.removeEventListener("disconnect", onDisconnect);
+      rfb.removeEventListener("disconnect", handleDisconnect);
       rfb.disconnect();
     };
-  }, [onDisconnect, password, session.config.id]);
+  }, [password, session.config.id]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-black dark:border-gray-800">

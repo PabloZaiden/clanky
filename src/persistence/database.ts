@@ -624,6 +624,7 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS ssh_sessions");
     db!.run("DROP TABLE IF EXISTS tasks");
     db!.run("DROP TABLE IF EXISTS chats");
+    db!.run("DROP TABLE IF EXISTS vnc_sessions");
     db!.run("DROP TABLE IF EXISTS ssh_servers");
     db!.run("DROP TABLE IF EXISTS workspaces");
     db!.run("DROP TABLE IF EXISTS sessions");

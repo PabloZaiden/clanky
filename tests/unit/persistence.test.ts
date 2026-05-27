@@ -7,6 +7,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import type { Task, TaskStatus } from "../../src/types/task";
+import type { VncSession } from "../../src/types";
 import { DEFAULT_TASK_CONFIG } from "../../src/types/task";
 import { getDefaultServerSettings } from "../../src/types/settings";
 
@@ -212,6 +213,79 @@ describe("Persistence", () => {
 
       expect(chatsRow.count).toBe(0);
       expect(passkeysRow.count).toBe(0);
+    });
+
+    test("resetDatabase drops VNC sessions before SSH servers", async () => {
+      const { ensureDataDirectories, getDatabase, resetDatabase } = await import("../../src/persistence/database");
+      const { saveSshServerConfig } = await import("../../src/persistence/ssh-servers");
+      const { saveVncSession } = await import("../../src/persistence/vnc-sessions");
+
+      await ensureDataDirectories();
+      const now = new Date().toISOString();
+      await saveSshServerConfig({
+        id: "ssh-server-before-reset",
+        name: "Server Before Reset",
+        address: "127.0.0.1",
+        username: "test",
+        repositoriesBasePath: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await saveVncSession({
+        config: {
+          id: "vnc-before-reset",
+          sshServerId: "ssh-server-before-reset",
+          remoteHost: "127.0.0.1",
+          remotePort: 5900,
+          localPort: 15900,
+          createdAt: now,
+          updatedAt: now,
+        },
+        state: { status: "active" },
+      });
+
+      resetDatabase();
+
+      const db = getDatabase();
+      const sessionsRow = db.query("SELECT COUNT(*) AS count FROM vnc_sessions").get() as { count: number };
+      const serversRow = db.query("SELECT COUNT(*) AS count FROM ssh_servers").get() as { count: number };
+      expect(sessionsRow.count).toBe(0);
+      expect(serversRow.count).toBe(0);
+    });
+  });
+
+  describe("VNC sessions", () => {
+    test("findActiveVncSession ignores sessions that are already stopping", async () => {
+      const { ensureDataDirectories } = await import("../../src/persistence/database");
+      const { saveSshServerConfig } = await import("../../src/persistence/ssh-servers");
+      const { findActiveVncSession, saveVncSession } = await import("../../src/persistence/vnc-sessions");
+
+      await ensureDataDirectories();
+      const now = new Date().toISOString();
+      await saveSshServerConfig({
+        id: "ssh-server-vnc-resume",
+        name: "VNC Resume Server",
+        address: "127.0.0.1",
+        username: "test",
+        repositoriesBasePath: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const stoppingSession: VncSession = {
+        config: {
+          id: "vnc-stopping",
+          sshServerId: "ssh-server-vnc-resume",
+          remoteHost: "127.0.0.1",
+          remotePort: 5900,
+          localPort: 15900,
+          createdAt: now,
+          updatedAt: now,
+        },
+        state: { status: "stopping" },
+      };
+      await saveVncSession(stoppingSession);
+
+      expect(await findActiveVncSession("ssh-server-vnc-resume", 5900)).toBeNull();
     });
   });
 

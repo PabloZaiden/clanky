@@ -1,7 +1,29 @@
 import type { VncSession } from "../types";
 import { getDatabase } from "./database";
 
-const ACTIVE_STATUSES = ["starting", "active", "stopping"];
+const RESUMABLE_STATUSES = ["starting", "active"];
+
+const ALLOWED_VNC_SESSION_COLUMNS = new Set([
+  "id",
+  "ssh_server_id",
+  "remote_host",
+  "remote_port",
+  "local_port",
+  "created_at",
+  "updated_at",
+  "status",
+  "pid",
+  "connected_at",
+  "error_message",
+]);
+
+function validateColumnNames(columns: string[]): void {
+  for (const column of columns) {
+    if (!ALLOWED_VNC_SESSION_COLUMNS.has(column)) {
+      throw new Error(`Invalid VNC session column name: ${column}`);
+    }
+  }
+}
 
 function rowToVncSession(row: Record<string, unknown>): VncSession {
   return {
@@ -42,6 +64,7 @@ function vncSessionToRow(session: VncSession): Record<string, string | number | 
 export async function saveVncSession(session: VncSession): Promise<void> {
   const row = vncSessionToRow(session);
   const columns = Object.keys(row);
+  validateColumnNames(columns);
   const placeholders = columns.map(() => "?").join(", ");
   const updateClause = columns
     .filter((column) => column !== "id")
@@ -69,9 +92,9 @@ export async function listVncSessionsBySshServerId(sshServerId: string): Promise
 export async function findActiveVncSession(sshServerId: string, remotePort: number): Promise<VncSession | null> {
   const rows = getDatabase().query(
     `SELECT * FROM vnc_sessions
-     WHERE ssh_server_id = ? AND remote_port = ? AND status IN (${ACTIVE_STATUSES.map(() => "?").join(", ")})
+     WHERE ssh_server_id = ? AND remote_port = ? AND status IN (${RESUMABLE_STATUSES.map(() => "?").join(", ")})
      ORDER BY created_at DESC LIMIT 1`,
-  ).all(sshServerId, remotePort, ...ACTIVE_STATUSES) as Record<string, unknown>[];
+  ).all(sshServerId, remotePort, ...RESUMABLE_STATUSES) as Record<string, unknown>[];
   return rows[0] ? rowToVncSession(rows[0]) : null;
 }
 
