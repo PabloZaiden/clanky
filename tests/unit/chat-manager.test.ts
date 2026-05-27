@@ -3197,6 +3197,49 @@ describe("ChatManager", () => {
     expect((manager as unknown as ChatManagerInternals).activeStreamGenerations.has(chat.config.id)).toBe(false);
   });
 
+  test("removes the internal SSH-server transport session when deleting an SSH-server chat", async () => {
+    context = await setupTestContext({
+      useMockBackend: true,
+    });
+    const { saveSshServerConfig, getSshServerSession } = await import("../../src/persistence/ssh-servers");
+    const { saveSshServerKeyPair, createPersistedSshServerKeyPair } = await import("../../src/persistence/ssh-server-keys");
+    const now = new Date().toISOString();
+    const sshServerId = "ssh-server-chat-delete";
+    await saveSshServerConfig({
+      id: sshServerId,
+      name: "Shared host",
+      address: "ssh.example.com",
+      username: "deploy",
+      repositoriesBasePath: "/repos",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await saveSshServerKeyPair(sshServerId, createPersistedSshServerKeyPair({
+      publicKey: "public-key-pem",
+      privateKey: "private-key-pem",
+      fingerprint: "fingerprint-1",
+      version: 1,
+      createdAt: now,
+    }));
+
+    const manager = new ChatManager();
+    const chat = await manager.createSshServerChat({
+      sshServerId,
+      name: "Remote Chat",
+      directory: "/repos/project",
+      ...testModelFields,
+    });
+    const sessionId = chat.config.source?.kind === "ssh_server"
+      ? chat.config.source.sshServerSessionId
+      : null;
+
+    expect(sessionId).toBeString();
+    expect(await getSshServerSession(sessionId!)).not.toBeNull();
+    expect(await manager.deleteChat(chat.config.id)).toBe(true);
+    expect(await loadChat(chat.config.id)).toBeNull();
+    expect(await getSshServerSession(sessionId!)).toBeNull();
+  });
+
   test("accepts an immediate follow-up message after interrupting a running prompt", async () => {
     context = await setupTestContext({
       useMockBackend: true,

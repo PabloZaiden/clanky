@@ -757,6 +757,53 @@ describe("ShellSidebarNav", () => {
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "compose", kind: "task", scopeId: "workspace-2" });
   });
 
+  test("renders SSH server chats with matching new chat routing", async () => {
+    const navigateWithinShell = mock((_route: ShellRoute) => {});
+    const server = createSshServer();
+    const chat = createChat({
+      config: {
+        id: "server-chat-1",
+        name: "Server Chat",
+        workspaceId: "",
+        directory: "/srv/repos",
+        useWorktree: false,
+        scope: "workspace",
+        source: {
+          kind: "ssh_server",
+          sshServerId: server.config.id,
+          sshServerSessionId: "session-1",
+          directory: "/srv/repos",
+        },
+      },
+    });
+    const serverNodes = buildServerSidebarNodes({
+      servers: [server],
+      sessionsByServerId: {},
+      chats: [chat],
+      workspaces: [],
+      workspaceSessions: [],
+    });
+
+    const { getAllByRole, getAllByText, getByRole, user } = renderWithUser(
+      <SidebarHarness
+        navigateWithinShell={navigateWithinShell}
+        workspaceGroups={[]}
+        serverNodes={serverNodes}
+      />,
+    );
+
+    expect(getByRole("button", { name: "Collapse Server 1" })).toBeInTheDocument();
+    expect(getAllByText("Server Chat").length).toBeGreaterThan(0);
+
+    const newChatButtons = getAllByRole("button", { name: "New Chats" });
+    await user.click(newChatButtons[newChatButtons.length - 1]!);
+    expect(navigateWithinShell).toHaveBeenCalledWith({
+      view: "compose",
+      kind: "ssh-server-chat",
+      scopeId: "server-1",
+    });
+  });
+
   test("uses the same shared action slot and button styling for every sidebar new action", () => {
     const { getAllByRole } = renderWithUser(<SidebarHarness />);
     const newButtons = getAllByRole("button", { name: /^New / });
@@ -928,6 +975,7 @@ describe("ShellSidebarNav", () => {
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "Open code explorer",
       "New Session",
+      "New Chat",
       "SSH Server Settings",
       "Pin to sidebar",
     ]);

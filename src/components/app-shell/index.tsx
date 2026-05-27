@@ -163,10 +163,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     () => buildServerSidebarNodes({
       servers,
       sessionsByServerId,
+      chats,
       workspaces,
       workspaceSessions: sessions,
     }),
-    [servers, sessions, sessionsByServerId, workspaces],
+    [chats, servers, sessions, sessionsByServerId, workspaces],
   );
   const quickChatWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === quickChatSettings.settings.workspaceId) ?? null,
@@ -241,11 +242,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
             ? (workspaces.find((w) => w.id === selectedChat?.config.workspaceId) ?? null)
             : null;
   const composeWorkspace =
-    route.view === "compose" && route.kind !== "ssh-server" && route.scopeId
+    route.view === "compose" && route.kind !== "ssh-server" && route.kind !== "ssh-server-chat" && route.scopeId
       ? (workspaces.find((w) => w.id === route.scopeId) ?? null)
       : null;
   const composeServer =
-    route.view === "compose" && (route.kind === "ssh-session" || route.kind === "ssh-server") && route.scopeId
+    route.view === "compose" && (route.kind === "ssh-session" || route.kind === "ssh-server" || route.kind === "ssh-server-chat") && route.scopeId
       ? (servers.find((s) => s.config.id === route.scopeId) ?? null)
       : null;
   const composeServerSessionCount = composeServer

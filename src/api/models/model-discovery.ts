@@ -7,11 +7,35 @@
 
 import { backendManager, buildConnectionConfig } from "../../core/backend-manager";
 import { getWorkspace } from "../../persistence/workspaces";
-import type { ServerSettings } from "../../types/settings";
+import type { AgentProvider, ServerSettings } from "../../types/settings";
 import type { ModelInfo } from "../../types/api";
 import { createLogger } from "../../core/logger";
 
 const log = createLogger("api:models");
+
+const COPILOT_REASONING_EFFORTS = ["low", "medium", "high", "xhigh"];
+
+const COPILOT_DEFAULT_MODEL_DEFINITIONS = [
+  { modelID: "gpt-5.5", modelName: "GPT-5.5" },
+  { modelID: "gpt-5.4", modelName: "GPT-5.4" },
+  { modelID: "gpt-5.3-codex", modelName: "GPT-5.3-Codex" },
+  { modelID: "gpt-5.2-codex", modelName: "GPT-5.2-Codex" },
+  { modelID: "gpt-5.2", modelName: "GPT-5.2" },
+  { modelID: "claude-sonnet-4.6", modelName: "Claude Sonnet 4.6" },
+  { modelID: "claude-sonnet-4.5", modelName: "Claude Sonnet 4.5" },
+  { modelID: "claude-haiku-4.5", modelName: "Claude Haiku 4.5" },
+];
+
+export function getDefaultCopilotModels(): ModelInfo[] {
+  return COPILOT_DEFAULT_MODEL_DEFINITIONS.map((model) => ({
+    providerID: "copilot",
+    providerName: "Copilot",
+    modelID: model.modelID,
+    modelName: model.modelName,
+    connected: true,
+    variants: [...COPILOT_REASONING_EFFORTS],
+  }));
+}
 
 /**
  * Result of checking if a model is enabled/connected.
@@ -49,7 +73,7 @@ function normalizeCopilotModelInfo(models: ModelInfo[]): ModelInfo[] {
  * Discover models via the configured agent backend (ACP path).
  */
 async function getAgentBackendModels(
-  workspaceId: string,
+  connectionId: string,
   directory: string,
   settings: ServerSettings,
 ): Promise<ModelInfo[]> {
@@ -61,7 +85,7 @@ async function getAgentBackendModels(
     return await testBackend.getModels(directory);
   }
 
-  const existingBackend = backendManager.getInitializedBackend(workspaceId);
+  const existingBackend = backendManager.getInitializedBackend(connectionId);
   if (existingBackend?.isConnected()) {
     return await existingBackend.getModels(directory);
   }
@@ -98,6 +122,41 @@ export async function getModelsForWorkspace(
     return normalizeCopilotModelInfo(models);
   }
   return models;
+}
+
+export async function getModelsForSettings(
+  connectionId: string,
+  directory: string,
+  settings: ServerSettings,
+): Promise<ModelInfo[]> {
+  const models = await getAgentBackendModels(connectionId, directory, settings);
+  if (settings.agent.provider === "copilot") {
+    return normalizeCopilotModelInfo(models);
+  }
+  return models;
+}
+
+export async function getModelsForProvider(provider: AgentProvider): Promise<ModelInfo[]> {
+  try {
+    const models = await getAgentBackendModels(`provider:${provider}`, process.cwd(), {
+      agent: {
+        provider,
+        transport: "stdio",
+      },
+    });
+    if (provider === "copilot") {
+      return normalizeCopilotModelInfo(models);
+    }
+    return models;
+  } catch (error) {
+    if (provider === "copilot" && String(error).includes("Authentication required")) {
+      log.warn("Copilot model discovery requires authentication; using default model list", {
+        error: String(error),
+      });
+      return getDefaultCopilotModels();
+    }
+    throw error;
+  }
 }
 
 /**

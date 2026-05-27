@@ -409,11 +409,6 @@ function renderMainContent(props: ShellMainContentProps) {
       <SshServerView
         server={selectedServer}
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
-        chats={chats.filter((chat) =>
-          chat.config.source?.kind === "ssh_server"
-          && chat.config.source.sshServerId === selectedServer.config.id
-        )}
-        onCreateChat={props.createSshServerChat}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
         onOpenSettings={() => navigateWithinShell({ view: "ssh-server-settings", serverId: selectedServer.config.id })}
@@ -563,6 +558,7 @@ function renderMainContent(props: ShellMainContentProps) {
         setComposeActionState={props.setComposeActionState}
         handleTaskSubmit={props.handleTaskSubmit}
         createChat={createChat}
+        createSshServerChat={props.createSshServerChat}
         dashboardData={dashboardData}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}

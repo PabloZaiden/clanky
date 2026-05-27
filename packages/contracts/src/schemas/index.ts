@@ -53,6 +53,7 @@ export {
   CreateChatRequestSchema,
   CreateSshServerChatRequestSchema,
   DiscoverSshServerChatProvidersRequestSchema,
+  DiscoverSshServerChatModelsRequestSchema,
   UpdateChatRequestSchema,
   SendChatMessageRequestSchema,
   InterruptChatRequestSchema,

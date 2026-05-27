@@ -658,6 +658,9 @@ export class ChatManager {
     if (!chat) {
       return false;
     }
+    const internalSshServerSessionId = chat.config.source?.kind === "ssh_server"
+      ? chat.config.source.sshServerSessionId
+      : null;
 
     this.activeStreams.get(chatId)?.stream.close();
     this.activeStreams.delete(chatId);
@@ -667,6 +670,17 @@ export class ChatManager {
 
     const deleted = await deleteChat(chatId);
     if (deleted) {
+      if (internalSshServerSessionId) {
+        const internalSession = await sshServerManager.getSession(internalSshServerSessionId);
+        if (internalSession) {
+          await sshServerManager.deleteInternalSessionRecord(internalSshServerSessionId);
+        } else {
+          log.warn("SSH-server chat transport session was already missing during chat deletion", {
+            chatId,
+            sshServerSessionId: internalSshServerSessionId,
+          });
+        }
+      }
       this.emitter.emit({
         type: "chat.deleted",
         chatId,
