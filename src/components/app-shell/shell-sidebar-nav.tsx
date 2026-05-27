@@ -920,6 +920,7 @@ export function ShellSidebarNav({
             title="Pinned"
             collapsed={isNodeCollapsed(pinnedCollapseKey)}
             onToggle={() => toggleNodeCollapsed(pinnedCollapseKey)}
+            headerVariant="shell"
           >
             {pinnedRenderNodes.map((node) => (
               <SidebarTreeItem
@@ -1150,6 +1151,7 @@ export function ShellSidebarNav({
                 title="Quick chats"
                 collapsed={isNodeCollapsed(quickChatsCollapseKey)}
                 onToggle={() => toggleNodeCollapsed(quickChatsCollapseKey)}
+                headerVariant="shell"
               >
                 {renderChatNodes({
                   chatNodes: quickChatWorkspace.chats,
@@ -1163,6 +1165,7 @@ export function ShellSidebarNav({
                 title="Active Work"
                 collapsed={isNodeCollapsed(activeWorkCollapseKey)}
                 onToggle={() => toggleNodeCollapsed(activeWorkCollapseKey)}
+                headerVariant="shell"
               >
                 {activeWorkItems.map((item) => {
                   if (item.kind === "task") {

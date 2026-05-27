@@ -6,6 +6,16 @@ const TREE_ITEM_GUTTER_WIDTH_CLASS = "w-3";
 const SECTION_ACTION_SLOT_CLASS = "flex min-w-12 shrink-0 justify-end";
 const SECTION_ACTION_BUTTON_CLASS =
   "inline-flex min-w-[2.75rem] items-center justify-center rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 transition hover:bg-gray-200 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-neutral-800 dark:hover:text-gray-100";
+const SHELL_SECTION_BUTTON_CLASS =
+  "flex w-full min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60";
+const SHELL_SECTION_ICON_CLASS = "text-xs text-gray-500 dark:text-gray-400";
+const SHELL_SECTION_TITLE_CLASS =
+  "truncate text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400";
+const TREE_SECTION_BUTTON_CLASS =
+  "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60";
+const TREE_SECTION_ICON_CLASS = "text-[11px] text-gray-500 dark:text-gray-400";
+const TREE_SECTION_TITLE_CLASS =
+  "truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400";
 
 function getIndentStyle(indentLevel: number): { marginLeft: string } | undefined {
   if (indentLevel <= 0) {
@@ -77,10 +87,10 @@ export function ShellSection({
             aria-expanded={!collapsed}
             aria-controls={contentId}
             aria-label={toggleLabel}
-            className="flex w-full min-w-0 items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60"
+            className={SHELL_SECTION_BUTTON_CLASS}
           >
-            <span className="text-xs text-gray-500 dark:text-gray-400">{collapsed ? "\u25B6" : "\u25BC"}</span>
-            <span className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            <span className={SHELL_SECTION_ICON_CLASS}>{collapsed ? "\u25B6" : "\u25BC"}</span>
+            <span className={SHELL_SECTION_TITLE_CLASS}>
               {title}
             </span>
           </button>
@@ -104,6 +114,7 @@ export function SidebarTreeSection({
   collapsed,
   onToggle,
   indentLevel = 0,
+  headerVariant = "tree",
   children,
 }: {
   title: string;
@@ -113,6 +124,7 @@ export function SidebarTreeSection({
   collapsed?: boolean;
   onToggle?: () => void;
   indentLevel?: number;
+  headerVariant?: "tree" | "shell";
   children: ReactNode;
 }) {
   const hasToggle = typeof onToggle === "function";
@@ -121,8 +133,9 @@ export function SidebarTreeSection({
   const isCollapsed = collapsed ?? false;
   const toggleLabel = `${isCollapsed ? "Expand" : "Collapse"} ${title}`;
   const contentVisible = !hasToggle || !isCollapsed;
-  const contentClassName =
-    "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60";
+  const contentClassName = headerVariant === "shell" ? SHELL_SECTION_BUTTON_CLASS : TREE_SECTION_BUTTON_CLASS;
+  const iconClassName = headerVariant === "shell" ? SHELL_SECTION_ICON_CLASS : TREE_SECTION_ICON_CLASS;
+  const titleClassName = headerVariant === "shell" ? SHELL_SECTION_TITLE_CLASS : TREE_SECTION_TITLE_CLASS;
 
   return (
     <div className="space-y-1" style={getIndentStyle(indentLevel)}>
@@ -136,14 +149,14 @@ export function SidebarTreeSection({
             aria-label={toggleLabel}
             className={contentClassName}
           >
-            <span className="text-[11px] text-gray-500 dark:text-gray-400">{isCollapsed ? "\u25B6" : "\u25BC"}</span>
-            <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            <span className={iconClassName}>{isCollapsed ? "\u25B6" : "\u25BC"}</span>
+            <span className={titleClassName}>
               {title}
             </span>
           </button>
         ) : (
           <div className={contentClassName}>
-            <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">
+            <span className={titleClassName}>
               {title}
             </span>
           </div>
