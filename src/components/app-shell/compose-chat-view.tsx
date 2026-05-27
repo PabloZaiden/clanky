@@ -120,6 +120,15 @@ export function ComposeChatView({
     if (isServerChat) {
       return;
     }
+    loadedWorkspaceRef.current = null;
+    setSelectedWorkspaceId(composeWorkspace?.id ?? "");
+    setSelectedModel("");
+  }, [composeWorkspace?.id, isServerChat]);
+
+  useEffect(() => {
+    if (isServerChat) {
+      return;
+    }
     if (!selectedWorkspace) {
       loadedWorkspaceRef.current = null;
       resetCreateModalState();

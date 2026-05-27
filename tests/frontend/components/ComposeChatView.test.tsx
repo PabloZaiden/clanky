@@ -237,6 +237,73 @@ describe("ComposeChatView", () => {
     });
   });
 
+  test("resets workspace and model state when switching from SSH-server compose to workspace compose", async () => {
+    const workspace = createWorkspace({
+      id: "workspace-1",
+      name: "Clanky",
+      directory: "/workspaces/clanky",
+    });
+    const handleWorkspaceChange = mock(() => {});
+    const models = [
+      createModelInfo({
+        providerID: "copilot",
+        providerName: "Copilot",
+        modelID: "gpt-5.4",
+        modelName: "GPT-5.4",
+        connected: true,
+        variants: ["low", "medium"],
+      }),
+    ];
+
+    const { getByLabelText, rerender } = renderWithUser(
+      <ComposeChatView
+        composeWorkspace={null}
+        composeServer={createServer()}
+        workspaces={[workspace]}
+        workspacesLoading={false}
+        workspaceError={null}
+        dashboardData={createDashboardData({
+          handleWorkspaceChange,
+          models: [
+            createModelInfo({
+              providerID: "copilot",
+              providerName: "Copilot",
+              modelID: "gpt-5.5",
+              modelName: "GPT-5.5",
+              connected: true,
+              variants: ["xhigh"],
+            }),
+          ],
+        })}
+        shellHeaderOffsetClassName=""
+        navigateWithinShell={mock(() => {})}
+        createChat={mock(async () => null)}
+      />,
+    );
+
+    rerender(
+      <ComposeChatView
+        composeWorkspace={workspace}
+        workspaces={[workspace]}
+        workspacesLoading={false}
+        workspaceError={null}
+        dashboardData={createDashboardData({
+          handleWorkspaceChange,
+          models,
+        })}
+        shellHeaderOffsetClassName=""
+        navigateWithinShell={mock(() => {})}
+        createChat={mock(async () => null)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(handleWorkspaceChange).toHaveBeenCalledWith("workspace-1", "/workspaces/clanky");
+      expect((getByLabelText("Workspace") as HTMLSelectElement).value).toBe("workspace-1");
+      expect((getByLabelText("Model") as HTMLSelectElement).value).toBe("copilot:gpt-5.4:low");
+    });
+  });
+
   test("loads workspace data only once for equivalent rerenders", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
