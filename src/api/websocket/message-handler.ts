@@ -32,6 +32,11 @@ export function createMessageHandler(helpers: TerminalHelpers) {
         ws.data.vncSocket.write(typeof msg === "string" ? Buffer.from(msg) : msg);
         return;
       }
+      if (!ws.data.vncSocket) {
+        ws.data.pendingVncMessages = ws.data.pendingVncMessages ?? [];
+        ws.data.pendingVncMessages.push(typeof msg === "string" ? Buffer.from(msg) : msg);
+        return;
+      }
       log.warn("Closing VNC WebSocket because TCP bridge is not open", {
         vncSessionId: ws.data.vncSessionId,
       });

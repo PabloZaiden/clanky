@@ -101,9 +101,18 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   if (vncMode && vncSessionId) {
     void vncSessionManager.openTcpSocket(vncSessionId).then(({ socket }) => {
       ws.data.vncSocket = socket;
+      const pendingMessages = ws.data.pendingVncMessages ?? [];
+      ws.data.pendingVncMessages = undefined;
+      for (const pendingMessage of pendingMessages) {
+        socket.write(pendingMessage);
+      }
       socket.on("data", (chunk) => {
         try {
-          ws.send(chunk);
+          if (typeof chunk === "string") {
+            ws.send(chunk);
+            return;
+          }
+          ws.send(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
         } catch (sendError) {
           log.trace("Failed to send VNC socket payload", { vncSessionId, error: String(sendError) });
         }

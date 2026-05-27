@@ -254,6 +254,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     : 0;
   const selectedServer =
     route.view === "ssh-server"
+      || route.view === "vnc-session"
       || route.view === "ssh-server-settings"
       || route.view === "server-files"
       || route.view === "server-arise"

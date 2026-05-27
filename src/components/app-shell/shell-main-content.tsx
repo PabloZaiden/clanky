@@ -19,6 +19,7 @@ import { ComposeView } from "./shell-compose-view";
 import { RebuildWorkspaceView } from "./rebuild-workspace-view";
 import { ServerAriseView } from "./server-arise-view";
 import { SshServerSettingsView } from "./ssh-server-settings-view";
+import { VncSessionView } from "./vnc-session-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import type { ShellRoute } from "./shell-types";
@@ -440,6 +441,30 @@ function renderMainContent(props: ShellMainContentProps) {
         updateServer={props.updateServer}
         deleteServer={async () => await deleteServer(selectedServer.config.id)}
         navigateWithinShell={navigateWithinShell}
+      />
+    );
+  }
+
+  if (route.view === "vnc-session") {
+    if (!selectedServer) {
+      return (
+        <ShellPanel
+          eyebrow="VNC session"
+          title="Server not found"
+          description="The selected SSH server no longer exists."
+        >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Use the sidebar or home button to continue.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    return (
+      <VncSessionView
+        server={selectedServer}
+        headerOffsetClassName={shellHeaderOffsetClassName}
+        onNavigate={navigateWithinShell}
       />
     );
   }

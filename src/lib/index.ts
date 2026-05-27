@@ -20,6 +20,7 @@ export {
   fetchSshServerPublicKey,
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
+  invalidateStoredSshCredentialToken,
   isStoredCredentialCompatible,
   saveStoredSshServerCredential,
   storeSshServerPassword,

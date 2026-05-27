@@ -16,6 +16,7 @@ import { appFetch } from "../lib/public-path";
 import {
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
+  invalidateStoredSshCredentialToken,
   storeSshServerPassword,
 } from "../lib/ssh-browser-credentials";
 
@@ -222,18 +223,29 @@ export async function createOrResumeVncSessionApi(options: {
   password?: string;
 }): Promise<VncSession> {
   const credentialToken = await resolveCredentialToken(options.serverId, options.password);
-  return await apiCall<VncSession>(
-    `/api/ssh-servers/${options.serverId}/vnc-sessions`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        remotePort: options.remotePort,
-        credentialToken,
-      }),
-    },
-    "Start VNC session",
-  );
+  const requestSession = async (token: string) => await apiCall<VncSession>(
+      `/api/ssh-servers/${options.serverId}/vnc-sessions`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          remotePort: options.remotePort,
+          credentialToken: token,
+        }),
+      },
+      "Start VNC session",
+    );
+
+  try {
+    return await requestSession(credentialToken);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("credential token")) {
+      throw error;
+    }
+    invalidateStoredSshCredentialToken(options.serverId);
+    return await requestSession(await resolveCredentialToken(options.serverId));
+  }
 }
 
 export async function closeVncSessionApi(sessionId: string): Promise<boolean> {

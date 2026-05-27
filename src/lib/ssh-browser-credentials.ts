@@ -71,6 +71,10 @@ function clearCachedCredentialToken(serverId: string): void {
   exchangedCredentialTokenCache.delete(serverId);
 }
 
+export function invalidateStoredSshCredentialToken(serverId: string): void {
+  clearCachedCredentialToken(serverId);
+}
+
 function getCachedCredentialToken(
   serverId: string,
   storedCredential: StoredSshServerCredential,

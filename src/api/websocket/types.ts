@@ -29,6 +29,8 @@ export interface WebSocketData {
   vncMode?: boolean;
   /** Active TCP socket for VNC bridge traffic */
   vncSocket?: import("node:net").Socket;
+  /** RFB payloads received before the VNC TCP socket is ready */
+  pendingVncMessages?: Buffer[];
   /** Active terminal bridge for terminal-mode sockets */
   terminalBridge?: SshTerminalBridge;
   /** Outbound websocket for proxied forwarded-port traffic */

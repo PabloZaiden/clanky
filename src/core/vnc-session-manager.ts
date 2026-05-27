@@ -21,6 +21,8 @@ const log = createLogger("core:vnc-session-manager");
 const VNC_REMOTE_HOST = "127.0.0.1";
 const ACTIVE_STATUSES = new Set<VncSession["state"]["status"]>(["starting", "active", "stopping"]);
 const STOP_TIMEOUT_MS = 2_000;
+const TCP_CONNECT_RETRY_INTERVAL_MS = 50;
+const TCP_CONNECT_TIMEOUT_MS = 2_000;
 
 interface RuntimeHandle {
   child: ChildProcess;
@@ -103,6 +105,7 @@ export class VncSessionManager {
       });
       this.attachRuntimeHandle(session, child);
       await waitForProcessStartup(child);
+      await this.waitForLocalPort(session.config.localPort);
       const activeSession: VncSession = {
         config: { ...session.config, updatedAt: new Date().toISOString() },
         state: {
@@ -220,6 +223,30 @@ export class VncSessionManager {
   private async getReservedLocalPorts(): Promise<Set<number>> {
     const sessions = await listVncSessionsByStatuses(["starting", "active", "stopping"]);
     return new Set(sessions.map((session) => session.config.localPort));
+  }
+
+  private async waitForLocalPort(localPort: number): Promise<void> {
+    const deadline = Date.now() + TCP_CONNECT_TIMEOUT_MS;
+    let lastError: unknown;
+
+    while (Date.now() <= deadline) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const socket = net.createConnection({ host: "127.0.0.1", port: localPort });
+          socket.once("connect", () => {
+            socket.end();
+            resolve();
+          });
+          socket.once("error", reject);
+        });
+        return;
+      } catch (error) {
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, TCP_CONNECT_RETRY_INTERVAL_MS));
+      }
+    }
+
+    throw new Error(`VNC SSH tunnel did not open local port ${String(localPort)}: ${String(lastError)}`);
   }
 
   private async reconcilePersistedSessions(): Promise<void> {
