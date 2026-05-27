@@ -8,33 +8,44 @@ export function VncViewer({
   username,
   password,
   fullscreen = false,
+  swapRedBlue = false,
+  onCredentialsRequired,
   onDisconnect,
   onError,
 }: {
   session: VncSession;
   username?: string;
-  password: string;
+  password?: string;
   fullscreen?: boolean;
+  swapRedBlue?: boolean;
+  onCredentialsRequired?: () => void;
   onDisconnect: () => void;
   onError?: (message: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const credentialsRef = useRef<{ username?: string; password?: string } | undefined>(undefined);
+  const onCredentialsRequiredRef = useRef(onCredentialsRequired);
   const onDisconnectRef = useRef(onDisconnect);
   const onErrorRef = useRef(onError);
 
   useEffect(() => {
+    const trimmedUsername = username?.trim();
+    credentialsRef.current = password ? { username: trimmedUsername || undefined, password } : undefined;
+  }, [password, username]);
+
+  useEffect(() => {
+    onCredentialsRequiredRef.current = onCredentialsRequired;
     onDisconnectRef.current = onDisconnect;
     onErrorRef.current = onError;
-  }, [onDisconnect, onError]);
+  }, [onCredentialsRequired, onDisconnect, onError]);
 
   useEffect(() => {
     if (!containerRef.current) {
       return;
     }
     const url = appWebSocketUrl(`/api/vnc?vncSessionId=${encodeURIComponent(session.config.id)}`);
-    const credentials = password || username ? { username: username || undefined, password: password || undefined } : undefined;
     const rfb = new RFB(containerRef.current, url, {
-      credentials,
+      credentials: credentialsRef.current,
     });
     rfb.scaleViewport = true;
     rfb.resizeSession = false;
@@ -43,8 +54,15 @@ export function VncViewer({
     const handleDisconnect = () => {
       onDisconnectRef.current();
     };
-    const handleCredentialsRequired = () => {
-      rfb.sendCredentials(credentials ?? {});
+    const handleCredentialsRequired = (event: Event) => {
+      const detail = (event as Event & { detail?: { types?: string[] } }).detail;
+      const requiresUsername = detail?.types?.includes("username") ?? false;
+      const credentials = credentialsRef.current;
+      if (credentials && (!requiresUsername || credentials.username)) {
+        rfb.sendCredentials(credentials);
+        return;
+      }
+      onCredentialsRequiredRef.current?.();
     };
     const handleSecurityFailure = (event: Event) => {
       const detail = (event as Event & { detail?: { reason?: string } }).detail;
@@ -59,22 +77,24 @@ export function VncViewer({
       rfb.removeEventListener("securityfailure", handleSecurityFailure);
       rfb.disconnect();
     };
-  }, [password, session.config.id, username]);
+  }, [session.config.id]);
 
   return (
     <div className="h-full min-h-0 overflow-hidden rounded-lg border border-gray-200 bg-black dark:border-gray-800">
-      <svg aria-hidden="true" className="absolute h-0 w-0">
-        <filter id="clanky-vnc-swap-red-blue">
-          <feColorMatrix
-            type="matrix"
-            values="0 0 1 0 0  0 1 0 0 0  1 0 0 0 0  0 0 0 1 0"
-          />
-        </filter>
-      </svg>
+      {swapRedBlue && (
+        <svg aria-hidden="true" className="absolute h-0 w-0">
+          <filter id="clanky-vnc-swap-red-blue">
+            <feColorMatrix
+              type="matrix"
+              values="0 0 1 0 0  0 1 0 0 0  1 0 0 0 0  0 0 0 1 0"
+            />
+          </filter>
+        </svg>
+      )}
       <div
         ref={containerRef}
         className={fullscreen ? "h-full min-h-0 w-full" : "h-[70vh] min-h-[420px] w-full"}
-        style={{ filter: "url(#clanky-vnc-swap-red-blue)" }}
+        style={swapRedBlue ? { filter: "url(#clanky-vnc-swap-red-blue)" } : undefined}
       />
     </div>
   );
