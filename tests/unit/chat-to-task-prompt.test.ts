@@ -143,6 +143,16 @@ describe("chat-to-task-prompt", () => {
     expect(name).not.toContain("PLAN_READY");
   });
 
+  test("strips markdown title markers without removing legitimate title characters", () => {
+    const headingName = buildSpawnTaskNameFromCurrentPlan("Generic plan chat", [], "## Improve C# analyzer for #123");
+    const quoteName = buildSpawnTaskNameFromChat("Generic chat", [
+      createMessage({ content: "> Preserve >= filters and -> transitions in generated titles." }),
+    ]);
+
+    expect(headingName).toBe("Improve C# analyzer for #123");
+    expect(quoteName).toBe("Preserve >= filters and -> transitions in generated titles");
+  });
+
   test("bounds generated task names", () => {
     const name = buildSpawnTaskNameFromChat("Fallback chat", [
       createMessage({ content: `Improve ${"workspace ".repeat(30)}handoff reliability` }),

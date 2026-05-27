@@ -38,7 +38,9 @@ function normalizeTitleContent(content: string): string {
   return content
     .replace(/^\uFEFF/, "")
     .replace(PLAN_READY_PROMISE_PATTERN, "")
-    .replace(/[`*_~>#]/g, "")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}(?:>\s+)+/gm, "")
+    .replace(/[`*_~]/g, "")
     .replace(/^\s*[-*+]\s+/gm, "")
     .replace(/^\s*\d+[.)]\s+/gm, "")
     .replace(/\s+/g, " ")
