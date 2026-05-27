@@ -119,6 +119,7 @@ export function SidebarTreeSection({
   const generatedContentId = useId();
   const contentId = hasToggle ? generatedContentId : undefined;
   const isCollapsed = collapsed ?? false;
+  const toggleLabel = `${isCollapsed ? "Expand" : "Collapse"} ${title}`;
   const contentVisible = !hasToggle || !isCollapsed;
   const contentClassName =
     "flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-gray-100 dark:hover:bg-neutral-800/60";
@@ -132,6 +133,7 @@ export function SidebarTreeSection({
             onClick={onToggle}
             aria-expanded={!isCollapsed}
             aria-controls={contentId}
+            aria-label={toggleLabel}
             className={contentClassName}
           >
             <span className="text-[11px] text-gray-500 dark:text-gray-400">{isCollapsed ? "\u25B6" : "\u25BC"}</span>

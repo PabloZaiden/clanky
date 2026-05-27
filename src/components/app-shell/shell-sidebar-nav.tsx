@@ -583,6 +583,9 @@ export function ShellSidebarNav({
     ));
   }
 
+  const pinnedCollapseKey = getSidebarSectionCollapseKey("pinned");
+  const quickChatsCollapseKey = getSidebarSectionCollapseKey("quick-chats");
+  const activeWorkCollapseKey = getSidebarSectionCollapseKey("active-work");
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
   const visibleWorkspaceNodes = workspaceGroups.flatMap((group) => (
@@ -913,7 +916,11 @@ export function ShellSidebarNav({
         </div>
 
         {pinnedRenderNodes.length > 0 && (
-          <SidebarTreeSection title="Pinned">
+          <SidebarTreeSection
+            title="Pinned"
+            collapsed={isNodeCollapsed(pinnedCollapseKey)}
+            onToggle={() => toggleNodeCollapsed(pinnedCollapseKey)}
+          >
             {pinnedRenderNodes.map((node) => (
               <SidebarTreeItem
                 key={`pinned:${node.pinnedItem.kind}:${node.pinnedItem.id}`}
@@ -1141,6 +1148,8 @@ export function ShellSidebarNav({
             {quickChatWorkspace && quickChatWorkspace.chats.length > 0 && (
               <SidebarTreeSection
                 title="Quick chats"
+                collapsed={isNodeCollapsed(quickChatsCollapseKey)}
+                onToggle={() => toggleNodeCollapsed(quickChatsCollapseKey)}
               >
                 {renderChatNodes({
                   chatNodes: quickChatWorkspace.chats,
@@ -1150,7 +1159,11 @@ export function ShellSidebarNav({
             )}
 
             {activeWorkItems.length > 0 && (
-              <SidebarTreeSection title="Active Work">
+              <SidebarTreeSection
+                title="Active Work"
+                collapsed={isNodeCollapsed(activeWorkCollapseKey)}
+                onToggle={() => toggleNodeCollapsed(activeWorkCollapseKey)}
+              >
                 {activeWorkItems.map((item) => {
                   if (item.kind === "task") {
                     return (

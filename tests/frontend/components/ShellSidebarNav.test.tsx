@@ -331,15 +331,14 @@ describe("ShellSidebarNav", () => {
     ]);
   });
 
-  test("renders active work as a non-collapsible section with workspace context and navigation", async () => {
+  test("renders active work as a collapsible section with workspace context and navigation", async () => {
     const navigateWithinShell = mock((_route: ShellRoute) => {});
-    const { getAllByText, getByText, queryByRole, user } = renderWithUser(
+    const { getAllByText, getByRole, user } = renderWithUser(
       <SidebarHarness navigateWithinShell={navigateWithinShell} />,
     );
 
-    expect(getByText("Active Work").closest("button")).toBeNull();
-    expect(queryByRole("button", { name: "Collapse Active Work" })).not.toBeInTheDocument();
-    expect(queryByRole("button", { name: "Collapse Active Work section" })).not.toBeInTheDocument();
+    const activeWorkToggle = getByRole("button", { name: "Collapse Active Work" });
+    expect(activeWorkToggle).toHaveAttribute("aria-expanded", "true");
     expect(getAllByText("Workspace 1").length).toBeGreaterThan(1);
 
     await user.click(getByTextButton(getAllByText("Feature Task")[0]!));
@@ -353,6 +352,14 @@ describe("ShellSidebarNav", () => {
 
     await user.click(getByTextButton(getAllByText("Standalone Server Session")[0]!));
     expect(navigateWithinShell).toHaveBeenCalledWith({ view: "ssh", sshSessionId: "server-session-1" });
+
+    await user.click(activeWorkToggle);
+    expect(activeWorkToggle).toHaveAttribute("aria-expanded", "false");
+    expect(getAllByText("Feature Task")).toHaveLength(1);
+
+    await user.click(activeWorkToggle);
+    expect(activeWorkToggle).toHaveAttribute("aria-expanded", "true");
+    expect(getAllByText("Feature Task").length).toBeGreaterThan(1);
   });
 
   test("pins and unpins sidebar items from context menus with localStorage persistence", async () => {
@@ -366,6 +373,17 @@ describe("ShellSidebarNav", () => {
     await waitFor(() => {
       expect(getByText("Pinned")).toBeInTheDocument();
     });
+    expect(getAllByText("Feature Task")).toHaveLength(3);
+
+    const pinnedToggle = getByRole("button", { name: "Collapse Pinned" });
+    await user.click(pinnedToggle);
+    expect(pinnedToggle).toHaveAttribute("aria-expanded", "false");
+    expect(getAllByText("Feature Task")).toHaveLength(2);
+
+    await user.click(pinnedToggle);
+    expect(pinnedToggle).toHaveAttribute("aria-expanded", "true");
+    expect(getAllByText("Feature Task")).toHaveLength(3);
+
     expect(JSON.parse(window.localStorage.getItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY) ?? "[]")).toEqual([
       { kind: "task", id: "task-1" },
     ]);
@@ -378,6 +396,27 @@ describe("ShellSidebarNav", () => {
       expect(queryByText("Pinned")).toBeNull();
     });
     expect(JSON.parse(window.localStorage.getItem(SIDEBAR_PINNED_ITEMS_STORAGE_KEY) ?? "[]")).toEqual([]);
+  });
+
+  test("collapses and expands quick chats without hiding workspace chat entries", async () => {
+    const { workspaceGroups } = createSidebarData();
+    const quickChatWorkspace = workspaceGroups[0]!.workspaces[0]!;
+    const { getAllByText, getByRole, user } = renderWithUser(
+      <SidebarHarness quickChatWorkspace={quickChatWorkspace} />,
+    );
+
+    expect(getAllByText("Workspace Chat")).toHaveLength(2);
+
+    const quickChatsToggle = getByRole("button", { name: "Collapse Quick chats" });
+    expect(quickChatsToggle).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(quickChatsToggle);
+    expect(quickChatsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(getAllByText("Workspace Chat")).toHaveLength(1);
+
+    await user.click(quickChatsToggle);
+    expect(quickChatsToggle).toHaveAttribute("aria-expanded", "true");
+    expect(getAllByText("Workspace Chat")).toHaveLength(2);
   });
 
   test("keeps pinning UI responsive when localStorage writes fail", async () => {
