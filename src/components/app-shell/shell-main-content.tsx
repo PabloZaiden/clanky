@@ -106,6 +106,10 @@ interface ShellMainContentProps {
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
+  createSshServerChat: (
+    serverId: string,
+    request: import("../../types").CreateSshServerChatRequest,
+  ) => Promise<import("../../types").Chat | null>;
 
   // Workspace create
   workspaceCreate: UseWorkspaceCreateResult;
@@ -405,6 +409,11 @@ function renderMainContent(props: ShellMainContentProps) {
       <SshServerView
         server={selectedServer}
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
+        chats={chats.filter((chat) =>
+          chat.config.source?.kind === "ssh_server"
+          && chat.config.source.sshServerId === selectedServer.config.id
+        )}
+        onCreateChat={props.createSshServerChat}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
         onOpenSettings={() => navigateWithinShell({ view: "ssh-server-settings", serverId: selectedServer.config.id })}

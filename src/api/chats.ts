@@ -21,6 +21,7 @@ import type { ChatConfig } from "../types/chat";
 import {
   CreateChatRequestSchema,
   InterruptChatRequestSchema,
+  ReconnectChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
   SendChatMessageRequestSchema,
   SpawnCurrentPlanTaskRequestSchema,
@@ -330,7 +331,13 @@ export const chatsRoutes = {
       }
 
       try {
-        const reconnected = await chatManager.reconnectSession(req.params.id);
+        const validation = await parseAndValidate(ReconnectChatRequestSchema, req, { allowEmptyBody: true });
+        if (!validation.success) {
+          return validation.response;
+        }
+        const reconnected = await chatManager.reconnectSession(req.params.id, {
+          credentialToken: validation.data.credentialToken,
+        });
         if (!reconnected) {
           return errorResponse("not_found", "Chat not found", 404);
         }

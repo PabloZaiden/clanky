@@ -20,9 +20,12 @@ import type {
 import {
   CreateTaskRequestSchema,
   CreateChatRequestSchema,
+  CreateSshServerChatRequestSchema,
+  DiscoverSshServerChatProvidersRequestSchema,
   GenerateTaskTitleRequestSchema,
   InterruptChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
+  ReconnectChatRequestSchema,
   SendChatMessageRequestSchema,
   SpawnCurrentPlanTaskRequestSchema,
   UpdateTaskRequestSchema,
@@ -124,6 +127,7 @@ export interface ModelInfo {
  */
 export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
 export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
+export type CreateSshServerChatRequest = z.infer<typeof CreateSshServerChatRequestSchema>;
 
 /**
  * Request body for POST /api/tasks/title endpoint.
@@ -158,6 +162,8 @@ export type UpdateChatRequest = z.infer<typeof UpdateChatRequestSchema>;
 export type SendChatMessageRequest = z.infer<typeof SendChatMessageRequestSchema>;
 export type InterruptChatRequest = z.infer<typeof InterruptChatRequestSchema>;
 export type ReplyToChatPermissionRequest = z.infer<typeof ReplyToChatPermissionRequestSchema>;
+export type ReconnectChatRequest = z.infer<typeof ReconnectChatRequestSchema>;
+export type DiscoverSshServerChatProvidersRequest = z.infer<typeof DiscoverSshServerChatProvidersRequestSchema>;
 export type SpawnCurrentPlanTaskRequest = z.infer<typeof SpawnCurrentPlanTaskRequestSchema>;
 
 export type ListChatsResponse = Chat[];

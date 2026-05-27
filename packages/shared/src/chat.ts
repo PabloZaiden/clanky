@@ -20,10 +20,32 @@ export type { ModelConfig };
 
 export type ChatScope = "workspace" | "task";
 
+export type ChatConnectionStatus =
+  | "connected"
+  | "disconnected"
+  | "needs_credentials"
+  | "connecting"
+  | "provider_unavailable"
+  | "ssh_connection_failed"
+  | "resume_failed";
+
+export type ChatSource =
+  | {
+      kind: "workspace";
+      workspaceId: string;
+    }
+  | {
+      kind: "ssh_server";
+      sshServerId: string;
+      sshServerSessionId: string;
+      directory: string;
+    };
+
 export interface ChatConfig {
   id: string;
   name: string;
   workspaceId: string;
+  source?: ChatSource;
   scope: ChatScope;
   taskId?: string;
   directory: string;
@@ -88,6 +110,7 @@ export interface ChatState {
   pendingPermissionRequests?: ChatPermissionRequest[];
   activeMessageId?: string;
   interruptRequested?: boolean;
+  connectionStatus?: ChatConnectionStatus;
 }
 
 export interface Chat {
@@ -125,6 +148,24 @@ export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope"
 
 export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
   return !isTaskChat(chat);
+}
+
+export function isWorkspaceChat(chat: Pick<Chat, "config"> | ChatConfig): boolean {
+  const config = "config" in chat ? chat.config : chat;
+  return (config.source?.kind ?? "workspace") === "workspace";
+}
+
+export function isSshServerChat(chat: Pick<Chat, "config"> | ChatConfig): boolean {
+  const config = "config" in chat ? chat.config : chat;
+  return config.source?.kind === "ssh_server";
+}
+
+export function getChatWorkspaceId(chat: Pick<Chat, "config"> | ChatConfig): string {
+  const config = "config" in chat ? chat.config : chat;
+  if (config.source?.kind === "ssh_server") {
+    throw new Error(`Chat is not workspace-backed: ${config.id}`);
+  }
+  return config.source?.workspaceId ?? config.workspaceId;
 }
 
 export class ChatBusyError extends Error {

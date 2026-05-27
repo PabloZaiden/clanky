@@ -173,6 +173,7 @@ describe("Standalone SSH servers API integration", () => {
   beforeEach(() => {
     executorFactory = () => new SshServerApiExecutor();
     const db = getDatabase();
+    db.run("DELETE FROM chats");
     db.run("DELETE FROM ssh_server_sessions");
     db.run("DELETE FROM ssh_servers");
   });
@@ -320,6 +321,52 @@ describe("Standalone SSH servers API integration", () => {
     expect(session.config.name).toBe("Direct shell");
     expect(session.config.connectionMode).toBe("direct");
     expect(session.config.useTmux).toBe(false);
+  });
+
+  test("creates and lists SSH-server-owned chats", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Chat host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: null,
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const createChatResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Remote investigation",
+        directory: "/workspaces/project",
+        model: { providerID: "copilot", modelID: "gpt-5.5", variant: "" },
+        autoApprovePermissions: true,
+      }),
+    });
+    expect(createChatResponse.status).toBe(201);
+    const chat = await createChatResponse.json() as {
+      config: {
+        id: string;
+        workspaceId: string;
+        source: { kind: string; sshServerId: string; directory: string };
+      };
+      state: { connectionStatus: string };
+    };
+    expect(chat.config.workspaceId).toBe("");
+    expect(chat.config.source).toMatchObject({
+      kind: "ssh_server",
+      sshServerId: createdServer.config.id,
+      directory: "/workspaces/project",
+    });
+    expect(chat.state.connectionStatus).toBe("needs_credentials");
+
+    const listChatsResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chats`);
+    expect(listChatsResponse.ok).toBe(true);
+    const chats = await listChatsResponse.json() as Array<{ config: { id: string } }>;
+    expect(chats.map((item) => item.config.id)).toEqual([chat.config.id]);
   });
 
   test("deletes direct standalone SSH sessions", async () => {

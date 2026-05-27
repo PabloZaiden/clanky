@@ -12,7 +12,10 @@ const log = createLogger("persistence:chats");
 const CHAT_LIST_COLUMNS = [
   "id",
   "name",
+  "source_kind",
   "workspace_id",
+  "ssh_server_id",
+  "ssh_server_session_id",
   "scope",
   "task_id",
   "directory",
@@ -40,6 +43,7 @@ const CHAT_LIST_COLUMNS = [
   "pending_permission_requests",
   "active_message_id",
   "interrupt_requested",
+  "connection_status",
 ].join(", ");
 
 export function createChatListSnapshot(chat: Chat): Chat {
@@ -117,6 +121,17 @@ export async function listChatSummariesByWorkspace(workspaceId: string): Promise
   const rows = getDatabase()
     .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE workspace_id = ? AND scope = 'workspace' ORDER BY created_at DESC`)
     .all(workspaceId) as Record<string, unknown>[];
+  return rows.map((row) => createChatListSnapshot(rowToChat(row)));
+}
+
+export async function listChatsBySshServer(sshServerId: string): Promise<Chat[]> {
+  return listChatSummariesBySshServer(sshServerId);
+}
+
+export async function listChatSummariesBySshServer(sshServerId: string): Promise<Chat[]> {
+  const rows = getDatabase()
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE ssh_server_id = ? AND source_kind = 'ssh_server' AND scope = 'workspace' ORDER BY created_at DESC`)
+    .all(sshServerId) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 

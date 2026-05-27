@@ -3,6 +3,7 @@
  */
 
 import { sshCredentialManager } from "../core/ssh-credential-manager";
+import { chatManager } from "../core/chat-manager";
 import { sshServerManager } from "../core/ssh-server-manager";
 import { sshServerKeyManager } from "../core/ssh-server-key-manager";
 import { createLogger } from "../core/logger";
@@ -10,9 +11,11 @@ import { errorResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import {
   CheckSshServerPrerequisitesRequestSchema,
+  CreateSshServerChatRequestSchema,
   CreateSshServerRequestSchema,
   CreateSshServerSessionRequestSchema,
   GetDevboxTemplatesRequestSchema,
+  DiscoverSshServerChatProvidersRequestSchema,
   DeleteSshServerSessionRequestSchema,
   SshCredentialExchangeRequestSchema,
   UpdateSshServerRequestSchema,
@@ -182,6 +185,85 @@ export const sshServersRoutes = {
         return Response.json(session, { status: 201 });
       } catch (error) {
         log.error("Failed to create standalone SSH server session", {
+          serverId: req.params.id,
+          error: String(error),
+        });
+        return mapSshServerError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/chats": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      try {
+        const server = await sshServerManager.getServer(req.params.id);
+        if (!server) {
+          return errorResponse("not_found", "SSH server not found", 404);
+        }
+        return Response.json(await chatManager.getChatSummariesBySshServer(req.params.id));
+      } catch (error) {
+        log.error("Failed to list SSH-server chats", {
+          serverId: req.params.id,
+          error: String(error),
+        });
+        return mapSshServerError(error);
+      }
+    },
+
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(CreateSshServerChatRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const chat = await chatManager.createSshServerChat({
+          sshServerId: req.params.id,
+          name: validation.data.name,
+          directory: validation.data.directory,
+          modelProviderID: validation.data.model.providerID,
+          modelID: validation.data.model.modelID,
+          modelVariant: validation.data.model.variant,
+          autoApprovePermissions: validation.data.autoApprovePermissions,
+          credentialToken: validation.data.credentialToken,
+        });
+        return Response.json(chat, { status: 201 });
+      } catch (error) {
+        log.error("Failed to create SSH-server chat", {
+          serverId: req.params.id,
+          error: String(error),
+        });
+        return mapSshServerError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/chat-providers": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(DiscoverSshServerChatProvidersRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const server = await sshServerManager.getServer(req.params.id);
+        if (!server) {
+          return errorResponse("not_found", "SSH server not found", 404);
+        }
+        const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
+        const { executor } = await sshServerManager.getCommandExecutor(req.params.id, password);
+        const [copilot, opencode] = await Promise.all([
+          executor.exec("sh", ["-lc", "command -v copilot >/dev/null 2>&1"]),
+          executor.exec("sh", ["-lc", "command -v opencode >/dev/null 2>&1"]),
+        ]);
+        return Response.json({
+          providers: [
+            { providerID: "copilot", available: copilot.success },
+            { providerID: "opencode", available: opencode.success },
+          ],
+        });
+      } catch (error) {
+        log.error("Failed to discover SSH-server chat providers", {
           serverId: req.params.id,
           error: String(error),
         });

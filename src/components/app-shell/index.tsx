@@ -41,6 +41,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     error: chatsError,
     refresh: refreshChats,
     createChat,
+    createSshServerChat,
   } = useChats();
   const {
     tasks,
@@ -416,6 +417,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         setComposeActionState={composeState.setComposeActionState}
         handleTaskSubmit={composeState.handleTaskSubmit}
         createChat={createChat}
+        createSshServerChat={createSshServerChat}
         workspaceCreate={workspaceCreate}
         workspaceSettings={workspaceSettings}
         provisioning={provisioning}

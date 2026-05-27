@@ -6,6 +6,7 @@ import {
   CompletePasskeyAuthenticationRequestSchema,
   CompletePasskeyRegistrationRequestSchema,
   CreateChatRequestSchema,
+  CreateSshServerChatRequestSchema,
   CreateTaskRequestSchema,
   CreatePortForwardRequestSchema,
   CreateProvisioningJobRequestSchema,
@@ -14,6 +15,7 @@ import {
   CreateSshSessionRequestSchema,
   CreateWorkspaceRequestSchema,
   DeleteSshServerSessionRequestSchema,
+  DiscoverSshServerChatProvidersRequestSchema,
   DeviceStartRequestSchema,
   DeviceVerificationActionSchema,
   FollowUpRequestSchema,
@@ -29,6 +31,7 @@ import {
   PublicRevokeRequestSchema,
   RefreshEndpointRequestSchema,
   ReplyToChatPermissionRequestSchema,
+  ReconnectChatRequestSchema,
   SendChatMessageRequestSchema,
   ServerSettingsSchema,
   SetDashboardViewModeRequestSchema,
@@ -280,6 +283,7 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   },
   "/api/chats/:id/reconnect": {
     description: "Reconnect a chat session to its backend runtime.",
+    requestSchema: ReconnectChatRequestSchema,
   },
   "/api/chats/:id/spawn-task": {
     description: "Create a task from an existing chat transcript.",
@@ -437,6 +441,14 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/ssh-servers/:id/sessions": {
     description: "List or create standalone SSH server sessions.",
     requestSchema: CreateSshServerSessionRequestSchema,
+  },
+  "/api/ssh-servers/:id/chats": {
+    description: "List or create chats owned by a standalone SSH server.",
+    requestSchema: CreateSshServerChatRequestSchema,
+  },
+  "/api/ssh-servers/:id/chat-providers": {
+    description: "Discover ACP chat providers available on a standalone SSH server.",
+    requestSchema: DiscoverSshServerChatProvidersRequestSchema,
   },
   "/api/ssh-servers/:id/prerequisites": {
     description: "Check standalone SSH server prerequisites.",

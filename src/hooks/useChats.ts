@@ -6,6 +6,7 @@ import type {
   ChatError,
   ChatEvent,
   CreateChatRequest,
+  CreateSshServerChatRequest,
   InterruptChatRequest,
   SendChatMessageRequest,
   UpdateChatRequest,
@@ -97,6 +98,7 @@ export interface UseChatsResult {
   refreshChat: (id: string) => Promise<void>;
   getChat: (id: string) => Chat | undefined;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
+  createSshServerChat: (serverId: string, request: CreateSshServerChatRequest) => Promise<Chat | null>;
   updateChat: (id: string, request: UpdateChatRequest) => Promise<Chat | null>;
   deleteChat: (id: string) => Promise<boolean>;
   sendMessage: (id: string, request: SendChatMessageRequest) => Promise<boolean>;
@@ -175,6 +177,32 @@ export function useChats(): UseChatsResult {
     } catch (createError) {
       log.error("Failed to create chat", {
         workspaceId: request.workspaceId,
+        error: String(createError),
+      });
+      setError(String(createError));
+      return null;
+    }
+  }, []);
+
+  const createSshServerChat = useCallback(async (
+    serverId: string,
+    request: CreateSshServerChatRequest,
+  ): Promise<Chat | null> => {
+    try {
+      const response = await appFetch(`/api/ssh-servers/${serverId}/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to create SSH-server chat"));
+      }
+      const chat = (await response.json()) as Chat;
+      setChats((prev) => upsertChat(prev, chat));
+      return chat;
+    } catch (createError) {
+      log.error("Failed to create SSH-server chat", {
+        serverId,
         error: String(createError),
       });
       setError(String(createError));
@@ -342,6 +370,7 @@ export function useChats(): UseChatsResult {
     refreshChat,
     getChat,
     createChat,
+    createSshServerChat,
     updateChat,
     deleteChat,
     sendMessage,

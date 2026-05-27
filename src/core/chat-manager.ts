@@ -7,7 +7,8 @@
  * persistence.
  */
 
-import type { Backend, PromptInput, AgentEvent } from "../backends/types";
+import { AcpBackend } from "../backends/acp";
+import type { Backend, BackendConnectionConfig, PromptInput, AgentEvent } from "../backends/types";
 import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Task, TaskLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
 import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
@@ -22,6 +23,7 @@ import {
   DEFAULT_CHAT_CONFIG,
   InvalidChatBaseBranchError,
   isChatBusyStatus,
+  isSshServerChat,
   isTaskChat,
   isStandaloneChat,
 } from "../types/chat";
@@ -33,6 +35,7 @@ import {
   listChatSummaries,
   listChatsByWorkspace,
   listChatSummariesByWorkspace,
+  listChatSummariesBySshServer,
   saveChat,
   deleteChat,
   updateChatConfig,
@@ -54,6 +57,12 @@ import { buildSpawnCurrentPlanPrompt, buildSpawnTaskName, buildSpawnTaskPrompt }
 import { getImageViewToolPath, resolveToolCallImagePreview } from "./tool-call-image-preview";
 import { mergeToolCallRecord, upsertToolCallExtra, type ToolCallExtra } from "../types/tool-call";
 import { getTaskWorkingDirectory } from "./task/task-types";
+import { sshCredentialManager } from "./ssh-credential-manager";
+import { sshServerManager } from "./ssh-server-manager";
+import { buildSshRemoteShellCommand } from "./remote-command-executor";
+import { buildSshProcessConfig, getSshConnectionTargetFromServer } from "./ssh-connection-target";
+import { getProviderAcpCommand } from "./agent-runtime-command";
+import type { AgentProvider } from "../types/settings";
 
 const log = createLogger("chat-manager");
 const DEFAULT_CHAT_ACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
@@ -90,6 +99,21 @@ export interface CreateChatOptions {
   prepareWorktreeOnCreate?: boolean;
 }
 
+export interface CreateSshServerChatOptions {
+  name?: string;
+  sshServerId: string;
+  directory: string;
+  modelProviderID: string;
+  modelID: string;
+  modelVariant?: string;
+  autoApprovePermissions?: boolean;
+  credentialToken?: string | null;
+}
+
+export interface ReconnectChatOptions {
+  credentialToken?: string | null;
+}
+
 function buildGeneratedChatName(projectName: string, nextSuffix: number): string {
   const suffix = ` - ${nextSuffix}`;
   const fallbackPrefix = "Chat";
@@ -102,6 +126,7 @@ export class ChatManager {
   private readonly activeStreams = new Map<string, ActiveChatStream>();
   private readonly activeStreamGenerations = new Map<string, number>();
   private readonly pendingWorktreePreparations = new Map<string, Promise<Chat>>();
+  private readonly sshChatBackends = new Map<string, Backend>();
 
   constructor(private readonly emitter: SimpleEventEmitter<ChatEvent> = chatEventEmitter) {}
 
@@ -135,6 +160,10 @@ export class ChatManager {
         id,
         name,
         workspaceId: options.workspaceId,
+        source: {
+          kind: "workspace",
+          workspaceId: options.workspaceId,
+        },
         scope,
         taskId: options.taskId,
         directory: options.directory ?? workspace.directory,
@@ -182,6 +211,69 @@ export class ChatManager {
     return preparedChat;
   }
 
+  async createSshServerChat(options: CreateSshServerChatOptions): Promise<Chat> {
+    const server = await sshServerManager.getServer(options.sshServerId);
+    if (!server) {
+      throw new Error(`SSH server not found: ${options.sshServerId}`);
+    }
+
+    const id = crypto.randomUUID();
+    const now = createTimestamp();
+    const explicitName = options.name?.trim() ?? "";
+    const name = explicitName || `${server.config.name} chat`;
+    const session = await sshServerManager.createSession(options.sshServerId, {
+      name: `Chat transport: ${name}`.slice(0, 100),
+      credentialToken: null,
+      connectionMode: "dtach",
+    });
+    const chat: Chat = {
+      config: {
+        id,
+        name,
+        workspaceId: "",
+        source: {
+          kind: "ssh_server",
+          sshServerId: options.sshServerId,
+          sshServerSessionId: session.config.id,
+          directory: options.directory,
+        },
+        scope: "workspace",
+        directory: options.directory,
+        model: {
+          providerID: options.modelProviderID,
+          modelID: options.modelID,
+          variant: options.modelVariant ?? "",
+        },
+        useWorktree: false,
+        autoApprovePermissions: options.autoApprovePermissions ?? DEFAULT_CHAT_CONFIG.autoApprovePermissions,
+        createdAt: now,
+        updatedAt: now,
+        mode: DEFAULT_CHAT_CONFIG.mode,
+      },
+      state: {
+        ...createInitialChatState(id),
+        connectionStatus: "needs_credentials",
+      },
+    };
+
+    await saveChat(chat);
+    this.emitter.emit({
+      type: "chat.created",
+      chatId: id,
+      config: chat.config,
+      timestamp: now,
+    });
+
+    if (options.credentialToken?.trim()) {
+      const reconnected = await this.reconnectSession(id, { credentialToken: options.credentialToken });
+      if (!reconnected) {
+        throw new Error(`Failed to reconnect created SSH-server chat: ${id}`);
+      }
+      return reconnected;
+    }
+    return chat;
+  }
+
   async getChat(chatId: string): Promise<Chat | null> {
     return loadChat(chatId);
   }
@@ -200,6 +292,10 @@ export class ChatManager {
 
   async getChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
     return (await listChatSummariesByWorkspace(workspaceId)).filter(isStandaloneChat);
+  }
+
+  async getChatSummariesBySshServer(sshServerId: string): Promise<Chat[]> {
+    return (await listChatSummariesBySshServer(sshServerId)).filter(isStandaloneChat);
   }
 
   async getTaskChat(taskId: string): Promise<Chat | null> {
@@ -340,13 +436,13 @@ export class ChatManager {
     return saved ? { config: chat.config, state } : null;
   }
 
-  async reconnectSession(chatId: string): Promise<Chat | null> {
+  async reconnectSession(chatId: string, options: ReconnectChatOptions = {}): Promise<Chat | null> {
     const chat = await loadChat(chatId);
     if (!chat) {
       return null;
     }
 
-    const backend = await this.ensureBackendConnected(chat);
+    const backend = await this.ensureBackendConnected(chat, options);
     let reconnectingChat = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: "reconnecting",
@@ -701,6 +797,15 @@ export class ChatManager {
   }
 
   async disconnectChat(chatId: string): Promise<void> {
+    const sshBackend = this.sshChatBackends.get(chatId);
+    if (sshBackend) {
+      sshBackend.abortAllSubscriptions();
+      if (sshBackend.isConnected()) {
+        await sshBackend.disconnect();
+      }
+      this.sshChatBackends.delete(chatId);
+      return;
+    }
     await backendManager.disconnectChat(chatId);
   }
 
@@ -714,7 +819,11 @@ export class ChatManager {
     return Boolean(chat.state.session?.id || chat.state.startedAt);
   }
 
-  private async ensureBackendConnected(chat: Chat): Promise<Backend> {
+  private async ensureBackendConnected(chat: Chat, options: ReconnectChatOptions = {}): Promise<Backend> {
+    if (isSshServerChat(chat)) {
+      return this.ensureSshServerBackendConnected(chat, options);
+    }
+
     const workspace = await getWorkspace(chat.config.workspaceId);
     if (!workspace) {
       throw new Error(`Workspace not found: ${chat.config.workspaceId}`);
@@ -733,6 +842,122 @@ export class ChatManager {
     }
     return backend;
   }
+
+  private getOrCreateSshChatBackend(chatId: string): Backend {
+    const existing = this.sshChatBackends.get(chatId);
+    if (existing) {
+      return existing;
+    }
+    const backend = new AcpBackend();
+    this.sshChatBackends.set(chatId, backend);
+    return backend;
+  }
+
+  private async ensureSshServerBackendConnected(chat: Chat, options: ReconnectChatOptions): Promise<Backend> {
+    const source = chat.config.source;
+    if (source?.kind !== "ssh_server") {
+      throw new Error(`Chat is not SSH-server backed: ${chat.config.id}`);
+    }
+
+    const backend = this.getOrCreateSshChatBackend(chat.config.id);
+    const directory = source.directory || chat.config.directory;
+    if (backend.isConnected() && backend.getDirectory() === directory) {
+      return backend;
+    }
+
+    const credentialToken = options.credentialToken?.trim();
+    if (!credentialToken) {
+      await this.updateChatStateAndReturn(chat, {
+        ...chat.state,
+        connectionStatus: "needs_credentials",
+        lastActivityAt: createTimestamp(),
+      });
+      throw new Error("SSH credentials are required to reconnect this chat");
+    }
+
+    const connectingChat = await this.updateChatStateAndReturn(chat, {
+      ...chat.state,
+      connectionStatus: "connecting",
+      lastActivityAt: createTimestamp(),
+    });
+    const password = sshCredentialManager.getPasswordForToken(source.sshServerId, credentialToken);
+    const config = await this.buildSshChatConnectionConfig(connectingChat, password);
+
+    if (backend.isConnected()) {
+      await backend.disconnect();
+    }
+
+    try {
+      await backend.connect(config);
+      await this.updateChatStateAndReturn(connectingChat, {
+        ...connectingChat.state,
+        connectionStatus: "connected",
+        lastActivityAt: createTimestamp(),
+      });
+      return backend;
+    } catch (error) {
+      await this.updateChatStateAndReturn(connectingChat, {
+        ...connectingChat.state,
+        connectionStatus: "ssh_connection_failed",
+        error: {
+          message: String(error),
+          timestamp: createTimestamp(),
+          code: "ssh_connection_failed",
+        },
+        lastActivityAt: createTimestamp(),
+      });
+      throw error;
+    }
+  }
+
+  private async buildSshChatConnectionConfig(chat: Chat, password: string): Promise<BackendConnectionConfig> {
+    const source = chat.config.source;
+    if (source?.kind !== "ssh_server") {
+      throw new Error(`Chat is not SSH-server backed: ${chat.config.id}`);
+    }
+    const provider = chat.config.model.providerID;
+    if (provider !== "opencode" && provider !== "copilot") {
+      throw new Error(`Unsupported SSH chat provider: ${provider}`);
+    }
+    const providerCommand = getProviderAcpCommand(provider as AgentProvider, "ssh");
+    const providerInvocation = [providerCommand.command, ...providerCommand.args].join(" ");
+    const directory = source.directory || chat.config.directory;
+
+    return {
+      mode: "spawn",
+      provider: provider as AgentProvider,
+      transport: "ssh",
+      directory,
+      ...await this.buildSshChatProcessConfig(source.sshServerId, password, providerInvocation, directory),
+    };
+  }
+
+  private async buildSshChatProcessConfig(
+    sshServerId: string,
+    password: string,
+    providerInvocation: string,
+    directory: string,
+  ): Promise<Pick<BackendConnectionConfig, "hostname" | "port" | "username" | "password" | "identityFile" | "command" | "args" | "env">> {
+    const { server } = await sshServerManager.getCommandExecutor(sshServerId, password);
+    const target = getSshConnectionTargetFromServer(server, password);
+    const processConfig = buildSshProcessConfig({
+      target,
+      remoteCommand: buildSshRemoteShellCommand(providerInvocation),
+      connectionScope: directory,
+      passwordHandling: "environment",
+    });
+    return {
+      hostname: target.host,
+      port: target.port,
+      username: target.username,
+      password: target.password,
+      identityFile: target.identityFile,
+      command: processConfig.command,
+      args: processConfig.args,
+      env: processConfig.env,
+    };
+  }
+
 
   private async ensureSession(
     chat: Chat,
@@ -1047,6 +1272,7 @@ export class ChatManager {
       ...chat.state,
       status: this.activeStreams.has(chatId) ? "streaming" : "idle",
       error: undefined,
+      connectionStatus: isSshServerChat(chat) ? "connected" : chat.state.connectionStatus,
       lastActivityAt: createTimestamp(),
     });
   }

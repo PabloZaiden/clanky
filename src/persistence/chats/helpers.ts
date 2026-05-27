@@ -11,7 +11,10 @@ const log = createLogger("persistence:chats");
 export const ALLOWED_CHAT_COLUMNS = new Set([
   "id",
   "name",
+  "source_kind",
   "workspace_id",
+  "ssh_server_id",
+  "ssh_server_session_id",
   "scope",
   "task_id",
   "directory",
@@ -43,6 +46,7 @@ export const ALLOWED_CHAT_COLUMNS = new Set([
   "pending_permission_requests",
   "active_message_id",
   "interrupt_requested",
+  "connection_status",
 ]);
 
 export function validateChatColumnNames(columns: string[]): void {
@@ -64,10 +68,17 @@ export function safeJsonParse<T>(json: string, fallback: T, fieldName: string, r
 
 export function chatToRow(chat: Chat): Record<string, unknown> {
   const { config, state } = chat;
+  const source = config.source ?? {
+    kind: "workspace" as const,
+    workspaceId: config.workspaceId,
+  };
   return {
     id: config.id,
     name: config.name,
-    workspace_id: config.workspaceId,
+    source_kind: source.kind,
+    workspace_id: source.kind === "workspace" ? source.workspaceId : null,
+    ssh_server_id: source.kind === "ssh_server" ? source.sshServerId : null,
+    ssh_server_session_id: source.kind === "ssh_server" ? source.sshServerSessionId : null,
     scope: config.scope,
     task_id: config.taskId ?? null,
     directory: config.directory,
@@ -99,16 +110,30 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
     pending_permission_requests: JSON.stringify(state.pendingPermissionRequests ?? []),
     active_message_id: state.activeMessageId ?? null,
     interrupt_requested: state.interruptRequested ? 1 : 0,
+    connection_status: state.connectionStatus ?? "disconnected",
   };
 }
 
 export function rowToChat(row: Record<string, unknown>): Chat {
   const rowId = row["id"];
 
+  const sourceKind = (row["source_kind"] as string | null) ?? "workspace";
+  const workspaceId = (row["workspace_id"] as string | null) ?? "";
   const config: ChatConfig = {
     id: row["id"] as string,
     name: row["name"] as string,
-    workspaceId: row["workspace_id"] as string,
+    workspaceId,
+    source: sourceKind === "ssh_server"
+      ? {
+          kind: "ssh_server",
+          sshServerId: row["ssh_server_id"] as string,
+          sshServerSessionId: row["ssh_server_session_id"] as string,
+          directory: row["directory"] as string,
+        }
+      : {
+          kind: "workspace",
+          workspaceId: workspaceId ?? "",
+        },
     scope: ((row["scope"] as ChatConfig["scope"] | null) ?? DEFAULT_CHAT_CONFIG.scope),
     taskId: (row["task_id"] as string | null) ?? undefined,
     directory: row["directory"] as string,
@@ -142,6 +167,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
       : [],
     activeMessageId: (row["active_message_id"] as string | null) ?? undefined,
     interruptRequested: row["interrupt_requested"] === 1 ? true : undefined,
+    connectionStatus: ((row["connection_status"] as ChatState["connectionStatus"] | null) ?? "disconnected"),
   };
 
   if (row["session_id"] !== null && row["session_id"] !== undefined) {
