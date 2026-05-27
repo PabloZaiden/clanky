@@ -672,6 +672,19 @@ export function ShellSidebarNav({
           sessionNode,
         });
       }
+
+      for (const chatNode of serverNode.chats) {
+        addNode({
+          kind: "chat",
+          pinnedItem: { kind: "chat", id: chatNode.chat.config.id },
+          title: chatNode.title,
+          subtitle: serverNode.server.config.name,
+          badge: chatNode.badge,
+          badgeVariant: chatNode.badgeVariant,
+          route: { view: "chat", chatId: chatNode.chat.config.id },
+          chatNode,
+        });
+      }
     }
 
     return sidebarPinning.pinnedItems
@@ -789,6 +802,18 @@ export function ShellSidebarNav({
             key: sessionId,
             contextName: serverNode.server.config.name,
             sessionNode,
+          });
+        }
+      }
+
+      for (const chatNode of serverNode.chats) {
+        const chatId = chatNode.chat.config.id;
+        if ((matchesChatsSection || matchesSearchText(chatNode.title, searchQuery)) && !seenChatIds.has(chatId)) {
+          seenChatIds.add(chatId);
+          results.chats.push({
+            key: chatId,
+            workspaceName: serverNode.server.config.name,
+            chatNode,
           });
         }
       }
@@ -1365,6 +1390,11 @@ export function ShellSidebarNav({
                     serverNode.server.config.id,
                     "sessions",
                   );
+                  const chatsCollapseKey = getSidebarServerSectionCollapseKey(
+                    "ssh-servers",
+                    serverNode.server.config.id,
+                    "chats",
+                  );
                   return (
                     <div key={serverNode.key} className="space-y-1">
                       <SidebarTreeItem
@@ -1381,36 +1411,54 @@ export function ShellSidebarNav({
                         onContextMenu={(event) => openServerContextMenu(event, serverNode.server)}
                       />
                       {!isNodeCollapsed(serverCollapseKey) && (
-                        <SidebarTreeSection
-                          title="Sessions"
-                          actionLabel="New"
-                          actionTitle={getShellShortcutTitle("new-ssh-session", "New SSH session")}
-                          onAction={() => navigateWithinShell({
-                            view: "compose",
-                            kind: "ssh-session",
-                            scopeId: serverNode.server.config.id,
-                          })}
-                          collapsed={serverNode.sessions.length > 0 ? isNodeCollapsed(sessionsCollapseKey) : undefined}
-                          onToggle={serverNode.sessions.length > 0 ? () => toggleNodeCollapsed(sessionsCollapseKey) : undefined}
-                          indentLevel={2}
-                        >
-                          {serverNode.sessions.map((sessionNode) => (
-                            <SidebarTreeItem
-                              key={sessionNode.id}
-                              active={route.view === "ssh" && route.sshSessionId === sessionNode.id}
-                              title={sessionNode.title}
-                              subtitle={sessionNode.subtitle}
-                              badge={sessionNode.badge}
-                              badgeVariant={sessionNode.badgeVariant}
-                              indentLevel={3}
-                              onClick={(event) => handleSidebarItemClick(event, {
-                                view: "ssh",
-                                sshSessionId: sessionNode.id,
-                              })}
-                              onContextMenu={(event) => openSessionContextMenu(event, sessionNode)}
-                            />
-                          ))}
-                        </SidebarTreeSection>
+                        <div className="space-y-1">
+                          <SidebarTreeSection
+                            title="Sessions"
+                            actionLabel="New"
+                            actionTitle={getShellShortcutTitle("new-ssh-session", "New SSH session")}
+                            onAction={() => navigateWithinShell({
+                              view: "compose",
+                              kind: "ssh-session",
+                              scopeId: serverNode.server.config.id,
+                            })}
+                            collapsed={serverNode.sessions.length > 0 ? isNodeCollapsed(sessionsCollapseKey) : undefined}
+                            onToggle={serverNode.sessions.length > 0 ? () => toggleNodeCollapsed(sessionsCollapseKey) : undefined}
+                            indentLevel={2}
+                          >
+                            {serverNode.sessions.map((sessionNode) => (
+                              <SidebarTreeItem
+                                key={sessionNode.id}
+                                active={route.view === "ssh" && route.sshSessionId === sessionNode.id}
+                                title={sessionNode.title}
+                                subtitle={sessionNode.subtitle}
+                                badge={sessionNode.badge}
+                                badgeVariant={sessionNode.badgeVariant}
+                                indentLevel={3}
+                                onClick={(event) => handleSidebarItemClick(event, {
+                                  view: "ssh",
+                                  sshSessionId: sessionNode.id,
+                                })}
+                                onContextMenu={(event) => openSessionContextMenu(event, sessionNode)}
+                              />
+                            ))}
+                          </SidebarTreeSection>
+
+                          <SidebarTreeSection
+                            title="Chats"
+                            actionLabel="New"
+                            actionTitle="New chat"
+                            onAction={() => navigateWithinShell({
+                              view: "compose",
+                              kind: "ssh-server-chat",
+                              scopeId: serverNode.server.config.id,
+                            })}
+                            collapsed={serverNode.chats.length > 0 ? isNodeCollapsed(chatsCollapseKey) : undefined}
+                            onToggle={serverNode.chats.length > 0 ? () => toggleNodeCollapsed(chatsCollapseKey) : undefined}
+                            indentLevel={2}
+                          >
+                            {renderChatNodes({ chatNodes: serverNode.chats })}
+                          </SidebarTreeSection>
+                        </div>
                       )}
                     </div>
                   );

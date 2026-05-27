@@ -151,6 +151,7 @@ function parseHash(): ShellRoute {
       || kind === "workspace"
       || kind === "ssh-session"
       || kind === "ssh-server"
+      || kind === "ssh-server-chat"
     ) {
       return { view: "compose", kind, scopeId: scopeId || undefined };
     }

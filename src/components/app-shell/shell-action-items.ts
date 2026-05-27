@@ -73,6 +73,9 @@ export function buildSshServerActionItems({
       label: "New Session",
       onClick: () => onNavigate({ view: "compose", kind: "ssh-session", scopeId: server.config.id }),
     },
+    {
+      label: "New Chat",
+      onClick: () => onNavigate({ view: "compose", kind: "ssh-server-chat", scopeId: server.config.id }),
+    },
   ];
 }
-

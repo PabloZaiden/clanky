@@ -15,6 +15,7 @@ import {
   CreateSshSessionRequestSchema,
   CreateWorkspaceRequestSchema,
   DeleteSshServerSessionRequestSchema,
+  DiscoverSshServerChatModelsRequestSchema,
   DiscoverSshServerChatProvidersRequestSchema,
   DeviceStartRequestSchema,
   DeviceVerificationActionSchema,
@@ -449,6 +450,10 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/ssh-servers/:id/chat-providers": {
     description: "Discover ACP chat providers available on a standalone SSH server.",
     requestSchema: DiscoverSshServerChatProvidersRequestSchema,
+  },
+  "/api/ssh-servers/:id/chat-models": {
+    description: "Discover ACP chat models for a selected provider on a standalone SSH server.",
+    requestSchema: DiscoverSshServerChatModelsRequestSchema,
   },
   "/api/ssh-servers/:id/prerequisites": {
     description: "Check standalone SSH server prerequisites.",

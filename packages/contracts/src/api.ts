@@ -21,6 +21,7 @@ import {
   CreateTaskRequestSchema,
   CreateChatRequestSchema,
   CreateSshServerChatRequestSchema,
+  DiscoverSshServerChatModelsRequestSchema,
   DiscoverSshServerChatProvidersRequestSchema,
   GenerateTaskTitleRequestSchema,
   InterruptChatRequestSchema,
@@ -164,6 +165,7 @@ export type InterruptChatRequest = z.infer<typeof InterruptChatRequestSchema>;
 export type ReplyToChatPermissionRequest = z.infer<typeof ReplyToChatPermissionRequestSchema>;
 export type ReconnectChatRequest = z.infer<typeof ReconnectChatRequestSchema>;
 export type DiscoverSshServerChatProvidersRequest = z.infer<typeof DiscoverSshServerChatProvidersRequestSchema>;
+export type DiscoverSshServerChatModelsRequest = z.infer<typeof DiscoverSshServerChatModelsRequestSchema>;
 export type SpawnCurrentPlanTaskRequest = z.infer<typeof SpawnCurrentPlanTaskRequestSchema>;
 
 export type ListChatsResponse = Chat[];

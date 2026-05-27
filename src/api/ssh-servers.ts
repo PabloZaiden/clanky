@@ -16,11 +16,13 @@ import {
   CreateSshServerSessionRequestSchema,
   GetDevboxTemplatesRequestSchema,
   DiscoverSshServerChatProvidersRequestSchema,
+  DiscoverSshServerChatModelsRequestSchema,
   DeleteSshServerSessionRequestSchema,
   SshCredentialExchangeRequestSchema,
   UpdateSshServerRequestSchema,
   UpdateSshSessionRequestSchema,
 } from "../types/schemas";
+import { getModelsForSettings } from "./models";
 
 const log = createLogger("api:ssh-servers");
 
@@ -265,6 +267,44 @@ export const sshServersRoutes = {
       } catch (error) {
         log.error("Failed to discover SSH-server chat providers", {
           serverId: req.params.id,
+          error: String(error),
+        });
+        return mapSshServerError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/chat-models": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(DiscoverSshServerChatModelsRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const server = await sshServerManager.getServer(req.params.id);
+        if (!server) {
+          return errorResponse("not_found", "SSH server not found", 404);
+        }
+        const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
+        const models = await getModelsForSettings(
+          `ssh-server:${req.params.id}:${validation.data.providerID}`,
+          validation.data.directory,
+          {
+            agent: {
+              provider: validation.data.providerID,
+              transport: "ssh",
+              hostname: server.config.address,
+              username: server.config.username,
+              password,
+            },
+          },
+        );
+        return Response.json(models.filter((model) => model.providerID === validation.data.providerID));
+      } catch (error) {
+        log.error("Failed to discover SSH-server chat models", {
+          serverId: req.params.id,
+          providerID: validation.success ? validation.data.providerID : undefined,
           error: String(error),
         });
         return mapSshServerError(error);

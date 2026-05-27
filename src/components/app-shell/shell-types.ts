@@ -74,6 +74,7 @@ export interface SidebarServerNode {
   server: SshServer;
   key: string;
   sessions: SidebarServerSessionNode[];
+  chats: SidebarChatNode[];
 }
 
 export type SidebarActiveWorkItem =
@@ -150,7 +151,7 @@ export type ShellRoute =
   | { view: "server-arise"; serverId: string }
   | {
       view: "compose";
-      kind: "task" | "chat" | "workspace" | "ssh-session" | "ssh-server";
+      kind: "task" | "chat" | "workspace" | "ssh-session" | "ssh-server" | "ssh-server-chat";
       scopeId?: string;
     }
   | {
@@ -232,7 +233,7 @@ export function getSidebarServerCollapseKey(sectionId: SidebarSectionId, serverI
 export function getSidebarServerSectionCollapseKey(
   sectionId: SidebarSectionId,
   serverId: string,
-  childSectionId: "sessions",
+  childSectionId: "sessions" | "chats",
 ): string {
   return buildSidebarCollapseKey(sectionId, "server", serverId, childSectionId);
 }
@@ -411,6 +412,15 @@ export function buildActiveWorkSidebarItems(
   }
 
   for (const serverNode of options.serverNodes ?? []) {
+    for (const chatNode of serverNode.chats) {
+      chatItems.push({
+        kind: "chat",
+        key: `ssh-server-chat:${chatNode.chat.config.id}`,
+        workspaceName: serverNode.server.config.name,
+        chatNode,
+      });
+    }
+
     for (const sessionNode of serverNode.sessions) {
       if (workspaceSessionIds.has(sessionNode.id)) {
         continue;
@@ -466,16 +476,28 @@ function createServerSessionNodeFromStandaloneSession(session: SshServerSession)
 export function buildServerSidebarNodes({
   servers,
   sessionsByServerId,
+  chats = [],
   workspaces,
   workspaceSessions,
 }: {
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
+  chats?: Chat[];
   workspaces: Workspace[];
   workspaceSessions: SshSession[];
 }): SidebarServerNode[] {
   const workspacesById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
   const workspaceSessionsByServerId = new Map<string, SidebarServerSessionNode[]>();
+  const chatsByServerId = new Map<string, Chat[]>();
+
+  for (const chat of chats) {
+    if (chat.config.source?.kind !== "ssh_server") {
+      continue;
+    }
+    const serverChats = chatsByServerId.get(chat.config.source.sshServerId) ?? [];
+    serverChats.push(chat);
+    chatsByServerId.set(chat.config.source.sshServerId, serverChats);
+  }
 
   for (const session of workspaceSessions) {
     const workspace = workspacesById.get(session.config.workspaceId);
@@ -504,6 +526,13 @@ export function buildServerSidebarNodes({
         ...workspaceBackedSessions,
         ...standaloneSessions,
       ], (session) => session.createdAt),
+      chats: sortByDesc(chatsByServerId.get(server.config.id) ?? [], (chat) => chat.config.updatedAt)
+        .map((chat) => ({
+          chat,
+          title: chat.config.name,
+          badge: chat.state.status,
+          badgeVariant: getChatStatusBadgeVariant(chat.state.status),
+        })),
     };
   });
 }

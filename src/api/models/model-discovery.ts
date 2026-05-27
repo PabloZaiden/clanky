@@ -49,7 +49,7 @@ function normalizeCopilotModelInfo(models: ModelInfo[]): ModelInfo[] {
  * Discover models via the configured agent backend (ACP path).
  */
 async function getAgentBackendModels(
-  workspaceId: string,
+  connectionId: string,
   directory: string,
   settings: ServerSettings,
 ): Promise<ModelInfo[]> {
@@ -61,7 +61,7 @@ async function getAgentBackendModels(
     return await testBackend.getModels(directory);
   }
 
-  const existingBackend = backendManager.getInitializedBackend(workspaceId);
+  const existingBackend = backendManager.getInitializedBackend(connectionId);
   if (existingBackend?.isConnected()) {
     return await existingBackend.getModels(directory);
   }
@@ -94,6 +94,18 @@ export async function getModelsForWorkspace(
 
   const settings = workspace.serverSettings;
   const models = await getAgentBackendModels(workspaceId, directory, settings);
+  if (settings.agent.provider === "copilot") {
+    return normalizeCopilotModelInfo(models);
+  }
+  return models;
+}
+
+export async function getModelsForSettings(
+  connectionId: string,
+  directory: string,
+  settings: ServerSettings,
+): Promise<ModelInfo[]> {
+  const models = await getAgentBackendModels(connectionId, directory, settings);
   if (settings.agent.provider === "copilot") {
     return normalizeCopilotModelInfo(models);
   }

@@ -1,7 +1,8 @@
-import { describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import { cleanup } from "@testing-library/react";
 import { ComposeChatView } from "@/components/app-shell/compose-chat-view";
 import type { UseDashboardDataResult } from "@/hooks/useDashboardData";
-import type { Chat, CreateChatRequest } from "@/types";
+import type { Chat, CreateChatRequest, SshServer } from "@/types";
 import { act, renderWithUser, waitFor } from "../helpers/render";
 import { createBranchInfo, createModelInfo, createWorkspace } from "../helpers/factories";
 
@@ -69,7 +70,55 @@ function createChat(overrides?: Partial<Chat>): Chat {
   };
 }
 
+function createServer(overrides?: Partial<SshServer["config"]>): SshServer {
+  return {
+    config: {
+      id: "server-1",
+      name: "Server 1",
+      address: "server.example.com",
+      username: "deploy",
+      repositoriesBasePath: "/srv/repos",
+      createdAt: "2026-04-28T00:00:00.000Z",
+      updatedAt: "2026-04-28T00:00:00.000Z",
+      ...overrides,
+    },
+    publicKey: {
+      algorithm: "RSA-OAEP-256",
+      publicKey: "test-public-key",
+      fingerprint: "test-fingerprint",
+      version: 1,
+      createdAt: "2026-04-28T00:00:00.000Z",
+    },
+  };
+}
+
 describe("ComposeChatView", () => {
+  afterEach(() => {
+    cleanup();
+    window.localStorage.removeItem(CHAT_MODEL_STORAGE_KEY);
+  });
+
+  test("uses shared compose UI for SSH server chats with provider-first model selection", () => {
+    const { getByLabelText, queryByLabelText } = renderWithUser(
+      <ComposeChatView
+        composeWorkspace={null}
+        composeServer={createServer()}
+        workspaces={[]}
+        workspacesLoading={false}
+        workspaceError={null}
+        dashboardData={createDashboardData()}
+        shellHeaderOffsetClassName=""
+        navigateWithinShell={mock(() => {})}
+        createChat={mock(async () => null)}
+      />,
+    );
+
+    expect((getByLabelText("Remote directory") as HTMLInputElement).value).toBe("/srv/repos");
+    expect((getByLabelText("Provider") as HTMLSelectElement).value).toBe("copilot");
+    expect(getByLabelText("Model")).toBeInTheDocument();
+    expect(queryByLabelText("Base Branch")).toBeNull();
+  });
+
   test("loads workspace data only once for equivalent rerenders", async () => {
     const workspace = createWorkspace({
       id: "workspace-1",
