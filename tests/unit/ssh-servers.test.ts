@@ -141,4 +141,39 @@ describe("SSH server persistence", () => {
     expect(await listSshServerSessionsByServerId(server.id)).toHaveLength(1);
     expect(await deleteSshServerSession(session.config.id)).toBe(true);
   });
+
+  test("hides SSH-server chat transport sessions from standalone session lists", async () => {
+    const { ensureDataDirectories } = await import("../../src/persistence/database");
+    const { saveSshServerConfig, listSshServerSessionsByServerId } = await import("../../src/persistence/ssh-servers");
+    const { saveSshServerKeyPair } = await import("../../src/persistence/ssh-server-keys");
+    const { ChatManager } = await import("../../src/core/chat-manager");
+    const { sshServerManager } = await import("../../src/core/ssh-server-manager");
+
+    await ensureDataDirectories();
+
+    const server = createTestSshServerConfig();
+    await saveSshServerConfig(server);
+    await saveSshServerKeyPair(server.id, createPersistedSshServerKeyPair({
+      publicKey: "public-key-pem",
+      privateKey: "private-key-pem",
+      fingerprint: "fingerprint-1",
+      version: 1,
+      createdAt: server.createdAt,
+    }));
+
+    const chat = await new ChatManager().createSshServerChat({
+      sshServerId: server.id,
+      name: "Remote Chat",
+      directory: "/repos/project",
+      modelProviderID: "test-provider",
+      modelID: "test-model",
+    });
+    const sessionId = chat.config.source?.kind === "ssh_server"
+      ? chat.config.source.sshServerSessionId
+      : null;
+
+    expect(sessionId).toBeString();
+    expect(await listSshServerSessionsByServerId(server.id)).toHaveLength(1);
+    expect(await sshServerManager.listSessions(server.id)).toHaveLength(0);
+  });
 });

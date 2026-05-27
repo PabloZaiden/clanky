@@ -22,7 +22,7 @@ import {
   UpdateSshServerRequestSchema,
   UpdateSshSessionRequestSchema,
 } from "../types/schemas";
-import { getModelsForSettings } from "./models";
+import { getDefaultCopilotModels, getModelsForProvider } from "./models";
 
 const log = createLogger("api:ssh-servers");
 
@@ -286,20 +286,10 @@ export const sshServersRoutes = {
         if (!server) {
           return errorResponse("not_found", "SSH server not found", 404);
         }
-        const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
-        const models = await getModelsForSettings(
-          `ssh-server:${req.params.id}:${validation.data.providerID}`,
-          validation.data.directory,
-          {
-            agent: {
-              provider: validation.data.providerID,
-              transport: "ssh",
-              hostname: server.config.address,
-              username: server.config.username,
-              password,
-            },
-          },
-        );
+        sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
+        const models = validation.data.providerID === "copilot"
+          ? getDefaultCopilotModels()
+          : await getModelsForProvider(validation.data.providerID);
         return Response.json(models.filter((model) => model.providerID === validation.data.providerID));
       } catch (error) {
         log.error("Failed to discover SSH-server chat models", {

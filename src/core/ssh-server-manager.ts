@@ -33,6 +33,7 @@ import {
   saveSshServerConfig,
   saveSshServerSession,
 } from "../persistence/ssh-servers";
+import { listChatSummariesBySshServer } from "../persistence/chats";
 import { buildDefaultSshSessionName } from "../utils";
 import { isPersistentSshSession } from "../utils";
 import { sshServerKeyManager } from "./ssh-server-key-manager";
@@ -108,7 +109,16 @@ export class SshServerManager {
 
   async listSessions(serverId: string): Promise<SshServerSession[]> {
     await this.requireServerConfig(serverId);
-    return await listSshServerSessionsByServerId(serverId);
+    const [sessions, chats] = await Promise.all([
+      listSshServerSessionsByServerId(serverId),
+      listChatSummariesBySshServer(serverId),
+    ]);
+    const internalSessionIds = new Set(
+      chats
+        .map((chat) => chat.config.source?.kind === "ssh_server" ? chat.config.source.sshServerSessionId : null)
+        .filter((sessionId): sessionId is string => typeof sessionId === "string" && sessionId.length > 0),
+    );
+    return sessions.filter((session) => !internalSessionIds.has(session.config.id));
   }
 
   async getSession(id: string): Promise<SshServerSession | null> {
@@ -220,6 +230,10 @@ export class SshServerManager {
         throw new Error(result.stderr.trim() || result.stdout.trim() || "Failed to stop remote persistent SSH session");
       }
     }
+    return await deleteSshServerSession(id);
+  }
+
+  async deleteInternalSessionRecord(id: string): Promise<boolean> {
     return await deleteSshServerSession(id);
   }
 

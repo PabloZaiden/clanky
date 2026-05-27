@@ -313,6 +313,7 @@ export function useChats(): UseChatsResult {
         break;
       case "chat.deleted":
         setChats((prev) => prev.filter((chat) => chat.config.id !== event.chatId));
+        void refresh();
         break;
       case "chat.status":
         setChats((prev) => updateChatState(prev, event.chatId, {

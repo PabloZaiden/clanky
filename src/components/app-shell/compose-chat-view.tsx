@@ -79,7 +79,7 @@ export function ComposeChatView({
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
   createSshServerChat?: (serverId: string, request: CreateSshServerChatRequest) => Promise<Chat | null>;
 }) {
-  const toast = useToast();
+  const { error: showError } = useToast();
   const {
     branches,
     branchesLoading,
@@ -187,7 +187,7 @@ export function ComposeChatView({
         setRemoteCredentialToken(token);
       } catch (error) {
         if (!cancelled) {
-          toast.error(String(error));
+          showError(String(error));
           setPasswordModalOpen(true);
         }
       }
@@ -195,7 +195,7 @@ export function ComposeChatView({
     return () => {
       cancelled = true;
     };
-  }, [composeServer?.config.id, toast]);
+  }, [composeServer?.config.id, showError]);
 
   useEffect(() => {
     if (!composeServer || !remoteCredentialToken || !remoteDirectory.trim()) {
@@ -236,7 +236,7 @@ export function ComposeChatView({
         }
         setRemoteModels([]);
         setSelectedModel("");
-        toast.error(String(error));
+        showError(String(error));
       } finally {
         if (!controller.signal.aborted) {
           setRemoteModelsLoading(false);
@@ -244,7 +244,7 @@ export function ComposeChatView({
       }
     })();
     return () => controller.abort();
-  }, [composeServer, remoteCredentialToken, remoteDirectory, remoteProvider, toast]);
+  }, [composeServer, remoteCredentialToken, remoteDirectory, remoteProvider, showError]);
 
   async function handlePasswordSubmit(): Promise<void> {
     if (!composeServer) {
@@ -252,7 +252,7 @@ export function ComposeChatView({
     }
     const trimmedPassword = password.trim();
     if (!trimmedPassword) {
-      toast.error("Enter the SSH password for this server");
+      showError("Enter the SSH password for this server");
       return;
     }
     setPasswordSaving(true);
@@ -266,7 +266,7 @@ export function ComposeChatView({
       setPassword("");
       setPasswordModalOpen(false);
     } catch (error) {
-      toast.error(String(error));
+      showError(String(error));
     } finally {
       setPasswordSaving(false);
     }
@@ -276,7 +276,7 @@ export function ComposeChatView({
     if (composeServer) {
       const parsedModel = parseModelKey(effectiveSelectedModel);
       if (!parsedModel) {
-        toast.error("Select a model first");
+        showError("Select a model first");
         return;
       }
       if (!remoteCredentialToken) {
@@ -297,7 +297,7 @@ export function ComposeChatView({
           credentialToken: remoteCredentialToken,
         });
         if (!chat) {
-          toast.error("Failed to create chat");
+          showError("Failed to create chat");
           return;
         }
         navigateWithinShell({ view: "chat", chatId: chat.config.id });
@@ -308,12 +308,12 @@ export function ComposeChatView({
     }
 
     if (!selectedWorkspace) {
-      toast.error("Select a workspace first");
+      showError("Select a workspace first");
       return;
     }
     const parsedModel = parseModelKey(effectiveSelectedModel);
     if (!parsedModel) {
-      toast.error("Select a model first");
+      showError("Select a model first");
       return;
     }
 
@@ -333,7 +333,7 @@ export function ComposeChatView({
         quick: false,
       });
       if (!chat) {
-        toast.error("Failed to create chat");
+        showError("Failed to create chat");
         return;
       }
       setLastModel({
