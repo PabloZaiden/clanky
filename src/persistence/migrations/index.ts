@@ -106,7 +106,112 @@ export function tableExists(db: Database, tableName: string): boolean {
  * All migrations in order. Version numbers restart from 1 for future schema
  * changes after the Clanky reset. The current baseline has schema version 0.
  */
-export const migrations: Migration[] = [];
+export const migrations: Migration[] = [
+  {
+    version: 1,
+    name: "add_chat_source_fields",
+    up: (db) => {
+      if (!tableExists(db, "chats")) {
+        return;
+      }
+      const columns = getTableColumns(db, "chats");
+      if (columns.includes("source_kind")) {
+        return;
+      }
+
+      db.run(`
+        CREATE TABLE chats_new (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          source_kind TEXT NOT NULL DEFAULT 'workspace',
+          workspace_id TEXT,
+          ssh_server_id TEXT,
+          ssh_server_session_id TEXT,
+          scope TEXT NOT NULL DEFAULT 'workspace',
+          task_id TEXT,
+          directory TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          model_provider_id TEXT,
+          model_model_id TEXT,
+          model_variant TEXT,
+          use_worktree INTEGER NOT NULL DEFAULT 1,
+          auto_approve_permissions INTEGER NOT NULL DEFAULT 1,
+          skip_base_branch_sync INTEGER NOT NULL DEFAULT 0,
+          base_branch TEXT,
+          mode TEXT NOT NULL DEFAULT 'chat',
+          status TEXT NOT NULL DEFAULT 'idle',
+          connection_status TEXT NOT NULL DEFAULT 'disconnected',
+          started_at TEXT,
+          completed_at TEXT,
+          last_activity_at TEXT,
+          session_id TEXT,
+          session_server_url TEXT,
+          error_message TEXT,
+          error_timestamp TEXT,
+          error_code TEXT,
+          worktree_original_branch TEXT,
+          worktree_working_branch TEXT,
+          worktree_path TEXT,
+          messages TEXT,
+          logs TEXT,
+          tool_calls TEXT,
+          pending_permission_requests TEXT,
+          active_message_id TEXT,
+          interrupt_requested INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+          FOREIGN KEY (ssh_server_id) REFERENCES ssh_servers(id) ON DELETE CASCADE,
+          FOREIGN KEY (ssh_server_session_id) REFERENCES ssh_server_sessions(id) ON DELETE CASCADE,
+          CHECK (
+            (
+              source_kind = 'workspace'
+              AND workspace_id IS NOT NULL
+              AND ssh_server_id IS NULL
+              AND ssh_server_session_id IS NULL
+            )
+            OR (
+              source_kind = 'ssh_server'
+              AND workspace_id IS NULL
+              AND ssh_server_id IS NOT NULL
+              AND ssh_server_session_id IS NOT NULL
+            )
+          )
+        )
+      `);
+
+      db.run(`
+        INSERT INTO chats_new (
+          id, name, source_kind, workspace_id, ssh_server_id, ssh_server_session_id,
+          scope, task_id, directory, created_at, updated_at, model_provider_id,
+          model_model_id, model_variant, use_worktree, auto_approve_permissions,
+          skip_base_branch_sync, base_branch, mode, status, connection_status,
+          started_at, completed_at, last_activity_at, session_id, session_server_url,
+          error_message, error_timestamp, error_code, worktree_original_branch,
+          worktree_working_branch, worktree_path, messages, logs, tool_calls,
+          pending_permission_requests, active_message_id, interrupt_requested
+        )
+        SELECT
+          id, name, 'workspace', workspace_id, NULL, NULL,
+          scope, task_id, directory, created_at, updated_at, model_provider_id,
+          model_model_id, model_variant, use_worktree, auto_approve_permissions,
+          skip_base_branch_sync, base_branch, mode, status, 'disconnected',
+          started_at, completed_at, last_activity_at, session_id, session_server_url,
+          error_message, error_timestamp, error_code, worktree_original_branch,
+          worktree_working_branch, worktree_path, messages, logs, tool_calls,
+          pending_permission_requests, active_message_id, interrupt_requested
+        FROM chats
+      `);
+
+      db.run("DROP TABLE chats");
+      db.run("ALTER TABLE chats_new RENAME TO chats");
+      db.run("CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats(created_at DESC)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_chats_workspace_created_at ON chats(workspace_id, created_at DESC)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_chats_ssh_server_created_at ON chats(ssh_server_id, created_at DESC)");
+      db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_task_id_unique ON chats(task_id) WHERE task_id IS NOT NULL");
+      db.run("CREATE INDEX IF NOT EXISTS idx_chats_directory_workspace_status ON chats(directory, workspace_id, status)");
+    },
+  },
+];
 
 /**
  * Create the schema_migrations table if it doesn't exist.

@@ -36,10 +36,8 @@ describe("migration infrastructure", () => {
   });
 
   describe("reset baseline", () => {
-    test("starts with no historical migrations", () => {
-      expect(migrations).toHaveLength(0);
-      expect(runMigrations(db)).toBe(0);
-      expect(getSchemaVersion(db)).toBe(0);
+    test("starts with chat source migration", () => {
+      expect(migrations).toHaveLength(1);
     });
   });
 
@@ -81,11 +79,101 @@ describe("migration infrastructure", () => {
       expect(tableExists(db, "schema_migrations")).toBe(true);
     });
 
-    test("is idempotent with the empty reset migration list", () => {
+    test("is idempotent after chat source migration has been applied", () => {
+      db.run("CREATE TABLE chats (id TEXT PRIMARY KEY, source_kind TEXT)");
       runMigrations(db);
       expect(runMigrations(db)).toBe(0);
       expect(runMigrations(db)).toBe(0);
       expect(tableExists(db, "schema_migrations")).toBe(true);
+    });
+
+    test("adds chat source fields and makes workspace nullable", () => {
+      db.run("CREATE TABLE workspaces (id TEXT PRIMARY KEY)");
+      db.run("CREATE TABLE ssh_servers (id TEXT PRIMARY KEY)");
+      db.run("CREATE TABLE ssh_server_sessions (id TEXT PRIMARY KEY)");
+      db.run(`
+        CREATE TABLE chats (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          scope TEXT NOT NULL DEFAULT 'workspace',
+          task_id TEXT,
+          directory TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          model_provider_id TEXT,
+          model_model_id TEXT,
+          model_variant TEXT,
+          use_worktree INTEGER NOT NULL DEFAULT 1,
+          auto_approve_permissions INTEGER NOT NULL DEFAULT 1,
+          skip_base_branch_sync INTEGER NOT NULL DEFAULT 0,
+          base_branch TEXT,
+          mode TEXT NOT NULL DEFAULT 'chat',
+          status TEXT NOT NULL DEFAULT 'idle',
+          started_at TEXT,
+          completed_at TEXT,
+          last_activity_at TEXT,
+          session_id TEXT,
+          session_server_url TEXT,
+          error_message TEXT,
+          error_timestamp TEXT,
+          error_code TEXT,
+          worktree_original_branch TEXT,
+          worktree_working_branch TEXT,
+          worktree_path TEXT,
+          messages TEXT,
+          logs TEXT,
+          tool_calls TEXT,
+          pending_permission_requests TEXT,
+          active_message_id TEXT,
+          interrupt_requested INTEGER NOT NULL DEFAULT 0
+        )
+      `);
+      db.run("INSERT INTO workspaces (id) VALUES ('workspace-1')");
+      db.run(`
+        INSERT INTO chats (
+          id, name, workspace_id, directory, created_at, updated_at
+        ) VALUES (
+          'chat-1', 'Chat 1', 'workspace-1', '/repo', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+        )
+      `);
+
+      expect(runMigrations(db)).toBe(1);
+      expect(getTableColumns(db, "chats")).toContain("source_kind");
+      expect(getTableColumns(db, "chats")).toContain("ssh_server_id");
+      expect(getTableColumns(db, "chats")).toContain("ssh_server_session_id");
+      expect(getTableColumns(db, "chats")).toContain("connection_status");
+      const migrated = db.query("SELECT source_kind, workspace_id, connection_status FROM chats WHERE id = ?")
+        .get("chat-1") as { source_kind: string; workspace_id: string; connection_status: string };
+      expect(migrated).toEqual({
+        source_kind: "workspace",
+        workspace_id: "workspace-1",
+        connection_status: "disconnected",
+      });
+      db.run("INSERT INTO ssh_servers (id) VALUES ('ssh-server-1')");
+      db.run("INSERT INTO ssh_server_sessions (id) VALUES ('ssh-session-1')");
+      db.run(`
+        INSERT INTO chats (
+          id, name, source_kind, workspace_id, ssh_server_id, ssh_server_session_id,
+          directory, created_at, updated_at
+        ) VALUES (
+          'remote-chat', 'Remote chat', 'ssh_server', NULL, 'ssh-server-1', 'ssh-session-1',
+          '/repo', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+        )
+      `);
+      expect(() => db.run(`
+        INSERT INTO chats (
+          id, name, source_kind, workspace_id, ssh_server_id, ssh_server_session_id,
+          directory, created_at, updated_at
+        ) VALUES (
+          'bad-remote-chat', 'Bad remote chat', 'ssh_server', NULL, 'ssh-server-1', NULL,
+          '/repo', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z'
+        )
+      `)).toThrow();
+      db.run("DELETE FROM ssh_server_sessions WHERE id = 'ssh-session-1'");
+      const deletedRemote = db.query("SELECT id FROM chats WHERE id = ?").get("remote-chat");
+      expect(deletedRemote).toBeNull();
+      expect(runMigrations(db)).toBe(0);
     });
   });
 
@@ -175,7 +263,7 @@ describe("migration infrastructure", () => {
       });
 
       try {
-        expect(runMigrations(db)).toBe(1);
+        expect(runMigrations(db)).toBe(2);
         expect(getTableColumns(db, "tasks")).toContain("test_column");
         expect(getSchemaVersion(db)).toBe(version);
       } finally {
@@ -216,7 +304,7 @@ describe("migration infrastructure", () => {
       migrations.push({ version: version2, name: "second", up: () => { appliedOrder.push(2); } });
 
       try {
-        expect(runMigrations(db)).toBe(3);
+        expect(runMigrations(db)).toBe(4);
         expect(appliedOrder).toEqual([1, 2, 3]);
       } finally {
         migrations.length = originalLength;

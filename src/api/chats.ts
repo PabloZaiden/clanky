@@ -15,12 +15,14 @@ import {
   EmptyChatTranscriptError,
   InvalidChatBaseBranchError,
   InvalidCurrentPlanError,
+  SshCredentialsRequiredError,
   isTaskChat,
 } from "../types/chat";
 import type { ChatConfig } from "../types/chat";
 import {
   CreateChatRequestSchema,
   InterruptChatRequestSchema,
+  ReconnectChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
   SendChatMessageRequestSchema,
   SpawnCurrentPlanTaskRequestSchema,
@@ -42,6 +44,7 @@ function createChatActionErrorResponse(error: unknown): Response | null {
     || error instanceof ChatBranchCheckoutError
     || error instanceof ChatPermissionRequestNotFoundError
     || error instanceof ChatPermissionReplyError
+    || error instanceof SshCredentialsRequiredError
   ) {
     return errorResponse(error.code, error.message, error.status);
   }
@@ -330,7 +333,13 @@ export const chatsRoutes = {
       }
 
       try {
-        const reconnected = await chatManager.reconnectSession(req.params.id);
+        const validation = await parseAndValidate(ReconnectChatRequestSchema, req, { allowEmptyBody: true });
+        if (!validation.success) {
+          return validation.response;
+        }
+        const reconnected = await chatManager.reconnectSession(req.params.id, {
+          credentialToken: validation.data.credentialToken,
+        });
         if (!reconnected) {
           return errorResponse("not_found", "Chat not found", 404);
         }

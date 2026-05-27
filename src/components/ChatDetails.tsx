@@ -28,6 +28,7 @@ import {
 } from "./common";
 import { toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
+import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { isChatEvent, useAppEvents, useAvailableModels, useMarkdownPreference, useToast } from "../hooks";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
@@ -154,7 +155,7 @@ export function ChatDetails({
   const reconnectAttemptedRef = useRef(false);
   const { models, modelsLoading } = useAvailableModels({
     directory: isEmbedded ? undefined : chat?.config.directory,
-    workspaceId: isEmbedded ? undefined : chat?.config.workspaceId,
+    workspaceId: isEmbedded || chat?.config.source?.kind === "ssh_server" ? undefined : chat?.config.workspaceId,
   });
 
   const refreshChat = useCallback(async () => {
@@ -313,11 +314,18 @@ export function ChatDetails({
     ? makeModelKey(chat.config.model.providerID, chat.config.model.modelID, chat.config.model.variant)
     : "";
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
+  const needsSshCredentials = chat?.config.source?.kind === "ssh_server"
+    && chat.state.connectionStatus === "needs_credentials";
 
   const handleReconnect = useCallback(async () => {
     try {
+      const credentialToken = chat?.config.source?.kind === "ssh_server"
+        ? await getStoredSshCredentialToken(chat.config.source.sshServerId)
+        : null;
       const response = await appFetch(`/api/chats/${chatId}/reconnect`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentialToken ? { credentialToken } : {}),
       });
       if (!response.ok) {
         throw new Error(await parseError(response, "Failed to reconnect chat"));
@@ -327,7 +335,7 @@ export function ChatDetails({
     } catch (reconnectError) {
       toast.error(String(reconnectError));
     }
-  }, [chatId, toast]);
+  }, [chat, chatId, toast]);
 
   useEffect(() => {
     if (!chat || !chat.state.session?.id || !ACTIVE_CHAT_STATUSES.has(chat.state.status)) {
@@ -838,8 +846,16 @@ export function ChatDetails({
             selectedTemplate={selectedTemplate}
             onChange={setSelectedTemplate}
             onPromptChange={setMessage}
-            disabled={isActive || isSubmitting}
+            disabled={isActive || isSubmitting || needsSshCredentials}
           />
+          {needsSshCredentials && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+              <span>This remote chat needs SSH credentials before messages can be sent.</span>
+              <Button type="button" size="sm" variant="secondary" onClick={() => void handleReconnect()}>
+                Reconnect
+              </Button>
+            </div>
+          )}
           <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
             {!isEmbedded && (
               <div className="shrink-0" data-testid="chat-composer-model-cell">
@@ -849,7 +865,7 @@ export function ChatDetails({
                   onChange={setSelectedModel}
                   models={models}
                   loading={modelsLoading}
-                  disabled={isActive || isSubmitting}
+                  disabled={isActive || isSubmitting || needsSshCredentials}
                   showDisconnected
                   currentModelKey={currentModelKey}
                   placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
@@ -867,7 +883,7 @@ export function ChatDetails({
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={handleComposerKeyDown}
               onPaste={handlePaste}
-              disabled={isSubmitting}
+              disabled={isSubmitting || needsSshCredentials}
               rows={composerRows}
               className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
             />
@@ -876,7 +892,7 @@ export function ChatDetails({
                 ref={attachmentControlRef}
                 attachments={attachments}
                 onChange={setAttachments}
-                disabled={isActive || isSubmitting}
+                disabled={isActive || isSubmitting || needsSshCredentials}
                 iconOnly
                 showPreviewList={false}
                 showErrorText={false}
@@ -901,7 +917,7 @@ export function ChatDetails({
             ) : (
               <FocusPreservingButton
                 type="submit"
-                disabled={isSubmitting || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
+                disabled={isSubmitting || needsSshCredentials || !hasPendingInput || (selectedModel.length > 0 && !selectedModelEnabled)}
                 className={sendButtonClassName}
                 aria-label="Send"
                 title="Send"

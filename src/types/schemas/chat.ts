@@ -19,6 +19,14 @@ export const CreateChatRequestSchema = z.object({
   quick: z.boolean().default(false),
 });
 
+export const CreateSshServerChatRequestSchema = z.object({
+  name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
+  directory: z.string().trim().min(1, "directory is required"),
+  model: ModelConfigSchema,
+  autoApprovePermissions: z.boolean().default(true),
+  credentialToken: z.string().trim().min(1).nullable().optional(),
+});
+
 export const UpdateChatRequestSchema = z.object({
   name: TaskNameSchema.optional(),
   model: ModelConfigSchema.optional(),
@@ -48,6 +56,14 @@ export const InterruptChatRequestSchema = z.object({
 
 export const ReplyToChatPermissionRequestSchema = z.object({
   decision: z.enum(["allow", "deny"]),
+});
+
+export const ReconnectChatRequestSchema = z.object({
+  credentialToken: z.string().trim().min(1).nullable().optional(),
+}).default({});
+
+export const DiscoverSshServerChatProvidersRequestSchema = z.object({
+  credentialToken: z.string().trim().min(1, "credentialToken is required"),
 });
 
 export const SpawnCurrentPlanTaskRequestSchema = z.object({

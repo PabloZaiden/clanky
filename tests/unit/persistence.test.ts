@@ -145,7 +145,7 @@ describe("Persistence", () => {
       );
 
       expect(tableNames).toContain("tasks");
-      expect(getSchemaVersion(db)).toBe(0);
+      expect(getSchemaVersion(db)).toBe(1);
       expect(taskColumns).toEqual(expect.arrayContaining([
         "auto_accept_plan",
         "pull_request_monitoring",

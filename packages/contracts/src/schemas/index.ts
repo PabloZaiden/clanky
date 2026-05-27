@@ -51,10 +51,13 @@ export {
 // Chat schemas
 export {
   CreateChatRequestSchema,
+  CreateSshServerChatRequestSchema,
+  DiscoverSshServerChatProvidersRequestSchema,
   UpdateChatRequestSchema,
   SendChatMessageRequestSchema,
   InterruptChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
+  ReconnectChatRequestSchema,
   SpawnCurrentPlanTaskRequestSchema,
 } from "./chat";
 
