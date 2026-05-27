@@ -16,11 +16,22 @@ function getVncPortStorageKey(serverId: string): string {
   return `clanky:vnc:${serverId}:remotePort`;
 }
 
+function getVncSwapRedBlueStorageKey(serverId: string): string {
+  return `clanky:vnc:${serverId}:swapRedBlue`;
+}
+
 function getInitialRemotePort(serverId: string): string {
   if (typeof window === "undefined") {
     return String(DEFAULT_VNC_PORT);
   }
   return window.localStorage.getItem(getVncPortStorageKey(serverId)) ?? String(DEFAULT_VNC_PORT);
+}
+
+function getInitialSwapRedBlue(serverId: string): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem(getVncSwapRedBlueStorageKey(serverId)) === "true";
 }
 
 function isCredentialPromptError(error: unknown): boolean {
@@ -39,11 +50,13 @@ export function VncSessionView({
 }) {
   const toast = useToast();
   const fullscreenRef = useRef<HTMLDivElement>(null);
+  const vncPasswordInputRef = useRef<HTMLInputElement>(null);
   const [sessions, setSessions] = useState<VncSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [remotePort, setRemotePort] = useState(() => getInitialRemotePort(server.config.id));
-  const [vncUsername, setVncUsername] = useState("");
+  const [vncUsername, setVncUsername] = useState(server.config.username);
   const [vncPassword, setVncPassword] = useState("");
+  const [swapRedBlue, setSwapRedBlue] = useState(() => getInitialSwapRedBlue(server.config.id));
   const [serverPasswordModalOpen, setServerPasswordModalOpen] = useState(false);
   const [serverPassword, setServerPassword] = useState("");
   const [serverPasswordError, setServerPasswordError] = useState<string | null>(null);
@@ -64,6 +77,19 @@ export function VncSessionView({
   useEffect(() => {
     void refreshSessions();
   }, [refreshSessions]);
+
+  useEffect(() => {
+    setActiveSessionId(null);
+    setRemotePort(getInitialRemotePort(server.config.id));
+    setVncUsername(server.config.username);
+    setVncPassword("");
+    setSwapRedBlue(getInitialSwapRedBlue(server.config.id));
+    setVncError(null);
+  }, [server.config.id, server.config.username]);
+
+  useEffect(() => {
+    window.localStorage.setItem(getVncSwapRedBlueStorageKey(server.config.id), String(swapRedBlue));
+  }, [server.config.id, swapRedBlue]);
 
   useEffect(() => {
     function handleFullscreenChange() {
@@ -186,6 +212,11 @@ export function VncSessionView({
     }
   }, [toast]);
 
+  const handleVncCredentialsRequired = useCallback(() => {
+    setVncError("Enter the VNC credentials, then reconnect the VNC session.");
+    vncPasswordInputRef.current?.focus();
+  }, []);
+
   return (
     <ShellPanel
       eyebrow="VNC session"
@@ -226,6 +257,7 @@ export function VncSessionView({
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-200">
           <span>VNC password</span>
           <input
+            ref={vncPasswordInputRef}
             type="password"
             value={vncPassword}
             onChange={(event) => setVncPassword(event.target.value)}
@@ -249,6 +281,15 @@ export function VncSessionView({
             </Button>
           )}
         </div>
+        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200 lg:col-span-2">
+          <input
+            type="checkbox"
+            checked={swapRedBlue}
+            onChange={(event) => setSwapRedBlue(event.target.checked)}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-700 dark:bg-neutral-950"
+          />
+          <span>Swap red/blue color channels</span>
+        </label>
         {vncError && (
           <p role="alert" className="text-sm text-red-600 dark:text-red-400 lg:col-span-2">
             {vncError}
@@ -265,8 +306,10 @@ export function VncSessionView({
           <VncViewer
             session={activeSession}
             username={vncUsername.trim() || undefined}
-            password={vncPassword}
+            password={vncPassword || undefined}
             fullscreen={fullscreenActive}
+            swapRedBlue={swapRedBlue}
+            onCredentialsRequired={handleVncCredentialsRequired}
             onDisconnect={() => void refreshSessions()}
             onError={setVncError}
           />
