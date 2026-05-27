@@ -15,7 +15,6 @@ import {
   type SidebarChatNode,
   type SidebarActiveWorkItem,
   buildActiveWorkSidebarItems,
-  getSidebarGroupCollapseKey,
   getSidebarSectionCollapseKey,
   getSidebarServerCollapseKey,
   getSidebarServerSectionCollapseKey,
@@ -206,13 +205,13 @@ function WorkspaceSidebarContextMenu({
       position={position}
       onClose={onClose}
       items={[
-        getPinMenuItem(sidebarPinning, pinnedItem),
         ...items,
         {
           id: "workspace-settings",
           label: "Workspace Settings",
           onClick: () => onNavigate({ view: "workspace-settings", workspaceId: workspace.id }),
         },
+        getPinMenuItem(sidebarPinning, pinnedItem),
       ]}
     />
   );
@@ -241,13 +240,13 @@ function SshServerSidebarContextMenu({
       position={position}
       onClose={onClose}
       items={[
-        getPinMenuItem(sidebarPinning, pinnedItem),
         ...items,
         {
           id: "ssh-server-settings",
           label: "SSH Server Settings",
           onClick: () => onNavigate({ view: "ssh-server-settings", serverId: server.config.id }),
         },
+        getPinMenuItem(sidebarPinning, pinnedItem),
       ]}
     />
   );
@@ -472,7 +471,9 @@ export function ShellSidebarNav({
 
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
-  const visibleWorkspaceGroups = workspaceGroups.filter((group) => group.workspaces.length > 0);
+  const visibleWorkspaceNodes = workspaceGroups.flatMap((group) => (
+    group.workspaces.map((workspaceNode) => ({ groupKey: group.key, workspaceNode }))
+  ));
   const activeWorkItems = useMemo(
     () => buildActiveWorkSidebarItems(workspaceGroups, { quickChatWorkspace, serverNodes }),
     [quickChatWorkspace, serverNodes, workspaceGroups],
@@ -1128,94 +1129,88 @@ export function ShellSidebarNav({
               collapsed={isNodeCollapsed(workspacesCollapseKey)}
               onToggle={() => toggleNodeCollapsed(workspacesCollapseKey)}
             >
-              {visibleWorkspaceGroups.map((group) => {
-                const groupCollapseKey = getSidebarGroupCollapseKey("workspaces", group.key);
-                return (
-                  <SidebarTreeSection
-                    key={group.key}
-                    title={group.title}
-                    collapsed={isNodeCollapsed(groupCollapseKey)}
-                    onToggle={() => toggleNodeCollapsed(groupCollapseKey)}
-                  >
-                    {group.workspaces.map((workspaceNode) => {
-                      const hasTaskChildren = workspaceNode.tasks.length > 0 || workspaceNode.historyTasks.length > 0;
-                      const hasChatChildren = workspaceNode.chats.length > 0;
-                      const hasSessionChildren = workspaceNode.sshSessions.length > 0;
-                      const workspaceCollapseKey = getSidebarWorkspaceCollapseKey(
-                        "workspaces",
-                        group.key,
-                        workspaceNode.workspace.id,
-                      );
-                      const tasksCollapseKey = getSidebarWorkspaceSectionCollapseKey(
-                        "workspaces",
-                        group.key,
-                        workspaceNode.workspace.id,
-                        "tasks",
-                      );
-                      const chatsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
-                        "workspaces",
-                        group.key,
-                        workspaceNode.workspace.id,
-                        "chats",
-                      );
-                      const historyCollapseKey = getSidebarWorkspaceSectionCollapseKey(
-                        "workspaces",
-                        group.key,
-                        workspaceNode.workspace.id,
-                        "history",
-                      );
-                      const sessionsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
-                        "workspaces",
-                        group.key,
-                        workspaceNode.workspace.id,
-                        "ssh-sessions",
-                      );
-                      return (
-                        <div key={`${group.key}:${workspaceNode.key}`} className="space-y-1">
-                          <SidebarTreeItem
-                            active={isWorkspaceActive(workspaceNode.workspace.id)}
-                            title={workspaceNode.workspace.name}
-                            subtitle={workspaceNode.workspace.directory}
-                            indentLevel={1}
-                            collapsed={isNodeCollapsed(workspaceCollapseKey)}
-                            onToggle={() => toggleNodeCollapsed(workspaceCollapseKey)}
-                            onClick={(event) => handleSidebarItemClick(event, {
-                              view: "workspace",
-                              workspaceId: workspaceNode.workspace.id,
+              {visibleWorkspaceNodes.length === 0 ? (
+                <EmptySection message="No workspaces registered." />
+              ) : (
+                visibleWorkspaceNodes.map(({ groupKey, workspaceNode }) => {
+                  const hasTaskChildren = workspaceNode.tasks.length > 0 || workspaceNode.historyTasks.length > 0;
+                  const hasChatChildren = workspaceNode.chats.length > 0;
+                  const hasSessionChildren = workspaceNode.sshSessions.length > 0;
+                  const workspaceCollapseKey = getSidebarWorkspaceCollapseKey(
+                    "workspaces",
+                    groupKey,
+                    workspaceNode.workspace.id,
+                  );
+                  const tasksCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                    "workspaces",
+                    groupKey,
+                    workspaceNode.workspace.id,
+                    "tasks",
+                  );
+                  const chatsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                    "workspaces",
+                    groupKey,
+                    workspaceNode.workspace.id,
+                    "chats",
+                  );
+                  const historyCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                    "workspaces",
+                    groupKey,
+                    workspaceNode.workspace.id,
+                    "history",
+                  );
+                  const sessionsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                    "workspaces",
+                    groupKey,
+                    workspaceNode.workspace.id,
+                    "ssh-sessions",
+                  );
+                  return (
+                    <div key={`${groupKey}:${workspaceNode.key}`} className="space-y-1">
+                      <SidebarTreeItem
+                        active={isWorkspaceActive(workspaceNode.workspace.id)}
+                        title={workspaceNode.workspace.name}
+                        subtitle={workspaceNode.workspace.directory}
+                        indentLevel={1}
+                        collapsed={isNodeCollapsed(workspaceCollapseKey)}
+                        onToggle={() => toggleNodeCollapsed(workspaceCollapseKey)}
+                        onClick={(event) => handleSidebarItemClick(event, {
+                          view: "workspace",
+                          workspaceId: workspaceNode.workspace.id,
+                        })}
+                        onContextMenu={(event) => openWorkspaceContextMenu(event, workspaceNode.workspace)}
+                      />
+                      {!isNodeCollapsed(workspaceCollapseKey) && (
+                        <div className="space-y-1">
+                          <SidebarTreeSection
+                            title="Tasks"
+                            actionLabel="New"
+                            actionTitle={getShellShortcutTitle("new-task", "New task")}
+                            onAction={() => navigateWithinShell({
+                              view: "compose",
+                              kind: "task",
+                              scopeId: workspaceNode.workspace.id,
                             })}
-                            onContextMenu={(event) => openWorkspaceContextMenu(event, workspaceNode.workspace)}
-                          />
-                          {!isNodeCollapsed(workspaceCollapseKey) && (
-                            <div className="space-y-1">
+                            collapsed={hasTaskChildren ? isNodeCollapsed(tasksCollapseKey) : undefined}
+                            onToggle={hasTaskChildren ? () => toggleNodeCollapsed(tasksCollapseKey) : undefined}
+                            indentLevel={2}
+                          >
+                            {workspaceNode.tasks.length > 0 && renderTaskNodes({
+                              taskNodes: workspaceNode.tasks,
+                            })}
+                            {workspaceNode.historyTasks.length > 0 && (
                               <SidebarTreeSection
-                                title="Tasks"
-                                actionLabel="New"
-                                actionTitle={getShellShortcutTitle("new-task", "New task")}
-                                onAction={() => navigateWithinShell({
-                                  view: "compose",
-                                  kind: "task",
-                                  scopeId: workspaceNode.workspace.id,
-                                })}
-                                collapsed={hasTaskChildren ? isNodeCollapsed(tasksCollapseKey) : undefined}
-                                onToggle={hasTaskChildren ? () => toggleNodeCollapsed(tasksCollapseKey) : undefined}
-                                indentLevel={2}
+                                title="History"
+                                collapsed={isNodeCollapsed(historyCollapseKey)}
+                                onToggle={() => toggleNodeCollapsed(historyCollapseKey)}
+                                indentLevel={3}
                               >
-                                {workspaceNode.tasks.length > 0 && renderTaskNodes({
-                                  taskNodes: workspaceNode.tasks,
+                                {renderTaskNodes({
+                                  taskNodes: workspaceNode.historyTasks,
                                 })}
-                                {workspaceNode.historyTasks.length > 0 && (
-                                  <SidebarTreeSection
-                                    title="History"
-                                    collapsed={isNodeCollapsed(historyCollapseKey)}
-                                    onToggle={() => toggleNodeCollapsed(historyCollapseKey)}
-                                    indentLevel={3}
-                                  >
-                                    {renderTaskNodes({
-                                      taskNodes: workspaceNode.historyTasks,
-                                    })}
-                                  </SidebarTreeSection>
-                                )}
                               </SidebarTreeSection>
+                            )}
+                          </SidebarTreeSection>
 
                               <SidebarTreeSection
                                 title="Chats"
@@ -1271,10 +1266,8 @@ export function ShellSidebarNav({
                           )}
                         </div>
                       );
-                    })}
-                  </SidebarTreeSection>
-                );
-              })}
+                    })
+              )}
             </ShellSection>
 
             <ShellSection

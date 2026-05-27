@@ -1010,6 +1010,23 @@ describe("App shell", () => {
     });
   });
 
+  test("migrates legacy workspace group collapse keys to the unified group", async () => {
+    window.localStorage.setItem("clanky.sidebarSectionCollapseState", JSON.stringify({
+      "workspaces:group:active:workspace:workspace-1": true,
+      "workspaces:group:inactive:workspace:workspace-2:tasks": true,
+    }));
+
+    renderWithUser(<App />);
+
+    await waitFor(() => {
+      const persistedState = JSON.parse(window.localStorage.getItem("clanky.sidebarSectionCollapseState") ?? "{}") as Record<string, boolean>;
+      expect(persistedState["workspaces:group:all:workspace:workspace-1"]).toBe(true);
+      expect(persistedState["workspaces:group:all:workspace:workspace-2:tasks"]).toBe(true);
+      expect("workspaces:group:active:workspace:workspace-1" in persistedState).toBe(false);
+      expect("workspaces:group:inactive:workspace:workspace-2:tasks" in persistedState).toBe(false);
+    });
+  });
+
   test("shows draft tasks under workspace sections without reviving legacy draft buckets", async () => {
     const workspace = createWorkspace({ id: "workspace-1", name: "Frontend", directory: "/workspaces/frontend" });
     const draftTask = createTaskWithStatus("draft", {

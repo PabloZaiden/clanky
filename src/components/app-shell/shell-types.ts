@@ -14,7 +14,7 @@ const log = createLogger("AppShell");
 export const SIDEBAR_SECTION_STORAGE_KEY = "clanky.sidebarSectionCollapseState";
 
 export type SidebarSectionId = "workspaces" | "ssh-servers";
-export type SidebarWorkspaceGroupId = "active" | "inactive";
+export type SidebarWorkspaceGroupId = "all";
 export type SidebarCollapseState = Record<string, boolean>;
 
 export interface SidebarCollapseStateLoadResult {
@@ -175,10 +175,17 @@ function isRecognizedSidebarCollapseKey(key: string): boolean {
     || key.startsWith("ssh-servers:");
 }
 
+function migrateSidebarCollapseKey(key: string): string {
+  return key.replace(
+    /^workspaces:group:(active|inactive)(?=:|$)/,
+    "workspaces:group:all",
+  );
+}
+
 function normalizeSidebarCollapseState(state: Record<string, unknown>): SidebarCollapseState {
   return Object.entries(state).reduce<SidebarCollapseState>((normalizedState, [key, value]) => {
     if (value === true && isRecognizedSidebarCollapseKey(key)) {
-      normalizedState[key] = true;
+      normalizedState[migrateSidebarCollapseKey(key)] = true;
     }
     return normalizedState;
   }, {});
@@ -350,14 +357,9 @@ export function buildWorkspaceSidebarGroups({
 
   return [
     {
-      key: "active",
-      title: "Active",
-      workspaces: workspaceNodes.filter((workspaceNode) => workspaceNode.hasActivity),
-    },
-    {
-      key: "inactive",
-      title: "Inactive",
-      workspaces: workspaceNodes.filter((workspaceNode) => !workspaceNode.hasActivity),
+      key: "all",
+      title: "Workspaces",
+      workspaces: workspaceNodes,
     },
   ];
 }
