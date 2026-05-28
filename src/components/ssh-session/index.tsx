@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import { ActionMenu, Button, ConfirmModal, EditIcon, StatusBadge, type ActionMenuItem } from "../common";
+import { ActionMenu, Button, ConfirmModal, EditIcon, StatusBadge } from "../common";
 import { useSshSession, useToast } from "../../hooks";
 import { RenameSshSessionModal } from "../RenameSshSessionModal";
 import { isPersistentSshSession, writeTextToClipboard } from "../../utils";
@@ -30,6 +30,7 @@ import { useFocusMode } from "./use-focus-mode";
 import { FocusModeBar } from "./focus-mode-bar";
 import { getFocusModeViewportStyle, useVisualViewport } from "./use-visual-viewport";
 import type { SidebarPinningState } from "../app-shell/sidebar-pins";
+import { buildSshSessionActionItems } from "../app-shell/shell-action-items";
 
 export interface SshSessionDetailsProps {
   sshSessionId: string;
@@ -244,15 +245,15 @@ export function SshSessionDetails({
     sendEncodedTerminalKey: keyboard.sendEncodedTerminalKey,
     sendCtrlC: keyboard.sendCtrlC,
   };
-  const headerActionItems: ActionMenuItem[] = sidebarPinning
-    ? [{
-        id: "toggle-sidebar-pin",
-        label: sidebarPinning.isPinned({ kind: "ssh-session", id: session.config.id })
-          ? "Unpin from sidebar"
-          : "Pin to sidebar",
-        onClick: () => sidebarPinning.togglePinned({ kind: "ssh-session", id: session.config.id }),
-      }]
-    : [];
+  const headerActionItems = buildSshSessionActionItems({
+    sessionId: session.config.id,
+    includeOpenSession: false,
+    canRename: canRenameSession,
+    onOpenSession: () => {},
+    onRename: () => setShowRenameModal(true),
+    onDelete: () => setShowDeleteConfirm(true),
+    sidebarPinning,
+  });
 
   function renderClipboardFallback(compact: boolean) {
     if (clipboard.pendingTerminalClipboardText === null) {

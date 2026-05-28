@@ -366,6 +366,26 @@ describe("SshSessionDetails", () => {
     expect(renameCalls[0]?.body).toEqual({ name: "SSH After Rename" });
   });
 
+  test("omits no-op open action from the current SSH session header menu", async () => {
+    api.get("/api/ssh-sessions/:id", (req) =>
+      createSshSession({ config: { id: req.params["id"]!, name: "SSH Header Actions" } }),
+    );
+
+    const { getByRole, queryByRole, user } = renderWithUser(
+      <SshSessionDetails sshSessionId="ssh-header-actions-1" onBack={() => {}} />,
+    );
+
+    await waitFor(() => {
+      expect(getByRole("button", { name: "SSH session actions for SSH Header Actions" })).toBeTruthy();
+    });
+
+    await user.click(getByRole("button", { name: "SSH session actions for SSH Header Actions" }));
+
+    expect(queryByRole("menuitem", { name: "Open session" })).toBeNull();
+    expect(getByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    expect(getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+  });
+
   test("sends BackTab for physical Shift+Tab instead of collapsing it into plain Tab", async () => {
     api.get("/api/ssh-sessions/:id", (req) =>
       createSshSession({ config: { id: req.params["id"]!, name: "SSH Shift Tab" } }),

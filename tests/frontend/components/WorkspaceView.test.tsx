@@ -184,6 +184,7 @@ describe("WorkspaceView", () => {
       "New Chat",
       "Open code explorer",
       "Pull Latest Changes",
+      "Workspace Settings",
       "Pin to sidebar",
     ]);
   });

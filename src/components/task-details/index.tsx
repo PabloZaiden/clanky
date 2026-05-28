@@ -3,7 +3,7 @@
  */
 
 import { useTask, useTaskPortForwards, useMarkdownPreference, useToast } from "../../hooks";
-import { ActionMenu, Button, StatusBadge, type ActionMenuItem } from "../common";
+import { ActionMenu, Button, StatusBadge } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
 import {
   getTaskStatusPill,
@@ -26,6 +26,7 @@ import { TaskDetailsTabContent } from "./task-details-tab-content";
 import { getFocusModeViewportStyle, useVisualViewport } from "../ssh-session/use-visual-viewport";
 import { replaceShellRoute } from "../app-shell/shell-navigation";
 import type { SidebarPinningState } from "../app-shell/sidebar-pins";
+import { buildTaskActionItems } from "../app-shell/shell-action-items";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -135,13 +136,20 @@ export function TaskDetails({
   const visibleTabs = tabs;
   const showActionBar = activeTab !== "chat" && (isActive || isPlanning || canTerminalFollowUp);
   const errorBannerSpacingClassName = isLogFocusActive ? "mx-3 mt-3 mb-3" : "mx-3 mt-3 mb-3 sm:mx-4";
-  const headerActionItems: ActionMenuItem[] = sidebarPinning
-    ? [{
-        id: "toggle-sidebar-pin",
-        label: sidebarPinning.isPinned({ kind: "task", id: config.id }) ? "Unpin from sidebar" : "Pin to sidebar",
-        onClick: () => sidebarPinning.togglePinned({ kind: "task", id: config.id }),
-      }]
-    : [];
+  const headerActionItems = buildTaskActionItems({
+    taskId: config.id,
+    onOpenCodeExplorer: () => {
+      if (onOpenTaskFiles) {
+        onOpenTaskFiles(config.id);
+        return;
+      }
+      replaceShellRoute({
+        view: "code-explorer",
+        target: { contentType: "task", taskId: config.id },
+      });
+    },
+    sidebarPinning,
+  });
 
   return (
     <div

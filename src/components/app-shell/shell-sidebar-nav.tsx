@@ -2,14 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, typ
 import {
   ChatIcon,
   CodeIcon,
+  ConfirmModal,
   ContextMenu,
   GearIcon,
   RefreshIcon,
   SidebarIcon,
-  insertPinActionItem,
   type BadgeVariant,
   type ContextMenuPosition,
 } from "../common";
+import { RenameChatModal } from "../RenameChatModal";
+import { RenameSshSessionModal } from "../RenameSshSessionModal";
 import { getShellRouteUrl, getShellShortcutTitle, isModifiedNavigationClick } from "./shell-navigation";
 import { EmptySection, ShellSection, SidebarTreeItem, SidebarTreeSection } from "./shell-sidebar";
 import {
@@ -30,9 +32,17 @@ import {
   type SidebarWorkspaceSessionNode,
   isDesktopShellViewport,
 } from "./shell-types";
-import { buildSshServerActionItems, buildWorkspaceActionItems } from "./shell-action-items";
+import {
+  buildChatActionItems,
+  buildSshServerActionItems,
+  buildSshSessionActionItems,
+  buildTaskActionItems,
+  buildWorkspaceActionItems,
+} from "./shell-action-items";
 import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
 import type { SidebarPinnedItem, SidebarPinningState } from "./sidebar-pins";
+import { appFetch } from "../../lib/public-path";
+import type { Chat, SshSession, UpdateChatRequest, UpdateSshSessionRequest } from "../../types";
 
 interface ShellSidebarNavProps {
   route: ShellRoute;
@@ -54,6 +64,14 @@ interface ShellSidebarNavProps {
   pullLatestWorkspaceChanges: (workspaceId: string) => Promise<void>;
   pullingLatestWorkspaceIds: ReadonlySet<string>;
   sidebarPinning: SidebarPinningState;
+  updateChat?: (id: string, request: UpdateChatRequest) => Promise<Chat | null>;
+  deleteChat?: (id: string) => Promise<boolean>;
+  updateSshSession?: (id: string, request: UpdateSshSessionRequest) => Promise<SshSession>;
+  deleteSshSession?: (id: string) => Promise<boolean>;
+  refreshChats?: () => Promise<void>;
+  refreshSshSessions?: () => Promise<void>;
+  refreshSshServers?: () => Promise<void>;
+  onActionError?: (message: string) => void;
 }
 
 const iconButtonBase =
@@ -195,14 +213,6 @@ function getActiveWorkServerSessionSubtitle(
   return `${serverName} · ${sessionNode.subtitle}`;
 }
 
-function getPinMenuItem(sidebarPinning: SidebarPinningState, item: SidebarPinnedItem) {
-  return {
-    id: "toggle-sidebar-pin",
-    label: sidebarPinning.isPinned(item) ? "Unpin from sidebar" : "Pin to sidebar",
-    onClick: () => sidebarPinning.togglePinned(item),
-  };
-}
-
 function SearchResultsSection({
   title,
   bordered = false,
@@ -226,7 +236,6 @@ function SearchResultsSection({
 
 function WorkspaceSidebarContextMenu({
   workspace,
-  pinnedItem,
   position,
   onClose,
   onNavigate,
@@ -235,7 +244,6 @@ function WorkspaceSidebarContextMenu({
   sidebarPinning,
 }: {
   workspace: SidebarWorkspaceNode["workspace"];
-  pinnedItem: SidebarPinnedItem;
   position: ContextMenuPosition;
   onClose: () => void;
   onNavigate: (route: ShellRoute) => void;
@@ -253,6 +261,7 @@ function WorkspaceSidebarContextMenu({
       void pullLatestWorkspaceChanges(workspace.id);
     },
     onOpenGitHub: (url) => window.open(url, "_blank", "noopener,noreferrer"),
+    sidebarPinning,
   });
 
   return (
@@ -260,48 +269,32 @@ function WorkspaceSidebarContextMenu({
       ariaLabel={`Workspace actions for ${workspace.name}`}
       position={position}
       onClose={onClose}
-      items={insertPinActionItem([
-        ...items,
-        {
-          id: "workspace-settings",
-          label: "Workspace Settings",
-          onClick: () => onNavigate({ view: "workspace-settings", workspaceId: workspace.id }),
-        },
-      ], getPinMenuItem(sidebarPinning, pinnedItem))}
+      items={items}
     />
   );
 }
 
 function SshServerSidebarContextMenu({
   server,
-  pinnedItem,
   position,
   onClose,
   onNavigate,
   sidebarPinning,
 }: {
   server: SidebarServerNode["server"];
-  pinnedItem: SidebarPinnedItem;
   position: ContextMenuPosition;
   onClose: () => void;
   onNavigate: (route: ShellRoute) => void;
   sidebarPinning: SidebarPinningState;
 }) {
-  const items = buildSshServerActionItems({ server, onNavigate });
+  const items = buildSshServerActionItems({ server, onNavigate, sidebarPinning });
 
   return (
     <ContextMenu
       ariaLabel={`SSH server actions for ${server.config.name}`}
       position={position}
       onClose={onClose}
-      items={insertPinActionItem([
-        ...items,
-        {
-          id: "ssh-server-settings",
-          label: "SSH Server Settings",
-          onClick: () => onNavigate({ view: "ssh-server-settings", serverId: server.config.id }),
-        },
-      ], getPinMenuItem(sidebarPinning, pinnedItem))}
+      items={items}
     />
   );
 }
@@ -310,43 +303,79 @@ function ItemSidebarContextMenu({
   kind,
   title,
   pinnedItem,
+  chat,
+  chatSpawnPending,
+  chatSpawnFromPlanPending,
+  sessionTitle,
+  canRenameSession,
   position,
   onClose,
   onNavigate,
   sidebarPinning,
+  onChatSpawnTask,
+  onChatSpawnTaskFromCurrentPlan,
+  onChatRename,
+  onChatDelete,
+  onSshSessionRename,
+  onSshSessionDelete,
 }: {
   kind: "task" | "chat" | "ssh-session";
   title: string;
   pinnedItem: SidebarPinnedItem;
+  chat?: Chat;
+  chatSpawnPending?: boolean;
+  chatSpawnFromPlanPending?: boolean;
+  sessionTitle?: string;
+  canRenameSession?: boolean;
   position: ContextMenuPosition;
   onClose: () => void;
   onNavigate: (route: ShellRoute) => void;
   sidebarPinning: SidebarPinningState;
+  onChatSpawnTask: (chat: Chat) => void;
+  onChatSpawnTaskFromCurrentPlan: (chat: Chat) => void;
+  onChatRename: (chat: Chat) => void;
+  onChatDelete: (chat: Chat) => void;
+  onSshSessionRename: (sessionId: string, currentName: string, canRename: boolean) => void;
+  onSshSessionDelete: (sessionId: string, title: string, kind: "workspace" | "server") => void;
 }) {
   const items = kind === "task"
-    ? [{
-        id: "code-explorer",
-        label: "Open code explorer",
-        onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "task", taskId: pinnedItem.id } }),
-      }]
+    ? buildTaskActionItems({
+        taskId: pinnedItem.id,
+        onOpenCodeExplorer: () => onNavigate({ view: "code-explorer", target: { contentType: "task", taskId: pinnedItem.id } }),
+        sidebarPinning,
+      })
     : kind === "chat"
-      ? [{
-          id: "code-explorer",
-          label: "Open code explorer",
-          onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "chat", chatId: pinnedItem.id } }),
-        }]
-      : [{
-          id: "open-session",
-          label: "Open session",
-          onClick: () => onNavigate({ view: "ssh", sshSessionId: pinnedItem.id }),
-        }];
+      ? buildChatActionItems({
+          chat: chat!,
+          hasCodeExplorerAction: true,
+          spawnPending: chatSpawnPending ?? false,
+          spawnCurrentPlanPending: chatSpawnFromPlanPending ?? false,
+          onSpawnTask: () => onChatSpawnTask(chat!),
+          onSpawnTaskFromCurrentPlan: () => onChatSpawnTaskFromCurrentPlan(chat!),
+          onOpenCodeExplorer: () => onNavigate({ view: "code-explorer", target: { contentType: "chat", chatId: pinnedItem.id } }),
+          onRename: () => onChatRename(chat!),
+          onDelete: () => onChatDelete(chat!),
+          sidebarPinning,
+        })
+      : buildSshSessionActionItems({
+          sessionId: pinnedItem.id,
+          canRename: canRenameSession ?? true,
+          onOpenSession: () => onNavigate({ view: "ssh", sshSessionId: pinnedItem.id }),
+          onRename: () => onSshSessionRename(pinnedItem.id, sessionTitle ?? title, canRenameSession ?? true),
+          onDelete: () => onSshSessionDelete(
+            pinnedItem.id,
+            sessionTitle ?? title,
+            canRenameSession ? "workspace" : "server",
+          ),
+          sidebarPinning,
+        });
 
   return (
     <ContextMenu
       ariaLabel={`${title} actions`}
       position={position}
       onClose={onClose}
-      items={insertPinActionItem(items, getPinMenuItem(sidebarPinning, pinnedItem))}
+      items={items}
     />
   );
 }
@@ -371,9 +400,33 @@ export function ShellSidebarNav({
   pullLatestWorkspaceChanges,
   pullingLatestWorkspaceIds,
   sidebarPinning,
+  updateChat,
+  deleteChat,
+  updateSshSession,
+  deleteSshSession,
+  refreshChats = async () => {},
+  refreshSshSessions = async () => {},
+  refreshSshServers = async () => {},
+  onActionError = (message: string) => console.error(message),
 }: ShellSidebarNavProps) {
   const [searchInput, setSearchInput] = useState("");
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState | null>(null);
+  const [chatRenameTarget, setChatRenameTarget] = useState<Chat | null>(null);
+  const [chatDeleteTarget, setChatDeleteTarget] = useState<Chat | null>(null);
+  const [chatDeletePending, setChatDeletePending] = useState(false);
+  const [chatSpawnPendingIds, setChatSpawnPendingIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [chatSpawnFromPlanPendingIds, setChatSpawnFromPlanPendingIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [sessionRenameTarget, setSessionRenameTarget] = useState<{
+    id: string;
+    name: string;
+    canRename: boolean;
+  } | null>(null);
+  const [sessionDeleteTarget, setSessionDeleteTarget] = useState<{
+    id: string;
+    name: string;
+    kind: "workspace" | "server";
+  } | null>(null);
+  const [sessionDeletePending, setSessionDeletePending] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchQuery = searchInput.trim().toLowerCase();
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
@@ -394,6 +447,132 @@ export function ShellSidebarNav({
     }
 
     navigateWithinShell(nextRoute);
+  }
+
+  async function handleChatRename(newName: string) {
+    if (!chatRenameTarget) {
+      return;
+    }
+    if (!updateChat) {
+      throw new Error("Chat rename is unavailable");
+    }
+    const updated = await updateChat(chatRenameTarget.config.id, { name: newName });
+    if (!updated) {
+      throw new Error("Failed to rename chat");
+    }
+    await refreshChats();
+  }
+
+  async function handleChatDelete() {
+    if (!chatDeleteTarget || chatDeletePending) {
+      return;
+    }
+
+    setChatDeletePending(true);
+    try {
+      if (!deleteChat) {
+        throw new Error("Chat delete is unavailable");
+      }
+      const chatId = chatDeleteTarget.config.id;
+      const success = await deleteChat(chatId);
+      if (!success) {
+        throw new Error("Failed to delete chat");
+      }
+      setChatDeleteTarget(null);
+      if (route.view === "chat" && route.chatId === chatId) {
+        navigateWithinShell({ view: "home" });
+      }
+      await refreshChats();
+    } catch (error) {
+      onActionError(String(error));
+    } finally {
+      setChatDeletePending(false);
+    }
+  }
+
+  async function spawnTaskFromChat(chat: Chat, fromCurrentPlan: boolean) {
+    const chatId = chat.config.id;
+    const setPendingIds = fromCurrentPlan ? setChatSpawnFromPlanPendingIds : setChatSpawnPendingIds;
+    setPendingIds((current) => new Set(current).add(chatId));
+    try {
+      const response = await appFetch(
+        fromCurrentPlan
+          ? `/api/chats/${chatId}/spawn-task-from-current-plan`
+          : `/api/chats/${chatId}/spawn-task`,
+        {
+          method: "POST",
+          headers: fromCurrentPlan ? { "Content-Type": "application/json" } : undefined,
+          body: fromCurrentPlan ? JSON.stringify({}) : undefined,
+        },
+      );
+      if (!response.ok) {
+        const data = await response.json() as { message?: string; error?: string };
+        throw new Error(data.message ?? data.error ?? "Failed to spawn task");
+      }
+      const task = await response.json() as { config: { id: string } };
+      navigateWithinShell({ view: "task", taskId: task.config.id });
+    } catch (error) {
+      onActionError(String(error));
+    } finally {
+      setPendingIds((current) => {
+        const next = new Set(current);
+        next.delete(chatId);
+        return next;
+      });
+    }
+  }
+
+  async function handleSshSessionRename(newName: string) {
+    if (!sessionRenameTarget) {
+      return;
+    }
+    if (!sessionRenameTarget.canRename) {
+      throw new Error("Standalone SSH sessions cannot be renamed here");
+    }
+    if (!updateSshSession) {
+      throw new Error("SSH session rename is unavailable");
+    }
+    await updateSshSession(sessionRenameTarget.id, { name: newName });
+    await refreshSshSessions();
+  }
+
+  async function handleSshSessionDelete() {
+    if (!sessionDeleteTarget || sessionDeletePending) {
+      return;
+    }
+
+    setSessionDeletePending(true);
+    try {
+      if (!deleteSshSession) {
+        throw new Error("SSH session delete is unavailable");
+      }
+      const sessionId = sessionDeleteTarget.id;
+      if (sessionDeleteTarget.kind === "workspace") {
+        const success = await deleteSshSession(sessionId);
+        if (!success) {
+          throw new Error("Failed to delete SSH session");
+        }
+      } else {
+        const response = await appFetch(`/api/ssh-server-sessions/${sessionId}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credentialToken: null }),
+        });
+        if (!response.ok) {
+          const data = await response.json() as { message?: string; error?: string };
+          throw new Error(data.message ?? data.error ?? "Failed to delete SSH session");
+        }
+      }
+      setSessionDeleteTarget(null);
+      if (route.view === "ssh" && route.sshSessionId === sessionId) {
+        navigateWithinShell({ view: "home" });
+      }
+      await Promise.all([refreshSshSessions(), refreshSshServers()]);
+    } catch (error) {
+      onActionError(String(error));
+    } finally {
+      setSessionDeletePending(false);
+    }
   }
 
   function openWorkspaceContextMenu(
@@ -1504,7 +1683,6 @@ export function ShellSidebarNav({
         {contextMenu?.kind === "workspace" && (
           <WorkspaceSidebarContextMenu
             workspace={contextMenu.workspace}
-            pinnedItem={contextMenu.pinnedItem}
             position={contextMenu.position}
             onClose={closeContextMenu}
             onNavigate={navigateWithinShell}
@@ -1516,7 +1694,6 @@ export function ShellSidebarNav({
         {contextMenu?.kind === "ssh-server" && (
           <SshServerSidebarContextMenu
             server={contextMenu.server}
-            pinnedItem={contextMenu.pinnedItem}
             position={contextMenu.position}
             onClose={closeContextMenu}
             onNavigate={navigateWithinShell}
@@ -1534,12 +1711,55 @@ export function ShellSidebarNav({
                   : contextMenu.sessionNode.title
             }
             pinnedItem={contextMenu.pinnedItem}
+            chat={contextMenu.kind === "chat" ? contextMenu.chatNode.chat : undefined}
+            chatSpawnPending={contextMenu.kind === "chat" ? chatSpawnPendingIds.has(contextMenu.chatNode.chat.config.id) : undefined}
+            chatSpawnFromPlanPending={
+              contextMenu.kind === "chat" ? chatSpawnFromPlanPendingIds.has(contextMenu.chatNode.chat.config.id) : undefined
+            }
+            sessionTitle={contextMenu.kind === "ssh-session" ? contextMenu.sessionNode.title : undefined}
+            canRenameSession={contextMenu.kind === "ssh-session" && "session" in contextMenu.sessionNode}
             position={contextMenu.position}
             onClose={closeContextMenu}
             onNavigate={navigateWithinShell}
             sidebarPinning={sidebarPinning}
+            onChatSpawnTask={(chat) => void spawnTaskFromChat(chat, false)}
+            onChatSpawnTaskFromCurrentPlan={(chat) => void spawnTaskFromChat(chat, true)}
+            onChatRename={setChatRenameTarget}
+            onChatDelete={setChatDeleteTarget}
+            onSshSessionRename={(id, name, canRename) => setSessionRenameTarget({ id, name, canRename })}
+            onSshSessionDelete={(id, name, kind) => setSessionDeleteTarget({ id, name, kind })}
           />
         )}
+        <RenameChatModal
+          isOpen={chatRenameTarget !== null}
+          onClose={() => setChatRenameTarget(null)}
+          currentName={chatRenameTarget?.config.name ?? ""}
+          onRename={handleChatRename}
+        />
+        <ConfirmModal
+          isOpen={chatDeleteTarget !== null}
+          onClose={() => setChatDeleteTarget(null)}
+          onConfirm={() => void handleChatDelete()}
+          title="Delete chat?"
+          message={`Delete "${chatDeleteTarget?.config.name ?? "this chat"}"? This cannot be undone.`}
+          confirmLabel="Delete"
+          loading={chatDeletePending}
+        />
+        <RenameSshSessionModal
+          isOpen={sessionRenameTarget !== null}
+          onClose={() => setSessionRenameTarget(null)}
+          currentName={sessionRenameTarget?.name ?? ""}
+          onRename={handleSshSessionRename}
+        />
+        <ConfirmModal
+          isOpen={sessionDeleteTarget !== null}
+          onClose={() => setSessionDeleteTarget(null)}
+          onConfirm={() => void handleSshSessionDelete()}
+          title="Delete SSH session?"
+          message={`Delete "${sessionDeleteTarget?.name ?? "this SSH session"}"? This removes the saved session metadata.`}
+          confirmLabel="Delete"
+          loading={sessionDeletePending}
+        />
       </div>
     </aside>
   );
