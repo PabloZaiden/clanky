@@ -133,7 +133,8 @@ describe("ssh server management scenario", () => {
       expect(getByRole("heading", { name: "Build Box" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Open SSH server settings" }));
+    await user.click(getByRole("button", { name: "SSH server actions for Build Box" }));
+    await user.click(getByRole("menuitem", { name: "SSH Server Settings" }));
 
     await waitFor(() => {
       expect(window.location.hash).toBe("#/server-settings/server-1");

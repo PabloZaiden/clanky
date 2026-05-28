@@ -333,9 +333,6 @@ function renderMainContent(props: ShellMainContentProps) {
         relatedSessions={relatedSessions}
         registeredSshServers={servers}
         headerOffsetClassName={shellHeaderOffsetClassName}
-        onOpenSettings={() =>
-          navigateWithinShell({ view: "workspace-settings", workspaceId: selectedWorkspace.id })
-        }
         onPullLatestChanges={() => {
           void pullLatestWorkspaceChanges(selectedWorkspace.id);
         }}
@@ -412,7 +409,6 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
-        onOpenSettings={() => navigateWithinShell({ view: "ssh-server-settings", serverId: selectedServer.config.id })}
         sidebarPinning={sidebarPinning}
       />
     );

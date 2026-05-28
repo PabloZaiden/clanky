@@ -93,7 +93,6 @@ describe("SshServerView", () => {
         server={createServer("server-1", "/workspaces/one")}
         sessions={[]}
         onNavigate={() => {}}
-        onOpenSettings={() => {}}
         sidebarPinning={sidebarPinning}
       />,
     );
@@ -116,7 +115,6 @@ describe("SshServerView", () => {
         server={createServer("server-1", "/workspaces/one")}
         sessions={[]}
         onNavigate={() => {}}
-        onOpenSettings={() => {}}
         sidebarPinning={sidebarPinning}
       />,
     );
