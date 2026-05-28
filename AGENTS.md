@@ -281,34 +281,30 @@ test("hello world", () => {
 
 ### Testing Guidelines
 
-- Every new feature that is not exclusively a UI change **MUST** have unit tests covering its functionality
-- Every new feature **SHOULD** have a scenario test (integration test) covering the complete user workflow
-- Every bug fix **MUST** have a test case that reproduces the bug
-- Every bug fix **SHOULD** have a scenario test covering the fix in a real-world context
-- Unit tests should be written alongside implementation, not after
-- Scenario tests should cover multiple combinations and edge cases
-- Do **NOT** add automated tests for text-only changes or other minor UI copy/presentation tweaks that do not affect behavior or functionality
-- UI-only changes that alter behavior should still be tested, but purely cosmetic or wording-only changes may rely on manual review
+- **Prefer no new test over a low-value test.** A test is only worth adding if it catches realistic regressions during refactors or bugs.
+- The default committed coverage should be **API tests, integration/user-scenario tests, or e2e tests** that exercise real application behavior through public boundaries.
+- New tests should prove a meaningful workflow, state transition, persistence effect, security rule, or external contract. Good examples: creating/running/accepting/pushing a task through the API, workspace lifecycle, plan-mode workflow, auth/passkey boundaries, SSH/session behavior, provisioning behavior, branch safety, and review-cycle behavior.
+- Bug fixes should be covered at the highest practical level that reproduces the bug. Prefer an API/integration/e2e regression over a unit test of the helper that happened to contain the bug.
+- UI-only changes, text/copy changes, styling changes, layout changes, label changes, and presentation refactors should **not** get automated tests. Validate them manually when needed.
 - If you need to validate real agent scenarios for a new feature or to reproduce a bug, use a local Copilot CLI unless the user explicitly says otherwise. Mocks usually do not work well for this kind of manual validation.
-- Live agent providers may be used for manual investigation and final validation when needed, but committed automated tests **MUST** use mocks or local test doubles and **MUST NOT** depend on live agents or external providers
+- Live agent providers may be used for manual investigation and final validation when needed, but committed automated tests **MUST NOT** depend on live agents or external providers. Prefer deterministic local test doubles only at the API/integration boundary.
 - **100%** of the tests **MUST** pass before considering a feature complete
 - A flaky test that fails intermittently **MUST** be fixed. A lot of times, flaky tests indicate deeper issues, race conditions, or bad mock implementations.
 - **Tests MUST be deterministic**: Tests should never have conditional expectations based on timing or race conditions. If a test sometimes expects one outcome and sometimes another, the test is flaky and must be fixed. Use polling helpers, explicit waits, or control execution flow to ensure deterministic behavior.
-- **Do not isolate one test file in `package.json` to work around Bun `mock.module()` leakage.** Fix the shared-suite problem instead: prefer explicit test seams such as injectable child components or lower-level dependency mocks that stay safe when the entire frontend suite runs in one process.
-- **Frontend UI tests must assert behavior, not structure.** Prefer user-visible outcomes, accessible queries, interactions, state transitions, API calls, and conditional rendering. Avoid assertions on CSS classes, exact spacing, responsive utility classes, DOM nesting, implementation-specific selectors, or other presentation details unless accessibility or behavior directly depends on them.
-- **Prefer tests that prove the current intended behavior works.** Do not add or keep tests whose main value is only to confirm that a removed or superseded behavior/UI is gone. Keep negative assertions only when the absence itself is part of the current supported contract (for example security, validation, or explicit product requirements).
-- **Do not add frontend tests whose only assertion is static copy or element presence.** Tests like "renders title", "shows button", "displays badge text", "matches placeholder text", or "contains exact helper copy" are not enough unless that text is the product contract being exercised as part of a larger behavior.
-- **Do not add frontend tests that only verify styling or layout implementation.** Avoid tests that assert CSS utility classes, padding, break-word/truncate behavior, row wrappers, inline placement, DOM ordering, generated ids, or `data-testid` structure unless those details are required for supported behavior or accessibility.
-- **When a component mostly renders data, prefer behavior around interactions and state changes over snapshot-like rendering checks.** Prove that clicks call the right handler, submissions send the right payload, disabled states block invalid actions, persisted data refreshes correctly, or accessibility attributes support an actual interaction flow.
-- **Do not add frontend tests whose main value is accessible naming or UI wording.** Avoid tests that lock down `aria-label`, placeholder, title, helper copy, badge text, tab labels, or similar wording unless that exact text is part of the supported product contract.
-- **Do not add frontend tests for visibility-only UI toggles or mode changes.** If a click merely makes another button, label, panel, or hint appear or disappear without proving a meaningful workflow, state transition, side effect, or business rule, skip the test.
-- **Prefer submit/result assertions over default-state rendering assertions.** If a default checkbox, selected option, or visible control only matters because it changes submitted data or downstream behavior, test that outcome instead of asserting that the control is present or pre-checked.
+- **Do not add frontend component/hook tests.** They have historically produced brittle coverage around labels, buttons, copy, DOM structure, CSS classes, mocked fetch wrappers, and implementation details. Test the behavior through API/integration/e2e boundaries instead.
+- **Do not add unit tests by default.** Unit tests are allowed only for small, stable, pure domain contracts that are hard or impossible to cover through public boundaries. Get explicit justification before adding them.
+- **Do not test mocks.** Avoid tests where the main assertion is that a mocked function was called, a mocked adapter returned a value, or a fake implementation behaves like itself.
+- **Do not reimplement production logic in the test.** If the expected value is computed by duplicating the algorithm under test, the test does not add signal.
+- **Do not add exhaustive matrix tests for implementation tables or tiny helpers.** A few high-value examples are better than dozens of cases that lock down internals.
+- **Do not add tests for wrappers around `fetch`, endpoint string construction, button click plumbing, modal open/close mechanics, default labels, placeholder text, aria wording, CSS utility classes, DOM nesting, or visibility-only toggles.**
+- **Do not add removal-only regression tests.** Avoid tests whose main value is proving old UI/copy/behavior is gone unless the absence is a security or explicit product contract.
 
 ### Test Patterns
 
-1. **Unit tests** (`tests/unit/`): Test individual functions and classes
-2. **API tests** (`tests/api/`): Test HTTP endpoints with real requests
-3. **E2E tests** (`tests/e2e/`): Test full workflows
+1. **API tests** (`tests/api/`): Preferred for most coverage. Exercise real HTTP requests, persistence, workspace setup, and observable API responses.
+2. **Integration/user-scenario tests** (`tests/integration/`): Use for complete workflows that need multiple subsystems, git repositories, task lifecycle, branch safety, SSH, provisioning, or review cycles.
+3. **E2E tests** (`tests/e2e/`): Use sparingly for the most important full task/runtime workflows.
+4. **Unit tests** (`tests/unit/`): Exceptional only. Add one only when API/integration/e2e coverage would be impractical and the behavior is a stable domain contract rather than implementation detail.
 
 Use the test utilities from `tests/setup.ts`:
 
