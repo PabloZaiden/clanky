@@ -4,8 +4,6 @@ import type { useChats, useTasks, useSshSessions } from "../../hooks";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
   ActionMenu,
-  Button,
-  GearIcon,
   StatusBadge,
   getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
@@ -40,7 +38,6 @@ export function WorkspaceView({
   relatedSessions,
   registeredSshServers,
   headerOffsetClassName,
-  onOpenSettings,
   onPullLatestChanges,
   pullingLatestChanges,
   onNavigate,
@@ -52,7 +49,6 @@ export function WorkspaceView({
   relatedSessions: ReturnType<typeof useSshSessions>["sessions"];
   registeredSshServers: readonly SshServer[];
   headerOffsetClassName?: string;
-  onOpenSettings: () => void;
   onPullLatestChanges: () => void;
   pullingLatestChanges: boolean;
   onNavigate: (route: ShellRoute) => void;
@@ -107,22 +103,7 @@ export function WorkspaceView({
       description={serverLabel}
       variant="compact"
       headerOffsetClassName={headerOffsetClassName}
-      actions={(
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenSettings}
-            title="Workspace Settings"
-            aria-label="Open workspace settings"
-            className="min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 px-1.5"
-            icon={<GearIcon size="h-5 w-5" />}
-          >
-            {null}
-          </Button>
-          <ActionMenu items={createActionItems} ariaLabel={`Workspace actions for ${workspace.name}`} />
-        </>
-      )}
+      actions={<ActionMenu items={createActionItems} ariaLabel={`Workspace actions for ${workspace.name}`} />}
     >
       <div className="min-w-0 space-y-6">
         <div

@@ -1,5 +1,5 @@
 import type { SshServer, SshServerSession } from "../../types";
-import { ActionMenu, Badge, Button, GearIcon } from "../common";
+import { ActionMenu, Badge } from "../common";
 import type { ShellRoute } from "./shell-types";
 import type { SidebarPinningState } from "./sidebar-pins";
 import { ShellPanel, SummaryCard } from "./shell-panel";
@@ -11,14 +11,12 @@ export function SshServerView({
   sessions,
   headerOffsetClassName,
   onNavigate,
-  onOpenSettings,
   sidebarPinning,
 }: {
   server: SshServer;
   sessions: SshServerSession[];
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
-  onOpenSettings: () => void;
   sidebarPinning: SidebarPinningState;
 }) {
   const actionItems = buildSshServerActionItems({ server, onNavigate, sidebarPinning });
@@ -35,22 +33,7 @@ export function SshServerView({
           {sessions.length} session{sessions.length === 1 ? "" : "s"}
         </Badge>
       )}
-      actions={(
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenSettings}
-            title="SSH Server Settings"
-            aria-label="Open SSH server settings"
-            className="min-h-[44px] min-w-[44px] px-1.5 sm:min-h-0 sm:min-w-0"
-            icon={<GearIcon size="h-5 w-5" />}
-          >
-            {null}
-          </Button>
-          <ActionMenu items={actionItems} ariaLabel={`SSH server actions for ${server.config.name}`} />
-        </>
-      )}
+      actions={<ActionMenu items={actionItems} ariaLabel={`SSH server actions for ${server.config.name}`} />}
     >
       <div className="grid gap-4 lg:grid-cols-3">
         <SummaryCard label="Address" value={server.config.address} meta="Stored without credentials on the server." />

@@ -598,7 +598,8 @@ describe("workspace management scenario", () => {
       expect(api.calls("/api/workspaces/:id/pull-latest-changes", "POST")).toHaveLength(1);
     });
 
-    await user.click(getByRole("button", { name: "Open workspace settings" }));
+    await user.click(getByRole("button", { name: "Workspace actions for Existing Project" }));
+    await user.click(getByRole("menuitem", { name: "Workspace Settings" }));
     await waitFor(() => {
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
     });

@@ -697,14 +697,11 @@ describe("App shell", () => {
       expect(getByRole("heading", { name: "Frontend" })).toBeTruthy();
     });
 
-    const settingsButton = getByRole("button", { name: "Open workspace settings" });
     const createItemsButton = getByRole("button", { name: "Workspace actions for Frontend" });
-    expect(settingsButton.getAttribute("title")).toBe("Workspace Settings");
-    expect(settingsButton.textContent?.trim() ?? "").toBe("");
-    expect(settingsButton.querySelector("svg")).toBeTruthy();
     expectHamburgerIcon(createItemsButton);
 
-    await user.click(settingsButton);
+    await user.click(createItemsButton);
+    await user.click(getByRole("menuitem", { name: "Workspace Settings" }));
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Workspace Settings" })).toBeTruthy();
@@ -732,12 +729,12 @@ describe("App shell", () => {
 
     await waitFor(() => {
       expect(getByRole("heading", { name: "Deploy host" })).toBeTruthy();
-      expect(getByRole("button", { name: "Open SSH server settings" })).toBeTruthy();
       expect(getByRole("button", { name: "SSH server actions for Deploy host" })).toBeTruthy();
       expect(queryByRole("button", { name: "Delete Server" })).toBeNull();
     });
 
-    await user.click(getByRole("button", { name: "Open SSH server settings" }));
+    await user.click(getByRole("button", { name: "SSH server actions for Deploy host" }));
+    await user.click(getByRole("menuitem", { name: "SSH Server Settings" }));
 
     await waitFor(() => {
       expect(window.location.hash).toBe("#/server-settings/server-1");
@@ -1303,7 +1300,8 @@ describe("App shell", () => {
       expect(getByRole("heading", { name: "Frontend" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Open workspace settings" }));
+    await user.click(getByRole("button", { name: "Workspace actions for Frontend" }));
+    await user.click(getByRole("menuitem", { name: "Workspace Settings" }));
 
     await waitFor(() => {
       expect(getByRole("button", { name: "Restart" })).toBeTruthy();
@@ -1330,10 +1328,11 @@ describe("App shell", () => {
     await waitFor(() => {
       expect(getByRole("heading", { name: "Build host" })).toBeTruthy();
       expect(queryByRole("button", { name: "Arise" })).toBeNull();
-      expect(getByRole("button", { name: "Open SSH server settings" })).toBeTruthy();
+      expect(getByRole("button", { name: "SSH server actions for Build host" })).toBeTruthy();
     });
 
-    await user.click(getByRole("button", { name: "Open SSH server settings" }));
+    await user.click(getByRole("button", { name: "SSH server actions for Build host" }));
+    await user.click(getByRole("menuitem", { name: "SSH Server Settings" }));
 
     await waitFor(() => {
       expect(window.location.hash).toBe("#/server-settings/server-1");

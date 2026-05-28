@@ -28,7 +28,6 @@ describe("WorkspaceView", () => {
           relatedChats={[]}
           relatedSessions={[]}
           registeredSshServers={[]}
-          onOpenSettings={() => {}}
           onPullLatestChanges={async () => ({ success: true })}
           pullingLatestChanges={false}
           onNavigate={() => {}}
@@ -70,7 +69,6 @@ describe("WorkspaceView", () => {
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}
-        onOpenSettings={() => {}}
         onPullLatestChanges={async () => ({ success: true })}
         pullingLatestChanges={false}
         onNavigate={() => {}}
@@ -112,7 +110,6 @@ describe("WorkspaceView", () => {
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}
-        onOpenSettings={() => {}}
         onPullLatestChanges={async () => ({ success: true })}
         pullingLatestChanges={false}
         onNavigate={() => {}}
@@ -139,7 +136,6 @@ describe("WorkspaceView", () => {
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}
-        onOpenSettings={() => {}}
         onPullLatestChanges={() => {
           callCount += 1;
         }}
@@ -169,7 +165,6 @@ describe("WorkspaceView", () => {
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}
-        onOpenSettings={() => {}}
         onPullLatestChanges={() => {}}
         pullingLatestChanges={false}
         onNavigate={() => {}}
@@ -204,7 +199,6 @@ describe("WorkspaceView", () => {
         relatedChats={[]}
         relatedSessions={[]}
         registeredSshServers={[]}
-        onOpenSettings={() => {}}
         onPullLatestChanges={() => {
           callCount += 1;
         }}
