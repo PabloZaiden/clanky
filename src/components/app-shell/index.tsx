@@ -42,6 +42,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     refresh: refreshChats,
     createChat,
     createSshServerChat,
+    updateChat,
+    deleteChat,
   } = useChats();
   const {
     tasks,
@@ -58,6 +60,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     error: sshSessionsError,
     refresh: refreshSshSessions,
     createSession,
+    updateSession,
+    deleteSession,
   } = useSshSessions();
   const {
     servers,
@@ -362,6 +366,14 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
         pullingLatestWorkspaceIds={pullingLatestWorkspaceIds}
         sidebarPinning={sidebarPinning}
+        updateChat={updateChat}
+        deleteChat={deleteChat}
+        updateSshSession={updateSession}
+        deleteSshSession={deleteSession}
+        refreshChats={refreshChats}
+        refreshSshSessions={refreshSshSessions}
+        refreshSshServers={refreshSshServers}
+        onActionError={(message) => toast.error(message)}
       />
 
       <ShellMainContent

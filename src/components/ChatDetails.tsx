@@ -20,9 +20,7 @@ import {
   Button,
   ConfirmModal,
   FocusPreservingButton,
-  insertPinActionItem,
   StatusBadge,
-  type ActionMenuItem,
   getChatStatusBadgeVariant,
   useComposerSizing,
 } from "./common";
@@ -35,6 +33,7 @@ import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
 import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navigation";
 import type { SidebarPinningState } from "./app-shell/sidebar-pins";
+import { buildChatActionItems } from "./app-shell/shell-action-items";
 import type {
   Chat,
   ChatEvent,
@@ -652,53 +651,22 @@ export function ChatDetails({
     };
   }, [chat, chatWorkingDirectory, embeddedTaskId]);
 
-  const headerActionMenuItems = useMemo<ActionMenuItem[]>(() => {
+  const headerActionMenuItems = useMemo(() => {
     if (!chat || isEmbedded) {
       return [];
     }
 
-    const items: ActionMenuItem[] = [
-      {
-        id: "spawn-task",
-        label: isSpawnPending ? "Spawning task..." : "Spawn Task",
-        onClick: () => void handleSpawnTask(),
-        disabled: isActive || isSpawnPending || isSpawnCurrentPlanPending || chat.state.messages.length === 0,
-      },
-      {
-        id: "spawn-task-from-current-plan",
-        label: isSpawnCurrentPlanPending ? "Spawning task from plan file..." : "Spawn task from plan file",
-        onClick: () => void openSpawnCurrentPlanModal(),
-        disabled: isActive || isSpawnPending || isSpawnCurrentPlanPending || chat.state.messages.length === 0,
-      },
-      {
-        id: "code-explorer",
-        label: "Code explorer",
-        onClick: () => onOpenCodeExplorer?.(chat.config.id),
-        disabled: !hasCodeExplorerAction,
-      },
-      {
-        id: "rename",
-        label: "Rename",
-        onClick: () => setIsRenameModalOpen(true),
-      },
-      {
-        id: "delete",
-        label: "Delete",
-        onClick: () => setIsDeleteConfirmOpen(true),
-        destructive: true,
-      },
-    ];
-
-    if (!sidebarPinning) {
-      return items;
-    }
-
-    return insertPinActionItem(items, {
-      id: "toggle-sidebar-pin",
-      label: sidebarPinning.isPinned({ kind: "chat", id: chat.config.id })
-        ? "Unpin from sidebar"
-        : "Pin to sidebar",
-      onClick: () => sidebarPinning.togglePinned({ kind: "chat", id: chat.config.id }),
+    return buildChatActionItems({
+      chat,
+      hasCodeExplorerAction,
+      spawnPending: isSpawnPending,
+      spawnCurrentPlanPending: isSpawnCurrentPlanPending,
+      onSpawnTask: () => void handleSpawnTask(),
+      onSpawnTaskFromCurrentPlan: () => void openSpawnCurrentPlanModal(),
+      onOpenCodeExplorer: () => onOpenCodeExplorer?.(chat.config.id),
+      onRename: () => setIsRenameModalOpen(true),
+      onDelete: () => setIsDeleteConfirmOpen(true),
+      sidebarPinning,
     });
   }, [chat, handleSpawnTask, hasCodeExplorerAction, isActive, isEmbedded, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal, sidebarPinning]);
 

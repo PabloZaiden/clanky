@@ -1015,6 +1015,7 @@ describe("ShellSidebarNav", () => {
       "Open code explorer",
       "New Session",
       "New Chat",
+      "Start VNC Session",
       "SSH Server Settings",
       "Pin to sidebar",
     ]);
@@ -1064,7 +1065,14 @@ describe("ShellSidebarNav", () => {
     const { getAllByRole, getAllByText, user } = renderWithUser(
       <SidebarHarness quickChatWorkspace={quickChatWorkspace} />,
     );
-    const expectedPinnedItems = ["Open code explorer", "Unpin from sidebar"];
+    const expectedPinnedItems = [
+      "Spawn Task",
+      "Spawn task from plan file",
+      "Code explorer",
+      "Rename",
+      "Unpin from sidebar",
+      "Delete",
+    ];
 
     openContextMenuForButton(getByTextButton(getAllByText("Workspace Chat")[0]!));
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);
@@ -1084,7 +1092,7 @@ describe("ShellSidebarNav", () => {
       { kind: "ssh-session", id: "server-session-1" },
     ]));
     const { getAllByRole, getAllByText, user } = renderWithUser(<SidebarHarness />);
-    const expectedPinnedItems = ["Open session", "Unpin from sidebar"];
+    const expectedPinnedItems = ["Open session", "Rename", "Unpin from sidebar", "Delete"];
 
     openContextMenuForButton(getByTextButton(getAllByText("Standalone Server Session")[0]!));
     expect(getAllByRole("menuitem").map((item) => item.textContent)).toEqual(expectedPinnedItems);

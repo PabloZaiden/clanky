@@ -1,5 +1,5 @@
 import type { SshServer, SshServerSession } from "../../types";
-import { ActionMenu, Badge, Button, GearIcon, insertPinActionItem } from "../common";
+import { ActionMenu, Badge, Button, GearIcon } from "../common";
 import type { ShellRoute } from "./shell-types";
 import type { SidebarPinningState } from "./sidebar-pins";
 import { ShellPanel, SummaryCard } from "./shell-panel";
@@ -21,19 +21,7 @@ export function SshServerView({
   onOpenSettings: () => void;
   sidebarPinning: SidebarPinningState;
 }) {
-  const serverPinnedItem = { kind: "ssh-server" as const, id: server.config.id };
-  const actionItems = insertPinActionItem([
-    ...buildSshServerActionItems({ server, onNavigate }),
-    {
-      id: "start-vnc-session",
-      label: "Start VNC Session",
-      onClick: () => onNavigate({ view: "vnc-session", serverId: server.config.id }),
-    },
-  ], {
-      id: "toggle-sidebar-pin",
-      label: sidebarPinning.isPinned(serverPinnedItem) ? "Unpin from sidebar" : "Pin to sidebar",
-      onClick: () => sidebarPinning.togglePinned(serverPinnedItem),
-  });
+  const actionItems = buildSshServerActionItems({ server, onNavigate, sidebarPinning });
 
   return (
     <ShellPanel
