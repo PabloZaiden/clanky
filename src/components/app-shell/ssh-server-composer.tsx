@@ -1,6 +1,5 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { useToast } from "../../hooks";
-import { getStoredSshServerPassword } from "../../lib/ssh-browser-credentials";
 import type { CreateSshServerRequest, SshServer, UpdateSshServerRequest } from "../../types";
 import { Badge, Button } from "../common";
 import type { ShellRoute } from "./shell-types";
@@ -39,40 +38,13 @@ export function SshServerComposer({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
     setValues(createSshServerFormValues(initialServer));
-    if (!initialServer) {
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    void (async () => {
-      try {
-        const storedPassword = await getStoredSshServerPassword(initialServer.config.id);
-        if (!cancelled && storedPassword !== null) {
-          setValues((current) => ({
-            ...current,
-            password: storedPassword,
-          }));
-        }
-      } catch (error) {
-        if (!cancelled) {
-          toast.error(error instanceof Error ? error.message : String(error));
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     initialServer?.config.id,
     initialServer?.config.name,
     initialServer?.config.address,
     initialServer?.config.username,
     initialServer?.config.repositoriesBasePath,
-    toast,
   ]);
 
   function handleChange(field: keyof SshServerFormValues, value: string) {

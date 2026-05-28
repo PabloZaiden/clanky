@@ -20,13 +20,11 @@ export {
   fetchSshServerPublicKey,
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
-  getStoredSshServerPassword,
   invalidateStoredSshCredentialToken,
   isStoredCredentialCompatible,
   saveStoredSshServerCredential,
   storeSshServerPassword,
   type BrowserCredentialStorageLike,
-  type SshServerEncryptedLocalPassword,
   type StoredSshServerCredential,
   type SshBrowserCredentialDependencies,
 } from "./ssh-browser-credentials";
@@ -56,3 +54,13 @@ export {
   type ThemeStorageLike,
   type ThemeSnapshot,
 } from "./theme";
+export {
+  clearStoredVncPassword,
+  getStoredVncPassword,
+  getStoredVncPasswordRecord,
+  storeVncPassword,
+  type EncryptedVncPassword,
+  type StoredVncPassword,
+  type VncBrowserCredentialDependencies,
+  type VncCredentialStorageLike,
+} from "./vnc-browser-credentials";

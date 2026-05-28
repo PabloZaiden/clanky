@@ -8,9 +8,6 @@ import type {
 
 const log = createLogger("sshBrowserCredentials");
 const SSH_CREDENTIAL_STORAGE_PREFIX = "clanky.sshServerCredential.";
-const SSH_CREDENTIAL_KEY_STORAGE_PREFIX = "clanky.sshServerCredentialKey.";
-const LOCAL_PASSWORD_ALGORITHM = "AES-GCM-256";
-const LOCAL_PASSWORD_VERSION = 1;
 
 interface CachedSshCredentialToken {
   credentialToken: string;
@@ -22,15 +19,7 @@ const exchangedCredentialTokenCache = new Map<string, CachedSshCredentialToken>(
 
 export interface StoredSshServerCredential {
   encryptedCredential: SshServerEncryptedCredential;
-  encryptedLocalPassword?: SshServerEncryptedLocalPassword;
   storedAt: string;
-}
-
-export interface SshServerEncryptedLocalPassword {
-  algorithm: typeof LOCAL_PASSWORD_ALGORITHM;
-  version: typeof LOCAL_PASSWORD_VERSION;
-  iv: string;
-  ciphertext: string;
 }
 
 export interface BrowserCredentialStorageLike {
@@ -44,7 +33,6 @@ type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Respo
 export interface SshBrowserCredentialDependencies {
   fetchFn?: FetchLike;
   storage?: BrowserCredentialStorageLike;
-  crypto?: Pick<Crypto, "getRandomValues">;
   subtle?: SubtleCrypto;
   now?: () => Date;
 }
@@ -67,24 +55,12 @@ function resolveSubtle(subtle?: SubtleCrypto): SubtleCrypto {
   return resolvedSubtle;
 }
 
-function resolveCrypto(crypto?: Pick<Crypto, "getRandomValues">): Pick<Crypto, "getRandomValues"> {
-  const resolvedCrypto = crypto ?? globalThis.crypto;
-  if (!resolvedCrypto) {
-    throw new Error("Web Crypto is not available in this environment");
-  }
-  return resolvedCrypto;
-}
-
 function resolveFetch(fetchFn?: FetchLike): FetchLike {
   return fetchFn ?? ((input, init) => appFetch(String(input), init));
 }
 
 function getStorageKey(serverId: string): string {
   return `${SSH_CREDENTIAL_STORAGE_PREFIX}${serverId}`;
-}
-
-function getLocalEncryptionKeyStorageKey(serverId: string): string {
-  return `${SSH_CREDENTIAL_KEY_STORAGE_PREFIX}${serverId}`;
 }
 
 function getNow(dependencies: SshBrowserCredentialDependencies): Date {
@@ -156,26 +132,6 @@ function encodeArrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-function decodeBase64ToArrayBuffer(value: string): ArrayBuffer {
-  const decoded = atob(value);
-  const bytes = new Uint8Array(decoded.length);
-  for (let index = 0; index < decoded.length; index++) {
-    bytes[index] = decoded.charCodeAt(index);
-  }
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-}
-
-function isEncryptedLocalPasswordShape(value: unknown): value is SshServerEncryptedLocalPassword {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return record["algorithm"] === LOCAL_PASSWORD_ALGORITHM
-    && record["version"] === LOCAL_PASSWORD_VERSION
-    && typeof record["iv"] === "string"
-    && typeof record["ciphertext"] === "string";
-}
-
 function isStoredCredentialShape(value: unknown): value is StoredSshServerCredential {
   if (!value || typeof value !== "object") {
     return false;
@@ -186,64 +142,11 @@ function isStoredCredentialShape(value: unknown): value is StoredSshServerCreden
     return false;
   }
   const credential = encryptedCredential as Record<string, unknown>;
-  const encryptedLocalPassword = record["encryptedLocalPassword"];
-  if (encryptedLocalPassword !== undefined && !isEncryptedLocalPasswordShape(encryptedLocalPassword)) {
-    return false;
-  }
-
   return typeof credential["algorithm"] === "string"
     && typeof credential["fingerprint"] === "string"
     && typeof credential["version"] === "number"
     && typeof credential["ciphertext"] === "string"
     && typeof record["storedAt"] === "string";
-}
-
-async function getLocalPasswordCryptoKey(
-  serverId: string,
-  dependencies: SshBrowserCredentialDependencies,
-): Promise<CryptoKey> {
-  const storage = resolveStorage(dependencies.storage);
-  if (!storage) {
-    throw new Error("Browser storage is not available in this environment");
-  }
-
-  const subtle = resolveSubtle(dependencies.subtle);
-  let rawKey = storage.getItem(getLocalEncryptionKeyStorageKey(serverId));
-  if (!rawKey) {
-    const keyBytes = new Uint8Array(32);
-    resolveCrypto(dependencies.crypto).getRandomValues(keyBytes);
-    rawKey = encodeArrayBufferToBase64(keyBytes.buffer);
-    storage.setItem(getLocalEncryptionKeyStorageKey(serverId), rawKey);
-  }
-
-  return await subtle.importKey(
-    "raw",
-    decodeBase64ToArrayBuffer(rawKey),
-    { name: "AES-GCM" },
-    false,
-    ["encrypt", "decrypt"],
-  );
-}
-
-async function encryptLocalPassword(
-  serverId: string,
-  password: string,
-  dependencies: SshBrowserCredentialDependencies,
-): Promise<SshServerEncryptedLocalPassword> {
-  const key = await getLocalPasswordCryptoKey(serverId, dependencies);
-  const iv = new Uint8Array(12);
-  resolveCrypto(dependencies.crypto).getRandomValues(iv);
-  const ciphertext = await resolveSubtle(dependencies.subtle).encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    new TextEncoder().encode(password),
-  );
-  return {
-    algorithm: LOCAL_PASSWORD_ALGORITHM,
-    version: LOCAL_PASSWORD_VERSION,
-    iv: encodeArrayBufferToBase64(iv.buffer),
-    ciphertext: encodeArrayBufferToBase64(ciphertext),
-  };
 }
 
 export function getStoredSshServerCredential(
@@ -282,9 +185,7 @@ export function clearStoredSshServerCredential(
   dependencies: SshBrowserCredentialDependencies = {},
 ): void {
   clearCachedCredentialToken(serverId);
-  const storage = resolveStorage(dependencies.storage);
-  storage?.removeItem(getStorageKey(serverId));
-  storage?.removeItem(getLocalEncryptionKeyStorageKey(serverId));
+  resolveStorage(dependencies.storage)?.removeItem(getStorageKey(serverId));
 }
 
 export async function fetchSshServerPublicKey(
@@ -337,7 +238,6 @@ export function saveStoredSshServerCredential(
   serverId: string,
   encryptedCredential: SshServerEncryptedCredential,
   dependencies: SshBrowserCredentialDependencies = {},
-  encryptedLocalPassword?: SshServerEncryptedLocalPassword,
 ): StoredSshServerCredential {
   clearCachedCredentialToken(serverId);
   const storage = resolveStorage(dependencies.storage);
@@ -346,7 +246,6 @@ export function saveStoredSshServerCredential(
   }
   const record: StoredSshServerCredential = {
     encryptedCredential,
-    ...(encryptedLocalPassword ? { encryptedLocalPassword } : {}),
     storedAt: (dependencies.now ?? (() => new Date()))().toISOString(),
   };
   storage.setItem(getStorageKey(serverId), JSON.stringify(record));
@@ -359,63 +258,8 @@ export async function storeSshServerPassword(
   dependencies: SshBrowserCredentialDependencies = {},
 ): Promise<StoredSshServerCredential> {
   const publicKey = await fetchSshServerPublicKey(serverId, dependencies);
-  const [encryptedCredential, encryptedLocalPassword] = await Promise.all([
-    encryptSshServerPassword(password, publicKey, dependencies),
-    encryptLocalPassword(serverId, password, dependencies),
-  ]);
-  return saveStoredSshServerCredential(serverId, encryptedCredential, dependencies, encryptedLocalPassword);
-}
-
-export async function getStoredSshServerPassword(
-  serverId: string,
-  dependencies: SshBrowserCredentialDependencies = {},
-): Promise<string | null> {
-  const storedCredential = getStoredSshServerCredential(serverId, dependencies);
-  if (!storedCredential?.encryptedLocalPassword) {
-    return null;
-  }
-
-  const storage = resolveStorage(dependencies.storage);
-  if (!storage) {
-    return null;
-  }
-
-  const rawKey = storage.getItem(getLocalEncryptionKeyStorageKey(serverId));
-  if (!rawKey) {
-    return null;
-  }
-
-  try {
-    const subtle = resolveSubtle(dependencies.subtle);
-    const key = await subtle.importKey(
-      "raw",
-      decodeBase64ToArrayBuffer(rawKey),
-      { name: "AES-GCM" },
-      false,
-      ["decrypt"],
-    );
-    const decrypted = await subtle.decrypt(
-      {
-        name: "AES-GCM",
-        iv: decodeBase64ToArrayBuffer(storedCredential.encryptedLocalPassword.iv),
-      },
-      key,
-      decodeBase64ToArrayBuffer(storedCredential.encryptedLocalPassword.ciphertext),
-    );
-    return new TextDecoder().decode(decrypted);
-  } catch (error) {
-    log.warn("Removing invalid stored SSH local password payload", {
-      serverId,
-      error: String(error),
-    });
-    const nextRecord: StoredSshServerCredential = {
-      encryptedCredential: storedCredential.encryptedCredential,
-      storedAt: storedCredential.storedAt,
-    };
-    storage.setItem(getStorageKey(serverId), JSON.stringify(nextRecord));
-    storage.removeItem(getLocalEncryptionKeyStorageKey(serverId));
-    return null;
-  }
+  const encryptedCredential = await encryptSshServerPassword(password, publicKey, dependencies);
+  return saveStoredSshServerCredential(serverId, encryptedCredential, dependencies);
 }
 
 export async function exchangeSshServerCredential(

@@ -10,7 +10,6 @@ import { createMockApi } from "../helpers/mock-api";
 import { createMockWebSocket } from "../helpers/mock-websocket";
 import { renderWithUser, waitFor } from "../helpers/render";
 import { createModelInfo } from "../helpers/factories";
-import { getStoredSshServerPassword, storeSshServerPassword } from "@/lib/ssh-browser-credentials";
 import type { SshServer, SshServerSession } from "@/types";
 
 const api = createMockApi();
@@ -221,41 +220,6 @@ describe("ssh server management scenario", () => {
 
     expect(api.calls("/api/ssh-servers/:id", "PATCH")).toHaveLength(0);
     expect(localStorage.getItem("clanky.sshServerCredential.server-1")).toBeTruthy();
-  });
-
-  test("editing an SSH server pre-fills and updates the client-only password", async () => {
-    setupBaseApi();
-
-    const server = createServer();
-
-    api.get("/api/ssh-servers", () => [server]);
-    api.get("/api/ssh-servers/:id/sessions", () => []);
-    api.get("/api/ssh-servers/:id/public-key", () => server.publicKey);
-
-    await storeSshServerPassword("server-1", "saved-secret");
-
-    const { getByRole, user } = renderWithUser(<App />, {
-      route: "#/new/ssh-server/server-1",
-    });
-
-    await waitFor(() => {
-      expect(getByRole("heading", { name: "Edit Build Box" })).toBeTruthy();
-      const passwordInput = document.querySelector("#server-password") as HTMLInputElement | null;
-      expect(passwordInput?.value).toBe("saved-secret");
-    });
-
-    const passwordInput = document.querySelector("#server-password") as HTMLInputElement;
-    await user.clear(passwordInput);
-    await user.type(passwordInput, "changed-secret");
-    await user.click(getByRole("button", { name: "Save Changes" }));
-
-    await waitFor(() => {
-      expect(window.location.hash).toBe("#/server/server-1");
-    });
-
-    expect(api.calls("/api/ssh-servers/:id", "PATCH")).toHaveLength(0);
-    expect(await getStoredSshServerPassword("server-1")).toBe("changed-secret");
-    expect(localStorage.getItem("clanky.sshServerCredential.server-1")).not.toContain("changed-secret");
   });
 
   test("checks server prerequisites from SSH server settings", async () => {
