@@ -247,6 +247,7 @@ export function SshSessionDetails({
   };
   const headerActionItems = buildSshSessionActionItems({
     sessionId: session.config.id,
+    includeOpenSession: false,
     canRename: canRenameSession,
     onOpenSession: () => {},
     onRename: () => setShowRenameModal(true),

@@ -133,6 +133,24 @@ describe("shell action item builders", () => {
     expect(items.find((item) => item.id === "delete")?.destructive).toBe(true);
   });
 
+  test("chat builder labels only the active spawn action as pending", () => {
+    const items = buildChatActionItems({
+      chat: createChat(),
+      hasCodeExplorerAction: true,
+      spawnPending: false,
+      spawnCurrentPlanPending: true,
+      onSpawnTask: () => {},
+      onSpawnTaskFromCurrentPlan: () => {},
+      onOpenCodeExplorer: () => {},
+      onRename: () => {},
+      onDelete: () => {},
+    });
+
+    expect(labels(items).slice(0, 2)).toEqual(["Spawn Task", "Spawning task from plan file..."]);
+    expect(items.find((item) => item.id === "spawn-task")?.disabled).toBe(true);
+    expect(items.find((item) => item.id === "spawn-task-from-current-plan")?.disabled).toBe(true);
+  });
+
   test("ssh session builder includes open, rename, delete, and pin actions", () => {
     const items = buildSshSessionActionItems({
       sessionId: "session-1",
@@ -146,5 +164,19 @@ describe("shell action item builders", () => {
     expect(labels(items)).toEqual(["Open session", "Rename", "Pin to sidebar", "Delete"]);
     expect(items.find((item) => item.id === "rename")?.disabled).toBe(true);
     expect(items.find((item) => item.id === "delete")?.destructive).toBe(true);
+  });
+
+  test("ssh session builder can omit open session action for current-session menus", () => {
+    const items = buildSshSessionActionItems({
+      sessionId: "session-1",
+      includeOpenSession: false,
+      canRename: true,
+      onOpenSession: () => {},
+      onRename: () => {},
+      onDelete: () => {},
+      sidebarPinning: createPinningState(),
+    });
+
+    expect(labels(items)).toEqual(["Rename", "Pin to sidebar", "Delete"]);
   });
 });

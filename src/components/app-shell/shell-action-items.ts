@@ -41,6 +41,7 @@ export interface ChatActionItemOptions {
 
 export interface SshSessionActionItemOptions {
   sessionId: string;
+  includeOpenSession?: boolean;
   canRename: boolean;
   onOpenSession: () => void;
   onRename: () => void;
@@ -214,6 +215,7 @@ export function buildChatActionItems({
 
 export function buildSshSessionActionItems({
   sessionId,
+  includeOpenSession = true,
   canRename,
   onOpenSession,
   onRename,
@@ -221,11 +223,13 @@ export function buildSshSessionActionItems({
   sidebarPinning,
 }: SshSessionActionItemOptions): ActionMenuItem[] {
   return withPinAction([
-    {
-      id: "open-session",
-      label: "Open session",
-      onClick: onOpenSession,
-    },
+    ...(includeOpenSession
+      ? [{
+          id: "open-session",
+          label: "Open session",
+          onClick: onOpenSession,
+        }]
+      : []),
     {
       id: "rename",
       label: "Rename",

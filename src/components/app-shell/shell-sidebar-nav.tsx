@@ -305,6 +305,7 @@ function ItemSidebarContextMenu({
   pinnedItem,
   chat,
   chatSpawnPending,
+  chatSpawnFromPlanPending,
   sessionTitle,
   canRenameSession,
   position,
@@ -323,6 +324,7 @@ function ItemSidebarContextMenu({
   pinnedItem: SidebarPinnedItem;
   chat?: Chat;
   chatSpawnPending?: boolean;
+  chatSpawnFromPlanPending?: boolean;
   sessionTitle?: string;
   canRenameSession?: boolean;
   position: ContextMenuPosition;
@@ -334,7 +336,7 @@ function ItemSidebarContextMenu({
   onChatRename: (chat: Chat) => void;
   onChatDelete: (chat: Chat) => void;
   onSshSessionRename: (sessionId: string, currentName: string, canRename: boolean) => void;
-  onSshSessionDelete: (sessionId: string, title: string) => void;
+  onSshSessionDelete: (sessionId: string, title: string, kind: "workspace" | "server") => void;
 }) {
   const items = kind === "task"
     ? buildTaskActionItems({
@@ -347,7 +349,7 @@ function ItemSidebarContextMenu({
           chat: chat!,
           hasCodeExplorerAction: true,
           spawnPending: chatSpawnPending ?? false,
-          spawnCurrentPlanPending: chatSpawnPending ?? false,
+          spawnCurrentPlanPending: chatSpawnFromPlanPending ?? false,
           onSpawnTask: () => onChatSpawnTask(chat!),
           onSpawnTaskFromCurrentPlan: () => onChatSpawnTaskFromCurrentPlan(chat!),
           onOpenCodeExplorer: () => onNavigate({ view: "code-explorer", target: { contentType: "chat", chatId: pinnedItem.id } }),
@@ -360,7 +362,11 @@ function ItemSidebarContextMenu({
           canRename: canRenameSession ?? true,
           onOpenSession: () => onNavigate({ view: "ssh", sshSessionId: pinnedItem.id }),
           onRename: () => onSshSessionRename(pinnedItem.id, sessionTitle ?? title, canRenameSession ?? true),
-          onDelete: () => onSshSessionDelete(pinnedItem.id, sessionTitle ?? title),
+          onDelete: () => onSshSessionDelete(
+            pinnedItem.id,
+            sessionTitle ?? title,
+            canRenameSession ? "workspace" : "server",
+          ),
           sidebarPinning,
         });
 
@@ -409,12 +415,17 @@ export function ShellSidebarNav({
   const [chatDeleteTarget, setChatDeleteTarget] = useState<Chat | null>(null);
   const [chatDeletePending, setChatDeletePending] = useState(false);
   const [chatSpawnPendingIds, setChatSpawnPendingIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [chatSpawnFromPlanPendingIds, setChatSpawnFromPlanPendingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [sessionRenameTarget, setSessionRenameTarget] = useState<{
     id: string;
     name: string;
     canRename: boolean;
   } | null>(null);
-  const [sessionDeleteTarget, setSessionDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [sessionDeleteTarget, setSessionDeleteTarget] = useState<{
+    id: string;
+    name: string;
+    kind: "workspace" | "server";
+  } | null>(null);
   const [sessionDeletePending, setSessionDeletePending] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchQuery = searchInput.trim().toLowerCase();
@@ -481,7 +492,8 @@ export function ShellSidebarNav({
 
   async function spawnTaskFromChat(chat: Chat, fromCurrentPlan: boolean) {
     const chatId = chat.config.id;
-    setChatSpawnPendingIds((current) => new Set(current).add(chatId));
+    const setPendingIds = fromCurrentPlan ? setChatSpawnFromPlanPendingIds : setChatSpawnPendingIds;
+    setPendingIds((current) => new Set(current).add(chatId));
     try {
       const response = await appFetch(
         fromCurrentPlan
@@ -502,7 +514,7 @@ export function ShellSidebarNav({
     } catch (error) {
       onActionError(String(error));
     } finally {
-      setChatSpawnPendingIds((current) => {
+      setPendingIds((current) => {
         const next = new Set(current);
         next.delete(chatId);
         return next;
@@ -535,15 +547,18 @@ export function ShellSidebarNav({
         throw new Error("SSH session delete is unavailable");
       }
       const sessionId = sessionDeleteTarget.id;
-      let success = await deleteSshSession(sessionId);
-      if (!success) {
+      if (sessionDeleteTarget.kind === "workspace") {
+        const success = await deleteSshSession(sessionId);
+        if (!success) {
+          throw new Error("Failed to delete SSH session");
+        }
+      } else {
         const response = await appFetch(`/api/ssh-server-sessions/${sessionId}`, {
           method: "DELETE",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ credentialToken: null }),
         });
-        success = response.ok;
-        if (!success) {
+        if (!response.ok) {
           const data = await response.json() as { message?: string; error?: string };
           throw new Error(data.message ?? data.error ?? "Failed to delete SSH session");
         }
@@ -1698,6 +1713,9 @@ export function ShellSidebarNav({
             pinnedItem={contextMenu.pinnedItem}
             chat={contextMenu.kind === "chat" ? contextMenu.chatNode.chat : undefined}
             chatSpawnPending={contextMenu.kind === "chat" ? chatSpawnPendingIds.has(contextMenu.chatNode.chat.config.id) : undefined}
+            chatSpawnFromPlanPending={
+              contextMenu.kind === "chat" ? chatSpawnFromPlanPendingIds.has(contextMenu.chatNode.chat.config.id) : undefined
+            }
             sessionTitle={contextMenu.kind === "ssh-session" ? contextMenu.sessionNode.title : undefined}
             canRenameSession={contextMenu.kind === "ssh-session" && "session" in contextMenu.sessionNode}
             position={contextMenu.position}
@@ -1709,7 +1727,7 @@ export function ShellSidebarNav({
             onChatRename={setChatRenameTarget}
             onChatDelete={setChatDeleteTarget}
             onSshSessionRename={(id, name, canRename) => setSessionRenameTarget({ id, name, canRename })}
-            onSshSessionDelete={(id, name) => setSessionDeleteTarget({ id, name })}
+            onSshSessionDelete={(id, name, kind) => setSessionDeleteTarget({ id, name, kind })}
           />
         )}
         <RenameChatModal
