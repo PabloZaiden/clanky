@@ -25,6 +25,21 @@ export interface StoredVncPassword {
   storedAt: string;
 }
 
+export interface StoredVncCredentials {
+  encryptedCredentials: EncryptedVncPassword;
+  storedAt: string;
+}
+
+export interface VncCredentials {
+  username: string;
+  password: string;
+}
+
+export interface StoredVncCredentialsResult {
+  username?: string;
+  password: string;
+}
+
 export interface EncryptedVncPassword {
   algorithm: typeof VNC_PASSWORD_ALGORITHM;
   version: typeof VNC_PASSWORD_VERSION;
@@ -104,6 +119,24 @@ function isStoredVncPasswordShape(value: unknown): value is StoredVncPassword {
     && isEncryptedVncPasswordShape(record["encryptedPassword"]);
 }
 
+function isStoredVncCredentialsShape(value: unknown): value is StoredVncCredentials {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return typeof record["storedAt"] === "string"
+    && isEncryptedVncPasswordShape(record["encryptedCredentials"]);
+}
+
+function isStoredVncCredentialPayload(value: unknown): value is VncCredentials {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return typeof record["username"] === "string"
+    && typeof record["password"] === "string";
+}
+
 async function getEncryptionKey(
   serverId: string,
   dependencies: VncBrowserCredentialDependencies,
@@ -130,10 +163,10 @@ async function getEncryptionKey(
   );
 }
 
-export function getStoredVncPasswordRecord(
+export function getStoredVncCredentialsRecord(
   serverId: string,
   dependencies: VncBrowserCredentialDependencies = {},
-): StoredVncPassword | null {
+): StoredVncCredentials | StoredVncPassword | null {
   const storage = resolveStorage(dependencies.storage);
   if (!storage) {
     return null;
@@ -146,7 +179,7 @@ export function getStoredVncPasswordRecord(
 
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!isStoredVncPasswordShape(parsed)) {
+    if (!isStoredVncCredentialsShape(parsed) && !isStoredVncPasswordShape(parsed)) {
       storage.removeItem(getPasswordStorageKey(serverId));
       return null;
     }
@@ -161,11 +194,13 @@ export function getStoredVncPasswordRecord(
   }
 }
 
-export async function storeVncPassword(
+export const getStoredVncPasswordRecord = getStoredVncCredentialsRecord;
+
+export async function storeVncCredentials(
   serverId: string,
-  password: string,
+  credentials: VncCredentials,
   dependencies: VncBrowserCredentialDependencies = {},
-): Promise<StoredVncPassword> {
+): Promise<StoredVncCredentials> {
   const storage = resolveStorage(dependencies.storage);
   if (!storage) {
     throw new Error("Browser storage is not available in this environment");
@@ -176,10 +211,10 @@ export async function storeVncPassword(
   const ciphertext = await resolveSubtle(dependencies.subtle).encrypt(
     { name: "AES-GCM", iv },
     await getEncryptionKey(serverId, dependencies),
-    new TextEncoder().encode(password),
+    new TextEncoder().encode(JSON.stringify(credentials)),
   );
-  const record: StoredVncPassword = {
-    encryptedPassword: {
+  const record: StoredVncCredentials = {
+    encryptedCredentials: {
       algorithm: VNC_PASSWORD_ALGORITHM,
       version: VNC_PASSWORD_VERSION,
       iv: encodeArrayBufferToBase64(iv.buffer),
@@ -191,29 +226,50 @@ export async function storeVncPassword(
   return record;
 }
 
-export async function getStoredVncPassword(
+export async function storeVncPassword(
+  serverId: string,
+  password: string,
+  dependencies: VncBrowserCredentialDependencies = {},
+): Promise<StoredVncCredentials> {
+  return await storeVncCredentials(serverId, { username: "", password }, dependencies);
+}
+
+export async function getStoredVncCredentials(
   serverId: string,
   dependencies: VncBrowserCredentialDependencies = {},
-): Promise<string | null> {
+): Promise<StoredVncCredentialsResult | null> {
   const storage = resolveStorage(dependencies.storage);
   if (!storage) {
     return null;
   }
-  const record = getStoredVncPasswordRecord(serverId, dependencies);
+  const record = getStoredVncCredentialsRecord(serverId, dependencies);
   if (!record) {
     return null;
   }
+
+  const encryptedValue = "encryptedCredentials" in record
+    ? record.encryptedCredentials
+    : record.encryptedPassword;
 
   try {
     const decrypted = await resolveSubtle(dependencies.subtle).decrypt(
       {
         name: "AES-GCM",
-        iv: decodeBase64ToArrayBuffer(record.encryptedPassword.iv),
+        iv: decodeBase64ToArrayBuffer(encryptedValue.iv),
       },
       await getEncryptionKey(serverId, dependencies),
-      decodeBase64ToArrayBuffer(record.encryptedPassword.ciphertext),
+      decodeBase64ToArrayBuffer(encryptedValue.ciphertext),
     );
-    return new TextDecoder().decode(decrypted);
+    const decryptedText = new TextDecoder().decode(decrypted);
+    if ("encryptedPassword" in record) {
+      return { password: decryptedText };
+    }
+    const parsed = JSON.parse(decryptedText) as unknown;
+    if (!isStoredVncCredentialPayload(parsed)) {
+      clearStoredVncPassword(serverId, dependencies);
+      return null;
+    }
+    return parsed;
   } catch (error) {
     log.warn("Removing undecryptable stored VNC password payload", {
       serverId,
@@ -222,6 +278,13 @@ export async function getStoredVncPassword(
     clearStoredVncPassword(serverId, dependencies);
     return null;
   }
+}
+
+export async function getStoredVncPassword(
+  serverId: string,
+  dependencies: VncBrowserCredentialDependencies = {},
+): Promise<string | null> {
+  return (await getStoredVncCredentials(serverId, dependencies))?.password ?? null;
 }
 
 export function clearStoredVncPassword(

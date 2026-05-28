@@ -29,8 +29,7 @@ export function VncViewer({
   const onErrorRef = useRef(onError);
 
   useEffect(() => {
-    const trimmedUsername = username?.trim();
-    credentialsRef.current = password ? { username: trimmedUsername || undefined, password } : undefined;
+    credentialsRef.current = password ? { username, password } : undefined;
   }, [password, username]);
 
   useEffect(() => {
@@ -58,7 +57,7 @@ export function VncViewer({
       const detail = (event as Event & { detail?: { types?: string[] } }).detail;
       const requiresUsername = detail?.types?.includes("username") ?? false;
       const credentials = credentialsRef.current;
-      if (credentials && (!requiresUsername || credentials.username)) {
+      if (credentials && (!requiresUsername || credentials.username !== undefined)) {
         rfb.sendCredentials(credentials);
         return;
       }

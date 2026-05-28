@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { storeVncPassword } from "@/lib/vnc-browser-credentials";
+import { getStoredVncCredentials, storeVncCredentials } from "@/lib/vnc-browser-credentials";
 import type { SshServer, VncSession } from "@/types";
 import { createMockApi } from "../helpers/mock-api";
 import { renderWithUser, waitFor } from "../helpers/render";
@@ -72,9 +72,9 @@ describe("VncSessionView", () => {
     api.uninstall();
   });
 
-  test("prefills and updates the encrypted client-side VNC password", async () => {
+  test("prefills and updates encrypted client-side VNC credentials", async () => {
     const { VncSessionView } = await import("@/components/app-shell/vnc-session-view");
-    await storeVncPassword("server-1", "saved-vnc-secret");
+    await storeVncCredentials("server-1", { username: "", password: "saved-vnc-secret" });
     storeSshCredentialShape();
     api.get("/api/ssh-servers/:id/vnc-sessions", () => []);
     api.get("/api/ssh-servers/:id/public-key", () => createServer().publicKey);
@@ -92,10 +92,13 @@ describe("VncSessionView", () => {
     );
 
     const passwordInput = document.querySelector("input[type='password']") as HTMLInputElement | null;
+    const usernameInput = getByRole("textbox", { name: "VNC username" }) as HTMLInputElement;
     await waitFor(() => {
+      expect(usernameInput.value).toBe("");
       expect(passwordInput?.value).toBe("saved-vnc-secret");
     });
 
+    await user.type(usernameInput, "changed-vnc-user");
     await user.clear(passwordInput!);
     await user.type(passwordInput!, "changed-vnc-secret");
     await user.click(getByRole("button", { name: "Start VNC Session" }));
@@ -103,9 +106,11 @@ describe("VncSessionView", () => {
     await waitFor(() => {
       expect(api.calls("/api/ssh-servers/:id/vnc-sessions", "POST")).toHaveLength(1);
     });
-    expect(await import("@/lib/vnc-browser-credentials").then((module) =>
-      module.getStoredVncPassword("server-1")
-    )).toBe("changed-vnc-secret");
+    expect(await getStoredVncCredentials("server-1")).toEqual({
+      username: "changed-vnc-user",
+      password: "changed-vnc-secret",
+    });
     expect(window.localStorage.getItem("clanky.vncPassword.server-1")).not.toContain("changed-vnc-secret");
+    expect(window.localStorage.getItem("clanky.vncPassword.server-1")).not.toContain("changed-vnc-user");
   });
 });
