@@ -8,7 +8,6 @@ export function VncViewer({
   username,
   password,
   fullscreen = false,
-  swapRedBlue = false,
   onCredentialsRequired,
   onDisconnect,
   onError,
@@ -17,7 +16,6 @@ export function VncViewer({
   username?: string;
   password?: string;
   fullscreen?: boolean;
-  swapRedBlue?: boolean;
   onCredentialsRequired?: () => void;
   onDisconnect: () => void;
   onError?: (message: string) => void;
@@ -80,20 +78,9 @@ export function VncViewer({
 
   return (
     <div className="h-full min-h-0 overflow-hidden rounded-lg border border-gray-200 bg-black dark:border-gray-800">
-      {swapRedBlue && (
-        <svg aria-hidden="true" className="absolute h-0 w-0">
-          <filter id="clanky-vnc-swap-red-blue">
-            <feColorMatrix
-              type="matrix"
-              values="0 0 1 0 0  0 1 0 0 0  1 0 0 0 0  0 0 0 1 0"
-            />
-          </filter>
-        </svg>
-      )}
       <div
         ref={containerRef}
         className={fullscreen ? "h-full min-h-0 w-full" : "h-[70vh] min-h-[420px] w-full"}
-        style={swapRedBlue ? { filter: "url(#clanky-vnc-swap-red-blue)" } : undefined}
       />
     </div>
   );
