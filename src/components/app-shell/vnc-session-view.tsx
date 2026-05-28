@@ -3,7 +3,7 @@ import type { SshServer, VncSession } from "../../types";
 import { useToast } from "../../hooks";
 import { closeVncSessionApi, createOrResumeVncSessionApi, listVncSessionsApi } from "../../hooks/sshServerActions";
 import { getStoredSshServerCredential, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
-import { getStoredVncPassword, storeVncPassword } from "../../lib/vnc-browser-credentials";
+import { getStoredVncCredentials, storeVncCredentials } from "../../lib/vnc-browser-credentials";
 import { Button } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
@@ -89,9 +89,14 @@ export function VncSessionView({
     setVncError(null);
     void (async () => {
       try {
-        const storedPassword = await getStoredVncPassword(server.config.id);
-        if (!cancelled && storedPassword !== null) {
-          setVncPassword(storedPassword);
+        const storedCredentials = await getStoredVncCredentials(server.config.id);
+        if (!cancelled && storedCredentials !== null) {
+          if (storedCredentials.username !== undefined) {
+            setVncUsername(storedCredentials.username);
+          } else {
+            setVncUsername("");
+          }
+          setVncPassword(storedCredentials.password);
         }
       } catch (error) {
         if (!cancelled) {
@@ -129,7 +134,10 @@ export function VncSessionView({
       window.localStorage.setItem(getVncPortStorageKey(server.config.id), String(parsedPort));
       const trimmedVncPassword = vncPassword.trim();
       if (trimmedVncPassword) {
-        await storeVncPassword(server.config.id, trimmedVncPassword);
+        await storeVncCredentials(server.config.id, {
+          username: vncUsername,
+          password: trimmedVncPassword,
+        });
       }
       const session = await createOrResumeVncSessionApi({
         serverId: server.config.id,
@@ -148,7 +156,7 @@ export function VncSessionView({
     } finally {
       setBusy(false);
     }
-  }, [refreshSessions, server.config.id, toast, vncPassword]);
+  }, [refreshSessions, server.config.id, toast, vncPassword, vncUsername]);
 
   const handleSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -327,7 +335,7 @@ export function VncSessionView({
         {activeSession?.state.status === "active" ? (
           <VncViewer
             session={activeSession}
-            username={vncUsername.trim() || undefined}
+            username={vncUsername}
             password={vncPassword || undefined}
             fullscreen={fullscreenActive}
             swapRedBlue={swapRedBlue}

@@ -56,11 +56,17 @@ export {
 } from "./theme";
 export {
   clearStoredVncPassword,
+  getStoredVncCredentials,
+  getStoredVncCredentialsRecord,
   getStoredVncPassword,
   getStoredVncPasswordRecord,
+  storeVncCredentials,
   storeVncPassword,
   type EncryptedVncPassword,
+  type StoredVncCredentials,
+  type StoredVncCredentialsResult,
   type StoredVncPassword,
   type VncBrowserCredentialDependencies,
+  type VncCredentials,
   type VncCredentialStorageLike,
 } from "./vnc-browser-credentials";
