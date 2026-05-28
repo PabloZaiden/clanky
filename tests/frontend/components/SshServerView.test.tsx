@@ -4,6 +4,39 @@ import type { SshServer } from "@/types";
 import { renderWithUser } from "../helpers/render";
 
 mock.module("@/hooks/sshServerActions", () => ({
+  listSshServersApi: async () => [],
+  getSshServerApi: async () => {
+    throw new Error("not implemented in this test");
+  },
+  listSshServerSessionsApi: async () => [],
+  createSshServerApi: async () => {
+    throw new Error("not implemented in this test");
+  },
+  updateSshServerApi: async () => {
+    throw new Error("not implemented in this test");
+  },
+  deleteSshServerApi: async () => true,
+  createStandaloneSshSessionApi: async () => {
+    throw new Error("not implemented in this test");
+  },
+  deleteStandaloneSshSessionApi: async () => true,
+  saveStandaloneSshServerPassword: async () => true,
+  checkSshServerPrerequisitesApi: async () => {
+    throw new Error("not implemented in this test");
+  },
+  listDevboxTemplatesApi: async () => [
+    {
+      name: "python",
+      description: "Python 3.14 on Debian bookworm.",
+      source: "built-in",
+      base: "bookworm",
+      image: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+      pinnedReference: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+      runtimeVersion: "Python 3.14",
+      languages: ["python"],
+      runnerCompatible: true,
+    },
+  ],
   listVncSessionsApi: async () => [],
   createOrResumeVncSessionApi: async () => {
     throw new Error("not implemented in this test");

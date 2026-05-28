@@ -20,11 +20,13 @@ export {
   fetchSshServerPublicKey,
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
+  getStoredSshServerPassword,
   invalidateStoredSshCredentialToken,
   isStoredCredentialCompatible,
   saveStoredSshServerCredential,
   storeSshServerPassword,
   type BrowserCredentialStorageLike,
+  type SshServerEncryptedLocalPassword,
   type StoredSshServerCredential,
   type SshBrowserCredentialDependencies,
 } from "./ssh-browser-credentials";

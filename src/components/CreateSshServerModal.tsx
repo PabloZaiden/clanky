@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SshServer } from "../types";
 import { Button, Modal, PASSWORD_INPUT_PROPS } from "./common";
 import { useToast } from "../hooks";
+import { getStoredSshServerPassword } from "../lib/ssh-browser-credentials";
 
 export interface CreateSshServerModalProps {
   isOpen: boolean;
@@ -31,11 +32,29 @@ export function CreateSshServerModal({
     if (!isOpen) {
       return;
     }
+    let cancelled = false;
     setName(initialServer?.config.name ?? "");
     setAddress(initialServer?.config.address ?? "");
     setUsername(initialServer?.config.username ?? "");
     setPassword("");
-  }, [initialServer, isOpen]);
+    if (initialServer) {
+      void (async () => {
+        try {
+          const storedPassword = await getStoredSshServerPassword(initialServer.config.id);
+          if (!cancelled && storedPassword !== null) {
+            setPassword(storedPassword);
+          }
+        } catch (error) {
+          if (!cancelled) {
+            toast.error(error instanceof Error ? error.message : String(error));
+          }
+        }
+      })();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [initialServer, isOpen, toast]);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();

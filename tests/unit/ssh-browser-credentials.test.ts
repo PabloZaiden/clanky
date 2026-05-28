@@ -5,6 +5,7 @@ import {
   encryptSshServerPassword,
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
+  getStoredSshServerPassword,
   saveStoredSshServerCredential,
   storeSshServerPassword,
 } from "../../src/lib/ssh-browser-credentials";
@@ -67,7 +68,48 @@ describe("ssh-browser-credentials", () => {
 
     expect(record.storedAt).toBe("2026-01-02T03:04:05.000Z");
     expect(record.encryptedCredential.ciphertext).not.toBe("super-secret");
+    expect(record.encryptedLocalPassword?.ciphertext).not.toBe("super-secret");
     expect(storage.getItem("clanky.sshServerCredential.server-1")).not.toContain("super-secret");
+    expect(await getStoredSshServerPassword("server-1", { storage })).toBe("super-secret");
+  });
+
+  test("updates the locally encrypted password when saving a new value", async () => {
+    const storage = new MemoryStorage();
+    const dependencies = {
+      storage,
+      fetchFn: async () => createJsonResponse(TEST_PUBLIC_KEY_RESPONSE),
+    };
+
+    await storeSshServerPassword("server-1", "old-secret", dependencies);
+    await storeSshServerPassword("server-1", "new-secret", dependencies);
+
+    expect(await getStoredSshServerPassword("server-1", { storage })).toBe("new-secret");
+    expect(storage.getItem("clanky.sshServerCredential.server-1")).not.toContain("new-secret");
+  });
+
+  test("returns null for legacy stored credentials without a local password payload", async () => {
+    const storage = new MemoryStorage();
+    const encryptedCredential = await encryptSshServerPassword("secret", TEST_PUBLIC_KEY_RESPONSE);
+    saveStoredSshServerCredential("server-1", encryptedCredential, { storage });
+
+    expect(await getStoredSshServerPassword("server-1", { storage })).toBeNull();
+    expect(getStoredSshServerCredential("server-1", { storage })).not.toBeNull();
+  });
+
+  test("removes only the local password payload when local decryption fails", async () => {
+    const storage = new MemoryStorage();
+    await storeSshServerPassword("server-1", "super-secret", {
+      storage,
+      fetchFn: async () => createJsonResponse(TEST_PUBLIC_KEY_RESPONSE),
+    });
+    storage.setItem("clanky.sshServerCredentialKey.server-1", btoa("not-a-valid-aes-256-key"));
+
+    expect(await getStoredSshServerPassword("server-1", { storage })).toBeNull();
+
+    const record = getStoredSshServerCredential("server-1", { storage });
+    expect(record).not.toBeNull();
+    expect(record?.encryptedLocalPassword).toBeUndefined();
+    expect(storage.getItem("clanky.sshServerCredentialKey.server-1")).toBeNull();
   });
 
   test("returns a token from a compatible stored credential", async () => {

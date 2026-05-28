@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useToast } from "../../hooks";
+import { getStoredSshServerPassword } from "../../lib/ssh-browser-credentials";
 import type { SshServer, SshServerPrerequisiteReport, UpdateSshServerRequest } from "../../types";
 import { checkSshServerPrerequisitesApi } from "../../hooks/sshServerActions";
 import { DeleteSshServerSection } from "./delete-ssh-server-section";
@@ -47,10 +48,30 @@ export function SshServerSettingsForm({
   const [prerequisiteError, setPrerequisiteError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setValues(createSshServerFormValues(server));
     setPrerequisiteReport(null);
     setPrerequisiteError(null);
-  }, [server]);
+    void (async () => {
+      try {
+        const storedPassword = await getStoredSshServerPassword(server.config.id);
+        if (!cancelled && storedPassword !== null) {
+          setValues((current) => ({
+            ...current,
+            password: storedPassword,
+          }));
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : String(error));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [server, toast]);
 
   const trimmedValues = trimSshServerFormValues(values);
   const isValid = Boolean(trimmedValues.name && trimmedValues.address && trimmedValues.username);
