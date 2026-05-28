@@ -54,3 +54,13 @@ export {
   type ThemeStorageLike,
   type ThemeSnapshot,
 } from "./theme";
+export {
+  clearStoredVncPassword,
+  getStoredVncPassword,
+  getStoredVncPasswordRecord,
+  storeVncPassword,
+  type EncryptedVncPassword,
+  type StoredVncPassword,
+  type VncBrowserCredentialDependencies,
+  type VncCredentialStorageLike,
+} from "./vnc-browser-credentials";

@@ -4,6 +4,52 @@ import type { SshServer } from "@/types";
 import { renderWithUser } from "../helpers/render";
 
 mock.module("@/hooks/sshServerActions", () => ({
+  listSshServersApi: async () => [],
+  getSshServerApi: async () => createServer("server-1", "/workspaces/one"),
+  listSshServerSessionsApi: async () => [],
+  createSshServerApi: async () => createServer("server-1", "/workspaces/one"),
+  updateSshServerApi: async () => createServer("server-1", "/workspaces/one"),
+  deleteSshServerApi: async () => true,
+  createStandaloneSshSessionApi: async () => ({
+    config: {
+      id: "standalone-session-1",
+      sshServerId: "server-1",
+      name: "Standalone session",
+      connectionMode: "dtach",
+      useTmux: true,
+      remoteSessionName: "clanky-standalone-session-1",
+      createdAt: "2026-05-28T00:00:00.000Z",
+      updatedAt: "2026-05-28T00:00:00.000Z",
+    },
+    state: { status: "ready" },
+  }),
+  deleteStandaloneSshSessionApi: async () => true,
+  saveStandaloneSshServerPassword: async () => true,
+  checkSshServerPrerequisitesApi: async () => ({
+    serverId: "server-1",
+    checkedAt: "2026-05-28T00:00:00.000Z",
+    summary: {
+      status: "ready",
+      availableCount: 0,
+      missingCount: 0,
+      notApplicableCount: 0,
+      unknownCount: 0,
+    },
+    checks: [],
+  }),
+  listDevboxTemplatesApi: async () => [
+    {
+      name: "python",
+      description: "Python 3.14 on Debian bookworm.",
+      source: "built-in",
+      base: "bookworm",
+      image: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+      pinnedReference: "mcr.microsoft.com/devcontainers/python:3.0.7-3.14-bookworm",
+      runtimeVersion: "Python 3.14",
+      languages: ["python"],
+      runnerCompatible: true,
+    },
+  ],
   listVncSessionsApi: async () => [],
   createOrResumeVncSessionApi: async () => {
     throw new Error("not implemented in this test");

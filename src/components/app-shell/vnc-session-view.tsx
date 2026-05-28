@@ -3,6 +3,7 @@ import type { SshServer, VncSession } from "../../types";
 import { useToast } from "../../hooks";
 import { closeVncSessionApi, createOrResumeVncSessionApi, listVncSessionsApi } from "../../hooks/sshServerActions";
 import { getStoredSshServerCredential, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
+import { getStoredVncPassword, storeVncPassword } from "../../lib/vnc-browser-credentials";
 import { Button } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
@@ -79,13 +80,30 @@ export function VncSessionView({
   }, [refreshSessions]);
 
   useEffect(() => {
+    let cancelled = false;
     setActiveSessionId(null);
     setRemotePort(getInitialRemotePort(server.config.id));
     setVncUsername(server.config.username);
     setVncPassword("");
     setSwapRedBlue(getInitialSwapRedBlue(server.config.id));
     setVncError(null);
-  }, [server.config.id, server.config.username]);
+    void (async () => {
+      try {
+        const storedPassword = await getStoredVncPassword(server.config.id);
+        if (!cancelled && storedPassword !== null) {
+          setVncPassword(storedPassword);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : String(error));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [server.config.id, server.config.username, toast]);
 
   useEffect(() => {
     window.localStorage.setItem(getVncSwapRedBlueStorageKey(server.config.id), String(swapRedBlue));
@@ -109,6 +127,10 @@ export function VncSessionView({
     setBusy(true);
     try {
       window.localStorage.setItem(getVncPortStorageKey(server.config.id), String(parsedPort));
+      const trimmedVncPassword = vncPassword.trim();
+      if (trimmedVncPassword) {
+        await storeVncPassword(server.config.id, trimmedVncPassword);
+      }
       const session = await createOrResumeVncSessionApi({
         serverId: server.config.id,
         remotePort: parsedPort,
@@ -126,7 +148,7 @@ export function VncSessionView({
     } finally {
       setBusy(false);
     }
-  }, [refreshSessions, server.config.id, toast]);
+  }, [refreshSessions, server.config.id, toast, vncPassword]);
 
   const handleSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
