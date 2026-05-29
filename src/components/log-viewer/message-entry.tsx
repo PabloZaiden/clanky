@@ -26,6 +26,9 @@ export function MessageEntry({
   const isUser = msg.role === "user";
   const shouldRenderMarkdown = markdownEnabled && msg.role === "assistant";
   const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
+  const contentWidthClassName = isUser
+    ? "min-w-0 max-w-[min(88%,64rem)] space-y-2"
+    : "min-w-0 w-full space-y-2 sm:max-w-[min(88%,64rem)]";
   const [selectedAttachment, setSelectedAttachment] = useState<MessageImageAttachment | null>(null);
   const selectedImage = selectedAttachment ? {
     src: `data:${selectedAttachment.mimeType};base64,${selectedAttachment.data}`,
@@ -45,7 +48,7 @@ export function MessageEntry({
         </time>
       )}
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-        <div className="min-w-0 max-w-[min(88%,64rem)] space-y-2">
+        <div className={contentWidthClassName}>
           {showRoleLabel && (
             <div className={`text-[11px] uppercase tracking-[0.2em] text-gray-500 ${isUser ? "text-right" : ""}`}>
             {roleLabel}

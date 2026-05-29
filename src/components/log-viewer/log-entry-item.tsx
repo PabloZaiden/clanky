@@ -79,6 +79,9 @@ export const LogEntryItem = memo(function LogEntryItem({
     : isResponse || log.level === "agent"
       ? "agent"
       : log.level;
+  const widthClassName = isResponseOrReasoning
+    ? "min-w-0 w-full sm:max-w-[min(96%,72rem)]"
+    : "min-w-0 max-w-[min(96%,72rem)]";
 
   return (
     <div className={`group ${spacingClass}`} data-log-kind={logKind ?? "default"}>
@@ -88,7 +91,7 @@ export const LogEntryItem = memo(function LogEntryItem({
         </time>
       )}
       <div
-        className={`min-w-0 max-w-[min(96%,72rem)] ${textColorClassName}`}
+        className={`${widthClassName} ${textColorClassName}`}
         data-log-tone={logTone}
       >
         {showMessageLabel && (
