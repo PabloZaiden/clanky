@@ -110,7 +110,7 @@ export function useCreateTaskForm({
 >): UseCreateTaskFormReturn {
   const isEditing = !!editTaskId;
 
-  const fields = useFormFields({ initialTaskData });
+  const fields = useFormFields({ isEditing, initialTaskData });
 
   const workspace = useWorkspaceSelection({
     isEditing,
