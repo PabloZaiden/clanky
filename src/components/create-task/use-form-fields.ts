@@ -6,6 +6,11 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import {
+  getStoredNewTaskPlanningPreferences,
+  saveStoredNewTaskPlanningPreferences,
+} from "../../lib/new-task-planning-preferences";
+import type { NewTaskPlanningPreferences } from "../../lib/new-task-planning-preferences";
 import { DEFAULT_TASK_CONFIG } from "../../types/task";
 import type { CreateTaskFormProps } from "./types";
 
@@ -47,6 +52,16 @@ export function useFormFields({
 }): UseFormFieldsReturn {
   const nameRef = useRef(initialTaskData?.name ?? "");
   const promptRef = useRef(initialTaskData?.prompt ?? "");
+  const initialPlanningPreferencesRef = useRef<NewTaskPlanningPreferences | null | undefined>(
+    undefined
+  );
+  if (initialPlanningPreferencesRef.current === undefined) {
+    const isEditingExistingTask = initialTaskData !== null && initialTaskData !== undefined;
+    initialPlanningPreferencesRef.current = isEditingExistingTask
+      ? null
+      : getStoredNewTaskPlanningPreferences();
+  }
+  const storedPlanningPreferences = initialPlanningPreferencesRef.current;
 
   const [name, setName] = useState(initialTaskData?.name ?? "");
   const [prompt, setPrompt] = useState(initialTaskData?.prompt ?? "");
@@ -60,12 +75,16 @@ export function useFormFields({
     initialTaskData?.activityTimeoutSeconds?.toString() ?? ""
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [planMode, setPlanMode] = useState(initialTaskData?.planMode ?? true);
+  const [planMode, setPlanMode] = useState(
+    initialTaskData?.planMode ?? storedPlanningPreferences?.planMode ?? true
+  );
   const [autoAcceptPlan, setAutoAcceptPlan] = useState(
-    initialTaskData?.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan
+    initialTaskData?.autoAcceptPlan
+      ?? storedPlanningPreferences?.autoAcceptPlan
+      ?? DEFAULT_TASK_CONFIG.autoAcceptPlan
   );
   const [fullyAutonomous, setFullyAutonomous] = useState(
-    initialTaskData?.fullyAutonomous ?? true
+    initialTaskData?.fullyAutonomous ?? storedPlanningPreferences?.fullyAutonomous ?? true
   );
   const [useWorktree, setUseWorktree] = useState(
     initialTaskData?.useWorktree ?? DEFAULT_TASK_CONFIG.useWorktree
@@ -86,6 +105,18 @@ export function useFormFields({
     setName(initialTaskData?.name ?? "");
     nameRef.current = initialTaskData?.name ?? "";
   }, [initialTaskData?.name]);
+
+  useEffect(() => {
+    if (initialTaskData !== null && initialTaskData !== undefined) {
+      return;
+    }
+
+    saveStoredNewTaskPlanningPreferences({
+      planMode,
+      autoAcceptPlan,
+      fullyAutonomous,
+    });
+  }, [initialTaskData, planMode, autoAcceptPlan, fullyAutonomous]);
 
   return {
     nameRef,
