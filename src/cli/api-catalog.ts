@@ -302,6 +302,9 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/git/default-branch": {
     description: "Detect the default git branch for a workspace directory.",
   },
+  "/api/git/remote-status": {
+    description: "Check whether a git remote exists for a workspace directory.",
+  },
   "/api/git/github-repository-url": {
     description: "Resolve the GitHub repository URL for a workspace directory.",
   },

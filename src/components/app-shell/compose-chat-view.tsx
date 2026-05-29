@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, CreateSshServerChatRequest, ModelInfo, SshServer, Workspace } from "../../types";
 import type { CreateChatRequest } from "../../types/api";
+import type { AgentProvider } from "../../types/settings";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { useToast } from "../../hooks";
+import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { appFetch } from "../../lib/public-path";
 import { getStoredSshCredentialToken, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import {
@@ -101,7 +103,7 @@ export function ComposeChatView({
   const [baseBranch, setBaseBranch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [remoteDirectory, setRemoteDirectory] = useState(composeServer?.config.repositoriesBasePath ?? "~");
-  const [remoteProvider, setRemoteProvider] = useState<"copilot" | "opencode">("copilot");
+  const [remoteProvider, setRemoteProvider] = useState<AgentProvider>("copilot");
   const [remoteModels, setRemoteModels] = useState<ModelInfo[]>([]);
   const [remoteModelsLoading, setRemoteModelsLoading] = useState(false);
   const [remoteCredentialToken, setRemoteCredentialToken] = useState<string | null>(null);
@@ -475,11 +477,12 @@ export function ComposeChatView({
               <select
                 id="chat-provider"
                 value={remoteProvider}
-                onChange={(event) => setRemoteProvider(event.target.value as "copilot" | "opencode")}
+                onChange={(event) => setRemoteProvider(event.target.value as AgentProvider)}
                 className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
               >
-                <option value="copilot">Copilot</option>
-                <option value="opencode">OpenCode</option>
+                {AGENT_PROVIDER_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
               </select>
             </div>
           </>

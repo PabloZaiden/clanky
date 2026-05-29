@@ -43,9 +43,11 @@ export interface TranslateEventContext {
   directory: string;
 }
 
+export type JsonRpcId = number | string;
+
 export type JsonRpcMessage = {
   jsonrpc: "2.0";
-  id?: number;
+  id?: JsonRpcId;
   method?: string;
   params?: Record<string, unknown>;
   result?: unknown;
@@ -66,7 +68,7 @@ export type PermissionOption = {
 };
 
 export type PendingPermissionRequest = {
-  rpcId: number;
+  rpcId: JsonRpcId;
   options: PermissionOption[];
 };
 

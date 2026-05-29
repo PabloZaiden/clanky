@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { findRegisteredSshServer } from "../../types/settings";
 import type { ServerSettings, AgentProvider, AgentTransport } from "../../types/settings";
 import type { SshServer } from "../../types";
+import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { SshFields } from "./ssh-fields";
 import { TestConnection } from "./test-connection";
 
@@ -201,8 +202,9 @@ export function ServerSettingsForm({
               }}
               className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
             >
-              <option value="opencode">OpenCode</option>
-              <option value="copilot">Copilot</option>
+              {AGENT_PROVIDER_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>{option.label}</option>
+              ))}
             </select>
           </div>
 

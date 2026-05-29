@@ -87,6 +87,16 @@ export interface GitHubRepositoryUrlResponse {
 }
 
 /**
+ * Response from GET /api/git/remote-status.
+ */
+export interface GitRemoteStatusResponse {
+  /** Remote name that was checked */
+  remote: string;
+  /** Whether the requested remote is configured for the repository */
+  hasRemote: boolean;
+}
+
+/**
  * Model information returned by the GET /api/models endpoint.
  * Includes provider and model details with connection status.
  */

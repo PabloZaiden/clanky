@@ -3,9 +3,11 @@ import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import { useDevboxTemplates } from "../../hooks/useDevboxTemplates";
+import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { ServerSettingsForm } from "../ServerSettingsForm";
 import type { ServerSettings } from "../../types/settings";
+import type { AgentProvider } from "../../types/settings";
 import { Badge, Button, PASSWORD_INPUT_PROPS } from "../common";
 import { ShellPanel, InlineField } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
@@ -352,14 +354,13 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                   id="automatic-provider"
                   value={automaticProvider}
                   onChange={(event) =>
-                    setAutomaticProvider(
-                      event.target.value as import("../../types/settings").AgentProvider,
-                    )
+                    setAutomaticProvider(event.target.value as AgentProvider)
                   }
                   className="block w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-300 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100 dark:focus:border-gray-500 dark:focus:ring-gray-700"
                 >
-                  <option value="copilot">copilot</option>
-                  <option value="opencode">opencode</option>
+                  {AGENT_PROVIDER_OPTIONS.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
                 </select>
               </div>
 

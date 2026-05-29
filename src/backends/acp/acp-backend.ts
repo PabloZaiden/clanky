@@ -476,7 +476,7 @@ export class AcpBackend implements Backend {
           return;
         }
         const toolCall = isRecord(message.params["toolCall"]) ? message.params["toolCall"] : {};
-        const requestId = typeof message.id === "number"
+        const requestId = message.id !== undefined
           ? `permission-${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
           : firstString(message.params["requestId"], toolCall["toolCallId"]);
         if (!requestId) {
@@ -511,7 +511,7 @@ export class AcpBackend implements Backend {
             .filter((option) => option.optionId.length > 0)
           : [];
 
-        if (typeof message.id === "number") {
+        if (message.id !== undefined) {
           this.pendingPermissionRequests.set(requestId, {
             rpcId: message.id,
             options,
@@ -1130,8 +1130,12 @@ export class AcpBackend implements Backend {
     return !!this.getCachedModels(directory);
   }
 
+  private supportsConfigOptionVariantDiscovery(): boolean {
+    return this.provider === "copilot" || this.provider === "opencode" || this.provider === "codex";
+  }
+
   private shouldTreatCachedModelsAsComplete(): boolean {
-    return this.provider !== "copilot" && this.provider !== "opencode";
+    return !this.supportsConfigOptionVariantDiscovery();
   }
 
   private setCachedModels(directory: string, models: ModelInfo[], complete: boolean): void {
@@ -1771,7 +1775,7 @@ export class AcpBackend implements Backend {
     try {
       // Try config options first, then fall back to legacy fields
       const configOptions = this.parseConfigOptions(result);
-      if ((this.provider === "copilot" || this.provider === "opencode") && sessionId && configOptions.length > 0) {
+      if (this.supportsConfigOptionVariantDiscovery() && sessionId && configOptions.length > 0) {
         const discoveredModels = await this.discoverModelVariantsFromConfigOptions(directory, sessionId, configOptions);
         if (discoveredModels.length > 0) {
           this.setCachedModels(directory, discoveredModels, true);

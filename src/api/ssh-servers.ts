@@ -254,14 +254,19 @@ export const sshServersRoutes = {
         }
         const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
         const { executor } = await sshServerManager.getCommandExecutor(req.params.id, password);
-        const [copilot, opencode] = await Promise.all([
+        const [copilot, opencode, codex] = await Promise.all([
           executor.exec("sh", ["-lc", "command -v copilot >/dev/null 2>&1"]),
           executor.exec("sh", ["-lc", "command -v opencode >/dev/null 2>&1"]),
+          executor.exec("sh", [
+            "-lc",
+            "command -v codex >/dev/null 2>&1 && { command -v codex-acp >/dev/null 2>&1 || command -v npx >/dev/null 2>&1 || command -v bunx >/dev/null 2>&1; }",
+          ]),
         ]);
         return Response.json({
           providers: [
             { providerID: "copilot", available: copilot.success },
             { providerID: "opencode", available: opencode.success },
+            { providerID: "codex", available: codex.success },
           ],
         });
       } catch (error) {

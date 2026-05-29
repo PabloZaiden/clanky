@@ -183,6 +183,48 @@ describe("Git API Integration", () => {
     });
   });
 
+  describe("GET /api/git/remote-status", () => {
+    test("returns true when origin is configured", async () => {
+      const res = await fetch(
+        `${baseUrl}/api/git/remote-status?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+      );
+      expect(res.status).toBe(200);
+
+      const body = await res.json();
+      expect(body).toEqual({
+        remote: "origin",
+        hasRemote: true,
+      });
+    });
+
+    test("returns false when origin is not configured", async () => {
+      await Bun.$`git -C ${testWorkDir} remote remove origin`.quiet();
+
+      try {
+        const res = await fetch(
+          `${baseUrl}/api/git/remote-status?directory=${encodeURIComponent(testWorkDir)}&workspaceId=${encodeURIComponent("git-test-workspace")}`
+        );
+        expect(res.status).toBe(200);
+
+        const body = await res.json();
+        expect(body).toEqual({
+          remote: "origin",
+          hasRemote: false,
+        });
+      } finally {
+        await Bun.$`git -C ${testWorkDir} remote add origin git@github.com:owner/repo.git`.quiet();
+      }
+    });
+
+    test("returns 400 when directory parameter is missing", async () => {
+      const res = await fetch(`${baseUrl}/api/git/remote-status`);
+      expect(res.status).toBe(400);
+
+      const body = await res.json();
+      expect(body.error).toBe("missing_parameter");
+    });
+  });
+
   describe("GET /api/git/github-repository-url", () => {
     test("returns a normalized GitHub URL from origin when workspace repoUrl is not set", async () => {
       const res = await fetch(

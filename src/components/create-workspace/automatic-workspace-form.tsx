@@ -4,6 +4,7 @@
 
 import { PASSWORD_INPUT_PROPS } from "../common";
 import type { AgentProvider, DevboxTemplateSummary, SshServer } from "../../types";
+import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 
 interface AutomaticWorkspaceFormProps {
   serverId: string;
@@ -154,8 +155,9 @@ export function AutomaticWorkspaceForm({
           onChange={(e) => onProviderChange(e.target.value as AgentProvider)}
           className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
         >
-          <option value="copilot">copilot</option>
-          <option value="opencode">opencode</option>
+          {AGENT_PROVIDER_OPTIONS.map((option) => (
+            <option key={option.id} value={option.id}>{option.label}</option>
+          ))}
         </select>
       </div>
 
