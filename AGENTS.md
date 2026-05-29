@@ -14,6 +14,7 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 - When you need to fix a bug, first make sure you can reproduce it locally unless the user is explicit that reproduction is not needed. Trying to fix a bug before reproducing it can make things worse.
 - When you need to see how something works or looks in the UI, use Playwright for manual browser validation during development.
 - Do not add Playwright tests to this repository; prefer lower-level automated tests and keep Playwright as a development tool rather than a committed test layer.
+- Tasks that involve UI changes or adjustments must finish, whenever possible, with one desktop screenshot and one mobile screenshot for each UI change made. If screenshots cannot be captured, document why.
 - Don't say something is done until you have verified that all the goals are met.
 - The general task then is:
 
