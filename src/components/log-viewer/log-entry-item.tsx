@@ -80,7 +80,7 @@ export const LogEntryItem = memo(function LogEntryItem({
       ? "agent"
       : log.level;
   const widthClassName = isResponseOrReasoning
-    ? "min-w-0 w-full sm:max-w-[min(96%,72rem)]"
+    ? "min-w-0 w-full"
     : "min-w-0 max-w-[min(96%,72rem)]";
 
   return (

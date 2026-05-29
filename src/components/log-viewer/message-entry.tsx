@@ -28,7 +28,7 @@ export function MessageEntry({
   const roleLabel = msg.role === "assistant" ? "Assistant" : "You";
   const contentWidthClassName = isUser
     ? "min-w-0 max-w-[min(88%,64rem)] space-y-2"
-    : "min-w-0 w-full space-y-2 sm:max-w-[min(88%,64rem)]";
+    : "min-w-0 w-full space-y-2";
   const [selectedAttachment, setSelectedAttachment] = useState<MessageImageAttachment | null>(null);
   const selectedImage = selectedAttachment ? {
     src: `data:${selectedAttachment.mimeType};base64,${selectedAttachment.data}`,
