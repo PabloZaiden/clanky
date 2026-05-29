@@ -19,8 +19,13 @@ import {
   ImageAttachmentPreviewList,
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
-import { toMessageImageAttachments } from "../lib/image-attachments";
+import { MESSAGE_IMAGE_ATTACHMENT_LIMIT, toMessageImageAttachments } from "../lib/image-attachments";
 import { FocusPreservingButton, useComposerSizing } from "./common";
+import {
+  ComposerActionsMenu,
+  ComposerActionsMenuButton,
+  ComposerActionsMenuSection,
+} from "./ComposerActionsMenu";
 
 const log = createLogger("TaskActionBar");
 
@@ -86,6 +91,9 @@ export function TaskActionBar({
 
   // Check if the selected model is enabled (connected)
   const selectedModelEnabled = selectedModel ? isModelEnabled(models, selectedModel) : true;
+  const secondaryActionsDisabled = disabled || isSubmitting;
+  const attachmentLimitReached = attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT;
+  const hasPendingComposerActions = attachments.length > 0 || (!isPlanning && selectedModel !== "");
   const {
     composerRef,
     composerRows,
@@ -175,26 +183,39 @@ export function TaskActionBar({
       <form ref={composerFormRef} onSubmit={handleSubmit} className="p-3 sm:p-4">
         <div className="space-y-2" data-testid="task-composer-layout">
           <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="task-composer-main-row">
-          {/* Model selector - hidden during planning since model changes are not supported */}
-          {!isPlanning && (
-            <div className="shrink-0" data-testid="task-composer-model-cell">
-              <ModelSelector
-                value={selectedModel}
-                onChange={setSelectedModel}
-                models={models}
-                loading={modelsLoading}
-                disabled={disabled || isSubmitting}
-                showDisconnected={true}
-                currentModelKey={currentModelKey}
-                placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
-                loadingText="Loading..."
-                emptyText="Select model..."
-                ariaLabel="Model"
-                compact
-                className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
-              />
-            </div>
-          )}
+            <ComposerActionsMenu
+              ariaLabel={isPlanning ? "Plan feedback actions" : "Task message actions"}
+              hasPendingActions={hasPendingComposerActions}
+            >
+              {/* Model selector - hidden during planning since model changes are not supported */}
+              {!isPlanning && (
+                <ComposerActionsMenuSection label="Model">
+                  <ModelSelector
+                    value={selectedModel}
+                    onChange={setSelectedModel}
+                    models={models}
+                    loading={modelsLoading}
+                    disabled={secondaryActionsDisabled}
+                    showDisconnected={true}
+                    currentModelKey={currentModelKey}
+                    placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
+                    loadingText="Loading..."
+                    emptyText="Select model..."
+                    ariaLabel="Model"
+                    className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100"
+                  />
+                </ComposerActionsMenuSection>
+              )}
+              <ComposerActionsMenuSection label="Attachments">
+                <ComposerActionsMenuButton
+                  disabled={secondaryActionsDisabled || attachmentLimitReached}
+                  onClick={() => attachmentControlRef.current?.openFilePicker()}
+                >
+                  <span>{attachmentLimitReached ? "Image limit reached" : "Attach image"}</span>
+                  <span aria-hidden="true">📎</span>
+                </ComposerActionsMenuButton>
+              </ComposerActionsMenuSection>
+            </ComposerActionsMenu>
 
             {/* Message input */}
             <textarea
@@ -208,18 +229,6 @@ export function TaskActionBar({
               aria-label={isPlanning ? "Plan feedback" : "Task message"}
               className={`${composerMinHeightClass} ${composerPaddingClass} flex-1 min-w-0 w-full resize-y text-sm px-3 rounded-md border border-gray-300 bg-white dark:border-gray-600 dark:bg-neutral-700 text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50`}
             />
-            <div className="shrink-0" data-testid="task-composer-attachment-cell">
-              <ImageAttachmentControl
-                ref={attachmentControlRef}
-                attachments={attachments}
-                onChange={setAttachments}
-                disabled={disabled || isSubmitting}
-                iconOnly
-                showPreviewList={false}
-                showErrorText={false}
-                onErrorChange={setAttachmentError}
-              />
-            </div>
 
             {/* Primary action button */}
             {showStopButton ? (
@@ -253,6 +262,17 @@ export function TaskActionBar({
               </FocusPreservingButton>
             )}
           </div>
+          <ImageAttachmentControl
+            ref={attachmentControlRef}
+            attachments={attachments}
+            onChange={setAttachments}
+            disabled={secondaryActionsDisabled}
+            iconOnly
+            showTrigger={false}
+            showPreviewList={false}
+            showErrorText={false}
+            onErrorChange={setAttachmentError}
+          />
           {attachments.length > 0 && (
             <div className="min-w-0" data-testid="task-composer-attachments-row">
               <ImageAttachmentPreviewList

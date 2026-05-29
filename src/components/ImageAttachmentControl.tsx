@@ -34,10 +34,13 @@ interface ImageAttachmentControlProps {
   showErrorText?: boolean;
   /** Optional callback fired whenever the current error text changes. */
   onErrorChange?: (error: string | null) => void;
+  /** When false, keep the input/ref mounted without rendering a visible picker button. */
+  showTrigger?: boolean;
 }
 
 export interface ImageAttachmentControlHandle {
   handlePaste: (event: ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  openFilePicker: () => void;
 }
 
 interface ImageAttachmentPreviewListProps {
@@ -129,6 +132,7 @@ function ImageAttachmentControlInner({
   showPreviewList = true,
   showErrorText = true,
   onErrorChange,
+  showTrigger = true,
 }: ImageAttachmentControlProps, ref: ForwardedRef<ImageAttachmentControlHandle>) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -201,7 +205,14 @@ function ImageAttachmentControlInner({
     [addFiles, disabled],
   );
 
-  useImperativeHandle(ref, () => ({ handlePaste }), [handlePaste]);
+  const openFilePicker = useCallback(() => {
+    if (disabled || attachmentsRef.current.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT) {
+      return;
+    }
+    inputRef.current?.click();
+  }, [disabled]);
+
+  useImperativeHandle(ref, () => ({ handlePaste, openFilePicker }), [handlePaste, openFilePicker]);
 
   function handleRemoveAttachment(attachmentId: string) {
     const nextAttachments = attachments.filter((attachment) => attachment.id !== attachmentId);
@@ -231,10 +242,10 @@ function ImageAttachmentControlInner({
           disabled={disabled}
           onChange={(event) => void handleFilesSelected(event.target.files)}
         />
-        {iconOnly ? (
+        {showTrigger && iconOnly ? (
           <button
             type="button"
-            onClick={() => inputRef.current?.click()}
+            onClick={openFilePicker}
             disabled={disabled || attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT}
             className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-neutral-700 text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-50 flex-shrink-0"
             aria-label={buttonLabel}
@@ -242,11 +253,11 @@ function ImageAttachmentControlInner({
           >
             <span aria-hidden="true" className="text-base">📎</span>
           </button>
-        ) : (
+        ) : showTrigger ? (
           <>
             <button
               type="button"
-              onClick={() => inputRef.current?.click()}
+              onClick={openFilePicker}
               disabled={disabled || attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT}
               className={`inline-flex items-center gap-1 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-neutral-700 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-gray-500 disabled:cursor-not-allowed disabled:opacity-50 ${compact ? "" : "text-sm"}`}
             >
@@ -259,7 +270,7 @@ function ImageAttachmentControlInner({
               </span>
             )}
           </>
-        )}
+        ) : null}
       </div>
 
       {showErrorText && errorText && (
