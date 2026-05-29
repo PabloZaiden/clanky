@@ -27,7 +27,7 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 
 ## Project Overview
 
-Clanky is a full-stack Bun + React application for controlling and managing Clanky Tasks through ACP-compatible agent backends (OpenCode or Copilot). It uses Bun's native bundler and server, React 19 for the frontend, and Tailwind CSS v4 for styling.
+Clanky is a full-stack Bun + React application for controlling and managing Clanky Tasks through ACP-compatible agent backends (Codex, Copilot, or OpenCode). It uses Bun's native bundler and server, React 19 for the frontend, and Tailwind CSS v4 for styling.
 
 For more project information, see the [README.md](README.md).
 

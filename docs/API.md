@@ -82,10 +82,11 @@ All responses are JSON. Successful responses return the requested data directly.
 
 ## ACP Agent Runtime Architecture
 
-Clanky runs agent interactions through ACP JSON-RPC and supports two providers:
+Clanky runs agent interactions through ACP JSON-RPC and supports three providers:
 
 - `opencode` (CLI command: `opencode acp`)
 - `copilot` (CLI command: `copilot --yolo --acp`)
+- `codex` (CLI command: resolves `codex-acp`, or runs `@zed-industries/codex-acp` through `npx`/`bunx`; requires authenticated `codex`)
 
 Agent transport is configured per workspace:
 
@@ -1811,7 +1812,7 @@ Settings use a single contract:
 ```json
 {
   "agent": {
-    "provider": "opencode | copilot",
+    "provider": "opencode | copilot | codex",
     "transport": "stdio | ssh",
     "hostname": "required for ssh",
     "port": 22,
@@ -1829,6 +1830,7 @@ Execution behavior is derived automatically from `agent.transport`:
 Provider runtime command is derived from `agent.provider`:
 - `opencode` → `opencode acp`
 - `copilot` → `copilot --yolo --acp`
+- `codex` → resolves `codex-acp`, or runs `@zed-industries/codex-acp` through `npx`/`bunx`, with Codex configured for non-interactive ACP execution
 
 If `CLANKY_MOCK_ACP=true`, local `stdio` launches use the built-in mock ACP runtime regardless of the selected provider so end-to-end tests can exercise ACP transport behavior without an external agent CLI.
 
@@ -1861,7 +1863,7 @@ Update server settings for a workspace.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agent.provider` | string | Yes | `opencode` or `copilot` |
+| `agent.provider` | string | Yes | `opencode`, `copilot`, or `codex` |
 | `agent.transport` | string | Yes | `stdio` or `ssh` |
 | `agent.hostname` | string | For `ssh` | SSH hostname |
 | `agent.port` | number | No | SSH port (default `22`) |
@@ -1909,7 +1911,7 @@ Get connection status for a workspace.
 }
 ```
 
-`capabilities` lists high-level runtime operations exposed by the selected provider. For example, `opencode` includes `models`, while `copilot` currently does not.
+`capabilities` lists high-level runtime operations exposed by the selected provider. For example, `opencode` includes `models`, while `copilot` and `codex` currently do not.
 
 **Errors**
 
@@ -1925,7 +1927,7 @@ Test connection with provided settings for a workspace.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `agent.provider` | string | Yes | `opencode` or `copilot` |
+| `agent.provider` | string | Yes | `opencode`, `copilot`, or `codex` |
 | `agent.transport` | string | Yes | `stdio` or `ssh` |
 | `agent.hostname` | string | For `ssh` | SSH hostname |
 | `agent.port` | number | No | SSH port (default `22`) |
@@ -1961,7 +1963,7 @@ Test a server connection without requiring a workspace. Useful for validating co
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `settings` | object | Yes | Server settings to test |
-| `settings.agent.provider` | string | Yes | `opencode` or `copilot` |
+| `settings.agent.provider` | string | Yes | `opencode`, `copilot`, or `codex` |
 | `settings.agent.transport` | string | Yes | `stdio` or `ssh` |
 | `settings.agent.hostname` | string | For `ssh` | SSH hostname |
 | `settings.agent.port` | number | No | SSH port (default `22`) |
@@ -2298,7 +2300,7 @@ Create a provisioning job.
 }
 ```
 
-`provider` defaults to `"copilot"` when omitted. `credentialToken` is optional and is used when the target SSH server requires an exchanged credential.
+`provider` accepts `"copilot"`, `"opencode"`, or `"codex"` and defaults to `"copilot"` when omitted. `credentialToken` is optional and is used when the target SSH server requires an exchanged credential.
 
 **Response**
 
