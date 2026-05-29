@@ -14,7 +14,7 @@
 import { backendManager } from "../core/backend-manager";
 import { GitCommandError, GitService } from "../core/git";
 import { normalizeGitHubRepositoryUrl } from "../lib/github-repository-url";
-import type { BranchInfo, GitHubRepositoryUrlResponse, Workspace } from "../types";
+import type { BranchInfo, GitHubRepositoryUrlResponse, GitRemoteStatusResponse, Workspace } from "../types";
 import { createLogger } from "../core/logger";
 import { errorResponse, normalizeDirectoryPath, resolveWorkspaceForDirectory } from "./helpers";
 
@@ -225,6 +225,31 @@ export const gitRoutes = {
         return Response.json(response);
       } catch (error) {
         log.error("Git default-branch error", { error: String(error) });
+        return errorResponse("git_error", String(error), 500);
+      }
+    },
+  },
+
+  "/api/git/remote-status": {
+    async GET(req: Request): Promise<Response> {
+      log.debug("GET /api/git/remote-status");
+
+      try {
+        const result = await validateGitRequest(req);
+        if (result instanceof Response) return result;
+        const { git, directory } = result;
+        const url = new URL(req.url);
+        const remote = url.searchParams.get("remote")?.trim() || "origin";
+
+        const response: GitRemoteStatusResponse = {
+          remote,
+          hasRemote: await git.hasRemote(directory, remote),
+        };
+
+        log.debug("Remote status retrieved", { directory, remote, hasRemote: response.hasRemote });
+        return Response.json(response);
+      } catch (error) {
+        log.error("Git remote-status error", { error: String(error) });
         return errorResponse("git_error", String(error), 500);
       }
     },

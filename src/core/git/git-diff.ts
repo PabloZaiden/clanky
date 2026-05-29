@@ -11,13 +11,22 @@ export async function getDiff(
   directory: string,
   baseBranch: string
 ): Promise<FileDiff[]> {
-  const numstatArgs = ["diff", "--numstat", baseBranch];
+  const diffBase = await resolveDiffBaseRef(executor, directory, baseBranch);
+  return getDiffForBase(executor, directory, diffBase);
+}
+
+async function getDiffForBase(
+  executor: CommandExecutor,
+  directory: string,
+  diffBase: string
+): Promise<FileDiff[]> {
+  const numstatArgs = ["diff", "--numstat", diffBase];
   const result = await runGitCommand(executor, directory, numstatArgs);
   if (!result.success) {
     throw gitError("Failed to get diff", result, numstatArgs);
   }
 
-  const statusResult = await runGitCommand(executor, directory, ["diff", "--name-status", baseBranch]);
+  const statusResult = await runGitCommand(executor, directory, ["diff", "--name-status", diffBase]);
 
   const statusMap = new Map<string, string>();
   if (statusResult.success) {
@@ -61,7 +70,8 @@ export async function getDiffSummary(
   directory: string,
   baseBranch: string
 ): Promise<{ files: number; insertions: number; deletions: number }> {
-  const shortstatArgs = ["diff", "--shortstat", baseBranch];
+  const diffBase = await resolveDiffBaseRef(executor, directory, baseBranch);
+  const shortstatArgs = ["diff", "--shortstat", diffBase];
   const result = await runGitCommand(executor, directory, shortstatArgs);
   if (!result.success) {
     throw gitError("Failed to get diff summary", result, shortstatArgs);
@@ -87,7 +97,8 @@ export async function getFileDiffContent(
   baseBranch: string,
   filePath: string
 ): Promise<string> {
-  const diffArgs = ["diff", baseBranch, "--", filePath];
+  const diffBase = await resolveDiffBaseRef(executor, directory, baseBranch);
+  const diffArgs = ["diff", diffBase, "--", filePath];
   const result = await runGitCommand(executor, directory, diffArgs);
   if (!result.success) {
     throw gitError("Failed to get file diff", result, diffArgs);
@@ -100,9 +111,10 @@ export async function getDiffWithContent(
   directory: string,
   baseBranch: string
 ): Promise<FileDiffWithContent[]> {
-  const diffs = await getDiff(executor, directory, baseBranch);
+  const diffBase = await resolveDiffBaseRef(executor, directory, baseBranch);
+  const diffs = await getDiffForBase(executor, directory, diffBase);
 
-  const result = await runGitCommand(executor, directory, ["diff", baseBranch]);
+  const result = await runGitCommand(executor, directory, ["diff", diffBase]);
 
   if (!result.success) {
     return diffs;
@@ -129,4 +141,47 @@ export async function getDiffWithContent(
   }
 
   return diffsWithContent;
+}
+
+async function resolveDiffBaseRef(
+  executor: CommandExecutor,
+  directory: string,
+  baseBranch: string,
+): Promise<string> {
+  const verifyResult = await runGitCommand(
+    executor,
+    directory,
+    ["rev-parse", "--verify", "--quiet", `${baseBranch}^{commit}`],
+    { allowFailure: true },
+  );
+  if (verifyResult.success) {
+    return baseBranch;
+  }
+
+  const localBranch = localBranchNameForRemoteRef(baseBranch);
+  if (!localBranch) {
+    return baseBranch;
+  }
+
+  const localVerifyResult = await runGitCommand(
+    executor,
+    directory,
+    ["rev-parse", "--verify", "--quiet", `refs/heads/${localBranch}^{commit}`],
+    { allowFailure: true },
+  );
+  return localVerifyResult.success ? localBranch : baseBranch;
+}
+
+function localBranchNameForRemoteRef(ref: string): string | null {
+  const fullRemoteMatch = ref.match(/^refs\/remotes\/[^/]+\/(.+)$/);
+  if (fullRemoteMatch?.[1]) {
+    return fullRemoteMatch[1];
+  }
+
+  const shortRemoteMatch = ref.match(/^origin\/(.+)$/);
+  if (shortRemoteMatch?.[1]) {
+    return shortRemoteMatch[1];
+  }
+
+  return null;
 }

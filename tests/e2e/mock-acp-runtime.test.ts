@@ -70,4 +70,25 @@ describe("Mock ACP runtime integration", () => {
     const completed = await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
     expect(completed.state.status).toBe("completed");
   }, { timeout: 60_000 });
+
+  test("accepts and executes a ready plan in a local-only repository", async () => {
+    await Bun.$`git -C ${ctx.workDir} remote remove origin`.quiet();
+
+    const task = await ctx.manager.createTask({
+      ...testModelFields,
+      directory: ctx.workDir,
+      prompt: "Plan and then execute mock ACP work without a remote",
+      name: "Mock ACP Local Plan Task",
+      workspaceId: "test-workspace-id",
+      planMode: true,
+    });
+
+    await ctx.manager.startPlanMode(task.config.id);
+    const readyTask = await waitForPlanReady(ctx.manager, task.config.id);
+    expect(readyTask.state.planMode?.isPlanReady).toBe(true);
+
+    await ctx.manager.acceptPlan(task.config.id);
+    const completed = await waitForTaskStatus(ctx.manager, task.config.id, ["completed"]);
+    expect(completed.state.status).toBe("completed");
+  }, { timeout: 60_000 });
 });

@@ -21,6 +21,7 @@ import { useModels } from "./use-models";
 import { usePortForwardActions } from "./use-port-forward-actions";
 import { useLogDisplayState } from "./use-log-display-state";
 import { useLogFocusMode } from "./use-log-focus-mode";
+import { useTaskRemoteStatus } from "./use-task-remote-status";
 import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
 import { getFocusModeViewportStyle, useVisualViewport } from "../ssh-session/use-visual-viewport";
@@ -96,6 +97,10 @@ export function TaskDetails({
       fetchReviewComments: content.fetchReviewComments,
     });
   const { models, modelsLoading } = useModels({ directory: task?.config.directory, workspaceId: task?.config.workspaceId });
+  const remoteStatus = useTaskRemoteStatus({
+    directory: task?.config.directory,
+    workspaceId: task?.config.workspaceId,
+  });
   const portForward = usePortForwardActions({ taskId, toast, createForward, deleteForward });
   const isLogFocusActive = activeTab === "log" && isLogFocusMode && !!task;
   const viewport = useVisualViewport(isLogFocusActive);
@@ -291,7 +296,14 @@ export function TaskDetails({
         />
       )}
 
-      <TaskDetailsModals taskName={config.name} state={state} planContent={content.planContent} actions={actions} />
+      <TaskDetailsModals
+        taskName={config.name}
+        state={state}
+        planContent={content.planContent}
+        actions={actions}
+        canPushToRemote={remoteStatus.hasOriginRemote !== false}
+        remoteStatusLoading={remoteStatus.loading}
+      />
     </div>
   );
 }

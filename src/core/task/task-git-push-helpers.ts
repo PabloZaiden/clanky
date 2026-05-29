@@ -228,6 +228,27 @@ export async function syncBaseBranchBeforeExecution(
     timestamp: createTimestamp(),
   });
 
+  const hasRemote = await git.hasRemote(task.config.directory);
+  if (!hasRemote) {
+    log.debug(
+      `[TaskManager] syncBaseBranchBeforeExecution: No origin remote configured for task ${taskId}, skipping base branch sync`,
+    );
+    task.state.syncState = undefined;
+    await updateTaskState(taskId, task.state);
+
+    ctx.emitter.emit({
+      type: "task.sync.clean",
+      taskId,
+      baseBranch,
+      timestamp: createTimestamp(),
+    });
+
+    return {
+      success: true,
+      syncStatus: "already_up_to_date",
+    };
+  }
+
   log.debug(`[TaskManager] syncBaseBranchBeforeExecution: Fetching origin/${baseBranch} for task ${taskId}`);
   const fetchSuccess = await git.fetchBranch(task.config.directory, baseBranch);
 

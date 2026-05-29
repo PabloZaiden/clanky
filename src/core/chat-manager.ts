@@ -67,7 +67,7 @@ import { sshCredentialManager } from "./ssh-credential-manager";
 import { sshServerManager } from "./ssh-server-manager";
 import { buildSshRemoteShellCommand } from "./remote-command-executor";
 import { buildSshProcessConfig, getSshConnectionTargetFromServer } from "./ssh-connection-target";
-import { getProviderAcpCommand } from "./agent-runtime-command";
+import { buildProviderShellInvocation, getProviderAcpCommand } from "./agent-runtime-command";
 import type { AgentProvider } from "../types/settings";
 import { resolveEffectiveCheapModel } from "./cheap-model";
 import { generateChatName } from "../utils/name-generator";
@@ -1078,11 +1078,11 @@ export class ChatManager {
       throw new Error(`Chat is not SSH-server backed: ${chat.config.id}`);
     }
     const provider = chat.config.model.providerID;
-    if (provider !== "opencode" && provider !== "copilot") {
+    if (provider !== "opencode" && provider !== "copilot" && provider !== "codex") {
       throw new Error(`Unsupported SSH chat provider: ${provider}`);
     }
     const providerCommand = getProviderAcpCommand(provider as AgentProvider, "ssh");
-    const providerInvocation = [providerCommand.command, ...providerCommand.args].join(" ");
+    const providerInvocation = buildProviderShellInvocation(providerCommand);
     const directory = source.directory || chat.config.directory;
 
     return {

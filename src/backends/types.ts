@@ -3,6 +3,7 @@
  * These types define the data structures used by AcpBackend.
  */
 
+import type { AgentProvider } from "../types/settings";
 import type { EventStream } from "../utils/event-stream";
 import type { ModelInfo } from "../types/api";
 
@@ -23,7 +24,7 @@ export interface BackendConnectionConfig {
   /** Backend runtime mode (ACP backends currently use "spawn") */
   mode: "spawn" | "connect";
   /** Selected agent provider (used by ACP backends) */
-  provider?: "opencode" | "copilot";
+  provider?: AgentProvider;
   /** Selected agent transport (used by ACP backends) */
   transport?: "stdio" | "ssh";
   /** SSH hostname */

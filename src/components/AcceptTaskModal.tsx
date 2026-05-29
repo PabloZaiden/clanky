@@ -20,6 +20,10 @@ export interface AcceptTaskModalProps {
   onAccept: () => Promise<void>;
   /** Callback to push the task to remote */
   onPush: () => Promise<void>;
+  /** Whether pushing to the origin remote is available */
+  canPushToRemote?: boolean;
+  /** Whether remote availability is still being checked */
+  remoteStatusLoading?: boolean;
 }
 
 /**
@@ -32,11 +36,14 @@ export function AcceptTaskModal({
   onClose,
   onAccept,
   onPush,
+  canPushToRemote = true,
+  remoteStatusLoading = false,
 }: AcceptTaskModalProps) {
   const [accepting, setAccepting] = useState(false);
   const [pushing, setPushing] = useState(false);
 
   const isLoading = accepting || pushing;
+  const showPushOption = canPushToRemote || remoteStatusLoading;
 
   async function handleAccept() {
     log.debug("User chose to accept task locally");
@@ -84,28 +91,42 @@ export function AcceptTaskModal({
           </p>
         )}
 
-        <button
-          onClick={handlePush}
-          disabled={isLoading}
-          className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-neutral-800 flex items-center justify-center">
-            {pushing ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent" />
-            ) : (
-              <span className="text-blue-600 dark:text-blue-400 text-sm">↑</span>
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              Push to Remote <span className="text-gray-500 dark:text-gray-400 font-normal">(recommended)</span>
+        {showPushOption ? (
+          <button
+            onClick={handlePush}
+            disabled={isLoading || remoteStatusLoading}
+            className="w-full flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-neutral-700/50 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-neutral-800 flex items-center justify-center">
+              {pushing || remoteStatusLoading ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent" />
+              ) : (
+                <span className="text-blue-600 dark:text-blue-400 text-sm">↑</span>
+              )}
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              Push the working branch to remote. Create a PR for code review or update an existing one.
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                {remoteStatusLoading ? (
+                  "Checking Remote..."
+                ) : (
+                  <>
+                    Push to Remote <span className="text-gray-500 dark:text-gray-400 font-normal">(recommended)</span>
+                  </>
+                )}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {remoteStatusLoading
+                  ? "Checking whether an origin remote is configured for this repository."
+                  : "Push the working branch to remote. Create a PR for code review or update an existing one."}
+              </div>
             </div>
+            {!remoteStatusLoading && <span className="text-gray-400 dark:text-gray-500">→</span>}
+          </button>
+        ) : (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+            No origin remote is configured for this repository, so this task can only be accepted locally.
           </div>
-          <span className="text-gray-400 dark:text-gray-500">→</span>
-        </button>
+        )}
 
         <button
           onClick={handleAccept}

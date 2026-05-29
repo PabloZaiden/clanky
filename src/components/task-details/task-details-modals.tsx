@@ -22,9 +22,17 @@ interface TaskDetailsModalsProps {
   state: TaskState;
   planContent: FileContentResponse | null;
   actions: UseTaskActionsResult;
+  canPushToRemote: boolean;
+  remoteStatusLoading: boolean;
 }
 
-export function TaskDetailsModals({ taskName, state, actions }: TaskDetailsModalsProps) {
+export function TaskDetailsModals({
+  taskName,
+  state,
+  actions,
+  canPushToRemote,
+  remoteStatusLoading,
+}: TaskDetailsModalsProps) {
   return (
     <>
       <DeleteTaskModal
@@ -39,6 +47,8 @@ export function TaskDetailsModals({ taskName, state, actions }: TaskDetailsModal
         onClose={() => actions.setAcceptModal(false)}
         onAccept={actions.handleAccept}
         onPush={actions.handlePush}
+        canPushToRemote={canPushToRemote}
+        remoteStatusLoading={remoteStatusLoading}
       />
 
       <PurgeTaskModal
