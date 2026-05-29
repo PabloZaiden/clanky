@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { HamburgerIcon } from "./common";
 
@@ -24,6 +24,7 @@ export function ComposerActionsMenu({
 }: ComposerActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<MenuPosition | null>(null);
+  const menuId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -88,13 +89,16 @@ export function ComposerActionsMenu({
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
+      const path = event.composedPath();
+      const trigger = triggerRef.current;
+      const menuElement = menuRef.current;
+      if ((trigger && path.includes(trigger)) || (menuElement && path.includes(menuElement))) {
+        return;
+      }
       if (!(target instanceof Node)) {
         return;
       }
-      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) {
-        return;
-      }
-      if (menuRef.current?.contains(document.activeElement) && document.activeElement instanceof HTMLSelectElement) {
+      if (trigger?.contains(target) || menuElement?.contains(target)) {
         return;
       }
       close();
@@ -123,8 +127,9 @@ export function ComposerActionsMenu({
 
   const menu = isOpen && position ? createPortal(
     <div
+      id={menuId}
       ref={menuRef}
-      role="group"
+      role="dialog"
       aria-label={ariaLabel}
       className="fixed z-50 max-h-[min(24rem,calc(100vh-1rem))] overflow-y-auto rounded-lg border border-gray-200 bg-white p-3 shadow-xl ring-1 ring-black/5 dark:border-gray-700 dark:bg-neutral-800 dark:ring-gray-700"
       style={{
@@ -151,7 +156,8 @@ export function ComposerActionsMenu({
         className="relative inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white text-gray-700 shadow-sm transition hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-200 dark:hover:border-gray-500 dark:focus:ring-gray-600"
         aria-label={ariaLabel}
         aria-expanded={isOpen}
-        aria-haspopup="true"
+        aria-haspopup="dialog"
+        aria-controls={isOpen ? menuId : undefined}
         data-testid="composer-actions-trigger"
       >
         <HamburgerIcon size="h-5 w-5" />

@@ -829,6 +829,7 @@ export function ChatDetails({
           <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
             <ComposerActionsMenu
               ariaLabel="Message actions"
+              disabled={secondaryActionsDisabled}
               hasPendingActions={hasPendingComposerActions}
             >
               <ComposerActionsMenuSection label="Template">

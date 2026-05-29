@@ -185,6 +185,7 @@ export function TaskActionBar({
           <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="task-composer-main-row">
             <ComposerActionsMenu
               ariaLabel={isPlanning ? "Plan feedback actions" : "Task message actions"}
+              disabled={secondaryActionsDisabled}
               hasPendingActions={hasPendingComposerActions}
             >
               {/* Model selector - hidden during planning since model changes are not supported */}
