@@ -30,7 +30,7 @@ export async function createTaskImpl(ctx: TaskCtx, options: CreateTaskOptions): 
   const name = options.name.trim();
   const fullyAutonomous = options.planMode ? (options.fullyAutonomous ?? DEFAULT_TASK_CONFIG.fullyAutonomous) : false;
   const autoAcceptPlan = options.planMode
-    ? (fullyAutonomous ? true : (options.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan))
+    ? (options.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan)
     : false;
 
   if (!name) {
@@ -363,8 +363,6 @@ export async function updateTaskImpl(
   if (!updatedConfig.planMode) {
     updatedConfig.autoAcceptPlan = false;
     updatedConfig.fullyAutonomous = false;
-  } else if (updatedConfig.fullyAutonomous) {
-    updatedConfig.autoAcceptPlan = true;
   }
 
   const shouldTriggerCompletedAutonomy = syncPostApprovalFullyAutonomousPending(updatedConfig, currentState);
