@@ -46,8 +46,10 @@ export interface UseFormFieldsReturn {
 }
 
 export function useFormFields({
+  isEditing,
   initialTaskData,
 }: {
+  isEditing: boolean;
   initialTaskData: InitialTaskData;
 }): UseFormFieldsReturn {
   const nameRef = useRef(initialTaskData?.name ?? "");
@@ -56,8 +58,7 @@ export function useFormFields({
     undefined
   );
   if (initialPlanningPreferencesRef.current === undefined) {
-    const isEditingExistingTask = initialTaskData !== null && initialTaskData !== undefined;
-    initialPlanningPreferencesRef.current = isEditingExistingTask
+    initialPlanningPreferencesRef.current = isEditing
       ? null
       : getStoredNewTaskPlanningPreferences();
   }
@@ -76,15 +77,21 @@ export function useFormFields({
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [planMode, setPlanMode] = useState(
-    initialTaskData?.planMode ?? storedPlanningPreferences?.planMode ?? true
+    isEditing
+      ? initialTaskData?.planMode ?? true
+      : storedPlanningPreferences?.planMode ?? initialTaskData?.planMode ?? true
   );
   const [autoAcceptPlan, setAutoAcceptPlan] = useState(
-    initialTaskData?.autoAcceptPlan
-      ?? storedPlanningPreferences?.autoAcceptPlan
-      ?? DEFAULT_TASK_CONFIG.autoAcceptPlan
+    isEditing
+      ? initialTaskData?.autoAcceptPlan ?? DEFAULT_TASK_CONFIG.autoAcceptPlan
+      : storedPlanningPreferences?.autoAcceptPlan
+        ?? initialTaskData?.autoAcceptPlan
+        ?? DEFAULT_TASK_CONFIG.autoAcceptPlan
   );
   const [fullyAutonomous, setFullyAutonomous] = useState(
-    initialTaskData?.fullyAutonomous ?? storedPlanningPreferences?.fullyAutonomous ?? true
+    isEditing
+      ? initialTaskData?.fullyAutonomous ?? true
+      : storedPlanningPreferences?.fullyAutonomous ?? initialTaskData?.fullyAutonomous ?? true
   );
   const [useWorktree, setUseWorktree] = useState(
     initialTaskData?.useWorktree ?? DEFAULT_TASK_CONFIG.useWorktree
@@ -107,7 +114,7 @@ export function useFormFields({
   }, [initialTaskData?.name]);
 
   useEffect(() => {
-    if (initialTaskData !== null && initialTaskData !== undefined) {
+    if (isEditing) {
       return;
     }
 
@@ -116,7 +123,7 @@ export function useFormFields({
       autoAcceptPlan,
       fullyAutonomous,
     });
-  }, [initialTaskData, planMode, autoAcceptPlan, fullyAutonomous]);
+  }, [isEditing, planMode, autoAcceptPlan, fullyAutonomous]);
 
   return {
     nameRef,
