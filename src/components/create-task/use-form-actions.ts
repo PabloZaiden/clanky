@@ -158,7 +158,7 @@ export function useFormActions({
           prompt: currentPrompt.trim(),
           attachments: attachments.length > 0 && !asDraft ? toMessageImageAttachments(attachments) : [],
           planMode,
-          autoAcceptPlan: planMode ? (fullyAutonomous ? true : autoAcceptPlan) : false,
+          autoAcceptPlan: planMode ? autoAcceptPlan : false,
           fullyAutonomous: planMode ? fullyAutonomous : false,
           cheapModel: cheapModelValueToSelection(selectedCheapModel),
           maxIterations: maxIterations.trim()

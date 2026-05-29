@@ -210,12 +210,7 @@ export function CreateTaskForm({
           autoAcceptPlan={autoAcceptPlan}
           onAutoAcceptPlanChange={setAutoAcceptPlan}
           fullyAutonomous={fullyAutonomous}
-          onFullyAutonomousChange={(value) => {
-            setFullyAutonomous(value);
-            if (value) {
-              setAutoAcceptPlan(true);
-            }
-          }}
+          onFullyAutonomousChange={setFullyAutonomous}
           useWorktree={useWorktree}
         onUseWorktreeChange={setUseWorktree}
       />

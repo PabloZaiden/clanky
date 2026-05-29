@@ -290,7 +290,7 @@ describe("Plan + Task User Scenarios", () => {
       expect(completedTask.state.currentIteration).toBeGreaterThan(0);
     });
 
-    test("fully autonomous tasks auto-push and start automatic PR flow after plan acceptance", async () => {
+    test("fully autonomous tasks wait for manual plan acceptance before automatic PR flow", async () => {
       const ghExecutor = new GitHubMockExecutor();
       backendManager.setExecutorFactoryForTesting(() => ghExecutor);
 
@@ -306,13 +306,28 @@ describe("Plan + Task User Scenarios", () => {
           directory: ctx.workDir,
           prompt: "Create a plan and carry it through push and PR automation",
           planMode: true,
+          autoAcceptPlan: false,
           fullyAutonomous: true,
         });
 
         expect(status).toBe(201);
         const task = body as Task;
         expect(task.config.fullyAutonomous).toBe(true);
-        expect(task.config.autoAcceptPlan).toBe(true);
+        expect(task.config.autoAcceptPlan).toBe(false);
+
+        const readyTask = await waitForPlanReady(ctx.baseUrl, task.config.id);
+        expect(readyTask.state.status).toBe("planning");
+        expect(readyTask.state.fullyAutonomousPending).not.toBe(true);
+
+        const accepted = await acceptPlanViaAPI(ctx.baseUrl, task.config.id);
+        expect(accepted.status).toBe(200);
+        const acceptedTask = await waitForTaskCondition(
+          ctx.baseUrl,
+          task.config.id,
+          (latestTask) => latestTask.state.fullyAutonomousPending === true,
+          "fully autonomous pending after manual plan acceptance",
+        );
+        expect(acceptedTask.config.autoAcceptPlan).toBe(false);
 
         const pushedTask = await waitForTaskStatus(ctx.baseUrl, task.config.id, "pushed");
         const fullyAutonomousTask = await waitForTaskCondition(

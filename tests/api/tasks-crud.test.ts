@@ -269,7 +269,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(body.config.activityTimeoutSeconds).toBeNull();
     });
 
-    test("creates a fully autonomous plan task and forces auto-accept", async () => {
+    test("creates a fully autonomous plan task without forcing auto-accept", async () => {
       const response = await fetch(`${baseUrl}/api/tasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -291,7 +291,7 @@ describe("Tasks CRUD API Integration", () => {
       const body = await response.json();
       expect(body.config.planMode).toBe(true);
       expect(body.config.fullyAutonomous).toBe(true);
-      expect(body.config.autoAcceptPlan).toBe(true);
+      expect(body.config.autoAcceptPlan).toBe(false);
     });
 
     test("returns 400 for invalid JSON", async () => {
@@ -783,13 +783,13 @@ describe("Tasks CRUD API Integration", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.config.fullyAutonomous).toBe(true);
-      expect(body.config.autoAcceptPlan).toBe(true);
+      expect(body.config.autoAcceptPlan).toBe(false);
 
       const getResponse = await fetch(`${baseUrl}/api/tasks/${taskId}`);
       expect(getResponse.status).toBe(200);
       const updatedTask = await getResponse.json();
       expect(updatedTask.config.fullyAutonomous).toBe(true);
-      expect(updatedTask.config.autoAcceptPlan).toBe(true);
+      expect(updatedTask.config.autoAcceptPlan).toBe(false);
     });
 
     test("rejects task config updates while a live engine is resolving conflicts", async () => {
@@ -876,7 +876,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.config.fullyAutonomous).toBe(true);
-      expect(body.config.autoAcceptPlan).toBe(true);
+      expect(body.config.autoAcceptPlan).toBe(false);
       expect(body.config.cheapModel).toEqual({
         mode: "custom",
         model: {
@@ -945,7 +945,7 @@ describe("Tasks CRUD API Integration", () => {
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.config.fullyAutonomous).toBe(true);
-      expect(body.config.autoAcceptPlan).toBe(true);
+      expect(body.config.autoAcceptPlan).toBe(false);
       expect(body.state.fullyAutonomousPending).toBe(true);
     });
 
