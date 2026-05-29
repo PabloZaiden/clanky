@@ -6,6 +6,11 @@ import {
   type ImageAttachmentControlHandle,
 } from "./ImageAttachmentControl";
 import {
+  ComposerActionsMenu,
+  ComposerActionsMenuButton,
+  ComposerActionsMenuSection,
+} from "./ComposerActionsMenu";
+import {
   getModelDisplayName,
   isModelEnabled,
   makeModelKey,
@@ -24,7 +29,7 @@ import {
   getChatStatusBadgeVariant,
   useComposerSizing,
 } from "./common";
-import { toMessageImageAttachments } from "../lib/image-attachments";
+import { MESSAGE_IMAGE_ATTACHMENT_LIMIT, toMessageImageAttachments } from "../lib/image-attachments";
 import { appFetch } from "../lib/public-path";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { isChatEvent, useAppEvents, useAvailableModels, useMarkdownPreference, useToast } from "../hooks";
@@ -727,6 +732,9 @@ export function ChatDetails({
   const interruptButtonClassName = `${actionButtonBaseClassName} bg-red-600 text-white hover:bg-red-500 disabled:bg-gray-300 disabled:text-gray-600 dark:bg-red-500 dark:text-white dark:hover:bg-red-400 dark:disabled:bg-neutral-800 dark:disabled:text-gray-500`;
   const modelSelectId = `${composerInstanceId}-chat-model`;
   const messageInputId = `${composerInstanceId}-chat-message`;
+  const secondaryActionsDisabled = isActive || isSubmitting || needsSshCredentials;
+  const attachmentLimitReached = attachments.length >= MESSAGE_IMAGE_ATTACHMENT_LIMIT;
+  const hasPendingComposerActions = attachments.length > 0 || selectedTemplate.length > 0 || (!isEmbedded && selectedModel.length > 0);
   const conversation = (
     <ConversationViewer
       id="chat-transcript"
@@ -810,12 +818,6 @@ export function ChatDetails({
         <label htmlFor={modelSelectId} className="sr-only">Model</label>
         <label htmlFor={messageInputId} className="sr-only">Message</label>
         <div className="space-y-2" data-testid="chat-composer-layout">
-          <ChatTemplateSelector
-            selectedTemplate={selectedTemplate}
-            onChange={setSelectedTemplate}
-            onPromptChange={setMessage}
-            disabled={isActive || isSubmitting || needsSshCredentials}
-          />
           {needsSshCredentials && (
             <div className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
               <span>This remote chat needs SSH credentials before messages can be sent.</span>
@@ -825,25 +827,47 @@ export function ChatDetails({
             </div>
           )}
           <div className="flex min-w-0 items-end gap-2 sm:gap-3" data-testid="chat-composer-main-row">
-            {!isEmbedded && (
-              <div className="shrink-0" data-testid="chat-composer-model-cell">
-                <ModelSelector
-                  id={modelSelectId}
-                  value={selectedModel}
-                  onChange={setSelectedModel}
-                  models={models}
-                  loading={modelsLoading}
-                  disabled={isActive || isSubmitting || needsSshCredentials}
-                  showDisconnected
-                  currentModelKey={currentModelKey}
-                  placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
-                  loadingText="Loading..."
-                  emptyText="No models available"
-                  compact
-                  className="h-9 w-9 rounded-md border border-gray-300 bg-white text-sm text-gray-900 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+            <ComposerActionsMenu
+              ariaLabel="Message actions"
+              disabled={secondaryActionsDisabled}
+              hasPendingActions={hasPendingComposerActions}
+            >
+              <ComposerActionsMenuSection label="Template">
+                <ChatTemplateSelector
+                  selectedTemplate={selectedTemplate}
+                  onChange={setSelectedTemplate}
+                  onPromptChange={setMessage}
+                  disabled={secondaryActionsDisabled}
                 />
-              </div>
-            )}
+              </ComposerActionsMenuSection>
+              {!isEmbedded && (
+                <ComposerActionsMenuSection label="Model">
+                  <ModelSelector
+                    id={modelSelectId}
+                    value={selectedModel}
+                    onChange={setSelectedModel}
+                    models={models}
+                    loading={modelsLoading}
+                    disabled={secondaryActionsDisabled}
+                    showDisconnected
+                    currentModelKey={currentModelKey}
+                    placeholder={currentModelKey ? getModelDisplayName(models, currentModelKey) : "Select model..."}
+                    loadingText="Loading..."
+                    emptyText="No models available"
+                    className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600"
+                  />
+                </ComposerActionsMenuSection>
+              )}
+              <ComposerActionsMenuSection label="Attachments">
+                <ComposerActionsMenuButton
+                  disabled={secondaryActionsDisabled || attachmentLimitReached}
+                  onClick={() => attachmentControlRef.current?.openFilePicker()}
+                >
+                  <span>{attachmentLimitReached ? "Image limit reached" : "Attach image"}</span>
+                  <span aria-hidden="true">📎</span>
+                </ComposerActionsMenuButton>
+              </ComposerActionsMenuSection>
+            </ComposerActionsMenu>
             <textarea
               ref={composerRef}
               id={messageInputId}
@@ -855,18 +879,6 @@ export function ChatDetails({
               rows={composerRows}
               className={`${composerMinHeightClass} ${composerPaddingClass} min-w-0 w-full flex-1 resize-y rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-neutral-800 dark:text-gray-100 dark:focus:ring-gray-600`}
             />
-            <div className="shrink-0" data-testid="chat-composer-attachment-cell">
-              <ImageAttachmentControl
-                ref={attachmentControlRef}
-                attachments={attachments}
-                onChange={setAttachments}
-                disabled={isActive || isSubmitting || needsSshCredentials}
-                iconOnly
-                showPreviewList={false}
-                showErrorText={false}
-                onErrorChange={setAttachmentError}
-              />
-            </div>
             {isActive ? (
               <button
                 type="button"
@@ -898,6 +910,17 @@ export function ChatDetails({
               </FocusPreservingButton>
             )}
           </div>
+          <ImageAttachmentControl
+            ref={attachmentControlRef}
+            attachments={attachments}
+            onChange={setAttachments}
+            disabled={secondaryActionsDisabled}
+            iconOnly
+            showTrigger={false}
+            showPreviewList={false}
+            showErrorText={false}
+            onErrorChange={setAttachmentError}
+          />
           {attachments.length > 0 && (
             <div className="min-w-0" data-testid="chat-composer-attachments-row">
               <ImageAttachmentPreviewList
