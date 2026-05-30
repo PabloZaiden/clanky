@@ -3,6 +3,8 @@ interface BuildStep {
   cmd: string[];
 }
 
+const novncVendorReadyEnv = "CLANKY_NOVNC_VENDOR_READY";
+
 interface BuildStepResult {
   step: BuildStep;
   exitCode: number;
@@ -55,14 +57,14 @@ function summarizeOutput(output: string): string {
   return lines.slice(-4).join("\n");
 }
 
-async function runStep(step: BuildStep): Promise<BuildStepResult> {
+async function runStep(step: BuildStep, env: NodeJS.ProcessEnv = process.env): Promise<BuildStepResult> {
   const start = Date.now();
   const proc = Bun.spawn({
     cmd: step.cmd,
     cwd: rootDir,
     stdout: "pipe",
     stderr: "pipe",
-    env: process.env,
+    env,
   });
 
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -93,8 +95,12 @@ console.log("");
 
 const startedAt = Date.now();
 const setupResult = await runStep(setupStep);
+const parallelEnv = {
+  ...process.env,
+  [novncVendorReadyEnv]: "1",
+};
 const results = setupResult.exitCode === 0
-  ? [setupResult, ...(await Promise.all(parallelSteps.map((step) => runStep(step))))]
+  ? [setupResult, ...(await Promise.all(parallelSteps.map((step) => runStep(step, parallelEnv))))]
   : [setupResult];
 let failed = false;
 

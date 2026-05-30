@@ -444,9 +444,13 @@ describe("Standalone SSH servers API integration", () => {
       }),
     });
     expect(copilotResponse.ok).toBe(true);
-    const copilotModels = await copilotResponse.json() as Array<{ providerID: string; modelID: string }>;
-    expect(copilotModels.map((model) => ({ providerID: model.providerID, modelID: model.modelID }))).toEqual([
-      { providerID: "copilot", modelID: "claude-from-copilot-runtime" },
+    const copilotModels = await copilotResponse.json() as Array<{ providerID: string; providerName: string; modelID: string }>;
+    expect(copilotModels.map((model) => ({
+      providerID: model.providerID,
+      providerName: model.providerName,
+      modelID: model.modelID,
+    }))).toEqual([
+      { providerID: "copilot", providerName: "Copilot", modelID: "claude-from-copilot-runtime" },
     ]);
 
     const codexResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chat-models`, {
@@ -459,9 +463,13 @@ describe("Standalone SSH servers API integration", () => {
       }),
     });
     expect(codexResponse.ok).toBe(true);
-    const codexModels = await codexResponse.json() as Array<{ providerID: string; modelID: string }>;
-    expect(codexModels.map((model) => ({ providerID: model.providerID, modelID: model.modelID }))).toEqual([
-      { providerID: "codex", modelID: "gpt-from-codex-runtime" },
+    const codexModels = await codexResponse.json() as Array<{ providerID: string; providerName: string; modelID: string }>;
+    expect(codexModels.map((model) => ({
+      providerID: model.providerID,
+      providerName: model.providerName,
+      modelID: model.modelID,
+    }))).toEqual([
+      { providerID: "codex", providerName: "Codex", modelID: "gpt-from-codex-runtime" },
     ]);
   });
 

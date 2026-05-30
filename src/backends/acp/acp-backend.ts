@@ -5,6 +5,7 @@
 
 import { isRemoteOnlyMode } from "../../core/config";
 import { log } from "../../core/logger";
+import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import type { ModelInfo } from "../../types/api";
 import type { AgentProvider } from "../../types/settings";
 
@@ -973,7 +974,7 @@ export class AcpBackend implements Backend {
 
       mapped.push({
         providerID,
-        providerName: providerID,
+        providerName: this.getDiscoveredModelProviderName(providerID),
         modelID,
         modelName: name,
         connected: true,
@@ -1156,13 +1157,7 @@ export class AcpBackend implements Backend {
   }
 
   private getDiscoveredModelProviderName(providerID: string): string {
-    if (providerID === "copilot") {
-      return "Copilot";
-    }
-    if (providerID === "codex") {
-      return "Codex";
-    }
-    return providerID;
+    return AGENT_PROVIDER_OPTIONS.find((option) => option.id === providerID)?.label ?? providerID;
   }
 
   private async discoverModelVariantsFromConfigOptions(
