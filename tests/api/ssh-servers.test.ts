@@ -7,8 +7,10 @@ import { join } from "path";
 
 import { apiRoutes } from "../../src/api";
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
+import { backendManager } from "../../src/core/backend-manager";
 import { sshServerManager } from "../../src/core/ssh-server-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
+import { MockAcpBackend } from "../mocks/mock-backend";
 
 class SshServerApiExecutor extends TestCommandExecutor {
   constructor(
@@ -166,12 +168,14 @@ describe("Standalone SSH servers API integration", () => {
   afterAll(async () => {
     server.stop();
     sshServerManager.setExecutorFactoryForTesting(null);
+    backendManager.resetForTesting();
     delete process.env["CLANKY_DATA_DIR"];
     await rm(dataDir, { recursive: true, force: true });
   });
 
   beforeEach(() => {
     executorFactory = () => new SshServerApiExecutor();
+    backendManager.resetForTesting();
     const db = getDatabase();
     db.run("DELETE FROM chats");
     db.run("DELETE FROM ssh_server_sessions");
@@ -385,6 +389,103 @@ describe("Standalone SSH servers API integration", () => {
     };
     expect(reconnectFailedChat.state.connectionStatus).toBe("needs_credentials");
     expect(reconnectFailedChat.state.error?.code).toBe("ssh_credentials_required");
+  });
+
+  test("discovers SSH-server chat models through shared ACP settings for the selected provider", async () => {
+    const mockBackend = new MockAcpBackend({
+      filterModelsByConnectionProvider: true,
+      models: [
+        {
+          providerID: "copilot",
+          providerName: "Copilot",
+          modelID: "remote-copilot-model",
+          modelName: "Remote Copilot Model",
+          connected: true,
+          variants: ["low"],
+        },
+        {
+          providerID: "codex",
+          providerName: "Codex",
+          modelID: "remote-codex-model",
+          modelName: "Remote Codex Model",
+          connected: true,
+          variants: [""],
+        },
+      ],
+    });
+    backendManager.setBackendForTesting(mockBackend);
+
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Model Host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "/workspaces",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const credentialResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/credentials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(await createEncryptedCredential(createdServer.config.id)),
+    });
+    const exchange = await credentialResponse.json() as { credentialToken: string };
+
+    const copilotResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chat-models`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credentialToken: exchange.credentialToken,
+        providerID: "copilot",
+        directory: "/workspaces/project",
+      }),
+    });
+    expect(copilotResponse.ok).toBe(true);
+    const copilotModels = await copilotResponse.json() as Array<{ providerID: string; modelID: string }>;
+    expect(copilotModels.map((model) => ({ providerID: model.providerID, modelID: model.modelID }))).toEqual([
+      { providerID: "copilot", modelID: "remote-copilot-model" },
+    ]);
+
+    const codexResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chat-models`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credentialToken: exchange.credentialToken,
+        providerID: "codex",
+        directory: "/workspaces/project",
+      }),
+    });
+    expect(codexResponse.ok).toBe(true);
+    const codexModels = await codexResponse.json() as Array<{ providerID: string; modelID: string }>;
+    expect(codexModels.map((model) => ({ providerID: model.providerID, modelID: model.modelID }))).toEqual([
+      { providerID: "codex", modelID: "remote-codex-model" },
+    ]);
+
+    expect(mockBackend.getConnectionConfigs().map((config) => ({
+      provider: config.provider,
+      transport: config.transport,
+      hostname: config.hostname,
+      username: config.username,
+      directory: config.directory,
+    }))).toEqual([
+      {
+        provider: "copilot",
+        transport: "ssh",
+        hostname: "ssh.example.com",
+        username: "deploy",
+        directory: "/workspaces/project",
+      },
+      {
+        provider: "codex",
+        transport: "ssh",
+        hostname: "ssh.example.com",
+        username: "deploy",
+        directory: "/workspaces/project",
+      },
+    ]);
   });
 
   test("deletes direct standalone SSH sessions", async () => {
