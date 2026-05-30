@@ -6,8 +6,6 @@ const workspaceDirs = [
   "apps/server",
   "apps/web",
   "apps/cli",
-  "apps/tui",
-  "apps/electron",
 ];
 
 interface WorkspacePackageJson {

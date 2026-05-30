@@ -44,27 +44,12 @@
         "@clanky/shared": "workspace:*",
       },
     },
-    "apps/electron": {
-      "name": "@clanky/electron",
-      "dependencies": {
-        "@clanky/client-sdk": "workspace:*",
-        "@clanky/contracts": "workspace:*",
-        "@clanky/shared": "workspace:*",
-      },
-    },
     "apps/server": {
       "name": "@clanky/server",
       "dependencies": {
         "@clanky/client-sdk": "workspace:*",
         "@clanky/contracts": "workspace:*",
         "@clanky/shared": "workspace:*",
-      },
-    },
-    "apps/tui": {
-      "name": "@clanky/tui",
-      "dependencies": {
-        "@clanky/client-sdk": "workspace:*",
-        "@clanky/contracts": "workspace:*",
       },
     },
     "apps/web": {
@@ -113,13 +98,9 @@
 
     "@clanky/contracts": ["@clanky/contracts@workspace:packages/contracts"],
 
-    "@clanky/electron": ["@clanky/electron@workspace:apps/electron"],
-
     "@clanky/server": ["@clanky/server@workspace:apps/server"],
 
     "@clanky/shared": ["@clanky/shared@workspace:packages/shared"],
-
-    "@clanky/tui": ["@clanky/tui@workspace:apps/tui"],
 
     "@clanky/web": ["@clanky/web@workspace:apps/web"],
 
