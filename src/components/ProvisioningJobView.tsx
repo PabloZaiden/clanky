@@ -4,13 +4,13 @@ import type { ProvisioningJobMode, ProvisioningJobSnapshot, ProvisioningStep } f
 import type { WebSocketConnectionStatus } from "../hooks";
 
 const STEP_LABELS: Record<ProvisioningStep, string> = {
-  verify_devbox: "Verify @pablozaiden/devbox",
+  verify_devbox: "Verify devbox",
   prepare_directory: "Prepare directory",
   clone_repo: "Clone repository",
-  devbox_up: "Run @pablozaiden/devbox up",
-  devbox_rebuild: "Rebuild @pablozaiden/devbox",
-  devbox_arise: "Run @pablozaiden/devbox arise",
-  devbox_status: "Read @pablozaiden/devbox status",
+  devbox_up: "Run devbox up",
+  devbox_rebuild: "Rebuild devbox",
+  devbox_arise: "Run devbox arise",
+  devbox_status: "Read devbox status",
   create_workspace: "Create workspace",
   test_connection: "Test connection",
   workspace_ready: "Workspace Ready",

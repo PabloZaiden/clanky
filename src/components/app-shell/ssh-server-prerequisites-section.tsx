@@ -82,8 +82,7 @@ export function SshServerPrerequisitesSection({
       {!report && !error && (
         <p className="text-sm text-gray-600 dark:text-gray-400">
           This check verifies SSH connectivity, <code>bash</code>, <code>dtach</code>, and the automatic provisioning
-          toolchain: <code>@pablozaiden/devbox</code> (<code>devbox</code>), <code>docker</code>,{" "}
-          <code>devcontainer</code>, <code>git</code>, and{" "}
+          toolchain: <code>devbox</code>, <code>docker</code>, <code>devcontainer</code>, <code>git</code>, and{" "}
           <code>gh</code>.
         </p>
       )}

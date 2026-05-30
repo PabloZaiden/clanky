@@ -334,7 +334,7 @@ export const sshServersRoutes = {
       try {
         return Response.json(await sshServerManager.listDevboxTemplates(req.params.id, validation.data));
       } catch (error) {
-        log.error("Failed to list standalone SSH server @pablozaiden/devbox templates", {
+        log.error("Failed to list standalone SSH server devbox templates", {
           serverId: req.params.id,
           error: String(error),
         });

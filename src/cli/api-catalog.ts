@@ -472,7 +472,7 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
     requestSchema: CheckSshServerPrerequisitesRequestSchema,
   },
   "/api/ssh-servers/:id/devbox/templates": {
-    description: "List available @pablozaiden/devbox templates for a standalone SSH server.",
+    description: "List available devbox templates for a standalone SSH server.",
   },
   "/api/ssh-servers/:id/sessions/:sessionId": {
     description: "Update or delete an SSH server session.",

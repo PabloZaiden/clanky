@@ -52,10 +52,10 @@ const automaticProvisioningChecks: Array<{
 }> = [
   {
     id: "devbox",
-    label: "@pablozaiden/devbox",
+    label: "devbox",
     command: "devbox",
-    requiredFor: ["Automatic provisioning", "@pablozaiden/devbox arise"],
-    installHint: "Install @pablozaiden/devbox and ensure the devbox command is available on PATH before using automatic provisioning or devbox arise.",
+    requiredFor: ["Automatic provisioning", "devbox arise"],
+    installHint: "Install devbox and ensure it is available on PATH before using automatic provisioning or devbox arise.",
   },
   {
     id: "docker",
@@ -204,7 +204,7 @@ export async function checkSshServerPrerequisites(
         "bash",
         "unknown",
         unavailableAfterConnectionFailureDetail("bash"),
-        ["Standalone SSH sessions", "Automatic provisioning", "@pablozaiden/devbox arise"],
+        ["Standalone SSH sessions", "Automatic provisioning", "devbox arise"],
       ),
       createCheck(
         "dtach",
@@ -235,7 +235,7 @@ export async function checkSshServerPrerequisites(
     "bash",
     "bash",
     "bash",
-    ["Standalone SSH sessions", "Automatic provisioning", "@pablozaiden/devbox arise"],
+    ["Standalone SSH sessions", "Automatic provisioning", "devbox arise"],
     "Install bash and ensure it is available on PATH before using shell-based SSH workflows.",
   );
   const dtachResult = await executor.exec(

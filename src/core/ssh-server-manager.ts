@@ -160,7 +160,7 @@ export class SshServerManager {
     const executor = this.buildExecutor(server, password ?? "");
     const result = await executor.exec("devbox", ["templates"], { cwd: "/" });
     if (!result.success) {
-      throw new Error(result.stderr.trim() || result.stdout.trim() || "Failed to list @pablozaiden/devbox templates");
+      throw new Error(result.stderr.trim() || result.stdout.trim() || "Failed to list devbox templates");
     }
     return parseDevboxTemplatesOutput(result.stdout);
   }

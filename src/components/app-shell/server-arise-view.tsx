@@ -59,7 +59,7 @@ export function ServerAriseView({
     <ShellPanel
       eyebrow="SSH server"
       title={`Arise ${server.config.name}`}
-      description="Run @pablozaiden/devbox arise on this server to revive existing stopped devboxes."
+      description="Run devbox arise on this server to revive existing stopped devboxes."
       variant="compact"
       headerOffsetClassName={shellHeaderOffsetClassName}
       badges={
@@ -118,7 +118,7 @@ export function ServerAriseView({
               size="sm"
               loading={provisioning.starting}
             >
-              Run @pablozaiden/devbox arise
+              Run devbox arise
             </Button>
           </>
         )

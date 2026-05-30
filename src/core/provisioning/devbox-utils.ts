@@ -10,11 +10,11 @@ export function parseDevboxStatusOutput(output: string): DevboxStatusResult {
   try {
     parsed = JSON.parse(output);
   } catch {
-    throw new Error("@pablozaiden/devbox status did not return valid JSON");
+    throw new Error("devbox status did not return valid JSON");
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("@pablozaiden/devbox status did not return an object");
+    throw new Error("devbox status did not return an object");
   }
 
   const record = parsed as Record<string, unknown>;
