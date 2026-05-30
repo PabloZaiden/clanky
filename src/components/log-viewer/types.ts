@@ -52,6 +52,8 @@ export interface TranscriptFileLinkContext {
   getFileHref: (target: TranscriptFileLinkTarget) => string;
   /** Navigate to the resolved file in the code explorer. */
   openFile: (target: TranscriptFileLinkTarget) => void;
+  /** Surface a click-time validation error to the user. */
+  onFileOpenError?: (message: string) => void;
 }
 
 export interface LogViewerProps {
