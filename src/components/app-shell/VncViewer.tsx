@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import RFB from "@novnc/novnc";
+import RFB from "../../vendor/novnc-rfb.js";
 import type { VncSession } from "../../types";
 import { appWebSocketUrl } from "../../lib/public-path";
 

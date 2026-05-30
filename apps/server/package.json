@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cd ../.. && CLANKY_DATA_DIR=apps/server/data bun --hot apps/server/src/index.ts",
+    "dev": "cd ../.. && bun run build:novnc && CLANKY_DATA_DIR=apps/server/data bun --hot apps/server/src/index.ts",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun src/build.ts"
   },
