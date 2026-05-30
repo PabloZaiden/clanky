@@ -12,7 +12,6 @@ The repository is organized as a workspace-style monorepo:
 - `apps/server` - web and API server.
 - `apps/web` - browser bundle workspace for the shared web app assets
 - `apps/cli` - standalone API client CLI
-- `apps/tui` and `apps/electron` - reserved stubs for future client surfaces
 - `packages/shared`, `packages/contracts`, `packages/client-sdk` - shared runtime-neutral types/helpers, API contracts, and client transport/auth utilities
 
 ## Best way to use Clanky
