@@ -653,8 +653,11 @@ export function ChatDetails({
               },
         });
       },
+      onFileOpenError: (message: string) => {
+        toast.error(message);
+      },
     };
-  }, [chat, chatWorkingDirectory, embeddedTaskId]);
+  }, [chat, chatWorkingDirectory, embeddedTaskId, toast]);
 
   const headerActionMenuItems = useMemo(() => {
     if (!chat || isEmbedded) {
