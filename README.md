@@ -22,7 +22,7 @@ While Clanky can be used locally, accessing code repositories and running agents
 The recommended workflow is to treat Clanky as a controller for SSH-backed development environments, even when that SSH host is just your own machine.
 
 1. Register an `ssh` server in Clanky. Using `localhost` is a great default if you want the SSH workflow without needing a separate remote machine.
-2. Create an automatic workspace for each project you want to work on, and let that workspace use your devbox-managed environment so tools and dependencies are ready inside the project context. Automatic workspaces are docker containers created with [`devbox`](https://github.com/pablozaiden/devbox) and automatically exposed over SSH.
+2. Create an automatic workspace for each project you want to work on, and let that workspace use your `@pablozaiden/devbox`-managed environment so tools and dependencies are ready inside the project context. Automatic workspaces are docker containers created with [`@pablozaiden/devbox`](https://github.com/pablozaiden/devbox) and automatically exposed over SSH.
 3. Once the workspace is ready, either open chats to work interactively with the coding agent in that workspace or create a new task, write the task prompt, and let the agent work autonomously.
 
 **[Download the latest release](https://github.com/pablozaiden/clanky/releases/latest)**

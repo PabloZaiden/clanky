@@ -183,14 +183,14 @@ export class ProvisioningManager {
       );
       const git = GitService.withExecutor(executor);
 
-      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
+      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for @pablozaiden/devbox");
       await this.runCmd(record, executor, {
         step: "verify_devbox",
-        label: "Checking devbox availability",
+        label: "Checking @pablozaiden/devbox availability",
         command: "bash",
         args: ["-lc", "command -v devbox >/dev/null 2>&1"],
         errorCode: "devbox_not_found",
-        errorMessage: "Devbox is not installed or not available on PATH",
+        errorMessage: "@pablozaiden/devbox is not installed or the devbox command is not available on PATH",
         captureStdout: false,
       });
 
@@ -217,7 +217,7 @@ export class ProvisioningManager {
           throw new ProvisioningFailedError(
             "missing_devbox_template",
             "clone_repo",
-            "A devbox template is required when creating a workspace without an existing repository",
+            "A @pablozaiden/devbox template is required when creating a workspace without an existing repository",
           );
         }
         if (targetExists) {
@@ -291,10 +291,10 @@ export class ProvisioningManager {
         appendSystemLog(record, this.maxLogEntries, `Reusing existing checkout at ${targetDirectory}`, "clone_repo");
       }
 
-      setStep(record, this.maxLogEntries, "devbox_up", "Starting devbox");
+      setStep(record, this.maxLogEntries, "devbox_up", "Starting @pablozaiden/devbox");
       await this.runCmd(record, executor, {
         step: "devbox_up",
-        label: "Running devbox up",
+        label: "Running @pablozaiden/devbox up",
         command: "devbox",
         args: buildDevboxArgs("up", {
           devcontainerSubpath: record.job.config.devcontainerSubpath,
@@ -304,18 +304,18 @@ export class ProvisioningManager {
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
         errorCode: "devbox_up_failed",
-        errorMessage: "Failed to start devbox",
+        errorMessage: "Failed to start @pablozaiden/devbox",
       });
 
-      setStep(record, this.maxLogEntries, "devbox_status", "Reading devbox status");
+      setStep(record, this.maxLogEntries, "devbox_status", "Reading @pablozaiden/devbox status");
       const statusResult = await this.runCmd(record, executor, {
         step: "devbox_status",
-        label: "Reading devbox status",
+        label: "Reading @pablozaiden/devbox status",
         command: "devbox",
         args: ["status"],
         cwd: targetDirectory,
         errorCode: "invalid_devbox_status",
-        errorMessage: "Failed to read devbox status",
+        errorMessage: "Failed to read @pablozaiden/devbox status",
         captureStdout: false,
       });
       const status = parseDevboxStatusOutput(statusResult.stdout);
@@ -323,7 +323,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "devbox status reported that the environment is not running",
+          "@pablozaiden/devbox status reported that the environment is not running",
         );
       }
 
@@ -340,7 +340,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "devbox status did not include a workdir value",
+          "@pablozaiden/devbox status did not include a workdir value",
         );
       }
 
@@ -349,7 +349,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "devbox status did not include SSH port information",
+          "@pablozaiden/devbox status did not include SSH port information",
         );
       }
 
@@ -362,7 +362,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "devbox status did not include SSH username information",
+          "@pablozaiden/devbox status did not include SSH username information",
         );
       }
 
@@ -371,7 +371,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "Could not determine the devbox SSH password from devbox status or credential file",
+          "Could not determine the @pablozaiden/devbox SSH password from devbox status or credential file",
         );
       }
 
@@ -390,7 +390,7 @@ export class ProvisioningManager {
       appendSystemLog(
         record,
         this.maxLogEntries,
-        `Resolved devbox SSH endpoint ${resolvedUsername}@${server.address}:${resolvedPort}`,
+        `Resolved @pablozaiden/devbox SSH endpoint ${resolvedUsername}@${server.address}:${resolvedPort}`,
         "devbox_status",
       );
 
@@ -516,23 +516,23 @@ export class ProvisioningManager {
   ): Promise<void> {
     const action = mode === "restart"
       ? {
-          progressLabel: "Restarting devbox",
+          progressLabel: "Restarting @pablozaiden/devbox",
           step: "devbox_up" as const,
-          commandLabel: "Running devbox up",
+          commandLabel: "Running @pablozaiden/devbox up",
           args: ["up"],
           errorCode: "devbox_restart_failed",
-          errorMessage: "Failed to restart devbox",
-          completionMessage: `Workspace connection test succeeded. Devbox for ${record.job.config.name} was restarted successfully.`,
+          errorMessage: "Failed to restart @pablozaiden/devbox",
+          completionMessage: `Workspace connection test succeeded. @pablozaiden/devbox for ${record.job.config.name} was restarted successfully.`,
           genericFailureCode: "restart_failed",
         }
       : {
-          progressLabel: "Rebuilding devbox",
+          progressLabel: "Rebuilding @pablozaiden/devbox",
           step: "devbox_rebuild" as const,
-          commandLabel: "Running devbox rebuild",
+          commandLabel: "Running @pablozaiden/devbox rebuild",
           args: ["rebuild"],
           errorCode: "devbox_rebuild_failed",
-          errorMessage: "Failed to rebuild devbox",
-          completionMessage: `Workspace connection test succeeded. Devbox for ${record.job.config.name} was rebuilt successfully.`,
+          errorMessage: "Failed to rebuild @pablozaiden/devbox",
+          completionMessage: `Workspace connection test succeeded. @pablozaiden/devbox for ${record.job.config.name} was rebuilt successfully.`,
           genericFailureCode: "rebuild_failed",
         };
 
@@ -581,14 +581,14 @@ export class ProvisioningManager {
         workspaceAction: "reused",
       });
 
-      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
+      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for @pablozaiden/devbox");
       await this.runCmd(record, executor, {
         step: "verify_devbox",
-        label: "Checking devbox availability",
+        label: "Checking @pablozaiden/devbox availability",
         command: "bash",
         args: ["-lc", "command -v devbox >/dev/null 2>&1"],
         errorCode: "devbox_not_found",
-        errorMessage: "Devbox is not installed or not available on PATH",
+        errorMessage: "@pablozaiden/devbox is not installed or the devbox command is not available on PATH",
         captureStdout: false,
       });
 
@@ -618,15 +618,15 @@ export class ProvisioningManager {
         errorMessage: action.errorMessage,
       });
 
-      setStep(record, this.maxLogEntries, "devbox_status", "Reading devbox status");
+      setStep(record, this.maxLogEntries, "devbox_status", "Reading @pablozaiden/devbox status");
       const statusResult = await this.runCmd(record, executor, {
         step: "devbox_status",
-        label: "Reading devbox status",
+        label: "Reading @pablozaiden/devbox status",
         command: "devbox",
         args: ["status"],
         cwd: targetDirectory,
         errorCode: "invalid_devbox_status",
-        errorMessage: "Failed to read devbox status",
+        errorMessage: "Failed to read @pablozaiden/devbox status",
         captureStdout: false,
       });
       const status = parseDevboxStatusOutput(statusResult.stdout);
@@ -634,7 +634,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "devbox status reported that the environment is not running",
+          "@pablozaiden/devbox status reported that the environment is not running",
         );
       }
 
@@ -651,7 +651,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "devbox status did not include a workdir value",
+          "@pablozaiden/devbox status did not include a workdir value",
         );
       }
 
@@ -660,7 +660,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "devbox status did not include SSH port information",
+          "@pablozaiden/devbox status did not include SSH port information",
         );
       }
 
@@ -673,7 +673,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "devbox status did not include SSH username information",
+          "@pablozaiden/devbox status did not include SSH username information",
         );
       }
 
@@ -682,7 +682,7 @@ export class ProvisioningManager {
         throw new ProvisioningFailedError(
           "invalid_devbox_status",
           "devbox_status",
-          "Could not determine the devbox SSH password from devbox status or credential file",
+          "Could not determine the @pablozaiden/devbox SSH password from devbox status or credential file",
         );
       }
 
@@ -701,7 +701,7 @@ export class ProvisioningManager {
       appendSystemLog(
         record,
         this.maxLogEntries,
-        `Resolved devbox SSH endpoint ${resolvedUsername}@${server.address}:${resolvedPort}`,
+        `Resolved @pablozaiden/devbox SSH endpoint ${resolvedUsername}@${server.address}:${resolvedPort}`,
         "devbox_status",
       );
 
@@ -792,27 +792,27 @@ export class ProvisioningManager {
         password,
       );
 
-      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for devbox");
+      setStep(record, this.maxLogEntries, "verify_devbox", "Checking for @pablozaiden/devbox");
       await this.runCmd(record, executor, {
         step: "verify_devbox",
-        label: "Checking devbox availability",
+        label: "Checking @pablozaiden/devbox availability",
         command: "bash",
         args: ["-lc", "command -v devbox >/dev/null 2>&1"],
         errorCode: "devbox_not_found",
-        errorMessage: "Devbox is not installed or not available on PATH",
+        errorMessage: "@pablozaiden/devbox is not installed or the devbox command is not available on PATH",
         captureStdout: false,
       });
 
-      setStep(record, this.maxLogEntries, "devbox_arise", "Running devbox arise");
+      setStep(record, this.maxLogEntries, "devbox_arise", "Running @pablozaiden/devbox arise");
       await this.runCmd(record, executor, {
         step: "devbox_arise",
-        label: "Running devbox arise",
+        label: "Running @pablozaiden/devbox arise",
         command: "devbox",
         args: ["arise"],
         timeout: DEVBOX_UP_TIMEOUT_MS,
         streamOutput: true,
         errorCode: "devbox_arise_failed",
-        errorMessage: "Failed to run devbox arise",
+        errorMessage: "Failed to run @pablozaiden/devbox arise",
       });
 
       setStep(record, this.maxLogEntries, "arise_complete");
@@ -826,7 +826,7 @@ export class ProvisioningManager {
       appendSystemLog(
         record,
         this.maxLogEntries,
-        `Devbox arise completed successfully for ${record.job.config.name}.`,
+        `@pablozaiden/devbox arise completed successfully for ${record.job.config.name}.`,
         "arise_complete",
       );
       emitJobCompleted(record.job);

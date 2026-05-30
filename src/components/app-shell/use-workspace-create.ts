@@ -208,7 +208,7 @@ export function useWorkspaceCreate({
           return;
         }
         if (automaticCreateNewRepository && !automaticDevboxTemplate.trim()) {
-          toast.error("Devbox template is required when the repository doesn't exist yet.");
+          toast.error("@pablozaiden/devbox template is required when the repository doesn't exist yet.");
           return;
         }
 

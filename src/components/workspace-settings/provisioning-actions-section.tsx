@@ -23,7 +23,7 @@ export function ProvisioningActionsSection({
           Provisioned Workspace Actions
         </h3>
         <p className="mb-4 text-sm text-amber-800 dark:text-amber-200">
-          Restart or rebuild the provisioned devbox for this workspace. These actions open the
+          Restart or rebuild the provisioned @pablozaiden/devbox for this workspace. These actions open the
           existing provisioning flow for <span className="font-medium">{workspace.name}</span>.
         </p>
         <div className="flex flex-wrap gap-2">

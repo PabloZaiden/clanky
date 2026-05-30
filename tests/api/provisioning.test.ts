@@ -415,7 +415,7 @@ describe("Provisioning API integration", () => {
     const failed = await waitForJobStatus(baseUrl, started.job.config.id, ["failed"]);
     expect(failed.job.state.status).toBe("failed");
     expect(failed.job.state.error?.code).toBe("devbox_not_found");
-    expect(failed.job.state.error?.message).toContain("Devbox is not installed or not available on PATH");
+    expect(failed.job.state.error?.message).toContain("@pablozaiden/devbox is not installed or the devbox command is not available on PATH");
   });
 
   test("creates and completes a server-level arise job without workspace fields", async () => {
@@ -450,6 +450,6 @@ describe("Provisioning API integration", () => {
     const completed = await waitForJobStatus(baseUrl, started.job.config.id, ["completed"]);
     expect(completed.job.state.status).toBe("completed");
     expect(completed.job.state.workspaceId).toBeUndefined();
-    expect(completed.logs.some((entry) => entry.text.includes("Devbox arise completed successfully"))).toBe(true);
+    expect(completed.logs.some((entry) => entry.text.includes("@pablozaiden/devbox arise completed successfully"))).toBe(true);
   });
 });

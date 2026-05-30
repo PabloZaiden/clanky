@@ -20,12 +20,12 @@ export function parseDevboxTemplatesOutput(stdout: string): DevboxTemplateSummar
   try {
     parsed = JSON.parse(stdout);
   } catch (error) {
-    throw new Error("Failed to parse devbox templates output as JSON", { cause: error });
+    throw new Error("Failed to parse @pablozaiden/devbox templates output as JSON", { cause: error });
   }
 
   const result = DevboxTemplateSummariesSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(`Failed to validate devbox templates output: ${result.error.issues[0]?.message ?? "invalid format"}`);
+    throw new Error(`Failed to validate @pablozaiden/devbox templates output: ${result.error.issues[0]?.message ?? "invalid format"}`);
   }
 
   return result.data.map((template) => ({

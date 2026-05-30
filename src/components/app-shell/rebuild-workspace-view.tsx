@@ -140,7 +140,7 @@ export function RebuildWorkspaceView({
               loading={provisioning.starting}
               disabled={!sshServerId || (!!sshServerId && !selectedServer)}
             >
-              {`${actionLabel} Devbox`}
+              {`${actionLabel} @pablozaiden/devbox`}
             </Button>
           </>
         )
@@ -237,7 +237,7 @@ export function RebuildWorkspaceView({
               value={workspace.devcontainerSubpath ?? ""}
               onChange={() => {}}
               disabled
-              help="If set, devbox will reuse this devcontainer variant during rebuild or restart."
+              help="If set, @pablozaiden/devbox will reuse this devcontainer variant during rebuild or restart."
             />
 
             {!selectedServerHasStoredCredential && sshServerId && (

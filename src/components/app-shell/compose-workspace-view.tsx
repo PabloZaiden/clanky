@@ -405,7 +405,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                           htmlFor="automatic-devbox-template"
                           className="block text-sm font-medium text-gray-700 dark:text-gray-300"
                         >
-                          Devbox template
+                          @pablozaiden/devbox template
                         </label>
                         <Button
                           type="button"
@@ -439,7 +439,7 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                       <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                         {automaticCreateNewRepository
                           ? "Required because there is no repository devcontainer yet."
-                          : "Optional. Choose a built-in devbox template instead of the repository devcontainer definition for this provisioning run."}
+                          : "Optional. Choose a built-in @pablozaiden/devbox template instead of the repository devcontainer definition for this provisioning run."}
                       </p>
                       {templatesError && (
                         <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
@@ -454,8 +454,8 @@ export function ComposeWorkspaceView(props: ComposeWorkspaceViewProps) {
                       placeholder="backend"
                       disabled={automaticDevboxTemplate.length > 0}
                       help={automaticDevboxTemplate
-                        ? "Disabled while a devbox template is selected. Clear the template to use the repository devcontainer definition instead."
-                        : "Optional. Use when the repository contains multiple devcontainer definitions and devbox needs a specific one."}
+                        ? "Disabled while a @pablozaiden/devbox template is selected. Clear the template to use the repository devcontainer definition instead."
+                        : "Optional. Use when the repository contains multiple devcontainer definitions and @pablozaiden/devbox needs a specific one."}
                     />
                   </div>
                 )}

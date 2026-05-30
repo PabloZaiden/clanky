@@ -212,7 +212,7 @@ export function AutomaticWorkspaceForm({
                   htmlFor="automatic-devbox-template"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
-                  Devbox Template
+                  @pablozaiden/devbox template
                 </label>
                 <button
                   type="button"
@@ -240,7 +240,7 @@ export function AutomaticWorkspaceForm({
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {createNewRepository
                   ? "Required because there is no repository devcontainer yet."
-                  : "Optional. Choose a built-in devbox template instead of the repository devcontainer definition for this provisioning run."}
+                  : "Optional. Choose a built-in @pablozaiden/devbox template instead of the repository devcontainer definition for this provisioning run."}
               </p>
               {templatesError && (
                 <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{templatesError}</p>
@@ -265,8 +265,8 @@ export function AutomaticWorkspaceForm({
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {devboxTemplate
-                  ? "Disabled while a devbox template is selected. Clear the template to use the repository devcontainer definition instead."
-                  : "Optional. Only set this when the repository exposes multiple devcontainer definitions and devbox needs a specific one."}
+                  ? "Disabled while a @pablozaiden/devbox template is selected. Clear the template to use the repository devcontainer definition instead."
+                  : "Optional. Only set this when the repository exposes multiple devcontainer definitions and @pablozaiden/devbox needs a specific one."}
               </p>
             </div>
           </div>

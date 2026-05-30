@@ -205,7 +205,7 @@ export async function listDevboxTemplatesApi(options: {
       body: JSON.stringify(request),
       signal: options.signal,
     },
-    "List devbox templates",
+    "List @pablozaiden/devbox templates",
   );
 }
 
