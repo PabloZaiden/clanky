@@ -264,6 +264,7 @@ export function TaskDetails({
             isLogFocusMode={isLogFocusActive}
             onEnterLogFocusMode={toggleLogFocusMode}
             onExitLogFocusMode={toggleLogFocusMode}
+            onFileOpenError={toast.error}
             applySafeAreaBottomToLogFocusBar={!showActionBar}
           />
         </div>

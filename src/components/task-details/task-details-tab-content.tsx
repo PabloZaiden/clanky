@@ -49,6 +49,7 @@ interface TaskDetailsTabContentProps {
   isLogFocusMode: boolean;
   onEnterLogFocusMode: () => void;
   onExitLogFocusMode: () => void;
+  onFileOpenError: (message: string) => void;
   applySafeAreaBottomToLogFocusBar?: boolean;
 }
 
@@ -74,6 +75,7 @@ export function TaskDetailsTabContent({
   isLogFocusMode,
   onEnterLogFocusMode,
   onExitLogFocusMode,
+  onFileOpenError,
   applySafeAreaBottomToLogFocusBar = false,
 }: TaskDetailsTabContentProps) {
   const { config, state } = task;
@@ -109,7 +111,8 @@ export function TaskDetailsTabContent({
     rootDirectory: toolPathDisplayRoot,
     getFileHref: (target: TranscriptFileLinkTarget) => `#${getTaskFileHash(target)}`,
     openFile: openLinkedTaskFile,
-  }), [config.workspaceId, getTaskFileHash, openLinkedTaskFile, toolPathDisplayRoot]);
+    onFileOpenError,
+  }), [config.workspaceId, getTaskFileHash, onFileOpenError, openLinkedTaskFile, toolPathDisplayRoot]);
 
   return (
     <div
