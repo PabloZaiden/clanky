@@ -38,6 +38,7 @@ describe("AcpBackend model discovery", () => {
     await backend.createSession({ directory: workDir, model: "mock-model" });
     const models = await backend.getModels(workDir);
 
+    expect(models.find((model) => model.modelID === "mock-model")?.providerID).toBe("codex");
     expect(models.find((model) => model.modelID === "mock-model")?.variants).toEqual([
       "medium",
       "low",

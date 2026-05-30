@@ -970,7 +970,7 @@ export class AcpBackend implements Backend {
       }
 
       const name = getString(item["name"]) ?? modelID;
-      const providerID = getString(item["provider"]) ?? inferProviderID(modelID);
+      const providerID = this.getDiscoveredModelProviderID(modelID, getString(item["provider"]));
 
       mapped.push({
         providerID,
@@ -1149,16 +1149,19 @@ export class AcpBackend implements Backend {
     this.modelCache.set(directory, { models, complete });
   }
 
-  private getDiscoveredModelProviderID(modelID: string): string {
-    if (this.provider === "copilot") {
-      return "copilot";
+  private getDiscoveredModelProviderID(modelID: string, providerID?: string): string {
+    if (this.provider === "copilot" || this.provider === "codex") {
+      return this.provider;
     }
-    return inferProviderID(modelID);
+    return providerID ?? inferProviderID(modelID);
   }
 
   private getDiscoveredModelProviderName(providerID: string): string {
     if (providerID === "copilot") {
       return "Copilot";
+    }
+    if (providerID === "codex") {
+      return "Codex";
     }
     return providerID;
   }
@@ -1212,14 +1215,17 @@ export class AcpBackend implements Backend {
       return [];
     }
 
-    return modelOption.options.map((opt) => ({
-      providerID: inferProviderID(opt.value),
-      providerName: inferProviderID(opt.value),
-      modelID: opt.value,
-      modelName: opt.name,
-      connected: true,
-      variants: [""],
-    }));
+    return modelOption.options.map((opt) => {
+      const providerID = this.getDiscoveredModelProviderID(opt.value);
+      return {
+        providerID,
+        providerName: this.getDiscoveredModelProviderName(providerID),
+        modelID: opt.value,
+        modelName: opt.name,
+        connected: true,
+        variants: [""],
+      };
+    });
   }
 
   private buildPromptParts(prompt: PromptInput): Array<Record<string, unknown>> {
