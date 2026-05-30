@@ -1,5 +1,6 @@
 import twPlugin from 'bun-plugin-tailwind'
 import { log } from './core/logger';
+import { buildNoVncVendor } from '../scripts/novnc-vendor';
 
 // workDir is the current file's directory + '/..'
 const workDir = import.meta.dir + '/..';
@@ -23,6 +24,7 @@ const outfile = target?.startsWith('bun-windows') ? `${outDir}/clanky.exe` : `${
 let buildSucceeded = false;
 
 try {
+  await buildNoVncVendor();
   log.info('Building server binary...');
   if (target) {
     log.info(`Target: ${target}`);

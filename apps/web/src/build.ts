@@ -1,4 +1,5 @@
 import twPlugin from "bun-plugin-tailwind";
+import { buildNoVncVendor } from "../../../scripts/novnc-vendor";
 
 const workspaceDir = `${import.meta.dir}/..`;
 const sharedSrcDir = `${workspaceDir}/../../src`;
@@ -25,6 +26,7 @@ const staticAssets = [
 
 await Bun.$`rm -rf ${outDir}`.quiet();
 await Bun.$`mkdir -p ${outDir}`.quiet();
+await buildNoVncVendor();
 
 const result = await Bun.build({
   entrypoints: [`${sharedSrcDir}/index.html`],

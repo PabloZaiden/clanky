@@ -5,6 +5,7 @@
 
 import { isRemoteOnlyMode } from "../../core/config";
 import { log } from "../../core/logger";
+import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import type { ModelInfo } from "../../types/api";
 import type { AgentProvider } from "../../types/settings";
 
@@ -43,7 +44,6 @@ import { isRecord, getString, getNumber, firstString } from "./json-helpers";
 import {
   sanitizeSpawnArgsForLogging,
   getProcessExitHint,
-  inferProviderID,
   isTransientSshAuthenticationFailure,
 } from "./process-utils";
 
@@ -970,11 +970,11 @@ export class AcpBackend implements Backend {
       }
 
       const name = getString(item["name"]) ?? modelID;
-      const providerID = getString(item["provider"]) ?? inferProviderID(modelID);
+      const providerID = this.getDiscoveredModelProviderID(getString(item["provider"]));
 
       mapped.push({
         providerID,
-        providerName: providerID,
+        providerName: this.getDiscoveredModelProviderName(providerID),
         modelID,
         modelName: name,
         connected: true,
@@ -1149,18 +1149,15 @@ export class AcpBackend implements Backend {
     this.modelCache.set(directory, { models, complete });
   }
 
-  private getDiscoveredModelProviderID(modelID: string): string {
-    if (this.provider === "copilot") {
-      return "copilot";
+  private getDiscoveredModelProviderID(providerID?: string): string {
+    if (this.provider) {
+      return this.provider;
     }
-    return inferProviderID(modelID);
+    return providerID ?? "unknown";
   }
 
   private getDiscoveredModelProviderName(providerID: string): string {
-    if (providerID === "copilot") {
-      return "Copilot";
-    }
-    return providerID;
+    return AGENT_PROVIDER_OPTIONS.find((option) => option.id === providerID)?.label ?? providerID;
   }
 
   private async discoverModelVariantsFromConfigOptions(
@@ -1188,7 +1185,7 @@ export class AcpBackend implements Backend {
       }
 
       this.rememberDefaultReasoningEffort(directory, modelID, configOptions);
-      const providerID = this.getDiscoveredModelProviderID(modelID);
+      const providerID = this.getDiscoveredModelProviderID();
       discovered.push({
         providerID,
         providerName: this.getDiscoveredModelProviderName(providerID),
@@ -1212,14 +1209,17 @@ export class AcpBackend implements Backend {
       return [];
     }
 
-    return modelOption.options.map((opt) => ({
-      providerID: inferProviderID(opt.value),
-      providerName: inferProviderID(opt.value),
-      modelID: opt.value,
-      modelName: opt.name,
-      connected: true,
-      variants: [""],
-    }));
+    return modelOption.options.map((opt) => {
+      const providerID = this.getDiscoveredModelProviderID();
+      return {
+        providerID,
+        providerName: this.getDiscoveredModelProviderName(providerID),
+        modelID: opt.value,
+        modelName: opt.name,
+        connected: true,
+        variants: [""],
+      };
+    });
   }
 
   private buildPromptParts(prompt: PromptInput): Array<Record<string, unknown>> {

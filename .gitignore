@@ -11,6 +11,7 @@ node_modules
 out
 dist
 *.tgz
+src/vendor/novnc-rfb.js
 
 # code coverage
 coverage

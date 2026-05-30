@@ -1,4 +1,5 @@
 import twPlugin from "bun-plugin-tailwind";
+import { buildNoVncVendor } from "../../../scripts/novnc-vendor";
 
 const workspaceDir = `${import.meta.dir}/..`;
 const outputDir = `${workspaceDir}/dist`;
@@ -19,6 +20,7 @@ const outfile = target?.startsWith("bun-windows")
 let buildSucceeded = false;
 
 try {
+  await buildNoVncVendor();
   process.chdir(tempOutputDir);
   let result: Awaited<ReturnType<typeof Bun.build>>;
   try {
