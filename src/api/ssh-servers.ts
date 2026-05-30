@@ -23,6 +23,7 @@ import {
   UpdateSshSessionRequestSchema,
 } from "../types/schemas";
 import { getDefaultCopilotModels, getModelsForProvider } from "./models";
+import { buildProviderAvailabilityShellCheck } from "../core/agent-runtime-command";
 
 const log = createLogger("api:ssh-servers");
 
@@ -255,12 +256,9 @@ export const sshServersRoutes = {
         const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
         const { executor } = await sshServerManager.getCommandExecutor(req.params.id, password);
         const [copilot, opencode, codex] = await Promise.all([
-          executor.exec("sh", ["-lc", "command -v copilot >/dev/null 2>&1"]),
-          executor.exec("sh", ["-lc", "command -v opencode >/dev/null 2>&1"]),
-          executor.exec("sh", [
-            "-lc",
-            "command -v codex >/dev/null 2>&1 && { command -v codex-acp >/dev/null 2>&1 || command -v npx >/dev/null 2>&1 || command -v bunx >/dev/null 2>&1; }",
-          ]),
+          executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("copilot")]),
+          executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("opencode")]),
+          executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("codex")]),
         ]);
         return Response.json({
           providers: [
