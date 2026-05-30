@@ -88,4 +88,32 @@ describe("TranscriptTextContent file links", () => {
       startDirectory: "/workspace/project",
     });
   });
+
+  test("preserves browser default behavior for modified primary clicks", async () => {
+    const openFile = mock((_target: TranscriptFileLinkTarget) => {});
+    const fetchMock = mock(async () => {
+      throw new Error("metadata should not be requested for modified clicks");
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    render(createElement(TranscriptTextContent, {
+      content: "`src/index.ts`",
+      className: "text-sm",
+      fileLinkContext: createFileLinkContext(openFile),
+    }));
+
+    const link = document.querySelector("[data-file-link-path='src/index.ts']");
+    expect(link).not.toBeNull();
+    const event = new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      metaKey: true,
+    });
+    link!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+    expect(openFile).toHaveBeenCalledTimes(0);
+  });
 });
