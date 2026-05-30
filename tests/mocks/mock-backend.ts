@@ -38,6 +38,8 @@ export interface MockBackendOptions {
   responses?: string[];
   /** Models to return from getModels() */
   models?: MockModelInfo[];
+  /** Match real ACP provider-scoped model discovery for tests that need it. */
+  filterModelsByConnectionProvider?: boolean;
 }
 
 let mockSessionIdCounter = 0;
@@ -65,17 +67,20 @@ export class MockAcpBackend implements Backend {
   private pendingPrompt = false;
   private readonly responses: string[];
   private readonly models: MockModelInfo[];
+  private readonly filterModelsByConnectionProvider: boolean;
   private readonly sessions = new Map<string, AgentSession>();
   private readonly sentPrompts: PromptInput[] = [];
   private readonly permissionReplies: Array<{ requestId: string; response: string }> = [];
   private readonly configOptionUpdates: Array<{ sessionId: string; configId: string; value: string }> = [];
   private readonly sessionModelUpdates: Array<{ sessionId: string; modelId: string }> = [];
+  private readonly connectionConfigs: BackendConnectionConfig[] = [];
   private nextCreateSessionError: string | null = null;
   private nextGetSessionError: string | null = null;
 
   constructor(options: MockBackendOptions = {}) {
     this.responses = options.responses ?? ["<promise>COMPLETE</promise>"];
     this.models = options.models ?? [];
+    this.filterModelsByConnectionProvider = options.filterModelsByConnectionProvider ?? false;
   }
 
   /**
@@ -103,6 +108,7 @@ export class MockAcpBackend implements Backend {
   async connect(config: BackendConnectionConfig, _signal?: AbortSignal): Promise<void> {
     this.connected = true;
     this.directory = config.directory;
+    this.connectionConfigs.push(config);
   }
 
   async disconnect(): Promise<void> {
@@ -256,6 +262,10 @@ export class MockAcpBackend implements Backend {
    * Returns the models configured in the constructor options.
    */
   async getModels(_directory: string): Promise<MockModelInfo[]> {
+    if (this.filterModelsByConnectionProvider) {
+      const provider = this.connectionConfigs.at(-1)?.provider;
+      return this.models.filter((model) => model.providerID === provider);
+    }
     return this.models;
   }
 
@@ -300,6 +310,10 @@ export class MockAcpBackend implements Backend {
 
   getSessionModelUpdates(): Array<{ sessionId: string; modelId: string }> {
     return [...this.sessionModelUpdates];
+  }
+
+  getConnectionConfigs(): BackendConnectionConfig[] {
+    return [...this.connectionConfigs];
   }
 }
 

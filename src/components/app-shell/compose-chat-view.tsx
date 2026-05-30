@@ -6,7 +6,7 @@ import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { useToast } from "../../hooks";
 import { AGENT_PROVIDER_OPTIONS } from "../../constants/agent-providers";
 import { appFetch } from "../../lib/public-path";
-import { getStoredSshCredentialToken, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
+import { getStoredSshCredentialToken, invalidateStoredSshCredentialToken, storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import {
   getStoredChatModelPreference,
   saveStoredChatModelPreference,
@@ -229,7 +229,17 @@ export function ComposeChatView({
           signal: controller.signal,
         });
         if (!response.ok) {
-          const data = await response.json() as { message?: string; error?: string };
+          const data = await response.json() as { code?: string; message?: string; error?: string };
+          const errorCode = data.code ?? data.error;
+          if (
+            response.status === 400
+            && errorCode === "invalid_credential_token"
+            && composeServer
+          ) {
+            invalidateStoredSshCredentialToken(composeServer.config.id);
+            setRemoteCredentialToken(null);
+            setPasswordModalOpen(true);
+          }
           throw new Error(data.message ?? data.error ?? "Failed to discover remote models");
         }
         const nextModels = await response.json() as ModelInfo[];
