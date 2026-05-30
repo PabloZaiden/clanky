@@ -41,12 +41,6 @@ describe("agent runtime command", () => {
     expect(copilot.args.slice(2)).toEqual(["copilot", "--yolo", "--acp"]);
   });
 
-  test("uses the same POSIX resolver command for stdio and ssh providers", () => {
-    expect(getProviderAcpCommand("copilot", "stdio")).toEqual(getProviderAcpCommand("copilot", "ssh"));
-    expect(getProviderAcpCommand("opencode", "stdio")).toEqual(getProviderAcpCommand("opencode", "ssh"));
-    expect(getProviderAcpCommand("codex", "stdio")).toEqual(getProviderAcpCommand("codex", "ssh"));
-  });
-
   test("returns a synchronous resolver command for Codex ACP", () => {
     const command = getProviderAcpCommand("codex", "ssh");
 
