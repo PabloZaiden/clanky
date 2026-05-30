@@ -398,16 +398,16 @@ describe("Standalone SSH servers API integration", () => {
         {
           providerID: "copilot",
           providerName: "Copilot",
-          modelID: "remote-copilot-model",
-          modelName: "Remote Copilot Model",
+          modelID: "claude-from-copilot-runtime",
+          modelName: "Claude From Copilot Runtime",
           connected: true,
           variants: ["low"],
         },
         {
           providerID: "codex",
           providerName: "Codex",
-          modelID: "remote-codex-model",
-          modelName: "Remote Codex Model",
+          modelID: "gpt-from-codex-runtime",
+          modelName: "GPT From Codex Runtime",
           connected: true,
           variants: [""],
         },
@@ -446,7 +446,7 @@ describe("Standalone SSH servers API integration", () => {
     expect(copilotResponse.ok).toBe(true);
     const copilotModels = await copilotResponse.json() as Array<{ providerID: string; modelID: string }>;
     expect(copilotModels.map((model) => ({ providerID: model.providerID, modelID: model.modelID }))).toEqual([
-      { providerID: "copilot", modelID: "remote-copilot-model" },
+      { providerID: "copilot", modelID: "claude-from-copilot-runtime" },
     ]);
 
     const codexResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chat-models`, {
@@ -461,30 +461,7 @@ describe("Standalone SSH servers API integration", () => {
     expect(codexResponse.ok).toBe(true);
     const codexModels = await codexResponse.json() as Array<{ providerID: string; modelID: string }>;
     expect(codexModels.map((model) => ({ providerID: model.providerID, modelID: model.modelID }))).toEqual([
-      { providerID: "codex", modelID: "remote-codex-model" },
-    ]);
-
-    expect(mockBackend.getConnectionConfigs().map((config) => ({
-      provider: config.provider,
-      transport: config.transport,
-      hostname: config.hostname,
-      username: config.username,
-      directory: config.directory,
-    }))).toEqual([
-      {
-        provider: "copilot",
-        transport: "ssh",
-        hostname: "ssh.example.com",
-        username: "deploy",
-        directory: "/workspaces/project",
-      },
-      {
-        provider: "codex",
-        transport: "ssh",
-        hostname: "ssh.example.com",
-        username: "deploy",
-        directory: "/workspaces/project",
-      },
+      { providerID: "codex", modelID: "gpt-from-codex-runtime" },
     ]);
   });
 

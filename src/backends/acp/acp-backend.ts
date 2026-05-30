@@ -43,7 +43,6 @@ import { isRecord, getString, getNumber, firstString } from "./json-helpers";
 import {
   sanitizeSpawnArgsForLogging,
   getProcessExitHint,
-  inferProviderID,
   isTransientSshAuthenticationFailure,
 } from "./process-utils";
 
@@ -970,7 +969,7 @@ export class AcpBackend implements Backend {
       }
 
       const name = getString(item["name"]) ?? modelID;
-      const providerID = this.getDiscoveredModelProviderID(modelID, getString(item["provider"]));
+      const providerID = this.getDiscoveredModelProviderID(getString(item["provider"]));
 
       mapped.push({
         providerID,
@@ -1149,11 +1148,11 @@ export class AcpBackend implements Backend {
     this.modelCache.set(directory, { models, complete });
   }
 
-  private getDiscoveredModelProviderID(modelID: string, providerID?: string): string {
-    if (this.provider === "copilot" || this.provider === "codex") {
+  private getDiscoveredModelProviderID(providerID?: string): string {
+    if (this.provider) {
       return this.provider;
     }
-    return providerID ?? inferProviderID(modelID);
+    return providerID ?? "unknown";
   }
 
   private getDiscoveredModelProviderName(providerID: string): string {
@@ -1191,7 +1190,7 @@ export class AcpBackend implements Backend {
       }
 
       this.rememberDefaultReasoningEffort(directory, modelID, configOptions);
-      const providerID = this.getDiscoveredModelProviderID(modelID);
+      const providerID = this.getDiscoveredModelProviderID();
       discovered.push({
         providerID,
         providerName: this.getDiscoveredModelProviderName(providerID),
@@ -1216,7 +1215,7 @@ export class AcpBackend implements Backend {
     }
 
     return modelOption.options.map((opt) => {
-      const providerID = this.getDiscoveredModelProviderID(opt.value);
+      const providerID = this.getDiscoveredModelProviderID();
       return {
         providerID,
         providerName: this.getDiscoveredModelProviderName(providerID),
