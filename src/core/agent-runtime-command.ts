@@ -9,7 +9,7 @@ export interface AgentRuntimeCommand {
 }
 
 interface AgentProviderRuntime {
-  getAcpCommand(): AgentRuntimeCommand;
+  getAcpCommand(transport: AgentTransport): AgentRuntimeCommand;
 }
 
 const CODEX_ACP_PACKAGE = "@zed-industries/codex-acp";
@@ -30,6 +30,18 @@ interface AcpResolverOptions {
     command: string;
     errorMessage: string;
   };
+}
+
+let commandResolver: (command: string) => string | null = (command: string) => Bun.which(command);
+
+function which(command: string): string | null {
+  return commandResolver(command);
+}
+
+export function setCommandResolverForTest(
+  resolver: ((command: string) => string | null) | null,
+): void {
+  commandResolver = resolver ?? ((command: string) => Bun.which(command));
 }
 
 function buildAcpResolverScript(options: AcpResolverOptions): string {
@@ -68,6 +80,44 @@ function buildAcpResolverCommand(
   };
 }
 
+function resolveLocalAcpCommand(
+  options: AcpResolverOptions,
+  args: string[],
+): AgentRuntimeCommand {
+  if (options.requiredCli && !which(options.requiredCli.command)) {
+    return {
+      command: options.requiredCli.command,
+      args: [],
+    };
+  }
+
+  if (which(options.executable)) {
+    return {
+      command: options.executable,
+      args,
+    };
+  }
+
+  if (which("npx")) {
+    return {
+      command: "npx",
+      args: ["--yes", options.packageName, ...args],
+    };
+  }
+
+  if (which("bunx")) {
+    return {
+      command: "bunx",
+      args: ["--yes", options.packageName, ...args],
+    };
+  }
+
+  return {
+    command: options.executable,
+    args,
+  };
+}
+
 const CODEX_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   executable: "codex-acp",
   packageName: CODEX_ACP_PACKAGE,
@@ -92,15 +142,39 @@ const OPENCODE_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
 
 const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
   opencode: {
-    getAcpCommand: () => buildAcpResolverCommand(OPENCODE_ACP_RESOLVER_OPTIONS, ["acp"]),
+    getAcpCommand: (transport: AgentTransport) => buildTransportAcpCommand(
+      OPENCODE_ACP_RESOLVER_OPTIONS,
+      ["acp"],
+      transport,
+    ),
   },
   copilot: {
-    getAcpCommand: () => buildAcpResolverCommand(COPILOT_ACP_RESOLVER_OPTIONS, ["--yolo", "--acp"]),
+    getAcpCommand: (transport: AgentTransport) => buildTransportAcpCommand(
+      COPILOT_ACP_RESOLVER_OPTIONS,
+      ["--yolo", "--acp"],
+      transport,
+    ),
   },
   codex: {
-    getAcpCommand: () => buildAcpResolverCommand(CODEX_ACP_RESOLVER_OPTIONS, CODEX_ACP_CONFIG_ARGS),
+    getAcpCommand: (transport: AgentTransport) => buildTransportAcpCommand(
+      CODEX_ACP_RESOLVER_OPTIONS,
+      CODEX_ACP_CONFIG_ARGS,
+      transport,
+    ),
   },
 };
+
+function buildTransportAcpCommand(
+  options: AcpResolverOptions,
+  args: string[],
+  transport: AgentTransport,
+): AgentRuntimeCommand {
+  if (transport === "stdio") {
+    return resolveLocalAcpCommand(options, args);
+  }
+
+  return buildAcpResolverCommand(options, args);
+}
 
 const PROVIDER_ACP_RESOLVER_OPTIONS: Record<AgentProvider, AcpResolverOptions> = {
   opencode: OPENCODE_ACP_RESOLVER_OPTIONS,
@@ -118,7 +192,7 @@ export function getProviderAcpCommand(
   if (transport === "stdio" && isMockAcpEnabled()) {
     return getMockAcpCommand();
   }
-  return AGENT_PROVIDER_RUNTIMES[provider].getAcpCommand();
+  return AGENT_PROVIDER_RUNTIMES[provider].getAcpCommand(transport);
 }
 
 export function buildProviderShellInvocation(providerCommand: AgentRuntimeCommand): string {

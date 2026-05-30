@@ -1,13 +1,69 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   buildProviderAvailabilityShellCheck,
   buildProviderShellInvocation,
   getProviderAcpCommand,
+  setCommandResolverForTest,
 } from "../../src/core/agent-runtime-command";
 import { AgentProviderSchema } from "../../src/types/schemas/workspace";
 import { DiscoverSshServerChatModelsRequestSchema } from "../../src/types/schemas/chat";
 
+function withAvailableCommands<T>(commands: string[], callback: () => T): T {
+  setCommandResolverForTest((command: string) => commands.includes(command) ? `/bin/${command}` : null);
+  return callback();
+}
+
 describe("agent runtime command", () => {
+  afterEach(() => {
+    setCommandResolverForTest(null);
+  });
+
+  test("returns direct commands for local stdio providers when executables are on PATH", () => {
+    withAvailableCommands(["copilot", "opencode", "codex", "codex-acp"], () => {
+      expect(getProviderAcpCommand("copilot", "stdio")).toEqual({
+        command: "copilot",
+        args: ["--yolo", "--acp"],
+      });
+      expect(getProviderAcpCommand("opencode", "stdio")).toEqual({
+        command: "opencode",
+        args: ["acp"],
+      });
+      expect(getProviderAcpCommand("codex", "stdio")).toEqual({
+        command: "codex-acp",
+        args: [
+          "-c",
+          "approval_policy=\"never\"",
+          "-c",
+          "sandbox_mode=\"danger-full-access\"",
+        ],
+      });
+    });
+  });
+
+  test("falls back to local package runners for stdio providers without using sh", () => {
+    withAvailableCommands(["npx"], () => {
+      expect(getProviderAcpCommand("copilot", "stdio")).toEqual({
+        command: "npx",
+        args: ["--yes", "@github/copilot", "--yolo", "--acp"],
+      });
+      expect(getProviderAcpCommand("opencode", "stdio")).toEqual({
+        command: "npx",
+        args: ["--yes", "opencode-ai", "acp"],
+      });
+    });
+
+    withAvailableCommands(["bunx"], () => {
+      expect(getProviderAcpCommand("copilot", "stdio")).toEqual({
+        command: "bunx",
+        args: ["--yes", "@github/copilot", "--yolo", "--acp"],
+      });
+      expect(getProviderAcpCommand("opencode", "stdio")).toEqual({
+        command: "bunx",
+        args: ["--yes", "opencode-ai", "acp"],
+      });
+    });
+  });
+
   test("returns resolver commands for providers with package runner fallbacks", () => {
     const opencode = getProviderAcpCommand("opencode", "ssh");
     const copilot = getProviderAcpCommand("copilot", "ssh");
