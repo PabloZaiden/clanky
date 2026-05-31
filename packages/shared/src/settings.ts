@@ -5,7 +5,7 @@
 
 import type { SshServer } from "./ssh-server";
 
-export type AgentProvider = "opencode" | "copilot" | "codex";
+export type AgentProvider = "opencode" | "copilot" | "codex" | "claude";
 export type AgentTransport = "stdio" | "ssh";
 
 export type AgentSettings =

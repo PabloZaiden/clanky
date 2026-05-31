@@ -68,7 +68,7 @@ export const DiscoverSshServerChatProvidersRequestSchema = z.object({
 
 export const DiscoverSshServerChatModelsRequestSchema = z.object({
   credentialToken: z.string().trim().min(1, "credentialToken is required"),
-  providerID: z.enum(["copilot", "opencode", "codex"]),
+  providerID: z.enum(["copilot", "opencode", "codex", "claude"]),
   directory: z.string().trim().min(1, "directory is required"),
 });
 

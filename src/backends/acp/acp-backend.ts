@@ -1670,14 +1670,28 @@ export class AcpBackend implements Backend {
       model: prompt.model?.modelID ?? "default",
     });
 
-    void this.sendRpcRequest("session/prompt", this.buildPromptParams(sessionId, prompt), PROMPT_REQUEST_TIMEOUT_MS)
-      .then(() => {
+    void this.sendRpcRequest<unknown>("session/prompt", this.buildPromptParams(sessionId, prompt), PROMPT_REQUEST_TIMEOUT_MS)
+      .then((result) => {
         if (this.sessionPromptSequences.get(sessionId) !== sequence) {
           return;
         }
         const hasPromptActivity = this.sessionPromptHasActivity.get(sessionId) ?? false;
         const messageStarted = this.sessionMessageStarted.get(sessionId) ?? false;
+        const responseContent = this.extractPromptResultContent(result);
         if (!hasPromptActivity && !messageStarted) {
+          if (responseContent) {
+            log.debug("[AcpBackend] Async prompt RPC completed with direct content before activity", {
+              sessionId,
+              sequence,
+              responseLength: responseContent.length,
+            });
+            this.emitSessionEvent(sessionId, {
+              type: "message.complete",
+              content: responseContent,
+            });
+            this.clearPromptState(sessionId);
+            return;
+          }
           log.debug("[AcpBackend] Async prompt RPC completed before activity; waiting for session updates", {
             sessionId,
             sequence,
@@ -1689,13 +1703,7 @@ export class AcpBackend implements Backend {
           type: "message.complete",
           content: "",
         });
-        this.sessionMessageStarted.delete(sessionId);
-        this.sessionMessageContent.delete(sessionId);
-        this.sessionPromptSequences.delete(sessionId);
-        this.sessionPromptHasActivity.delete(sessionId);
-        this.sessionIgnoreStatusUntilActivity.delete(sessionId);
-        this.sessionReasoningPartKeys.delete(sessionId);
-        this.sessionLastReasoningChunkSignature.delete(sessionId);
+        this.clearPromptState(sessionId);
       })
       .catch((error) => {
         if (this.sessionPromptSequences.get(sessionId) !== sequence) {
@@ -1717,14 +1725,27 @@ export class AcpBackend implements Backend {
           type: "error",
           message,
         });
-        this.sessionMessageStarted.delete(sessionId);
-        this.sessionMessageContent.delete(sessionId);
-        this.sessionPromptSequences.delete(sessionId);
-        this.sessionPromptHasActivity.delete(sessionId);
-        this.sessionIgnoreStatusUntilActivity.delete(sessionId);
-        this.sessionReasoningPartKeys.delete(sessionId);
-        this.sessionLastReasoningChunkSignature.delete(sessionId);
+        this.clearPromptState(sessionId);
       });
+  }
+
+  private extractPromptResultContent(result: unknown): string {
+    if (!isRecord(result)) {
+      return "";
+    }
+
+    const content = getString(result["content"]);
+    return content ?? "";
+  }
+
+  private clearPromptState(sessionId: string): void {
+    this.sessionMessageStarted.delete(sessionId);
+    this.sessionMessageContent.delete(sessionId);
+    this.sessionPromptSequences.delete(sessionId);
+    this.sessionPromptHasActivity.delete(sessionId);
+    this.sessionIgnoreStatusUntilActivity.delete(sessionId);
+    this.sessionReasoningPartKeys.delete(sessionId);
+    this.sessionLastReasoningChunkSignature.delete(sessionId);
   }
 
   /**

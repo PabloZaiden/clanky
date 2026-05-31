@@ -15,6 +15,7 @@ interface AgentProviderRuntime {
 const CODEX_ACP_PACKAGE = "@zed-industries/codex-acp";
 const COPILOT_PACKAGE = "@github/copilot";
 const OPENCODE_PACKAGE = "opencode-ai";
+const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const CODEX_ACP_CONFIG_ARGS = [
   "-c",
   "approval_policy=\"never\"",
@@ -31,6 +32,8 @@ interface AcpResolverOptions {
     errorMessage: string;
   };
 }
+
+type ResolverBackedProvider = Exclude<AgentProvider, "claude">;
 
 function buildAcpResolverScript(options: AcpResolverOptions): string {
   const checks = options.requiredCli
@@ -109,9 +112,15 @@ const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
       CODEX_ACP_CONFIG_ARGS,
     ),
   },
+  claude: {
+    getAcpCommand: () => ({
+      command: "npx",
+      args: ["--yes", CLAUDE_AGENT_ACP_PACKAGE],
+    }),
+  },
 };
 
-const PROVIDER_ACP_RESOLVER_OPTIONS: Record<AgentProvider, AcpResolverOptions> = {
+const PROVIDER_ACP_RESOLVER_OPTIONS: Record<ResolverBackedProvider, AcpResolverOptions> = {
   opencode: OPENCODE_ACP_RESOLVER_OPTIONS,
   copilot: COPILOT_ACP_RESOLVER_OPTIONS,
   codex: CODEX_ACP_RESOLVER_OPTIONS,
@@ -137,6 +146,10 @@ export function buildProviderShellInvocation(providerCommand: AgentRuntimeComman
 }
 
 export function buildProviderAvailabilityShellCheck(provider: AgentProvider): string {
+  if (provider === "claude") {
+    return "command -v npx >/dev/null 2>&1";
+  }
+
   const options = PROVIDER_ACP_RESOLVER_OPTIONS[provider];
   const runtimeCheck = `{ command -v ${options.executable} >/dev/null 2>&1 || command -v npx >/dev/null 2>&1 || command -v bunx >/dev/null 2>&1; }`;
 
