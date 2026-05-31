@@ -81,7 +81,7 @@ clanky-cli update --version v0.8.1
 ### Requirements
 
 - Git
-- An ACP-capable CLI in your `PATH` (`codex`, `copilot`, `opencode`, and/or Claude Code through `npx --yes @agentclientprotocol/claude-agent-acp`)
+- An ACP-capable CLI in your `PATH` (`codex`, `copilot`, `opencode`, and/or `claude-agent-acp`; Claude Code also falls back to `npx`/`bunx` with `@agentclientprotocol/claude-agent-acp`)
 - Optional SSH access to remote workspace hosts if you plan to use `ssh` transport
 - [Bun](https://bun.sh) only if you want to run Clanky from source
 
