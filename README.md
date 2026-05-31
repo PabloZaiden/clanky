@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Built with Bun](https://img.shields.io/badge/Built%20with-Bun-f9f1e1?style=flat-square&logo=bun)](https://bun.sh)
 
-Clanky is a coding agent manager for running, reviewing, and iterating on tasks with ACP-compatible agents such as Codex, Copilot, and OpenCode.
+Clanky is a coding agent manager for running, reviewing, and iterating on tasks with coding agents such as Codex, Copilot, OpenCode, and Claude Code.
 
 The repository is organized as a workspace-style monorepo:
 
@@ -81,7 +81,7 @@ clanky-cli update --version v0.8.1
 ### Requirements
 
 - Git
-- An ACP-capable CLI in your `PATH` (`codex`, `copilot`, and/or `opencode`)
+- An ACP-capable CLI in your `PATH` (`copilot`, `opencode`, `claude-agent-acp` and/or `codex-acp`; If not found, Clanky will try to run them through `npx`/`bunx` when needed, but having them installed globally is more convenient)
 - Optional SSH access to remote workspace hosts if you plan to use `ssh` transport
 - [Bun](https://bun.sh) only if you want to run Clanky from source
 

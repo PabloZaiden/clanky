@@ -9,4 +9,5 @@ export const AGENT_PROVIDER_OPTIONS: readonly AgentProviderOption[] = [
   { id: "opencode", label: "OpenCode" },
   { id: "copilot", label: "Copilot" },
   { id: "codex", label: "Codex" },
+  { id: "claude", label: "Claude Code" },
 ];

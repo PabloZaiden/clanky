@@ -12,7 +12,7 @@ import { z } from "zod";
 /**
  * Agent provider options.
  */
-export const AgentProviderSchema = z.enum(["opencode", "copilot", "codex"]);
+export const AgentProviderSchema = z.enum(["opencode", "copilot", "codex", "claude"]);
 
 /**
  * Agent transport options.

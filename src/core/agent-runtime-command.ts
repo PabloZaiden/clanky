@@ -15,6 +15,7 @@ interface AgentProviderRuntime {
 const CODEX_ACP_PACKAGE = "@zed-industries/codex-acp";
 const COPILOT_PACKAGE = "@github/copilot";
 const OPENCODE_PACKAGE = "opencode-ai";
+const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
 const CODEX_ACP_CONFIG_ARGS = [
   "-c",
   "approval_policy=\"never\"",
@@ -23,7 +24,7 @@ const CODEX_ACP_CONFIG_ARGS = [
 ];
 
 interface AcpResolverOptions {
-  executable: string;
+  executable?: string;
   packageName: string;
   errorLabel: string;
   requiredCli?: {
@@ -33,29 +34,43 @@ interface AcpResolverOptions {
 }
 
 function buildAcpResolverScript(options: AcpResolverOptions): string {
-  const checks = options.requiredCli
-    ? [
+  const lines: string[] = [];
+  if (options.requiredCli) {
+    lines.push(
       `if ! command -v ${options.requiredCli.command} >/dev/null 2>&1; then`,
       `echo "${options.requiredCli.errorMessage}" >&2;`,
       "exit 127;",
-      `elif command -v ${options.executable} >/dev/null 2>&1; then`,
-    ]
-    : [
+      "fi",
+    );
+  }
+
+  if (options.executable) {
+    lines.push(
       `if command -v ${options.executable} >/dev/null 2>&1; then`,
-    ];
+      `exec ${options.executable} "$@";`,
+      "elif command -v npx >/dev/null 2>&1; then",
+    );
+  } else {
+    lines.push("if command -v npx >/dev/null 2>&1; then");
+  }
 
   return [
-    ...checks,
-    `exec ${options.executable} "$@";`,
-    "elif command -v npx >/dev/null 2>&1; then",
+    ...lines,
     `exec npx --yes ${options.packageName} "$@";`,
     "elif command -v bunx >/dev/null 2>&1; then",
     `exec bunx --yes ${options.packageName} "$@";`,
     "else",
-    `echo "clanky: ${options.errorLabel} not found. Install ${options.executable} or ensure npx or bunx can run ${options.packageName}." >&2;`,
+    `echo "clanky: ${options.errorLabel} not found. ${buildResolverErrorHint(options)}" >&2;`,
     "exit 127;",
     "fi",
   ].join(" ");
+}
+
+function buildResolverErrorHint(options: AcpResolverOptions): string {
+  if (options.executable) {
+    return `Install ${options.executable} or ensure npx or bunx can run ${options.packageName}.`;
+  }
+  return `Ensure npx or bunx can run ${options.packageName}.`;
 }
 
 function buildAcpResolverCommand(
@@ -64,7 +79,7 @@ function buildAcpResolverCommand(
 ): AgentRuntimeCommand {
   return {
     command: "sh",
-    args: ["-c", buildAcpResolverScript(options), options.executable, ...args],
+    args: ["-c", buildAcpResolverScript(options), options.executable ?? options.packageName, ...args],
   };
 }
 
@@ -90,6 +105,12 @@ const OPENCODE_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   errorLabel: "OpenCode CLI",
 };
 
+const CLAUDE_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
+  executable: "claude-agent-acp",
+  packageName: CLAUDE_AGENT_ACP_PACKAGE,
+  errorLabel: "Claude Code ACP adapter",
+};
+
 const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
   opencode: {
     getAcpCommand: () => buildAcpResolverCommand(
@@ -109,12 +130,19 @@ const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
       CODEX_ACP_CONFIG_ARGS,
     ),
   },
+  claude: {
+    getAcpCommand: () => buildAcpResolverCommand(
+      CLAUDE_ACP_RESOLVER_OPTIONS,
+      [],
+    ),
+  },
 };
 
 const PROVIDER_ACP_RESOLVER_OPTIONS: Record<AgentProvider, AcpResolverOptions> = {
   opencode: OPENCODE_ACP_RESOLVER_OPTIONS,
   copilot: COPILOT_ACP_RESOLVER_OPTIONS,
   codex: CODEX_ACP_RESOLVER_OPTIONS,
+  claude: CLAUDE_ACP_RESOLVER_OPTIONS,
 };
 
 /**
@@ -138,7 +166,12 @@ export function buildProviderShellInvocation(providerCommand: AgentRuntimeComman
 
 export function buildProviderAvailabilityShellCheck(provider: AgentProvider): string {
   const options = PROVIDER_ACP_RESOLVER_OPTIONS[provider];
-  const runtimeCheck = `{ command -v ${options.executable} >/dev/null 2>&1 || command -v npx >/dev/null 2>&1 || command -v bunx >/dev/null 2>&1; }`;
+  const runtimeChecks = [
+    ...(options.executable ? [`command -v ${options.executable} >/dev/null 2>&1`] : []),
+    "command -v npx >/dev/null 2>&1",
+    "command -v bunx >/dev/null 2>&1",
+  ];
+  const runtimeCheck = `{ ${runtimeChecks.join(" || ")}; }`;
 
   if (!options.requiredCli) {
     return runtimeCheck;

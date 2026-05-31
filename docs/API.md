@@ -82,11 +82,12 @@ All responses are JSON. Successful responses return the requested data directly.
 
 ## ACP Agent Runtime Architecture
 
-Clanky runs agent interactions through ACP JSON-RPC and supports three providers:
+Clanky runs agent interactions through ACP JSON-RPC and supports the following providers:
 
 - `opencode` (CLI command: `opencode acp`)
 - `copilot` (CLI command: `copilot --yolo --acp`)
-- `codex` (CLI command: resolves `codex-acp`, or runs `@zed-industries/codex-acp` through `npx`/`bunx`; requires authenticated `codex`)
+- `codex` (CLI command: resolves `codex-acp`, or runs `@zed-industries/codex-acp` through `npx`/`bunx`)
+- `claude` (CLI command: resolves `claude-agent-acp`, or runs `@agentclientprotocol/claude-agent-acp` through `npx`/`bunx`)
 
 Agent transport is configured per workspace:
 
@@ -1812,7 +1813,7 @@ Settings use a single contract:
 ```json
 {
   "agent": {
-    "provider": "opencode | copilot | codex",
+    "provider": "opencode | copilot | codex | claude",
     "transport": "stdio | ssh",
     "hostname": "required for ssh",
     "port": 22,
@@ -1831,6 +1832,7 @@ Provider runtime command is derived from `agent.provider`:
 - `opencode` → `opencode acp`
 - `copilot` → `copilot --yolo --acp`
 - `codex` → resolves `codex-acp`, or runs `@zed-industries/codex-acp` through `npx`/`bunx`, with Codex configured for non-interactive ACP execution
+- `claude` → resolves `claude-agent-acp`, or runs `@agentclientprotocol/claude-agent-acp` through `npx`/`bunx`
 
 If `CLANKY_MOCK_ACP=true`, local `stdio` launches use the built-in mock ACP runtime regardless of the selected provider so end-to-end tests can exercise ACP transport behavior without an external agent CLI.
 
