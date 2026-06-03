@@ -45,9 +45,11 @@ export interface QuickChatSettings {
     modelID: string;
     variant: string;
   } | null;
+  useWorktree: boolean;
 }
 
 export const DEFAULT_QUICK_CHAT_SETTINGS: QuickChatSettings = {
   workspaceId: "",
   model: null,
+  useWorktree: false,
 };
