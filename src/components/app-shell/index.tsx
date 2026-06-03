@@ -312,7 +312,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
       const chat = await createChat({
         workspaceId: quickChatWorkspace.id,
         model: settings.model,
-        useWorktree: true,
+        useWorktree: settings.useWorktree,
         autoApprovePermissions: true,
         quick: true,
       });

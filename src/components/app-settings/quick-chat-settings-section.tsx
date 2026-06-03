@@ -108,6 +108,7 @@ export function QuickChatSettingsSection({
     await onUpdate({
       workspaceId,
       model: null,
+      useWorktree: settings.useWorktree,
     });
   }
 
@@ -117,6 +118,7 @@ export function QuickChatSettingsSection({
       await onUpdate({
         workspaceId: selectedWorkspace?.id ?? "",
         model: null,
+        useWorktree: settings.useWorktree,
       });
       return;
     }
@@ -128,6 +130,15 @@ export function QuickChatSettingsSection({
         modelID: parsedModel.modelID,
         variant: parsedModel.variant,
       },
+      useWorktree: settings.useWorktree,
+    });
+  }
+
+  async function handleUseWorktreeChange(useWorktree: boolean): Promise<void> {
+    await onUpdate({
+      workspaceId: settings.workspaceId,
+      model: settings.model,
+      useWorktree,
     });
   }
 
@@ -191,6 +202,24 @@ export function QuickChatSettingsSection({
             </p>
           )}
         </div>
+
+        <label className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={settings.useWorktree}
+            onChange={(event) => void handleUseWorktreeChange(event.target.checked)}
+            disabled={loading || saving}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-300 disabled:opacity-50 dark:border-gray-600 dark:bg-neutral-800 dark:focus:ring-gray-600"
+          />
+          <span>
+            <span className="block font-medium text-gray-700 dark:text-gray-300">
+              Use worktrees for quick chats
+            </span>
+            <span className="block text-xs text-gray-500 dark:text-gray-400">
+              Create quick chats in a separate git worktree when enabled.
+            </span>
+          </span>
+        </label>
 
         <div className="flex justify-end">
           <Button
