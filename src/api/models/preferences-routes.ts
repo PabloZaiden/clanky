@@ -383,6 +383,7 @@ export const preferencesRoutes = {
         const settings = {
           workspaceId: result.data.workspaceId,
           model: result.data.model,
+          useWorktree: result.data.useWorktree,
         };
         if (settings.workspaceId) {
           const workspace = await getWorkspace(settings.workspaceId);

@@ -71,6 +71,7 @@ export const SetThemePreferenceRequestSchema = z.object({
 export const QuickChatSettingsSchema = z.object({
   workspaceId: z.string().trim().default(""),
   model: ModelConfigSchema.nullable().default(null),
+  useWorktree: z.boolean({ error: "useWorktree must be a boolean" }).default(false),
 });
 
 export const SetQuickChatSettingsRequestSchema = QuickChatSettingsSchema;

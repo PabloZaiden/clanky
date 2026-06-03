@@ -12,10 +12,12 @@ import { ensureDataDirectories } from "../../src/persistence/database";
 import { loadChat, updateChatState } from "../../src/persistence/chats";
 import { saveTask } from "../../src/persistence/tasks";
 import { setQuickChatSettings } from "../../src/persistence/preferences";
+import { normalizeQuickChatSettings } from "../../src/types/schemas";
 import { backendManager } from "../../src/core/backend-manager";
 import { chatEventEmitter } from "../../src/core/event-emitter";
 import { getPlanFilePath } from "../../src/lib/planning-files";
 import type { Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
+import { DEFAULT_QUICK_CHAT_SETTINGS } from "../../src/types/preferences";
 import type { ChatEvent } from "../../src/types/events";
 import { DEFAULT_TASK_CONFIG } from "../../src/types/task";
 import { TestCommandExecutor } from "../mocks/mock-executor";
@@ -514,6 +516,7 @@ describe("Chats API Integration", () => {
     await setQuickChatSettings({
       workspaceId: testWorkspaceId,
       model: unavailableModel,
+      useWorktree: false,
     });
 
     const quickResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -537,6 +540,7 @@ describe("Chats API Integration", () => {
     await setQuickChatSettings({
       workspaceId: testWorkspaceId,
       model: testModel,
+      useWorktree: true,
     });
 
     const quickResponse = await fetch(`${baseUrl}/api/chats`, {
@@ -559,6 +563,47 @@ describe("Chats API Integration", () => {
 
     const persisted = await loadChat(quickChat.config.id);
     expect(persisted?.state.worktree).toBeUndefined();
+  });
+
+  test("persists quick chat worktree preference and defaults legacy settings to disabled", async () => {
+    await setQuickChatSettings(DEFAULT_QUICK_CHAT_SETTINGS);
+
+    const defaultResponse = await fetch(`${baseUrl}/api/preferences/quick-chat`);
+    expect(defaultResponse.status).toBe(200);
+    expect((await defaultResponse.json()).useWorktree).toBe(false);
+
+    const enableResponse = await fetch(`${baseUrl}/api/preferences/quick-chat`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+      }),
+    });
+    expect(enableResponse.status).toBe(200);
+    expect((await enableResponse.json()).settings.useWorktree).toBe(true);
+
+    const enabledResponse = await fetch(`${baseUrl}/api/preferences/quick-chat`);
+    expect(enabledResponse.status).toBe(200);
+    expect((await enabledResponse.json()).useWorktree).toBe(true);
+
+    const disableResponse = await fetch(`${baseUrl}/api/preferences/quick-chat`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+      }),
+    });
+    expect(disableResponse.status).toBe(200);
+    expect((await disableResponse.json()).settings.useWorktree).toBe(false);
+
+    expect(normalizeQuickChatSettings({
+      workspaceId: testWorkspaceId,
+      model: testModel,
+    }).useWorktree).toBe(false);
   });
 
   test("creates chats without an explicit base branch", async () => {

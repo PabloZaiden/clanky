@@ -113,6 +113,7 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   defaultRoute("/api/preferences/quick-chat", () => ({
     workspaceId: "",
     model: null,
+    useWorktree: false,
   })),
   defaultRoute("/api/auth/issuer", () => ({
     canonicalIssuer: null,
