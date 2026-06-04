@@ -30,7 +30,7 @@ import {
   useComposerSizing,
 } from "./common";
 import { MESSAGE_IMAGE_ATTACHMENT_LIMIT, toMessageImageAttachments } from "../lib/image-attachments";
-import { appFetch } from "../lib/public-path";
+import { appAbsoluteUrl, appFetch } from "../lib/public-path";
 import { getStoredSshCredentialToken } from "../lib/ssh-browser-credentials";
 import { isChatEvent, useAppEvents, useAvailableModels, useMarkdownPreference, useToast } from "../hooks";
 import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-snapshot";
@@ -672,6 +672,16 @@ export function ChatDetails({
       onSpawnTask: () => void handleSpawnTask(),
       onSpawnTaskFromCurrentPlan: () => void openSpawnCurrentPlanModal(),
       onOpenCodeExplorer: () => onOpenCodeExplorer?.(chat.config.id),
+      onViewTranscript: () => window.open(
+        appAbsoluteUrl(`/#/chat-transcript/${encodeURIComponent(chat.config.id)}`),
+        "_blank",
+        "noopener,noreferrer",
+      ),
+      onDownloadTranscript: () => window.open(
+        appAbsoluteUrl(`/api/chats/${encodeURIComponent(chat.config.id)}/transcript.md?download=1`),
+        "_blank",
+        "noopener,noreferrer",
+      ),
       onRename: () => setIsRenameModalOpen(true),
       onDelete: () => setIsDeleteConfirmOpen(true),
       sidebarPinning,

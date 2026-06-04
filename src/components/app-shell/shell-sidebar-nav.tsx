@@ -42,6 +42,7 @@ import {
 import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
 import type { SidebarPinnedItem, SidebarPinningState } from "./sidebar-pins";
 import { appFetch } from "../../lib/public-path";
+import { appAbsoluteUrl } from "../../lib/public-path";
 import type { Chat, SshSession, UpdateChatRequest, UpdateSshSessionRequest } from "../../types";
 
 interface ShellSidebarNavProps {
@@ -314,6 +315,8 @@ function ItemSidebarContextMenu({
   sidebarPinning,
   onChatSpawnTask,
   onChatSpawnTaskFromCurrentPlan,
+  onChatViewTranscript,
+  onChatDownloadTranscript,
   onChatRename,
   onChatDelete,
   onSshSessionRename,
@@ -333,6 +336,8 @@ function ItemSidebarContextMenu({
   sidebarPinning: SidebarPinningState;
   onChatSpawnTask: (chat: Chat) => void;
   onChatSpawnTaskFromCurrentPlan: (chat: Chat) => void;
+  onChatViewTranscript: (chat: Chat) => void;
+  onChatDownloadTranscript: (chat: Chat) => void;
   onChatRename: (chat: Chat) => void;
   onChatDelete: (chat: Chat) => void;
   onSshSessionRename: (sessionId: string, currentName: string, canRename: boolean) => void;
@@ -353,6 +358,8 @@ function ItemSidebarContextMenu({
           onSpawnTask: () => onChatSpawnTask(chat!),
           onSpawnTaskFromCurrentPlan: () => onChatSpawnTaskFromCurrentPlan(chat!),
           onOpenCodeExplorer: () => onNavigate({ view: "code-explorer", target: { contentType: "chat", chatId: pinnedItem.id } }),
+          onViewTranscript: () => onChatViewTranscript(chat!),
+          onDownloadTranscript: () => onChatDownloadTranscript(chat!),
           onRename: () => onChatRename(chat!),
           onDelete: () => onChatDelete(chat!),
           sidebarPinning,
@@ -520,6 +527,22 @@ export function ShellSidebarNav({
         return next;
       });
     }
+  }
+
+  function getChatTranscriptViewerUrl(chat: Chat): string {
+    return appAbsoluteUrl(`/#/chat-transcript/${encodeURIComponent(chat.config.id)}`);
+  }
+
+  function getChatTranscriptDownloadUrl(chat: Chat): string {
+    return appAbsoluteUrl(`/api/chats/${encodeURIComponent(chat.config.id)}/transcript.md?download=1`);
+  }
+
+  function handleChatViewTranscript(chat: Chat) {
+    window.open(getChatTranscriptViewerUrl(chat), "_blank", "noopener,noreferrer");
+  }
+
+  function handleChatDownloadTranscript(chat: Chat) {
+    window.open(getChatTranscriptDownloadUrl(chat), "_blank", "noopener,noreferrer");
   }
 
   async function handleSshSessionRename(newName: string) {
@@ -1724,6 +1747,8 @@ export function ShellSidebarNav({
             sidebarPinning={sidebarPinning}
             onChatSpawnTask={(chat) => void spawnTaskFromChat(chat, false)}
             onChatSpawnTaskFromCurrentPlan={(chat) => void spawnTaskFromChat(chat, true)}
+            onChatViewTranscript={handleChatViewTranscript}
+            onChatDownloadTranscript={handleChatDownloadTranscript}
             onChatRename={setChatRenameTarget}
             onChatDelete={setChatDeleteTarget}
             onSshSessionRename={(id, name, canRename) => setSessionRenameTarget({ id, name, canRename })}

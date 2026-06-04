@@ -32,6 +32,7 @@ import { requireWorkspace, errorResponse, successResponse } from "./helpers";
 import { parseAndValidate } from "./validation";
 import { isModelEnabled } from "./models";
 import { getQuickChatSettings } from "../persistence/preferences";
+import { buildChatTranscriptMarkdown } from "../lib/chat-transcript-export";
 
 const log = createLogger("api:chats");
 
@@ -260,6 +261,30 @@ export const chatsRoutes = {
         log.error("Failed to send chat message", { chatId: req.params.id, error: message });
         return errorResponse("send_failed", message, 500);
       }
+    },
+  },
+
+  "/api/chats/:id/transcript.md": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const chat = await chatManager.getChat(req.params.id);
+      if (!chat) {
+        return errorResponse("not_found", "Chat not found", 404);
+      }
+
+      const transcript = buildChatTranscriptMarkdown(chat);
+      if (!transcript) {
+        return errorResponse("empty_transcript", "Chat transcript is empty. Send at least one message before exporting.", 400);
+      }
+
+      const url = new URL(req.url);
+      const headers = new Headers({
+        "Content-Type": "text/markdown; charset=utf-8",
+      });
+      if (url.searchParams.get("download") === "1") {
+        headers.set("Content-Disposition", `attachment; filename="${transcript.filename}"`);
+      }
+
+      return new Response(transcript.markdown, { headers });
     },
   },
 

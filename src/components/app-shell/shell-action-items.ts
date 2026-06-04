@@ -34,6 +34,8 @@ export interface ChatActionItemOptions {
   onSpawnTask: () => void;
   onSpawnTaskFromCurrentPlan: () => void;
   onOpenCodeExplorer: () => void;
+  onViewTranscript: () => void;
+  onDownloadTranscript: () => void;
   onRename: () => void;
   onDelete: () => void;
   sidebarPinning?: SidebarPinningState;
@@ -173,6 +175,8 @@ export function buildChatActionItems({
   onSpawnTask,
   onSpawnTaskFromCurrentPlan,
   onOpenCodeExplorer,
+  onViewTranscript,
+  onDownloadTranscript,
   onRename,
   onDelete,
   sidebarPinning,
@@ -192,6 +196,18 @@ export function buildChatActionItems({
       label: spawnCurrentPlanPending ? "Spawning task from plan file..." : "Spawn task from plan file",
       onClick: onSpawnTaskFromCurrentPlan,
       disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
+    },
+    {
+      id: "view-transcript",
+      label: "View Markdown transcript",
+      onClick: onViewTranscript,
+      disabled: !hasMessages,
+    },
+    {
+      id: "download-transcript",
+      label: "Download Markdown transcript",
+      onClick: onDownloadTranscript,
+      disabled: !hasMessages,
     },
     {
       id: "code-explorer",

@@ -8,12 +8,14 @@ import { DeviceApprovalScreen } from "./components/DeviceApprovalScreen";
 import { PasskeyAuthScreen } from "./components/PasskeyAuthScreen";
 import { replaceShellRoute } from "./components/app-shell/shell-navigation";
 import { LogLevelInitializer } from "./components/LogLevelInitializer";
+import { StandaloneChatTranscriptViewer } from "./components/StandaloneChatTranscriptViewer";
 import { AppEventsProvider, ThemePreferenceProvider, usePasskeyAuth } from "./hooks";
 import "@xterm/xterm/css/xterm.css";
 import "./index.css";
 
 const TASK_FILES_HASH_PREFIX = "/task-files/";
 const CODE_EXPLORER_HASH_PREFIX = "/code-explorer";
+const CHAT_TRANSCRIPT_HASH_PREFIX = "/chat-transcript/";
 
 function parseHashPath(hash: string): { path: string; searchParams: URLSearchParams } {
   const [path = "", query = ""] = hash.split("?", 2);
@@ -178,6 +180,9 @@ function isDeviceApprovalRoute(pathname: string): boolean {
 export function App() {
   const [route, setRoute] = useState<ShellRoute>(parseHash);
   const passkeyAuth = usePasskeyAuth();
+  const transcriptChatId = window.location.hash.startsWith(`#${CHAT_TRANSCRIPT_HASH_PREFIX}`)
+    ? decodeURIComponent(window.location.hash.slice(CHAT_TRANSCRIPT_HASH_PREFIX.length + 1))
+    : null;
   const canLoadThemePreference = !passkeyAuth.loading
     && (!passkeyAuth.status.passkeyRequired || passkeyAuth.status.authenticated);
   const deviceApprovalRoute = isDeviceApprovalRoute(window.location.pathname)
@@ -214,6 +219,12 @@ export function App() {
     );
   } else if (deviceApprovalRoute) {
     content = <DeviceApprovalScreen userCode={deviceApprovalRoute.userCode} />;
+  } else if (transcriptChatId) {
+    content = (
+      <AppEventsProvider>
+        <StandaloneChatTranscriptViewer chatId={transcriptChatId} />
+      </AppEventsProvider>
+    );
   } else {
     content = (
       <AppEventsProvider>
