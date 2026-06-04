@@ -2,6 +2,7 @@ import { memo, useId, useMemo, useState } from "react";
 import type { DisplayEntry, ToolGroupEntryBase } from "./types";
 import { annotateDisplayEntries, formatTime, getEntrySpacingClass } from "./utils";
 import { ToolEntry } from "./tool-entry";
+import { getToolMeta, type InferredToolKind } from "./tool-inference";
 
 interface ToolGroupEntryProps {
   entry: ToolGroupEntryBase & {
@@ -10,6 +11,66 @@ interface ToolGroupEntryProps {
   };
   spacingClass: string;
   toolPathDisplayRoot?: string;
+}
+
+function truncateToolSummary(summary: string): string {
+  const maxLength = 72;
+  return summary.length > maxLength ? `${summary.slice(0, maxLength - 1)}...` : summary;
+}
+
+function getPluralToolLabel(kind: InferredToolKind): string {
+  switch (kind) {
+    case "view":
+      return "reads";
+    case "edit":
+      return "edits";
+    case "bash":
+      return "commands";
+    case "rg":
+    case "glob":
+      return "searches";
+    case "apply_patch":
+      return "patches";
+    case "read_bash":
+      return "shell reads";
+    case "write_bash":
+      return "shell writes";
+    case "sql":
+      return "queries";
+    case "github_mcp":
+      return "GitHub calls";
+    case "web_fetch":
+      return "fetches";
+    case "todo":
+      return "todo updates";
+    case "skill":
+      return "skill loads";
+    case "rubber_duck":
+      return "agent calls";
+    case "unknown":
+      return "tools";
+  }
+}
+
+function getToolGroupSummary(entry: ToolGroupEntryBase, toolPathDisplayRoot?: string): string {
+  const metas = entry.tools.map((tool) => getToolMeta(tool, { pathDisplayRoot: toolPathDisplayRoot }));
+  if (metas.length > 1 && metas.every((meta) => meta.kind === metas[0]?.kind)) {
+    return `${metas.length} ${getPluralToolLabel(metas[0]!.kind)}`;
+  }
+
+  const summaries = metas
+    .map((meta) => truncateToolSummary(meta.summary))
+    .filter((summary, index, allSummaries) => summary.length > 0 && allSummaries.indexOf(summary) === index);
+
+  if (summaries.length === 0) {
+    return "Tool activity";
+  }
+
+  if (summaries.length <= 2) {
+    return summaries.join(", ");
+  }
+
+  return `${summaries.slice(0, 2).join(", ")} +${summaries.length - 2} more`;
 }
 
 export const ToolGroupEntry = memo(function ToolGroupEntry({
@@ -22,6 +83,10 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
   const labelId = useId();
   const toolCount = entry.tools.length;
   const toolCallCountLabel = `${toolCount} tool call${toolCount === 1 ? "" : "s"}`;
+  const groupSummary = useMemo(
+    () => getToolGroupSummary(entry, toolPathDisplayRoot),
+    [entry, toolPathDisplayRoot]
+  );
   const groupedToolEntries = useMemo(
     () => annotateDisplayEntries(
       entry.tools.map((tool) => ({
@@ -40,24 +105,25 @@ export const ToolGroupEntry = memo(function ToolGroupEntry({
           {formatTime(entry.timestamp)}
         </time>
       )}
-      <div className="overflow-hidden rounded-2xl border border-sky-200 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] dark:border-sky-500/25 dark:bg-[#0e1522]">
+      <div className="min-w-0">
         <button
           type="button"
-          className="flex w-full items-center px-4 py-3 text-left text-sm text-sky-950 transition hover:bg-sky-100/80 dark:text-sky-100 dark:hover:bg-white/5"
+          className="inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-left text-xs text-gray-400 transition hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:text-white/28 dark:hover:text-white/48 dark:focus:ring-white/15"
           aria-expanded={isExpanded}
           aria-controls={panelId}
           id={labelId}
           onClick={() => setIsExpanded((current) => !current)}
           data-tool-group-toggle="true"
         >
-          <span className="font-medium">{toolCallCountLabel}</span>
+          <span className="shrink-0 font-medium text-gray-500 dark:text-white/42">{toolCallCountLabel}</span>
+          <span className="min-w-0 truncate">- {groupSummary}</span>
         </button>
         <div
           hidden={!isExpanded}
           id={panelId}
           role="region"
           aria-labelledby={labelId}
-          className="border-t border-sky-200 px-3 py-3 sm:px-4 dark:border-white/8"
+          className="mt-0.5 space-y-1.5"
           data-tool-group-panel="true"
         >
           {groupedToolEntries.map((groupedTool, index) => (

@@ -67,7 +67,7 @@ function renderHighlightedJson(value: unknown): { text: string; highlightedHtml:
   }
 }
 
-const blockClassName = "overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-sky-100 bg-white p-3 font-mono text-xs text-gray-900 dark:border-white/10 dark:bg-black/20 dark:text-gray-100";
+const blockClassName = "overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-gray-200 bg-gray-50/80 p-3 font-mono text-xs text-gray-900 dark:border-white/10 dark:bg-white/[0.03] dark:text-gray-100";
 
 export const HighlightedJsonBlock = memo(function HighlightedJsonBlock({ value }: { value: unknown }) {
   const rendered = useMemo(() => renderHighlightedJson(value), [value]);

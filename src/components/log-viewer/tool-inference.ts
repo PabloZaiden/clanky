@@ -3,6 +3,7 @@ import { formatToolPathForDisplay } from "./tool-paths";
 
 export type InferredToolKind =
   | "view"
+  | "edit"
   | "glob"
   | "rg"
   | "apply_patch"
@@ -117,8 +118,24 @@ function getPathsField(input: Record<string, unknown>): string[] | undefined {
   return value;
 }
 
+function getParsedCommandRecords(input: Record<string, unknown> | undefined): Record<string, unknown>[] {
+  const value = input?.["parsed_cmd"];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord);
+}
+
+function getParsedCommandPath(input: Record<string, unknown> | undefined): string | undefined {
+  const command = getParsedCommandRecords(input).find((entry) => {
+    const type = getStringField(entry, "type");
+    return type === "read" || type === "list_files";
+  });
+  return command ? getStringField(command, "path") ?? getStringField(command, "name") : undefined;
+}
+
 function getStoredName(tool: ToolCallData): string | undefined {
-  const name = tool.name.trim();
+  const name = tool.name.trim().replace(/^general tool:\s*/i, "");
   return name.length > 0 ? name : undefined;
 }
 
@@ -132,12 +149,24 @@ function getStoredNameKind(tool: ToolCallData): InferredToolKind | undefined {
     return undefined;
   }
 
-  if (name === "read") {
+  if (name === "read" || name === "view") {
     return "view";
   }
 
-  if (name === "execute") {
+  if (name === "edit" || name === "write" || name === "multiedit") {
+    return "edit";
+  }
+
+  if (name === "execute" || name === "bash" || name === "shell") {
     return "bash";
+  }
+
+  if (name === "grep" || name === "rg") {
+    return "rg";
+  }
+
+  if (name === "glob" || name === "ls") {
+    return "glob";
   }
 
   if (name === "fetch" || name === "webfetch") {
@@ -424,6 +453,10 @@ export function inferToolKind(tool: ToolCallData): InferredToolKind {
     return "apply_patch";
   }
 
+  if (isRecord(input["changes"])) {
+    return "edit";
+  }
+
   const shellId = getStringField(input, "shellId");
   const delay = getNumberField(input, "delay");
 
@@ -437,6 +470,15 @@ export function inferToolKind(tool: ToolCallData): InferredToolKind {
 
   if (typeof input["command"] === "string") {
     return "bash";
+  }
+
+  const parsedCommands = getParsedCommandRecords(input);
+  if (parsedCommands.some((entry) => getStringField(entry, "type") === "read")) {
+    return "view";
+  }
+
+  if (parsedCommands.some((entry) => getStringField(entry, "type") === "list_files")) {
+    return "glob";
   }
 
   if (typeof input["url"] === "string") {
@@ -476,7 +518,7 @@ export function inferToolKind(tool: ToolCallData): InferredToolKind {
     }
   }
 
-  return "unknown";
+  return getStoredNameKind(tool) ?? "unknown";
 }
 
 export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, context: ToolMetaContext = {}): string {
@@ -484,7 +526,7 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, conte
 
   switch (kind) {
     case "view": {
-      const path = input ? getFileTargetField(input) : undefined;
+      const path = input ? getFileTargetField(input) ?? getParsedCommandPath(input) : undefined;
       const displayPath = path ? formatToolPathForDisplay(path, context.pathDisplayRoot) : undefined;
       const range = input?.["view_range"];
       if (displayPath && isViewRange(range)) {
@@ -492,10 +534,24 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, conte
       }
       return `View ${displayPath ?? "file"}`;
     }
+    case "edit": {
+      const changes = input && isRecord(input["changes"]) ? input["changes"] : undefined;
+      const changedPaths = changes ? Object.keys(changes) : [];
+      if (changedPaths.length === 1) {
+        return `Edit ${formatToolPathForDisplay(changedPaths[0]!, context.pathDisplayRoot)}`;
+      }
+      if (changedPaths.length > 1) {
+        return `Edit ${changedPaths.length} files`;
+      }
+      return "Edit files";
+    }
     case "glob": {
       const pattern = input ? getStringField(input, "pattern") : undefined;
-      const path = input ? getPathField(input) : undefined;
+      const path = input ? getPathField(input) ?? getParsedCommandPath(input) : undefined;
       const displayPath = formatOptionalPath(path, context);
+      if (!pattern && displayPath) {
+        return `List ${displayPath}`;
+      }
       if (path && pattern) {
         return `Find files matching '${pattern}' in ${displayPath ?? path}`;
       }
@@ -608,6 +664,7 @@ export function getToolOutputType(tool: ToolCallData, kind: InferredToolKind): "
 
   switch (kind) {
     case "view":
+    case "edit":
     case "glob":
     case "rg":
     case "apply_patch":
@@ -979,6 +1036,8 @@ export function getStructuredToolDetails(tool: ToolCallData, context: ToolMetaCo
   switch (kind) {
     case "view":
       return buildViewDetails(tool.input, tool, context);
+    case "edit":
+      return null;
     case "glob":
       return buildGlobDetails(tool.input, tool, context);
     case "rg":
