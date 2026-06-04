@@ -384,6 +384,36 @@ describe("Chats API Integration", () => {
     ]);
   });
 
+  test("preserves import failure when cleanup disconnect fails", async () => {
+    const originalDisconnectChat = backendManager.disconnectChat.bind(backendManager);
+    let disconnectAttempts = 0;
+    backendManager.disconnectChat = async (_chatId: string): Promise<void> => {
+      disconnectAttempts += 1;
+      throw new Error("cleanup disconnect failed");
+    };
+
+    try {
+      const importResponse = await fetch(`${baseUrl}/api/chats/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          sessionId: "provider-session-cleanup-failure",
+          cwd: testWorkDir,
+        }),
+      });
+      const errorBody = await importResponse.json() as { message: string };
+
+      expect(importResponse.status).toBe(500);
+      expect(errorBody.message).toContain("Session provider-session-cleanup-failure not found");
+      expect(errorBody.message).not.toContain("cleanup disconnect failed");
+      expect(disconnectAttempts).toBe(1);
+    } finally {
+      backendManager.disconnectChat = originalDisconnectChat;
+    }
+  });
+
   test("exports chat transcript as markdown without tool call details", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",

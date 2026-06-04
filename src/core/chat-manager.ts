@@ -382,8 +382,18 @@ export class ChatManager {
         cwd: importDirectory,
       });
     } catch (error) {
-      await deleteChat(chat.config.id);
-      await backendManager.disconnectChat(chat.config.id);
+      const cleanupResults = await Promise.allSettled([
+        deleteChat(chat.config.id),
+        backendManager.disconnectChat(chat.config.id),
+      ]);
+      for (const result of cleanupResults) {
+        if (result.status === "rejected") {
+          log.error("Failed to clean up chat after session import failure", {
+            chatId: chat.config.id,
+            error: String(result.reason),
+          });
+        }
+      }
       throw error;
     }
 
