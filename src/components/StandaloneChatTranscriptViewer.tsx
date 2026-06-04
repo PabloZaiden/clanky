@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { appFetch } from "../lib/public-path";
 
 interface StandaloneChatTranscriptViewerProps {
@@ -18,7 +16,6 @@ function getTitleFromMarkdown(markdown: string): string {
 }
 
 export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscriptViewerProps) {
-  const [rawMode, setRawMode] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const transcriptUrl = useMemo(() => `/api/chats/${encodeURIComponent(chatId)}/transcript.md`, [chatId]);
 
@@ -99,9 +96,6 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
       <style>
         {`
           @media print {
-            .transcript-mode-toggle {
-              display: none;
-            }
             .standalone-transcript-viewer {
               padding: 0 !important;
             }
@@ -115,30 +109,6 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
           }
         `}
       </style>
-      <label
-        className="transcript-mode-toggle"
-        style={{
-          position: "fixed",
-          top: "1rem",
-          right: "1rem",
-          display: "flex",
-          gap: "0.5rem",
-          alignItems: "center",
-          padding: "0.35rem 0.5rem",
-          background: "#fff",
-          border: "1px solid #ccc",
-          borderRadius: "0.375rem",
-          fontSize: "0.875rem",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={rawMode}
-          onChange={(event) => setRawMode(event.target.checked)}
-        />
-        Raw
-      </label>
-
       <article className="transcript-content">
         {loadState.status === "loading" && (
           <p>Loading transcript...</p>
@@ -148,22 +118,8 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
             {loadState.message}
           </p>
         )}
-        {loadState.status === "loaded" && rawMode && (
+        {loadState.status === "loaded" && (
           <pre>{loadState.markdown}</pre>
-        )}
-        {loadState.status === "loaded" && !rawMode && (
-          <Markdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a: ({ href, children }) => (
-                <a href={href} target="_blank" rel="noopener noreferrer">
-                  {children}
-                </a>
-              ),
-            }}
-          >
-            {loadState.markdown}
-          </Markdown>
         )}
       </article>
     </main>

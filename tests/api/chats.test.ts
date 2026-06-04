@@ -26,6 +26,14 @@ import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
 
+function formatTranscriptTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 describe("Chats API Integration", () => {
   let testDataDir: string;
   let testWorkDir: string;
@@ -346,7 +354,7 @@ describe("Chats API Integration", () => {
       {
         id: "tool-read",
         name: "Read\n\tInjected",
-        input: { path: "/tmp/secret-readme.md", includeDetails: "must-not-export" },
+        input: { path: "README.md", view_range: [440, 470], includeDetails: "must-not-export" },
         output: { content: "private tool output must not export" },
         status: "completed",
         timestamp: "2026-06-04T12:01:00.000Z",
@@ -364,16 +372,19 @@ describe("Chats API Integration", () => {
     const markdown = await transcriptResponse.text();
 
     expect(markdown).toContain("# Transcript Export Test");
-    expect(markdown.indexOf("Please inspect the README")).toBeLessThan(markdown.indexOf("### Tool: Read Injected"));
-    expect(markdown.indexOf("### Tool: Read Injected")).toBeLessThan(
+    expect(markdown.indexOf("Please inspect the README")).toBeLessThan(markdown.indexOf("### View README.md:440-470"));
+    expect(markdown.indexOf("### View README.md:440-470")).toBeLessThan(
       markdown.indexOf("I inspected it and found the issue."),
     );
+    expect(markdown).toContain(`### User - ${formatTranscriptTime("2026-06-04T12:00:00.000Z")}`);
+    expect(markdown).toContain(`### View README.md:440-470 - ${formatTranscriptTime("2026-06-04T12:01:00.000Z")}`);
+    expect(markdown).toContain(`### Assistant - ${formatTranscriptTime("2026-06-04T12:02:00.000Z")}`);
+    expect(markdown).not.toContain("### Tool:");
     expect(markdown).not.toContain("### Tool: Read\n");
     expect(markdown).not.toContain("- Directory:");
     expect(markdown).not.toContain(testWorkDir);
     expect(markdown).not.toContain("must-not-export");
     expect(markdown).not.toContain("private tool output must not export");
-    expect(markdown).not.toContain("/tmp/secret-readme.md");
 
     const downloadResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md?download=1`);
     expect(downloadResponse.status).toBe(200);
@@ -428,7 +439,8 @@ describe("Chats API Integration", () => {
     expect(transcriptResponse.status).toBe(200);
     const markdown = await transcriptResponse.text();
 
-    expect(markdown).toContain("### User - 2026-06-04T12:03:00.000Z");
+    expect(markdown).toContain(`### User - ${formatTranscriptTime("2026-06-04T12:03:00.000Z")}`);
+    expect(markdown).not.toContain("2026-06-04T12:03:00.000Z");
     expect(markdown).toContain("Attachment sent. Attachment data is not included in this transcript.");
     expect(markdown).not.toContain("secret-screenshot.png");
     expect(markdown).not.toContain("private-base64-data");

@@ -980,7 +980,7 @@ export function ChatDetails({
       isOpen={isTranscriptModalOpen}
       onClose={() => setIsTranscriptModalOpen(false)}
       title="Transcript"
-      description="View the markdown transcript in a new window or download it as a file."
+      description="Open the raw markdown transcript in a new window or download it as a file."
       size="sm"
       footer={
         <>
@@ -1016,7 +1016,7 @@ export function ChatDetails({
       }
     >
       <p className="text-sm text-gray-600 dark:text-gray-300">
-        Choose how you want to open this chat transcript.
+        Open the raw markdown transcript or download it as a file.
       </p>
     </Modal>
   );
