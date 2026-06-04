@@ -1,6 +1,6 @@
 import type { ActionMenuItem } from "../common";
 import { insertPinActionItem } from "../common";
-import type { Chat, SshServer, Workspace } from "../../types";
+import type { SshServer, Workspace } from "../../types";
 import type { ShellRoute } from "./shell-types";
 import type { SidebarPinnedItem, SidebarPinningState } from "./sidebar-pins";
 
@@ -23,20 +23,6 @@ export interface SshServerActionItemOptions {
 export interface TaskActionItemOptions {
   taskId: string;
   onOpenCodeExplorer: () => void;
-  sidebarPinning?: SidebarPinningState;
-}
-
-export interface ChatActionItemOptions {
-  chat: Chat;
-  hasCodeExplorerAction: boolean;
-  spawnPending: boolean;
-  spawnCurrentPlanPending: boolean;
-  onSpawnTask: () => void;
-  onSpawnTaskFromCurrentPlan: () => void;
-  onOpenCodeExplorer: () => void;
-  onTranscript: () => void;
-  onRename: () => void;
-  onDelete: () => void;
   sidebarPinning?: SidebarPinningState;
 }
 
@@ -164,61 +150,6 @@ export function buildTaskActionItems({
       onClick: onOpenCodeExplorer,
     },
   ], buildPinActionItem(sidebarPinning, { kind: "task", id: taskId }));
-}
-
-export function buildChatActionItems({
-  chat,
-  hasCodeExplorerAction,
-  spawnPending,
-  spawnCurrentPlanPending,
-  onSpawnTask,
-  onSpawnTaskFromCurrentPlan,
-  onOpenCodeExplorer,
-  onTranscript,
-  onRename,
-  onDelete,
-  sidebarPinning,
-}: ChatActionItemOptions): ActionMenuItem[] {
-  const isActive = ["starting", "streaming", "interrupting", "reconnecting"].includes(chat.state.status);
-  const hasMessages = chat.state.messages.length > 0;
-
-  return withPinAction([
-    {
-      id: "spawn-task",
-      label: spawnPending ? "Spawning task..." : "Spawn Task",
-      onClick: onSpawnTask,
-      disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
-    },
-    {
-      id: "spawn-task-from-current-plan",
-      label: spawnCurrentPlanPending ? "Spawning task from plan file..." : "Spawn task from plan file",
-      onClick: onSpawnTaskFromCurrentPlan,
-      disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
-    },
-    {
-      id: "code-explorer",
-      label: "Code explorer",
-      onClick: onOpenCodeExplorer,
-      disabled: !hasCodeExplorerAction,
-    },
-    {
-      id: "rename",
-      label: "Rename",
-      onClick: onRename,
-    },
-    {
-      id: "transcript",
-      label: "Transcript",
-      onClick: onTranscript,
-      disabled: !hasMessages,
-    },
-    {
-      id: "delete",
-      label: "Delete",
-      onClick: onDelete,
-      destructive: true,
-    },
-  ], buildPinActionItem(sidebarPinning, { kind: "chat", id: chat.config.id }));
 }
 
 export function buildSshSessionActionItems({

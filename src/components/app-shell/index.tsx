@@ -43,8 +43,6 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     createChat,
     importExistingChat,
     createSshServerChat,
-    updateChat,
-    deleteChat,
   } = useChats();
   const {
     tasks,
@@ -367,8 +365,6 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
         pullingLatestWorkspaceIds={pullingLatestWorkspaceIds}
         sidebarPinning={sidebarPinning}
-        updateChat={updateChat}
-        deleteChat={deleteChat}
         updateSshSession={updateSession}
         deleteSshSession={deleteSession}
         refreshChats={refreshChats}
