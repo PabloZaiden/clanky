@@ -92,14 +92,17 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
   }, [loadState]);
 
   return (
-    <main style={{ padding: "2rem", color: "#111", background: "#fff", fontFamily: "system-ui, sans-serif" }}>
+    <main
+      className="standalone-transcript-viewer"
+      style={{ padding: "2rem", color: "#111", background: "#fff", fontFamily: "system-ui, sans-serif" }}
+    >
       <style>
         {`
           @media print {
             .transcript-mode-toggle {
               display: none;
             }
-            main {
+            .standalone-transcript-viewer {
               padding: 0 !important;
             }
           }
@@ -149,7 +152,16 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
           <pre>{loadState.markdown}</pre>
         )}
         {loadState.status === "loaded" && !rawMode && (
-          <Markdown remarkPlugins={[remarkGfm]}>
+          <Markdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  {children}
+                </a>
+              ),
+            }}
+          >
             {loadState.markdown}
           </Markdown>
         )}
