@@ -36,7 +36,7 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
         if (controller.signal.aborted) {
           return;
         }
-        setLoadState({ status: "error", message: String(error) });
+        setLoadState({ status: "error", message: error instanceof Error ? error.message : String(error) });
       }
     }
 

@@ -20,8 +20,8 @@ export interface ChatTranscriptMarkdown {
   filename: string;
 }
 
-function sanitizeMarkdownHeading(value: string): string {
-  return value.replace(/\s+/g, " ").trim() || "Untitled chat";
+function sanitizeMarkdownHeading(value: string, fallback: string): string {
+  return value.replace(/[\u0000-\u001F\u007F]+/g, " ").replace(/\s+/g, " ").trim() || fallback;
 }
 
 function sanitizeFilenamePart(value: string): string {
@@ -47,7 +47,24 @@ function getRoleLabel(role: PersistedMessage["role"]): string {
 }
 
 function getToolTitle(toolCall: PersistedToolCall): string {
-  return toolCall.name.trim() || "tool";
+  return sanitizeMarkdownHeading(toolCall.name, "tool");
+}
+
+function hasAttachments(message: PersistedMessage): boolean {
+  return (message.attachments?.length ?? 0) > 0;
+}
+
+function hasMessageTranscriptContent(message: PersistedMessage): boolean {
+  return message.content.trim().length > 0 || hasAttachments(message);
+}
+
+function formatMessageContent(message: PersistedMessage): string {
+  const content = message.content.trim();
+  if (content) {
+    return content;
+  }
+
+  return "_Attachment sent. Attachment data is not included in this transcript._";
 }
 
 function buildEntries(chat: Chat): TranscriptEntry[] {
@@ -55,7 +72,7 @@ function buildEntries(chat: Chat): TranscriptEntry[] {
   let sequence = 0;
 
   for (const message of chat.state.messages) {
-    if (!message.content.trim()) {
+    if (!hasMessageTranscriptContent(message)) {
       continue;
     }
     entries.push({
@@ -94,11 +111,10 @@ export function buildChatTranscriptMarkdown(chat: Chat): ChatTranscriptMarkdown 
   }
 
   const lines: string[] = [
-    `# ${sanitizeMarkdownHeading(chat.config.name)}`,
+    `# ${sanitizeMarkdownHeading(chat.config.name, "Untitled chat")}`,
     "",
     `- Chat ID: \`${chat.config.id}\``,
     `- Workspace ID: \`${chat.config.workspaceId}\``,
-    `- Directory: \`${chat.config.directory}\``,
     `- Exported at: ${new Date().toISOString()}`,
     "",
     "## Transcript",
@@ -109,7 +125,7 @@ export function buildChatTranscriptMarkdown(chat: Chat): ChatTranscriptMarkdown 
     if (entry.type === "message") {
       lines.push(`### ${getRoleLabel(entry.message.role)} - ${formatTimestamp(entry.timestamp)}`);
       lines.push("");
-      lines.push(entry.message.content.trim());
+      lines.push(formatMessageContent(entry.message));
       continue;
     }
 

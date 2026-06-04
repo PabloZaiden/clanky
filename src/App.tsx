@@ -177,12 +177,23 @@ function isDeviceApprovalRoute(pathname: string): boolean {
   return pathname.endsWith("/device");
 }
 
+function getTranscriptChatIdFromHash(hash: string): string | null {
+  if (!hash.startsWith(`#${CHAT_TRANSCRIPT_HASH_PREFIX}`)) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(hash.slice(CHAT_TRANSCRIPT_HASH_PREFIX.length + 1));
+  } catch (error) {
+    console.warn("Ignoring malformed chat transcript route", error);
+    return null;
+  }
+}
+
 export function App() {
   const [route, setRoute] = useState<ShellRoute>(parseHash);
   const passkeyAuth = usePasskeyAuth();
-  const transcriptChatId = window.location.hash.startsWith(`#${CHAT_TRANSCRIPT_HASH_PREFIX}`)
-    ? decodeURIComponent(window.location.hash.slice(CHAT_TRANSCRIPT_HASH_PREFIX.length + 1))
-    : null;
+  const transcriptChatId = getTranscriptChatIdFromHash(window.location.hash);
   const canLoadThemePreference = !passkeyAuth.loading
     && (!passkeyAuth.status.passkeyRequired || passkeyAuth.status.authenticated);
   const deviceApprovalRoute = isDeviceApprovalRoute(window.location.pathname)
