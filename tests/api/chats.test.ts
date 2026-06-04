@@ -230,6 +230,155 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("exports chat transcript as markdown without tool call details", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Transcript Export Test",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const persisted = await loadChat(created.config.id);
+    expect(persisted).not.toBeNull();
+    if (!persisted) {
+      throw new Error("Expected persisted chat");
+    }
+
+    const messages: PersistedMessage[] = [
+      {
+        id: "msg-user",
+        role: "user",
+        content: "Please inspect the README",
+        timestamp: "2026-06-04T12:00:00.000Z",
+      },
+      {
+        id: "msg-assistant",
+        role: "assistant",
+        content: "I inspected it and found the issue.",
+        timestamp: "2026-06-04T12:02:00.000Z",
+      },
+    ];
+    const toolCalls: PersistedToolCall[] = [
+      {
+        id: "tool-read",
+        name: "Read\n\tInjected",
+        input: { path: "/tmp/secret-readme.md", includeDetails: "must-not-export" },
+        output: { content: "private tool output must not export" },
+        status: "completed",
+        timestamp: "2026-06-04T12:01:00.000Z",
+      },
+    ];
+    await updateChatState(created.config.id, {
+      ...persisted.state,
+      messages,
+      toolCalls,
+    });
+
+    const transcriptResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md`);
+    expect(transcriptResponse.status).toBe(200);
+    expect(transcriptResponse.headers.get("Content-Type")).toContain("text/markdown");
+    const markdown = await transcriptResponse.text();
+
+    expect(markdown).toContain("# Transcript Export Test");
+    expect(markdown.indexOf("Please inspect the README")).toBeLessThan(markdown.indexOf("### Tool: Read Injected"));
+    expect(markdown.indexOf("### Tool: Read Injected")).toBeLessThan(
+      markdown.indexOf("I inspected it and found the issue."),
+    );
+    expect(markdown).not.toContain("### Tool: Read\n");
+    expect(markdown).not.toContain("- Directory:");
+    expect(markdown).not.toContain(testWorkDir);
+    expect(markdown).not.toContain("must-not-export");
+    expect(markdown).not.toContain("private tool output must not export");
+    expect(markdown).not.toContain("/tmp/secret-readme.md");
+
+    const downloadResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md?download=1`);
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("Content-Disposition")).toMatch(
+      /^attachment; filename="transcript-export-test-.+\.md"$/,
+    );
+  });
+
+  test("exports attachment-only chat messages with a safe placeholder", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Attachment Only Transcript",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const persisted = await loadChat(created.config.id);
+    if (!persisted) {
+      throw new Error("Expected persisted chat");
+    }
+
+    const messages: PersistedMessage[] = [
+      {
+        id: "msg-attachment-only",
+        role: "user",
+        content: "   ",
+        timestamp: "2026-06-04T12:03:00.000Z",
+        attachments: [
+          {
+            id: "attachment-1",
+            filename: "secret-screenshot.png",
+            mimeType: "image/png",
+            data: "private-base64-data",
+            size: 123,
+          },
+        ],
+      },
+    ];
+    await updateChatState(created.config.id, {
+      ...persisted.state,
+      messages,
+      toolCalls: [],
+    });
+
+    const transcriptResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md`);
+    expect(transcriptResponse.status).toBe(200);
+    const markdown = await transcriptResponse.text();
+
+    expect(markdown).toContain("### User - 2026-06-04T12:03:00.000Z");
+    expect(markdown).toContain("Attachment sent. Attachment data is not included in this transcript.");
+    expect(markdown).not.toContain("secret-screenshot.png");
+    expect(markdown).not.toContain("private-base64-data");
+  });
+
+  test("returns clear transcript export errors for missing or empty chats", async () => {
+    const missingResponse = await fetch(`${baseUrl}/api/chats/missing-chat/transcript.md`);
+    expect(missingResponse.status).toBe(404);
+
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Empty Transcript Export",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+
+    const emptyResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md`);
+    expect(emptyResponse.status).toBe(400);
+    expect((await emptyResponse.json()).error).toBe("empty_transcript");
+  });
+
   test("renames autogenerated chats from the first user message and emits chat.updated", async () => {
     installMockBackend(["Investigate Login Bug", "Assistant response"]);
     const events: ChatEvent[] = [];
