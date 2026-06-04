@@ -1,5 +1,6 @@
 import type { Chat } from "../types/chat";
 import type { PersistedMessage, PersistedToolCall } from "../types/task";
+import { getToolMeta } from "../components/log-viewer/tool-inference";
 
 type TranscriptEntry =
   | {
@@ -39,7 +40,11 @@ function formatTimestamp(timestamp: string): string {
   if (Number.isNaN(date.getTime())) {
     return timestamp;
   }
-  return date.toISOString();
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 function getRoleLabel(role: PersistedMessage["role"]): string {
@@ -47,7 +52,7 @@ function getRoleLabel(role: PersistedMessage["role"]): string {
 }
 
 function getToolTitle(toolCall: PersistedToolCall): string {
-  return sanitizeMarkdownHeading(toolCall.name, "tool");
+  return sanitizeMarkdownHeading(getToolMeta(toolCall).summary, "tool");
 }
 
 function hasAttachments(message: PersistedMessage): boolean {
@@ -129,7 +134,7 @@ export function buildChatTranscriptMarkdown(chat: Chat): ChatTranscriptMarkdown 
       continue;
     }
 
-    lines.push(`### Tool: ${getToolTitle(entry.toolCall)} - ${formatTimestamp(entry.timestamp)}`);
+    lines.push(`### ${getToolTitle(entry.toolCall)} - ${formatTimestamp(entry.timestamp)}`);
   }
 
   lines.push("");
