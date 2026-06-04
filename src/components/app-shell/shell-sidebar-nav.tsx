@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import {
   ChatIcon,
+  Button,
   CodeIcon,
   ConfirmModal,
   ContextMenu,
   GearIcon,
+  Modal,
   RefreshIcon,
   SidebarIcon,
   type BadgeVariant,
@@ -315,8 +317,7 @@ function ItemSidebarContextMenu({
   sidebarPinning,
   onChatSpawnTask,
   onChatSpawnTaskFromCurrentPlan,
-  onChatViewTranscript,
-  onChatDownloadTranscript,
+  onChatTranscript,
   onChatRename,
   onChatDelete,
   onSshSessionRename,
@@ -336,8 +337,7 @@ function ItemSidebarContextMenu({
   sidebarPinning: SidebarPinningState;
   onChatSpawnTask: (chat: Chat) => void;
   onChatSpawnTaskFromCurrentPlan: (chat: Chat) => void;
-  onChatViewTranscript: (chat: Chat) => void;
-  onChatDownloadTranscript: (chat: Chat) => void;
+  onChatTranscript: (chat: Chat) => void;
   onChatRename: (chat: Chat) => void;
   onChatDelete: (chat: Chat) => void;
   onSshSessionRename: (sessionId: string, currentName: string, canRename: boolean) => void;
@@ -358,8 +358,7 @@ function ItemSidebarContextMenu({
           onSpawnTask: () => onChatSpawnTask(chat!),
           onSpawnTaskFromCurrentPlan: () => onChatSpawnTaskFromCurrentPlan(chat!),
           onOpenCodeExplorer: () => onNavigate({ view: "code-explorer", target: { contentType: "chat", chatId: pinnedItem.id } }),
-          onViewTranscript: () => onChatViewTranscript(chat!),
-          onDownloadTranscript: () => onChatDownloadTranscript(chat!),
+          onTranscript: () => onChatTranscript(chat!),
           onRename: () => onChatRename(chat!),
           onDelete: () => onChatDelete(chat!),
           sidebarPinning,
@@ -420,6 +419,7 @@ export function ShellSidebarNav({
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState | null>(null);
   const [chatRenameTarget, setChatRenameTarget] = useState<Chat | null>(null);
   const [chatDeleteTarget, setChatDeleteTarget] = useState<Chat | null>(null);
+  const [chatTranscriptTarget, setChatTranscriptTarget] = useState<Chat | null>(null);
   const [chatDeletePending, setChatDeletePending] = useState(false);
   const [chatSpawnPendingIds, setChatSpawnPendingIds] = useState<ReadonlySet<string>>(() => new Set());
   const [chatSpawnFromPlanPendingIds, setChatSpawnFromPlanPendingIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -1747,8 +1747,7 @@ export function ShellSidebarNav({
             sidebarPinning={sidebarPinning}
             onChatSpawnTask={(chat) => void spawnTaskFromChat(chat, false)}
             onChatSpawnTaskFromCurrentPlan={(chat) => void spawnTaskFromChat(chat, true)}
-            onChatViewTranscript={handleChatViewTranscript}
-            onChatDownloadTranscript={handleChatDownloadTranscript}
+            onChatTranscript={setChatTranscriptTarget}
             onChatRename={setChatRenameTarget}
             onChatDelete={setChatDeleteTarget}
             onSshSessionRename={(id, name, canRename) => setSessionRenameTarget({ id, name, canRename })}
@@ -1770,6 +1769,45 @@ export function ShellSidebarNav({
           confirmLabel="Delete"
           loading={chatDeletePending}
         />
+        <Modal
+          isOpen={chatTranscriptTarget !== null}
+          onClose={() => setChatTranscriptTarget(null)}
+          title="Transcript"
+          description="View the markdown transcript in a new window or download it as a file."
+          size="sm"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setChatTranscriptTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (chatTranscriptTarget) {
+                    handleChatDownloadTranscript(chatTranscriptTarget);
+                  }
+                  setChatTranscriptTarget(null);
+                }}
+              >
+                Download
+              </Button>
+              <Button
+                onClick={() => {
+                  if (chatTranscriptTarget) {
+                    handleChatViewTranscript(chatTranscriptTarget);
+                  }
+                  setChatTranscriptTarget(null);
+                }}
+              >
+                View
+              </Button>
+            </>
+          }
+        >
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Choose how you want to open this chat transcript.
+          </p>
+        </Modal>
         <RenameSshSessionModal
           isOpen={sessionRenameTarget !== null}
           onClose={() => setSessionRenameTarget(null)}
