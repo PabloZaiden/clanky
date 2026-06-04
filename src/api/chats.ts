@@ -226,9 +226,7 @@ export const chatsRoutes = {
           modelVariant: body.model.variant,
           sessionId: body.sessionId,
           cwd: body.cwd,
-          includeHistory: body.includeHistory,
           autoApprovePermissions: body.autoApprovePermissions,
-          baseBranch: body.baseBranch,
         });
         return Response.json(chat, { status: 201 });
       } catch (error) {

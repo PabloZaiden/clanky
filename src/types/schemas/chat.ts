@@ -33,9 +33,7 @@ export const ImportExistingChatRequestSchema = z.object({
   model: ModelConfigSchema,
   sessionId: z.string().trim().min(1, "sessionId is required"),
   cwd: z.string().trim().min(1, "cwd must be non-empty when provided").optional(),
-  includeHistory: z.boolean().default(true),
   autoApprovePermissions: z.boolean().default(true),
-  baseBranch: z.string().min(1, "baseBranch must be non-empty when provided").optional(),
 });
 
 export const UpdateChatRequestSchema = z.object({

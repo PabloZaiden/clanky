@@ -131,7 +131,6 @@ export type SessionReplayEvent =
 export interface ImportSessionOptions {
   sessionId: string;
   cwd?: string;
-  includeHistory: boolean;
 }
 
 export interface ImportSessionResult {

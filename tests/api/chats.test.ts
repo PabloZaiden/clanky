@@ -273,7 +273,6 @@ describe("Chats API Integration", () => {
         workspaceId: testWorkspaceId,
         model: testModel,
         sessionId: "provider-session-import-1",
-        includeHistory: true,
       }),
     });
     expect(importResponse.status).toBe(201);
@@ -314,6 +313,75 @@ describe("Chats API Integration", () => {
     expect(reconnectResponse.status).toBe(200);
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.messages).toHaveLength(2);
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Continue from the imported chat",
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+    const settled = await waitForChatIdle(imported.config.id) as {
+      state: {
+        messages: Array<{ role: string; content: string }>;
+        session?: { id?: string };
+        status: string;
+      };
+    };
+    expect(settled.state.session?.id).toBe("provider-session-import-1");
+    expect(settled.state.messages.map((message) => message.content).slice(0, 3)).toEqual([
+      "Please inspect the README",
+      "The README is present.",
+      "Continue from the imported chat",
+    ]);
+    expect(settled.state.messages.at(-1)?.role).toBe("assistant");
+  });
+
+  test("allows importing the same provider session more than once", async () => {
+    mockBackend.addImportableSession(
+      {
+        id: "provider-session-import-duplicate",
+        title: "Duplicate import source",
+        cwd: testWorkDir,
+        model: testModel.modelID,
+        updatedAt: new Date().toISOString(),
+      },
+      [
+        { type: "user.message", content: "Original request" },
+        { type: "assistant.message", content: "Original response" },
+      ],
+    );
+
+    const requestBody = {
+      workspaceId: testWorkspaceId,
+      model: testModel,
+      sessionId: "provider-session-import-duplicate",
+      cwd: testWorkDir,
+    };
+
+    const firstResponse = await fetch(`${baseUrl}/api/chats/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    expect(firstResponse.status).toBe(201);
+    const firstImport = await firstResponse.json();
+
+    const secondResponse = await fetch(`${baseUrl}/api/chats/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    expect(secondResponse.status).toBe(201);
+    const secondImport = await secondResponse.json();
+
+    expect(secondImport.config.id).not.toBe(firstImport.config.id);
+    expect(secondImport.state.session.id).toBe("provider-session-import-duplicate");
+    expect(secondImport.state.messages.map((message: { content: string }) => message.content)).toEqual([
+      "Original request",
+      "Original response",
+    ]);
   });
 
   test("exports chat transcript as markdown without tool call details", async () => {

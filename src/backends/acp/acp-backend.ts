@@ -1617,16 +1617,20 @@ export class AcpBackend implements Backend {
 
     const listedSession = (await this.listSessions()).find((session) => session.id === id);
     if (!listedSession) {
-      return null;
+      return this.sessionCache.get(id) ?? null;
     }
 
-    this.sessionDirectories.set(listedSession.id, listedSession.cwd);
-    const session: AgentSession = {
-      id: listedSession.id,
-      title: listedSession.title,
-      createdAt: listedSession.updatedAt ?? new Date().toISOString(),
-      model: listedSession.model,
-    };
+    const loaded = await this.sendRpcRequest<unknown>("session/load", {
+      sessionId: listedSession.id,
+      cwd: listedSession.cwd,
+      mcpServers: [],
+    });
+    const session = this.hydrateSessionFromResult(
+      listedSession.id,
+      loaded,
+      listedSession.cwd,
+      listedSession.title,
+    );
     this.sessionCache.set(session.id, session);
     return session;
   }
@@ -1676,9 +1680,7 @@ export class AcpBackend implements Backend {
     const cwd = options.cwd ?? listed?.cwd ?? this.directory;
     const events: SessionReplayEvent[] = [];
     const capture: ReplaySubscriber = (event) => {
-      if (options.includeHistory) {
-        events.push(event);
-      }
+      events.push(event);
     };
 
     this.sessionMessageStarted.delete(options.sessionId);
