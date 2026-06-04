@@ -307,7 +307,7 @@ export class MockAcpBackend implements Backend {
     return {
       session,
       cwd: options.cwd ?? entry.session.cwd,
-      events: options.includeHistory ? [...entry.events] : [],
+      events: [...entry.events],
     };
   }
 

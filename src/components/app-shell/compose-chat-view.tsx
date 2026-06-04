@@ -116,8 +116,6 @@ export function ComposeChatView({
   const [importSessions, setImportSessions] = useState<ImportableChatSession[]>([]);
   const [importSessionsLoading, setImportSessionsLoading] = useState(false);
   const [selectedImportSessionId, setSelectedImportSessionId] = useState("");
-  const [manualImportSessionId, setManualImportSessionId] = useState("");
-  const [importFullHistory, setImportFullHistory] = useState(true);
   const [remoteDirectory, setRemoteDirectory] = useState(composeServer?.config.repositoriesBasePath ?? "~");
   const [remoteProvider, setRemoteProvider] = useState<AgentProvider>("copilot");
   const [remoteModels, setRemoteModels] = useState<ModelInfo[]>([]);
@@ -215,6 +213,12 @@ export function ComposeChatView({
 
     return () => controller.abort();
   }, [importExistingSession, isServerChat, selectedWorkspace?.id, showError]);
+
+  useEffect(() => {
+    if (importExistingSession) {
+      setUseWorktree(false);
+    }
+  }, [importExistingSession]);
 
   useEffect(() => {
     if (isServerChat || selectedModel || models.length === 0) {
@@ -404,11 +408,8 @@ export function ComposeChatView({
       if (importExistingSession) {
         const selectedImportSession = importSessions.find((session) => session.id === selectedImportSessionId);
         const selectedSessionId = selectedImportSessionId.trim();
-        const manualSessionId = manualImportSessionId.trim();
-        const importSessionId = manualSessionId || selectedSessionId;
-        const importSessionCwd = selectedImportSession?.id === importSessionId ? selectedImportSession.cwd : undefined;
-        if (!importSessionId) {
-          showError("Select an existing session or enter a session ID");
+        if (!selectedSessionId || !selectedImportSession) {
+          showError("Select an existing session");
           return;
         }
         const chat = await importExistingChat({
@@ -419,11 +420,9 @@ export function ComposeChatView({
             modelID: parsedModel.modelID,
             variant: parsedModel.variant ?? "",
           },
-          sessionId: importSessionId,
-          cwd: importSessionCwd,
-          includeHistory: importFullHistory,
+          sessionId: selectedSessionId,
+          cwd: selectedImportSession.cwd,
           autoApprovePermissions,
-          baseBranch: baseBranch.trim() || currentBranch.trim(),
         });
         if (!chat) {
           showError("Failed to import chat");
@@ -521,7 +520,7 @@ export function ComposeChatView({
               || (!isServerChat && !selectedWorkspace)
               || (isServerChat && (!remoteDirectory.trim() || !remoteCredentialToken))
               || !effectiveSelectedModel
-              || (!isServerChat && importExistingSession && !(selectedImportSessionId.trim() || manualImportSessionId.trim()))
+              || (!isServerChat && importExistingSession && !selectedImportSessionId.trim())
             }
             loading={isSubmitting}
           >
@@ -604,7 +603,7 @@ export function ComposeChatView({
         )}
 
         {!isServerChat && (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
+          <div>
             <label className="flex items-start gap-3">
               <input
                 type="checkbox"
@@ -616,14 +615,11 @@ export function ComposeChatView({
                 <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Import existing session
                 </span>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Attach a provider-native ACP session to a normal Clanky chat.
-                </p>
               </div>
             </label>
 
             {importExistingSession && (
-              <div className="mt-4 space-y-4">
+              <div className="mt-4">
                 <div>
                   <label htmlFor="import-session-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                     Existing sessions
@@ -647,39 +643,6 @@ export function ComposeChatView({
                     ))}
                   </select>
                 </div>
-
-                <div>
-                  <label htmlFor="manual-import-session-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Session ID
-                  </label>
-                  <input
-                    id="manual-import-session-id"
-                    value={manualImportSessionId}
-                    onChange={(event) => setManualImportSessionId(event.target.value)}
-                    placeholder="Paste a provider session ID"
-                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
-                  />
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Manual IDs are useful when listing is unavailable or incomplete.
-                  </p>
-                </div>
-
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={importFullHistory}
-                    onChange={(event) => setImportFullHistory(event.target.checked)}
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
-                  />
-                  <div className="flex-1">
-                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Import provider history
-                    </span>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                      Capture the transcript replayed by the provider during this import only.
-                    </p>
-                  </div>
-                </label>
               </div>
             )}
           </div>
@@ -709,6 +672,7 @@ export function ComposeChatView({
           branchesLoading={branchesLoading}
           defaultBranch={defaultBranch}
           currentBranch={currentBranch}
+          disabled={importExistingSession}
           />
         )}
 
@@ -717,8 +681,9 @@ export function ComposeChatView({
           <label className="flex items-start gap-3">
             <input
               type="checkbox"
-              checked={useWorktree}
+              checked={importExistingSession ? false : useWorktree}
               onChange={(event) => setUseWorktree(event.target.checked)}
+              disabled={importExistingSession}
               className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
             />
             <div className="flex-1">

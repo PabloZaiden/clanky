@@ -133,9 +133,7 @@ export interface ImportExistingSessionOptions {
   modelVariant?: string;
   sessionId: string;
   cwd?: string;
-  includeHistory: boolean;
   autoApprovePermissions?: boolean;
-  baseBranch?: string;
 }
 
 export interface ReconnectChatOptions {
@@ -343,34 +341,61 @@ export class ChatManager {
       throw new Error(`Workspace not found: ${options.workspaceId}`);
     }
 
-    const backend = await backendManager.getBackendAsync(options.workspaceId);
-    const initialDirectory = options.cwd ?? workspace.directory;
-    if (!backend.isConnected() || backend.getDirectory() !== initialDirectory) {
-      if (backend.isConnected()) {
-        await backend.disconnect();
+    const discoveryBackend = await backendManager.getBackendAsync(options.workspaceId);
+    const discoveryDirectory = options.cwd ?? workspace.directory;
+    if (!discoveryBackend.isConnected() || discoveryBackend.getDirectory() !== discoveryDirectory) {
+      if (discoveryBackend.isConnected()) {
+        await discoveryBackend.disconnect();
       }
-      await backend.connect(buildConnectionConfig(workspace.serverSettings, initialDirectory));
+      await discoveryBackend.connect(buildConnectionConfig(workspace.serverSettings, discoveryDirectory));
     }
+    const listedSession = (await discoveryBackend.listSessions(options.cwd))
+      .find((session) => session.id === options.sessionId);
+    const importDirectory = options.cwd ?? listedSession?.cwd ?? workspace.directory;
+    const importedName = options.name?.trim() || listedSession?.title?.trim() || "";
 
-    const imported = await backend.importSession({
-      sessionId: options.sessionId,
-      cwd: options.cwd,
-      includeHistory: options.includeHistory,
-    });
-    const importedName = options.name?.trim() || imported.session.title?.trim() || "";
     const chat = await this.createChat({
       name: importedName || undefined,
       workspaceId: options.workspaceId,
       modelProviderID: options.modelProviderID,
-      modelID: imported.session.model ?? options.modelID,
+      modelID: listedSession?.model ?? options.modelID,
       modelVariant: options.modelVariant,
       useWorktree: false,
       autoApprovePermissions: options.autoApprovePermissions,
-      baseBranch: options.baseBranch,
-      directory: imported.cwd,
+      directory: importDirectory,
       syncBaseBranch: false,
       prepareWorktreeOnCreate: false,
     });
+
+    const backend = this.getChatBackend(chat.config.id, options.workspaceId);
+    if (!backend.isConnected() || backend.getDirectory() !== importDirectory) {
+      if (backend.isConnected()) {
+        await backend.disconnect();
+      }
+      await backend.connect(buildConnectionConfig(workspace.serverSettings, importDirectory));
+    }
+
+    let imported: Awaited<ReturnType<Backend["importSession"]>>;
+    try {
+      imported = await backend.importSession({
+        sessionId: options.sessionId,
+        cwd: importDirectory,
+      });
+    } catch (error) {
+      const cleanupResults = await Promise.allSettled([
+        deleteChat(chat.config.id),
+        backendManager.disconnectChat(chat.config.id),
+      ]);
+      for (const result of cleanupResults) {
+        if (result.status === "rejected") {
+          log.error("Failed to clean up chat after session import failure", {
+            chatId: chat.config.id,
+            error: String(result.reason),
+          });
+        }
+      }
+      throw error;
+    }
 
     const importedState = this.buildImportedReplayState(chat, imported.events, imported.session.id);
     const saved = await updateChatState(chat.config.id, importedState);
