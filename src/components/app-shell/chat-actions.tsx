@@ -285,7 +285,6 @@ export function useChatActions({
         isOpen={transcriptTarget !== null}
         onClose={() => setTranscriptTarget(null)}
         title="Transcript"
-        description="Open the raw markdown transcript in a new window or download it as a file."
         size="sm"
         footer={
           <>
@@ -317,6 +316,7 @@ export function useChatActions({
         }
       >
         <></>
+        <p>Open the raw markdown transcript in a new window or download it as a file.</p>
       </Modal>
       <SpawnCurrentPlanModal
         isOpen={spawnCurrentPlanTarget !== null}
