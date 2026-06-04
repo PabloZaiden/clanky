@@ -403,7 +403,10 @@ export function ComposeChatView({
     try {
       if (importExistingSession) {
         const selectedImportSession = importSessions.find((session) => session.id === selectedImportSessionId);
-        const importSessionId = manualImportSessionId.trim() || selectedImportSessionId.trim();
+        const selectedSessionId = selectedImportSessionId.trim();
+        const manualSessionId = manualImportSessionId.trim();
+        const importSessionId = manualSessionId || selectedSessionId;
+        const importSessionCwd = selectedImportSession?.id === importSessionId ? selectedImportSession.cwd : undefined;
         if (!importSessionId) {
           showError("Select an existing session or enter a session ID");
           return;
@@ -417,7 +420,7 @@ export function ComposeChatView({
             variant: parsedModel.variant ?? "",
           },
           sessionId: importSessionId,
-          cwd: selectedImportSession?.cwd,
+          cwd: importSessionCwd,
           includeHistory: importFullHistory,
           autoApprovePermissions,
           baseBranch: baseBranch.trim() || currentBranch.trim(),

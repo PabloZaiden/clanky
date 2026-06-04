@@ -244,6 +244,8 @@ describe("Chats API Integration", () => {
         { type: "reasoning", content: "I should inspect the repository first." },
         { type: "tool.start", toolCallId: "tool-import-1", toolName: "read_file", input: { path: "README.md" } },
         { type: "tool.complete", toolCallId: "tool-import-1", toolName: "read_file", output: "README contents" },
+        { type: "tool.start", toolName: "grep", input: { pattern: "Clanky" } },
+        { type: "tool.complete", toolName: "grep", output: "Clanky matches" },
         { type: "assistant.message", content: "The README is present." },
       ],
     );
@@ -289,7 +291,14 @@ describe("Chats API Integration", () => {
         output: "README contents",
         status: "completed",
       }),
+      expect.objectContaining({
+        name: "grep",
+        input: { pattern: "Clanky" },
+        output: "Clanky matches",
+        status: "completed",
+      }),
     ]);
+    expect(imported.state.toolCalls).toHaveLength(2);
 
     const reconnectResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/reconnect`, {
       method: "POST",

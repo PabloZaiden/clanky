@@ -1955,11 +1955,14 @@ export class ChatManager {
           lastActivityAt = timestamp;
           const existingIndex = event.toolCallId
             ? toolCalls.findIndex((toolCall) => toolCall.id === event.toolCallId)
-            : -1;
+            : toolCalls.findLastIndex((toolCall) =>
+              toolCall.name === event.toolName && toolCall.status === "running"
+            );
           const toolKey = event.toolCallId ?? event.toolName;
           const completedInput = event.input ?? (
             existingIndex >= 0 ? toolCalls[existingIndex]?.input : undefined
           ) ?? toolInputs.get(toolKey);
+          toolInputs.set(toolKey, completedInput);
           const completedTool: PersistedToolCall = {
             id: event.toolCallId ?? (existingIndex >= 0 ? toolCalls[existingIndex]!.id : `chat-tool-${crypto.randomUUID()}`),
             name: event.toolName,
