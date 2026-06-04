@@ -31,6 +31,7 @@ import {
   SpawnCurrentPlanTaskRequestSchema,
   UpdateTaskRequestSchema,
   UpdateChatRequestSchema,
+  ImportExistingChatRequestSchema,
   AddressCommentsRequestSchema,
   CreateSshSessionRequestSchema,
   UpdateSshSessionRequestSchema,
@@ -139,6 +140,7 @@ export interface ModelInfo {
 export type CreateTaskRequest = z.infer<typeof CreateTaskRequestSchema>;
 export type CreateChatRequest = z.infer<typeof CreateChatRequestSchema>;
 export type CreateSshServerChatRequest = z.infer<typeof CreateSshServerChatRequestSchema>;
+export type ImportExistingChatRequest = z.infer<typeof ImportExistingChatRequestSchema>;
 
 /**
  * Request body for POST /api/tasks/title endpoint.

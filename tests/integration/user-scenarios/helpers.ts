@@ -20,6 +20,9 @@ import type {
   AgentEvent,
   BackendConnectionConfig,
   CreateSessionOptions,
+  ImportableSession,
+  ImportSessionOptions,
+  ImportSessionResult,
   PromptInput,
 } from "../../../src/backends/types";
 import { createEventStream, type EventStream } from "../../../src/utils/event-stream";
@@ -258,6 +261,27 @@ export class ConfigurableMockBackend implements TaskBackend {
 
   async getSession(id: string): Promise<AgentSession | null> {
     return this.sessions.get(id) ?? null;
+  }
+
+  async listSessions(directory?: string): Promise<ImportableSession[]> {
+    return Array.from(this.sessions.values()).map((session) => ({
+      id: session.id,
+      title: session.title,
+      cwd: directory ?? this.directory,
+      model: session.model,
+    }));
+  }
+
+  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
+    const session = this.sessions.get(options.sessionId);
+    if (!session) {
+      throw new Error(`Session ${options.sessionId} not found`);
+    }
+    return {
+      session,
+      cwd: options.cwd ?? this.directory,
+      events: [],
+    };
   }
 
   async deleteSession(id: string): Promise<void> {
