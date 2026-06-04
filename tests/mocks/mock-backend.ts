@@ -13,6 +13,10 @@ import type {
   PromptInput,
   Backend,
   ConnectionInfo,
+  ImportableSession,
+  ImportSessionOptions,
+  ImportSessionResult,
+  SessionReplayEvent,
 } from "../../src/backends/types";
 import { createEventStream, type EventStream } from "../../src/utils/event-stream";
 
@@ -69,6 +73,7 @@ export class MockAcpBackend implements Backend {
   private readonly models: MockModelInfo[];
   private readonly filterModelsByConnectionProvider: boolean;
   private readonly sessions = new Map<string, AgentSession>();
+  private readonly importableSessions = new Map<string, { session: ImportableSession; events: SessionReplayEvent[] }>();
   private readonly sentPrompts: PromptInput[] = [];
   private readonly permissionReplies: Array<{ requestId: string; response: string }> = [];
   private readonly configOptionUpdates: Array<{ sessionId: string; configId: string; value: string }> = [];
@@ -281,6 +286,31 @@ export class MockAcpBackend implements Backend {
     return this.sessions.get(id) ?? null;
   }
 
+  async listSessions(directory?: string): Promise<ImportableSession[]> {
+    return Array.from(this.importableSessions.values())
+      .map((entry) => entry.session)
+      .filter((session) => !directory || session.cwd === directory);
+  }
+
+  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
+    const entry = this.importableSessions.get(options.sessionId);
+    if (!entry) {
+      throw new Error(`Session ${options.sessionId} not found`);
+    }
+    const session: AgentSession = {
+      id: entry.session.id,
+      title: entry.session.title,
+      createdAt: new Date().toISOString(),
+      model: entry.session.model,
+    };
+    this.sessions.set(session.id, session);
+    return {
+      session,
+      cwd: options.cwd ?? entry.session.cwd,
+      events: options.includeHistory ? [...entry.events] : [],
+    };
+  }
+
   /**
    * Delete a session.
    */
@@ -314,6 +344,10 @@ export class MockAcpBackend implements Backend {
 
   getConnectionConfigs(): BackendConnectionConfig[] {
     return [...this.connectionConfigs];
+  }
+
+  addImportableSession(session: ImportableSession, events: SessionReplayEvent[]): void {
+    this.importableSessions.set(session.id, { session, events });
   }
 }
 
@@ -456,6 +490,27 @@ export class NeverCompletingMockBackend implements Backend {
 
   async getSession(id: string): Promise<AgentSession | null> {
     return this.sessions.get(id) ?? null;
+  }
+
+  async listSessions(directory?: string): Promise<ImportableSession[]> {
+    return Array.from(this.sessions.values()).map((session) => ({
+      id: session.id,
+      title: session.title,
+      cwd: directory ?? this.directory,
+      model: session.model,
+    }));
+  }
+
+  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
+    const session = this.sessions.get(options.sessionId);
+    if (!session) {
+      throw new Error(`Session ${options.sessionId} not found`);
+    }
+    return {
+      session,
+      cwd: options.cwd ?? this.directory,
+      events: [],
+    };
   }
 
   async deleteSession(id: string): Promise<void> {
@@ -607,6 +662,27 @@ export class PlanModeMockBackend implements Backend {
 
   async getSession(id: string): Promise<AgentSession | null> {
     return this.sessions.get(id) ?? null;
+  }
+
+  async listSessions(directory?: string): Promise<ImportableSession[]> {
+    return Array.from(this.sessions.values()).map((session) => ({
+      id: session.id,
+      title: session.title,
+      cwd: directory ?? this.directory,
+      model: session.model,
+    }));
+  }
+
+  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
+    const session = this.sessions.get(options.sessionId);
+    if (!session) {
+      throw new Error(`Session ${options.sessionId} not found`);
+    }
+    return {
+      session,
+      cwd: options.cwd ?? this.directory,
+      events: [],
+    };
   }
 
   async deleteSession(id: string): Promise<void> {

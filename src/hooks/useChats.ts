@@ -7,6 +7,7 @@ import type {
   ChatEvent,
   CreateChatRequest,
   CreateSshServerChatRequest,
+  ImportExistingChatRequest,
   InterruptChatRequest,
   SendChatMessageRequest,
   UpdateChatRequest,
@@ -98,6 +99,7 @@ export interface UseChatsResult {
   refreshChat: (id: string) => Promise<void>;
   getChat: (id: string) => Chat | undefined;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
+  importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
   createSshServerChat: (serverId: string, request: CreateSshServerChatRequest) => Promise<Chat | null>;
   updateChat: (id: string, request: UpdateChatRequest) => Promise<Chat | null>;
   deleteChat: (id: string) => Promise<boolean>;
@@ -180,6 +182,30 @@ export function useChats(): UseChatsResult {
         error: String(createError),
       });
       setError(String(createError));
+      return null;
+    }
+  }, []);
+
+  const importExistingChat = useCallback(async (request: ImportExistingChatRequest): Promise<Chat | null> => {
+    try {
+      const response = await appFetch("/api/chats/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(await parseError(response, "Failed to import chat"));
+      }
+      const chat = (await response.json()) as Chat;
+      setChats((prev) => upsertChat(prev, chat));
+      return chat;
+    } catch (importError) {
+      log.error("Failed to import chat", {
+        workspaceId: request.workspaceId,
+        sessionId: request.sessionId,
+        error: String(importError),
+      });
+      setError(String(importError));
       return null;
     }
   }, []);
@@ -371,6 +397,7 @@ export function useChats(): UseChatsResult {
     refreshChat,
     getChat,
     createChat,
+    importExistingChat,
     createSshServerChat,
     updateChat,
     deleteChat,

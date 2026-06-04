@@ -230,6 +230,75 @@ describe("Chats API Integration", () => {
     expect(reconnected.state.status).toBe("idle");
   });
 
+  test("imports an existing provider session with replayed history", async () => {
+    mockBackend.addImportableSession(
+      {
+        id: "provider-session-import-1",
+        title: "Imported provider chat",
+        cwd: testWorkDir,
+        model: testModel.modelID,
+        updatedAt: new Date().toISOString(),
+      },
+      [
+        { type: "user.message", content: "Please inspect the README" },
+        { type: "reasoning", content: "I should inspect the repository first." },
+        { type: "tool.start", toolCallId: "tool-import-1", toolName: "read_file", input: { path: "README.md" } },
+        { type: "tool.complete", toolCallId: "tool-import-1", toolName: "read_file", output: "README contents" },
+        { type: "assistant.message", content: "The README is present." },
+      ],
+    );
+
+    const listResponse = await fetch(`${baseUrl}/api/chats/importable-sessions?workspaceId=${testWorkspaceId}`);
+    expect(listResponse.status).toBe(200);
+    const importableSessions = await listResponse.json() as Array<{ id: string; cwd: string }>;
+    expect(importableSessions).toContainEqual(expect.objectContaining({
+      id: "provider-session-import-1",
+      cwd: testWorkDir,
+    }));
+
+    const importResponse = await fetch(`${baseUrl}/api/chats/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        sessionId: "provider-session-import-1",
+        includeHistory: true,
+      }),
+    });
+    expect(importResponse.status).toBe(201);
+    const imported = await importResponse.json();
+    expect(imported.config.name).toBe("Imported provider chat");
+    expect(imported.config.useWorktree).toBe(false);
+    expect(imported.config.directory).toBe(testWorkDir);
+    expect(imported.state.session.id).toBe("provider-session-import-1");
+    expect(imported.state.status).toBe("idle");
+    expect(imported.state.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
+      ["user", "Please inspect the README"],
+      ["assistant", "The README is present."],
+    ]);
+    expect(imported.state.logs.some((log: { details?: { logKind?: string; responseContent?: string } }) =>
+      log.details?.logKind === "reasoning"
+      && log.details.responseContent === "I should inspect the repository first."
+    )).toBe(true);
+    expect(imported.state.toolCalls).toEqual([
+      expect.objectContaining({
+        id: "tool-import-1",
+        name: "read_file",
+        input: { path: "README.md" },
+        output: "README contents",
+        status: "completed",
+      }),
+    ]);
+
+    const reconnectResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/reconnect`, {
+      method: "POST",
+    });
+    expect(reconnectResponse.status).toBe(200);
+    const reconnected = await reconnectResponse.json();
+    expect(reconnected.state.messages).toHaveLength(2);
+  });
+
   test("exports chat transcript as markdown without tool call details", async () => {
     const createResponse = await fetch(`${baseUrl}/api/chats`, {
       method: "POST",

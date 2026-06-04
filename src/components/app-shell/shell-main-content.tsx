@@ -107,6 +107,7 @@ interface ShellMainContentProps {
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
+  importExistingChat: (request: import("../../types").ImportExistingChatRequest) => Promise<import("../../types").Chat | null>;
   createSshServerChat: (
     serverId: string,
     request: import("../../types").CreateSshServerChatRequest,
@@ -166,6 +167,7 @@ function renderMainContent(props: ShellMainContentProps) {
     quickChatSettingsError,
     updateQuickChatSettings,
     createChat,
+    importExistingChat,
     workspaceSettings,
     exportConfig,
     importConfig,
@@ -579,6 +581,7 @@ function renderMainContent(props: ShellMainContentProps) {
         setComposeActionState={props.setComposeActionState}
         handleTaskSubmit={props.handleTaskSubmit}
         createChat={createChat}
+        importExistingChat={importExistingChat}
         createSshServerChat={props.createSshServerChat}
         dashboardData={dashboardData}
         workspaces={workspaces}

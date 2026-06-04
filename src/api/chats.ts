@@ -21,6 +21,7 @@ import {
 import type { ChatConfig } from "../types/chat";
 import {
   CreateChatRequestSchema,
+  ImportExistingChatRequestSchema,
   InterruptChatRequestSchema,
   ReconnectChatRequestSchema,
   ReplyToChatPermissionRequestSchema,
@@ -161,6 +162,82 @@ export const chatsRoutes = {
           error: String(error),
         });
         return errorResponse("create_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/chats/importable-sessions": {
+    async GET(req: Request): Promise<Response> {
+      const url = new URL(req.url);
+      const workspaceId = url.searchParams.get("workspaceId")?.trim();
+      if (!workspaceId) {
+        return errorResponse("workspace_required", "workspaceId is required", 400);
+      }
+      const workspace = await requireWorkspace(workspaceId);
+      if (workspace instanceof Response) {
+        return workspace;
+      }
+
+      try {
+        const sessions = await chatManager.listImportableSessions(workspace.id);
+        return Response.json(sessions);
+      } catch (error) {
+        log.error("Failed to list importable chat sessions", {
+          workspaceId,
+          error: String(error),
+        });
+        return errorResponse("list_importable_sessions_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/chats/import": {
+    async POST(req: Request): Promise<Response> {
+      const validation = await parseAndValidate(ImportExistingChatRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      const body = validation.data;
+      const workspace = await requireWorkspace(body.workspaceId);
+      if (workspace instanceof Response) {
+        return workspace;
+      }
+
+      const modelValidation = await isModelEnabled(
+        workspace.id,
+        workspace.directory,
+        body.model.providerID,
+        body.model.modelID,
+      );
+      if (!modelValidation.enabled) {
+        return errorResponse(
+          modelValidation.errorCode ?? "model_not_enabled",
+          modelValidation.error ?? "The selected model is not available",
+        );
+      }
+
+      try {
+        const chat = await chatManager.importExistingSession({
+          name: body.name,
+          workspaceId: workspace.id,
+          modelProviderID: body.model.providerID,
+          modelID: body.model.modelID,
+          modelVariant: body.model.variant,
+          sessionId: body.sessionId,
+          cwd: body.cwd,
+          includeHistory: body.includeHistory,
+          autoApprovePermissions: body.autoApprovePermissions,
+          baseBranch: body.baseBranch,
+        });
+        return Response.json(chat, { status: 201 });
+      } catch (error) {
+        log.error("Failed to import chat session", {
+          workspaceId: body.workspaceId,
+          sessionId: body.sessionId,
+          error: String(error),
+        });
+        return errorResponse("import_session_failed", String(error), 500);
       }
     },
   },

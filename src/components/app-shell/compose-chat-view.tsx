@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Chat, CreateSshServerChatRequest, ModelInfo, SshServer, Workspace } from "../../types";
-import type { CreateChatRequest } from "../../types/api";
+import type { CreateChatRequest, ImportExistingChatRequest } from "../../types/api";
 import type { AgentProvider } from "../../types/settings";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import { useToast } from "../../hooks";
@@ -21,6 +21,14 @@ import { BranchSelector } from "../create-task/branch-selector";
 import { Button, Modal } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
+
+interface ImportableChatSession {
+  id: string;
+  title?: string;
+  cwd: string;
+  updatedAt?: string;
+  model?: string;
+}
 
 function getPreferredModelKey(
   models: UseDashboardDataResult["models"],
@@ -68,6 +76,7 @@ export function ComposeChatView({
   shellHeaderOffsetClassName,
   navigateWithinShell,
   createChat,
+  importExistingChat,
   createSshServerChat = async () => null,
 }: {
   composeWorkspace: Workspace | null;
@@ -79,6 +88,7 @@ export function ComposeChatView({
   shellHeaderOffsetClassName: string;
   navigateWithinShell: (route: ShellRoute) => void;
   createChat: (request: CreateChatRequest) => Promise<Chat | null>;
+  importExistingChat: (request: ImportExistingChatRequest) => Promise<Chat | null>;
   createSshServerChat?: (serverId: string, request: CreateSshServerChatRequest) => Promise<Chat | null>;
 }) {
   const { error: showError } = useToast();
@@ -102,6 +112,12 @@ export function ComposeChatView({
   const [autoApprovePermissions, setAutoApprovePermissions] = useState(true);
   const [baseBranch, setBaseBranch] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [importExistingSession, setImportExistingSession] = useState(false);
+  const [importSessions, setImportSessions] = useState<ImportableChatSession[]>([]);
+  const [importSessionsLoading, setImportSessionsLoading] = useState(false);
+  const [selectedImportSessionId, setSelectedImportSessionId] = useState("");
+  const [manualImportSessionId, setManualImportSessionId] = useState("");
+  const [importFullHistory, setImportFullHistory] = useState(true);
   const [remoteDirectory, setRemoteDirectory] = useState(composeServer?.config.repositoriesBasePath ?? "~");
   const [remoteProvider, setRemoteProvider] = useState<AgentProvider>("copilot");
   const [remoteModels, setRemoteModels] = useState<ModelInfo[]>([]);
@@ -154,6 +170,51 @@ export function ComposeChatView({
     }
     setBaseBranch((current) => current || defaultBranch || currentBranch);
   }, [currentBranch, defaultBranch, selectedWorkspace?.id]);
+
+  useEffect(() => {
+    if (isServerChat || !importExistingSession || !selectedWorkspace) {
+      setImportSessions([]);
+      setSelectedImportSessionId("");
+      return;
+    }
+
+    const controller = new AbortController();
+    void (async () => {
+      setImportSessionsLoading(true);
+      try {
+        const response = await appFetch(`/api/chats/importable-sessions?workspaceId=${encodeURIComponent(selectedWorkspace.id)}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          const data = await response.json() as { message?: string; error?: string };
+          throw new Error(data.message ?? data.error ?? "Failed to list existing sessions");
+        }
+        const sessions = await response.json() as ImportableChatSession[];
+        if (controller.signal.aborted) {
+          return;
+        }
+        setImportSessions(sessions);
+        setSelectedImportSessionId((current) => (
+          current && sessions.some((session) => session.id === current)
+            ? current
+            : sessions[0]?.id ?? ""
+        ));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setImportSessions([]);
+        setSelectedImportSessionId("");
+        showError(String(error));
+      } finally {
+        if (!controller.signal.aborted) {
+          setImportSessionsLoading(false);
+        }
+      }
+    })();
+
+    return () => controller.abort();
+  }, [importExistingSession, isServerChat, selectedWorkspace?.id, showError]);
 
   useEffect(() => {
     if (isServerChat || selectedModel || models.length === 0) {
@@ -340,6 +401,45 @@ export function ComposeChatView({
 
     setIsSubmitting(true);
     try {
+      if (importExistingSession) {
+        const selectedImportSession = importSessions.find((session) => session.id === selectedImportSessionId);
+        const importSessionId = manualImportSessionId.trim() || selectedImportSessionId.trim();
+        if (!importSessionId) {
+          showError("Select an existing session or enter a session ID");
+          return;
+        }
+        const chat = await importExistingChat({
+          name: name.trim() || selectedImportSession?.title,
+          workspaceId: selectedWorkspace.id,
+          model: {
+            providerID: parsedModel.providerID,
+            modelID: parsedModel.modelID,
+            variant: parsedModel.variant ?? "",
+          },
+          sessionId: importSessionId,
+          cwd: selectedImportSession?.cwd,
+          includeHistory: importFullHistory,
+          autoApprovePermissions,
+          baseBranch: baseBranch.trim() || currentBranch.trim(),
+        });
+        if (!chat) {
+          showError("Failed to import chat");
+          return;
+        }
+        setLastModel({
+          providerID: parsedModel.providerID,
+          modelID: parsedModel.modelID,
+          variant: parsedModel.variant,
+        });
+        saveStoredChatModelPreference({
+          providerID: parsedModel.providerID,
+          modelID: parsedModel.modelID,
+          variant: parsedModel.variant,
+        });
+        navigateWithinShell({ view: "chat", chatId: chat.config.id });
+        return;
+      }
+
       const chat = await createChat({
         name: name.trim(),
         workspaceId: selectedWorkspace.id,
@@ -414,13 +514,15 @@ export function ComposeChatView({
               isSubmitting
               || (!isServerChat && branchesLoading)
               || modelOptionsLoading
+              || importSessionsLoading
               || (!isServerChat && !selectedWorkspace)
               || (isServerChat && (!remoteDirectory.trim() || !remoteCredentialToken))
               || !effectiveSelectedModel
+              || (!isServerChat && importExistingSession && !(selectedImportSessionId.trim() || manualImportSessionId.trim()))
             }
             loading={isSubmitting}
           >
-            Create chat
+            {importExistingSession ? "Import chat" : "Create chat"}
           </Button>
         </>
       )}
@@ -496,6 +598,88 @@ export function ComposeChatView({
               </select>
             </div>
           </>
+        )}
+
+        {!isServerChat && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-neutral-700 dark:bg-neutral-800/60">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={importExistingSession}
+                onChange={(event) => setImportExistingSession(event.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+              />
+              <div className="flex-1">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Import existing session
+                </span>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Attach a provider-native ACP session to a normal Clanky chat.
+                </p>
+              </div>
+            </label>
+
+            {importExistingSession && (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label htmlFor="import-session-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Existing sessions
+                  </label>
+                  <select
+                    id="import-session-select"
+                    value={selectedImportSessionId}
+                    onChange={(event) => setSelectedImportSessionId(event.target.value)}
+                    disabled={importSessionsLoading || importSessions.length === 0}
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60"
+                  >
+                    <option value="">
+                      {importSessionsLoading
+                        ? "Loading sessions..."
+                        : importSessions.length === 0 ? "No discoverable sessions" : "Select a session"}
+                    </option>
+                    {importSessions.map((session) => (
+                      <option key={session.id} value={session.id}>
+                        {(session.title || session.id)}{session.cwd ? ` - ${session.cwd}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="manual-import-session-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Session ID
+                  </label>
+                  <input
+                    id="manual-import-session-id"
+                    value={manualImportSessionId}
+                    onChange={(event) => setManualImportSessionId(event.target.value)}
+                    placeholder="Paste a provider session ID"
+                    className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Manual IDs are useful when listing is unavailable or incomplete.
+                  </p>
+                </div>
+
+                <label className="flex items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={importFullHistory}
+                    onChange={(event) => setImportFullHistory(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+                  />
+                  <div className="flex-1">
+                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Import provider history
+                    </span>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Capture the transcript replayed by the provider during this import only.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            )}
+          </div>
         )}
 
         <div>
