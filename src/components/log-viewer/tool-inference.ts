@@ -549,8 +549,8 @@ export function getToolSummary(tool: ToolCallData, kind: InferredToolKind, conte
       const pattern = input ? getStringField(input, "pattern") : undefined;
       const path = input ? getPathField(input) ?? getParsedCommandPath(input) : undefined;
       const displayPath = formatOptionalPath(path, context);
-      if (!pattern && displayPath) {
-        return `List ${displayPath}`;
+      if (!pattern) {
+        return displayPath ? `List ${displayPath}` : "List files";
       }
       if (path && pattern) {
         return `Find files matching '${pattern}' in ${displayPath ?? path}`;

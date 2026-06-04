@@ -15,7 +15,8 @@ interface ToolGroupEntryProps {
 
 function truncateToolSummary(summary: string): string {
   const maxLength = 72;
-  return summary.length > maxLength ? `${summary.slice(0, maxLength - 1)}...` : summary;
+  const suffix = "...";
+  return summary.length > maxLength ? `${summary.slice(0, maxLength - suffix.length)}${suffix}` : summary;
 }
 
 function getPluralToolLabel(kind: InferredToolKind): string {
