@@ -25,6 +25,7 @@ import {
   Button,
   ConfirmModal,
   FocusPreservingButton,
+  Modal,
   StatusBadge,
   getChatStatusBadgeVariant,
   useComposerSizing,
@@ -152,6 +153,7 @@ export function ChatDetails({
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [isTranscriptModalOpen, setIsTranscriptModalOpen] = useState(false);
   const [permissionReplyPendingIds, setPermissionReplyPendingIds] = useState<string[]>([]);
   const permissionReplyPendingIdsRef = useRef(new Set<string>());
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
@@ -672,16 +674,7 @@ export function ChatDetails({
       onSpawnTask: () => void handleSpawnTask(),
       onSpawnTaskFromCurrentPlan: () => void openSpawnCurrentPlanModal(),
       onOpenCodeExplorer: () => onOpenCodeExplorer?.(chat.config.id),
-      onViewTranscript: () => window.open(
-        appAbsoluteUrl(`/#/chat-transcript/${encodeURIComponent(chat.config.id)}`),
-        "_blank",
-        "noopener,noreferrer",
-      ),
-      onDownloadTranscript: () => window.open(
-        appAbsoluteUrl(`/api/chats/${encodeURIComponent(chat.config.id)}/transcript.md?download=1`),
-        "_blank",
-        "noopener,noreferrer",
-      ),
+      onTranscript: () => setIsTranscriptModalOpen(true),
       onRename: () => setIsRenameModalOpen(true),
       onDelete: () => setIsDeleteConfirmOpen(true),
       sidebarPinning,
@@ -982,6 +975,52 @@ export function ChatDetails({
     />
   );
 
+  const transcriptModal = (
+    <Modal
+      isOpen={isTranscriptModalOpen}
+      onClose={() => setIsTranscriptModalOpen(false)}
+      title="Transcript"
+      description="View the markdown transcript in a new window or download it as a file."
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => setIsTranscriptModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setIsTranscriptModalOpen(false);
+              window.open(
+                appAbsoluteUrl(`/api/chats/${encodeURIComponent(chat.config.id)}/transcript.md?download=1`),
+                "_blank",
+                "noopener,noreferrer",
+              );
+            }}
+          >
+            Download
+          </Button>
+          <Button
+            onClick={() => {
+              setIsTranscriptModalOpen(false);
+              window.open(
+                appAbsoluteUrl(`/#/chat-transcript/${encodeURIComponent(chat.config.id)}`),
+                "_blank",
+                "noopener,noreferrer",
+              );
+            }}
+          >
+            View
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-gray-600 dark:text-gray-300">
+        Choose how you want to open this chat transcript.
+      </p>
+    </Modal>
+  );
+
   const spawnCurrentPlanModal = (
     <SpawnCurrentPlanModal
       isOpen={isSpawnCurrentPlanModalOpen}
@@ -1048,6 +1087,7 @@ export function ChatDetails({
       {permissionApprovalPanel}
       {composer}
       {!isEmbedded && renameModal}
+      {!isEmbedded && transcriptModal}
       {!isEmbedded && spawnCurrentPlanModal}
       {!isEmbedded && deleteConfirmModal}
     </div>

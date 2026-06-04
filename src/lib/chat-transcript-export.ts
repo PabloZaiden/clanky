@@ -101,7 +101,7 @@ function buildEntries(chat: Chat): TranscriptEntry[] {
 }
 
 export function getChatTranscriptFilename(chat: Pick<Chat, "config">): string {
-  return `${sanitizeFilenamePart(chat.config.name)}-${chat.config.id}.md`;
+  return `${sanitizeFilenamePart(chat.config.name)}.md`;
 }
 
 export function buildChatTranscriptMarkdown(chat: Chat): ChatTranscriptMarkdown | null {

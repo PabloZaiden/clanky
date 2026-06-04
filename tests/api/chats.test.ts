@@ -300,7 +300,7 @@ describe("Chats API Integration", () => {
     const downloadResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md?download=1`);
     expect(downloadResponse.status).toBe(200);
     expect(downloadResponse.headers.get("Content-Disposition")).toMatch(
-      /^attachment; filename="transcript-export-test-.+\.md"$/,
+      /^attachment; filename="transcript-export-test\.md"$/,
     );
   });
 

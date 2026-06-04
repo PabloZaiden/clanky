@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { appFetch } from "../lib/public-path";
-import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface StandaloneChatTranscriptViewerProps {
   chatId: string;
@@ -11,10 +12,47 @@ type LoadState =
   | { status: "loaded"; markdown: string }
   | { status: "error"; message: string };
 
+function getTitleFromMarkdown(markdown: string): string {
+  const heading = markdown.match(/^#\s+(.+)$/m)?.[1]?.trim();
+  return heading || "Chat transcript";
+}
+
 export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscriptViewerProps) {
   const [rawMode, setRawMode] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const transcriptUrl = useMemo(() => `/api/chats/${encodeURIComponent(chatId)}/transcript.md`, [chatId]);
+
+  useEffect(() => {
+    const root = document.getElementById("root");
+    const targets = [
+      document.documentElement,
+      document.body,
+      root,
+    ].filter((target): target is HTMLElement => target !== null);
+    const previousStyles = targets.map((target) => ({
+      target,
+      height: target.style.height,
+      overflow: target.style.overflow,
+      overscrollBehavior: target.style.overscrollBehavior,
+      background: target.style.background,
+    }));
+
+    for (const target of targets) {
+      target.style.height = "auto";
+      target.style.overflow = "visible";
+      target.style.overscrollBehavior = "auto";
+      target.style.background = "#fff";
+    }
+
+    return () => {
+      for (const previous of previousStyles) {
+        previous.target.style.height = previous.height;
+        previous.target.style.overflow = previous.overflow;
+        previous.target.style.overscrollBehavior = previous.overscrollBehavior;
+        previous.target.style.background = previous.background;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -44,40 +82,90 @@ export function StandaloneChatTranscriptViewer({ chatId }: StandaloneChatTranscr
     return () => controller.abort();
   }, [transcriptUrl]);
 
-  return (
-    <main className="min-h-screen bg-white text-gray-950 dark:bg-neutral-950 dark:text-gray-50 print:bg-white print:text-black">
-      <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/95 print:hidden">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
-          <h1 className="text-sm font-semibold">Markdown transcript</h1>
-          <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-500 dark:border-neutral-700"
-              checked={rawMode}
-              onChange={(event) => setRawMode(event.target.checked)}
-            />
-            Raw
-          </label>
-        </div>
-      </div>
+  useEffect(() => {
+    if (loadState.status === "loaded") {
+      document.title = getTitleFromMarkdown(loadState.markdown);
+      return;
+    }
 
-      <div className="mx-auto max-w-4xl px-4 py-8 print:max-w-none print:px-0 print:py-0">
+    document.title = "Chat transcript";
+  }, [loadState]);
+
+  return (
+    <main
+      className="standalone-transcript-viewer"
+      style={{ padding: "2rem", color: "#111", background: "#fff", fontFamily: "system-ui, sans-serif" }}
+    >
+      <style>
+        {`
+          @media print {
+            .transcript-mode-toggle {
+              display: none;
+            }
+            .standalone-transcript-viewer {
+              padding: 0 !important;
+            }
+          }
+          .transcript-content {
+            overflow-wrap: anywhere;
+          }
+          .transcript-content pre {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+          }
+        `}
+      </style>
+      <label
+        className="transcript-mode-toggle"
+        style={{
+          position: "fixed",
+          top: "1rem",
+          right: "1rem",
+          display: "flex",
+          gap: "0.5rem",
+          alignItems: "center",
+          padding: "0.35rem 0.5rem",
+          background: "#fff",
+          border: "1px solid #ccc",
+          borderRadius: "0.375rem",
+          fontSize: "0.875rem",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={rawMode}
+          onChange={(event) => setRawMode(event.target.checked)}
+        />
+        Raw
+      </label>
+
+      <article className="transcript-content">
         {loadState.status === "loading" && (
-          <div className="text-sm text-gray-500 dark:text-gray-400">Loading transcript...</div>
+          <p>Loading transcript...</p>
         )}
         {loadState.status === "error" && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200">
+          <p>
             {loadState.message}
-          </div>
+          </p>
         )}
-        {loadState.status === "loaded" && (
-          <MarkdownRenderer
-            content={loadState.markdown}
-            rawMode={rawMode}
-            className="print:prose-base print:max-w-none"
-          />
+        {loadState.status === "loaded" && rawMode && (
+          <pre>{loadState.markdown}</pre>
         )}
-      </div>
+        {loadState.status === "loaded" && !rawMode && (
+          <Markdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  {children}
+                </a>
+              ),
+            }}
+          >
+            {loadState.markdown}
+          </Markdown>
+        )}
+      </article>
     </main>
   );
 }

@@ -34,8 +34,7 @@ export interface ChatActionItemOptions {
   onSpawnTask: () => void;
   onSpawnTaskFromCurrentPlan: () => void;
   onOpenCodeExplorer: () => void;
-  onViewTranscript: () => void;
-  onDownloadTranscript: () => void;
+  onTranscript: () => void;
   onRename: () => void;
   onDelete: () => void;
   sidebarPinning?: SidebarPinningState;
@@ -175,8 +174,7 @@ export function buildChatActionItems({
   onSpawnTask,
   onSpawnTaskFromCurrentPlan,
   onOpenCodeExplorer,
-  onViewTranscript,
-  onDownloadTranscript,
+  onTranscript,
   onRename,
   onDelete,
   sidebarPinning,
@@ -198,18 +196,6 @@ export function buildChatActionItems({
       disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
     },
     {
-      id: "view-transcript",
-      label: "View Markdown transcript",
-      onClick: onViewTranscript,
-      disabled: !hasMessages,
-    },
-    {
-      id: "download-transcript",
-      label: "Download Markdown transcript",
-      onClick: onDownloadTranscript,
-      disabled: !hasMessages,
-    },
-    {
       id: "code-explorer",
       label: "Code explorer",
       onClick: onOpenCodeExplorer,
@@ -219,6 +205,12 @@ export function buildChatActionItems({
       id: "rename",
       label: "Rename",
       onClick: onRename,
+    },
+    {
+      id: "transcript",
+      label: "Transcript",
+      onClick: onTranscript,
+      disabled: !hasMessages,
     },
     {
       id: "delete",
