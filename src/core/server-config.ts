@@ -9,6 +9,7 @@ import { isSameOriginCheckDisabled } from "./config";
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 3000;
+// Bun's idle timeout is disabled globally so slow file downloads are not terminated mid-stream.
 export const DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS = 0;
 const MAX_PORT = 65535;
 const SAME_ORIGIN_DISABLED_MESSAGE =

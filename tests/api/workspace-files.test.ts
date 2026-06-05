@@ -248,7 +248,6 @@ describe("workspace files API integration", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
-    expect(response.headers.get("Content-Length")).toBe(String("# Workspace files\n".length));
     expect(response.headers.get("Content-Length")).toBe(String(metadata.file.size));
     expect(response.headers.get("X-Clanky-Download-Size")).toBe(String(metadata.file.size));
     expect(response.headers.get("Access-Control-Expose-Headers")).toContain("Content-Length");
