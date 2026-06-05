@@ -153,6 +153,10 @@ describe("workspace files API integration", () => {
 
     private readonly payload = new TextEncoder().encode("download without hashing\n");
 
+    get payloadByteLength(): number {
+      return this.payload.byteLength;
+    }
+
     override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
       const commandLabel = args[2];
       const requestedPath = args[3];
@@ -372,7 +376,7 @@ describe("workspace files API integration", () => {
 
     const headResponse = await fetch(downloadUrl, { method: "HEAD" });
     expect(headResponse.ok).toBe(true);
-    expect(headResponse.headers.get("Content-Length")).toBe(String("download without hashing\n".length));
+    expect(headResponse.headers.get("Content-Length")).toBe(String(downloadExecutor.payloadByteLength));
     expect(downloadExecutor.hashRequested).toBe(false);
 
     const response = await fetch(downloadUrl);
