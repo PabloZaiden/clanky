@@ -8,11 +8,12 @@
  */
 
 import { z } from "zod";
+import { AGENT_PROVIDER_IDS } from "@clanky/shared";
 
 /**
  * Agent provider options.
  */
-export const AgentProviderSchema = z.enum(["opencode", "copilot", "codex", "claude", "pi"]);
+export const AgentProviderSchema = z.enum(AGENT_PROVIDER_IDS);
 
 /**
  * Agent transport options.
