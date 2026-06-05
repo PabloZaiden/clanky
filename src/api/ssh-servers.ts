@@ -256,11 +256,12 @@ export const sshServersRoutes = {
         }
         const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
         const { executor } = await sshServerManager.getCommandExecutor(req.params.id, password);
-        const [copilot, opencode, codex, claude] = await Promise.all([
+        const [copilot, opencode, codex, claude, pi] = await Promise.all([
           executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("copilot")]),
           executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("opencode")]),
           executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("codex")]),
           executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("claude")]),
+          executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("pi")]),
         ]);
         return Response.json({
           providers: [
@@ -268,6 +269,7 @@ export const sshServersRoutes = {
             { providerID: "opencode", available: opencode.success },
             { providerID: "codex", available: codex.success },
             { providerID: "claude", available: claude.success },
+            { providerID: "pi", available: pi.success },
           ],
         });
       } catch (error) {

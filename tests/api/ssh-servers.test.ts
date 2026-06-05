@@ -25,6 +25,7 @@ class SshServerApiExecutor extends TestCommandExecutor {
         devcontainerAvailable?: boolean;
         gitAvailable?: boolean;
       ghAvailable?: boolean;
+      providerAvailability?: Partial<Record<"copilot" | "opencode" | "codex" | "claude" | "pi", boolean>>;
     } = {},
   ) {
     super();
@@ -94,6 +95,18 @@ class SshServerApiExecutor extends TestCommandExecutor {
         exitCode: available ? 0 : 127,
       };
     }
+    if (command === "sh" && args[0] === "-lc") {
+      const provider = this.getProviderAvailabilityCheck(args[1] ?? "");
+      if (provider) {
+        const available = this.options.providerAvailability?.[provider] ?? true;
+        return {
+          success: available,
+          stdout: available ? `/usr/bin/${provider}\n` : "",
+          stderr: available ? "" : `${provider} missing`,
+          exitCode: available ? 0 : 127,
+        };
+      }
+    }
     if (command === "sh" && args[0] === "-c" && args[1]?.includes("command -v dtach")) {
       const available = this.options.dtachAvailable ?? true;
       return {
@@ -140,6 +153,25 @@ class SshServerApiExecutor extends TestCommandExecutor {
       };
     }
     return await super.exec(command, args, options);
+  }
+
+  private getProviderAvailabilityCheck(script: string): "copilot" | "opencode" | "codex" | "claude" | "pi" | null {
+    if (script.includes("command -v pi-acp")) {
+      return "pi";
+    }
+    if (script.includes("command -v claude-agent-acp")) {
+      return "claude";
+    }
+    if (script.includes("command -v codex-acp")) {
+      return "codex";
+    }
+    if (script.includes("command -v opencode")) {
+      return "opencode";
+    }
+    if (script.includes("command -v copilot")) {
+      return "copilot";
+    }
+    return null;
   }
 }
 
@@ -391,6 +423,54 @@ describe("Standalone SSH servers API integration", () => {
     expect(reconnectFailedChat.state.error?.code).toBe("ssh_credentials_required");
   });
 
+  test("discovers SSH-server chat provider availability including Pi", async () => {
+    executorFactory = () => new SshServerApiExecutor({
+      providerAvailability: {
+        copilot: true,
+        opencode: true,
+        codex: false,
+        claude: true,
+        pi: true,
+      },
+    });
+
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Provider Host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: "/workspaces",
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const credentialResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/credentials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(await createEncryptedCredential(createdServer.config.id)),
+    });
+    const exchange = await credentialResponse.json() as { credentialToken: string };
+
+    const providersResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chat-providers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: exchange.credentialToken }),
+    });
+
+    expect(providersResponse.ok).toBe(true);
+    await expect(providersResponse.json()).resolves.toEqual({
+      providers: [
+        { providerID: "copilot", available: true },
+        { providerID: "opencode", available: true },
+        { providerID: "codex", available: false },
+        { providerID: "claude", available: true },
+        { providerID: "pi", available: true },
+      ],
+    });
+  });
+
   test("discovers SSH-server chat models through shared ACP settings for the selected provider", async () => {
     const mockBackend = new MockAcpBackend({
       filterModelsByConnectionProvider: true,
@@ -408,6 +488,14 @@ describe("Standalone SSH servers API integration", () => {
           providerName: "Codex",
           modelID: "gpt-from-codex-runtime",
           modelName: "GPT From Codex Runtime",
+          connected: true,
+          variants: [""],
+        },
+        {
+          providerID: "pi",
+          providerName: "Pi",
+          modelID: "pi-from-pi-runtime",
+          modelName: "Pi From Pi Runtime",
           connected: true,
           variants: [""],
         },
@@ -470,6 +558,25 @@ describe("Standalone SSH servers API integration", () => {
       modelID: model.modelID,
     }))).toEqual([
       { providerID: "codex", providerName: "Codex", modelID: "gpt-from-codex-runtime" },
+    ]);
+
+    const piResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/chat-models`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credentialToken: exchange.credentialToken,
+        providerID: "pi",
+        directory: "/workspaces/project",
+      }),
+    });
+    expect(piResponse.ok).toBe(true);
+    const piModels = await piResponse.json() as Array<{ providerID: string; providerName: string; modelID: string }>;
+    expect(piModels.map((model) => ({
+      providerID: model.providerID,
+      providerName: model.providerName,
+      modelID: model.modelID,
+    }))).toEqual([
+      { providerID: "pi", providerName: "Pi", modelID: "pi-from-pi-runtime" },
     ]);
   });
 
