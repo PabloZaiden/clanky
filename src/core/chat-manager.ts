@@ -1187,7 +1187,13 @@ export class ChatManager {
       throw new Error(`Chat is not SSH-server backed: ${chat.config.id}`);
     }
     const provider = chat.config.model.providerID;
-    if (provider !== "opencode" && provider !== "copilot" && provider !== "codex" && provider !== "claude") {
+    if (
+      provider !== "opencode"
+      && provider !== "copilot"
+      && provider !== "codex"
+      && provider !== "claude"
+      && provider !== "pi"
+    ) {
       throw new Error(`Unsupported SSH chat provider: ${provider}`);
     }
     const providerCommand = getProviderAcpCommand(provider as AgentProvider, "ssh");

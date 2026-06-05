@@ -16,6 +16,7 @@ const CODEX_ACP_PACKAGE = "@zed-industries/codex-acp";
 const COPILOT_PACKAGE = "@github/copilot";
 const OPENCODE_PACKAGE = "opencode-ai";
 const CLAUDE_AGENT_ACP_PACKAGE = "@agentclientprotocol/claude-agent-acp";
+const PI_ACP_PACKAGE = "pi-acp";
 const CODEX_ACP_CONFIG_ARGS = [
   "-c",
   "approval_policy=\"never\"",
@@ -111,6 +112,12 @@ const CLAUDE_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
   errorLabel: "Claude Code ACP adapter",
 };
 
+const PI_ACP_RESOLVER_OPTIONS: AcpResolverOptions = {
+  executable: "pi-acp",
+  packageName: PI_ACP_PACKAGE,
+  errorLabel: "Pi ACP adapter",
+};
+
 const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
   opencode: {
     getAcpCommand: () => buildAcpResolverCommand(
@@ -136,6 +143,12 @@ const AGENT_PROVIDER_RUNTIMES: Record<AgentProvider, AgentProviderRuntime> = {
       [],
     ),
   },
+  pi: {
+    getAcpCommand: () => buildAcpResolverCommand(
+      PI_ACP_RESOLVER_OPTIONS,
+      [],
+    ),
+  },
 };
 
 const PROVIDER_ACP_RESOLVER_OPTIONS: Record<AgentProvider, AcpResolverOptions> = {
@@ -143,6 +156,7 @@ const PROVIDER_ACP_RESOLVER_OPTIONS: Record<AgentProvider, AcpResolverOptions> =
   copilot: COPILOT_ACP_RESOLVER_OPTIONS,
   codex: CODEX_ACP_RESOLVER_OPTIONS,
   claude: CLAUDE_ACP_RESOLVER_OPTIONS,
+  pi: PI_ACP_RESOLVER_OPTIONS,
 };
 
 /**
