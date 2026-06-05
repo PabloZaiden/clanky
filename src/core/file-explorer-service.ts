@@ -98,6 +98,10 @@ export class FileExplorerConflictError extends Error {
   }
 }
 
+interface FileExplorerMetadataOptions {
+  includeContentHash?: boolean;
+}
+
 function normalizeRootDirectory(directory: string): string {
   const normalized = pathPosix.normalize(directory.trim());
   return normalized === "." ? "/" : normalized.replace(/\/+$/, "") || "/";
@@ -188,14 +192,16 @@ function buildVersionToken(timestampSeconds: string, size: number, contentHash?:
 async function runMetadataCommand(
   executor: CommandExecutor,
   absolutePath: string,
+  options?: FileExplorerMetadataOptions,
 ): Promise<{ kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string } | null> {
   const result = await executor.exec(
     "bash",
     [
       "-lc",
-      "if [ ! -e \"$1\" ]; then exit 2; fi; if [ -d \"$1\" ]; then typeFlag=d; hash=-; else typeFlag=f; if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$1\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$1\" | cut -d' ' -f1); else hash=; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$1\"); modified=$(stat -c '%Y' \"$1\"); else size=$(stat -f '%z' \"$1\"); modified=$(stat -f '%m' \"$1\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"",
+      "if [ ! -e \"$1\" ]; then exit 2; fi; includeHash=\"${2:-1}\"; if [ -d \"$1\" ]; then typeFlag=d; hash=-; else typeFlag=f; if [ \"$includeHash\" = \"1\" ]; then if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$1\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$1\" | cut -d' ' -f1); else hash=; fi; else hash=-; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$1\"); modified=$(stat -c '%Y' \"$1\"); else size=$(stat -f '%z' \"$1\"); modified=$(stat -f '%m' \"$1\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"",
       "file-explorer-metadata",
       absolutePath,
+      options?.includeContentHash === false ? "0" : "1",
     ],
     {
       logFailures: false,
@@ -345,9 +351,13 @@ function toFileEntry(
   };
 }
 
-async function getFileEntry(target: FileExplorerTarget, requestedPath: string): Promise<WorkspaceFileEntry | null> {
+async function getFileEntry(
+  target: FileExplorerTarget,
+  requestedPath: string,
+  options?: FileExplorerMetadataOptions,
+): Promise<WorkspaceFileEntry | null> {
   const absolutePath = resolveTargetPath(target, requestedPath);
-  const metadata = await runMetadataCommand(target.executor, absolutePath);
+  const metadata = await runMetadataCommand(target.executor, absolutePath, options);
   return metadata ? toFileEntry(target, absolutePath, metadata) : null;
 }
 
@@ -668,7 +678,9 @@ export class FileExplorerService {
     target: FileExplorerTarget,
     requestedPath: string,
   ): Promise<FileExplorerDownloadMetadataResult> {
-    const file = assertDownloadableFile(await getFileEntry(target, requestedPath));
+    const file = assertDownloadableFile(await getFileEntry(target, requestedPath, {
+      includeContentHash: false,
+    }));
     return {
       file,
       contentType: file.mimeType ?? "application/octet-stream",

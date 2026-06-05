@@ -147,6 +147,60 @@ describe("workspace files API integration", () => {
     }
   }
 
+  class DownloadMetadataWithoutHashExecutor extends TestCommandExecutor {
+    hashRequested = false;
+    streamRequested = false;
+
+    private readonly payload = new TextEncoder().encode("download without hashing\n");
+
+    get payloadByteLength(): number {
+      return this.payload.byteLength;
+    }
+
+    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+      const commandLabel = args[2];
+      const requestedPath = args[3];
+      const includeHash = args[4];
+      if (
+        command === "bash"
+        && commandLabel === "file-explorer-metadata"
+        && requestedPath?.endsWith("/slow-hash-download.bin")
+      ) {
+        if (includeHash !== "0") {
+          this.hashRequested = true;
+          return {
+            success: false,
+            stdout: "",
+            stderr: "download metadata should not request a content hash",
+            exitCode: 124,
+          };
+        }
+        return {
+          success: true,
+          stdout: `f\t${this.payload.byteLength}\t1700000000\t-\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      return await super.exec(command, args, options);
+    }
+
+    override async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+      if (!path.endsWith("/slow-hash-download.bin")) {
+        return await super.streamFile(path, _options);
+      }
+
+      this.streamRequested = true;
+      const payload = this.payload;
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(payload);
+          controller.close();
+        },
+      });
+    }
+  }
+
   test("lists root directory entries as lightweight explorer nodes", async () => {
     const workspace = await createWorkspace();
 
@@ -311,6 +365,26 @@ describe("workspace files API integration", () => {
     expect(firstChunk.done).toBe(false);
     expect(new TextDecoder().decode(firstChunk.value).startsWith("large download payload")).toBe(true);
     await reader!.cancel();
+  });
+
+  test("starts download responses without hashing the whole file first", async () => {
+    const downloadExecutor = new DownloadMetadataWithoutHashExecutor();
+    backendManager.setExecutorFactoryForTesting(() => downloadExecutor);
+    const workspace = await createWorkspace();
+    const downloadUrl =
+      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("slow-hash-download.bin")}`;
+
+    const headResponse = await fetch(downloadUrl, { method: "HEAD" });
+    expect(headResponse.ok).toBe(true);
+    expect(headResponse.headers.get("Content-Length")).toBe(String(downloadExecutor.payloadByteLength));
+    expect(downloadExecutor.hashRequested).toBe(false);
+
+    const response = await fetch(downloadUrl);
+
+    expect(response.ok).toBe(true);
+    expect(await response.text()).toBe("download without hashing\n");
+    expect(downloadExecutor.hashRequested).toBe(false);
+    expect(downloadExecutor.streamRequested).toBe(true);
   });
 
   test("does not report directories with image-like names as images", async () => {
