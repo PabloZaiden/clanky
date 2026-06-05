@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
 import { apiRoutes } from "../../src/api";
 import { backendManager } from "../../src/core/backend-manager";
-import type { CommandOptions, CommandResult } from "../../src/core/command-executor";
+import type { CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { serve, type Server } from "bun";
@@ -85,6 +85,9 @@ describe("workspace files API integration", () => {
   }
 
   class LargeDownloadExecutor extends TestCommandExecutor {
+    bytesCommandCalled = false;
+    streamClosed = false;
+
     override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
       const commandLabel = args[2];
       const requestedPath = args[3];
@@ -97,14 +100,31 @@ describe("workspace files API integration", () => {
         };
       }
       if (command === "bash" && commandLabel === "file-explorer-file-bytes" && requestedPath?.endsWith("/large-download.bin")) {
+        this.bytesCommandCalled = true;
         return {
-          success: true,
+          success: false,
           stdout: Buffer.from("large download payload\n").toString("base64"),
-          stderr: "",
-          exitCode: 0,
+          stderr: "download should use streamFile instead of file-explorer-file-bytes",
+          exitCode: 1,
         };
       }
       return await super.exec(command, args, options);
+    }
+
+    override async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+      if (!path.endsWith("/large-download.bin")) {
+        return await super.streamFile(path, _options);
+      }
+
+      return new ReadableStream<Uint8Array>({
+        start: (controller) => {
+          controller.enqueue(new TextEncoder().encode("large download payload\n"));
+          controller.close();
+        },
+        cancel: () => {
+          this.streamClosed = true;
+        },
+      });
     }
   }
 
@@ -190,7 +210,21 @@ describe("workspace files API integration", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
+    expect(response.headers.get("Content-Length")).toBe(String("# Workspace files\n".length));
     expect(await response.text()).toBe("# Workspace files\n");
+
+    const binaryFileName = "binary.dat";
+    const binaryPayload = Uint8Array.from({ length: 256 }, (_, index) => index);
+    await writeFile(join(workDir, binaryFileName), binaryPayload);
+    try {
+      const binaryResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent(binaryFileName)}`,
+      );
+      expect(binaryResponse.ok).toBe(true);
+      expect(new Uint8Array(await binaryResponse.arrayBuffer())).toEqual(binaryPayload);
+    } finally {
+      await rm(join(workDir, binaryFileName), { force: true });
+    }
 
     await writeFile(join(workDir, rfc5987FileName), "special name\n");
     try {
@@ -208,8 +242,9 @@ describe("workspace files API integration", () => {
     }
   });
 
-  test("downloads files larger than the previous file explorer download limit", async () => {
-    backendManager.setExecutorFactoryForTesting(() => new LargeDownloadExecutor());
+  test("starts streaming files larger than the previous file explorer download limit without base64 buffering", async () => {
+    const largeDownloadExecutor = new LargeDownloadExecutor();
+    backendManager.setExecutorFactoryForTesting(() => largeDownloadExecutor);
     const workspace = await createWorkspace();
 
     const response = await fetch(
@@ -221,8 +256,9 @@ describe("workspace files API integration", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
-    expect(response.headers.get("Content-Length")).toBe(String("large download payload\n".length));
+    expect(largeDownloadExecutor.bytesCommandCalled).toBe(false);
     expect(await response.text()).toBe("large download payload\n");
+    expect(largeDownloadExecutor.streamClosed).toBe(false);
   });
 
   test("does not report directories with image-like names as images", async () => {

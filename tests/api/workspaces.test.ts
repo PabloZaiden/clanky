@@ -767,6 +767,9 @@ describe("Workspace API Integration", () => {
         async readFile() {
           return null;
         },
+        async streamFile() {
+          return null;
+        },
         async listDirectory() {
           return [];
         },
@@ -822,6 +825,9 @@ describe("Workspace API Integration", () => {
           return false;
         },
         async readFile() {
+          return null;
+        },
+        async streamFile() {
           return null;
         },
         async listDirectory() {

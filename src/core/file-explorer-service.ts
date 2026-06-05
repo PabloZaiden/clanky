@@ -74,7 +74,7 @@ export interface FileExplorerImageReadResult {
 export interface FileExplorerDownloadReadResult {
   file: WorkspaceFileEntry;
   contentType: string;
-  data: Uint8Array;
+  stream: ReadableStream<Uint8Array>;
 }
 
 export interface FileExplorerWriteResult {
@@ -626,6 +626,7 @@ export class FileExplorerService {
   async readDownloadFile(
     target: FileExplorerTarget,
     requestedPath: string,
+    options?: { signal?: AbortSignal },
   ): Promise<FileExplorerDownloadReadResult> {
     const absolutePath = resolveTargetPath(target, requestedPath);
     const metadata = await runMetadataCommand(target.executor, absolutePath);
@@ -638,11 +639,17 @@ export class FileExplorerService {
     }
 
     const file = toFileEntry(target, absolutePath, metadata);
+    const stream = await target.executor.streamFile(absolutePath, {
+      signal: options?.signal,
+    });
+    if (!stream) {
+      throw new Error("Requested file does not exist");
+    }
 
     return {
       file,
       contentType: file.mimeType ?? "application/octet-stream",
-      data: await readFileBytes(target, absolutePath),
+      stream,
     };
   }
 

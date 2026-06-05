@@ -1,4 +1,4 @@
-import type { CommandExecutor, CommandOptions, CommandResult } from "../../src/core/command-executor";
+import type { CommandExecutor, CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
 import type { DevboxStatusResult } from "../../src/types";
 
 interface ExecCall {
@@ -241,6 +241,19 @@ export class ProvisioningTestExecutor implements CommandExecutor {
 
   async readFile(path: string): Promise<string | null> {
     return this.files.get(path) ?? null;
+  }
+
+  async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+    const content = this.files.get(path);
+    if (content === undefined) {
+      return null;
+    }
+    return new ReadableStream<Uint8Array>({
+      start(controller: ReadableStreamDefaultController<Uint8Array>) {
+        controller.enqueue(new TextEncoder().encode(content));
+        controller.close();
+      },
+    });
   }
 
   async listDirectory(path: string): Promise<string[]> {

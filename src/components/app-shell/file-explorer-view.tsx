@@ -16,7 +16,10 @@ import { LargeFileWarningPanel } from "../workspace-files/large-file-warning-pan
 import { WorkspaceFileConflictModal } from "../workspace-files/conflict-modal";
 import { ServerPasswordModal } from "./server-password-modal";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
-import { downloadFileExplorerFileApi } from "../../hooks/workspaceFileActions";
+import {
+  getFileExplorerDownloadUrl,
+  getFileExplorerFileMetadataApi,
+} from "../../hooks/workspaceFileActions";
 
 function TerminalIcon() {
   return (
@@ -41,15 +44,15 @@ function isServerCredentialErrorCode(errorCode: string | null): boolean {
   return errorCode === "missing_ssh_credential" || errorCode === "invalid_ssh_credential";
 }
 
-function triggerBrowserDownload(blob: Blob, fileName: string): void {
-  const url = URL.createObjectURL(blob);
+function triggerBrowserDownload(url: string, fileName: string): void {
   const link = document.createElement("a");
   link.href = url;
   link.download = fileName || "download";
+  link.rel = "noopener noreferrer";
+  link.referrerPolicy = "no-referrer";
   document.body.appendChild(link);
   link.click();
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 interface FileExplorerViewProps {
@@ -306,10 +309,13 @@ export function FileExplorerView({
 
     try {
       setDownloadingFilePath(file.path);
-      const blob = await downloadFileExplorerFileApi(target, file.path, {
+      await getFileExplorerFileMetadataApi(target, file.path, {
         startDirectory: target.startDirectory,
       });
-      triggerBrowserDownload(blob, file.name);
+      const downloadUrl = await getFileExplorerDownloadUrl(target, file.path, {
+        startDirectory: target.startDirectory,
+      });
+      triggerBrowserDownload(downloadUrl, file.name);
       toast.success("Started file download");
     } catch (error) {
       toast.error(`Failed to download file: ${String(error)}`);

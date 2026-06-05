@@ -4,8 +4,8 @@
  * This is only used in tests - production code uses CommandExecutorImpl via PTY.
  */
 
-import { mkdir, readdir } from "node:fs/promises";
-import type { CommandExecutor, CommandResult, CommandOptions } from "../../src/core/command-executor";
+import { mkdir, readdir, stat } from "node:fs/promises";
+import type { CommandExecutor, CommandResult, CommandOptions, FileStreamOptions } from "../../src/core/command-executor";
 
 /**
  * TestCommandExecutor runs commands locally for testing purposes.
@@ -90,6 +90,18 @@ export class TestCommandExecutor implements CommandExecutor {
         return null;
       }
       return await file.text();
+    } catch {
+      return null;
+    }
+  }
+
+  async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+    try {
+      const fileStat = await stat(path);
+      if (!fileStat.isFile()) {
+        return null;
+      }
+      return Bun.file(path).stream();
     } catch {
       return null;
     }

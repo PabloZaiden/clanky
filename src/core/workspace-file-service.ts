@@ -25,7 +25,7 @@ export interface WorkspaceFileDownloadReadResponse {
   workspaceId: string;
   file: WorkspaceFileEntry;
   contentType: string;
-  data: Uint8Array;
+  stream: ReadableStream<Uint8Array>;
 }
 
 class WorkspaceFileService {
@@ -93,16 +93,18 @@ class WorkspaceFileService {
   async readDownloadFile(
     workspace: Workspace,
     requestedPath: string,
-    options?: { startDirectory?: string },
+    options?: { startDirectory?: string; signal?: AbortSignal },
   ): Promise<WorkspaceFileDownloadReadResponse> {
     const target = await this.getTarget(workspace, options?.startDirectory);
-    const response = await fileExplorerService.readDownloadFile(target, requestedPath);
+    const response = await fileExplorerService.readDownloadFile(target, requestedPath, {
+      signal: options?.signal,
+    });
 
     return {
       workspaceId: workspace.id,
       file: response.file,
       contentType: response.contentType,
-      data: response.data,
+      stream: response.stream,
     };
   }
 

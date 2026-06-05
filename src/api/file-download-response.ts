@@ -15,20 +15,22 @@ function encodeAttachmentFileName(fileName: string): string {
 }
 
 export function createFileDownloadResponse(
-  data: Uint8Array,
+  body: BodyInit,
   contentType: string,
   file: WorkspaceFileEntry,
+  options?: { contentLength?: number },
 ): Response {
   const safeFileName = sanitizeAttachmentFileName(file.name);
-  const body = new ArrayBuffer(data.byteLength);
-  new Uint8Array(body).set(data);
+  const headers = new Headers({
+    "Cache-Control": "no-store",
+    "Content-Disposition": `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeAttachmentFileName(file.name)}`,
+    "Content-Type": contentType,
+    "X-Content-Type-Options": "nosniff",
+  });
+  if (options?.contentLength !== undefined) {
+    headers.set("Content-Length", String(options.contentLength));
+  }
   return new Response(body, {
-    headers: {
-      "Cache-Control": "no-store",
-      "Content-Disposition": `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeAttachmentFileName(file.name)}`,
-      "Content-Length": String(data.byteLength),
-      "Content-Type": contentType,
-      "X-Content-Type-Options": "nosniff",
-    },
+    headers,
   });
 }
