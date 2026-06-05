@@ -13,7 +13,7 @@ import {
 } from "../../types/schemas";
 import { errorResponse, requireWorkspace } from "../helpers";
 import { parseAndValidate, validateRequest } from "../validation";
-import { createFileDownloadResponse } from "../file-download-response";
+import { createFileDownloadHeadResponse, createFileDownloadResponse } from "../file-download-response";
 
 const log = createLogger("api:workspace-files");
 
@@ -171,6 +171,34 @@ export const workspaceFilesRoutes = {
   },
 
   "/api/workspaces/:id/files/download": {
+    async HEAD(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const response = await workspaceFileService.getDownloadMetadata(workspaceResult, validation.data.path, {
+          startDirectory: validation.data.startDirectory,
+        });
+        return createFileDownloadHeadResponse(response.contentType, response.file, {
+          contentLength: response.file.size,
+        });
+      } catch (error) {
+        log.error("Failed to fetch workspace file download metadata", {
+          workspaceId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+
     async GET(req: Request & { params: { id: string } }): Promise<Response> {
       const workspaceResult = await requireWorkspace(req.params.id);
       if (workspaceResult instanceof Response) {

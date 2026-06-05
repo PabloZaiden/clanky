@@ -28,6 +28,12 @@ export interface WorkspaceFileDownloadReadResponse {
   stream: ReadableStream<Uint8Array>;
 }
 
+export interface WorkspaceFileDownloadMetadataResponse {
+  workspaceId: string;
+  file: WorkspaceFileEntry;
+  contentType: string;
+}
+
 class WorkspaceFileService {
   private async getTarget(workspace: Workspace, startDirectory?: string) {
     const executor = await backendManager.getCommandExecutorAsync(workspace.id, workspace.directory);
@@ -105,6 +111,21 @@ class WorkspaceFileService {
       file: response.file,
       contentType: response.contentType,
       stream: response.stream,
+    };
+  }
+
+  async getDownloadMetadata(
+    workspace: Workspace,
+    requestedPath: string,
+    options?: { startDirectory?: string },
+  ): Promise<WorkspaceFileDownloadMetadataResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.getDownloadMetadata(target, requestedPath);
+
+    return {
+      workspaceId: workspace.id,
+      file: response.file,
+      contentType: response.contentType,
     };
   }
 
