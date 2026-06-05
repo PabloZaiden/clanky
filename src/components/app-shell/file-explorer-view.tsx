@@ -48,6 +48,8 @@ function triggerBrowserDownload(url: string, fileName: string): void {
   const link = document.createElement("a");
   link.href = url;
   link.download = fileName || "download";
+  link.rel = "noopener noreferrer";
+  link.referrerPolicy = "no-referrer";
   document.body.appendChild(link);
   link.click();
   link.remove();

@@ -119,6 +119,10 @@ describe("workspace files API integration", () => {
       return new ReadableStream<Uint8Array>({
         start: (controller) => {
           controller.enqueue(new TextEncoder().encode("large download payload\n"));
+          controller.close();
+        },
+        cancel: () => {
+          this.streamClosed = true;
         },
       });
     }
@@ -253,13 +257,8 @@ describe("workspace files API integration", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
     expect(largeDownloadExecutor.bytesCommandCalled).toBe(false);
+    expect(await response.text()).toBe("large download payload\n");
     expect(largeDownloadExecutor.streamClosed).toBe(false);
-
-    const reader = response.body?.getReader();
-    expect(reader).toBeDefined();
-    const firstChunk = await reader!.read();
-    expect(new TextDecoder().decode(firstChunk.value)).toBe("large download payload\n");
-    await reader!.cancel();
   });
 
   test("does not report directories with image-like names as images", async () => {

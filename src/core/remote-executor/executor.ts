@@ -52,6 +52,18 @@ function createProcessStdoutStream(
   let cancelled = false;
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   let abortHandler: (() => void) | undefined;
+  let resolveCancelled: (() => void) | undefined;
+  const cancelledPromise = new Promise<"cancelled">((resolve) => {
+    resolveCancelled = () => resolve("cancelled");
+  });
+
+  const markCancelled = () => {
+    if (cancelled) {
+      return;
+    }
+    cancelled = true;
+    resolveCancelled?.();
+  };
 
   const killProcess = () => {
     try {
@@ -60,6 +72,17 @@ function createProcessStdoutStream(
       // Ignore cleanup errors while cancelling a stream.
     }
   };
+
+  const processCompletionPromise = Promise.all([proc.exited, stderrPromise])
+    .then(([exitCode, stderr]) => ({
+      type: "completed" as const,
+      exitCode,
+      stderr,
+    }))
+    .catch((error) => ({
+      type: "error" as const,
+      error,
+    }));
 
   const cleanup = () => {
     if (signal && abortHandler) {
@@ -73,21 +96,20 @@ function createProcessStdoutStream(
       const stdoutReader = stdout.getReader();
       reader = stdoutReader;
       abortHandler = () => {
-        cancelled = true;
+        markCancelled();
         void stdoutReader.cancel().catch(() => undefined);
         killProcess();
       };
 
-      if (signal?.aborted) {
-        abortHandler();
-        controller.error(new Error(`${label} aborted`));
-        cleanup();
-        return;
-      }
-
-      signal?.addEventListener("abort", abortHandler, { once: true });
-
       try {
+        if (signal?.aborted) {
+          abortHandler();
+          controller.error(new Error(`${label} aborted`));
+          return;
+        }
+
+        signal?.addEventListener("abort", abortHandler, { once: true });
+
         while (true) {
           const { done, value } = await stdoutReader.read();
           if (done) {
@@ -99,12 +121,29 @@ function createProcessStdoutStream(
           controller.enqueue(value);
         }
 
-        const [exitCode, stderr] = await Promise.all([proc.exited, stderrPromise]);
         if (cancelled) {
           return;
         }
-        if (exitCode !== 0) {
-          controller.error(new Error(stderr.trim() || `${label} failed with exit code ${exitCode}`));
+
+        const processResult = await Promise.race([
+          processCompletionPromise,
+          cancelledPromise,
+        ]);
+        if (processResult === "cancelled" || cancelled) {
+          return;
+        }
+        if (processResult.type === "error") {
+          controller.error(
+            processResult.error instanceof Error
+              ? processResult.error
+              : new Error(String(processResult.error)),
+          );
+          return;
+        }
+        if (processResult.exitCode !== 0) {
+          controller.error(
+            new Error(processResult.stderr.trim() || `${label} failed with exit code ${processResult.exitCode}`),
+          );
           return;
         }
         controller.close();
@@ -114,13 +153,17 @@ function createProcessStdoutStream(
         }
       } finally {
         cleanup();
-        stdoutReader.releaseLock();
+        try {
+          stdoutReader.releaseLock();
+        } catch {
+          // The reader may already be released by an abort-before-start cleanup.
+        }
       }
     },
-    async cancel() {
-      cancelled = true;
+    cancel() {
+      markCancelled();
       cleanup();
-      await reader?.cancel().catch(() => undefined);
+      void reader?.cancel().catch(() => undefined);
       killProcess();
     },
   });
@@ -530,7 +573,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       return createErroredStream(new Error("SSH file streaming requires execution host"));
     }
 
-    const remoteShellCommand = buildSshRemoteShellCommand(`cat -- ${quoteShell(path)}`);
+    const remoteShellCommand = `cat -- ${quoteShell(path)}`;
     const sshTarget = this.user ? `${this.user}@${this.host}` : this.host;
 
     const proc = this.password && this.password.trim().length > 0
