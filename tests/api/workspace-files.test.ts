@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
 import { apiRoutes } from "../../src/api";
 import { backendManager } from "../../src/core/backend-manager";
+import type { CommandOptions, CommandResult } from "../../src/core/command-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { serve, type Server } from "bun";
@@ -10,6 +11,7 @@ import { mkdtemp, rm, mkdir, symlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 
 describe("workspace files API integration", () => {
+  const previousDownloadLimitBytes = 100 * 1024 * 1024;
   let dataDir: string;
   let workDir: string;
   let alternateRootDir: string;
@@ -80,6 +82,30 @@ describe("workspace files API integration", () => {
     });
     expect(response.ok).toBe(true);
     return await response.json() as { id: string };
+  }
+
+  class LargeDownloadExecutor extends TestCommandExecutor {
+    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+      const commandLabel = args[2];
+      const requestedPath = args[3];
+      if (command === "bash" && commandLabel === "file-explorer-metadata" && requestedPath?.endsWith("/large-download.bin")) {
+        return {
+          success: true,
+          stdout: `f\t${previousDownloadLimitBytes + 1}\t1700000000\tlarge-download-hash\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (command === "bash" && commandLabel === "file-explorer-file-bytes" && requestedPath?.endsWith("/large-download.bin")) {
+        return {
+          success: true,
+          stdout: Buffer.from("large download payload\n").toString("base64"),
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      return await super.exec(command, args, options);
+    }
   }
 
   test("lists root directory entries as lightweight explorer nodes", async () => {
@@ -180,6 +206,23 @@ describe("workspace files API integration", () => {
     } finally {
       await rm(join(workDir, rfc5987FileName), { force: true });
     }
+  });
+
+  test("downloads files larger than the previous file explorer download limit", async () => {
+    backendManager.setExecutorFactoryForTesting(() => new LargeDownloadExecutor());
+    const workspace = await createWorkspace();
+
+    const response = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("large-download.bin")}`,
+    );
+
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
+    expect(response.headers.get("Content-Length")).toBe(String("large download payload\n".length));
+    expect(await response.text()).toBe("large download payload\n");
   });
 
   test("does not report directories with image-like names as images", async () => {

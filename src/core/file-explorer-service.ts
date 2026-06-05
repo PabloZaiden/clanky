@@ -83,8 +83,6 @@ export interface FileExplorerWriteResult {
   overwritten: boolean;
 }
 
-export const MAX_FILE_EXPLORER_DOWNLOAD_BYTES = 100 * 1024 * 1024;
-
 export class FileExplorerConflictError extends Error {
   readonly currentFile: WorkspaceFileEntry | null;
 
@@ -92,18 +90,6 @@ export class FileExplorerConflictError extends Error {
     super(message);
     this.name = "FileExplorerConflictError";
     this.currentFile = currentFile;
-  }
-}
-
-export class FileExplorerDownloadTooLargeError extends Error {
-  readonly file: WorkspaceFileEntry;
-  readonly maxBytes: number;
-
-  constructor(file: WorkspaceFileEntry, maxBytes: number) {
-    super(`Requested file is too large to download through the file explorer (${file.size} bytes; limit is ${maxBytes} bytes)`);
-    this.name = "FileExplorerDownloadTooLargeError";
-    this.file = file;
-    this.maxBytes = maxBytes;
   }
 }
 
@@ -640,7 +626,6 @@ export class FileExplorerService {
   async readDownloadFile(
     target: FileExplorerTarget,
     requestedPath: string,
-    options?: { maxBytes?: number },
   ): Promise<FileExplorerDownloadReadResult> {
     const absolutePath = resolveTargetPath(target, requestedPath);
     const metadata = await runMetadataCommand(target.executor, absolutePath);
@@ -653,10 +638,6 @@ export class FileExplorerService {
     }
 
     const file = toFileEntry(target, absolutePath, metadata);
-    const maxBytes = options?.maxBytes ?? MAX_FILE_EXPLORER_DOWNLOAD_BYTES;
-    if (file.size > maxBytes) {
-      throw new FileExplorerDownloadTooLargeError(file, maxBytes);
-    }
 
     return {
       file,
