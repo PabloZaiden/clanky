@@ -99,8 +99,12 @@ function parseSearchParams<T extends Record<string, unknown>>(
 async function getServerFileTarget(
   req: Request & { params: { id: string } },
   startDirectory?: string,
+  options?: { allowCredentialTokenQuery?: boolean },
 ): Promise<FileExplorerTarget> {
-  const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim();
+  const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim()
+    || (options?.allowCredentialTokenQuery
+      ? new URL(req.url).searchParams.get("credentialToken")?.trim()
+      : undefined);
   if (!credentialToken) {
     throw new Error("SSH credential token is required for standalone server file access");
   }
@@ -213,9 +217,15 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
-        const response = await fileExplorerService.readDownloadFile(target, validation.data.path);
-        return createFileDownloadResponse(response.data, response.contentType, response.file);
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined, {
+          allowCredentialTokenQuery: true,
+        });
+        const response = await fileExplorerService.readDownloadFile(target, validation.data.path, {
+          signal: req.signal,
+        });
+        return createFileDownloadResponse(response.stream, response.contentType, response.file, {
+          contentLength: response.file.size,
+        });
       } catch (error) {
         log.error("Failed to download standalone SSH server file", {
           serverId: req.params.id,

@@ -198,7 +198,16 @@ describe("Standalone SSH server files API integration", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
+    expect(response.headers.get("Content-Length")).toBe(String("# Server files\n".length));
     expect(await response.text()).toBe("# Server files\n");
+
+    const queryToken = await issueCredentialToken(createdServer.config.id);
+    const queryResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/download?path=${encodeURIComponent("README.md")}&credentialToken=${encodeURIComponent(queryToken)}`,
+    );
+    expect(queryResponse.ok).toBe(true);
+    expect(queryResponse.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
+    expect(await queryResponse.text()).toBe("# Server files\n");
   });
 
   test("writes files on a standalone server and rejects escaping paths", async () => {

@@ -102,6 +102,7 @@ export {
   listFileExplorerFilesApi,
   readFileExplorerFileApi,
   downloadFileExplorerFileApi,
+  getFileExplorerDownloadUrl,
   getFileExplorerFileMetadataApi,
   writeFileExplorerFileApi,
   listWorkspaceFilesApi,

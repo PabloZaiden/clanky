@@ -6,9 +6,9 @@
  * parallel over the shared multiplexed connection.
  */
 
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { CommandExecutor, CommandResult, CommandOptions } from "../command-executor";
+import type { CommandExecutor, CommandResult, CommandOptions, FileStreamOptions } from "../command-executor";
 import { log } from "../logger";
 import type { CommandExecutorConfig } from "./types";
 import { quoteShell, buildEnvAssignments, readProcessStream } from "./utils";
@@ -18,6 +18,113 @@ const LOG_PREFIX = "[CommandExecutor]";
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 const sshControlMasterInitializers = new Map<string, Promise<CommandResult>>();
+interface StreamedProcess {
+  stdout: ReadableStream<Uint8Array> | null;
+  stderr: ReadableStream<Uint8Array> | null;
+  exited: Promise<number>;
+  kill: () => void;
+}
+
+function createErroredStream(error: Error): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller: ReadableStreamDefaultController<Uint8Array>) {
+      controller.error(error);
+    },
+  });
+}
+
+function createProcessStdoutStream(
+  proc: StreamedProcess,
+  label: string,
+  signal?: AbortSignal,
+): ReadableStream<Uint8Array> {
+  const stdout = proc.stdout;
+  if (!stdout) {
+    try {
+      proc.kill();
+    } catch {
+      // Ignore cleanup errors when the process failed to expose stdout.
+    }
+    return createErroredStream(new Error(`${label} did not expose stdout`));
+  }
+
+  const stderrPromise = readProcessStream(proc.stderr);
+  let cancelled = false;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let abortHandler: (() => void) | undefined;
+
+  const killProcess = () => {
+    try {
+      proc.kill();
+    } catch {
+      // Ignore cleanup errors while cancelling a stream.
+    }
+  };
+
+  const cleanup = () => {
+    if (signal && abortHandler) {
+      signal.removeEventListener("abort", abortHandler);
+      abortHandler = undefined;
+    }
+  };
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller: ReadableStreamDefaultController<Uint8Array>) {
+      const stdoutReader = stdout.getReader();
+      reader = stdoutReader;
+      abortHandler = () => {
+        cancelled = true;
+        void stdoutReader.cancel().catch(() => undefined);
+        killProcess();
+      };
+
+      if (signal?.aborted) {
+        abortHandler();
+        controller.error(new Error(`${label} aborted`));
+        cleanup();
+        return;
+      }
+
+      signal?.addEventListener("abort", abortHandler, { once: true });
+
+      try {
+        while (true) {
+          const { done, value } = await stdoutReader.read();
+          if (done) {
+            break;
+          }
+          if (cancelled) {
+            return;
+          }
+          controller.enqueue(value);
+        }
+
+        const [exitCode, stderr] = await Promise.all([proc.exited, stderrPromise]);
+        if (cancelled) {
+          return;
+        }
+        if (exitCode !== 0) {
+          controller.error(new Error(stderr.trim() || `${label} failed with exit code ${exitCode}`));
+          return;
+        }
+        controller.close();
+      } catch (error) {
+        if (!cancelled) {
+          controller.error(error instanceof Error ? error : new Error(String(error)));
+        }
+      } finally {
+        cleanup();
+        stdoutReader.releaseLock();
+      }
+    },
+    async cancel() {
+      cancelled = true;
+      cleanup();
+      await reader?.cancel().catch(() => undefined);
+      killProcess();
+    },
+  });
+}
 
 export class CommandExecutorImpl implements CommandExecutor {
   private readonly provider: "local" | "ssh";
@@ -404,6 +511,64 @@ export class CommandExecutorImpl implements CommandExecutor {
       return null;
     }
     return result.stdout;
+  }
+
+  async streamFile(path: string, options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+    if (this.provider === "local") {
+      try {
+        const fileStat = await stat(path);
+        if (!fileStat.isFile()) {
+          return null;
+        }
+        return Bun.file(path).stream();
+      } catch {
+        return null;
+      }
+    }
+
+    if (!this.host) {
+      return createErroredStream(new Error("SSH file streaming requires execution host"));
+    }
+
+    const remoteShellCommand = buildSshRemoteShellCommand(`cat -- ${quoteShell(path)}`);
+    const sshTarget = this.user ? `${this.user}@${this.host}` : this.host;
+
+    const proc = this.password && this.password.trim().length > 0
+      ? Bun.spawn([
+          "sshpass",
+          "-e",
+          "ssh",
+          ...buildSshCommandArgs({
+            authMode: "password",
+            port: this.port,
+            target: sshTarget,
+            remoteCommand: remoteShellCommand,
+            identityFile: this.identityFile,
+            connectionScope: this.directory,
+          }),
+        ], {
+          cwd: "/",
+          stdout: "pipe",
+          stderr: "pipe",
+          env: { ...process.env, SSHPASS: this.password },
+        })
+      : Bun.spawn([
+          "ssh",
+          ...buildSshCommandArgs({
+            authMode: "batch",
+            port: this.port,
+            target: sshTarget,
+            remoteCommand: remoteShellCommand,
+            identityFile: this.identityFile,
+            connectionScope: this.directory,
+          }),
+        ], {
+          cwd: "/",
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+
+    return createProcessStdoutStream(proc as StreamedProcess, "SSH file stream", options?.signal);
   }
 
   async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {

@@ -185,8 +185,11 @@ export const workspaceFilesRoutes = {
       try {
         const response = await workspaceFileService.readDownloadFile(workspaceResult, validation.data.path, {
           startDirectory: validation.data.startDirectory,
+          signal: req.signal,
         });
-        return createFileDownloadResponse(response.data, response.contentType, response.file);
+        return createFileDownloadResponse(response.stream, response.contentType, response.file, {
+          contentLength: response.file.size,
+        });
       } catch (error) {
         log.error("Failed to download workspace file", {
           workspaceId: req.params.id,
