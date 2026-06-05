@@ -55,9 +55,7 @@ function mapFileError(error: unknown): Response {
       currentFile,
     }, { status: 409 });
   }
-  if ((error as { name?: string } | null)?.name === "FileExplorerDownloadTooLargeError") {
-    return errorResponse("file_too_large", message, 413);
-  }
+
   if (message.includes("SSH server not found")) {
     return errorResponse("not_found", message, 404);
   }
