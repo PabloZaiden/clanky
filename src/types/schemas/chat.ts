@@ -8,6 +8,7 @@ import { z } from "zod";
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../chat";
 import { ModelConfigSchema } from "./model";
 import { TaskNameSchema, MessageImageAttachmentsSchema } from "./task";
+import { AgentProviderSchema } from "./workspace";
 
 export const CreateChatRequestSchema = z.object({
   name: z.string().trim().max(100, "name cannot exceed 100 characters").optional(),
@@ -77,7 +78,7 @@ export const DiscoverSshServerChatProvidersRequestSchema = z.object({
 
 export const DiscoverSshServerChatModelsRequestSchema = z.object({
   credentialToken: z.string().trim().min(1, "credentialToken is required"),
-  providerID: z.enum(["copilot", "opencode", "codex", "claude", "pi"]),
+  providerID: AgentProviderSchema,
   directory: z.string().trim().min(1, "directory is required"),
 });
 
