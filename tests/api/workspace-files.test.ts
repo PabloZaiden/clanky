@@ -88,13 +88,16 @@ describe("workspace files API integration", () => {
     bytesCommandCalled = false;
     streamClosed = false;
 
+    private readonly largeDownloadPayloadPrefix = new TextEncoder().encode("large download payload\n");
+    private readonly largeDownloadSize = previousDownloadLimitBytes + 1;
+
     override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
       const commandLabel = args[2];
       const requestedPath = args[3];
       if (command === "bash" && commandLabel === "file-explorer-metadata" && requestedPath?.endsWith("/large-download.bin")) {
         return {
           success: true,
-          stdout: `f\t${previousDownloadLimitBytes + 1}\t1700000000\tlarge-download-hash\n`,
+          stdout: `f\t${this.largeDownloadSize}\t1700000000\tlarge-download-hash\n`,
           stderr: "",
           exitCode: 0,
         };
@@ -116,10 +119,26 @@ describe("workspace files API integration", () => {
         return await super.streamFile(path, _options);
       }
 
+      let remainingBytes = this.largeDownloadSize;
+      let prefixSent = false;
+
       return new ReadableStream<Uint8Array>({
-        start: (controller) => {
-          controller.enqueue(new TextEncoder().encode("large download payload\n"));
-          controller.close();
+        pull: (controller) => {
+          if (!prefixSent) {
+            controller.enqueue(this.largeDownloadPayloadPrefix);
+            remainingBytes -= this.largeDownloadPayloadPrefix.byteLength;
+            prefixSent = true;
+            return;
+          }
+
+          if (remainingBytes <= 0) {
+            controller.close();
+            return;
+          }
+
+          const chunkSize = Math.min(remainingBytes, 64 * 1024);
+          controller.enqueue(new Uint8Array(chunkSize));
+          remainingBytes -= chunkSize;
         },
         cancel: () => {
           this.streamClosed = true;
@@ -201,16 +220,38 @@ describe("workspace files API integration", () => {
     const workspace = await createWorkspace();
     const rfc5987FileName = "rfc5987-!'()*.txt";
 
-    const response = await fetch(
-      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("README.md")}`,
+    const metadataResponse = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/metadata?path=${encodeURIComponent("README.md")}`,
     );
+    expect(metadataResponse.ok).toBe(true);
+    const metadata = await metadataResponse.json() as {
+      file: { name: string; path: string; kind: string; size: number };
+    };
+    expect(metadata.file).toMatchObject({
+      name: "README.md",
+      path: "README.md",
+      kind: "file",
+      size: "# Workspace files\n".length,
+    });
+
+    const downloadUrl = `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("README.md")}`;
+    const headResponse = await fetch(downloadUrl, { method: "HEAD" });
+    expect(headResponse.ok).toBe(true);
+    expect(headResponse.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
+    expect(headResponse.headers.get("Content-Length")).toBe(String(metadata.file.size));
+    expect(headResponse.headers.get("X-Clanky-Download-Size")).toBe(String(metadata.file.size));
+
+    const response = await fetch(downloadUrl);
 
     expect(response.ok).toBe(true);
     expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
-    expect(response.headers.get("Content-Length")).toBe(String("# Workspace files\n".length));
+    expect(response.headers.get("Content-Length")).toBe(String(metadata.file.size));
+    expect(response.headers.get("X-Clanky-Download-Size")).toBe(String(metadata.file.size));
+    expect(response.headers.get("Access-Control-Expose-Headers")).toContain("Content-Length");
+    expect(response.headers.get("Access-Control-Expose-Headers")).toContain("X-Clanky-Download-Size");
     expect(await response.text()).toBe("# Workspace files\n");
 
     const binaryFileName = "binary.dat";
@@ -247,18 +288,29 @@ describe("workspace files API integration", () => {
     backendManager.setExecutorFactoryForTesting(() => largeDownloadExecutor);
     const workspace = await createWorkspace();
 
-    const response = await fetch(
-      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("large-download.bin")}`,
-    );
+    const downloadUrl =
+      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("large-download.bin")}`;
+    const headResponse = await fetch(downloadUrl, { method: "HEAD" });
+    expect(headResponse.ok).toBe(true);
+    expect(headResponse.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
+    expect(headResponse.headers.get("Content-Length")).toBe(String(previousDownloadLimitBytes + 1));
+    expect(headResponse.headers.get("X-Clanky-Download-Size")).toBe(String(previousDownloadLimitBytes + 1));
+
+    const response = await fetch(downloadUrl);
 
     expect(response.ok).toBe(true);
     expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
+    expect(response.headers.get("X-Clanky-Download-Size")).toBe(String(previousDownloadLimitBytes + 1));
     expect(largeDownloadExecutor.bytesCommandCalled).toBe(false);
-    expect(await response.text()).toBe("large download payload\n");
-    expect(largeDownloadExecutor.streamClosed).toBe(false);
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    const firstChunk = await reader!.read();
+    expect(firstChunk.done).toBe(false);
+    expect(new TextDecoder().decode(firstChunk.value).startsWith("large download payload")).toBe(true);
+    await reader!.cancel();
   });
 
   test("does not report directories with image-like names as images", async () => {

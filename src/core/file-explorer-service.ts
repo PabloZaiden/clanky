@@ -77,6 +77,11 @@ export interface FileExplorerDownloadReadResult {
   stream: ReadableStream<Uint8Array>;
 }
 
+export interface FileExplorerDownloadMetadataResult {
+  file: WorkspaceFileEntry;
+  contentType: string;
+}
+
 export interface FileExplorerWriteResult {
   success: true;
   file: WorkspaceFileEntry;
@@ -338,6 +343,22 @@ function toFileEntry(
     versionToken: metadata.versionToken,
     ...(mimeType ? { mimeType, isImage: true } : {}),
   };
+}
+
+async function getFileEntry(target: FileExplorerTarget, requestedPath: string): Promise<WorkspaceFileEntry | null> {
+  const absolutePath = resolveTargetPath(target, requestedPath);
+  const metadata = await runMetadataCommand(target.executor, absolutePath);
+  return metadata ? toFileEntry(target, absolutePath, metadata) : null;
+}
+
+function assertDownloadableFile(file: WorkspaceFileEntry | null): WorkspaceFileEntry {
+  if (!file) {
+    throw new Error("Requested file does not exist");
+  }
+  if (file.kind !== "file") {
+    throw new Error("Requested path is not a file");
+  }
+  return file;
 }
 
 function sortEntries<T extends WorkspaceFileNode>(entries: T[]): T[] {
@@ -628,18 +649,8 @@ export class FileExplorerService {
     requestedPath: string,
     options?: { signal?: AbortSignal },
   ): Promise<FileExplorerDownloadReadResult> {
-    const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
-
-    if (!metadata) {
-      throw new Error("Requested file does not exist");
-    }
-    if (metadata.kind !== "file") {
-      throw new Error("Requested path is not a file");
-    }
-
-    const file = toFileEntry(target, absolutePath, metadata);
-    const stream = await target.executor.streamFile(absolutePath, {
+    const { file, contentType } = await this.getDownloadMetadata(target, requestedPath);
+    const stream = await target.executor.streamFile(file.absolutePath, {
       signal: options?.signal,
     });
     if (!stream) {
@@ -648,15 +659,24 @@ export class FileExplorerService {
 
     return {
       file,
-      contentType: file.mimeType ?? "application/octet-stream",
+      contentType,
       stream,
     };
   }
 
+  async getDownloadMetadata(
+    target: FileExplorerTarget,
+    requestedPath: string,
+  ): Promise<FileExplorerDownloadMetadataResult> {
+    const file = assertDownloadableFile(await getFileEntry(target, requestedPath));
+    return {
+      file,
+      contentType: file.mimeType ?? "application/octet-stream",
+    };
+  }
+
   async getMetadata(target: FileExplorerTarget, requestedPath: string): Promise<WorkspaceFileEntry | null> {
-    const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
-    return metadata ? toFileEntry(target, absolutePath, metadata) : null;
+    return await getFileEntry(target, requestedPath);
   }
 
   async writeFile(

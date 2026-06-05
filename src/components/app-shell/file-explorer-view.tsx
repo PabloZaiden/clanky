@@ -3,7 +3,7 @@ import type { SshSession, WorkspaceFileEntry } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
-import { writeTextToClipboard } from "../../utils";
+import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
 import { Button, GearIcon, Modal } from "../common";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
@@ -309,14 +309,18 @@ export function FileExplorerView({
 
     try {
       setDownloadingFilePath(file.path);
-      await getFileExplorerFileMetadataApi(target, file.path, {
+      const metadata = await getFileExplorerFileMetadataApi(target, file.path, {
         startDirectory: target.startDirectory,
       });
+      if (metadata.file.kind !== "file") {
+        toast.error("Select a file to download.");
+        return;
+      }
       const downloadUrl = await getFileExplorerDownloadUrl(target, file.path, {
         startDirectory: target.startDirectory,
       });
-      triggerBrowserDownload(downloadUrl, file.name);
-      toast.success("Started file download");
+      triggerBrowserDownload(downloadUrl, metadata.file.name);
+      toast.success(`Started download: ${metadata.file.name} (${formatFileSize(metadata.file.size)})`);
     } catch (error) {
       toast.error(`Failed to download file: ${String(error)}`);
     } finally {

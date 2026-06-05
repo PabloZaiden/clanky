@@ -19,7 +19,7 @@ import {
 } from "../types/schemas";
 import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
-import { createFileDownloadResponse } from "./file-download-response";
+import { createFileDownloadHeadResponse, createFileDownloadResponse } from "./file-download-response";
 
 const log = createLogger("api:ssh-server-files");
 const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
@@ -210,6 +210,30 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/download": {
+    async HEAD(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined, {
+          allowCredentialTokenQuery: true,
+        });
+        const response = await fileExplorerService.getDownloadMetadata(target, validation.data.path);
+        return createFileDownloadHeadResponse(response.contentType, response.file, {
+          contentLength: response.file.size,
+        });
+      } catch (error) {
+        log.error("Failed to fetch standalone SSH server file download metadata", {
+          serverId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+
     async GET(req: Request & { params: { id: string } }): Promise<Response> {
       const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
       if (!validation.success) {
