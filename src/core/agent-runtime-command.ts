@@ -63,7 +63,7 @@ function buildAcpResolverScript(options: AcpResolverOptions): string {
     `echo "clanky: ${options.errorLabel} not found. ${buildResolverErrorHint(options)}" >&2;`,
     "exit 127;",
     "fi",
-  ].join(" ");
+  ].join("\n");
 }
 
 function buildResolverErrorHint(options: AcpResolverOptions): string {
