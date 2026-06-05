@@ -184,11 +184,31 @@ describe("Standalone SSH server files API integration", () => {
     expect(missingCredentialResponse.status).toBe(400);
 
     const credentialToken = await issueCredentialToken(createdServer.config.id);
+    const metadataResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/metadata?path=${encodeURIComponent("README.md")}`,
+      {
+        headers: {
+          "x-clanky-ssh-credential-token": credentialToken,
+        },
+      },
+    );
+    expect(metadataResponse.ok).toBe(true);
+    const metadata = await metadataResponse.json() as {
+      file: { name: string; path: string; kind: string; size: number };
+    };
+    expect(metadata.file).toMatchObject({
+      name: "README.md",
+      path: "README.md",
+      kind: "file",
+      size: "# Server files\n".length,
+    });
+
+    const downloadToken = await issueCredentialToken(createdServer.config.id);
     const response = await fetch(
       `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/download?path=${encodeURIComponent("README.md")}`,
       {
         headers: {
-          "x-clanky-ssh-credential-token": credentialToken,
+          "x-clanky-ssh-credential-token": downloadToken,
         },
       },
     );
@@ -199,6 +219,7 @@ describe("Standalone SSH server files API integration", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
     expect(response.headers.get("Content-Length")).toBe(String("# Server files\n".length));
+    expect(response.headers.get("Content-Length")).toBe(String(metadata.file.size));
     expect(await response.text()).toBe("# Server files\n");
 
     const queryToken = await issueCredentialToken(createdServer.config.id);

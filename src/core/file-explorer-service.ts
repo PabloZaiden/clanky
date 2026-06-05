@@ -340,6 +340,22 @@ function toFileEntry(
   };
 }
 
+async function getFileEntry(target: FileExplorerTarget, requestedPath: string): Promise<WorkspaceFileEntry | null> {
+  const absolutePath = resolveTargetPath(target, requestedPath);
+  const metadata = await runMetadataCommand(target.executor, absolutePath);
+  return metadata ? toFileEntry(target, absolutePath, metadata) : null;
+}
+
+function assertDownloadableFile(file: WorkspaceFileEntry | null): WorkspaceFileEntry {
+  if (!file) {
+    throw new Error("Requested file does not exist");
+  }
+  if (file.kind !== "file") {
+    throw new Error("Requested path is not a file");
+  }
+  return file;
+}
+
 function sortEntries<T extends WorkspaceFileNode>(entries: T[]): T[] {
   return [...entries].sort((left, right) => {
     if (left.kind !== right.kind) {
@@ -628,18 +644,8 @@ export class FileExplorerService {
     requestedPath: string,
     options?: { signal?: AbortSignal },
   ): Promise<FileExplorerDownloadReadResult> {
-    const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
-
-    if (!metadata) {
-      throw new Error("Requested file does not exist");
-    }
-    if (metadata.kind !== "file") {
-      throw new Error("Requested path is not a file");
-    }
-
-    const file = toFileEntry(target, absolutePath, metadata);
-    const stream = await target.executor.streamFile(absolutePath, {
+    const file = assertDownloadableFile(await getFileEntry(target, requestedPath));
+    const stream = await target.executor.streamFile(file.absolutePath, {
       signal: options?.signal,
     });
     if (!stream) {
@@ -654,9 +660,7 @@ export class FileExplorerService {
   }
 
   async getMetadata(target: FileExplorerTarget, requestedPath: string): Promise<WorkspaceFileEntry | null> {
-    const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
-    return metadata ? toFileEntry(target, absolutePath, metadata) : null;
+    return await getFileEntry(target, requestedPath);
   }
 
   async writeFile(

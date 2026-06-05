@@ -22,3 +22,14 @@ export function formatRelativeTime(isoString: string | undefined): string {
   if (diffHour < 24) return `${diffHour}h ago`;
   return `${diffDay}d ago`;
 }
+
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const kib = bytes / 1024;
+  if (kib < 1024) {
+    return `${kib.toFixed(1)} KB`;
+  }
+  return `${(kib / 1024).toFixed(1)} MB`;
+}

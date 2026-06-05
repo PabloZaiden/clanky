@@ -201,6 +201,20 @@ describe("workspace files API integration", () => {
     const workspace = await createWorkspace();
     const rfc5987FileName = "rfc5987-!'()*.txt";
 
+    const metadataResponse = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/metadata?path=${encodeURIComponent("README.md")}`,
+    );
+    expect(metadataResponse.ok).toBe(true);
+    const metadata = await metadataResponse.json() as {
+      file: { name: string; path: string; kind: string; size: number };
+    };
+    expect(metadata.file).toMatchObject({
+      name: "README.md",
+      path: "README.md",
+      kind: "file",
+      size: "# Workspace files\n".length,
+    });
+
     const response = await fetch(
       `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("README.md")}`,
     );
@@ -211,6 +225,7 @@ describe("workspace files API integration", () => {
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
     expect(response.headers.get("Content-Length")).toBe(String("# Workspace files\n".length));
+    expect(response.headers.get("Content-Length")).toBe(String(metadata.file.size));
     expect(await response.text()).toBe("# Workspace files\n");
 
     const binaryFileName = "binary.dat";
