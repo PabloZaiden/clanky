@@ -18,7 +18,6 @@ import { ServerPasswordModal } from "./server-password-modal";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import {
   getFileExplorerDownloadUrl,
-  getFileExplorerFileMetadataApi,
 } from "../../hooks/workspaceFileActions";
 
 function TerminalIcon() {
@@ -309,18 +308,15 @@ export function FileExplorerView({
 
     try {
       setDownloadingFilePath(file.path);
-      const metadata = await getFileExplorerFileMetadataApi(target, file.path, {
-        startDirectory: target.startDirectory,
-      });
-      if (metadata.file.kind !== "file") {
+      if (file.kind !== "file") {
         toast.error("Select a file to download.");
         return;
       }
       const downloadUrl = await getFileExplorerDownloadUrl(target, file.path, {
         startDirectory: target.startDirectory,
       });
-      triggerBrowserDownload(downloadUrl, metadata.file.name);
-      toast.success(`Started download: ${metadata.file.name} (${formatFileSize(metadata.file.size)})`);
+      triggerBrowserDownload(downloadUrl, file.name);
+      toast.success(`Started download: ${file.name} (${formatFileSize(file.size)})`);
     } catch (error) {
       toast.error(`Failed to download file: ${String(error)}`);
     } finally {
