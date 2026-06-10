@@ -5,7 +5,9 @@
 
 import type { SshServer } from "./ssh-server";
 
-export type AgentProvider = "opencode" | "copilot" | "codex" | "claude";
+export const AGENT_PROVIDER_IDS = ["opencode", "copilot", "codex", "claude", "pi"] as const;
+
+export type AgentProvider = typeof AGENT_PROVIDER_IDS[number];
 export type AgentTransport = "stdio" | "ssh";
 
 export type AgentSettings =

@@ -14,21 +14,46 @@ function encodeAttachmentFileName(fileName: string): string {
   );
 }
 
-export function createFileDownloadResponse(
-  data: Uint8Array,
+function createFileDownloadHeaders(
   contentType: string,
   file: WorkspaceFileEntry,
-): Response {
+  options?: { contentLength?: number },
+): Headers {
   const safeFileName = sanitizeAttachmentFileName(file.name);
-  const body = new ArrayBuffer(data.byteLength);
-  new Uint8Array(body).set(data);
+  const headers = new Headers({
+    "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, X-Clanky-Download-Size",
+    "Cache-Control": "no-store",
+    "Content-Disposition": `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeAttachmentFileName(file.name)}`,
+    "Content-Type": contentType,
+    "X-Content-Type-Options": "nosniff",
+  });
+  if (options?.contentLength !== undefined) {
+    const contentLength = String(options.contentLength);
+    headers.set("Content-Length", contentLength);
+    headers.set("X-Clanky-Download-Size", contentLength);
+  }
+  return headers;
+}
+
+export function createFileDownloadResponse(
+  body: BodyInit,
+  contentType: string,
+  file: WorkspaceFileEntry,
+  options?: { contentLength?: number },
+): Response {
+  const headers = createFileDownloadHeaders(contentType, file, options);
   return new Response(body, {
-    headers: {
-      "Cache-Control": "no-store",
-      "Content-Disposition": `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeAttachmentFileName(file.name)}`,
-      "Content-Length": String(data.byteLength),
-      "Content-Type": contentType,
-      "X-Content-Type-Options": "nosniff",
-    },
+    headers,
+  });
+}
+
+export function createFileDownloadHeadResponse(
+  contentType: string,
+  file: WorkspaceFileEntry,
+  options?: { contentLength?: number },
+): Response {
+  const headers = createFileDownloadHeaders(contentType, file, options);
+  return new Response(null, {
+    headers,
   });
 }

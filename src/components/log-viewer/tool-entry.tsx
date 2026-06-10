@@ -23,20 +23,12 @@ interface ToolEntryProps {
   fullWidth?: boolean;
 }
 
-const toolPanelClassName = "space-y-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-gray-900 sm:p-4 dark:border-sky-500/20 dark:bg-[#101826] dark:text-gray-100";
+const toolPanelClassName = "space-y-3 text-gray-900 dark:text-gray-100";
 
-/** Renders text-like output content while preserving embedded newlines and tabs. */
+/** Renders text-like output content, highlighting it when it is valid JSON. */
 function RenderedContent({ output }: { output: unknown }) {
   const content = getTextFromOutput(output) ?? formatToolValue(output);
-
-  return (
-    <pre
-      className="overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-sky-100 bg-white p-3 font-mono text-xs text-gray-900 dark:border-white/10 dark:bg-black/20 dark:text-gray-100"
-      data-tool-value-block="true"
-    >
-      {content}
-    </pre>
-  );
+  return <HighlightedJsonBlock value={content} />;
 }
 
 function hasMeaningfulToolValue(value: unknown): boolean {
@@ -123,7 +115,7 @@ function ToolDetailBlockView({ block }: { block: ToolDetailBlock }) {
         {block.title && (
           <div className="text-[11px] uppercase tracking-[0.22em] text-gray-500">{block.title}</div>
         )}
-        <ul className="space-y-1 rounded-xl border border-sky-100 bg-white p-3 text-sm leading-6 text-gray-900 dark:border-white/10 dark:bg-black/20 dark:text-gray-100">
+        <ul className="space-y-1 rounded-md border border-gray-200 bg-gray-50/80 p-3 text-sm leading-6 text-gray-900 dark:border-white/10 dark:bg-white/[0.03] dark:text-gray-100">
           {block.items.map((item, index) => (
             <li key={`${item}-${index}`} className="break-words">{item}</li>
           ))}
@@ -207,7 +199,7 @@ function ToolImagePreviewSection({
               key={extra.id}
               type="button"
               onClick={() => setSelectedExtraId(extra.id)}
-              className="rounded-xl border border-sky-100 bg-white/90 p-1 text-left hover:border-sky-300 focus:outline-none focus:ring-2 focus:ring-sky-400 dark:border-white/10 dark:bg-black/20 dark:hover:border-sky-400/60"
+              className="rounded-md border border-gray-200 bg-gray-50/80 p-1 text-left hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:border-white/10 dark:bg-white/[0.03] dark:hover:border-white/20 dark:focus:ring-white/15"
               aria-label={`View ${extra.image.filename}`}
             >
               <img
@@ -249,10 +241,24 @@ export const ToolEntry = memo(function ToolEntry({
 
     return [{ ...block, title: undefined } satisfies ToolDetailBlock];
   }, [structuredDetails, meta.outputLabel]);
-  const toolSummaryClassName = "block text-sm leading-6 italic text-sky-700 dark:text-sky-300";
+  const statusClassName = tool.status === "failed"
+    ? "text-red-600 dark:text-red-400"
+    : tool.status === "completed"
+      ? "text-green-600 dark:text-green-400"
+      : "text-amber-600 dark:text-amber-400";
+  const shouldShowStatus = tool.status !== "completed";
+  const toolSummaryClassName = "inline-flex max-w-full items-center gap-2 rounded-md py-0.5 text-xs leading-5 text-gray-400 transition hover:text-gray-600 dark:text-white/28 dark:hover:text-white/48";
 
   const inputSummary = (
-    <span className={toolSummaryClassName} data-tool-summary="true">{meta.summary}</span>
+    <span className={toolSummaryClassName} data-tool-summary="true">
+      {shouldShowStatus && (
+        <>
+          <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>
+          <span className="shrink-0 text-gray-300 dark:text-gray-600">/</span>
+        </>
+      )}
+      <span className="min-w-0 truncate">{meta.summary}</span>
+    </span>
   );
   const hasMeaningfulInput = hasMeaningfulToolValue(tool.input);
   const hasOutput = hasMeaningfulToolValue(tool.output);
@@ -271,7 +277,7 @@ export const ToolEntry = memo(function ToolEntry({
     () => (
       <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">Input</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Input</div>
           {inputContent}
         </div>
         <ToolImagePreviewSection tool={tool} />
@@ -284,7 +290,7 @@ export const ToolEntry = memo(function ToolEntry({
     () => (
       <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">{meta.outputLabel}</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{meta.outputLabel}</div>
           {outputContent}
         </div>
         <ToolImagePreviewSection tool={tool} />
@@ -297,11 +303,11 @@ export const ToolEntry = memo(function ToolEntry({
     () => (
       <div className={toolPanelClassName} data-tool-panel-tone="neutral">
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">Input</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Input</div>
           {inputContent}
         </div>
         <div>
-          <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-sky-700/70 dark:text-sky-200/60">{meta.outputLabel}</div>
+          <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">{meta.outputLabel}</div>
           {outputContent}
         </div>
         <ToolImagePreviewSection tool={tool} />
@@ -324,7 +330,7 @@ export const ToolEntry = memo(function ToolEntry({
             renderContent={hasOutput ? renderCombinedContent : renderInputContent}
             className="w-full"
             triggerClassName="w-full text-left"
-            panelClassName="mt-3"
+            panelClassName="mt-2"
           />
         ) : hasOutput ? (
           <LazyDetails
@@ -332,10 +338,18 @@ export const ToolEntry = memo(function ToolEntry({
             renderContent={renderOutputOnlyContent}
             className="w-full"
             triggerClassName="w-full text-left"
-            panelClassName="mt-3"
+            panelClassName="mt-2"
           />
         ) : (
-          <span className={toolSummaryClassName}>{meta.summary}</span>
+          <span className={toolSummaryClassName}>
+            {shouldShowStatus && (
+              <>
+                <span className={`shrink-0 font-medium ${statusClassName}`}>{tool.status}</span>
+                <span className="shrink-0 text-gray-300 dark:text-gray-600">/</span>
+              </>
+            )}
+            <span className="min-w-0 truncate">{meta.summary}</span>
+          </span>
         )}
       </div>
     </div>

@@ -34,6 +34,11 @@ export interface CommandOptions {
   onStderrChunk?: (chunk: string) => void;
 }
 
+export interface FileStreamOptions {
+  /** Abort signal for cancelling the file stream */
+  signal?: AbortSignal;
+}
+
 /**
  * CommandExecutor interface for running shell commands and file operations.
  * Implementation: CommandExecutorImpl executes commands via local or SSH providers.
@@ -69,6 +74,14 @@ export interface CommandExecutor {
    * @returns The file contents, or null if the file doesn't exist
    */
   readFile(path: string): Promise<string | null>;
+
+  /**
+   * Stream a file's raw bytes without buffering the full file in memory.
+   * @param path - Absolute path to the file
+   * @param options - Streaming options
+   * @returns A byte stream, or null if the file cannot be streamed
+   */
+  streamFile(path: string, options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null>;
 
   /**
    * List files in a directory.

@@ -8,7 +8,14 @@
  */
 
 import { AcpBackend } from "../backends/acp";
-import type { Backend, BackendConnectionConfig, PromptInput, AgentEvent } from "../backends/types";
+import type {
+  Backend,
+  BackendConnectionConfig,
+  PromptInput,
+  AgentEvent,
+  ImportableSession,
+  SessionReplayEvent,
+} from "../backends/types";
 import type { Chat, ChatConfig, ChatStatus, ChatWorktreeState, Task, TaskLogEntry, MessageData, PersistedToolCall, SessionInfo } from "../types";
 import type { ChatEvent } from "../types/events";
 import { createTimestamp } from "../types/events";
@@ -116,6 +123,17 @@ export interface CreateSshServerChatOptions {
   modelVariant?: string;
   autoApprovePermissions?: boolean;
   credentialToken?: string | null;
+}
+
+export interface ImportExistingSessionOptions {
+  name?: string;
+  workspaceId: string;
+  modelProviderID: string;
+  modelID: string;
+  modelVariant?: string;
+  sessionId: string;
+  cwd?: string;
+  autoApprovePermissions?: boolean;
 }
 
 export interface ReconnectChatOptions {
@@ -298,6 +316,97 @@ export class ChatManager {
       return reconnected;
     }
     return chat;
+  }
+
+  async listImportableSessions(workspaceId: string): Promise<ImportableSession[]> {
+    const workspace = await getWorkspace(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${workspaceId}`);
+    }
+
+    const backend = await backendManager.getBackendAsync(workspaceId);
+    if (!backend.isConnected() || backend.getDirectory() !== workspace.directory) {
+      if (backend.isConnected()) {
+        await backend.disconnect();
+      }
+      await backend.connect(buildConnectionConfig(workspace.serverSettings, workspace.directory));
+    }
+
+    return backend.listSessions(workspace.directory);
+  }
+
+  async importExistingSession(options: ImportExistingSessionOptions): Promise<Chat> {
+    const workspace = await getWorkspace(options.workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace not found: ${options.workspaceId}`);
+    }
+
+    const discoveryBackend = await backendManager.getBackendAsync(options.workspaceId);
+    const discoveryDirectory = options.cwd ?? workspace.directory;
+    if (!discoveryBackend.isConnected() || discoveryBackend.getDirectory() !== discoveryDirectory) {
+      if (discoveryBackend.isConnected()) {
+        await discoveryBackend.disconnect();
+      }
+      await discoveryBackend.connect(buildConnectionConfig(workspace.serverSettings, discoveryDirectory));
+    }
+    const listedSession = (await discoveryBackend.listSessions(options.cwd))
+      .find((session) => session.id === options.sessionId);
+    const importDirectory = options.cwd ?? listedSession?.cwd ?? workspace.directory;
+    const importedName = options.name?.trim() || listedSession?.title?.trim() || "";
+
+    const chat = await this.createChat({
+      name: importedName || undefined,
+      workspaceId: options.workspaceId,
+      modelProviderID: options.modelProviderID,
+      modelID: listedSession?.model ?? options.modelID,
+      modelVariant: options.modelVariant,
+      useWorktree: false,
+      autoApprovePermissions: options.autoApprovePermissions,
+      directory: importDirectory,
+      syncBaseBranch: false,
+      prepareWorktreeOnCreate: false,
+    });
+
+    const backend = this.getChatBackend(chat.config.id, options.workspaceId);
+    if (!backend.isConnected() || backend.getDirectory() !== importDirectory) {
+      if (backend.isConnected()) {
+        await backend.disconnect();
+      }
+      await backend.connect(buildConnectionConfig(workspace.serverSettings, importDirectory));
+    }
+
+    let imported: Awaited<ReturnType<Backend["importSession"]>>;
+    try {
+      imported = await backend.importSession({
+        sessionId: options.sessionId,
+        cwd: importDirectory,
+      });
+    } catch (error) {
+      const cleanupResults = await Promise.allSettled([
+        deleteChat(chat.config.id),
+        backendManager.disconnectChat(chat.config.id),
+      ]);
+      for (const result of cleanupResults) {
+        if (result.status === "rejected") {
+          log.error("Failed to clean up chat after session import failure", {
+            chatId: chat.config.id,
+            error: String(result.reason),
+          });
+        }
+      }
+      throw error;
+    }
+
+    const importedState = this.buildImportedReplayState(chat, imported.events, imported.session.id);
+    const saved = await updateChatState(chat.config.id, importedState);
+    const updatedChat = saved ? { config: chat.config, state: importedState } : chat;
+    this.emitter.emit({
+      type: "chat.updated",
+      chatId: updatedChat.config.id,
+      chat: updatedChat,
+      timestamp: importedState.lastActivityAt ?? createTimestamp(),
+    });
+    return updatedChat;
   }
 
   async getChat(chatId: string): Promise<Chat | null> {
@@ -1078,7 +1187,13 @@ export class ChatManager {
       throw new Error(`Chat is not SSH-server backed: ${chat.config.id}`);
     }
     const provider = chat.config.model.providerID;
-    if (provider !== "opencode" && provider !== "copilot" && provider !== "codex" && provider !== "claude") {
+    if (
+      provider !== "opencode"
+      && provider !== "copilot"
+      && provider !== "codex"
+      && provider !== "claude"
+      && provider !== "pi"
+    ) {
       throw new Error(`Unsupported SSH chat provider: ${provider}`);
     }
     const providerCommand = getProviderAcpCommand(provider as AgentProvider, "ssh");
@@ -1522,6 +1637,9 @@ export class ChatManager {
         const isInterrupted = chat.state.status === "interrupting" || chat.state.interruptRequested;
 
         switch (event.type) {
+          case "user.message":
+            break;
+
           case "message.start":
             resetCurrentTurnStreamState();
             currentTurnMessageId = event.messageId;
@@ -1752,6 +1870,176 @@ export class ChatManager {
       eventStream.close();
       this.clearActiveStream(chatId, generation);
     }
+  }
+
+  private buildImportedReplayState(
+    chat: Chat,
+    events: SessionReplayEvent[],
+    sessionId: string,
+  ): Chat["state"] {
+    const messages: MessageData[] = [];
+    const logs: TaskLogEntry[] = [];
+    const toolCalls: PersistedToolCall[] = [];
+    const toolInputs = new Map<string, unknown>();
+    let pendingText: { kind: "user" | "assistant" | "reasoning"; content: string } | null = null;
+    let lastActivityAt = createTimestamp();
+
+    const flushPendingText = (): void => {
+      if (!pendingText || pendingText.content.length === 0) {
+        pendingText = null;
+        return;
+      }
+
+      const timestamp = createTimestamp();
+      lastActivityAt = timestamp;
+      if (pendingText.kind === "user") {
+        messages.push({
+          id: `chat-user-${crypto.randomUUID()}`,
+          role: "user",
+          content: pendingText.content,
+          timestamp,
+        });
+      } else if (pendingText.kind === "assistant") {
+        const messageId = `chat-assistant-${crypto.randomUUID()}`;
+        messages.push({
+          id: messageId,
+          role: "assistant",
+          content: pendingText.content,
+          timestamp,
+        });
+        logs.push({
+          id: `chat-log-${crypto.randomUUID()}`,
+          level: "agent",
+          message: "Imported AI response",
+          details: {
+            logKind: "response",
+            responseContent: pendingText.content,
+          },
+          timestamp,
+        });
+      } else {
+        logs.push({
+          id: `chat-log-${crypto.randomUUID()}`,
+          level: "agent",
+          message: "Imported AI reasoning",
+          details: {
+            logKind: "reasoning",
+            responseContent: pendingText.content,
+          },
+          timestamp,
+        });
+      }
+
+      pendingText = null;
+    };
+
+    const appendText = (kind: "user" | "assistant" | "reasoning", content: string): void => {
+      if (pendingText?.kind === kind) {
+        pendingText.content += content;
+        return;
+      }
+      flushPendingText();
+      pendingText = { kind, content };
+    };
+
+    for (const event of events) {
+      switch (event.type) {
+        case "user.message":
+          appendText("user", event.content);
+          break;
+        case "assistant.message":
+          appendText("assistant", event.content);
+          break;
+        case "reasoning":
+          appendText("reasoning", event.content);
+          break;
+        case "tool.start": {
+          flushPendingText();
+          const timestamp = createTimestamp();
+          lastActivityAt = timestamp;
+          const toolId = event.toolCallId ?? `chat-tool-${crypto.randomUUID()}`;
+          const toolKey = event.toolCallId ?? event.toolName;
+          toolInputs.set(toolKey, event.input);
+          toolCalls.push({
+            id: toolId,
+            name: event.toolName,
+            input: event.input,
+            status: "running",
+            timestamp,
+          });
+          logs.push({
+            id: `chat-log-${crypto.randomUUID()}`,
+            level: "agent",
+            message: `Imported tool call: ${event.toolName}`,
+            details: {
+              logKind: "tool",
+              toolCallId: toolId,
+              toolName: event.toolName,
+            },
+            timestamp,
+          });
+          break;
+        }
+        case "tool.complete": {
+          flushPendingText();
+          const timestamp = createTimestamp();
+          lastActivityAt = timestamp;
+          const existingIndex = event.toolCallId
+            ? toolCalls.findIndex((toolCall) => toolCall.id === event.toolCallId)
+            : toolCalls.findLastIndex((toolCall) =>
+              toolCall.name === event.toolName && toolCall.status === "running"
+            );
+          const toolKey = event.toolCallId ?? event.toolName;
+          const completedInput = event.input ?? (
+            existingIndex >= 0 ? toolCalls[existingIndex]?.input : undefined
+          ) ?? toolInputs.get(toolKey);
+          toolInputs.set(toolKey, completedInput);
+          const completedTool: PersistedToolCall = {
+            id: event.toolCallId ?? (existingIndex >= 0 ? toolCalls[existingIndex]!.id : `chat-tool-${crypto.randomUUID()}`),
+            name: event.toolName,
+            input: completedInput,
+            output: event.output,
+            status: "completed",
+            timestamp,
+          };
+          if (existingIndex >= 0) {
+            toolCalls[existingIndex] = mergeToolCallRecord(toolCalls[existingIndex]!, completedTool);
+          } else {
+            toolCalls.push(completedTool);
+          }
+          logs.push({
+            id: `chat-log-${crypto.randomUUID()}`,
+            level: "agent",
+            message: `Imported tool result: ${event.toolName}`,
+            details: {
+              logKind: "tool",
+              toolCallId: completedTool.id,
+              toolName: event.toolName,
+            },
+            timestamp,
+          });
+          break;
+        }
+      }
+    }
+    flushPendingText();
+
+    const startedAt = chat.state.startedAt ?? createTimestamp();
+    return {
+      ...chat.state,
+      status: "idle",
+      session: { id: sessionId },
+      startedAt,
+      completedAt: undefined,
+      lastActivityAt,
+      error: undefined,
+      messages,
+      logs,
+      toolCalls,
+      activeMessageId: undefined,
+      interruptRequested: false,
+      pendingPermissionRequests: [],
+    };
   }
 
   private async appendMessage(chat: Chat, message: MessageData): Promise<Chat> {

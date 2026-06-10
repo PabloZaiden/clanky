@@ -41,9 +41,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     error: chatsError,
     refresh: refreshChats,
     createChat,
+    importExistingChat,
     createSshServerChat,
-    updateChat,
-    deleteChat,
   } = useChats();
   const {
     tasks,
@@ -366,8 +365,6 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         pullLatestWorkspaceChanges={pullLatestWorkspaceChanges}
         pullingLatestWorkspaceIds={pullingLatestWorkspaceIds}
         sidebarPinning={sidebarPinning}
-        updateChat={updateChat}
-        deleteChat={deleteChat}
         updateSshSession={updateSession}
         deleteSshSession={deleteSession}
         refreshChats={refreshChats}
@@ -431,6 +428,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         setComposeActionState={composeState.setComposeActionState}
         handleTaskSubmit={composeState.handleTaskSubmit}
         createChat={createChat}
+        importExistingChat={importExistingChat}
         createSshServerChat={createSshServerChat}
         workspaceCreate={workspaceCreate}
         workspaceSettings={workspaceSettings}

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import { ensureDataDirectories, getDatabase } from "../../src/persistence/database";
 import { apiRoutes } from "../../src/api";
 import { backendManager } from "../../src/core/backend-manager";
+import type { CommandOptions, CommandResult, FileStreamOptions } from "../../src/core/command-executor";
 import { createMockBackend } from "../mocks/mock-backend";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { serve, type Server } from "bun";
@@ -10,6 +11,7 @@ import { mkdtemp, rm, mkdir, symlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 
 describe("workspace files API integration", () => {
+  const previousDownloadLimitBytes = 100 * 1024 * 1024;
   let dataDir: string;
   let workDir: string;
   let alternateRootDir: string;
@@ -80,6 +82,123 @@ describe("workspace files API integration", () => {
     });
     expect(response.ok).toBe(true);
     return await response.json() as { id: string };
+  }
+
+  class LargeDownloadExecutor extends TestCommandExecutor {
+    bytesCommandCalled = false;
+    streamClosed = false;
+
+    private readonly largeDownloadPayloadPrefix = new TextEncoder().encode("large download payload\n");
+    private readonly largeDownloadSize = previousDownloadLimitBytes + 1;
+
+    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+      const commandLabel = args[2];
+      const requestedPath = args[3];
+      if (command === "bash" && commandLabel === "file-explorer-metadata" && requestedPath?.endsWith("/large-download.bin")) {
+        return {
+          success: true,
+          stdout: `f\t${this.largeDownloadSize}\t1700000000\tlarge-download-hash\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      if (command === "bash" && commandLabel === "file-explorer-file-bytes" && requestedPath?.endsWith("/large-download.bin")) {
+        this.bytesCommandCalled = true;
+        return {
+          success: false,
+          stdout: Buffer.from("large download payload\n").toString("base64"),
+          stderr: "download should use streamFile instead of file-explorer-file-bytes",
+          exitCode: 1,
+        };
+      }
+      return await super.exec(command, args, options);
+    }
+
+    override async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+      if (!path.endsWith("/large-download.bin")) {
+        return await super.streamFile(path, _options);
+      }
+
+      let remainingBytes = this.largeDownloadSize;
+      let prefixSent = false;
+
+      return new ReadableStream<Uint8Array>({
+        pull: (controller) => {
+          if (!prefixSent) {
+            controller.enqueue(this.largeDownloadPayloadPrefix);
+            remainingBytes -= this.largeDownloadPayloadPrefix.byteLength;
+            prefixSent = true;
+            return;
+          }
+
+          if (remainingBytes <= 0) {
+            controller.close();
+            return;
+          }
+
+          const chunkSize = Math.min(remainingBytes, 64 * 1024);
+          controller.enqueue(new Uint8Array(chunkSize));
+          remainingBytes -= chunkSize;
+        },
+        cancel: () => {
+          this.streamClosed = true;
+        },
+      });
+    }
+  }
+
+  class DownloadMetadataWithoutHashExecutor extends TestCommandExecutor {
+    hashRequested = false;
+    streamRequested = false;
+
+    private readonly payload = new TextEncoder().encode("download without hashing\n");
+
+    get payloadByteLength(): number {
+      return this.payload.byteLength;
+    }
+
+    override async exec(command: string, args: string[], options?: CommandOptions): Promise<CommandResult> {
+      const commandLabel = args[2];
+      const requestedPath = args[3];
+      const includeHash = args[4];
+      if (
+        command === "bash"
+        && commandLabel === "file-explorer-metadata"
+        && requestedPath?.endsWith("/slow-hash-download.bin")
+      ) {
+        if (includeHash !== "0") {
+          this.hashRequested = true;
+          return {
+            success: false,
+            stdout: "",
+            stderr: "download metadata should not request a content hash",
+            exitCode: 124,
+          };
+        }
+        return {
+          success: true,
+          stdout: `f\t${this.payload.byteLength}\t1700000000\t-\n`,
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+      return await super.exec(command, args, options);
+    }
+
+    override async streamFile(path: string, _options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null> {
+      if (!path.endsWith("/slow-hash-download.bin")) {
+        return await super.streamFile(path, _options);
+      }
+
+      this.streamRequested = true;
+      const payload = this.payload;
+      return new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(payload);
+          controller.close();
+        },
+      });
+    }
   }
 
   test("lists root directory entries as lightweight explorer nodes", async () => {
@@ -155,16 +274,52 @@ describe("workspace files API integration", () => {
     const workspace = await createWorkspace();
     const rfc5987FileName = "rfc5987-!'()*.txt";
 
-    const response = await fetch(
-      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("README.md")}`,
+    const metadataResponse = await fetch(
+      `${baseUrl}/api/workspaces/${workspace.id}/files/metadata?path=${encodeURIComponent("README.md")}`,
     );
+    expect(metadataResponse.ok).toBe(true);
+    const metadata = await metadataResponse.json() as {
+      file: { name: string; path: string; kind: string; size: number };
+    };
+    expect(metadata.file).toMatchObject({
+      name: "README.md",
+      path: "README.md",
+      kind: "file",
+      size: "# Workspace files\n".length,
+    });
+
+    const downloadUrl = `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("README.md")}`;
+    const headResponse = await fetch(downloadUrl, { method: "HEAD" });
+    expect(headResponse.ok).toBe(true);
+    expect(headResponse.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
+    expect(headResponse.headers.get("Content-Length")).toBe(String(metadata.file.size));
+    expect(headResponse.headers.get("X-Clanky-Download-Size")).toBe(String(metadata.file.size));
+
+    const response = await fetch(downloadUrl);
 
     expect(response.ok).toBe(true);
     expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"README.md\"");
+    expect(response.headers.get("Content-Length")).toBe(String(metadata.file.size));
+    expect(response.headers.get("X-Clanky-Download-Size")).toBe(String(metadata.file.size));
+    expect(response.headers.get("Access-Control-Expose-Headers")).toContain("Content-Length");
+    expect(response.headers.get("Access-Control-Expose-Headers")).toContain("X-Clanky-Download-Size");
     expect(await response.text()).toBe("# Workspace files\n");
+
+    const binaryFileName = "binary.dat";
+    const binaryPayload = Uint8Array.from({ length: 256 }, (_, index) => index);
+    await writeFile(join(workDir, binaryFileName), binaryPayload);
+    try {
+      const binaryResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent(binaryFileName)}`,
+      );
+      expect(binaryResponse.ok).toBe(true);
+      expect(new Uint8Array(await binaryResponse.arrayBuffer())).toEqual(binaryPayload);
+    } finally {
+      await rm(join(workDir, binaryFileName), { force: true });
+    }
 
     await writeFile(join(workDir, rfc5987FileName), "special name\n");
     try {
@@ -180,6 +335,56 @@ describe("workspace files API integration", () => {
     } finally {
       await rm(join(workDir, rfc5987FileName), { force: true });
     }
+  });
+
+  test("starts streaming files larger than the previous file explorer download limit without base64 buffering", async () => {
+    const largeDownloadExecutor = new LargeDownloadExecutor();
+    backendManager.setExecutorFactoryForTesting(() => largeDownloadExecutor);
+    const workspace = await createWorkspace();
+
+    const downloadUrl =
+      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("large-download.bin")}`;
+    const headResponse = await fetch(downloadUrl, { method: "HEAD" });
+    expect(headResponse.ok).toBe(true);
+    expect(headResponse.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
+    expect(headResponse.headers.get("Content-Length")).toBe(String(previousDownloadLimitBytes + 1));
+    expect(headResponse.headers.get("X-Clanky-Download-Size")).toBe(String(previousDownloadLimitBytes + 1));
+
+    const response = await fetch(downloadUrl);
+
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Content-Disposition")).toContain("attachment; filename=\"large-download.bin\"");
+    expect(response.headers.get("X-Clanky-Download-Size")).toBe(String(previousDownloadLimitBytes + 1));
+    expect(largeDownloadExecutor.bytesCommandCalled).toBe(false);
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    const firstChunk = await reader!.read();
+    expect(firstChunk.done).toBe(false);
+    expect(new TextDecoder().decode(firstChunk.value).startsWith("large download payload")).toBe(true);
+    await reader!.cancel();
+  });
+
+  test("starts download responses without hashing the whole file first", async () => {
+    const downloadExecutor = new DownloadMetadataWithoutHashExecutor();
+    backendManager.setExecutorFactoryForTesting(() => downloadExecutor);
+    const workspace = await createWorkspace();
+    const downloadUrl =
+      `${baseUrl}/api/workspaces/${workspace.id}/files/download?path=${encodeURIComponent("slow-hash-download.bin")}`;
+
+    const headResponse = await fetch(downloadUrl, { method: "HEAD" });
+    expect(headResponse.ok).toBe(true);
+    expect(headResponse.headers.get("Content-Length")).toBe(String(downloadExecutor.payloadByteLength));
+    expect(downloadExecutor.hashRequested).toBe(false);
+
+    const response = await fetch(downloadUrl);
+
+    expect(response.ok).toBe(true);
+    expect(await response.text()).toBe("download without hashing\n");
+    expect(downloadExecutor.hashRequested).toBe(false);
+    expect(downloadExecutor.streamRequested).toBe(true);
   });
 
   test("does not report directories with image-like names as images", async () => {

@@ -33,7 +33,7 @@ export {
 export { sanitizeBranchName } from "./sanitize-branch-name";
 export { normalizeCommitScope } from "./commit-scope";
 
-export { formatRelativeTime } from "./format";
+export { formatFileSize, formatRelativeTime } from "./format";
 
 export { buildDefaultSshSessionName, buildTaskSshSessionName } from "./ssh-session-name";
 

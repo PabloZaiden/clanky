@@ -140,8 +140,16 @@ export function getEntrySpacingClass(entry: DisplayEntry, previousEntry?: Displa
     return "";
   }
 
+  if (entry.type === "tool-group") {
+    return "mt-2";
+  }
+
+  if (previousEntry.type === "tool-group") {
+    return "mt-2 sm:mt-3";
+  }
+
   if (previousEntry.type === "tool" && entry.type === "tool") {
-    return "mt-3 sm:mt-4";
+    return "mt-1";
   }
 
   return entry.showTimestamp || entry.showGroupHeader

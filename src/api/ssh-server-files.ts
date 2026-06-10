@@ -19,7 +19,7 @@ import {
 } from "../types/schemas";
 import { errorResponse } from "./helpers";
 import { parseAndValidate, validateRequest } from "./validation";
-import { createFileDownloadResponse } from "./file-download-response";
+import { createFileDownloadHeadResponse, createFileDownloadResponse } from "./file-download-response";
 
 const log = createLogger("api:ssh-server-files");
 const SSH_CREDENTIAL_TOKEN_HEADER = "x-clanky-ssh-credential-token";
@@ -55,9 +55,7 @@ function mapFileError(error: unknown): Response {
       currentFile,
     }, { status: 409 });
   }
-  if ((error as { name?: string } | null)?.name === "FileExplorerDownloadTooLargeError") {
-    return errorResponse("file_too_large", message, 413);
-  }
+
   if (message.includes("SSH server not found")) {
     return errorResponse("not_found", message, 404);
   }
@@ -101,8 +99,12 @@ function parseSearchParams<T extends Record<string, unknown>>(
 async function getServerFileTarget(
   req: Request & { params: { id: string } },
   startDirectory?: string,
+  options?: { allowCredentialTokenQuery?: boolean },
 ): Promise<FileExplorerTarget> {
-  const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim();
+  const credentialToken = req.headers.get(SSH_CREDENTIAL_TOKEN_HEADER)?.trim()
+    || (options?.allowCredentialTokenQuery
+      ? new URL(req.url).searchParams.get("credentialToken")?.trim()
+      : undefined);
   if (!credentialToken) {
     throw new Error("SSH credential token is required for standalone server file access");
   }
@@ -208,6 +210,30 @@ export const sshServerFilesRoutes = {
   },
 
   "/api/ssh-servers/:id/files/download": {
+    async HEAD(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined, {
+          allowCredentialTokenQuery: true,
+        });
+        const response = await fileExplorerService.getDownloadMetadata(target, validation.data.path);
+        return createFileDownloadHeadResponse(response.contentType, response.file, {
+          contentLength: response.file.size,
+        });
+      } catch (error) {
+        log.error("Failed to fetch standalone SSH server file download metadata", {
+          serverId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+
     async GET(req: Request & { params: { id: string } }): Promise<Response> {
       const validation = parseSearchParams(GetWorkspaceFileRequestSchema, req);
       if (!validation.success) {
@@ -215,9 +241,15 @@ export const sshServerFilesRoutes = {
       }
 
       try {
-        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
-        const response = await fileExplorerService.readDownloadFile(target, validation.data.path);
-        return createFileDownloadResponse(response.data, response.contentType, response.file);
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined, {
+          allowCredentialTokenQuery: true,
+        });
+        const response = await fileExplorerService.readDownloadFile(target, validation.data.path, {
+          signal: req.signal,
+        });
+        return createFileDownloadResponse(response.stream, response.contentType, response.file, {
+          contentLength: response.file.size,
+        });
       } catch (error) {
         log.error("Failed to download standalone SSH server file", {
           serverId: req.params.id,

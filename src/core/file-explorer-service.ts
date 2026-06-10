@@ -74,7 +74,12 @@ export interface FileExplorerImageReadResult {
 export interface FileExplorerDownloadReadResult {
   file: WorkspaceFileEntry;
   contentType: string;
-  data: Uint8Array;
+  stream: ReadableStream<Uint8Array>;
+}
+
+export interface FileExplorerDownloadMetadataResult {
+  file: WorkspaceFileEntry;
+  contentType: string;
 }
 
 export interface FileExplorerWriteResult {
@@ -82,8 +87,6 @@ export interface FileExplorerWriteResult {
   file: WorkspaceFileEntry;
   overwritten: boolean;
 }
-
-export const MAX_FILE_EXPLORER_DOWNLOAD_BYTES = 100 * 1024 * 1024;
 
 export class FileExplorerConflictError extends Error {
   readonly currentFile: WorkspaceFileEntry | null;
@@ -95,16 +98,8 @@ export class FileExplorerConflictError extends Error {
   }
 }
 
-export class FileExplorerDownloadTooLargeError extends Error {
-  readonly file: WorkspaceFileEntry;
-  readonly maxBytes: number;
-
-  constructor(file: WorkspaceFileEntry, maxBytes: number) {
-    super(`Requested file is too large to download through the file explorer (${file.size} bytes; limit is ${maxBytes} bytes)`);
-    this.name = "FileExplorerDownloadTooLargeError";
-    this.file = file;
-    this.maxBytes = maxBytes;
-  }
+interface FileExplorerMetadataOptions {
+  includeContentHash?: boolean;
 }
 
 function normalizeRootDirectory(directory: string): string {
@@ -197,14 +192,16 @@ function buildVersionToken(timestampSeconds: string, size: number, contentHash?:
 async function runMetadataCommand(
   executor: CommandExecutor,
   absolutePath: string,
+  options?: FileExplorerMetadataOptions,
 ): Promise<{ kind: "file" | "directory"; size: number; modifiedAt: string; versionToken: string } | null> {
   const result = await executor.exec(
     "bash",
     [
       "-lc",
-      "if [ ! -e \"$1\" ]; then exit 2; fi; if [ -d \"$1\" ]; then typeFlag=d; hash=-; else typeFlag=f; if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$1\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$1\" | cut -d' ' -f1); else hash=; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$1\"); modified=$(stat -c '%Y' \"$1\"); else size=$(stat -f '%z' \"$1\"); modified=$(stat -f '%m' \"$1\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"",
+      "if [ ! -e \"$1\" ]; then exit 2; fi; includeHash=\"${2:-1}\"; if [ -d \"$1\" ]; then typeFlag=d; hash=-; else typeFlag=f; if [ \"$includeHash\" = \"1\" ]; then if command -v sha256sum >/dev/null 2>&1; then hash=$(sha256sum \"$1\" | cut -d' ' -f1); elif command -v shasum >/dev/null 2>&1; then hash=$(shasum -a 256 \"$1\" | cut -d' ' -f1); else hash=; fi; else hash=-; fi; fi; if stat --version >/dev/null 2>&1; then size=$(stat -c '%s' \"$1\"); modified=$(stat -c '%Y' \"$1\"); else size=$(stat -f '%z' \"$1\"); modified=$(stat -f '%m' \"$1\"); fi; printf '%s\\t%s\\t%s\\t%s\\n' \"$typeFlag\" \"$size\" \"$modified\" \"$hash\"",
       "file-explorer-metadata",
       absolutePath,
+      options?.includeContentHash === false ? "0" : "1",
     ],
     {
       logFailures: false,
@@ -352,6 +349,26 @@ function toFileEntry(
     versionToken: metadata.versionToken,
     ...(mimeType ? { mimeType, isImage: true } : {}),
   };
+}
+
+async function getFileEntry(
+  target: FileExplorerTarget,
+  requestedPath: string,
+  options?: FileExplorerMetadataOptions,
+): Promise<WorkspaceFileEntry | null> {
+  const absolutePath = resolveTargetPath(target, requestedPath);
+  const metadata = await runMetadataCommand(target.executor, absolutePath, options);
+  return metadata ? toFileEntry(target, absolutePath, metadata) : null;
+}
+
+function assertDownloadableFile(file: WorkspaceFileEntry | null): WorkspaceFileEntry {
+  if (!file) {
+    throw new Error("Requested file does not exist");
+  }
+  if (file.kind !== "file") {
+    throw new Error("Requested path is not a file");
+  }
+  return file;
 }
 
 function sortEntries<T extends WorkspaceFileNode>(entries: T[]): T[] {
@@ -640,35 +657,38 @@ export class FileExplorerService {
   async readDownloadFile(
     target: FileExplorerTarget,
     requestedPath: string,
-    options?: { maxBytes?: number },
+    options?: { signal?: AbortSignal },
   ): Promise<FileExplorerDownloadReadResult> {
-    const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
-
-    if (!metadata) {
+    const { file, contentType } = await this.getDownloadMetadata(target, requestedPath);
+    const stream = await target.executor.streamFile(file.absolutePath, {
+      signal: options?.signal,
+    });
+    if (!stream) {
       throw new Error("Requested file does not exist");
-    }
-    if (metadata.kind !== "file") {
-      throw new Error("Requested path is not a file");
-    }
-
-    const file = toFileEntry(target, absolutePath, metadata);
-    const maxBytes = options?.maxBytes ?? MAX_FILE_EXPLORER_DOWNLOAD_BYTES;
-    if (file.size > maxBytes) {
-      throw new FileExplorerDownloadTooLargeError(file, maxBytes);
     }
 
     return {
       file,
+      contentType,
+      stream,
+    };
+  }
+
+  async getDownloadMetadata(
+    target: FileExplorerTarget,
+    requestedPath: string,
+  ): Promise<FileExplorerDownloadMetadataResult> {
+    const file = assertDownloadableFile(await getFileEntry(target, requestedPath, {
+      includeContentHash: false,
+    }));
+    return {
+      file,
       contentType: file.mimeType ?? "application/octet-stream",
-      data: await readFileBytes(target, absolutePath),
     };
   }
 
   async getMetadata(target: FileExplorerTarget, requestedPath: string): Promise<WorkspaceFileEntry | null> {
-    const absolutePath = resolveTargetPath(target, requestedPath);
-    const metadata = await runMetadataCommand(target.executor, absolutePath);
-    return metadata ? toFileEntry(target, absolutePath, metadata) : null;
+    return await getFileEntry(target, requestedPath);
   }
 
   async writeFile(

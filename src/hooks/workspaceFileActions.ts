@@ -2,7 +2,7 @@
  * Shared file explorer API helpers.
  */
 
-import { appFetch } from "../lib/public-path";
+import { appFetch, appPath } from "../lib/public-path";
 import {
   getStoredSshCredentialToken,
   getStoredSshServerCredential,
@@ -294,6 +294,20 @@ export async function readFileExplorerImagePreviewApi(
     await parseWorkspaceFileError(response);
   }
   return await response.blob();
+}
+
+export async function getFileExplorerDownloadUrl(
+  target: FileExplorerTarget,
+  path: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<string> {
+  const searchParams = buildFileExplorerSearchParams(target, {
+    path,
+  }, options);
+  if (target.type === "server") {
+    searchParams.set("credentialToken", await requireFileExplorerServerCredentialToken(target.id));
+  }
+  return appPath(`${getFileExplorerBasePath(target)}/download?${searchParams.toString()}`);
 }
 
 export async function downloadFileExplorerFileApi(

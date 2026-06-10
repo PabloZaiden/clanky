@@ -26,6 +26,14 @@ import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
 
+function formatTranscriptTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 describe("Chats API Integration", () => {
   let testDataDir: string;
   let testWorkDir: string;
@@ -228,6 +236,335 @@ describe("Chats API Integration", () => {
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.session.id).toBe(settled.state.session?.id);
     expect(reconnected.state.status).toBe("idle");
+  });
+
+  test("imports an existing provider session with replayed history", async () => {
+    mockBackend.addImportableSession(
+      {
+        id: "provider-session-import-1",
+        title: "Imported provider chat",
+        cwd: testWorkDir,
+        model: testModel.modelID,
+        updatedAt: new Date().toISOString(),
+      },
+      [
+        { type: "user.message", content: "Please inspect the README" },
+        { type: "reasoning", content: "I should inspect the repository first." },
+        { type: "tool.start", toolCallId: "tool-import-1", toolName: "read_file", input: { path: "README.md" } },
+        { type: "tool.complete", toolCallId: "tool-import-1", toolName: "read_file", output: "README contents" },
+        { type: "tool.start", toolName: "grep", input: { pattern: "Clanky" } },
+        { type: "tool.complete", toolName: "grep", output: "Clanky matches" },
+        { type: "assistant.message", content: "The README is present." },
+      ],
+    );
+
+    const listResponse = await fetch(`${baseUrl}/api/chats/importable-sessions?workspaceId=${testWorkspaceId}`);
+    expect(listResponse.status).toBe(200);
+    const importableSessions = await listResponse.json() as Array<{ id: string; cwd: string }>;
+    expect(importableSessions).toContainEqual(expect.objectContaining({
+      id: "provider-session-import-1",
+      cwd: testWorkDir,
+    }));
+
+    const importResponse = await fetch(`${baseUrl}/api/chats/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        sessionId: "provider-session-import-1",
+      }),
+    });
+    expect(importResponse.status).toBe(201);
+    const imported = await importResponse.json();
+    expect(imported.config.name).toBe("Imported provider chat");
+    expect(imported.config.useWorktree).toBe(false);
+    expect(imported.config.directory).toBe(testWorkDir);
+    expect(imported.state.session.id).toBe("provider-session-import-1");
+    expect(imported.state.status).toBe("idle");
+    expect(imported.state.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
+      ["user", "Please inspect the README"],
+      ["assistant", "The README is present."],
+    ]);
+    expect(imported.state.logs.some((log: { details?: { logKind?: string; responseContent?: string } }) =>
+      log.details?.logKind === "reasoning"
+      && log.details.responseContent === "I should inspect the repository first."
+    )).toBe(true);
+    expect(imported.state.toolCalls).toEqual([
+      expect.objectContaining({
+        id: "tool-import-1",
+        name: "read_file",
+        input: { path: "README.md" },
+        output: "README contents",
+        status: "completed",
+      }),
+      expect.objectContaining({
+        name: "grep",
+        input: { pattern: "Clanky" },
+        output: "Clanky matches",
+        status: "completed",
+      }),
+    ]);
+    expect(imported.state.toolCalls).toHaveLength(2);
+
+    const reconnectResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/reconnect`, {
+      method: "POST",
+    });
+    expect(reconnectResponse.status).toBe(200);
+    const reconnected = await reconnectResponse.json();
+    expect(reconnected.state.messages).toHaveLength(2);
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${imported.config.id}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Continue from the imported chat",
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+    const settled = await waitForChatIdle(imported.config.id) as {
+      state: {
+        messages: Array<{ role: string; content: string }>;
+        session?: { id?: string };
+        status: string;
+      };
+    };
+    expect(settled.state.session?.id).toBe("provider-session-import-1");
+    expect(settled.state.messages.map((message) => message.content).slice(0, 3)).toEqual([
+      "Please inspect the README",
+      "The README is present.",
+      "Continue from the imported chat",
+    ]);
+    expect(settled.state.messages.at(-1)?.role).toBe("assistant");
+  });
+
+  test("allows importing the same provider session more than once", async () => {
+    mockBackend.addImportableSession(
+      {
+        id: "provider-session-import-duplicate",
+        title: "Duplicate import source",
+        cwd: testWorkDir,
+        model: testModel.modelID,
+        updatedAt: new Date().toISOString(),
+      },
+      [
+        { type: "user.message", content: "Original request" },
+        { type: "assistant.message", content: "Original response" },
+      ],
+    );
+
+    const requestBody = {
+      workspaceId: testWorkspaceId,
+      model: testModel,
+      sessionId: "provider-session-import-duplicate",
+      cwd: testWorkDir,
+    };
+
+    const firstResponse = await fetch(`${baseUrl}/api/chats/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    expect(firstResponse.status).toBe(201);
+    const firstImport = await firstResponse.json();
+
+    const secondResponse = await fetch(`${baseUrl}/api/chats/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    expect(secondResponse.status).toBe(201);
+    const secondImport = await secondResponse.json();
+
+    expect(secondImport.config.id).not.toBe(firstImport.config.id);
+    expect(secondImport.state.session.id).toBe("provider-session-import-duplicate");
+    expect(secondImport.state.messages.map((message: { content: string }) => message.content)).toEqual([
+      "Original request",
+      "Original response",
+    ]);
+  });
+
+  test("preserves import failure when cleanup disconnect fails", async () => {
+    const originalDisconnectChat = backendManager.disconnectChat.bind(backendManager);
+    let disconnectAttempts = 0;
+    backendManager.disconnectChat = async (_chatId: string): Promise<void> => {
+      disconnectAttempts += 1;
+      throw new Error("cleanup disconnect failed");
+    };
+
+    try {
+      const importResponse = await fetch(`${baseUrl}/api/chats/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          sessionId: "provider-session-cleanup-failure",
+          cwd: testWorkDir,
+        }),
+      });
+      const errorBody = await importResponse.json() as { message: string };
+
+      expect(importResponse.status).toBe(500);
+      expect(errorBody.message).toContain("Session provider-session-cleanup-failure not found");
+      expect(errorBody.message).not.toContain("cleanup disconnect failed");
+      expect(disconnectAttempts).toBe(1);
+    } finally {
+      backendManager.disconnectChat = originalDisconnectChat;
+    }
+  });
+
+  test("exports chat transcript as markdown without tool call details", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Transcript Export Test",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const persisted = await loadChat(created.config.id);
+    expect(persisted).not.toBeNull();
+    if (!persisted) {
+      throw new Error("Expected persisted chat");
+    }
+
+    const messages: PersistedMessage[] = [
+      {
+        id: "msg-user",
+        role: "user",
+        content: "Please inspect the README",
+        timestamp: "2026-06-04T12:00:00.000Z",
+      },
+      {
+        id: "msg-assistant",
+        role: "assistant",
+        content: "I inspected it and found the issue.",
+        timestamp: "2026-06-04T12:02:00.000Z",
+      },
+    ];
+    const toolCalls: PersistedToolCall[] = [
+      {
+        id: "tool-read",
+        name: "Read\n\tInjected",
+        input: { path: "README.md", view_range: [440, 470], includeDetails: "must-not-export" },
+        output: { content: "private tool output must not export" },
+        status: "completed",
+        timestamp: "2026-06-04T12:01:00.000Z",
+      },
+    ];
+    await updateChatState(created.config.id, {
+      ...persisted.state,
+      messages,
+      toolCalls,
+    });
+
+    const transcriptResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md`);
+    expect(transcriptResponse.status).toBe(200);
+    expect(transcriptResponse.headers.get("Content-Type")).toContain("text/markdown");
+    const markdown = await transcriptResponse.text();
+
+    expect(markdown).toContain("# Transcript Export Test");
+    expect(markdown.indexOf("Please inspect the README")).toBeLessThan(markdown.indexOf("### View README.md:440-470"));
+    expect(markdown.indexOf("### View README.md:440-470")).toBeLessThan(
+      markdown.indexOf("I inspected it and found the issue."),
+    );
+    expect(markdown).toContain(`### User - ${formatTranscriptTime("2026-06-04T12:00:00.000Z")}`);
+    expect(markdown).toContain(`### View README.md:440-470 - ${formatTranscriptTime("2026-06-04T12:01:00.000Z")}`);
+    expect(markdown).toContain(`### Assistant - ${formatTranscriptTime("2026-06-04T12:02:00.000Z")}`);
+    expect(markdown).not.toContain("### Tool:");
+    expect(markdown).not.toContain("### Tool: Read\n");
+    expect(markdown).not.toContain("- Directory:");
+    expect(markdown).not.toContain(testWorkDir);
+    expect(markdown).not.toContain("must-not-export");
+    expect(markdown).not.toContain("private tool output must not export");
+
+    const downloadResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md?download=1`);
+    expect(downloadResponse.status).toBe(200);
+    expect(downloadResponse.headers.get("Content-Disposition")).toMatch(
+      /^attachment; filename="transcript-export-test\.md"$/,
+    );
+  });
+
+  test("exports attachment-only chat messages with a safe placeholder", async () => {
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Attachment Only Transcript",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const persisted = await loadChat(created.config.id);
+    if (!persisted) {
+      throw new Error("Expected persisted chat");
+    }
+
+    const messages: PersistedMessage[] = [
+      {
+        id: "msg-attachment-only",
+        role: "user",
+        content: "   ",
+        timestamp: "2026-06-04T12:03:00.000Z",
+        attachments: [
+          {
+            id: "attachment-1",
+            filename: "secret-screenshot.png",
+            mimeType: "image/png",
+            data: "private-base64-data",
+            size: 123,
+          },
+        ],
+      },
+    ];
+    await updateChatState(created.config.id, {
+      ...persisted.state,
+      messages,
+      toolCalls: [],
+    });
+
+    const transcriptResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md`);
+    expect(transcriptResponse.status).toBe(200);
+    const markdown = await transcriptResponse.text();
+
+    expect(markdown).toContain(`### User - ${formatTranscriptTime("2026-06-04T12:03:00.000Z")}`);
+    expect(markdown).not.toContain("2026-06-04T12:03:00.000Z");
+    expect(markdown).toContain("Attachment sent. Attachment data is not included in this transcript.");
+    expect(markdown).not.toContain("secret-screenshot.png");
+    expect(markdown).not.toContain("private-base64-data");
+  });
+
+  test("returns clear transcript export errors for missing or empty chats", async () => {
+    const missingResponse = await fetch(`${baseUrl}/api/chats/missing-chat/transcript.md`);
+    expect(missingResponse.status).toBe(404);
+
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Empty Transcript Export",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: false,
+        baseBranch: "main",
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+
+    const emptyResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/transcript.md`);
+    expect(emptyResponse.status).toBe(400);
+    expect((await emptyResponse.json()).error).toBe("empty_transcript");
   });
 
   test("renames autogenerated chats from the first user message and emits chat.updated", async () => {

@@ -17,13 +17,10 @@ import {
   ModelSelector,
   parseModelKey,
 } from "./ModelSelector";
-import { RenameChatModal } from "./RenameChatModal";
-import { SpawnCurrentPlanModal } from "./SpawnCurrentPlanModal";
 import { ChatTemplateSelector } from "./chat-template-selector";
 import {
   ActionMenu,
   Button,
-  ConfirmModal,
   FocusPreservingButton,
   StatusBadge,
   getChatStatusBadgeVariant,
@@ -38,12 +35,11 @@ import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
 import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navigation";
 import type { SidebarPinningState } from "./app-shell/sidebar-pins";
-import { buildChatActionItems } from "./app-shell/shell-action-items";
+import { useChatActions } from "./app-shell/chat-actions";
 import type {
   Chat,
   ChatEvent,
   ComposerImageAttachment,
-  Task,
   TaskLogEntry,
   MessageData,
   ToolCallData,
@@ -145,13 +141,6 @@ export function ChatDetails({
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSpawnPending, setIsSpawnPending] = useState(false);
-  const [isSpawnCurrentPlanPending, setIsSpawnCurrentPlanPending] = useState(false);
-  const [isSpawnCurrentPlanModalOpen, setIsSpawnCurrentPlanModalOpen] = useState(false);
-  const [spawnCurrentPlanPath, setSpawnCurrentPlanPath] = useState("");
-  const [isDeletePending, setIsDeletePending] = useState(false);
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
   const [permissionReplyPendingIds, setPermissionReplyPendingIds] = useState<string[]>([]);
   const permissionReplyPendingIdsRef = useRef(new Set<string>());
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
@@ -357,19 +346,6 @@ export function ChatDetails({
     void handleReconnect();
   }, [chat, chatSocketStatus, handleReconnect]);
 
-  const handleRename = useCallback(async (newName: string) => {
-    const response = await appFetch(`/api/chats/${chatId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newName }),
-    });
-    if (!response.ok) {
-      throw new Error(await parseError(response, "Failed to rename chat"));
-    }
-    const updatedChat = (await response.json()) as Chat;
-    setChat(updatedChat);
-  }, [chatId]);
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!chat || isActive || isSubmitting) {
@@ -502,98 +478,6 @@ export function ChatDetails({
     }
   }
 
-  async function handleDelete() {
-    if (isDeletePending) {
-      return;
-    }
-
-    setIsDeletePending(true);
-    try {
-      const response = await appFetch(`/api/chats/${chatId}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to delete chat"));
-      }
-      setIsDeleteConfirmOpen(false);
-      onBack?.();
-    } catch (deleteError) {
-      toast.error(String(deleteError));
-    } finally {
-      setIsDeletePending(false);
-    }
-  }
-
-  const handleSpawnTask = useCallback(async () => {
-    if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
-      return;
-    }
-
-    setIsSpawnPending(true);
-    try {
-      const response = await appFetch(`/api/chats/${chatId}/spawn-task`, {
-        method: "POST",
-      });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to spawn task"));
-      }
-      const task = (await response.json()) as Task;
-      onOpenTask?.(task.config.id);
-    } catch (spawnError) {
-      toast.error(String(spawnError));
-    } finally {
-      setIsSpawnPending(false);
-    }
-  }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenTask, toast]);
-
-  const openSpawnCurrentPlanModal = useCallback(() => {
-    if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
-      return;
-    }
-
-    setSpawnCurrentPlanPath("");
-    setIsSpawnCurrentPlanModalOpen(true);
-  }, [chat, isActive, isSpawnCurrentPlanPending, isSpawnPending]);
-
-  const closeSpawnCurrentPlanModal = useCallback(() => {
-    if (isSpawnCurrentPlanPending) {
-      return;
-    }
-
-    setIsSpawnCurrentPlanModalOpen(false);
-    setSpawnCurrentPlanPath("");
-  }, [isSpawnCurrentPlanPending]);
-
-  const handleSpawnTaskFromCurrentPlan = useCallback(async (requestedPlanPath: string) => {
-    if (!chat || isActive || isSpawnPending || isSpawnCurrentPlanPending) {
-      return;
-    }
-
-    const trimmedPlanPath = requestedPlanPath.trim();
-
-    setIsSpawnCurrentPlanPending(true);
-    try {
-      const response = await appFetch(`/api/chats/${chatId}/spawn-task-from-current-plan`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(trimmedPlanPath ? { planFilePath: trimmedPlanPath } : {}),
-      });
-      if (!response.ok) {
-        throw new Error(await parseError(response, "Failed to spawn task from current plan"));
-      }
-      const task = (await response.json()) as Task;
-      setSpawnCurrentPlanPath("");
-      setIsSpawnCurrentPlanModalOpen(false);
-      onOpenTask?.(task.config.id);
-    } catch (spawnError) {
-      toast.error(getErrorMessage(spawnError));
-    } finally {
-      setIsSpawnCurrentPlanPending(false);
-    }
-  }, [chat, chatId, isActive, isSpawnCurrentPlanPending, isSpawnPending, onOpenTask, toast]);
-
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     attachmentControlRef.current?.handlePaste(event);
   }
@@ -659,24 +543,16 @@ export function ChatDetails({
     };
   }, [chat, chatWorkingDirectory, embeddedTaskId, toast]);
 
-  const headerActionMenuItems = useMemo(() => {
-    if (!chat || isEmbedded) {
-      return [];
-    }
-
-    return buildChatActionItems({
-      chat,
-      hasCodeExplorerAction,
-      spawnPending: isSpawnPending,
-      spawnCurrentPlanPending: isSpawnCurrentPlanPending,
-      onSpawnTask: () => void handleSpawnTask(),
-      onSpawnTaskFromCurrentPlan: () => void openSpawnCurrentPlanModal(),
-      onOpenCodeExplorer: () => onOpenCodeExplorer?.(chat.config.id),
-      onRename: () => setIsRenameModalOpen(true),
-      onDelete: () => setIsDeleteConfirmOpen(true),
-      sidebarPinning,
-    });
-  }, [chat, handleSpawnTask, hasCodeExplorerAction, isActive, isEmbedded, isSpawnCurrentPlanPending, isSpawnPending, onOpenCodeExplorer, openSpawnCurrentPlanModal, sidebarPinning]);
+  const chatActions = useChatActions({
+    chat: isEmbedded ? null : chat,
+    hasCodeExplorerAction,
+    sidebarPinning,
+    onOpenCodeExplorer: (target) => onOpenCodeExplorer?.(target.config.id),
+    onTaskSpawned: (task) => onOpenTask?.(task.config.id),
+    onChatRenamed: (updatedChat) => setChat(updatedChat),
+    onChatDeleted: () => onBack?.(),
+    onActionError: (message) => toast.error(message),
+  });
 
   const {
     composerRef,
@@ -951,40 +827,6 @@ export function ChatDetails({
     </form>
   );
 
-  const deleteConfirmModal = (
-    <ConfirmModal
-      isOpen={isDeleteConfirmOpen}
-      onClose={() => setIsDeleteConfirmOpen(false)}
-      onConfirm={() => void handleDelete()}
-      title="Delete chat?"
-      message="This removes the saved chat session, transcript, and any worktree created for it."
-      confirmLabel="Delete"
-      loading={isDeletePending}
-    />
-  );
-
-  const renameModal = (
-    <RenameChatModal
-      isOpen={isRenameModalOpen}
-      onClose={() => setIsRenameModalOpen(false)}
-      currentName={chat.config.name}
-      onRename={handleRename}
-    />
-  );
-
-  const spawnCurrentPlanModal = (
-    <SpawnCurrentPlanModal
-      isOpen={isSpawnCurrentPlanModalOpen}
-      submitting={isSpawnCurrentPlanPending}
-      initialPlanFilePath={spawnCurrentPlanPath}
-      onClose={closeSpawnCurrentPlanModal}
-      onSubmit={async (planFilePath) => {
-        setSpawnCurrentPlanPath(planFilePath);
-        await handleSpawnTaskFromCurrentPlan(planFilePath);
-      }}
-    />
-  );
-
   return (
     <div className={`flex h-full min-h-0 flex-col bg-white ${isEmbedded ? "dark:bg-neutral-800" : "dark:bg-neutral-900"}`}>
       {!isEmbedded && (
@@ -1017,9 +859,9 @@ export function ChatDetails({
               <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
                 <div data-testid="chat-header-actions">
                   <ActionMenu
-                    items={headerActionMenuItems}
+                    items={chatActions.items}
                     ariaLabel="Chat actions"
-                    disabled={isDeletePending}
+                    disabled={chatActions.isDeletePending}
                   />
                 </div>
               </div>
@@ -1037,9 +879,7 @@ export function ChatDetails({
       {conversation}
       {permissionApprovalPanel}
       {composer}
-      {!isEmbedded && renameModal}
-      {!isEmbedded && spawnCurrentPlanModal}
-      {!isEmbedded && deleteConfirmModal}
+      {!isEmbedded && chatActions.modals}
     </div>
   );
 }

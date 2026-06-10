@@ -20,6 +20,10 @@ import type {
   Backend,
   ConnectionInfo,
   ConfigOption,
+  ImportableSession,
+  ImportSessionOptions,
+  ImportSessionResult,
+  SessionReplayEvent,
 } from "../types";
 import { createEventStream, type EventStream } from "../../utils/event-stream";
 import { getProviderAcpCommand } from "../../core/agent-runtime-command";
@@ -57,6 +61,8 @@ type CachedModels = {
   complete: boolean;
 };
 
+type ReplaySubscriber = (event: SessionReplayEvent) => void;
+
 /**
  * ACP backend implementation.
  * Supports stdio ACP mode and translates ACP stream updates into AgentEvents.
@@ -79,6 +85,9 @@ export class AcpBackend implements Backend {
 
   /** Event subscriber callbacks by session */
   private sessionSubscribers = new Map<string, Set<SessionSubscriber>>();
+
+  /** Replay subscribers capture raw session/load history without live-stream normalization. */
+  private replaySubscribers = new Map<string, Set<ReplaySubscriber>>();
 
   /** Track whether message.start has been emitted for active prompt per session */
   private sessionMessageStarted = new Map<string, boolean>();
@@ -618,6 +627,8 @@ export class AcpBackend implements Backend {
       return;
     }
 
+    this.emitReplayEvent(sessionId, updateObj, content, updateType);
+
     // Handle config_option_update/config_options_update from the agent.
     if (updateType === "config_option_update" || updateType === "config_options_update") {
       const configOptions = this.parseConfigOptions(updateObj);
@@ -633,6 +644,17 @@ export class AcpBackend implements Backend {
         log.debug("[AcpBackend] Config options updated by agent", {
           sessionId,
           options: configOptions.map((o) => `${o.id}=${o.currentValue}`),
+        });
+      }
+      return;
+    }
+
+    if (updateType === "user_message_chunk") {
+      const text = getString(content["text"]) ?? "";
+      if (text.length > 0) {
+        this.emitSessionEvent(sessionId, {
+          type: "user.message",
+          content: text,
         });
       }
       return;
@@ -869,6 +891,142 @@ export class AcpBackend implements Backend {
     if (existing.size === 0) {
       this.sessionSubscribers.delete(sessionId);
     }
+  }
+
+  private addReplaySubscriber(sessionId: string, subscriber: ReplaySubscriber): void {
+    const existing = this.replaySubscribers.get(sessionId) ?? new Set<ReplaySubscriber>();
+    existing.add(subscriber);
+    this.replaySubscribers.set(sessionId, existing);
+  }
+
+  private removeReplaySubscriber(sessionId: string, subscriber: ReplaySubscriber): void {
+    const existing = this.replaySubscribers.get(sessionId);
+    if (!existing) {
+      return;
+    }
+    existing.delete(subscriber);
+    if (existing.size === 0) {
+      this.replaySubscribers.delete(sessionId);
+    }
+  }
+
+  private emitReplayEvent(
+    sessionId: string,
+    updateObj: Record<string, unknown>,
+    content: Record<string, unknown>,
+    updateType: string,
+  ): void {
+    const subscribers = this.replaySubscribers.get(sessionId);
+    if (!subscribers || subscribers.size === 0) {
+      return;
+    }
+
+    const event = this.mapReplayEvent(updateObj, content, updateType);
+    if (!event) {
+      return;
+    }
+
+    for (const subscriber of subscribers) {
+      subscriber(event);
+    }
+  }
+
+  private mapReplayEvent(
+    updateObj: Record<string, unknown>,
+    content: Record<string, unknown>,
+    updateType: string,
+  ): SessionReplayEvent | null {
+    if (updateType === "user_message_chunk") {
+      const text = getString(content["text"]) ?? "";
+      return text.length > 0 ? { type: "user.message", content: text } : null;
+    }
+
+    if (updateType === "agent_message_chunk") {
+      const text = getString(content["text"]) ?? "";
+      return text.length > 0 ? { type: "assistant.message", content: text } : null;
+    }
+
+    if (updateType === "agent_thought_chunk") {
+      const text = getString(content["text"]) ?? "";
+      return text.length > 0 ? { type: "reasoning", content: text } : null;
+    }
+
+    if (updateType === "tool_call") {
+      const toolCallId = firstString(updateObj["toolCallId"], content["toolCallId"]);
+      const toolName = firstString(
+        content["toolName"],
+        content["name"],
+        updateObj["toolName"],
+        updateObj["name"],
+        updateObj["kind"],
+        content["kind"],
+        updateObj["title"],
+      ) ?? "unknown_tool";
+      return {
+        type: "tool.start",
+        toolCallId,
+        toolName,
+        input: content["input"] ?? updateObj["input"] ?? updateObj["rawInput"] ?? {},
+      };
+    }
+
+    if (updateType === "tool_call_update") {
+      const status = firstString(
+        content["status"],
+        updateObj["status"],
+        content["state"],
+        updateObj["state"],
+      );
+      if (
+        status !== "completed"
+        && status !== "success"
+        && status !== "failed"
+        && status !== "error"
+        && status !== "cancelled"
+        && status !== "canceled"
+      ) {
+        return null;
+      }
+
+      const toolCallId = firstString(updateObj["toolCallId"], content["toolCallId"]);
+      const toolName = firstString(
+        content["toolName"],
+        content["name"],
+        updateObj["toolName"],
+        updateObj["name"],
+        updateObj["kind"],
+        toolCallId ? this.toolCallNames.get(toolCallId) : undefined,
+        updateObj["title"],
+      ) ?? "unknown_tool";
+      const rawOutput = isRecord(updateObj["rawOutput"]) ? updateObj["rawOutput"] : {};
+      const completedInput = updateObj["input"] ?? updateObj["rawInput"] ?? content["input"];
+      const errorMessage = firstString(content["error"], updateObj["error"], rawOutput["message"]);
+      const baseOutput = content["output"] ?? updateObj["output"] ?? updateObj["rawOutput"] ?? content["content"] ?? updateObj["content"];
+      const isFailure = status === "failed" || status === "error";
+      const output = isFailure
+        ? isRecord(baseOutput)
+          ? {
+            ...baseOutput,
+            status,
+            ...(errorMessage ? { error: errorMessage } : {}),
+          }
+          : {
+            status,
+            ...(errorMessage ? { error: errorMessage } : {}),
+            ...(baseOutput !== undefined ? { output: baseOutput } : {}),
+          }
+        : baseOutput ?? {};
+
+      return {
+        type: "tool.complete",
+        toolCallId,
+        toolName,
+        input: completedInput,
+        output,
+      };
+    }
+
+    return null;
   }
 
   private emitSessionEvent(sessionId: string, event: AgentEvent): void {
@@ -1457,55 +1615,112 @@ export class AcpBackend implements Backend {
       return cached;
     }
 
-    const result = await this.sendRpcRequest<unknown>("session/list", {});
-    if (!isRecord(result) || !Array.isArray(result["sessions"])) {
-      return null;
+    const listedSession = (await this.listSessions()).find((session) => session.id === id);
+    if (!listedSession) {
+      return this.sessionCache.get(id) ?? null;
     }
 
-    for (const rawSession of result["sessions"]) {
-      if (!isRecord(rawSession)) {
-        continue;
-      }
-      const sessionId = getString(rawSession["sessionId"]);
-      if (sessionId !== id) {
-        continue;
-      }
-      const sessionDirectory = getString(rawSession["cwd"]) ?? this.directory;
-      const listedSession = this.mapSession({
-        id: sessionId,
-        title: getString(rawSession["title"]),
-        time: { created: Date.now() },
+    const loaded = await this.sendRpcRequest<unknown>("session/load", {
+      sessionId: listedSession.id,
+      cwd: listedSession.cwd,
+      mcpServers: [],
+    });
+    const session = this.hydrateSessionFromResult(
+      listedSession.id,
+      loaded,
+      listedSession.cwd,
+      listedSession.title,
+    );
+    this.sessionCache.set(session.id, session);
+    return session;
+  }
+
+  async listSessions(directory?: string): Promise<ImportableSession[]> {
+    this.ensureConnected();
+
+    const sessions: ImportableSession[] = [];
+    let cursor: string | undefined;
+    do {
+      const result = await this.sendRpcRequest<unknown>("session/list", {
+        ...(directory ? { cwd: directory } : {}),
+        ...(cursor ? { cursor } : {}),
       });
-
-      try {
-        const loaded = await this.sendRpcRequest<unknown>("session/load", {
-          sessionId,
-          cwd: sessionDirectory,
-          mcpServers: [],
-        });
-        const hydratedSession = this.hydrateSessionFromResult(
-          sessionId,
-          loaded,
-          sessionDirectory,
-          listedSession.title,
-        );
-        this.sessionCache.set(hydratedSession.id, hydratedSession);
-        return hydratedSession;
-      } catch (error) {
-        const message = String(error);
-        if (message.includes("Method not found") || message.includes("-32601")) {
-          this.sessionDirectories.set(listedSession.id, sessionDirectory);
-          this.sessionCache.set(listedSession.id, listedSession);
-          return listedSession;
-        }
-        if (message.toLowerCase().includes("not found")) {
-          return null;
-        }
-        throw error;
+      if (!isRecord(result) || !Array.isArray(result["sessions"])) {
+        return sessions;
       }
-    }
 
-    return null;
+      for (const rawSession of result["sessions"]) {
+        if (!isRecord(rawSession)) {
+          continue;
+        }
+        const sessionId = getString(rawSession["sessionId"]) ?? getString(rawSession["id"]);
+        if (!sessionId) {
+          continue;
+        }
+        const cwd = getString(rawSession["cwd"]) ?? directory ?? this.directory;
+        sessions.push({
+          id: sessionId,
+          title: getString(rawSession["title"]),
+          cwd,
+          updatedAt: getString(rawSession["updatedAt"]) ?? getString(rawSession["lastUpdatedAt"]),
+          model: getString(rawSession["model"]) ?? getString(rawSession["defaultModel"]),
+        });
+      }
+
+      cursor = getString(result["nextCursor"]);
+    } while (cursor);
+
+    return sessions;
+  }
+
+  async importSession(options: ImportSessionOptions): Promise<ImportSessionResult> {
+    this.ensureConnected();
+
+    const listed = (await this.listSessions(options.cwd)).find((session) => session.id === options.sessionId);
+    const cwd = options.cwd ?? listed?.cwd ?? this.directory;
+    const events: SessionReplayEvent[] = [];
+    const capture: ReplaySubscriber = (event) => {
+      events.push(event);
+    };
+
+    this.sessionMessageStarted.delete(options.sessionId);
+    this.sessionMessageContent.delete(options.sessionId);
+    this.sessionReasoningPartKeys.delete(options.sessionId);
+    this.sessionLastReasoningChunkSignature.delete(options.sessionId);
+    this.addReplaySubscriber(options.sessionId, capture);
+    try {
+      const loaded = await this.sendRpcRequest<unknown>("session/load", {
+        sessionId: options.sessionId,
+        cwd,
+        mcpServers: [],
+      });
+      const session = this.hydrateSessionFromResult(
+        options.sessionId,
+        loaded,
+        cwd,
+        listed?.title,
+      );
+      this.sessionCache.set(session.id, session);
+      return {
+        session,
+        cwd,
+        events,
+      };
+    } catch (error) {
+      const message = String(error);
+      if (message.toLowerCase().includes("not found")) {
+        throw new Error(`Session ${options.sessionId} not found`, {
+          cause: error instanceof Error ? error : undefined,
+        });
+      }
+      throw error;
+    } finally {
+      this.removeReplaySubscriber(options.sessionId, capture);
+      this.sessionMessageStarted.delete(options.sessionId);
+      this.sessionMessageContent.delete(options.sessionId);
+      this.sessionReasoningPartKeys.delete(options.sessionId);
+      this.sessionLastReasoningChunkSignature.delete(options.sessionId);
+    }
   }
 
   /**

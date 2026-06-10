@@ -22,6 +22,7 @@ interface ComposeViewProps {
   setComposeActionState: (state: CreateTaskFormActionState | null) => void;
   handleTaskSubmit: (request: CreateTaskFormSubmitRequest) => Promise<boolean>;
   createChat: (request: import("../../types").CreateChatRequest) => Promise<import("../../types").Chat | null>;
+  importExistingChat: (request: import("../../types").ImportExistingChatRequest) => Promise<import("../../types").Chat | null>;
   createSshServerChat: (
     serverId: string,
     request: import("../../types").CreateSshServerChatRequest,
@@ -61,6 +62,7 @@ export function ComposeView(props: ComposeViewProps) {
     setComposeActionState,
     handleTaskSubmit,
     createChat,
+    importExistingChat,
     createSshServerChat,
     dashboardData,
     workspaces,
@@ -125,6 +127,7 @@ export function ComposeView(props: ComposeViewProps) {
         shellHeaderOffsetClassName={shellHeaderOffsetClassName}
         navigateWithinShell={navigateWithinShell}
         createChat={createChat}
+        importExistingChat={importExistingChat}
         createSshServerChat={createSshServerChat}
       />
     );

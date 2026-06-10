@@ -108,6 +108,37 @@ export interface AgentSession {
   configOptions?: ConfigOption[];
 }
 
+export interface ImportableSession {
+  /** Provider-native session ID */
+  id: string;
+  /** Provider-native title, when available */
+  title?: string;
+  /** Working directory the provider associates with the session */
+  cwd: string;
+  /** Provider-reported update timestamp, when available */
+  updatedAt?: string;
+  /** Provider-reported model, when available */
+  model?: string;
+}
+
+export type SessionReplayEvent =
+  | { type: "user.message"; content: string }
+  | { type: "assistant.message"; content: string }
+  | { type: "reasoning"; content: string }
+  | { type: "tool.start"; toolCallId?: string; toolName: string; input: unknown }
+  | { type: "tool.complete"; toolCallId?: string; toolName: string; input?: unknown; output: unknown };
+
+export interface ImportSessionOptions {
+  sessionId: string;
+  cwd?: string;
+}
+
+export interface ImportSessionResult {
+  session: AgentSession;
+  cwd: string;
+  events: SessionReplayEvent[];
+}
+
 /**
  * Part of a prompt message.
  */
@@ -202,6 +233,7 @@ export interface QuestionInfo {
  * Events emitted by ACP backends.
  */
 export type AgentEvent =
+  | { type: "user.message"; content: string }
   | { type: "message.start"; messageId: string }
   | { type: "message.delta"; content: string }
   | { type: "message.complete"; content: string }
@@ -289,6 +321,12 @@ export interface Backend {
 
   /** Get an existing session by ID */
   getSession(id: string): Promise<AgentSession | null>;
+
+  /** List provider-native sessions that can be imported */
+  listSessions(directory?: string): Promise<ImportableSession[]>;
+
+  /** Load a provider-native session and capture replayed history for import */
+  importSession(options: ImportSessionOptions): Promise<ImportSessionResult>;
 
   /** Delete a session */
   deleteSession(id: string): Promise<void>;

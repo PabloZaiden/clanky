@@ -24,6 +24,7 @@ import {
 } from "../types/schemas";
 import { getModelsForSettings } from "./models";
 import { buildProviderAvailabilityShellCheck } from "../core/agent-runtime-command";
+import { AGENT_PROVIDER_IDS } from "../constants/agent-providers";
 import type { ServerSettings } from "../types/settings";
 
 const log = createLogger("api:ssh-servers");
@@ -256,19 +257,16 @@ export const sshServersRoutes = {
         }
         const password = sshCredentialManager.getPasswordForToken(req.params.id, validation.data.credentialToken);
         const { executor } = await sshServerManager.getCommandExecutor(req.params.id, password);
-        const [copilot, opencode, codex, claude] = await Promise.all([
-          executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("copilot")]),
-          executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("opencode")]),
-          executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("codex")]),
-          executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck("claude")]),
-        ]);
+        const availabilityResults = await Promise.all(
+          AGENT_PROVIDER_IDS.map((providerID) => (
+            executor.exec("sh", ["-lc", buildProviderAvailabilityShellCheck(providerID)])
+          )),
+        );
         return Response.json({
-          providers: [
-            { providerID: "copilot", available: copilot.success },
-            { providerID: "opencode", available: opencode.success },
-            { providerID: "codex", available: codex.success },
-            { providerID: "claude", available: claude.success },
-          ],
+          providers: AGENT_PROVIDER_IDS.map((providerID, index) => ({
+            providerID,
+            available: availabilityResults[index]!.success,
+          })),
         });
       } catch (error) {
         log.error("Failed to discover SSH-server chat providers", {
