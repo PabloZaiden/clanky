@@ -6,6 +6,22 @@ import { Button } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 
+const SSH_SESSION_USE_TMUX_STORAGE_KEY = "clanky.sshSession.useTmux";
+
+function readStoredUseTmuxPreference(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem(SSH_SESSION_USE_TMUX_STORAGE_KEY) === "true";
+}
+
+function storeUseTmuxPreference(useTmux: boolean): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(SSH_SESSION_USE_TMUX_STORAGE_KEY, String(useTmux));
+}
+
 export function SshSessionComposer({
   workspaces,
   servers,
@@ -35,8 +51,13 @@ export function SshSessionComposer({
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>(initialWorkspaceId ?? workspaces[0]?.id);
   const [selectedServerId, setSelectedServerId] = useState(initialServerId ?? servers[0]?.config.id ?? "");
   const [connectionMode, setConnectionMode] = useState<SshConnectionMode>("dtach");
-  const [useTmux, setUseTmux] = useState(false);
+  const [useTmux, setUseTmux] = useState(readStoredUseTmuxPreference);
   const [submitting, setSubmitting] = useState(false);
+
+  function handleUseTmuxChange(nextUseTmux: boolean): void {
+    setUseTmux(nextUseTmux);
+    storeUseTmuxPreference(nextUseTmux);
+  }
 
   useEffect(() => {
     if (!selectedWorkspaceId && (initialWorkspaceId || workspaces[0])) {
@@ -145,7 +166,7 @@ export function SshSessionComposer({
               id="ssh-use-tmux"
               type="checkbox"
               checked={useTmux}
-              onChange={(event) => setUseTmux(event.target.checked)}
+              onChange={(event) => handleUseTmuxChange(event.target.checked)}
               className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400 dark:border-gray-700 dark:bg-neutral-900 dark:text-gray-100 dark:focus:ring-gray-600"
             />
             <span>
