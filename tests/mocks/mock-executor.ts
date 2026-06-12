@@ -5,7 +5,7 @@
  */
 
 import { createWriteStream } from "node:fs";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat, truncate } from "node:fs/promises";
 import type {
   CommandExecutor,
   CommandResult,
@@ -137,6 +137,10 @@ export class TestCommandExecutor implements CommandExecutor {
           currentSize = (await stat(path)).size;
         } catch {
           currentSize = 0;
+        }
+        if (options?.append && currentSize > expectedOffset) {
+          await truncate(path, expectedOffset);
+          currentSize = expectedOffset;
         }
         if (currentSize !== expectedOffset) {
           return {

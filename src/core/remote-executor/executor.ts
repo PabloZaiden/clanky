@@ -7,7 +7,7 @@
  */
 
 import { createWriteStream } from "node:fs";
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat, truncate } from "node:fs/promises";
 import { dirname } from "node:path";
 import type {
   CommandExecutor,
@@ -642,6 +642,10 @@ export class CommandExecutorImpl implements CommandExecutor {
           } catch {
             currentSize = 0;
           }
+          if (options?.append && currentSize > expectedOffset) {
+            await truncate(path, expectedOffset);
+            currentSize = expectedOffset;
+          }
           if (currentSize !== expectedOffset) {
             return {
               success: false,
@@ -694,9 +698,10 @@ export class CommandExecutorImpl implements CommandExecutor {
 
     const parentDir = dirname(path);
     const expectedOffset = options?.expectedOffset;
+    const appendMode = options?.append ? "1" : "0";
     const offsetCheck = expectedOffset === undefined
       ? ""
-      : ` current_size=0; if [ -e ${quoteShell(path)} ]; then if stat --version >/dev/null 2>&1; then current_size=$(stat -c '%s' ${quoteShell(path)}); else current_size=$(stat -f '%z' ${quoteShell(path)}); fi; fi; if [ "$current_size" -ne ${expectedOffset} ]; then printf 'Expected file offset ${expectedOffset}, found %s\\n' "$current_size" >&2; exit 3; fi;`;
+      : ` current_size=0; if [ -e ${quoteShell(path)} ]; then if stat --version >/dev/null 2>&1; then current_size=$(stat -c '%s' ${quoteShell(path)}); else current_size=$(stat -f '%z' ${quoteShell(path)}); fi; fi; if [ "$current_size" -gt ${expectedOffset} ] && [ "${appendMode}" = "1" ]; then if truncate -s ${expectedOffset} ${quoteShell(path)} 2>/dev/null; then current_size=${expectedOffset}; else printf 'Failed to truncate file to expected offset ${expectedOffset}\\n' >&2; exit 3; fi; fi; if [ "$current_size" -ne ${expectedOffset} ]; then printf 'Expected file offset ${expectedOffset}, found %s\\n' "$current_size" >&2; exit 3; fi;`;
     const writeOperator = options?.append ? ">>" : ">";
     const remoteShellCommand = [
       `mkdir -p ${quoteShell(parentDir)}`,
