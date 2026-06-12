@@ -6,9 +6,17 @@
  * parallel over the shared multiplexed connection.
  */
 
+import { createWriteStream } from "node:fs";
 import { mkdir, readdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { CommandExecutor, CommandResult, CommandOptions, FileStreamOptions } from "../command-executor";
+import type {
+  CommandExecutor,
+  CommandResult,
+  CommandOptions,
+  FileStreamOptions,
+  FileWriteStreamOptions,
+  FileWriteStreamResult,
+} from "../command-executor";
 import { log } from "../logger";
 import type { CommandExecutorConfig } from "./types";
 import { quoteShell, buildEnvAssignments, readProcessStream } from "./utils";
@@ -612,6 +620,185 @@ export class CommandExecutorImpl implements CommandExecutor {
         });
 
     return createProcessStdoutStream(proc as StreamedProcess, "SSH file stream", options?.signal);
+  }
+
+  async writeFileStream(
+    path: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: FileWriteStreamOptions,
+  ): Promise<FileWriteStreamResult> {
+    if (this.provider === "local") {
+      try {
+        if (options?.signal?.aborted) {
+          return { success: false, bytesWritten: 0, error: "Write aborted" };
+        }
+
+        await mkdir(dirname(path), { recursive: true });
+        const expectedOffset = options?.expectedOffset;
+        if (expectedOffset !== undefined) {
+          let currentSize = 0;
+          try {
+            currentSize = (await stat(path)).size;
+          } catch {
+            currentSize = 0;
+          }
+          if (currentSize !== expectedOffset) {
+            return {
+              success: false,
+              bytesWritten: 0,
+              error: `Expected file offset ${expectedOffset}, found ${currentSize}`,
+            };
+          }
+        }
+
+        const writeStream = createWriteStream(path, {
+          flags: options?.append && expectedOffset !== 0 ? "r+" : "w",
+          ...(options?.append ? { start: expectedOffset ?? 0 } : {}),
+        });
+        const reader = stream.getReader();
+        let bytesWritten = 0;
+        try {
+          while (true) {
+            if (options?.signal?.aborted) {
+              return { success: false, bytesWritten, error: "Write aborted" };
+            }
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+            const canContinue = writeStream.write(value);
+            bytesWritten += value.byteLength;
+            if (!canContinue) {
+              await new Promise<void>((resolve, reject) => {
+                writeStream.once("drain", resolve);
+                writeStream.once("error", reject);
+              });
+            }
+          }
+        } finally {
+          await new Promise<void>((resolve, reject) => {
+            writeStream.end(() => resolve());
+            writeStream.once("error", reject);
+          });
+        }
+
+        return { success: true, bytesWritten };
+      } catch (error) {
+        return { success: false, bytesWritten: 0, error: String(error) };
+      }
+    }
+
+    if (!this.host) {
+      return { success: false, bytesWritten: 0, error: "SSH file streaming requires execution host" };
+    }
+
+    const parentDir = dirname(path);
+    const expectedOffset = options?.expectedOffset;
+    const offsetCheck = expectedOffset === undefined
+      ? ""
+      : ` current_size=0; if [ -e ${quoteShell(path)} ]; then if stat --version >/dev/null 2>&1; then current_size=$(stat -c '%s' ${quoteShell(path)}); else current_size=$(stat -f '%z' ${quoteShell(path)}); fi; fi; if [ "$current_size" -ne ${expectedOffset} ]; then printf 'Expected file offset ${expectedOffset}, found %s\\n' "$current_size" >&2; exit 3; fi;`;
+    const writeOperator = options?.append ? ">>" : ">";
+    const remoteShellCommand = [
+      `mkdir -p ${quoteShell(parentDir)}`,
+      "&&",
+      offsetCheck,
+      `cat ${writeOperator} ${quoteShell(path)}`,
+    ].join(" ");
+    const sshTarget = this.user ? `${this.user}@${this.host}` : this.host;
+    const proc = this.password && this.password.trim().length > 0
+      ? Bun.spawn([
+          "sshpass",
+          "-e",
+          "ssh",
+          ...buildSshCommandArgs({
+            authMode: "password",
+            port: this.port,
+            target: sshTarget,
+            remoteCommand: remoteShellCommand,
+            identityFile: this.identityFile,
+            connectionScope: this.directory,
+          }),
+        ], {
+          cwd: "/",
+          stdin: "pipe",
+          stdout: "pipe",
+          stderr: "pipe",
+          env: { ...process.env, SSHPASS: this.password },
+        })
+      : Bun.spawn([
+          "ssh",
+          ...buildSshCommandArgs({
+            authMode: "batch",
+            port: this.port,
+            target: sshTarget,
+            remoteCommand: remoteShellCommand,
+            identityFile: this.identityFile,
+            connectionScope: this.directory,
+          }),
+        ], {
+          cwd: "/",
+          stdin: "pipe",
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+
+    let bytesWritten = 0;
+    const abortHandler = () => {
+      try {
+        proc.kill();
+      } catch {
+        // Ignore cleanup errors while aborting a streaming write.
+      }
+    };
+
+    try {
+      if (options?.signal?.aborted) {
+        abortHandler();
+        return { success: false, bytesWritten: 0, error: "Write aborted" };
+      }
+      options?.signal?.addEventListener("abort", abortHandler, { once: true });
+      const stdin = proc.stdin;
+      const reader = stream.getReader();
+      try {
+        while (true) {
+          if (options?.signal?.aborted) {
+            abortHandler();
+            return { success: false, bytesWritten, error: "Write aborted" };
+          }
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          stdin.write(value);
+          bytesWritten += value.byteLength;
+        }
+      } finally {
+        stdin.end();
+      }
+      const [exitCode, stderr] = await Promise.all([
+        proc.exited,
+        new Response(proc.stderr).text(),
+      ]);
+      if (options?.signal?.aborted) {
+        return { success: false, bytesWritten, error: "Write aborted" };
+      }
+      if (exitCode !== 0) {
+        return {
+          success: false,
+          bytesWritten,
+          error: stderr.trim() || `SSH file write failed with exit code ${exitCode}`,
+        };
+      }
+      return { success: true, bytesWritten };
+    } catch (error) {
+      return {
+        success: false,
+        bytesWritten,
+        error: error instanceof DOMException && error.name === "AbortError" ? "Write aborted" : String(error),
+      };
+    } finally {
+      options?.signal?.removeEventListener("abort", abortHandler);
+    }
   }
 
   async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {

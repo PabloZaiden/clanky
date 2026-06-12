@@ -9,10 +9,13 @@ import {
   type FileExplorerTarget,
   WorkspaceFileConflictError,
   getFileExplorerFileMetadataApi,
+  deleteFileExplorerNodeApi,
   loadFileExplorerTreeApi,
   listFileExplorerFilesApi,
   readFileExplorerFileApi,
   readFileExplorerImagePreviewApi,
+  renameFileExplorerNodeApi,
+  uploadFileExplorerFileApi,
   writeFileExplorerFileApi,
 } from "./workspaceFileActions";
 import { isBrowserRenderableImage } from "../utils/workspace-file-images";
@@ -33,6 +36,7 @@ export interface UseFileExplorerResult {
   directoryEntries: Record<string, WorkspaceFileNode[]>;
   expandedDirectories: string[];
   currentDirectory: string;
+  selectedNode: WorkspaceFileNode | null;
   currentFile: WorkspaceFileEntry | null;
   pendingFilePath: string | null;
   showHiddenFiles: boolean;
@@ -48,10 +52,15 @@ export interface UseFileExplorerResult {
   conflictState: WorkspaceFileConflictState | null;
   largeFileWarning: WorkspaceLargeFileWarningState | null;
   autoReloadedAt: string | null;
+  uploadProgress: { bytesUploaded: number; totalBytes: number } | null;
   refreshTree: (path?: string) => Promise<void>;
   toggleShowHiddenFiles: () => Promise<void>;
   toggleDirectory: (path: string) => Promise<void>;
   openFile: (path: string) => Promise<void>;
+  selectNode: (node: WorkspaceFileNode | null) => void;
+  renameSelectedNode: (newName: string, options?: { overwrite?: boolean }) => Promise<WorkspaceFileEntry | null>;
+  deleteSelectedNode: () => Promise<boolean>;
+  uploadFileToSelectedDirectory: (file: File, options?: { overwrite?: boolean; signal?: AbortSignal }) => Promise<WorkspaceFileEntry | null>;
   openLargeFileInEditor: (path?: string) => Promise<boolean>;
   setEditorContent: (value: string) => void;
   saveCurrentFile: (options?: { overwrite?: boolean }) => Promise<boolean>;
@@ -77,6 +86,10 @@ function getAncestorDirectories(path: string): string[] {
     currentDirectory = getParentDirectory(currentDirectory);
   }
   return directories;
+}
+
+function isPathWithinOrEqual(path: string, ancestorPath: string): boolean {
+  return path === ancestorPath || path.startsWith(`${ancestorPath}/`);
 }
 
 function upsertDirectoryEntry(
@@ -158,6 +171,7 @@ export function useFileExplorer(
   const [directoryEntries, setDirectoryEntries] = useState<Record<string, WorkspaceFileNode[]>>({});
   const [expandedDirectories, setExpandedDirectories] = useState<string[]>([]);
   const [currentDirectory, setCurrentDirectory] = useState("");
+  const [selectedNode, setSelectedNode] = useState<WorkspaceFileNode | null>(null);
   const [currentFile, setCurrentFile] = useState<WorkspaceFileEntry | null>(null);
   const [pendingFilePath, setPendingFilePath] = useState<string | null>(null);
   const [showHiddenFiles, setShowHiddenFiles] = useState(true);
@@ -171,6 +185,7 @@ export function useFileExplorer(
   const [conflictState, setConflictState] = useState<WorkspaceFileConflictState | null>(null);
   const [largeFileWarning, setLargeFileWarning] = useState<WorkspaceLargeFileWarningState | null>(null);
   const [autoReloadedAt, setAutoReloadedAt] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ bytesUploaded: number; totalBytes: number } | null>(null);
   const [lazySubtreeRoots, setLazySubtreeRoots] = useState<string[]>([]);
   const pollTimerRef = useRef<number | null>(null);
   const fileLoadAbortControllerRef = useRef<AbortController | null>(null);
@@ -258,6 +273,10 @@ export function useFileExplorer(
     setShowHiddenFiles((currentValue) => !currentValue);
   }, []);
 
+  const selectNode = useCallback((node: WorkspaceFileNode | null) => {
+    setSelectedNode(node);
+  }, []);
+
   const invalidateFileLoad = useCallback(() => {
     fileLoadAbortControllerRef.current?.abort();
     fileLoadAbortControllerRef.current = null;
@@ -329,6 +348,7 @@ export function useFileExplorer(
         if (metadata.size > LARGE_FILE_WARNING_THRESHOLD_BYTES && !options?.allowLargeFile) {
           setCurrentDirectory(getParentDirectory(metadata.path));
           setCurrentFile(metadata);
+          setSelectedNode(metadata);
           setEditorContent("");
           setSavedContent("");
           setAutoReloadedAt(null);
@@ -345,6 +365,7 @@ export function useFileExplorer(
         }
         setCurrentDirectory(getParentDirectory(response.file.path));
         setCurrentFile(response.file);
+        setSelectedNode(response.file);
         setEditorContent(response.content);
         setSavedContent(response.content);
         setAutoReloadedAt(null);
@@ -370,6 +391,7 @@ export function useFileExplorer(
       }
       setCurrentDirectory(getParentDirectory(metadata.path));
       setCurrentFile(metadata);
+      setSelectedNode(metadata);
       setAutoReloadedAt(null);
       setLargeFileWarning(null);
       replaceImagePreviewUrl(URL.createObjectURL(imageBlob));
@@ -381,6 +403,7 @@ export function useFileExplorer(
       }
       replaceImagePreviewUrl(null);
       setCurrentFile(null);
+      setSelectedNode(null);
       setEditorContent("");
       setSavedContent("");
       setConflictState(null);
@@ -576,6 +599,10 @@ export function useFileExplorer(
   }, [applyErrorState, loadingFile, replaceImagePreviewUrl, savingFile, startDirectory, targetId, targetType]);
 
   const toggleDirectory = useCallback(async (path: string) => {
+    const directoryNode = findDirectoryNode(directoryEntries, path);
+    if (directoryNode) {
+      setSelectedNode(directoryNode);
+    }
     const isExpanded = expandedDirectories.includes(path);
     if (isExpanded) {
       setExpandedDirectories((currentPaths) => currentPaths.filter((currentPath) => currentPath !== path));
@@ -583,7 +610,6 @@ export function useFileExplorer(
     }
 
     setExpandedDirectories((currentPaths) => [...currentPaths, path]);
-    const directoryNode = findDirectoryNode(directoryEntries, path);
     const shouldLoadDirectory = directoryEntries[path] === undefined && (
       !effectiveLoadFullTree
       || Boolean(directoryNode?.loadOnExpand)
@@ -593,6 +619,101 @@ export function useFileExplorer(
       await refreshTree(path);
     }
   }, [directoryEntries, effectiveLoadFullTree, expandedDirectories, lazySubtreeRoots, refreshTree]);
+
+  const renameSelectedNode = useCallback(async (newName: string, options?: { overwrite?: boolean }) => {
+    if (!selectedNode) {
+      return null;
+    }
+    try {
+      setError(null);
+      setErrorCode(null);
+      const response = await renameFileExplorerNodeApi({ type: targetType, id: targetId }, {
+        path: selectedNode.path,
+        newName,
+        expectedVersionToken: currentFile?.path === selectedNode.path ? currentFile.versionToken : null,
+        overwrite: options?.overwrite ?? false,
+        startDirectory: startDirectory ?? null,
+      }, { startDirectory });
+      setSelectedNode(response.file);
+      await refreshTree(getParentDirectory(response.file.path));
+      if (currentFile?.path === response.previousPath) {
+        await openFile(response.file.path, {
+          allowLargeFile: response.file.size > LARGE_FILE_WARNING_THRESHOLD_BYTES,
+        });
+      }
+      return response.file;
+    } catch (requestError) {
+      applyErrorState(requestError);
+      return null;
+    }
+  }, [applyErrorState, currentFile, openFile, refreshTree, selectedNode, startDirectory, targetId, targetType]);
+
+  const deleteSelectedNode = useCallback(async () => {
+    if (!selectedNode) {
+      return false;
+    }
+    try {
+      setError(null);
+      setErrorCode(null);
+      const response = await deleteFileExplorerNodeApi({ type: targetType, id: targetId }, {
+        path: selectedNode.path,
+        kind: selectedNode.kind,
+        expectedVersionToken: currentFile?.path === selectedNode.path ? currentFile.versionToken : null,
+        startDirectory: startDirectory ?? null,
+      }, { startDirectory });
+      const parentDirectory = getParentDirectory(response.deletedPath);
+      setSelectedNode(null);
+      if (currentFile && isPathWithinOrEqual(currentFile.path, response.deletedPath)) {
+        invalidateFileLoad();
+        setCurrentFile(null);
+        replaceImagePreviewUrl(null);
+        setEditorContent("");
+        setSavedContent("");
+        setLargeFileWarning(null);
+      }
+      await refreshTree(parentDirectory);
+      return true;
+    } catch (requestError) {
+      applyErrorState(requestError);
+      return false;
+    }
+  }, [
+    applyErrorState,
+    currentFile,
+    invalidateFileLoad,
+    refreshTree,
+    replaceImagePreviewUrl,
+    selectedNode,
+    startDirectory,
+    targetId,
+    targetType,
+  ]);
+
+  const uploadFileToSelectedDirectory = useCallback(async (
+    file: File,
+    options?: { overwrite?: boolean; signal?: AbortSignal },
+  ) => {
+    const targetDirectory = selectedNode?.kind === "directory" ? selectedNode.path : currentDirectory;
+    try {
+      setError(null);
+      setErrorCode(null);
+      setUploadProgress({ bytesUploaded: 0, totalBytes: file.size });
+      const response = await uploadFileExplorerFileApi({ type: targetType, id: targetId }, targetDirectory, file, {
+        overwrite: options?.overwrite ?? false,
+        startDirectory,
+        signal: options?.signal,
+        onProgress: setUploadProgress,
+      });
+      setSelectedNode(response.file);
+      await refreshTree(targetDirectory);
+      return response.file;
+    } catch (requestError) {
+      applyErrorState(requestError);
+      return null;
+    } finally {
+      setUploadProgress(null);
+    }
+  }, [applyErrorState, currentDirectory, refreshTree, selectedNode, startDirectory, targetId, targetType]);
 
   const dismissConflict = useCallback(() => {
     setConflictState(null);
@@ -606,6 +727,7 @@ export function useFileExplorer(
     setDirectoryEntries({});
     setExpandedDirectories([]);
     setCurrentDirectory("");
+    setSelectedNode(null);
     setCurrentFile(null);
     setPendingFilePath(null);
     setShowHiddenFiles(true);
@@ -615,6 +737,7 @@ export function useFileExplorer(
     setConflictState(null);
     setLargeFileWarning(null);
     setAutoReloadedAt(null);
+    setUploadProgress(null);
     setLazySubtreeRoots([]);
     setEffectiveLoadFullTree(loadFullTree);
     if (!enabled) {
@@ -694,6 +817,7 @@ export function useFileExplorer(
     directoryEntries,
     expandedDirectories,
     currentDirectory,
+    selectedNode,
     currentFile,
     pendingFilePath,
     showHiddenFiles,
@@ -709,10 +833,15 @@ export function useFileExplorer(
     conflictState,
     largeFileWarning,
     autoReloadedAt,
+    uploadProgress,
     refreshTree,
     toggleShowHiddenFiles,
     toggleDirectory,
     openFile,
+    selectNode,
+    renameSelectedNode,
+    deleteSelectedNode,
+    uploadFileToSelectedDirectory,
     openLargeFileInEditor,
     setEditorContent,
     saveCurrentFile,

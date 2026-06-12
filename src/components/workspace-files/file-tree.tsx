@@ -1,8 +1,6 @@
-import { memo, useMemo, type ReactNode } from "react";
+import { memo, useMemo } from "react";
 import type { WorkspaceFileNode } from "../../types";
-import { Button, RefreshIcon } from "../common";
-
-const explorerToolbarButtonClassName = "h-8 min-h-8 w-8 shrink-0 px-0";
+import { ActionMenu, type ActionMenuItem } from "../common";
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
@@ -34,97 +32,31 @@ function FileIcon() {
   );
 }
 
-function ExplorerToggleIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg
-      className={`h-4 w-4 transition-transform ${collapsed ? "" : "rotate-180"}`}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
-
-function HiddenFilesIcon({ visible }: { visible: boolean }) {
-  return (
-    <svg
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7Z"
-      />
-      <circle cx="12" cy="12" r="3" />
-      {!visible && (
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M4 4l16 16"
-        />
-      )}
-    </svg>
-  );
-}
-
-function CopyPathIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <rect x="9" y="9" width="11" height="11" rx="2" />
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"
-      />
-    </svg>
-  );
-}
-
-function DownloadIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      strokeWidth={2}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
-    </svg>
-  );
-}
-
 interface WorkspaceFileTreeProps {
   entriesByDirectory: Record<string, WorkspaceFileNode[]>;
   expandedDirectories: string[];
   currentFilePath?: string;
+  selectedNodePath?: string;
   showHiddenFiles: boolean;
   loading: boolean;
   error?: string | null;
   collapsed: boolean;
-  toolbarActions?: ReactNode;
+  onOpenRootPicker: () => void;
   onRefresh: () => Promise<void>;
   onToggleShowHiddenFiles: () => Promise<void>;
   onCopySelectedFilePath: () => Promise<void>;
   onDownloadSelectedFile: () => Promise<void>;
+  onUploadFile: () => void;
+  onRenameSelectedNode: () => void;
+  onDeleteSelectedNode: () => void;
   onToggleCollapsed: () => void;
   onToggleDirectory: (path: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
   canCopySelectedFilePath: boolean;
   canDownloadSelectedFile: boolean;
+  canUploadFile: boolean;
+  canRenameSelectedNode: boolean;
+  canDeleteSelectedNode: boolean;
 }
 
 function isHiddenEntry(entry: WorkspaceFileNode): boolean {
@@ -136,6 +68,7 @@ function renderDirectory(
   entriesByDirectory: Record<string, WorkspaceFileNode[]>,
   expandedDirectories: string[],
   currentFilePath: string | undefined,
+  selectedNodePath: string | undefined,
   showHiddenFiles: boolean,
   onToggleDirectory: (path: string) => Promise<void>,
   onOpenFile: (path: string) => Promise<void>,
@@ -145,7 +78,7 @@ function renderDirectory(
   return entries.map((entry) => {
     const isDirectory = entry.kind === "directory";
     const isExpanded = expandedDirectories.includes(entry.path);
-    const isSelected = currentFilePath === entry.path;
+    const isSelected = selectedNodePath === entry.path || (!selectedNodePath && currentFilePath === entry.path);
 
     return (
       <div key={entry.path}>
@@ -177,6 +110,7 @@ function renderDirectory(
           entriesByDirectory,
           expandedDirectories,
           currentFilePath,
+          selectedNodePath,
           showHiddenFiles,
           onToggleDirectory,
           onOpenFile,
@@ -191,26 +125,107 @@ function WorkspaceFileTreeComponent({
   entriesByDirectory,
   expandedDirectories,
   currentFilePath,
+  selectedNodePath,
   showHiddenFiles,
   loading,
   error,
   collapsed,
-  toolbarActions,
+  onOpenRootPicker,
   onRefresh,
   onToggleShowHiddenFiles,
   onCopySelectedFilePath,
   onDownloadSelectedFile,
+  onUploadFile,
+  onRenameSelectedNode,
+  onDeleteSelectedNode,
   onToggleCollapsed,
   onToggleDirectory,
   onOpenFile,
   canCopySelectedFilePath,
   canDownloadSelectedFile,
+  canUploadFile,
+  canRenameSelectedNode,
+  canDeleteSelectedNode,
 }: WorkspaceFileTreeProps) {
+  const actionItems = useMemo<ActionMenuItem[]>(() => [
+    {
+      id: "root",
+      label: "Change explorer root",
+      onClick: onOpenRootPicker,
+    },
+    {
+      id: "refresh",
+      label: "Refresh explorer",
+      disabled: loading,
+      onClick: () => void onRefresh(),
+    },
+    {
+      id: "hidden",
+      label: showHiddenFiles ? "Hide hidden files" : "Show hidden files",
+      disabled: loading,
+      onClick: () => void onToggleShowHiddenFiles(),
+    },
+    {
+      id: "copy-path",
+      label: "Copy selected file path",
+      disabled: !canCopySelectedFilePath,
+      onClick: () => void onCopySelectedFilePath(),
+    },
+    {
+      id: "download",
+      label: "Download selected file",
+      disabled: !canDownloadSelectedFile,
+      onClick: () => void onDownloadSelectedFile(),
+    },
+    {
+      id: "upload",
+      label: "Upload file",
+      disabled: !canUploadFile,
+      onClick: onUploadFile,
+    },
+    {
+      id: "rename",
+      label: "Rename selected item",
+      disabled: !canRenameSelectedNode,
+      onClick: onRenameSelectedNode,
+    },
+    {
+      id: "delete",
+      label: "Delete selected item",
+      disabled: !canDeleteSelectedNode,
+      destructive: true,
+      onClick: onDeleteSelectedNode,
+    },
+    {
+      id: "collapse",
+      label: collapsed ? "Expand file explorer" : "Collapse file explorer",
+      onClick: onToggleCollapsed,
+    },
+  ], [
+    canCopySelectedFilePath,
+    canDeleteSelectedNode,
+    canDownloadSelectedFile,
+    canRenameSelectedNode,
+    canUploadFile,
+    collapsed,
+    loading,
+    onCopySelectedFilePath,
+    onDeleteSelectedNode,
+    onDownloadSelectedFile,
+    onOpenRootPicker,
+    onRefresh,
+    onRenameSelectedNode,
+    onToggleCollapsed,
+    onToggleShowHiddenFiles,
+    onUploadFile,
+    showHiddenFiles,
+  ]);
   const renderedTree = useMemo(() => renderDirectory(
     "",
     entriesByDirectory,
     expandedDirectories,
     currentFilePath,
+    selectedNodePath,
     showHiddenFiles,
     onToggleDirectory,
     onOpenFile,
@@ -220,6 +235,7 @@ function WorkspaceFileTreeComponent({
     expandedDirectories,
     onOpenFile,
     onToggleDirectory,
+    selectedNodePath,
     showHiddenFiles,
   ]);
 
@@ -240,67 +256,12 @@ function WorkspaceFileTreeComponent({
           </div>
         )}
         <div className={collapsed ? "flex items-center gap-1.5 lg:flex-col" : "flex w-full items-center justify-between gap-1.5"}>
-          {toolbarActions}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void onRefresh()}
-            loading={loading}
-            icon={<RefreshIcon size="h-4 w-4" />}
-            aria-label="Refresh explorer"
-            title="Refresh explorer"
-            className={explorerToolbarButtonClassName}
-          >
-            <span className="sr-only">Refresh explorer</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void onToggleShowHiddenFiles()}
-            disabled={loading}
-            aria-label={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
-            aria-pressed={showHiddenFiles}
-            title={showHiddenFiles ? "Hide hidden files" : "Show hidden files"}
-            className={explorerToolbarButtonClassName}
-            icon={<HiddenFilesIcon visible={showHiddenFiles} />}
-          >
-            <span className="sr-only">{showHiddenFiles ? "Hide hidden files" : "Show hidden files"}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void onCopySelectedFilePath()}
-            disabled={!canCopySelectedFilePath}
-            aria-label="Copy selected file path"
-            title="Copy selected file path"
-            className={explorerToolbarButtonClassName}
-            icon={<CopyPathIcon />}
-          >
-            <span className="sr-only">Copy selected file path</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void onDownloadSelectedFile()}
-            disabled={!canDownloadSelectedFile}
-            aria-label="Download selected file"
-            title="Download selected file"
-            className={explorerToolbarButtonClassName}
-            icon={<DownloadIcon />}
-          >
-            <span className="sr-only">Download selected file</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onToggleCollapsed}
-            aria-label={collapsed ? "Expand file explorer" : "Collapse file explorer"}
-            title={collapsed ? "Expand file explorer" : "Collapse file explorer"}
-            className={explorerToolbarButtonClassName}
-            icon={<ExplorerToggleIcon collapsed={collapsed} />}
-          >
-            <span className="sr-only">{collapsed ? "Expand file explorer" : "Collapse file explorer"}</span>
-          </Button>
+          <ActionMenu
+            items={actionItems}
+            ariaLabel="File explorer actions"
+            triggerVariant="ghost"
+            triggerSize="compact"
+          />
         </div>
         {collapsed && (
           <div className="mt-auto hidden text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 lg:block [writing-mode:vertical-rl]">

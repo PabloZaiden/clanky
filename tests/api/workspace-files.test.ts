@@ -201,6 +201,25 @@ describe("workspace files API integration", () => {
     }
   }
 
+  class UploadTrackingExecutor extends TestCommandExecutor {
+    writeFileCalled = false;
+    streamWriteCalls = 0;
+
+    override async writeFile(path: string, content: string): Promise<boolean> {
+      this.writeFileCalled = true;
+      return await super.writeFile(path, content);
+    }
+
+    override async writeFileStream(
+      path: string,
+      stream: ReadableStream<Uint8Array>,
+      options?: Parameters<TestCommandExecutor["writeFileStream"]>[2],
+    ) {
+      this.streamWriteCalls += 1;
+      return await super.writeFileStream(path, stream, options);
+    }
+  }
+
   test("lists root directory entries as lightweight explorer nodes", async () => {
     const workspace = await createWorkspace();
 
@@ -548,6 +567,142 @@ describe("workspace files API integration", () => {
     expect(data.error).toBe("file_conflict");
     expect(data.currentFile?.path).toBe("src/index.ts");
   });
+
+    test("renames and deletes workspace files and directories", async () => {
+      const workspace = await createWorkspace();
+      await mkdir(join(workDir, "rename-dir", "child"), { recursive: true });
+      await writeFile(join(workDir, "rename-dir", "child", "note.txt"), "nested note\n");
+
+      const fileRenameResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/rename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "README.md",
+          newName: "README-renamed.md",
+          expectedVersionToken: null,
+        }),
+      });
+      expect(fileRenameResponse.ok).toBe(true);
+      const fileRenameData = await fileRenameResponse.json() as { previousPath: string; file: { path: string } };
+      expect(fileRenameData.previousPath).toBe("README.md");
+      expect(fileRenameData.file.path).toBe("README-renamed.md");
+      expect(await Bun.file(join(workDir, "README-renamed.md")).text()).toBe("# Workspace files\n");
+
+      const directoryRenameResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/rename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "rename-dir",
+          newName: "renamed-dir",
+        }),
+      });
+      expect(directoryRenameResponse.ok).toBe(true);
+      expect(await Bun.file(join(workDir, "renamed-dir", "child", "note.txt")).text()).toBe("nested note\n");
+
+      const deleteFileResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "README-renamed.md",
+          kind: "file",
+        }),
+      });
+      expect(deleteFileResponse.ok).toBe(true);
+      expect(await Bun.file(join(workDir, "README-renamed.md")).exists()).toBe(false);
+
+      const deleteDirectoryResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "renamed-dir",
+          kind: "directory",
+        }),
+      });
+      expect(deleteDirectoryResponse.ok).toBe(true);
+      expect(await Bun.file(join(workDir, "renamed-dir", "child", "note.txt")).exists()).toBe(false);
+    });
+
+    test("rejects unsafe workspace rename and delete requests", async () => {
+      const workspace = await createWorkspace();
+
+      const pathTraversalRenameResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/rename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: "src/index.ts",
+          newName: "../escape.ts",
+        }),
+      });
+      expect(pathTraversalRenameResponse.status).toBe(400);
+      expect(await pathTraversalRenameResponse.json()).toMatchObject({
+        error: "invalid_file_name",
+      });
+
+      const rootDeleteResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: ".",
+          kind: "directory",
+        }),
+      });
+      expect(rootDeleteResponse.status).toBe(400);
+      expect(await rootDeleteResponse.json()).toMatchObject({
+        error: "invalid_workspace_path",
+      });
+    });
+
+    test("uploads workspace files in chunks using streamed writes", async () => {
+      const uploadExecutor = new UploadTrackingExecutor();
+      backendManager.setExecutorFactoryForTesting(() => uploadExecutor);
+      const workspace = await createWorkspace();
+
+      const createResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          directory: "src",
+          fileName: "uploaded.txt",
+          size: 11,
+          overwrite: false,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const session = await createResponse.json() as { uploadId: string };
+
+      const firstChunkResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/upload/chunk?uploadId=${encodeURIComponent(session.uploadId)}&offset=0`,
+        {
+          method: "POST",
+          body: new Blob(["hello "]),
+        },
+      );
+      expect(firstChunkResponse.ok).toBe(true);
+      expect(await firstChunkResponse.json()).toMatchObject({ nextOffset: 6 });
+
+      const secondChunkResponse = await fetch(
+        `${baseUrl}/api/workspaces/${workspace.id}/files/upload/chunk?uploadId=${encodeURIComponent(session.uploadId)}&offset=6`,
+        {
+          method: "POST",
+          body: new Blob(["world"]),
+        },
+      );
+      expect(secondChunkResponse.ok).toBe(true);
+      expect(await secondChunkResponse.json()).toMatchObject({ nextOffset: 11 });
+
+      const completeResponse = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/files/upload/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadId: session.uploadId }),
+      });
+      expect(completeResponse.ok).toBe(true);
+      const completeData = await completeResponse.json() as { file: { path: string; size: number } };
+      expect(completeData.file).toMatchObject({ path: "src/uploaded.txt", size: 11 });
+      expect(await Bun.file(join(workDir, "src", "uploaded.txt")).text()).toBe("hello world");
+      expect(await Bun.file(join(workDir, ".clanky-upload-tmp")).exists()).toBe(false);
+      expect(uploadExecutor.writeFileCalled).toBe(false);
+      expect(uploadExecutor.streamWriteCalls).toBe(2);
+    });
 
   test("requires an explicit overwrite to save an existing file without a version token", async () => {
     const workspace = await createWorkspace();

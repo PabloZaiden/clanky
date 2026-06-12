@@ -13,6 +13,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { HamburgerIcon } from "./Icons";
 
 export interface ActionMenuItem {
@@ -126,6 +127,9 @@ export function ActionMenu({
 }: ActionMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
 
   const close = useCallback(() => setIsOpen(false), []);
 
@@ -142,7 +146,8 @@ export function ActionMenu({
     const handleMouseDown = (e: MouseEvent) => {
       if (
         containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
+        !containerRef.current.contains(e.target as Node) &&
+        (!menuRef.current || !menuRef.current.contains(e.target as Node))
       ) {
         close();
       }
@@ -163,6 +168,27 @@ export function ActionMenu({
     }
   }, [close, disabled]);
 
+  useLayoutEffect(() => {
+    if (!isOpen || !triggerRef.current || !menuRef.current) {
+      setMenuStyle(null);
+      return;
+    }
+
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+    const menuRect = menuRef.current.getBoundingClientRect();
+    const margin = 8;
+    const top = Math.max(
+      margin,
+      Math.min(triggerRect.bottom + 4, window.innerHeight - menuRect.height - margin),
+    );
+    const left = Math.max(
+      margin,
+      Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - margin),
+    );
+
+    setMenuStyle({ position: "fixed", top, left });
+  }, [isOpen]);
+
   const handleItemClick = (item: ActionMenuItem) => {
     if (item.disabled) {
       return;
@@ -179,9 +205,10 @@ export function ActionMenu({
     : "min-h-[44px] min-w-[44px]";
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className={isOpen ? "relative z-[100]" : "relative"}>
       {/* Trigger button */}
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         className={`flex items-center justify-center rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed ${triggerVariantClassName} ${triggerSizeClassName}`}
@@ -194,14 +221,17 @@ export function ActionMenu({
       </button>
 
       {/* Dropdown menu */}
-      {isOpen && (
+      {isOpen && createPortal(
         <div
-          className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-md bg-white shadow-lg ring-1 ring-black/5 dark:bg-neutral-800 dark:ring-gray-700"
+          ref={menuRef}
+          className="z-[1000] min-w-[160px] rounded-md bg-white shadow-lg ring-1 ring-black/5 dark:bg-neutral-800 dark:ring-gray-700"
+          style={menuStyle ?? { position: "fixed", top: -9999, left: -9999 }}
           role="menu"
           aria-orientation="vertical"
         >
           <ActionMenuItems items={items} onItemClick={handleItemClick} />
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

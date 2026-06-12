@@ -116,6 +116,12 @@ export {
   GetWorkspaceFileTreeRequestSchema,
   GetWorkspaceFileRequestSchema,
   WriteWorkspaceFileRequestSchema,
+  RenameWorkspaceFileRequestSchema,
+  DeleteWorkspaceFileRequestSchema,
+  CreateWorkspaceFileUploadRequestSchema,
+  UploadWorkspaceFileChunkRequestSchema,
+  CompleteWorkspaceFileUploadRequestSchema,
+  CancelWorkspaceFileUploadRequestSchema,
 } from "./workspace-files";
 
 // Standalone SSH server schemas

@@ -10,15 +10,30 @@ import {
 import type {
   WorkspaceFileConflictResponse,
   WorkspaceFileEntry,
+  SshServerFileDeleteResponse,
   SshServerFileListResponse,
   SshServerFileMetadataResponse,
+  SshServerFileRenameResponse,
   SshServerFileReadResponse,
   SshServerFileTreeResponse,
+  SshServerFileUploadCancelResponse,
+  SshServerFileUploadChunkResponse,
+  SshServerFileUploadCompleteResponse,
+  SshServerFileUploadCreateResponse,
   SshServerFileWriteResponse,
+  DeleteWorkspaceFileRequest,
+  RenameWorkspaceFileRequest,
+  CreateWorkspaceFileUploadRequest,
   WorkspaceFileListResponse,
   WorkspaceFileMetadataResponse,
+  WorkspaceFileRenameResponse,
+  WorkspaceFileDeleteResponse,
   WorkspaceFileReadResponse,
   WorkspaceFileTreeResponse,
+  WorkspaceFileUploadCancelResponse,
+  WorkspaceFileUploadChunkResponse,
+  WorkspaceFileUploadCompleteResponse,
+  WorkspaceFileUploadCreateResponse,
   WorkspaceFileWriteResponse,
   WriteWorkspaceFileRequest,
 } from "../types";
@@ -30,6 +45,8 @@ interface ApiErrorBody {
 }
 
 const MAX_CONCURRENT_METADATA_REQUESTS = 10;
+const DEFAULT_UPLOAD_CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
+const MAX_UPLOAD_CHUNK_ATTEMPTS = 3;
 
 let activeMetadataRequests = 0;
 const queuedMetadataRequestStarters: Array<() => void> = [];
@@ -37,6 +54,12 @@ const queuedMetadataRequestStarters: Array<() => void> = [];
 export interface WorkspaceFileRequestOptions {
   signal?: AbortSignal;
   startDirectory?: string;
+}
+
+export interface UploadFileExplorerFileOptions extends WorkspaceFileRequestOptions {
+  overwrite?: boolean;
+  chunkSizeBytes?: number;
+  onProgress?: (progress: { bytesUploaded: number; totalBytes: number }) => void;
 }
 
 export type FileExplorerTarget =
@@ -349,6 +372,212 @@ export async function writeFileExplorerFileApi(
     await parseWorkspaceFileError(response);
   }
   return await response.json() as WorkspaceFileWriteResponse | SshServerFileWriteResponse;
+}
+
+export async function renameFileExplorerNodeApi(
+  target: FileExplorerTarget,
+  request: RenameWorkspaceFileRequest,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileRenameResponse | SshServerFileRenameResponse> {
+  const startDirectory = options?.startDirectory ?? target.startDirectory;
+  const response = await appFetch(`${getFileExplorerBasePath(target)}/rename`, await buildFileExplorerRequestInit(target, options, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...request,
+      ...(startDirectory ? { startDirectory } : {}),
+    }),
+  }));
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.json() as WorkspaceFileRenameResponse | SshServerFileRenameResponse;
+}
+
+export async function deleteFileExplorerNodeApi(
+  target: FileExplorerTarget,
+  request: DeleteWorkspaceFileRequest,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileDeleteResponse | SshServerFileDeleteResponse> {
+  const startDirectory = options?.startDirectory ?? target.startDirectory;
+  const response = await appFetch(`${getFileExplorerBasePath(target)}/delete`, await buildFileExplorerRequestInit(target, options, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...request,
+      ...(startDirectory ? { startDirectory } : {}),
+    }),
+  }));
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.json() as WorkspaceFileDeleteResponse | SshServerFileDeleteResponse;
+}
+
+async function createFileExplorerUploadApi(
+  target: FileExplorerTarget,
+  request: CreateWorkspaceFileUploadRequest,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileUploadCreateResponse | SshServerFileUploadCreateResponse> {
+  const startDirectory = options?.startDirectory ?? target.startDirectory;
+  const response = await appFetch(`${getFileExplorerBasePath(target)}/upload`, await buildFileExplorerRequestInit(target, options, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...request,
+      ...(startDirectory ? { startDirectory } : {}),
+    }),
+  }));
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.json() as WorkspaceFileUploadCreateResponse | SshServerFileUploadCreateResponse;
+}
+
+async function writeFileExplorerUploadChunkApi(
+  target: FileExplorerTarget,
+  uploadId: string,
+  offset: number,
+  chunk: Blob,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileUploadChunkResponse | SshServerFileUploadChunkResponse> {
+  const searchParams = buildFileExplorerSearchParams(target, {
+    uploadId,
+    offset: String(offset),
+  }, options);
+  const response = await appFetch(
+    `${getFileExplorerBasePath(target)}/upload/chunk?${searchParams.toString()}`,
+    await buildFileExplorerRequestInit(target, options, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+      },
+      body: chunk,
+    }),
+  );
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.json() as WorkspaceFileUploadChunkResponse | SshServerFileUploadChunkResponse;
+}
+
+async function completeFileExplorerUploadApi(
+  target: FileExplorerTarget,
+  uploadId: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileUploadCompleteResponse | SshServerFileUploadCompleteResponse> {
+  const startDirectory = options?.startDirectory ?? target.startDirectory;
+  const response = await appFetch(`${getFileExplorerBasePath(target)}/upload/complete`, await buildFileExplorerRequestInit(target, options, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      uploadId,
+      ...(startDirectory ? { startDirectory } : {}),
+    }),
+  }));
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.json() as WorkspaceFileUploadCompleteResponse | SshServerFileUploadCompleteResponse;
+}
+
+async function cancelFileExplorerUploadApi(
+  target: FileExplorerTarget,
+  uploadId: string,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileUploadCancelResponse | SshServerFileUploadCancelResponse> {
+  const startDirectory = options?.startDirectory ?? target.startDirectory;
+  const response = await appFetch(`${getFileExplorerBasePath(target)}/upload/cancel`, await buildFileExplorerRequestInit(target, options, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      uploadId,
+      ...(startDirectory ? { startDirectory } : {}),
+    }),
+  }));
+  if (!response.ok) {
+    await parseWorkspaceFileError(response);
+  }
+  return await response.json() as WorkspaceFileUploadCancelResponse | SshServerFileUploadCancelResponse;
+}
+
+async function writeUploadChunkWithRetries(
+  target: FileExplorerTarget,
+  uploadId: string,
+  offset: number,
+  chunk: Blob,
+  options?: WorkspaceFileRequestOptions,
+): Promise<WorkspaceFileUploadChunkResponse | SshServerFileUploadChunkResponse> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= MAX_UPLOAD_CHUNK_ATTEMPTS; attempt += 1) {
+    if (options?.signal?.aborted) {
+      throw createAbortError(options.signal);
+    }
+    try {
+      return await writeFileExplorerUploadChunkApi(target, uploadId, offset, chunk, options);
+    } catch (error) {
+      lastError = error;
+      if (options?.signal?.aborted || attempt === MAX_UPLOAD_CHUNK_ATTEMPTS) {
+        throw error;
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+export async function uploadFileExplorerFileApi(
+  target: FileExplorerTarget,
+  directory: string,
+  file: File,
+  options?: UploadFileExplorerFileOptions,
+): Promise<WorkspaceFileUploadCompleteResponse | SshServerFileUploadCompleteResponse> {
+  const startDirectory = options?.startDirectory ?? target.startDirectory;
+  const session = await createFileExplorerUploadApi(target, {
+    directory,
+    fileName: file.name,
+    size: file.size,
+    contentType: file.type || undefined,
+    lastModified: file.lastModified,
+    overwrite: options?.overwrite ?? false,
+    startDirectory: startDirectory ?? null,
+  }, { startDirectory, signal: options?.signal });
+
+  let offset = 0;
+  const chunkSize = options?.chunkSizeBytes ?? DEFAULT_UPLOAD_CHUNK_SIZE_BYTES;
+  try {
+    while (offset < file.size) {
+      const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+      const response = await writeUploadChunkWithRetries(target, session.uploadId, offset, chunk, {
+        startDirectory,
+        signal: options?.signal,
+      });
+      offset = response.nextOffset;
+      options?.onProgress?.({
+        bytesUploaded: offset,
+        totalBytes: file.size,
+      });
+    }
+    return await completeFileExplorerUploadApi(target, session.uploadId, {
+      startDirectory,
+      signal: options?.signal,
+    });
+  } catch (error) {
+    await cancelFileExplorerUploadApi(target, session.uploadId, {
+      startDirectory,
+      signal: options?.signal?.aborted ? undefined : options?.signal,
+    }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function listWorkspaceFilesApi(
