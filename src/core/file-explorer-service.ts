@@ -658,7 +658,7 @@ async function readFileBytes(
     absolutePath,
   ], {
     logFailures: false,
-    timeout: 120_000,
+    timeout: 30 * 60 * 1000,
   });
   if (!result.success) {
     throw new Error(result.stderr.trim() || "Failed to read file");
