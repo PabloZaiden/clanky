@@ -13,7 +13,6 @@ import { createLogger } from "../lib/logger";
 import { useWebSocket } from "./useWebSocket";
 import { appFetch } from "../lib/public-path";
 import { deleteStandaloneSshSessionApi } from "./sshServerActions";
-import { getEffectiveSshConnectionMode } from "../utils";
 
 export type SshSessionKind = "workspace" | "standalone";
 export type AnySshSession = SshSession | SshServerSession;
@@ -162,7 +161,7 @@ export function useSshSession(sessionId: string): UseSshSessionResult {
           sessionId,
           serverId: session.config.sshServerId,
           password: options?.password,
-          requireCredential: getEffectiveSshConnectionMode(session) !== "direct",
+          requireCredential: false,
         });
         setSession(null);
         return true;
