@@ -4,7 +4,9 @@
 
 import { posix as pathPosix } from "node:path";
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 import type {
+  WorkspaceFileKind,
   WorkspaceFileEntry,
   WorkspaceFileNode,
 } from "../types";
@@ -88,6 +90,45 @@ export interface FileExplorerWriteResult {
   overwritten: boolean;
 }
 
+export interface FileExplorerRenameResult {
+  success: true;
+  file: WorkspaceFileEntry;
+  previousPath: string;
+  overwritten: boolean;
+}
+
+export interface FileExplorerDeleteResult {
+  success: true;
+  deletedPath: string;
+  kind: WorkspaceFileKind;
+}
+
+export interface FileExplorerUploadSessionResult {
+  uploadId: string;
+  path: string;
+  directory: string;
+  fileName: string;
+  size: number;
+}
+
+export interface FileExplorerUploadChunkResult {
+  success: true;
+  uploadId: string;
+  bytesWritten: number;
+  nextOffset: number;
+}
+
+export interface FileExplorerUploadCompleteResult {
+  success: true;
+  file: WorkspaceFileEntry;
+  overwritten: boolean;
+}
+
+export interface FileExplorerUploadCancelResult {
+  success: true;
+  uploadId: string;
+}
+
 export class FileExplorerConflictError extends Error {
   readonly currentFile: WorkspaceFileEntry | null;
 
@@ -97,6 +138,26 @@ export class FileExplorerConflictError extends Error {
     this.currentFile = currentFile;
   }
 }
+
+interface FileExplorerUploadSession {
+  id: string;
+  targetId: string;
+  rootDirectory: string;
+  directory: string;
+  fileName: string;
+  relativePath: string;
+  finalAbsolutePath: string;
+  tempAbsolutePath: string;
+  size: number;
+  overwrite: boolean;
+  bytesWritten: number;
+  createdAt: number;
+  lastTouchedAt: number;
+}
+
+const UPLOAD_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_UPLOAD_SESSIONS = 100;
+const uploadSessions = new Map<string, FileExplorerUploadSession>();
 
 interface FileExplorerMetadataOptions {
   includeContentHash?: boolean;
@@ -156,6 +217,21 @@ function toRelativePath(rootDirectory: string, absolutePath: string): string {
   return relativePath === "." ? "" : relativePath;
 }
 
+function assertOverwriteKindCompatible(
+  existingFile: WorkspaceFileEntry | null,
+  replacementKind: WorkspaceFileKind,
+): void {
+  if (!existingFile) {
+    return;
+  }
+  if (existingFile.kind === "directory") {
+    throw new FileExplorerConflictError("Destination already exists as a directory", existingFile);
+  }
+  if (existingFile.kind !== replacementKind) {
+    throw new FileExplorerConflictError("Destination already exists with a different type", existingFile);
+  }
+}
+
 function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): string {
   const root = normalizeRootDirectory(target.rootDirectory);
   const trimmedPath = requestedPath.trim();
@@ -173,6 +249,35 @@ function resolveTargetPath(target: FileExplorerTarget, requestedPath: string): s
   }
 
   return normalizedPath;
+}
+
+function assertSafeBaseName(name: string): string {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    throw new Error("File name is required");
+  }
+  if (
+    trimmedName === "."
+    || trimmedName === ".."
+    || trimmedName.includes("/")
+    || trimmedName.includes("\\")
+    || trimmedName.includes("\0")
+  ) {
+    throw new Error("File name must not contain path separators");
+  }
+  return trimmedName;
+}
+
+function assertMutablePath(requestedPath: string): void {
+  if (!requestedPath.trim() || requestedPath.trim() === ".") {
+    throw new Error("Cannot modify the active explorer root");
+  }
+}
+
+function assertSameUploadTarget(target: FileExplorerTarget, session: FileExplorerUploadSession): void {
+  if (session.targetId !== target.id || session.rootDirectory !== normalizeRootDirectory(target.rootDirectory)) {
+    throw new Error("Upload session does not belong to the active explorer target");
+  }
 }
 
 function parseModifiedAt(timestampSeconds: string): string {
@@ -729,6 +834,409 @@ export class FileExplorerService {
       file: updatedFile,
       overwritten: Boolean(options?.overwrite && currentFile),
     };
+  }
+
+  async renameNode(
+    target: FileExplorerTarget,
+    requestedPath: string,
+    newName: string,
+    options?: {
+      expectedVersionToken?: string | null;
+      overwrite?: boolean;
+    },
+  ): Promise<FileExplorerRenameResult> {
+    assertMutablePath(requestedPath);
+    const safeName = assertSafeBaseName(newName);
+    const sourceAbsolutePath = resolveTargetPath(target, requestedPath);
+    const sourceFile = await this.getMetadata(target, requestedPath);
+    if (!sourceFile) {
+      throw new Error("Requested path does not exist");
+    }
+    if (
+      sourceFile.kind === "file"
+      && options?.expectedVersionToken !== undefined
+      && sourceFile.versionToken !== options.expectedVersionToken
+    ) {
+      throw new FileExplorerConflictError("File changed outside the code explorer", sourceFile);
+    }
+
+    const destinationAbsolutePath = resolveTargetPath(
+      target,
+      pathPosix.join(pathPosix.dirname(sourceFile.path), safeName),
+    );
+    if (sourceAbsolutePath === destinationAbsolutePath) {
+      return {
+        success: true,
+        file: sourceFile,
+        previousPath: sourceFile.path,
+        overwritten: false,
+      };
+    }
+
+    const existingDestination = await runMetadataCommand(target.executor, destinationAbsolutePath, {
+      includeContentHash: false,
+    });
+    const existingDestinationFile = existingDestination
+      ? toFileEntry(target, destinationAbsolutePath, existingDestination)
+      : null;
+    if (existingDestinationFile && !options?.overwrite) {
+      throw new FileExplorerConflictError("Destination already exists", existingDestinationFile);
+    }
+    if (options?.overwrite) {
+      assertOverwriteKindCompatible(existingDestinationFile, sourceFile.kind);
+    }
+
+    const result = await target.executor.exec("bash", [
+      "-lc",
+      "src=\"$1\"; dest=\"$2\"; kind=\"$3\"; overwrite=\"$4\"; if [ ! -e \"$src\" ]; then exit 2; fi; if [ -e \"$dest\" ]; then if [ \"$overwrite\" != \"1\" ]; then exit 3; fi; if [ -d \"$dest\" ]; then exit 4; fi; if [ \"$kind\" = \"directory\" ] && [ ! -d \"$dest\" ]; then exit 4; fi; if [ \"$kind\" = \"file\" ] && [ ! -f \"$dest\" ]; then exit 4; fi; fi; mv -- \"$src\" \"$dest\"",
+      "file-explorer-rename",
+      sourceAbsolutePath,
+      destinationAbsolutePath,
+      sourceFile.kind,
+      options?.overwrite ? "1" : "0",
+    ], {
+      logFailures: false,
+    });
+    if (!result.success) {
+      if (result.exitCode === 2) {
+        throw new Error("Requested path does not exist");
+      }
+      if (result.exitCode === 3) {
+        throw new FileExplorerConflictError("Destination already exists", null);
+      }
+      if (result.exitCode === 4) {
+        throw new FileExplorerConflictError("Destination already exists with an incompatible type", null);
+      }
+      throw new Error(result.stderr.trim() || "Failed to rename file");
+    }
+
+    const updatedFile = await this.getMetadata(target, toRelativePath(target.rootDirectory, destinationAbsolutePath));
+    if (!updatedFile) {
+      throw new Error("File was renamed but metadata could not be read");
+    }
+
+    return {
+      success: true,
+      file: updatedFile,
+      previousPath: sourceFile.path,
+      overwritten: Boolean(existingDestinationFile && options?.overwrite),
+    };
+  }
+
+  async deleteNode(
+    target: FileExplorerTarget,
+    requestedPath: string,
+    options?: {
+      expectedVersionToken?: string | null;
+      kind?: WorkspaceFileKind;
+    },
+  ): Promise<FileExplorerDeleteResult> {
+    assertMutablePath(requestedPath);
+    const absolutePath = resolveTargetPath(target, requestedPath);
+    const file = await this.getMetadata(target, requestedPath);
+    if (!file) {
+      throw new Error("Requested path does not exist");
+    }
+    if (options?.kind && file.kind !== options.kind) {
+      throw new Error(`Requested path is not a ${options.kind}`);
+    }
+    if (
+      file.kind === "file"
+      && options?.expectedVersionToken !== undefined
+      && file.versionToken !== options.expectedVersionToken
+    ) {
+      throw new FileExplorerConflictError("File changed outside the code explorer", file);
+    }
+
+    const result = await target.executor.exec("bash", [
+      "-lc",
+      "path=\"$1\"; kind=\"$2\"; if [ ! -e \"$path\" ]; then exit 2; fi; if [ \"$kind\" = \"directory\" ]; then if [ ! -d \"$path\" ]; then exit 4; fi; rm -rf -- \"$path\"; else if [ ! -f \"$path\" ]; then exit 4; fi; rm -f -- \"$path\"; fi",
+      "file-explorer-delete",
+      absolutePath,
+      file.kind,
+    ], {
+      logFailures: false,
+    });
+    if (!result.success) {
+      if (result.exitCode === 2) {
+        throw new Error("Requested path does not exist");
+      }
+      if (result.exitCode === 4) {
+        throw new Error("Requested path type changed before delete");
+      }
+      throw new Error(result.stderr.trim() || "Failed to delete file");
+    }
+
+    return {
+      success: true,
+      deletedPath: file.path,
+      kind: file.kind,
+    };
+  }
+
+  async createUploadSession(
+    target: FileExplorerTarget,
+    directory: string,
+    fileName: string,
+    size: number,
+    options?: {
+      overwrite?: boolean;
+    },
+  ): Promise<FileExplorerUploadSessionResult> {
+    await this.cleanupExpiredUploadSessions(target);
+    await this.cleanupAbandonedUploadTempFiles(target);
+    if (!Number.isSafeInteger(size) || size < 0) {
+      throw new Error("Invalid upload size");
+    }
+    const activeSessionsForTarget = Array.from(uploadSessions.values()).filter(
+      (session) => session.targetId === target.id && session.rootDirectory === normalizeRootDirectory(target.rootDirectory),
+    ).length;
+    if (activeSessionsForTarget >= MAX_UPLOAD_SESSIONS) {
+      throw new Error("Too many active upload sessions");
+    }
+
+    const safeName = assertSafeBaseName(fileName);
+    const normalizedDirectory = directory.trim();
+    const directoryAbsolutePath = resolveTargetPath(target, normalizedDirectory);
+    const directoryKind = await runNodeTypeCommand(target.executor, directoryAbsolutePath);
+    if (!directoryKind) {
+      throw new Error("Requested path does not exist");
+    }
+    if (directoryKind !== "directory") {
+      throw new Error("Requested path is not a directory");
+    }
+
+    const finalAbsolutePath = resolveTargetPath(target, pathPosix.join(normalizedDirectory, safeName));
+    const relativePath = toRelativePath(target.rootDirectory, finalAbsolutePath);
+    const existingFile = await runMetadataCommand(target.executor, finalAbsolutePath, {
+      includeContentHash: false,
+    });
+    const existingFinalFile = existingFile ? toFileEntry(target, finalAbsolutePath, existingFile) : null;
+    if (existingFinalFile && !options?.overwrite) {
+      throw new FileExplorerConflictError("Destination already exists", existingFinalFile);
+    }
+    if (options?.overwrite) {
+      assertOverwriteKindCompatible(existingFinalFile, "file");
+    }
+
+    const uploadId = randomUUID();
+    const now = Date.now();
+    const tempAbsolutePath = resolveTargetPath(
+      target,
+      pathPosix.join(".clanky-upload-tmp", `${uploadId}-${safeName}`),
+    );
+    const session: FileExplorerUploadSession = {
+      id: uploadId,
+      targetId: target.id,
+      rootDirectory: normalizeRootDirectory(target.rootDirectory),
+      directory: toRelativePath(target.rootDirectory, directoryAbsolutePath),
+      fileName: safeName,
+      relativePath,
+      finalAbsolutePath,
+      tempAbsolutePath,
+      size,
+      overwrite: Boolean(options?.overwrite),
+      bytesWritten: 0,
+      createdAt: now,
+      lastTouchedAt: now,
+    };
+    uploadSessions.set(uploadId, session);
+
+    return {
+      uploadId,
+      path: relativePath,
+      directory: session.directory,
+      fileName: safeName,
+      size,
+    };
+  }
+
+  async writeUploadChunk(
+    target: FileExplorerTarget,
+    uploadId: string,
+    offset: number,
+    stream: ReadableStream<Uint8Array>,
+    options?: { signal?: AbortSignal },
+  ): Promise<FileExplorerUploadChunkResult> {
+    const session = await this.getActiveUploadSession(target, uploadId);
+    if (offset !== session.bytesWritten) {
+      throw new Error(`Expected upload offset ${session.bytesWritten}, received ${offset}`);
+    }
+
+    if (!target.executor.writeFileStream) {
+      throw new Error("Workspace host does not support streamed file uploads");
+    }
+    const result = await target.executor.writeFileStream(session.tempAbsolutePath, stream, {
+      append: true,
+      expectedOffset: offset,
+      signal: options?.signal,
+    });
+    if (!result.success) {
+      throw new Error(result.error ?? "Failed to write upload chunk");
+    }
+    session.bytesWritten += result.bytesWritten;
+    session.lastTouchedAt = Date.now();
+
+    return {
+      success: true,
+      uploadId,
+      bytesWritten: result.bytesWritten,
+      nextOffset: session.bytesWritten,
+    };
+  }
+
+  async completeUpload(
+    target: FileExplorerTarget,
+    uploadId: string,
+  ): Promise<FileExplorerUploadCompleteResult> {
+    const session = await this.getActiveUploadSession(target, uploadId);
+    if (session.bytesWritten !== session.size) {
+      throw new Error(`Upload is incomplete: expected ${session.size} bytes, received ${session.bytesWritten}`);
+    }
+
+    const existingFinalFile = await runMetadataCommand(target.executor, session.finalAbsolutePath, {
+      includeContentHash: false,
+    });
+    const existingFinalEntry = existingFinalFile ? toFileEntry(target, session.finalAbsolutePath, existingFinalFile) : null;
+    if (existingFinalEntry && !session.overwrite) {
+      throw new FileExplorerConflictError("Destination already exists", existingFinalEntry);
+    }
+    if (session.overwrite) {
+      assertOverwriteKindCompatible(existingFinalEntry, "file");
+    }
+
+    const result = await target.executor.exec("bash", [
+      "-lc",
+      "tmp=\"$1\"; dest=\"$2\"; overwrite=\"$3\"; if [ ! -f \"$tmp\" ]; then exit 2; fi; if [ -e \"$dest\" ]; then if [ \"$overwrite\" != \"1\" ]; then exit 3; fi; if [ ! -f \"$dest\" ]; then exit 4; fi; fi; mv -- \"$tmp\" \"$dest\"",
+      "file-explorer-upload-complete",
+      session.tempAbsolutePath,
+      session.finalAbsolutePath,
+      session.overwrite ? "1" : "0",
+    ], {
+      logFailures: false,
+    });
+    if (!result.success) {
+      if (result.exitCode === 2) {
+        throw new Error("Upload temporary file does not exist");
+      }
+      if (result.exitCode === 3) {
+        throw new FileExplorerConflictError("Destination already exists", null);
+      }
+      if (result.exitCode === 4) {
+        throw new FileExplorerConflictError("Destination already exists with an incompatible type", null);
+      }
+      throw new Error(result.stderr.trim() || "Failed to complete upload");
+    }
+
+    const uploadedFile = await this.getMetadata(target, session.relativePath);
+    uploadSessions.delete(uploadId);
+    await this.cleanupUploadTempDirectory(target, session);
+    if (!uploadedFile) {
+      throw new Error("Upload completed but metadata could not be read");
+    }
+
+    return {
+      success: true,
+      file: uploadedFile,
+      overwritten: Boolean(existingFinalEntry && session.overwrite),
+    };
+  }
+
+  async cancelUpload(
+    target: FileExplorerTarget,
+    uploadId: string,
+  ): Promise<FileExplorerUploadCancelResult> {
+    const session = await this.getActiveUploadSession(target, uploadId);
+    uploadSessions.delete(uploadId);
+    await target.executor.exec("bash", [
+      "-lc",
+      "rm -f -- \"$1\"",
+      "file-explorer-upload-cancel",
+      session.tempAbsolutePath,
+    ], {
+      logFailures: false,
+    });
+    await this.cleanupUploadTempDirectory(target, session);
+    return {
+      success: true,
+      uploadId,
+    };
+  }
+
+  private async getActiveUploadSession(
+    target: FileExplorerTarget,
+    uploadId: string,
+  ): Promise<FileExplorerUploadSession> {
+    await this.cleanupExpiredUploadSessions(target);
+    const session = uploadSessions.get(uploadId);
+    if (!session) {
+      throw new Error("Upload session does not exist");
+    }
+    assertSameUploadTarget(target, session);
+    if (Date.now() - session.lastTouchedAt > UPLOAD_SESSION_TTL_MS) {
+      uploadSessions.delete(uploadId);
+      await this.deleteUploadTempFile(target, session);
+      await this.cleanupUploadTempDirectory(target, session);
+      throw new Error("Upload session does not exist");
+    }
+    return session;
+  }
+
+  private async cleanupExpiredUploadSessions(target: FileExplorerTarget): Promise<void> {
+    const now = Date.now();
+    const normalizedRootDirectory = normalizeRootDirectory(target.rootDirectory);
+    const expiredSessions = Array.from(uploadSessions.values()).filter((session) => {
+      return session.targetId === target.id
+        && session.rootDirectory === normalizedRootDirectory
+        && now - session.lastTouchedAt > UPLOAD_SESSION_TTL_MS;
+    });
+    for (const session of expiredSessions) {
+      uploadSessions.delete(session.id);
+      await this.deleteUploadTempFile(target, session);
+      await this.cleanupUploadTempDirectory(target, session);
+    }
+  }
+
+  private async cleanupAbandonedUploadTempFiles(target: FileExplorerTarget): Promise<void> {
+    const tempDirectory = resolveTargetPath(target, ".clanky-upload-tmp");
+    const ttlMinutes = String(Math.max(1, Math.floor(UPLOAD_SESSION_TTL_MS / 60_000)));
+    await target.executor.exec("bash", [
+      "-lc",
+      "dir=\"$1\"; ttl_minutes=\"$2\"; if [ -d \"$dir\" ]; then find \"$dir\" -type f -mmin +\"$ttl_minutes\" -delete; rmdir -- \"$dir\" 2>/dev/null || true; fi",
+      "file-explorer-upload-cleanup-abandoned",
+      tempDirectory,
+      ttlMinutes,
+    ], {
+      logFailures: false,
+    });
+  }
+
+  private async deleteUploadTempFile(
+    target: FileExplorerTarget,
+    session: FileExplorerUploadSession,
+  ): Promise<void> {
+    await target.executor.exec("bash", [
+      "-lc",
+      "rm -f -- \"$1\"",
+      "file-explorer-upload-delete-temp",
+      session.tempAbsolutePath,
+    ], {
+      logFailures: false,
+    });
+  }
+
+  private async cleanupUploadTempDirectory(
+    target: FileExplorerTarget,
+    session: FileExplorerUploadSession,
+  ): Promise<void> {
+    await target.executor.exec("bash", [
+      "-lc",
+      "tmp=\"$1\"; dir=$(dirname -- \"$tmp\"); rmdir -- \"$dir\" 2>/dev/null || true",
+      "file-explorer-upload-cleanup",
+      session.tempAbsolutePath,
+    ], {
+      logFailures: false,
+    });
   }
 }
 

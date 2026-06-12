@@ -39,6 +39,21 @@ export interface FileStreamOptions {
   signal?: AbortSignal;
 }
 
+export interface FileWriteStreamOptions {
+  /** Abort signal for cancelling the file write */
+  signal?: AbortSignal;
+  /** Append to an existing file instead of replacing it */
+  append?: boolean;
+  /** Expected file size before writing; rejects when the current size differs */
+  expectedOffset?: number;
+}
+
+export interface FileWriteStreamResult {
+  success: boolean;
+  bytesWritten: number;
+  error?: string;
+}
+
 /**
  * CommandExecutor interface for running shell commands and file operations.
  * Implementation: CommandExecutorImpl executes commands via local or SSH providers.
@@ -82,6 +97,18 @@ export interface CommandExecutor {
    * @returns A byte stream, or null if the file cannot be streamed
    */
   streamFile(path: string, options?: FileStreamOptions): Promise<ReadableStream<Uint8Array> | null>;
+
+  /**
+   * Write raw bytes from a stream without buffering the full content in memory.
+   * @param path - Absolute path to the file
+   * @param stream - Byte stream to write
+   * @param options - Streaming write options
+   */
+  writeFileStream?(
+    path: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: FileWriteStreamOptions,
+  ): Promise<FileWriteStreamResult>;
 
   /**
    * List files in a directory.

@@ -4,8 +4,16 @@
  * This is only used in tests - production code uses CommandExecutorImpl via PTY.
  */
 
-import { mkdir, readdir, stat } from "node:fs/promises";
-import type { CommandExecutor, CommandResult, CommandOptions, FileStreamOptions } from "../../src/core/command-executor";
+import { createWriteStream } from "node:fs";
+import { mkdir, readdir, stat, truncate } from "node:fs/promises";
+import type {
+  CommandExecutor,
+  CommandResult,
+  CommandOptions,
+  FileStreamOptions,
+  FileWriteStreamOptions,
+  FileWriteStreamResult,
+} from "../../src/core/command-executor";
 
 /**
  * TestCommandExecutor runs commands locally for testing purposes.
@@ -104,6 +112,82 @@ export class TestCommandExecutor implements CommandExecutor {
       return Bun.file(path).stream();
     } catch {
       return null;
+    }
+  }
+
+  async writeFileStream(
+    path: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: FileWriteStreamOptions,
+  ): Promise<FileWriteStreamResult> {
+    try {
+      if (options?.signal?.aborted) {
+        return { success: false, bytesWritten: 0, error: "Write aborted" };
+      }
+
+      const dir = path.substring(0, path.lastIndexOf("/"));
+      if (dir) {
+        await mkdir(dir, { recursive: true });
+      }
+
+      const expectedOffset = options?.expectedOffset;
+      if (expectedOffset !== undefined) {
+        let currentSize = 0;
+        try {
+          currentSize = (await stat(path)).size;
+        } catch {
+          currentSize = 0;
+        }
+        if (options?.append && currentSize > expectedOffset) {
+          await truncate(path, expectedOffset);
+          currentSize = expectedOffset;
+        }
+        if (currentSize !== expectedOffset) {
+          return {
+            success: false,
+            bytesWritten: 0,
+            error: `Expected file offset ${expectedOffset}, found ${currentSize}`,
+          };
+        }
+      }
+
+      const writeStream = createWriteStream(path, {
+        flags: options?.append && expectedOffset !== 0 ? "r+" : "w",
+        ...(options?.append ? { start: expectedOffset ?? 0 } : {}),
+      });
+      const reader = stream.getReader();
+      let bytesWritten = 0;
+      try {
+        while (true) {
+          if (options?.signal?.aborted) {
+            return { success: false, bytesWritten, error: "Write aborted" };
+          }
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          const canContinue = writeStream.write(value);
+          bytesWritten += value.byteLength;
+          if (!canContinue) {
+            await new Promise<void>((resolve, reject) => {
+              writeStream.once("drain", resolve);
+              writeStream.once("error", reject);
+            });
+          }
+        }
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          writeStream.end(() => resolve());
+          writeStream.once("error", reject);
+        });
+      }
+      return { success: true, bytesWritten };
+    } catch (error) {
+      return {
+        success: false,
+        bytesWritten: 0,
+        error: error instanceof Error ? error.stack ?? error.message : String(error),
+      };
     }
   }
 

@@ -6,9 +6,15 @@ import { createLogger } from "../../core/logger";
 import { workspaceFileService } from "../../core/workspace-file-service";
 import { type WorkspaceFileEntry } from "../../types";
 import {
+  CancelWorkspaceFileUploadRequestSchema,
+  CompleteWorkspaceFileUploadRequestSchema,
+  CreateWorkspaceFileUploadRequestSchema,
+  DeleteWorkspaceFileRequestSchema,
   GetWorkspaceFileRequestSchema,
   GetWorkspaceFileTreeRequestSchema,
   ListWorkspaceFilesRequestSchema,
+  RenameWorkspaceFileRequestSchema,
+  UploadWorkspaceFileChunkRequestSchema,
   WriteWorkspaceFileRequestSchema,
 } from "../../types/schemas";
 import { errorResponse, requireWorkspace } from "../helpers";
@@ -59,6 +65,18 @@ function mapFileError(error: unknown): Response {
   }
   if (message.includes("not a directory") || message.includes("not a file")) {
     return errorResponse("invalid_path_type", message, 400);
+  }
+  if (message.includes("Cannot modify the active explorer root")) {
+    return errorResponse("invalid_workspace_path", message, 400);
+  }
+  if (message.includes("File name must not contain path separators") || message.includes("File name is required")) {
+    return errorResponse("invalid_file_name", message, 400);
+  }
+  if (message.includes("Upload session does not exist")) {
+    return errorResponse("upload_session_not_found", message, 404);
+  }
+  if (message.includes("upload offset") || message.includes("Upload is incomplete")) {
+    return errorResponse("invalid_upload_state", message, 400);
   }
   if (message.includes("not a browser-renderable image")) {
     return errorResponse("invalid_preview_type", message, 400);
@@ -316,6 +334,206 @@ export const workspaceFilesRoutes = {
         log.error("Failed to write workspace file", {
           workspaceId: req.params.id,
           path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/rename": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = await parseAndValidate(RenameWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        return Response.json(await workspaceFileService.renameNode(
+          workspaceResult,
+          validation.data.path,
+          validation.data.newName,
+          {
+            expectedVersionToken: validation.data.expectedVersionToken ?? undefined,
+            overwrite: validation.data.overwrite,
+            startDirectory: validation.data.startDirectory ?? undefined,
+          },
+        ));
+      } catch (error) {
+        log.error("Failed to rename workspace file", {
+          workspaceId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/delete": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = await parseAndValidate(DeleteWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        return Response.json(await workspaceFileService.deleteNode(
+          workspaceResult,
+          validation.data.path,
+          {
+            expectedVersionToken: validation.data.expectedVersionToken ?? undefined,
+            kind: validation.data.kind,
+            startDirectory: validation.data.startDirectory ?? undefined,
+          },
+        ));
+      } catch (error) {
+        log.error("Failed to delete workspace file", {
+          workspaceId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/upload": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = await parseAndValidate(CreateWorkspaceFileUploadRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        return Response.json(await workspaceFileService.createUploadSession(
+          workspaceResult,
+          validation.data.directory,
+          validation.data.fileName,
+          validation.data.size,
+          {
+            overwrite: validation.data.overwrite,
+            startDirectory: validation.data.startDirectory ?? undefined,
+          },
+        ), { status: 201 });
+      } catch (error) {
+        log.error("Failed to create workspace file upload", {
+          workspaceId: req.params.id,
+          directory: validation.data.directory,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/upload/chunk": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = parseSearchParams(UploadWorkspaceFileChunkRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+      if (!req.body) {
+        return errorResponse("invalid_upload_chunk", "Upload chunk body is required", 400);
+      }
+
+      try {
+        return Response.json(await workspaceFileService.writeUploadChunk(
+          workspaceResult,
+          validation.data.uploadId,
+          validation.data.offset,
+          req.body,
+          {
+            startDirectory: validation.data.startDirectory,
+            signal: req.signal,
+          },
+        ));
+      } catch (error) {
+        log.error("Failed to write workspace file upload chunk", {
+          workspaceId: req.params.id,
+          uploadId: validation.data.uploadId,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/upload/complete": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = await parseAndValidate(CompleteWorkspaceFileUploadRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        return Response.json(await workspaceFileService.completeUpload(
+          workspaceResult,
+          validation.data.uploadId,
+          {
+            startDirectory: validation.data.startDirectory ?? undefined,
+          },
+        ));
+      } catch (error) {
+        log.error("Failed to complete workspace file upload", {
+          workspaceId: req.params.id,
+          uploadId: validation.data.uploadId,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/workspaces/:id/files/upload/cancel": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const workspaceResult = await requireWorkspace(req.params.id);
+      if (workspaceResult instanceof Response) {
+        return workspaceResult;
+      }
+
+      const validation = await parseAndValidate(CancelWorkspaceFileUploadRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        return Response.json(await workspaceFileService.cancelUpload(
+          workspaceResult,
+          validation.data.uploadId,
+          {
+            startDirectory: validation.data.startDirectory ?? undefined,
+          },
+        ));
+      } catch (error) {
+        log.error("Failed to cancel workspace file upload", {
+          workspaceId: req.params.id,
+          uploadId: validation.data.uploadId,
           error: String(error),
         });
         return mapFileError(error);

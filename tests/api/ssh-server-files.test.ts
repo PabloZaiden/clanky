@@ -304,6 +304,134 @@ describe("Standalone SSH server files API integration", () => {
     expect(invalidPathData.error).toBe("invalid_server_path");
   });
 
+  test("renames and deletes standalone server files and directories with credentials", async () => {
+    const createdServer = await createServer();
+    await mkdir(join(workDir, "server-dir", "child"), { recursive: true });
+    await writeFile(join(workDir, "server-dir", "child", "note.txt"), "server nested note\n");
+
+    const renameFileToken = await issueCredentialToken(createdServer.config.id);
+    const renameFileResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/rename`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-clanky-ssh-credential-token": renameFileToken,
+      },
+      body: JSON.stringify({
+        path: "README.md",
+        newName: "README-server-renamed.md",
+      }),
+    });
+    expect(renameFileResponse.ok).toBe(true);
+    expect(await Bun.file(join(workDir, "README-server-renamed.md")).text()).toBe("# Server files\n");
+
+    const renameDirectoryToken = await issueCredentialToken(createdServer.config.id);
+    const renameDirectoryResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/rename`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-clanky-ssh-credential-token": renameDirectoryToken,
+      },
+      body: JSON.stringify({
+        path: "server-dir",
+        newName: "server-renamed-dir",
+      }),
+    });
+    expect(renameDirectoryResponse.ok).toBe(true);
+    expect(await Bun.file(join(workDir, "server-renamed-dir", "child", "note.txt")).text()).toBe("server nested note\n");
+
+    const deleteFileToken = await issueCredentialToken(createdServer.config.id);
+    const deleteFileResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/delete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-clanky-ssh-credential-token": deleteFileToken,
+      },
+      body: JSON.stringify({
+        path: "README-server-renamed.md",
+        kind: "file",
+      }),
+    });
+    expect(deleteFileResponse.ok).toBe(true);
+    expect(await Bun.file(join(workDir, "README-server-renamed.md")).exists()).toBe(false);
+
+    const deleteDirectoryToken = await issueCredentialToken(createdServer.config.id);
+    const deleteDirectoryResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/delete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-clanky-ssh-credential-token": deleteDirectoryToken,
+      },
+      body: JSON.stringify({
+        path: "server-renamed-dir",
+        kind: "directory",
+      }),
+    });
+    expect(deleteDirectoryResponse.ok).toBe(true);
+    expect(await Bun.file(join(workDir, "server-renamed-dir", "child", "note.txt")).exists()).toBe(false);
+  });
+
+  test("uploads standalone server files in chunks with credentials", async () => {
+    const createdServer = await createServer();
+
+    const createToken = await issueCredentialToken(createdServer.config.id);
+    const createResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/upload`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-clanky-ssh-credential-token": createToken,
+      },
+      body: JSON.stringify({
+        directory: "src",
+        fileName: "server-uploaded.txt",
+        size: 12,
+        overwrite: false,
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const session = await createResponse.json() as { uploadId: string };
+
+    const firstChunkToken = await issueCredentialToken(createdServer.config.id);
+    const firstChunkResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/upload/chunk?uploadId=${encodeURIComponent(session.uploadId)}&offset=0`,
+      {
+        method: "POST",
+        headers: {
+          "x-clanky-ssh-credential-token": firstChunkToken,
+        },
+        body: new Blob(["server "]),
+      },
+    );
+    expect(firstChunkResponse.ok).toBe(true);
+    expect(await firstChunkResponse.json()).toMatchObject({ nextOffset: 7 });
+
+    const secondChunkToken = await issueCredentialToken(createdServer.config.id);
+    const secondChunkResponse = await fetch(
+      `${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/upload/chunk?uploadId=${encodeURIComponent(session.uploadId)}&offset=7`,
+      {
+        method: "POST",
+        headers: {
+          "x-clanky-ssh-credential-token": secondChunkToken,
+        },
+        body: new Blob(["chunk"]),
+      },
+    );
+    expect(secondChunkResponse.ok).toBe(true);
+    expect(await secondChunkResponse.json()).toMatchObject({ nextOffset: 12 });
+
+    const completeToken = await issueCredentialToken(createdServer.config.id);
+    const completeResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/files/upload/complete`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-clanky-ssh-credential-token": completeToken,
+      },
+      body: JSON.stringify({ uploadId: session.uploadId }),
+    });
+    expect(completeResponse.ok).toBe(true);
+    expect(await Bun.file(join(workDir, "src", "server-uploaded.txt")).text()).toBe("server chunk");
+    expect(await Bun.file(join(workDir, ".clanky-upload-tmp")).exists()).toBe(false);
+  });
+
   test("returns not_found when the standalone server does not exist", async () => {
     const response = await fetch(`${baseUrl}/api/ssh-servers/missing-server/files`, {
       headers: {
