@@ -23,7 +23,7 @@ import { quoteShell, buildEnvAssignments, readProcessStream } from "./utils";
 import { buildSshRemoteShellCommand, buildSshCommandArgs } from "./ssh-helpers";
 
 const LOG_PREFIX = "[CommandExecutor]";
-const DEFAULT_TIMEOUT_MS = 120_000;
+const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 
 const sshControlMasterInitializers = new Map<string, Promise<CommandResult>>();
 interface StreamedProcess {

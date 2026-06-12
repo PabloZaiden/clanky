@@ -72,7 +72,7 @@ export type PendingPermissionRequest = {
   options: PermissionOption[];
 };
 
-export const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30 * 60 * 1000;
 export const PROMPT_REQUEST_TIMEOUT_MS = 1_800_000;
 export const MAX_RECENT_PROCESS_LINES = 20;
 export const SSHPASS_INVALID_PASSWORD_EXIT_CODE = 5;
