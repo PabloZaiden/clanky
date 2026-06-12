@@ -167,7 +167,8 @@ export function SshSessionDetails({
   async function handleDelete() {
     const success = await deleteSession();
     if (!success) {
-    return;
+      showErrorToast(error ?? "Failed to delete SSH session.");
+      return;
     }
     setShowDeleteConfirm(false);
     onBack?.();

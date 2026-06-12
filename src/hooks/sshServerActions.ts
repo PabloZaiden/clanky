@@ -75,6 +75,18 @@ async function resolveOptionalCredentialToken(serverId: string, password?: strin
   return (await getStoredSshCredentialToken(serverId)) ?? undefined;
 }
 
+async function resolveBestEffortCredentialToken(serverId: string, password?: string): Promise<string | undefined> {
+  try {
+    return await resolveOptionalCredentialToken(serverId, password);
+  } catch (error) {
+    log.warn("Skipping optional SSH credential token lookup", {
+      serverId,
+      error: String(error),
+    });
+    return undefined;
+  }
+}
+
 export async function listSshServersApi(): Promise<ListSshServersResponse> {
   return await apiCall<ListSshServersResponse>("/api/ssh-servers", { method: "GET" }, "List SSH servers");
 }
@@ -149,7 +161,7 @@ export async function deleteStandaloneSshSessionApi(options: {
   requireCredential?: boolean;
 }): Promise<boolean> {
   const credentialToken = options.requireCredential === false
-    ? null
+    ? await resolveBestEffortCredentialToken(options.serverId, options.password) ?? null
     : await resolveCredentialToken(options.serverId, options.password);
   await apiCall(
     `/api/ssh-server-sessions/${options.sessionId}`,
