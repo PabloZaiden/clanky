@@ -45,7 +45,7 @@ interface ApiErrorBody {
 }
 
 const MAX_CONCURRENT_METADATA_REQUESTS = 10;
-const DEFAULT_UPLOAD_CHUNK_SIZE_BYTES = 8 * 1024 * 1024;
+const DEFAULT_UPLOAD_CHUNK_SIZE_BYTES = 800 * 1024;
 const MAX_UPLOAD_CHUNK_ATTEMPTS = 3;
 
 let activeMetadataRequests = 0;
