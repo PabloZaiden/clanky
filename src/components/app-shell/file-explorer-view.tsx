@@ -6,6 +6,7 @@ import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
 import { Button, ConfirmModal, Modal } from "../common";
+import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
@@ -67,7 +68,8 @@ interface FileExplorerViewProps {
   hasTerminal: boolean;
   emptyTerminalMessage: string;
   terminalSelectLabel: string;
-  onCreateTerminal: () => Promise<ExplorerSession>;
+  onCreateTerminal: (options?: CodeExplorerTerminalOptions) => Promise<ExplorerSession>;
+  canChooseTerminalTmux: boolean;
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
   initialFilePath?: string;
@@ -90,6 +92,7 @@ export function FileExplorerView({
   emptyTerminalMessage,
   terminalSelectLabel,
   onCreateTerminal,
+  canChooseTerminalTmux,
   testIdPrefix,
   credentialPromptName,
   initialFilePath,
@@ -125,6 +128,8 @@ export function FileExplorerView({
   const [deletingNode, setDeletingNode] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const [tmuxPromptOpen, setTmuxPromptOpen] = useState(false);
+  const [creatingTerminal, setCreatingTerminal] = useState(false);
   const [downloadingFilePath, setDownloadingFilePath] = useState<string | null>(null);
   const [openingLargeFile, setOpeningLargeFile] = useState(false);
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
@@ -183,14 +188,27 @@ export function FileExplorerView({
     }
   }, [explorer.error, explorer.errorCode, target.type]);
 
-  async function handleCreateTerminal() {
+  async function createTerminal(options?: CodeExplorerTerminalOptions) {
     try {
-      const session = await onCreateTerminal();
+      setCreatingTerminal(true);
+      const session = await onCreateTerminal(options);
       setSelectedSessionId(session.config.id);
       setActivePane("terminal");
+      setTmuxPromptOpen(false);
     } catch (error) {
       toast.error(String(error));
+    } finally {
+      setCreatingTerminal(false);
     }
+  }
+
+  function handleCreateTerminal() {
+    if (canChooseTerminalTmux) {
+      setTmuxPromptOpen(true);
+      return;
+    }
+
+    void createTerminal();
   }
 
   async function handleSave(): Promise<boolean> {
@@ -700,8 +718,8 @@ export function FileExplorerView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => void handleCreateTerminal()}
-                    disabled={!hasTerminal}
+                    onClick={handleCreateTerminal}
+                    disabled={!hasTerminal || creatingTerminal}
                   >
                     New terminal
                   </Button>
@@ -794,6 +812,46 @@ export function FileExplorerView({
         loading={deletingNode}
         variant="danger"
       />
+
+      <Modal
+        isOpen={tmuxPromptOpen}
+        onClose={() => setTmuxPromptOpen(false)}
+        title="Create terminal"
+        description="Choose how this terminal should start."
+        size="sm"
+        footer={(
+          <>
+            <Button variant="ghost" onClick={() => setTmuxPromptOpen(false)} disabled={creatingTerminal}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              loading={creatingTerminal}
+              onClick={() => {
+                void createTerminal({ useTmux: false });
+              }}
+            >
+              Without tmux
+            </Button>
+            <Button
+              variant="primary"
+              loading={creatingTerminal}
+              onClick={() => {
+                void createTerminal({ useTmux: true });
+              }}
+            >
+              With tmux
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+          <p>Start this terminal in tmux when available?</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Choose without tmux if you want a normal interactive shell without trying tmux first.
+          </p>
+        </div>
+      </Modal>
 
       <WorkspaceFileConflictModal
         isOpen={conflictState?.kind === "save_conflict"}
