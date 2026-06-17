@@ -132,6 +132,7 @@ export function FileExplorerView({
   const [creatingTerminal, setCreatingTerminal] = useState(false);
   const [downloadingFilePath, setDownloadingFilePath] = useState<string | null>(null);
   const [openingLargeFile, setOpeningLargeFile] = useState(false);
+  const canPromptForTerminalTmux = hasTerminal && canChooseTerminalTmux;
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const selectedFilePath = explorer.currentFile?.path;
   const selectedFileAbsolutePath = explorer.currentFile?.absolutePath;
@@ -188,6 +189,12 @@ export function FileExplorerView({
     }
   }, [explorer.error, explorer.errorCode, target.type]);
 
+  useEffect(() => {
+    if (!canPromptForTerminalTmux) {
+      setTmuxPromptOpen(false);
+    }
+  }, [canPromptForTerminalTmux]);
+
   async function createTerminal(options?: CodeExplorerTerminalOptions) {
     try {
       setCreatingTerminal(true);
@@ -203,7 +210,7 @@ export function FileExplorerView({
   }
 
   function handleCreateTerminal() {
-    if (canChooseTerminalTmux) {
+    if (canPromptForTerminalTmux) {
       setTmuxPromptOpen(true);
       return;
     }
@@ -814,7 +821,7 @@ export function FileExplorerView({
       />
 
       <Modal
-        isOpen={tmuxPromptOpen}
+        isOpen={tmuxPromptOpen && canPromptForTerminalTmux}
         onClose={() => setTmuxPromptOpen(false)}
         title="Create terminal"
         description="Choose how this terminal should start."

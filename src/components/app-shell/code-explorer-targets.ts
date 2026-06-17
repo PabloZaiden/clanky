@@ -209,7 +209,7 @@ export function resolveCodeExplorerTarget({
           connectionMode: "dtach",
           useTmux: options?.useTmux,
         }),
-        canChooseTerminalTmux: true,
+        canChooseTerminalTmux: hasTerminal,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };
@@ -346,7 +346,7 @@ export function resolveCodeExplorerTarget({
           connectionMode: "dtach",
           useTmux: options?.useTmux,
         }),
-        canChooseTerminalTmux: true,
+        canChooseTerminalTmux: hasTerminal,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };
