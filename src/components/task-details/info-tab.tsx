@@ -91,6 +91,12 @@ export function InfoTab({
     <div className={taskDetailsTabScrollContainerClassName}>
       <div className={`${taskDetailsTabContentFullWidthClassName} space-y-4`}>
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{labels.capitalized} Information</h3>
+        <div>
+          <h4 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">Original Task Prompt</h4>
+          <pre className="whitespace-pre-wrap break-words rounded-md bg-gray-50 p-4 font-mono text-sm text-gray-900 [overflow-wrap:anywhere] dark:bg-neutral-900 dark:text-gray-100">
+            {config.prompt || "No prompt specified."}
+          </pre>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Statistics */}
           <div className="space-y-2">

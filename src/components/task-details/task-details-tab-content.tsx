@@ -16,7 +16,6 @@ import type { PortForward } from "../../types";
 import { LogTab } from "./log-tab";
 import type { TranscriptFileLinkTarget } from "../log-viewer";
 import { InfoTab } from "./info-tab";
-import { PromptTab } from "./prompt-tab";
 import { PlanTab } from "./plan-tab";
 import { DiffTab } from "./diff-tab";
 import { ActionsTab } from "./actions-tab";
@@ -28,7 +27,6 @@ interface TaskDetailsTabContentProps {
   task: Task;
   taskId: string;
   labels: EntityLabels;
-  isActive: boolean;
   isPlanning: boolean;
   isPlanReady: boolean;
   isLogActive: boolean;
@@ -58,7 +56,6 @@ export function TaskDetailsTabContent({
   task,
   taskId,
   labels,
-  isActive,
   isPlanning,
   isPlanReady,
   isLogActive,
@@ -164,9 +161,6 @@ export function TaskDetailsTabContent({
           planningSettingsSubmitting={actions.planningSettingsSubmitting}
           onUpdatePlanningSettings={actions.handleUpdatePlanningSettings}
         />
-      )}
-      {activeTab === "prompt" && (
-        <PromptTab config={config} state={state} isActive={isActive} />
       )}
       {activeTab === "plan" && (
         <PlanTab
