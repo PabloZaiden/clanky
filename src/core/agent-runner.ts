@@ -115,7 +115,13 @@ export class AgentRunner {
   }
 
   async interruptRun(run: AgentRun, reason = "Agent run interrupted"): Promise<AgentRun> {
-    const chat = await chatManager.interruptChat(run.chatId ?? run.id, reason);
+    if (!run.chatId) {
+      throw new Error(`Agent run ${run.id} cannot be interrupted because its chat has not been created yet`);
+    }
+    const chat = await chatManager.interruptChat(run.chatId, reason);
+    if (!chat) {
+      throw new Error(`Agent run ${run.id} cannot be interrupted because chat ${run.chatId} was not found`);
+    }
     const now = createTimestamp();
     const updated: AgentRun = {
       ...run,

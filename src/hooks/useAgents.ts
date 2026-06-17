@@ -5,6 +5,7 @@ import type {
   Agent,
   AgentEvent,
   AgentRun,
+  AgentRunStatus,
 } from "../types";
 import type {
   CreateAgentRequest,
@@ -30,6 +31,48 @@ function sortRuns(runs: AgentRun[]): AgentRun[] {
 
 function upsertRun(runs: AgentRun[], run: AgentRun): AgentRun[] {
   return sortRuns([...runs.filter((item) => item.id !== run.id), run]);
+}
+
+function isTerminalRunStatus(status: AgentRunStatus): boolean {
+  return status === "completed"
+    || status === "failed"
+    || status === "skipped"
+    || status === "cancelled"
+    || status === "interrupted";
+}
+
+function updateKnownRunStatus(
+  runs: AgentRun[],
+  runId: string,
+  status: AgentRunStatus,
+  timestamp: string,
+  options: {
+    errorMessage?: string;
+    skipReason?: string;
+  } = {},
+): AgentRun[] {
+  let changed = false;
+  const nextRuns = runs.map((run) => {
+    if (run.id !== runId) {
+      return run;
+    }
+    changed = true;
+    return {
+      ...run,
+      status,
+      completedAt: isTerminalRunStatus(status) ? run.completedAt ?? timestamp : run.completedAt,
+      skipReason: options.skipReason ?? run.skipReason,
+      error: options.errorMessage
+        ? {
+            message: options.errorMessage,
+            timestamp,
+            code: status,
+          }
+        : run.error,
+      updatedAt: timestamp,
+    };
+  });
+  return changed ? sortRuns(nextRuns) : runs;
 }
 
 async function parseError(response: Response, fallback: string): Promise<string> {
@@ -233,6 +276,66 @@ export function useAgents(): UseAgentsResult {
         ...prev,
         [event.agentId]: upsertRun(prev[event.agentId] ?? [], event.run),
       }));
+      void refresh();
+      return;
+    }
+    if (event.type === "agent.run.status") {
+      setRunsByAgentId((prev) => ({
+        ...prev,
+        [event.agentId]: updateKnownRunStatus(
+          prev[event.agentId] ?? [],
+          event.agentRunId,
+          event.status,
+          event.timestamp,
+        ),
+      }));
+      if (isTerminalRunStatus(event.status)) {
+        void refreshRuns(event.agentId);
+        void refresh();
+      }
+      return;
+    }
+    if (event.type === "agent.run.failed") {
+      setRunsByAgentId((prev) => ({
+        ...prev,
+        [event.agentId]: updateKnownRunStatus(
+          prev[event.agentId] ?? [],
+          event.agentRunId,
+          "failed",
+          event.timestamp,
+          { errorMessage: event.message },
+        ),
+      }));
+      void refreshRuns(event.agentId);
+      void refresh();
+      return;
+    }
+    if (event.type === "agent.run.skipped") {
+      setRunsByAgentId((prev) => ({
+        ...prev,
+        [event.agentId]: updateKnownRunStatus(
+          prev[event.agentId] ?? [],
+          event.agentRunId,
+          "skipped",
+          event.timestamp,
+          { skipReason: event.reason },
+        ),
+      }));
+      void refreshRuns(event.agentId);
+      void refresh();
+      return;
+    }
+    if (event.type === "agent.run.interrupted") {
+      setRunsByAgentId((prev) => ({
+        ...prev,
+        [event.agentId]: updateKnownRunStatus(
+          prev[event.agentId] ?? [],
+          event.agentRunId,
+          "interrupted",
+          event.timestamp,
+        ),
+      }));
+      void refreshRuns(event.agentId);
       void refresh();
       return;
     }

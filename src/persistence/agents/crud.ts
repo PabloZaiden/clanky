@@ -9,6 +9,8 @@ import {
   validateAgentRunColumnNames,
 } from "./helpers";
 
+const DELETE_AGENT_RUN_BATCH_SIZE = 500;
+
 export interface AgentRunListOptions {
   limit?: number;
   offset?: number;
@@ -154,9 +156,11 @@ export async function deleteAgentRuns(
     return [];
   }
 
-  getDatabase()
-    .prepare(`DELETE FROM agent_runs WHERE id IN (${runIds.map(() => "?").join(", ")})`)
-    .run(...runIds);
+  const db = getDatabase();
+  for (let index = 0; index < runIds.length; index += DELETE_AGENT_RUN_BATCH_SIZE) {
+    const batch = runIds.slice(index, index + DELETE_AGENT_RUN_BATCH_SIZE);
+    db.prepare(`DELETE FROM agent_runs WHERE id IN (${batch.map(() => "?").join(", ")})`)
+      .run(...batch);
+  }
   return runIds;
 }
-

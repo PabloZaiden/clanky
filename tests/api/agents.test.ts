@@ -74,7 +74,6 @@ describe("Agents API Integration", () => {
         prompt: "Check the workspace and report status",
         model: testModel,
         useWorktree: false,
-        baseBranch: "main",
         schedule: {
           startAtLocal: "2030-01-01T09:00",
           timezone: "UTC",
@@ -97,7 +96,7 @@ describe("Agents API Integration", () => {
     process.env["CLANKY_DATA_DIR"] = testDataDir;
     await ensureDataDirectories();
 
-    await Bun.$`git init -b main ${testWorkDir}`.quiet();
+    await Bun.$`git init ${testWorkDir}`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.name "Test User"`.quiet();
     await Bun.$`touch ${testWorkDir}/README.md`.quiet();
@@ -210,5 +209,81 @@ describe("Agents API Integration", () => {
     expect(updatedAgent?.state.lastSkippedAt).toBeTruthy();
     expect(updatedAgent?.state.nextRunAt).not.toBe(dueAt);
   });
-});
 
+  test("rejects invalid agent schedule timezone", async () => {
+    const response = await fetch(`${baseUrl}/api/agents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Invalid timezone agent",
+        workspaceId,
+        prompt: "Check the workspace and report status",
+        model: testModel,
+        useWorktree: false,
+        schedule: {
+          startAtLocal: "2030-01-01T09:00",
+          timezone: "Not/A_Timezone",
+          interval: {
+            value: 1,
+            unit: "hours",
+          },
+        },
+        enabled: true,
+      }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("purges large run histories in batches", async () => {
+    const agent = await createAgent("Large purge agent");
+    const now = new Date("2026-01-01T00:00:00Z").toISOString();
+    const runIds: string[] = [];
+    for (let index = 0; index < 1005; index += 1) {
+      const id = crypto.randomUUID();
+      runIds.push(id);
+      await saveAgentRun({
+        id,
+        agentId: agent!.config.id,
+        status: "completed",
+        trigger: "manual",
+        scheduledFor: now,
+        startedAt: now,
+        completedAt: now,
+        messages: [],
+        logs: [],
+        toolCalls: [],
+        pendingPermissionRequests: [],
+        configSnapshot: {
+          name: agent!.config.name,
+          workspaceId: agent!.config.workspaceId,
+          directory: agent!.config.directory,
+          prompt: agent!.config.prompt,
+          model: agent!.config.model,
+          baseBranch: agent!.config.baseBranch,
+          useWorktree: agent!.config.useWorktree,
+          schedule: agent!.config.schedule,
+        },
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    const response = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/runs`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        includeCompleted: true,
+        includeFailed: false,
+        includeSkipped: false,
+        includeInterrupted: false,
+        includeCancelled: false,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const data = await response.json() as { deletedRunIds: string[] };
+    expect(new Set(data.deletedRunIds)).toEqual(new Set(runIds));
+    expect(await listAgentRuns(agent!.config.id, { limit: 10 })).toHaveLength(0);
+  });
+});

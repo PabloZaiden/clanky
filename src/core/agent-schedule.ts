@@ -10,6 +10,12 @@ interface LocalDateParts {
   second: number;
 }
 
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+const DAY_SCHEDULE_COARSE_LOOKBACK_INTERVALS = 8;
+const DAY_SCHEDULE_FINAL_LOOP_GUARD = 1000;
+
 function parseLocalDateTime(value: string): LocalDateParts {
   const match = value.trim().match(
     /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?$/,
@@ -81,14 +87,7 @@ export function localDateTimeToUtc(value: string, timezone: string): Date {
   return new Date(utcTime);
 }
 
-function addInterval(date: Date, interval: AgentScheduleInterval, timezone: string): Date {
-  if (interval.unit === "minutes") {
-    return new Date(date.getTime() + interval.value * 60 * 1000);
-  }
-  if (interval.unit === "hours") {
-    return new Date(date.getTime() + interval.value * 60 * 60 * 1000);
-  }
-
+function addCalendarDays(date: Date, days: number, timezone: string): Date {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
     year: "numeric",
@@ -103,7 +102,7 @@ function addInterval(date: Date, interval: AgentScheduleInterval, timezone: stri
   const localNoon = new Date(Date.UTC(
     Number(parts["year"]),
     Number(parts["month"]) - 1,
-    Number(parts["day"]) + interval.value,
+    Number(parts["day"]) + days,
     Number(parts["hour"]),
     Number(parts["minute"]),
     Number(parts["second"]),
@@ -122,19 +121,61 @@ function addInterval(date: Date, interval: AgentScheduleInterval, timezone: stri
   return localDateTimeToUtc(localValue, timezone);
 }
 
+function addInterval(date: Date, interval: AgentScheduleInterval, timezone: string): Date {
+  if (interval.unit === "minutes") {
+    return new Date(date.getTime() + interval.value * MINUTE_MS);
+  }
+  if (interval.unit === "hours") {
+    return new Date(date.getTime() + interval.value * HOUR_MS);
+  }
+
+  return addCalendarDays(date, interval.value, timezone);
+}
+
+function advanceDurationSchedule(start: Date, intervalMs: number, after: Date): Date {
+  if (start.getTime() > after.getTime()) {
+    return start;
+  }
+  const elapsedIntervals = Math.floor((after.getTime() - start.getTime()) / intervalMs) + 1;
+  return new Date(start.getTime() + elapsedIntervals * intervalMs);
+}
+
+function advanceDaySchedule(start: Date, interval: AgentScheduleInterval, timezone: string, after: Date): Date {
+  let next = start;
+  if (next.getTime() > after.getTime()) {
+    return next;
+  }
+
+  const intervalMs = interval.value * DAY_MS;
+  const coarseIntervals = Math.max(
+    0,
+    Math.floor((after.getTime() - next.getTime()) / intervalMs) - DAY_SCHEDULE_COARSE_LOOKBACK_INTERVALS,
+  );
+  if (coarseIntervals > 0) {
+    next = addCalendarDays(next, coarseIntervals * interval.value, timezone);
+  }
+
+  let guard = 0;
+  while (next.getTime() <= after.getTime()) {
+    next = addInterval(next, interval, timezone);
+    guard += 1;
+    if (guard > DAY_SCHEDULE_FINAL_LOOP_GUARD) {
+      throw new Error("Unable to calculate next agent run; day schedule did not converge");
+    }
+  }
+  return next;
+}
+
 export function calculateNextRunAt(
   schedule: Omit<AgentSchedule, "nextRunAt"> | AgentSchedule,
   after: Date = new Date(),
 ): string {
-  let next = localDateTimeToUtc(schedule.startAtLocal, schedule.timezone);
-  let guard = 0;
-  while (next.getTime() <= after.getTime()) {
-    next = addInterval(next, schedule.interval, schedule.timezone);
-    guard += 1;
-    if (guard > 10000) {
-      throw new Error("Unable to calculate next agent run; interval may be too small or schedule too old");
-    }
+  const start = localDateTimeToUtc(schedule.startAtLocal, schedule.timezone);
+  if (schedule.interval.unit === "minutes") {
+    return advanceDurationSchedule(start, schedule.interval.value * MINUTE_MS, after).toISOString();
   }
-  return next.toISOString();
+  if (schedule.interval.unit === "hours") {
+    return advanceDurationSchedule(start, schedule.interval.value * HOUR_MS, after).toISOString();
+  }
+  return advanceDaySchedule(start, schedule.interval, schedule.timezone, after).toISOString();
 }
-

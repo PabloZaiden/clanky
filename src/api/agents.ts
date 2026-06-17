@@ -197,11 +197,15 @@ export const agentsRoutes = {
         }
         return Response.json(run);
       } catch (error) {
+        const message = String(error);
+        if (message.includes("cannot be interrupted yet")) {
+          return errorResponse("agent_run_not_ready", message, 409);
+        }
         log.error("Failed to interrupt agent", {
           agentId: req.params.id,
-          error: String(error),
+          error: message,
         });
-        return errorResponse("interrupt_agent_failed", String(error), 500);
+        return errorResponse("interrupt_agent_failed", message, 500);
       }
     },
   },
@@ -258,4 +262,3 @@ export const agentsRoutes = {
     },
   },
 };
-

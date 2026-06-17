@@ -1,6 +1,6 @@
 import type { Agent, AgentConfig, AgentRun, AgentRunStatus } from "../types/agent";
 import type { MessageImageAttachment } from "../types/message-attachments";
-import { createInitialAgentState } from "../types/agent";
+import { createInitialAgentState, isAgentRunActiveStatus } from "../types/agent";
 import { createTimestamp } from "../types/events";
 import { getWorkspace, touchWorkspace } from "../persistence/workspaces";
 import {
@@ -19,6 +19,13 @@ import { chatManager } from "./chat-manager";
 import { agentRunner } from "./agent-runner";
 import { calculateNextRunAt } from "./agent-schedule";
 import { agentEventEmitter } from "./event-emitter";
+
+const INTERRUPT_CHAT_ID_WAIT_MS = 2000;
+const INTERRUPT_CHAT_ID_POLL_MS = 50;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export interface CreateAgentOptions {
   name: string;
@@ -52,6 +59,29 @@ export interface PurgeAgentRunsOptions {
 }
 
 export class AgentManager {
+  private async waitForInterruptibleRun(runId: string): Promise<AgentRun | null> {
+    const deadline = Date.now() + INTERRUPT_CHAT_ID_WAIT_MS;
+    while (Date.now() <= deadline) {
+      const run = await loadAgentRun(runId);
+      if (!run || !isAgentRunActiveStatus(run.status)) {
+        return null;
+      }
+      if (run.chatId) {
+        return run;
+      }
+      await delay(INTERRUPT_CHAT_ID_POLL_MS);
+    }
+
+    const run = await loadAgentRun(runId);
+    if (!run || !isAgentRunActiveStatus(run.status)) {
+      return null;
+    }
+    if (run.chatId) {
+      return run;
+    }
+    throw new Error(`Agent run ${runId} cannot be interrupted yet because its chat has not been created; try again shortly`);
+  }
+
   async createAgent(options: CreateAgentOptions): Promise<Agent> {
     const workspace = await getWorkspace(options.workspaceId);
     if (!workspace) {
@@ -180,7 +210,7 @@ export class AgentManager {
     if (!agent?.state.activeRunId) {
       return null;
     }
-    const run = await loadAgentRun(agent.state.activeRunId);
+    const run = await this.waitForInterruptibleRun(agent.state.activeRunId);
     if (!run) {
       return null;
     }

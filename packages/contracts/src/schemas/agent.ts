@@ -5,10 +5,16 @@
  */
 
 import { z } from "zod";
+import { isValidIanaTimeZone } from "@clanky/shared";
 import { ModelConfigSchema } from "./model";
 import { TaskNameSchema, MessageImageAttachmentsSchema } from "./task";
 
 export const AgentScheduleIntervalUnitSchema = z.enum(["minutes", "hours", "days"]);
+
+const IanaTimezoneSchema = z.string().trim().min(1, "timezone is required").refine(
+  isValidIanaTimeZone,
+  { message: "timezone must be a valid IANA timezone" },
+);
 
 export const AgentScheduleIntervalSchema = z.object({
   value: z.number().int().positive("interval value must be greater than 0"),
@@ -17,7 +23,7 @@ export const AgentScheduleIntervalSchema = z.object({
 
 export const AgentScheduleSchema = z.object({
   startAtLocal: z.string().trim().min(1, "startAtLocal is required"),
-  timezone: z.string().trim().min(1, "timezone is required"),
+  timezone: IanaTimezoneSchema,
   interval: AgentScheduleIntervalSchema,
   nextRunAt: z.string().datetime().optional(),
 });
@@ -68,7 +74,7 @@ export const AgentRunsQuerySchema = z.object({
 });
 
 export const SchedulerTimezoneRequestSchema = z.object({
-  timezone: z.string().trim().min(1, "timezone is required"),
+  timezone: IanaTimezoneSchema,
 });
 
 export type CreateAgentRequest = z.infer<typeof CreateAgentRequestSchema>;
