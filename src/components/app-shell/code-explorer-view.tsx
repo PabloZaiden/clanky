@@ -24,7 +24,7 @@ interface CodeExplorerViewProps {
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode },
+    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
   onNavigate: (route: ShellRoute) => void;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;
@@ -154,11 +154,12 @@ export function CodeExplorerView({
       emptyTerminalMessage={resolvedTarget.emptyTerminalMessage}
       terminalSelectLabel={resolvedTarget.terminalSelectLabel}
       onCreateTerminal={resolvedTarget.onCreateTerminal}
+      canChooseTerminalTmux={resolvedTarget.canChooseTerminalTmux}
       testIdPrefix={resolvedTarget.testIdPrefix}
-        credentialPromptName={resolvedTarget.credentialPromptName}
-        initialFilePath={resolvedTarget.initialFilePath}
-        headerActions={contentSwitcher}
-        sshSessionDetailsComponent={sshSessionDetailsComponent}
-      />
+      credentialPromptName={resolvedTarget.credentialPromptName}
+      initialFilePath={resolvedTarget.initialFilePath}
+      headerActions={contentSwitcher}
+      sshSessionDetailsComponent={sshSessionDetailsComponent}
+    />
   );
 }
