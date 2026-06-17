@@ -75,7 +75,7 @@ interface ShellMainContentProps {
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession: (
     serverId: string,
-    options?: { name?: string; connectionMode?: import("../../types").SshConnectionMode },
+    options?: { name?: string; connectionMode?: import("../../types").SshConnectionMode; useTmux?: boolean },
   ) => Promise<import("../../types/ssh-server").SshServerSession>;
   createServer: (
     request: import("../../types").CreateSshServerRequest,
