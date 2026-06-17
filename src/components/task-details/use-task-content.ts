@@ -103,7 +103,7 @@ export function useTaskContent({
       }
     }
 
-    if (activeTab !== "log" && activeTab !== "prompt") {
+    if (activeTab !== "log") {
       loadContent();
     }
 

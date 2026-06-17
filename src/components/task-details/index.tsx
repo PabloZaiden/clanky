@@ -253,7 +253,7 @@ export function TaskDetails({
 
           <TaskDetailsTabContent
             activeTab={activeTab} task={task} taskId={taskId} labels={labels}
-            isActive={isActive} isPlanning={isPlanning} isPlanReady={isPlanReady}
+            isPlanning={isPlanning} isPlanReady={isPlanReady}
             isLogActive={isLogActive} feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
             messages={messages} toolCalls={toolCalls} logs={logs}
             logDisplay={logDisplay}

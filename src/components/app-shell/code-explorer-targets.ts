@@ -5,6 +5,10 @@ import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
 
 type ExplorerSession = SshSession | SshServerSession;
 
+export interface CodeExplorerTerminalOptions {
+  useTmux?: boolean;
+}
+
 export interface CodeExplorerOption {
   id: string;
   kind: CodeExplorerTarget["contentType"];
@@ -46,7 +50,8 @@ export interface ResolvedCodeExplorerTarget {
   hasTerminal: boolean;
   emptyTerminalMessage: string;
   terminalSelectLabel: string;
-  onCreateTerminal: () => Promise<ExplorerSession>;
+  onCreateTerminal: (options?: CodeExplorerTerminalOptions) => Promise<ExplorerSession>;
+  canChooseTerminalTmux: boolean;
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
   initialFilePath?: string;
@@ -63,7 +68,7 @@ interface ResolveCodeExplorerTargetArgs {
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode },
+    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
 }
 
@@ -198,11 +203,13 @@ export function resolveCodeExplorerTarget({
           ? "Choose an existing SSH session or create a new one."
           : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable.",
         terminalSelectLabel: "Select workspace SSH session",
-        onCreateTerminal: async () => await createSession({
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createSession({
           workspaceId: workspace.id,
           name: `${workspace.name} terminal`,
           connectionMode: "dtach",
+          useTmux: options?.useTmux,
         }),
+        canChooseTerminalTmux: hasTerminal,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };
@@ -248,6 +255,7 @@ export function resolveCodeExplorerTarget({
           : "This task does not have a task-linked terminal yet. Start or reconnect the task SSH session from the info tab.",
         terminalSelectLabel: "Select task SSH session",
         onCreateTerminal: async () => await getOrCreateTaskSshSessionApi(task.config.id),
+        canChooseTerminalTmux: false,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };
@@ -281,10 +289,12 @@ export function resolveCodeExplorerTarget({
         hasTerminal: true,
         emptyTerminalMessage: "Choose an existing standalone SSH session or create a new one.",
         terminalSelectLabel: "Select standalone SSH session",
-        onCreateTerminal: async () => await createStandaloneSession(server.config.id, {
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createStandaloneSession(server.config.id, {
           name: `${server.config.name} terminal`,
           connectionMode: "dtach",
+          useTmux: options?.useTmux,
         }),
+        canChooseTerminalTmux: true,
         testIdPrefix: "server",
         credentialPromptName: server.config.name,
         initialFilePath: target.filePath,
@@ -330,11 +340,13 @@ export function resolveCodeExplorerTarget({
           ? "Choose an existing SSH session or create a new one."
           : "This workspace uses stdio transport, so embedded SSH terminal sessions are unavailable.",
         terminalSelectLabel: "Select workspace SSH session",
-        onCreateTerminal: async () => await createSession({
+        onCreateTerminal: async (options?: CodeExplorerTerminalOptions) => await createSession({
           workspaceId: workspace.id,
           name: `${workspace.name} terminal`,
           connectionMode: "dtach",
+          useTmux: options?.useTmux,
         }),
+        canChooseTerminalTmux: hasTerminal,
         testIdPrefix: "workspace",
         initialFilePath: target.filePath,
       };
