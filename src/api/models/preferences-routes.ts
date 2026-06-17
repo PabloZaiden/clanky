@@ -8,6 +8,7 @@
  * - GET/PUT /api/preferences/log-level
  * - GET/PUT /api/preferences/dashboard-view-mode
  * - GET/PUT /api/preferences/theme
+ * - GET/PUT /api/preferences/scheduler-timezone
  *
  * @module api/models/preferences-routes
  */
@@ -32,6 +33,8 @@ import {
   setThemePreference,
   getQuickChatSettings,
   setQuickChatSettings,
+  getSchedulerTimezone,
+  setSchedulerTimezone,
 } from "../../persistence/preferences";
 import { getWorkspace } from "../../persistence/workspaces";
 import {
@@ -52,6 +55,7 @@ import {
   SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
   SetThemePreferenceRequestSchema,
+  SetSchedulerTimezoneRequestSchema,
   SetQuickChatSettingsRequestSchema,
 } from "../../types/schemas";
 
@@ -399,6 +403,28 @@ export const preferencesRoutes = {
         return Response.json({ success: true, settings });
       } catch (error) {
         logPreferenceSaveFailure("quick-chat", error);
+        return errorResponse("save_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/preferences/scheduler-timezone": {
+    async GET(): Promise<Response> {
+      const timezone = await getSchedulerTimezone();
+      return Response.json({ timezone });
+    },
+
+    async PUT(req: Request): Promise<Response> {
+      const result = await parseAndValidate(SetSchedulerTimezoneRequestSchema, req);
+      if (!result.success) {
+        return result.response;
+      }
+
+      try {
+        await setSchedulerTimezone(result.data.timezone);
+        return Response.json({ success: true, timezone: result.data.timezone });
+      } catch (error) {
+        logPreferenceSaveFailure("scheduler-timezone", error);
         return errorResponse("save_failed", String(error), 500);
       }
     },

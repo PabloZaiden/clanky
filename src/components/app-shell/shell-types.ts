@@ -137,6 +137,7 @@ export type CodeExplorerTarget =
 export type ShellRoute =
   | { view: "home" }
   | { view: "settings" }
+  | { view: "agents" }
   | { view: "code-explorer"; target?: CodeExplorerTarget }
   | { view: "task"; taskId: string }
   | { view: "task-files"; taskId: string; startDirectory?: string }

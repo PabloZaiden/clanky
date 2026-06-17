@@ -136,6 +136,8 @@ export function getHashForShellRoute(route: ShellRoute): string {
       return `/server-arise/${route.serverId}`;
     case "settings":
       return "/settings";
+    case "agents":
+      return "/agents";
     case "rebuild-workspace":
       return `/rebuild-workspace/${route.workspaceId}`;
     case "restart-workspace":

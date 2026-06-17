@@ -60,6 +60,8 @@ export interface Migration {
  * since PRAGMA does not support parameterized queries.
  */
 const KNOWN_TABLE_NAMES = new Set([
+  "agents",
+  "agent_runs",
   "chats",
   "tasks",
   "ssh_sessions",
@@ -242,6 +244,92 @@ export const migrations: Migration[] = [
         ON vnc_sessions(local_port)
         WHERE status IN ('starting', 'active', 'stopping')
       `);
+    },
+  },
+  {
+    version: 3,
+    name: "add_agents",
+    up: (db) => {
+      db.run(`
+        CREATE TABLE IF NOT EXISTS agents (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          directory TEXT NOT NULL,
+          prompt TEXT NOT NULL,
+          model_provider_id TEXT NOT NULL,
+          model_model_id TEXT NOT NULL,
+          model_variant TEXT,
+          base_branch TEXT,
+          use_worktree INTEGER NOT NULL DEFAULT 1,
+          schedule_start_at_local TEXT NOT NULL,
+          schedule_timezone TEXT NOT NULL,
+          schedule_interval_value INTEGER NOT NULL,
+          schedule_interval_unit TEXT NOT NULL,
+          schedule_next_run_at TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          mode TEXT NOT NULL DEFAULT 'agent',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          status TEXT NOT NULL,
+          last_run_at TEXT,
+          next_run_at TEXT,
+          last_skipped_at TEXT,
+          last_error_message TEXT,
+          last_error_timestamp TEXT,
+          last_error_code TEXT,
+          active_run_id TEXT,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE TABLE IF NOT EXISTS agent_runs (
+          id TEXT PRIMARY KEY,
+          agent_id TEXT NOT NULL,
+          chat_id TEXT,
+          status TEXT NOT NULL,
+          trigger TEXT NOT NULL,
+          scheduled_for TEXT NOT NULL,
+          started_at TEXT,
+          completed_at TEXT,
+          skip_reason TEXT,
+          error_message TEXT,
+          error_timestamp TEXT,
+          error_code TEXT,
+          session_id TEXT,
+          session_server_url TEXT,
+          worktree_original_branch TEXT,
+          worktree_working_branch TEXT,
+          worktree_path TEXT,
+          messages TEXT NOT NULL DEFAULT '[]',
+          logs TEXT NOT NULL DEFAULT '[]',
+          tool_calls TEXT NOT NULL DEFAULT '[]',
+          pending_permission_requests TEXT NOT NULL DEFAULT '[]',
+          attachments TEXT NOT NULL DEFAULT '[]',
+          config_snapshot TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+        )
+      `);
+      db.run("CREATE INDEX IF NOT EXISTS idx_agents_workspace_created_at ON agents(workspace_id, created_at DESC)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_agents_enabled_next_run ON agents(enabled, next_run_at)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_created_at ON agent_runs(agent_id, created_at DESC)");
+      db.run("CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status)");
+    },
+  },
+  {
+    version: 4,
+    name: "add_agent_run_chat_id",
+    up: (db) => {
+      if (!tableExists(db, "agent_runs")) {
+        return;
+      }
+      const columns = getTableColumns(db, "agent_runs");
+      if (columns.includes("chat_id")) {
+        return;
+      }
+      db.run("ALTER TABLE agent_runs ADD COLUMN chat_id TEXT");
     },
   },
 ];

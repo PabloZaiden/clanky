@@ -3,8 +3,9 @@
  */
 
 export { useWebSocket, useGlobalEvents, useTaskEvents, type WebSocketConnectionStatus, type UseWebSocketOptions, type UseWebSocketResult } from "./useWebSocket";
-export { AppEventsProvider, isChatEvent, isTaskEvent, isSshSessionEvent, useAppEvents } from "./useAppEvents";
+export { AppEventsProvider, isAgentEvent, isChatEvent, isTaskEvent, isSshSessionEvent, useAppEvents } from "./useAppEvents";
 export { useChats, type UseChatsResult } from "./useChats";
+export { useAgents, type UseAgentsResult } from "./useAgents";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
 export { useTask, type UseTaskResult } from "./useTask";
 export { useSshSessions, type UseSshSessionsResult } from "./useSshSessions";

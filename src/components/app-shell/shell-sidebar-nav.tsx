@@ -971,6 +971,16 @@ export function ShellSidebarNav({
             </button>
             <button
               type="button"
+              onClick={() => navigateWithinShell({ view: "agents" })}
+              aria-label="Open agents"
+              aria-current={route.view === "agents" ? "page" : undefined}
+              className={route.view === "agents" ? iconButtonActive : iconButtonDefault}
+              title="Agents"
+            >
+              <RefreshIcon size="h-5 w-5" />
+            </button>
+            <button
+              type="button"
               onClick={() => navigateWithinShell({ view: "settings" })}
               aria-label="Open settings"
               aria-current={route.view === "settings" ? "page" : undefined}

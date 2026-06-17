@@ -1,0 +1,261 @@
+/**
+ * Scheduled agents API routes.
+ */
+
+import type { AgentRunStatus } from "../types/agent";
+import {
+  AgentRunsQuerySchema,
+  CreateAgentRequestSchema,
+  DeleteAgentRunsRequestSchema,
+  RunAgentRequestSchema,
+  UpdateAgentRequestSchema,
+} from "../types/schemas";
+import { agentManager } from "../core/agent-manager";
+import { createLogger } from "../core/logger";
+import { isModelEnabled } from "./models";
+import { errorResponse, requireWorkspace, successResponse } from "./helpers";
+import { parseAndValidate, validateRequest } from "./validation";
+
+const log = createLogger("api:agents");
+
+async function validateAgentModel(workspaceId: string, model: {
+  providerID: string;
+  modelID: string;
+  variant?: string;
+}): Promise<Response | null> {
+  const workspace = await requireWorkspace(workspaceId);
+  if (workspace instanceof Response) {
+    return workspace;
+  }
+  const modelValidation = await isModelEnabled(
+    workspace.id,
+    workspace.directory,
+    model.providerID,
+    model.modelID,
+  );
+  if (!modelValidation.enabled) {
+    return errorResponse(
+      modelValidation.errorCode ?? "model_not_enabled",
+      modelValidation.error ?? "The selected model is not available",
+    );
+  }
+  return null;
+}
+
+function mapPurgeStatuses(body: {
+  includeCompleted: boolean;
+  includeFailed: boolean;
+  includeSkipped: boolean;
+  includeInterrupted: boolean;
+  includeCancelled: boolean;
+}): AgentRunStatus[] {
+  const statuses: AgentRunStatus[] = [];
+  if (body.includeCompleted) {
+    statuses.push("completed");
+  }
+  if (body.includeFailed) {
+    statuses.push("failed");
+  }
+  if (body.includeSkipped) {
+    statuses.push("skipped");
+  }
+  if (body.includeInterrupted) {
+    statuses.push("interrupted");
+  }
+  if (body.includeCancelled) {
+    statuses.push("cancelled");
+  }
+  return statuses;
+}
+
+export const agentsRoutes = {
+  "/api/agents": {
+    async GET(req: Request): Promise<Response> {
+      const url = new URL(req.url);
+      const workspaceId = url.searchParams.get("workspaceId") ?? undefined;
+      const agents = await agentManager.getAgents(workspaceId);
+      return Response.json(agents);
+    },
+
+    async POST(req: Request): Promise<Response> {
+      const validation = await parseAndValidate(CreateAgentRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      const body = validation.data;
+      const modelValidation = await validateAgentModel(body.workspaceId, body.model);
+      if (modelValidation) {
+        return modelValidation;
+      }
+
+      try {
+        const agent = await agentManager.createAgent(body);
+        return Response.json(agent, { status: 201 });
+      } catch (error) {
+        log.error("Failed to create agent", {
+          workspaceId: body.workspaceId,
+          error: String(error),
+        });
+        return errorResponse("create_agent_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/agents/:id": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const agent = await agentManager.getAgent(req.params.id);
+      if (!agent) {
+        return errorResponse("agent_not_found", "Agent not found", 404);
+      }
+      return Response.json(agent);
+    },
+
+    async PATCH(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(UpdateAgentRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      const existing = await agentManager.getAgent(req.params.id);
+      if (!existing) {
+        return errorResponse("agent_not_found", "Agent not found", 404);
+      }
+      const body = validation.data;
+      if (body.model) {
+        const modelValidation = await validateAgentModel(existing.config.workspaceId, body.model);
+        if (modelValidation) {
+          return modelValidation;
+        }
+      }
+
+      try {
+        const agent = await agentManager.updateAgent(req.params.id, body);
+        if (!agent) {
+          return errorResponse("agent_not_found", "Agent not found", 404);
+        }
+        return Response.json(agent);
+      } catch (error) {
+        log.error("Failed to update agent", {
+          agentId: req.params.id,
+          error: String(error),
+        });
+        return errorResponse("update_agent_failed", String(error), 500);
+      }
+    },
+
+    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+      try {
+        const deleted = await agentManager.deleteAgent(req.params.id);
+        if (!deleted) {
+          return errorResponse("agent_not_found", "Agent not found", 404);
+        }
+        return successResponse();
+      } catch (error) {
+        log.error("Failed to delete agent", {
+          agentId: req.params.id,
+          error: String(error),
+        });
+        return errorResponse("delete_agent_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/agents/:id/run": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(RunAgentRequestSchema, req, { allowEmptyBody: true });
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const run = await agentManager.runNow(req.params.id, validation.data.attachments);
+        return Response.json(run, { status: 202 });
+      } catch (error) {
+        const message = String(error);
+        if (message.includes("not found")) {
+          return errorResponse("agent_not_found", "Agent not found", 404);
+        }
+        if (message.includes("active run")) {
+          return errorResponse("agent_already_running", message, 409);
+        }
+        log.error("Failed to run agent", {
+          agentId: req.params.id,
+          error: message,
+        });
+        return errorResponse("run_agent_failed", message, 500);
+      }
+    },
+  },
+
+  "/api/agents/:id/interrupt": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      try {
+        const run = await agentManager.interruptAgent(req.params.id, "Agent run interrupted by user");
+        if (!run) {
+          return errorResponse("no_active_agent_run", "Agent does not have an active run", 409);
+        }
+        return Response.json(run);
+      } catch (error) {
+        log.error("Failed to interrupt agent", {
+          agentId: req.params.id,
+          error: String(error),
+        });
+        return errorResponse("interrupt_agent_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/agents/:id/runs": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const parsedQuery = validateRequest(
+        AgentRunsQuerySchema,
+        Object.fromEntries(new URL(req.url).searchParams),
+      );
+      if (!parsedQuery.success) {
+        return parsedQuery.response;
+      }
+      const agent = await agentManager.getAgent(req.params.id);
+      if (!agent) {
+        return errorResponse("agent_not_found", "Agent not found", 404);
+      }
+      const runs = await agentManager.listRuns(req.params.id, parsedQuery.data);
+      return Response.json(runs);
+    },
+
+    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(DeleteAgentRunsRequestSchema, req, { allowEmptyBody: true });
+      if (!validation.success) {
+        return validation.response;
+      }
+      const statuses = mapPurgeStatuses(validation.data);
+      if (statuses.length === 0) {
+        return successResponse({ deletedRunIds: [] });
+      }
+      const deletedRunIds = await agentManager.purgeRuns(req.params.id, {
+        before: validation.data.before,
+        statuses,
+      });
+      return successResponse({ deletedRunIds });
+    },
+  },
+
+  "/api/agent-runs/:id": {
+    async GET(req: Request & { params: { id: string } }): Promise<Response> {
+      const run = await agentManager.getRun(req.params.id);
+      if (!run) {
+        return errorResponse("agent_run_not_found", "Agent run not found", 404);
+      }
+      return Response.json(run);
+    },
+
+    async DELETE(req: Request & { params: { id: string } }): Promise<Response> {
+      const deleted = await agentManager.deleteRun(req.params.id);
+      if (!deleted) {
+        return errorResponse("agent_run_not_found", "Agent run not found", 404);
+      }
+      return successResponse();
+    },
+  },
+};
+

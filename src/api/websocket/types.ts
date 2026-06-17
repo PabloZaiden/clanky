@@ -9,6 +9,10 @@ export interface WebSocketData {
   taskId?: string;
   /** Optional chat ID to filter chat events */
   chatId?: string;
+  /** Optional agent ID to filter scheduled agent events */
+  agentId?: string;
+  /** Optional agent run ID to filter scheduled agent run events */
+  agentRunId?: string;
   /** Optional SSH session ID to filter session events or attach a terminal */
   sshSessionId?: string;
   /** Optional standalone SSH server session ID to filter session events or attach a terminal */

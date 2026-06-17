@@ -152,6 +152,10 @@ function parseHash(): ShellRoute {
     return { view: "settings" };
   }
 
+  if (hash === "/agents") {
+    return { view: "agents" };
+  }
+
   if (hash.startsWith("/new/")) {
     const [kind, scopeId] = hash.slice(5).split("/");
     if (

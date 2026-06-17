@@ -38,6 +38,17 @@ export const RESOLVED_THEMES = ["light", "dark"] as const;
  */
 export type ResolvedTheme = typeof RESOLVED_THEMES[number];
 
+export const DEFAULT_SCHEDULER_TIMEZONE = "UTC";
+
+export function isValidIanaTimeZone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: timezone }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface QuickChatSettings {
   workspaceId: string;
   model: {
