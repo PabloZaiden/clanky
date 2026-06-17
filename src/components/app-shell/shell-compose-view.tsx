@@ -38,7 +38,7 @@ interface ComposeViewProps {
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode },
+    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
   createServer: (request: CreateSshServerRequest, password?: string) => Promise<SshServer | null>;
   updateServer: (
