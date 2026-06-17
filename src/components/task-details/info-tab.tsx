@@ -91,6 +91,23 @@ export function InfoTab({
     <div className={taskDetailsTabScrollContainerClassName}>
       <div className={`${taskDetailsTabContentFullWidthClassName} space-y-4`}>
         <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{labels.capitalized} Information</h3>
+        <div>
+          <h4 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">Original Task Prompt</h4>
+          <pre className="whitespace-pre-wrap break-words rounded-md bg-gray-50 p-4 font-mono text-sm text-gray-900 [overflow-wrap:anywhere] dark:bg-neutral-900 dark:text-gray-100">
+            {config.prompt || "No prompt specified."}
+          </pre>
+        </div>
+        {state.pendingPrompt && (
+          <div>
+            <h4 className="mb-2 text-sm font-medium text-gray-500 dark:text-gray-400">Pending Prompt</h4>
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+              This message will be injected on the next run.
+            </p>
+            <pre className="whitespace-pre-wrap break-words rounded-md bg-yellow-50 p-4 font-mono text-sm text-gray-900 [overflow-wrap:anywhere] dark:bg-yellow-950/30 dark:text-gray-100">
+              {state.pendingPrompt}
+            </pre>
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Statistics */}
           <div className="space-y-2">
