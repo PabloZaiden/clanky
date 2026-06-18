@@ -103,6 +103,11 @@ interface ShellMainContentProps {
   quickChatSettingsSaving: boolean;
   quickChatSettingsError: string | null;
   updateQuickChatSettings: (settings: QuickChatSettings) => Promise<QuickChatSettings | null>;
+  schedulerTimezone: string;
+  schedulerTimezoneLoading: boolean;
+  schedulerTimezoneSaving: boolean;
+  schedulerTimezoneError: string | null;
+  updateSchedulerTimezone: (timezone: string) => Promise<string | null>;
   agents: UseAgentsResult;
 
   // Compose state
@@ -169,6 +174,11 @@ function renderMainContent(props: ShellMainContentProps) {
     quickChatSettingsSaving,
     quickChatSettingsError,
     updateQuickChatSettings,
+    schedulerTimezone,
+    schedulerTimezoneLoading,
+    schedulerTimezoneSaving,
+    schedulerTimezoneError,
+    updateSchedulerTimezone,
     createChat,
     importExistingChat,
     workspaceSettings,
@@ -183,7 +193,7 @@ function renderMainContent(props: ShellMainContentProps) {
     return <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Loading…</div>;
   }
 
-  if (route.view === "agents") {
+  if (route.view === "agents" || route.view === "agent" || route.view === "agent-run") {
     return (
       <AgentsView
         agents={agents.agents}
@@ -192,8 +202,9 @@ function renderMainContent(props: ShellMainContentProps) {
         modelsLoading={dashboardData.modelsLoading}
         lastModel={dashboardData.lastModel}
         selectedWorkspaceId={dashboardData.modelsWorkspaceId}
+        schedulerTimezone={schedulerTimezone}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
-        onCreateAgent={agents.createAgent}
+        onUpdateAgent={agents.updateAgent}
         onRunAgent={agents.runAgent}
         onInterruptAgent={agents.interruptAgent}
         onDeleteAgent={agents.deleteAgent}
@@ -201,6 +212,13 @@ function renderMainContent(props: ShellMainContentProps) {
         onPurgeRuns={agents.purgeRuns}
         onRefreshRuns={agents.refreshRuns}
         runsByAgentId={agents.runsByAgentId}
+        route={route}
+        navigateWithinShell={navigateWithinShell}
+        headerOffsetClassName={shellHeaderOffsetClassName}
+        branches={dashboardData.branches}
+        branchesLoading={dashboardData.branchesLoading}
+        currentBranch={dashboardData.currentBranch}
+        defaultBranch={dashboardData.defaultBranch}
         loading={agents.loading}
         error={agents.error}
       />
@@ -612,6 +630,8 @@ function renderMainContent(props: ShellMainContentProps) {
         importExistingChat={importExistingChat}
         createSshServerChat={props.createSshServerChat}
         dashboardData={dashboardData}
+        agents={agents}
+        schedulerTimezone={schedulerTimezone}
         workspaces={workspaces}
         workspacesLoading={workspacesLoading}
         workspaceError={workspaceError}
@@ -661,6 +681,11 @@ function renderMainContent(props: ShellMainContentProps) {
           quickChatSettingsSaving={quickChatSettingsSaving}
           quickChatSettingsError={quickChatSettingsError}
           onUpdateQuickChatSettings={updateQuickChatSettings}
+          schedulerTimezone={schedulerTimezone}
+          schedulerTimezoneLoading={schedulerTimezoneLoading}
+          schedulerTimezoneSaving={schedulerTimezoneSaving}
+          schedulerTimezoneError={schedulerTimezoneError}
+          onUpdateSchedulerTimezone={updateSchedulerTimezone}
           registeringPasskey={passkeyAuth.registering}
           loggingOutPasskey={passkeyAuth.loggingOut}
           removingPasskey={passkeyAuth.removingPasskey}

@@ -25,6 +25,7 @@ export {
 } from "./useFileExplorerFullTreePreference";
 export { useLogLevelPreference, type UseLogLevelPreferenceResult } from "./useLogLevelPreference";
 export { useQuickChatSettings, type UseQuickChatSettingsResult } from "./useQuickChatSettings";
+export { useSchedulerTimezone, type UseSchedulerTimezoneResult } from "./useSchedulerTimezone";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
 export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdStatus, type OptimizeResult } from "./useAgentsMdOptimizer";
 export { useCountdownReload, computeProgressPercent, KILL_SERVER_COUNTDOWN_SECONDS, type UseCountdownReloadResult } from "./useCountdownReload";

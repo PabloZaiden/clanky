@@ -118,6 +118,10 @@ export function getHashForShellRoute(route: ShellRoute): string {
       return `/ssh/${route.sshSessionId}`;
     case "chat":
       return `/chat/${route.chatId}`;
+    case "agent":
+      return `/agent/${route.agentId}`;
+    case "agent-run":
+      return `/agent/${route.agentId}/run/${route.runId}`;
     case "workspace":
       return `/workspace/${route.workspaceId}`;
     case "workspace-files":
@@ -137,7 +141,7 @@ export function getHashForShellRoute(route: ShellRoute): string {
     case "settings":
       return "/settings";
     case "agents":
-      return "/agents";
+      return route.workspaceId ? `/workspace/${route.workspaceId}/agents` : "/agents";
     case "rebuild-workspace":
       return `/rebuild-workspace/${route.workspaceId}`;
     case "restart-workspace":

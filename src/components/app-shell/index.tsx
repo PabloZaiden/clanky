@@ -7,6 +7,7 @@ import {
   useTasks,
   useProvisioningJob,
   useQuickChatSettings,
+  useSchedulerTimezone,
   useSshServers,
   useSshSessions,
   useToast,
@@ -88,6 +89,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     importConfig,
   } = useWorkspaces();
   const quickChatSettings = useQuickChatSettings();
+  const schedulerTimezone = useSchedulerTimezone();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
   const { workspaceGroups } = useTaskGrouping(tasks, workspaces, !workspacesLoading);
@@ -356,6 +358,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         isNodeCollapsed={sidebar.isNodeCollapsed}
         toggleNodeCollapsed={sidebar.toggleNodeCollapsed}
         workspaceGroups={sidebarWorkspaceGroups}
+        agents={agents.agents}
         serverNodes={serverNodes}
         quickChatWorkspace={quickChatWorkspaceNode}
         quickChatLoading={quickChatSettings.loading || quickChatCreating}
@@ -426,6 +429,11 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         quickChatSettingsSaving={quickChatSettings.saving}
         quickChatSettingsError={quickChatSettings.error}
         updateQuickChatSettings={quickChatSettings.updateSettings}
+        schedulerTimezone={schedulerTimezone.timezone}
+        schedulerTimezoneLoading={schedulerTimezone.loading}
+        schedulerTimezoneSaving={schedulerTimezone.saving}
+        schedulerTimezoneError={schedulerTimezone.error}
+        updateSchedulerTimezone={schedulerTimezone.updateTimezone}
         agents={agents}
         composeActionState={composeState.composeActionState}
         setComposeActionState={composeState.setComposeActionState}

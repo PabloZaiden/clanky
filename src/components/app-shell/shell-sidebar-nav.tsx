@@ -16,6 +16,7 @@ import { getShellRouteUrl, getShellShortcutTitle, isModifiedNavigationClick } fr
 import { EmptySection, ShellSection, SidebarTreeItem, SidebarTreeSection } from "./shell-sidebar";
 import {
   type SidebarChatNode,
+  type SidebarAgentNode,
   type SidebarActiveWorkItem,
   buildActiveWorkSidebarItems,
   getSidebarSectionCollapseKey,
@@ -42,7 +43,7 @@ import { useChatActions } from "./chat-actions";
 import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
 import type { SidebarPinnedItem, SidebarPinningState } from "./sidebar-pins";
 import { appFetch } from "../../lib/public-path";
-import type { SshSession, UpdateSshSessionRequest } from "../../types";
+import type { Agent, SshSession, UpdateSshSessionRequest } from "../../types";
 
 interface ShellSidebarNavProps {
   route: ShellRoute;
@@ -53,6 +54,7 @@ interface ShellSidebarNavProps {
   isNodeCollapsed: (collapseKey: string) => boolean;
   toggleNodeCollapsed: (collapseKey: string) => void;
   workspaceGroups: SidebarWorkspaceGroupNode[];
+  agents: Agent[];
   serverNodes: SidebarServerNode[];
   quickChatWorkspace: SidebarWorkspaceNode | null;
   quickChatLoading: boolean;
@@ -93,6 +95,12 @@ interface SidebarChatSearchResult {
   chatNode: SidebarChatNode;
 }
 
+interface SidebarAgentSearchResult {
+  key: string;
+  workspaceName: string;
+  agentNode: SidebarAgentNode;
+}
+
 interface SidebarSessionSearchResult {
   key: string;
   contextName: string;
@@ -103,6 +111,7 @@ interface SidebarSearchResults {
   workspaces: SidebarWorkspaceNode[];
   tasks: SidebarTaskSearchResult[];
   chats: SidebarChatSearchResult[];
+  agents: SidebarAgentSearchResult[];
   sshSessions: SidebarSessionSearchResult[];
   sshServers: SidebarServerNode[];
 }
@@ -364,6 +373,7 @@ export function ShellSidebarNav({
   isNodeCollapsed,
   toggleNodeCollapsed,
   workspaceGroups,
+  agents,
   serverNodes,
   quickChatWorkspace,
   quickChatLoading,
@@ -575,11 +585,14 @@ export function ShellSidebarNav({
   }
 
   function isWorkspaceActive(workspaceId: string): boolean {
+    const routeAgentId = route.view === "agent" || route.view === "agent-run" ? route.agentId : null;
+    const routeAgent = routeAgentId ? agents.find((agent) => agent.config.id === routeAgentId) : null;
     return (
       (
         (route.view === "workspace" || route.view === "workspace-settings")
         && route.workspaceId === workspaceId
       )
+      || routeAgent?.config.workspaceId === workspaceId
       || (
         route.view === "code-explorer"
         && route.target?.contentType === "workspace"
@@ -606,6 +619,16 @@ export function ShellSidebarNav({
         route.view === "code-explorer"
         && route.target?.contentType === "chat"
         && route.target.chatId === chatId
+      )
+    );
+  }
+
+  function isAgentActive(agentId: string): boolean {
+    return (
+      (route.view === "agent" && route.agentId === agentId)
+      || (
+        route.view === "agent-run"
+        && route.agentId === agentId
       )
     );
   }
@@ -676,11 +699,56 @@ export function ShellSidebarNav({
     ));
   }
 
+  function renderAgentNodes({
+    agentNodes,
+    indentLevel = 3,
+  }: {
+    agentNodes: SidebarAgentNode[];
+    indentLevel?: number;
+  }) {
+    return agentNodes.map((agentNode) => (
+      <SidebarTreeItem
+        key={agentNode.agent.config.id}
+        active={isAgentActive(agentNode.agent.config.id)}
+        title={agentNode.title}
+        badge={agentNode.badge}
+        badgeVariant={agentNode.badgeVariant}
+        indentLevel={indentLevel}
+        onClick={(event) => handleSidebarItemClick(event, {
+          view: "agent",
+          agentId: agentNode.agent.config.id,
+        })}
+      />
+    ));
+  }
+
   const pinnedCollapseKey = getSidebarSectionCollapseKey("pinned");
   const quickChatsCollapseKey = getSidebarSectionCollapseKey("quick-chats");
   const activeWorkCollapseKey = getSidebarSectionCollapseKey("active-work");
   const workspacesCollapseKey = getSidebarSectionCollapseKey("workspaces");
   const serversCollapseKey = getSidebarSectionCollapseKey("ssh-servers");
+  const agentNodesByWorkspaceId = useMemo(() => {
+    const nodes = new Map<string, SidebarAgentNode[]>();
+    for (const agent of agents) {
+      const workspaceAgents = nodes.get(agent.config.workspaceId) ?? [];
+      workspaceAgents.push({
+        agent,
+        title: agent.config.name,
+        badge: agent.state.status,
+        badgeVariant: agent.state.status === "error"
+          ? "error"
+          : agent.state.status === "running" ? "info" : agent.state.status === "paused" ? "warning" : "success",
+      });
+      nodes.set(agent.config.workspaceId, workspaceAgents);
+    }
+    for (const [workspaceId, workspaceAgents] of nodes) {
+      nodes.set(
+        workspaceId,
+        [...workspaceAgents].sort((left, right) => right.agent.config.updatedAt.localeCompare(left.agent.config.updatedAt)),
+      );
+    }
+    return nodes;
+  }, [agents]);
   const visibleWorkspaceNodes = workspaceGroups.flatMap((group) => (
     group.workspaces.map((workspaceNode) => ({ groupKey: group.key, workspaceNode }))
   ));
@@ -801,18 +869,21 @@ export function ShellSidebarNav({
       workspaces: [],
       tasks: [],
       chats: [],
+      agents: [],
       sshSessions: [],
       sshServers: [],
     };
     const seenWorkspaceIds = new Set<string>();
     const seenTaskIds = new Set<string>();
     const seenChatIds = new Set<string>();
+    const seenAgentIds = new Set<string>();
     const seenSessionIds = new Set<string>();
     const seenServerIds = new Set<string>();
 
     const matchesWorkspacesSection = matchesSearchText("Workspaces", searchQuery);
     const matchesTasksSection = matchesSearchText("Tasks", searchQuery);
     const matchesChatsSection = matchesSearchText("Chats", searchQuery);
+    const matchesAgentsSection = matchesSearchText("Agents", searchQuery);
     const matchesSshSessionsSection = matchesSearchText("SSH sessions", searchQuery);
     const matchesHistorySection = matchesSearchText("History", searchQuery);
     const matchesSshServersSection = matchesSearchText("SSH servers", searchQuery);
@@ -863,6 +934,18 @@ export function ShellSidebarNav({
               workspaceName: workspaceNode.workspace.name,
               chatNode,
             });
+          }
+
+          for (const agentNode of agentNodesByWorkspaceId.get(workspaceId) ?? []) {
+            const agentId = agentNode.agent.config.id;
+            if ((matchesAgentsSection || matchesSearchText(agentNode.title, searchQuery)) && !seenAgentIds.has(agentId)) {
+              seenAgentIds.add(agentId);
+              results.agents.push({
+                key: agentId,
+                workspaceName: workspaceNode.workspace.name,
+                agentNode,
+              });
+            }
           }
         }
 
@@ -921,6 +1004,7 @@ export function ShellSidebarNav({
   const hasSearchResults = (searchResults?.workspaces.length ?? 0) > 0
     || (searchResults?.tasks.length ?? 0) > 0
     || (searchResults?.chats.length ?? 0) > 0
+    || (searchResults?.agents.length ?? 0) > 0
     || (searchResults?.sshSessions.length ?? 0) > 0
     || (searchResults?.sshServers.length ?? 0) > 0;
   const quickChatButtonLabel = quickChatUnavailableReason
@@ -968,16 +1052,6 @@ export function ShellSidebarNav({
               title={getShellShortcutTitle("code-explorer", "Code explorer")}
             >
               <CodeIcon size="h-5 w-5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateWithinShell({ view: "agents" })}
-              aria-label="Open agents"
-              aria-current={route.view === "agents" ? "page" : undefined}
-              className={route.view === "agents" ? iconButtonActive : iconButtonDefault}
-              title="Agents"
-            >
-              <RefreshIcon size="h-5 w-5" />
             </button>
             <button
               type="button"
@@ -1103,6 +1177,14 @@ export function ShellSidebarNav({
                           ))}
                         </SidebarTreeSection>
                       )}
+                      {(agentNodesByWorkspaceId.get(workspaceNode.workspace.id)?.length ?? 0) > 0 && (
+                        <SidebarTreeSection title="Agents" indentLevel={1}>
+                          {renderAgentNodes({
+                            agentNodes: agentNodesByWorkspaceId.get(workspaceNode.workspace.id) ?? [],
+                            indentLevel: 2,
+                          })}
+                        </SidebarTreeSection>
+                      )}
                       {workspaceNode.sshSessions.length > 0 && (
                         <SidebarTreeSection title="SSH sessions" indentLevel={1}>
                           {workspaceNode.sshSessions.map((sessionNode) => (
@@ -1171,12 +1253,37 @@ export function ShellSidebarNav({
                 </SearchResultsSection>
               )}
 
+              {searchResults.agents.length > 0 && (
+                <SearchResultsSection
+                  title="Agents"
+                  bordered={searchResults.workspaces.length > 0
+                    || searchResults.tasks.length > 0
+                    || searchResults.chats.length > 0}
+                >
+                  {searchResults.agents.map(({ key, workspaceName, agentNode }) => (
+                    <SidebarTreeItem
+                      key={`search-agent:${key}`}
+                      active={isAgentActive(agentNode.agent.config.id)}
+                      title={agentNode.title}
+                      subtitle={workspaceName}
+                      badge={agentNode.badge}
+                      badgeVariant={agentNode.badgeVariant}
+                      onClick={(event) => handleSidebarItemClick(event, {
+                        view: "agent",
+                        agentId: agentNode.agent.config.id,
+                      })}
+                    />
+                  ))}
+                </SearchResultsSection>
+              )}
+
               {searchResults.sshSessions.length > 0 && (
                 <SearchResultsSection
                   title="SSH sessions"
                   bordered={searchResults.workspaces.length > 0
                     || searchResults.tasks.length > 0
-                    || searchResults.chats.length > 0}
+                    || searchResults.chats.length > 0
+                    || searchResults.agents.length > 0}
                 >
                   {searchResults.sshSessions.map(({ key, contextName, sessionNode }) => {
                     const sessionId = getSidebarSessionId(sessionNode);
@@ -1361,6 +1468,8 @@ export function ShellSidebarNav({
                 visibleWorkspaceNodes.map(({ groupKey, workspaceNode }) => {
                   const hasTaskChildren = workspaceNode.tasks.length > 0 || workspaceNode.historyTasks.length > 0;
                   const hasChatChildren = workspaceNode.chats.length > 0;
+                  const workspaceAgentNodes = agentNodesByWorkspaceId.get(workspaceNode.workspace.id) ?? [];
+                  const hasAgentChildren = workspaceAgentNodes.length > 0;
                   const hasSessionChildren = workspaceNode.sshSessions.length > 0;
                   const workspaceCollapseKey = getSidebarWorkspaceCollapseKey(
                     "workspaces",
@@ -1378,6 +1487,12 @@ export function ShellSidebarNav({
                     groupKey,
                     workspaceNode.workspace.id,
                     "chats",
+                  );
+                  const agentsCollapseKey = getSidebarWorkspaceSectionCollapseKey(
+                    "workspaces",
+                    groupKey,
+                    workspaceNode.workspace.id,
+                    "agents",
                   );
                   const historyCollapseKey = getSidebarWorkspaceSectionCollapseKey(
                     "workspaces",
@@ -1452,6 +1567,21 @@ export function ShellSidebarNav({
                                 indentLevel={2}
                               >
                                 {renderChatNodes({ chatNodes: workspaceNode.chats })}
+                              </SidebarTreeSection>
+
+                              <SidebarTreeSection
+                               title="Agents"
+                               actionLabel="New"
+                               onAction={() => navigateWithinShell({
+                                 view: "compose",
+                                 kind: "agent",
+                                 scopeId: workspaceNode.workspace.id,
+                               })}
+                               collapsed={hasAgentChildren ? isNodeCollapsed(agentsCollapseKey) : undefined}
+                               onToggle={hasAgentChildren ? () => toggleNodeCollapsed(agentsCollapseKey) : undefined}
+                               indentLevel={2}
+                              >
+                               {renderAgentNodes({ agentNodes: workspaceAgentNodes })}
                               </SidebarTreeSection>
 
                               <SidebarTreeSection

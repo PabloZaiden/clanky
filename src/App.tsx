@@ -78,6 +78,20 @@ function parseHash(): ShellRoute {
     }
   }
 
+  if (hash.startsWith("/agent/") && hash.includes("/run/")) {
+    const [agentId, runId] = hash.slice(7).split("/run/", 2);
+    if (agentId && runId) {
+      return { view: "agent-run", agentId, runId };
+    }
+  }
+
+  if (hash.startsWith("/agent/")) {
+    const agentId = hash.slice(7);
+    if (agentId) {
+      return { view: "agent", agentId };
+    }
+  }
+
   if (hash.startsWith("/rebuild-workspace/")) {
     const workspaceId = hash.slice(19);
     if (workspaceId) {
@@ -114,6 +128,12 @@ function parseHash(): ShellRoute {
   }
 
   if (hash.startsWith("/workspace/")) {
+    if (hash.endsWith("/agents")) {
+      const workspaceId = hash.slice(11, -7);
+      if (workspaceId) {
+        return { view: "agents", workspaceId };
+      }
+    }
     const workspaceId = hash.slice(11);
     if (workspaceId) {
       return { view: "workspace", workspaceId };
@@ -161,6 +181,7 @@ function parseHash(): ShellRoute {
     if (
       kind === "task"
       || kind === "chat"
+      || kind === "agent"
       || kind === "workspace"
       || kind === "ssh-session"
       || kind === "ssh-server"
