@@ -207,6 +207,8 @@ function renderMainContent(props: ShellMainContentProps) {
         onUpdateAgent={agents.updateAgent}
         onRunAgent={agents.runAgent}
         onInterruptAgent={agents.interruptAgent}
+        onPauseAgent={agents.pauseAgent}
+        onResumeAgent={agents.resumeAgent}
         onDeleteAgent={agents.deleteAgent}
         onDeleteRun={agents.deleteRun}
         onPurgeRuns={agents.purgeRuns}

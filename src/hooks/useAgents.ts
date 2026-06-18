@@ -96,6 +96,8 @@ export interface UseAgentsResult {
   deleteAgent: (id: string) => Promise<boolean>;
   runAgent: (id: string, request?: RunAgentRequest) => Promise<AgentRun | null>;
   interruptAgent: (id: string) => Promise<AgentRun | null>;
+  pauseAgent: (id: string) => Promise<Agent | null>;
+  resumeAgent: (id: string) => Promise<Agent | null>;
   deleteRun: (runId: string) => Promise<boolean>;
   purgeRuns: (agentId: string, request?: Partial<DeleteAgentRunsRequest>) => Promise<string[]>;
 }
@@ -227,6 +229,28 @@ export function useAgents(): UseAgentsResult {
       setRunsByAgentId((prev) => ({ ...prev, [run.agentId]: upsertRun(prev[run.agentId] ?? [], run) }));
     }
     return run;
+  }, [requestAgent]);
+
+  const pauseAgent = useCallback(async (id: string) => {
+    const agent = await requestAgent<Agent>(`/api/agents/${id}/pause`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }, "Failed to pause agent");
+    if (agent) {
+      setAgents((prev) => upsertAgent(prev, agent));
+    }
+    return agent;
+  }, [requestAgent]);
+
+  const resumeAgent = useCallback(async (id: string) => {
+    const agent = await requestAgent<Agent>(`/api/agents/${id}/resume`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }, "Failed to resume agent");
+    if (agent) {
+      setAgents((prev) => upsertAgent(prev, agent));
+    }
+    return agent;
   }, [requestAgent]);
 
   const deleteRun = useCallback(async (runId: string) => {
@@ -372,6 +396,8 @@ export function useAgents(): UseAgentsResult {
     deleteAgent,
     runAgent,
     interruptAgent,
+    pauseAgent,
+    resumeAgent,
     deleteRun,
     purgeRuns,
   };

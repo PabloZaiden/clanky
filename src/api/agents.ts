@@ -210,6 +210,42 @@ export const agentsRoutes = {
     },
   },
 
+  "/api/agents/:id/pause": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      try {
+        const agent = await agentManager.pauseAgent(req.params.id);
+        if (!agent) {
+          return errorResponse("agent_not_found", "Agent not found", 404);
+        }
+        return Response.json(agent);
+      } catch (error) {
+        log.error("Failed to pause agent", {
+          agentId: req.params.id,
+          error: String(error),
+        });
+        return errorResponse("pause_agent_failed", String(error), 500);
+      }
+    },
+  },
+
+  "/api/agents/:id/resume": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      try {
+        const agent = await agentManager.resumeAgent(req.params.id);
+        if (!agent) {
+          return errorResponse("agent_not_found", "Agent not found", 404);
+        }
+        return Response.json(agent);
+      } catch (error) {
+        log.error("Failed to resume agent", {
+          agentId: req.params.id,
+          error: String(error),
+        });
+        return errorResponse("resume_agent_failed", String(error), 500);
+      }
+    },
+  },
+
   "/api/agents/:id/runs": {
     async GET(req: Request & { params: { id: string } }): Promise<Response> {
       const parsedQuery = validateRequest(

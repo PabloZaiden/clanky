@@ -210,6 +210,60 @@ describe("Agents API Integration", () => {
     expect(updatedAgent?.state.nextRunAt).not.toBe(dueAt);
   });
 
+  test("paused agents do not run on schedule but can run manually and resume", async () => {
+    const agent = await createAgent("Pausable agent");
+    const dueAt = new Date(Date.now() - 60_000).toISOString();
+    await saveAgent({
+      config: {
+        ...agent!.config,
+        schedule: {
+          ...agent!.config.schedule,
+          nextRunAt: dueAt,
+        },
+      },
+      state: {
+        ...agent!.state,
+        status: "enabled",
+        nextRunAt: dueAt,
+      },
+    });
+
+    const pauseResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/pause`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(pauseResponse.status).toBe(200);
+    const pausedAgent = await pauseResponse.json() as NonNullable<Awaited<ReturnType<typeof loadAgent>>>;
+    expect(pausedAgent.config.enabled).toBe(false);
+    expect(pausedAgent.state.status).toBe("paused");
+
+    await agentScheduler.tick(new Date());
+    expect(await listAgentRuns(agent!.config.id, { limit: 10 })).toHaveLength(0);
+
+    const runResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(runResponse.status).toBe(202);
+    const manualRun = await runResponse.json() as AgentRun;
+    expect(manualRun.trigger).toBe("manual");
+    const completedRun = await waitForRunTerminal(manualRun.id);
+    expect(completedRun.status).toBe("completed");
+
+    const resumeResponse = await fetch(`${baseUrl}/api/agents/${agent!.config.id}/resume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(resumeResponse.status).toBe(200);
+    const resumedAgent = await resumeResponse.json() as NonNullable<Awaited<ReturnType<typeof loadAgent>>>;
+    expect(resumedAgent.config.enabled).toBe(true);
+    expect(resumedAgent.state.status).toBe("enabled");
+    expect(resumedAgent.state.nextRunAt).toBeTruthy();
+  });
+
   test("rejects invalid agent schedule timezone", async () => {
     const response = await fetch(`${baseUrl}/api/agents`, {
       method: "POST",

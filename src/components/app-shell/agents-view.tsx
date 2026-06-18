@@ -25,6 +25,20 @@ function formatDate(value?: string): string {
   }).format(new Date(value));
 }
 
+function formatDateTimeLocalInTimezone(date: Date, timezone: string): string {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]));
+  return `${parts["year"]}-${parts["month"]}-${parts["day"]}T${parts["hour"]}:${parts["minute"]}`;
+}
+
 function statusClassName(status: string): string {
   if (status === "enabled" || status === "completed") {
     return "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
@@ -125,7 +139,10 @@ function AgentForm({
     : "");
   const [baseBranch, setBaseBranch] = useState(agent?.config.baseBranch ?? "");
   const [useWorktree, setUseWorktree] = useState(agent?.config.useWorktree ?? true);
-  const [startAtLocal, setStartAtLocal] = useState(agent?.config.schedule.startAtLocal ?? new Date().toISOString().slice(0, 16));
+  const [startAtLocal, setStartAtLocal] = useState(
+    agent?.config.schedule.startAtLocal ?? formatDateTimeLocalInTimezone(new Date(), schedulerTimezone),
+  );
+  const [startAtTouched, setStartAtTouched] = useState(Boolean(agent));
   const [intervalValue, setIntervalValue] = useState(agent?.config.schedule.interval.value ?? 60);
   const [intervalUnit, setIntervalUnit] = useState<"minutes" | "hours" | "days">(agent?.config.schedule.interval.unit ?? "minutes");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -156,6 +173,13 @@ function AgentForm({
     }
     setModelKey(getDefaultModelKey(models, lastModel));
   }, [lastModel, modelKey, models]);
+
+  useEffect(() => {
+    if (mode !== "create" || startAtTouched) {
+      return;
+    }
+    setStartAtLocal(formatDateTimeLocalInTimezone(new Date(), schedulerTimezone));
+  }, [mode, schedulerTimezone, startAtTouched]);
 
   async function handleSubmit(): Promise<void> {
     if (!selectedWorkspace) {
@@ -321,7 +345,10 @@ function AgentForm({
               className={`${compactInputClassName} w-56`}
               type="datetime-local"
               value={startAtLocal}
-              onChange={(event) => setStartAtLocal(event.target.value)}
+              onChange={(event) => {
+                setStartAtTouched(true);
+                setStartAtLocal(event.target.value);
+              }}
               required
             />
           </div>
@@ -498,6 +525,8 @@ function AgentDetail({
   onUpdateAgent,
   onRunAgent,
   onInterruptAgent,
+  onPauseAgent,
+  onResumeAgent,
   onDeleteAgent,
   onDeleteRun,
   onPurgeRuns,
@@ -522,6 +551,8 @@ function AgentDetail({
   onUpdateAgent: UseAgentsResult["updateAgent"];
   onRunAgent: UseAgentsResult["runAgent"];
   onInterruptAgent: UseAgentsResult["interruptAgent"];
+  onPauseAgent: UseAgentsResult["pauseAgent"];
+  onResumeAgent: UseAgentsResult["resumeAgent"];
   onDeleteAgent: UseAgentsResult["deleteAgent"];
   onDeleteRun: UseAgentsResult["deleteRun"];
   onPurgeRuns: UseAgentsResult["purgeRuns"];
@@ -532,6 +563,8 @@ function AgentDetail({
   const [isEditing, setIsEditing] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purgePending, setPurgePending] = useState(false);
   const workspace = workspaces.find((item) => item.id === agent.config.workspaceId) ?? null;
 
   useEffect(() => {
@@ -550,6 +583,25 @@ function AgentDetail({
       onNavigate(workspace ? { view: "agents", workspaceId: workspace.id } : { view: "home" });
     } finally {
       setDeletePending(false);
+    }
+  }
+
+  async function handleTogglePaused(): Promise<void> {
+    const updated = agent.config.enabled
+      ? await onPauseAgent(agent.config.id)
+      : await onResumeAgent(agent.config.id);
+    if (!updated) {
+      toast.error(agent.config.enabled ? "Failed to pause agent" : "Failed to resume agent");
+    }
+  }
+
+  async function handlePurgeRuns(): Promise<void> {
+    setPurgePending(true);
+    try {
+      await onPurgeRuns(agent.config.id);
+      setPurgeOpen(false);
+    } finally {
+      setPurgePending(false);
     }
   }
 
@@ -597,6 +649,9 @@ function AgentDetail({
             <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
               Edit
             </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => void handleTogglePaused()}>
+              {agent.config.enabled ? "Pause" : "Resume"}
+            </Button>
             {agent.state.status === "running" ? (
               <Button type="button" variant="secondary" size="sm" onClick={() => void onInterruptAgent(agent.config.id)}>
                 Interrupt
@@ -606,7 +661,7 @@ function AgentDetail({
                 Run now
               </Button>
             )}
-            <Button type="button" variant="ghost" size="sm" onClick={() => void onPurgeRuns(agent.config.id)}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setPurgeOpen(true)}>
               Purge runs
             </Button>
             <Button type="button" variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
@@ -644,6 +699,15 @@ function AgentDetail({
         message={`Delete "${agent.config.name}" and its runs?`}
         confirmLabel="Delete agent"
         loading={deletePending}
+      />
+      <ConfirmModal
+        isOpen={purgeOpen}
+        onClose={() => setPurgeOpen(false)}
+        onConfirm={() => void handlePurgeRuns()}
+        title="Purge agent runs"
+        message={`Purge all completed, failed, skipped, interrupted, and cancelled runs for "${agent.config.name}"? This cannot be undone.`}
+        confirmLabel="Purge runs"
+        loading={purgePending}
       />
     </>
   );
@@ -894,6 +958,8 @@ export function AgentsView({
   onUpdateAgent,
   onRunAgent,
   onInterruptAgent,
+  onPauseAgent,
+  onResumeAgent,
   onDeleteAgent,
   onDeleteRun,
   onPurgeRuns,
@@ -920,6 +986,8 @@ export function AgentsView({
   onUpdateAgent: UseAgentsResult["updateAgent"];
   onRunAgent: UseAgentsResult["runAgent"];
   onInterruptAgent: UseAgentsResult["interruptAgent"];
+  onPauseAgent: UseAgentsResult["pauseAgent"];
+  onResumeAgent: UseAgentsResult["resumeAgent"];
   onDeleteAgent: UseAgentsResult["deleteAgent"];
   onDeleteRun: UseAgentsResult["deleteRun"];
   onPurgeRuns: UseAgentsResult["purgeRuns"];
@@ -966,6 +1034,8 @@ export function AgentsView({
         onUpdateAgent={onUpdateAgent}
         onRunAgent={onRunAgent}
         onInterruptAgent={onInterruptAgent}
+        onPauseAgent={onPauseAgent}
+        onResumeAgent={onResumeAgent}
         onDeleteAgent={onDeleteAgent}
         onDeleteRun={onDeleteRun}
         onPurgeRuns={onPurgeRuns}
