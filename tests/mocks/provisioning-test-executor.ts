@@ -256,6 +256,15 @@ export class ProvisioningTestExecutor implements CommandExecutor {
     });
   }
 
+  async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
+    const content = this.files.get(sourcePath);
+    if (content === undefined) {
+      return false;
+    }
+    this.files.set(destinationPath, content);
+    return true;
+  }
+
   async listDirectory(path: string): Promise<string[]> {
     if (!this.directories.has(path) && !this.gitRepos.has(path)) {
       return [];

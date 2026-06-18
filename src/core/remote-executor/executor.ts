@@ -7,7 +7,7 @@
  */
 
 import { createWriteStream } from "node:fs";
-import { mkdir, readdir, stat, truncate } from "node:fs/promises";
+import { copyFile as copyFileFs, mkdir, readdir, stat, truncate } from "node:fs/promises";
 import { dirname } from "node:path";
 import type {
   CommandExecutor,
@@ -806,6 +806,25 @@ export class CommandExecutorImpl implements CommandExecutor {
     }
   }
 
+  async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
+    if (this.provider === "local") {
+      try {
+        await mkdir(dirname(destinationPath), { recursive: true });
+        await copyFileFs(sourcePath, destinationPath);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    const parentDir = dirname(destinationPath);
+    const result = await this.exec("sh", [
+      "-lc",
+      `mkdir -p ${quoteShell(parentDir)} && cp ${quoteShell(sourcePath)} ${quoteShell(destinationPath)}`,
+    ]);
+    return result.success;
+  }
+
   async listDirectory(path: string, options?: { includeHidden?: boolean }): Promise<string[]> {
     const includeHidden = options?.includeHidden ?? false;
     if (this.provider === "local") {
@@ -838,12 +857,7 @@ export class CommandExecutorImpl implements CommandExecutor {
       }
     }
 
-    const parentDir = dirname(path);
-    const base64Content = Buffer.from(content, "utf8").toString("base64");
-    const result = await this.exec("sh", [
-      "-lc",
-      `mkdir -p ${quoteShell(parentDir)} && printf %s ${quoteShell(base64Content)} | base64 -d > ${quoteShell(path)}`,
-    ]);
+    const result = await this.writeFileStream(path, new Blob([content]).stream());
     return result.success;
   }
 }

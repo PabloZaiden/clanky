@@ -15,6 +15,8 @@ const PLAN_READY_MARKER = /<promise>PLAN_READY<\/promise>/gi;
 export interface ValidatedPlanningFiles {
   planContent: string;
   statusContent?: string;
+  planSourcePath?: string;
+  statusSourcePath?: string;
 }
 
 export function normalizePlanContent(content: string): string {
@@ -112,12 +114,16 @@ export async function readValidatedPlanningFiles(
     throw new InvalidCurrentPlanError(`The selected plan file "${source.displayPath}" is empty.`);
   }
 
-  const statusContent = source.statusPath === source.planPath
+  const rawStatusContent = source.statusPath === source.planPath
     ? null
     : await executor.readFile(source.statusPath);
+  const normalizedStatusContent = rawStatusContent?.trim();
+  const statusContent = normalizedStatusContent ? normalizedStatusContent : undefined;
   return {
     planContent,
-    statusContent: statusContent?.trim() ? statusContent : undefined,
+    statusContent,
+    planSourcePath: rawPlanContent === planContent ? source.planPath : undefined,
+    statusSourcePath: statusContent !== undefined && rawStatusContent === statusContent ? source.statusPath : undefined,
   };
 }
 
@@ -158,7 +164,12 @@ export async function writePlanningFiles(
 ): Promise<void> {
   await ensurePlanningDirectory(executor, directory);
 
-  const planWritten = await executor.writeFile(getPlanFilePath(directory), files.planContent);
+  const planWritten = await writePlanningFile(
+    executor,
+    files.planSourcePath,
+    getPlanFilePath(directory),
+    files.planContent,
+  );
   if (!planWritten) {
     throw new Error("Failed to write plan.md for the seeded task");
   }
@@ -168,8 +179,34 @@ export async function writePlanningFiles(
     return;
   }
 
-  const statusWritten = await executor.writeFile(getStatusFilePath(directory), nextStatusContent);
+  const statusWritten = await writePlanningFile(
+    executor,
+    files.statusSourcePath,
+    getStatusFilePath(directory),
+    nextStatusContent,
+  );
   if (!statusWritten) {
     throw new Error("Failed to write status.md for the seeded task");
   }
+}
+
+async function writePlanningFile(
+  executor: CommandExecutor,
+  sourcePath: string | undefined,
+  destinationPath: string,
+  content: string,
+): Promise<boolean> {
+  if (sourcePath && executor.copyFile) {
+    const copied = await executor.copyFile(sourcePath, destinationPath);
+    if (copied) {
+      return true;
+    }
+  }
+
+  if (executor.writeFileStream) {
+    const result = await executor.writeFileStream(destinationPath, new Blob([content]).stream());
+    return result.success;
+  }
+
+  return await executor.writeFile(destinationPath, content);
 }

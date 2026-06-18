@@ -26,6 +26,32 @@ import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
 
+class PlanSeedTrackingExecutor extends TestCommandExecutor {
+  copyFileCalls: Array<{ sourcePath: string; destinationPath: string }> = [];
+  writeFileCalls: Array<{ path: string; contentLength: number }> = [];
+  writeFileStreamCalls: Array<{ path: string; bytesWritten: number }> = [];
+
+  override async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
+    this.copyFileCalls.push({ sourcePath, destinationPath });
+    return await super.copyFile(sourcePath, destinationPath);
+  }
+
+  override async writeFile(path: string, content: string): Promise<boolean> {
+    this.writeFileCalls.push({ path, contentLength: content.length });
+    return await super.writeFile(path, content);
+  }
+
+  override async writeFileStream(
+    path: string,
+    stream: ReadableStream<Uint8Array>,
+    options?: Parameters<TestCommandExecutor["writeFileStream"]>[2],
+  ) {
+    const result = await super.writeFileStream(path, stream, options);
+    this.writeFileStreamCalls.push({ path, bytesWritten: result.bytesWritten });
+    return result;
+  }
+}
+
 function formatTranscriptTime(timestamp: string): string {
   return new Date(timestamp).toLocaleTimeString([], {
     hour: "2-digit",
@@ -1713,7 +1739,7 @@ describe("Chats API Integration", () => {
       join(chatWorktreePath, "plans", "seeded-plan.md"),
       "\uFEFF# Imported plan\n\n1. Do the seeded work.\n\n<promise>PLAN_READY</promise>\n",
     );
-    await writeFile(join(chatWorktreePath, "plans", "status.md"), "# Imported status\n\nReady to review.");
+    await writeFile(join(chatWorktreePath, "plans", "status.md"), "\n# Imported status\n\nReady to review.\n");
 
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",
@@ -1746,6 +1772,87 @@ describe("Chats API Integration", () => {
       exists: true,
       content: "# Imported status\n\nReady to review.",
     });
+  });
+
+  test("copies a large current plan file instead of rewriting it through command arguments", async () => {
+    const executors: PlanSeedTrackingExecutor[] = [];
+    backendManager.setExecutorFactoryForTesting(() => {
+      const executor = new PlanSeedTrackingExecutor();
+      executors.push(executor);
+      return executor;
+    });
+
+    const largePlanContent = `# Large imported plan\n\n${Array.from({ length: 2500 }, (_value, index) => (
+      `${index + 1}. Preserve this existing plan file line while spawning a task.`
+    )).join("\n")}`;
+
+    const createResponse = await fetch(`${baseUrl}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Large Current Plan Chat",
+        workspaceId: testWorkspaceId,
+        model: testModel,
+        useWorktree: true,
+        baseBranch: "main",
+      }),
+    });
+
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+    const chatId = created.config.id as string;
+
+    const sendResponse = await fetch(`${baseUrl}/api/chats/${chatId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: "Prepare a large plan file.",
+        attachments: [],
+      }),
+    });
+    expect(sendResponse.status).toBe(200);
+
+    const settledChat = await waitForChatIdle(chatId) as {
+      state: {
+        worktree?: {
+          worktreePath?: string;
+        };
+      };
+    };
+
+    const chatWorktreePath = settledChat.state.worktree!.worktreePath!;
+    const planDir = join(chatWorktreePath, "plans");
+    await mkdir(planDir, { recursive: true });
+    const largePlanPath = join(planDir, "large-plan.md");
+    await writeFile(largePlanPath, largePlanContent);
+
+    const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        planFilePath: "plans/large-plan.md",
+      }),
+    });
+
+    expect(spawnResponse.status).toBe(201);
+    const spawnedTask = await spawnResponse.json();
+    expect(spawnedTask.state.planMode?.planContent).toBe(largePlanContent);
+
+    const planResponse = await fetch(`${baseUrl}/api/tasks/${spawnedTask.config.id}/plan`);
+    expect(planResponse.status).toBe(200);
+    await expect(planResponse.json()).resolves.toMatchObject({
+      exists: true,
+      content: largePlanContent,
+    });
+
+    const copyCalls = executors.flatMap((executor) => executor.copyFileCalls);
+    expect(copyCalls.some((call) => call.sourcePath === largePlanPath && call.destinationPath.endsWith("/.clanky-planning/plan.md"))).toBe(true);
+
+    const largeContentWrites = executors.flatMap((executor) => executor.writeFileCalls)
+      .filter((call) => call.contentLength === largePlanContent.length);
+    expect(largeContentWrites).toHaveLength(0);
+
+    installMockBackend(["Hello from chat API", "Second response"]);
   });
 
   test("falls back to the default plan path when the submitted plan file path is blank", async () => {

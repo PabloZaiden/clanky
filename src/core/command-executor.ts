@@ -111,6 +111,14 @@ export interface CommandExecutor {
   ): Promise<FileWriteStreamResult>;
 
   /**
+   * Copy a file on the execution host without streaming contents through Clanky.
+   * @param sourcePath - Absolute path to the source file
+   * @param destinationPath - Absolute path to the destination file
+   * @returns true if the copy was successful
+   */
+  copyFile?(sourcePath: string, destinationPath: string): Promise<boolean>;
+
+  /**
    * List files in a directory.
    * @param path - Absolute path to the directory
    * @param options - Listing options
