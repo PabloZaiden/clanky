@@ -16,6 +16,7 @@ import { DangerZoneSection } from "./danger-zone-section";
 import { PasskeyAuthSection } from "./passkey-auth-section";
 import { TokenAuthSection } from "./token-auth-section";
 import { QuickChatSettingsSection } from "./quick-chat-settings-section";
+import { SchedulerSettingsSection } from "./scheduler-settings-section";
 
 export interface AppSettingsPanelProps {
   /** Callback to reset all settings (destructive - deletes database) */
@@ -60,6 +61,16 @@ export interface AppSettingsPanelProps {
   quickChatSettingsError?: string | null;
   /** Callback to update quick chat settings */
   onUpdateQuickChatSettings?: (settings: QuickChatSettings) => Promise<QuickChatSettings | null>;
+  /** Current scheduler timezone for Agents */
+  schedulerTimezone?: string;
+  /** Whether scheduler timezone is loading */
+  schedulerTimezoneLoading?: boolean;
+  /** Whether scheduler timezone is saving */
+  schedulerTimezoneSaving?: boolean;
+  /** Scheduler timezone error */
+  schedulerTimezoneError?: string | null;
+  /** Callback to update scheduler timezone */
+  onUpdateSchedulerTimezone?: (timezone: string) => Promise<string | null>;
   /** Callback to register a passkey */
   onRegisterPasskey?: (name?: string) => Promise<boolean>;
   /** Callback to log out the current browser passkey session */
@@ -98,6 +109,11 @@ export function AppSettingsPanel({
   quickChatSettingsSaving = false,
   quickChatSettingsError = null,
   onUpdateQuickChatSettings,
+  schedulerTimezone = "UTC",
+  schedulerTimezoneLoading = false,
+  schedulerTimezoneSaving = false,
+  schedulerTimezoneError = null,
+  onUpdateSchedulerTimezone,
   onRegisterPasskey,
   onLogoutPasskey,
   onRemovePasskey,
@@ -114,6 +130,15 @@ export function AppSettingsPanel({
           saving={quickChatSettingsSaving}
           error={quickChatSettingsError}
           onUpdate={onUpdateQuickChatSettings}
+        />
+      ) : null}
+      {onUpdateSchedulerTimezone ? (
+        <SchedulerSettingsSection
+          timezone={schedulerTimezone}
+          loading={schedulerTimezoneLoading}
+          saving={schedulerTimezoneSaving}
+          error={schedulerTimezoneError}
+          onUpdate={onUpdateSchedulerTimezone}
         />
       ) : null}
       <DeveloperSettingsSection />

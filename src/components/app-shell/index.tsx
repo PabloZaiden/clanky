@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   useChats,
+  useAgents,
   useDashboardData,
   useTaskGrouping,
   useTasks,
   useProvisioningJob,
   useQuickChatSettings,
+  useSchedulerTimezone,
   useSshServers,
   useSshSessions,
   useToast,
@@ -44,6 +46,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     importExistingChat,
     createSshServerChat,
   } = useChats();
+  const agents = useAgents();
   const {
     tasks,
     loading: tasksLoading,
@@ -86,6 +89,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     importConfig,
   } = useWorkspaces();
   const quickChatSettings = useQuickChatSettings();
+  const schedulerTimezone = useSchedulerTimezone();
   const dashboardData = useDashboardData();
   const provisioning = useProvisioningJob();
   const { workspaceGroups } = useTaskGrouping(tasks, workspaces, !workspacesLoading);
@@ -206,8 +210,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
     quickChatWorkspace,
   ]);
 
-  const shellLoading = chatsLoading || tasksLoading || sshSessionsLoading || sshServersLoading || workspacesLoading;
-  const shellErrors = [chatsError, tasksError, sshSessionsError, sshServersError, workspaceError].filter(
+  const shellLoading = chatsLoading || tasksLoading || sshSessionsLoading || sshServersLoading || workspacesLoading || agents.loading;
+  const shellErrors = [chatsError, tasksError, sshSessionsError, sshServersError, workspaceError, agents.error].filter(
     Boolean,
   ) as string[];
   const codeExplorerTarget = route.view === "code-explorer" ? route.target : undefined;
@@ -354,6 +358,7 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         isNodeCollapsed={sidebar.isNodeCollapsed}
         toggleNodeCollapsed={sidebar.toggleNodeCollapsed}
         workspaceGroups={sidebarWorkspaceGroups}
+        agents={agents.agents}
         serverNodes={serverNodes}
         quickChatWorkspace={quickChatWorkspaceNode}
         quickChatLoading={quickChatSettings.loading || quickChatCreating}
@@ -424,6 +429,12 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
         quickChatSettingsSaving={quickChatSettings.saving}
         quickChatSettingsError={quickChatSettings.error}
         updateQuickChatSettings={quickChatSettings.updateSettings}
+        schedulerTimezone={schedulerTimezone.timezone}
+        schedulerTimezoneLoading={schedulerTimezone.loading}
+        schedulerTimezoneSaving={schedulerTimezone.saving}
+        schedulerTimezoneError={schedulerTimezone.error}
+        updateSchedulerTimezone={schedulerTimezone.updateTimezone}
+        agents={agents}
         composeActionState={composeState.composeActionState}
         setComposeActionState={composeState.setComposeActionState}
         handleTaskSubmit={composeState.handleTaskSubmit}

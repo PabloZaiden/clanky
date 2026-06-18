@@ -167,10 +167,7 @@ export function SshSessionDetails({
   async function handleDelete() {
     const success = await deleteSession();
     if (!success) {
-      if (session && isStandaloneSession(session) && isPersistentSshSession(session)) {
-        standalone.setPendingStandaloneAction("delete");
-        standalone.setShowPasswordPrompt(true);
-      }
+      showErrorToast(error ?? "Failed to delete SSH session.");
       return;
     }
     setShowDeleteConfirm(false);

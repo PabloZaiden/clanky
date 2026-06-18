@@ -143,6 +143,20 @@ class SshServerApiExecutor extends TestCommandExecutor {
   }
 }
 
+class FailingStandalonePersistentCleanupExecutor extends SshServerApiExecutor {
+  override async exec(command: string, args: string[], options?: Parameters<SshServerApiExecutor["exec"]>[2]) {
+    if (command === "bash" && args[0] === "-lc" && args[1]?.includes(".dtach.sock")) {
+      return {
+        success: false,
+        stdout: "",
+        stderr: "ssh connection failed",
+        exitCode: 255,
+      };
+    }
+    return await super.exec(command, args, options);
+  }
+}
+
 describe("Standalone SSH servers API integration", () => {
   let dataDir: string;
   let server: Server<unknown>;
@@ -325,6 +339,92 @@ describe("Standalone SSH servers API integration", () => {
     expect(session.config.name).toBe("Direct shell");
     expect(session.config.connectionMode).toBe("direct");
     expect(session.config.useTmux).toBe(false);
+  });
+
+  test("deletes a standalone persistent SSH session without requiring credentials", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Unreachable host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: null,
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const createSessionResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credentialToken: null,
+        name: "Persistent shell",
+        connectionMode: "dtach",
+      }),
+    });
+    expect(createSessionResponse.status).toBe(201);
+    const session = await createSessionResponse.json() as { config: { id: string } };
+
+    const deleteResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: null }),
+    });
+
+    expect(deleteResponse.ok).toBe(true);
+    expect(await deleteResponse.json()).toEqual({ success: true });
+
+    const getResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
+    expect(getResponse.status).toBe(404);
+  });
+
+  test("deletes a standalone persistent SSH session when remote cleanup fails", async () => {
+    const createServerResponse = await fetch(`${baseUrl}/api/ssh-servers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Cleanup failure host",
+        address: "ssh.example.com",
+        username: "deploy",
+        repositoriesBasePath: null,
+      }),
+    });
+    const createdServer = await createServerResponse.json() as { config: { id: string } };
+
+    const credentialResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/credentials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(await createEncryptedCredential(createdServer.config.id)),
+    });
+    expect(credentialResponse.status).toBe(201);
+    const exchange = await credentialResponse.json() as { credentialToken: string };
+
+    const createSessionResponse = await fetch(`${baseUrl}/api/ssh-servers/${createdServer.config.id}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        credentialToken: exchange.credentialToken,
+        name: "Persistent shell",
+        connectionMode: "dtach",
+      }),
+    });
+    expect(createSessionResponse.status).toBe(201);
+    const session = await createSessionResponse.json() as { config: { id: string } };
+
+    executorFactory = () => new FailingStandalonePersistentCleanupExecutor();
+
+    const deleteResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credentialToken: exchange.credentialToken }),
+    });
+
+    expect(deleteResponse.ok).toBe(true);
+    expect(await deleteResponse.json()).toEqual({ success: true });
+
+    const getResponse = await fetch(`${baseUrl}/api/ssh-server-sessions/${session.config.id}`);
+    expect(getResponse.status).toBe(404);
   });
 
   test("creates and lists SSH-server-owned chats", async () => {

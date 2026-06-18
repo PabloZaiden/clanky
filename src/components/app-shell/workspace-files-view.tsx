@@ -13,7 +13,7 @@ interface WorkspaceFilesViewProps {
   createSession: (request: CreateSshSessionRequest) => Promise<SshSession>;
   createStandaloneSession?: (
     serverId: string,
-    options?: { name?: string; connectionMode?: SshConnectionMode },
+    options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
   onNavigate: (route: ShellRoute) => void;
   sshSessionDetailsComponent?: ComponentType<SshSessionDetailsProps>;

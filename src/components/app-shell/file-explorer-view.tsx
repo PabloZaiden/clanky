@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
 import type { SshSession, WorkspaceFileEntry } from "../../types";
 import type { SshServerSession } from "../../types/ssh-server";
 import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "../../hooks";
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
-import { Button, GearIcon, Modal } from "../common";
+import { Button, ConfirmModal, Modal } from "../common";
+import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
@@ -67,7 +68,8 @@ interface FileExplorerViewProps {
   hasTerminal: boolean;
   emptyTerminalMessage: string;
   terminalSelectLabel: string;
-  onCreateTerminal: () => Promise<ExplorerSession>;
+  onCreateTerminal: (options?: CodeExplorerTerminalOptions) => Promise<ExplorerSession>;
+  canChooseTerminalTmux: boolean;
   testIdPrefix: "workspace" | "server";
   credentialPromptName?: string;
   initialFilePath?: string;
@@ -90,6 +92,7 @@ export function FileExplorerView({
   emptyTerminalMessage,
   terminalSelectLabel,
   onCreateTerminal,
+  canChooseTerminalTmux,
   testIdPrefix,
   credentialPromptName,
   initialFilePath,
@@ -118,14 +121,24 @@ export function FileExplorerView({
   const [activePane, setActivePane] = useState<ExplorerPane>("editor");
   const [explorerCollapsed, setExplorerCollapsed] = useState(false);
   const [rootPickerOpen, setRootPickerOpen] = useState(false);
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [renameInputValue, setRenameInputValue] = useState("");
+  const [renamingNode, setRenamingNode] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deletingNode, setDeletingNode] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const [tmuxPromptOpen, setTmuxPromptOpen] = useState(false);
+  const [creatingTerminal, setCreatingTerminal] = useState(false);
   const [downloadingFilePath, setDownloadingFilePath] = useState<string | null>(null);
   const [openingLargeFile, setOpeningLargeFile] = useState(false);
+  const canPromptForTerminalTmux = hasTerminal && canChooseTerminalTmux;
   const activeRootDirectory = target.startDirectory?.trim() || defaultRootDirectory.trim();
   const selectedFilePath = explorer.currentFile?.path;
   const selectedFileAbsolutePath = explorer.currentFile?.absolutePath;
   const [rootInputValue, setRootInputValue] = useState(activeRootDirectory);
   const [loadFullTreeInput, setLoadFullTreeInput] = useState(fullTreePreference.enabled);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
   const lastAutoOpenedFileRef = useRef<string | null>(null);
   const selectableSessions = useMemo(
     () => sessions.map((session) => ({
@@ -176,14 +189,33 @@ export function FileExplorerView({
     }
   }, [explorer.error, explorer.errorCode, target.type]);
 
-  async function handleCreateTerminal() {
+  useEffect(() => {
+    if (!canPromptForTerminalTmux) {
+      setTmuxPromptOpen(false);
+    }
+  }, [canPromptForTerminalTmux]);
+
+  async function createTerminal(options?: CodeExplorerTerminalOptions) {
     try {
-      const session = await onCreateTerminal();
+      setCreatingTerminal(true);
+      const session = await onCreateTerminal(options);
       setSelectedSessionId(session.config.id);
       setActivePane("terminal");
+      setTmuxPromptOpen(false);
     } catch (error) {
       toast.error(String(error));
+    } finally {
+      setCreatingTerminal(false);
     }
+  }
+
+  function handleCreateTerminal() {
+    if (canPromptForTerminalTmux) {
+      setTmuxPromptOpen(true);
+      return;
+    }
+
+    void createTerminal();
   }
 
   async function handleSave(): Promise<boolean> {
@@ -388,6 +420,106 @@ export function FileExplorerView({
     await explorer.openFile(path);
   }, [explorer.openFile]);
 
+  const selectedNode = explorer.selectedNode;
+
+  const blockDirtySelectedFileMutation = useCallback(() => {
+    if (explorer.isDirty && selectedNode?.path === explorer.currentFile?.path) {
+      toast.error("Save or discard local changes before modifying this file.");
+      return true;
+    }
+    return false;
+  }, [explorer.currentFile?.path, explorer.isDirty, selectedNode?.path, toast]);
+
+  const openRenameModal = useCallback(() => {
+    if (!selectedNode) {
+      toast.error("Select a file or directory to rename.");
+      return;
+    }
+    if (blockDirtySelectedFileMutation()) {
+      return;
+    }
+    setRenameInputValue(selectedNode.name);
+    setRenameModalOpen(true);
+  }, [blockDirtySelectedFileMutation, selectedNode, toast]);
+
+  const closeRenameModal = useCallback(() => {
+    setRenameModalOpen(false);
+    setRenameInputValue("");
+  }, []);
+
+  const handleRenameSubmit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = renameInputValue.trim();
+    if (!trimmedName) {
+      toast.error("Enter a new name.");
+      return;
+    }
+    try {
+      setRenamingNode(true);
+      const renamedFile = await explorer.renameSelectedNode(trimmedName);
+      if (!renamedFile) {
+        toast.error(explorer.error ?? "Failed to rename selected item.");
+        return;
+      }
+      toast.success(`Renamed to ${renamedFile.name}`);
+      closeRenameModal();
+    } finally {
+      setRenamingNode(false);
+    }
+  }, [closeRenameModal, explorer, renameInputValue, toast]);
+
+  const openDeleteModal = useCallback(() => {
+    if (!selectedNode) {
+      toast.error("Select a file or directory to delete.");
+      return;
+    }
+    if (blockDirtySelectedFileMutation()) {
+      return;
+    }
+    setDeleteModalOpen(true);
+  }, [blockDirtySelectedFileMutation, selectedNode, toast]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!selectedNode) {
+      return;
+    }
+    try {
+      setDeletingNode(true);
+      const deleted = await explorer.deleteSelectedNode();
+      if (!deleted) {
+        toast.error(explorer.error ?? "Failed to delete selected item.");
+        return;
+      }
+      toast.success(`Deleted ${selectedNode.name}`);
+      setDeleteModalOpen(false);
+    } finally {
+      setDeletingNode(false);
+    }
+  }, [explorer, selectedNode, toast]);
+
+  const handleUploadFile = useCallback(() => {
+    uploadInputRef.current?.click();
+  }, []);
+
+  const handleUploadInputChange = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+    try {
+      setUploadingFile(true);
+      const uploadedFile = await explorer.uploadFileToSelectedDirectory(file);
+      if (!uploadedFile) {
+        toast.error(explorer.error ?? "Failed to upload file.");
+        return;
+      }
+      toast.success(`Uploaded ${uploadedFile.name}`);
+    } finally {
+      setUploadingFile(false);
+    }
+  }, [explorer, toast]);
+
   useEffect(() => {
     if (
       !initialFilePath
@@ -433,20 +565,6 @@ export function FileExplorerView({
     target.type,
   ]);
 
-  const explorerToolbarActions = useMemo(() => (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={openRootPicker}
-      aria-label="Change explorer root"
-      title="Change explorer root"
-      className="h-8 min-h-8 w-8 shrink-0 px-0"
-      icon={<GearIcon size="h-4 w-4" />}
-    >
-      <span className="sr-only">Change explorer root</span>
-    </Button>
-  ), [openRootPicker]);
-
   return (
     <ShellPanel
       title={title}
@@ -489,20 +607,27 @@ export function FileExplorerView({
                 entriesByDirectory={explorer.directoryEntries}
                 expandedDirectories={explorer.expandedDirectories}
                 currentFilePath={selectedFilePath}
+                selectedNodePath={explorer.selectedNode?.path}
                 showHiddenFiles={explorer.showHiddenFiles}
                 loading={explorer.loadingTree}
                 error={explorer.error}
                 collapsed={explorerCollapsed}
-                toolbarActions={explorerToolbarActions}
+                onOpenRootPicker={openRootPicker}
                 onRefresh={explorer.refreshTree}
                 onToggleShowHiddenFiles={explorer.toggleShowHiddenFiles}
                 onCopySelectedFilePath={handleCopySelectedFilePath}
                 onDownloadSelectedFile={handleDownloadFile}
+                onUploadFile={handleUploadFile}
+                onRenameSelectedNode={openRenameModal}
+                onDeleteSelectedNode={openDeleteModal}
                 onToggleCollapsed={handleToggleExplorerCollapsed}
                 onToggleDirectory={explorer.toggleDirectory}
                 onOpenFile={handleOpenFile}
                 canCopySelectedFilePath={Boolean(selectedFileAbsolutePath)}
                 canDownloadSelectedFile={Boolean(explorer.currentFile)}
+                canUploadFile={!explorer.loadingTree && !uploadingFile}
+                canRenameSelectedNode={Boolean(explorer.selectedNode) && !renamingNode}
+                canDeleteSelectedNode={Boolean(explorer.selectedNode) && !deletingNode}
               />
             </div>
             <div
@@ -600,8 +725,8 @@ export function FileExplorerView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => void handleCreateTerminal()}
-                    disabled={!hasTerminal}
+                    onClick={handleCreateTerminal}
+                    disabled={!hasTerminal || creatingTerminal}
                   >
                     New terminal
                   </Button>
@@ -626,6 +751,114 @@ export function FileExplorerView({
         </div>
         </div>
       </div>
+
+      <input
+        ref={uploadInputRef}
+        type="file"
+        className="hidden"
+        onChange={(event) => {
+          void handleUploadInputChange(event);
+        }}
+        aria-label="Upload file"
+      />
+
+      {explorer.uploadProgress && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-100">
+          Uploading {formatFileSize(explorer.uploadProgress.bytesUploaded)} of {formatFileSize(explorer.uploadProgress.totalBytes)}
+        </div>
+      )}
+
+      <Modal
+        isOpen={renameModalOpen}
+        onClose={closeRenameModal}
+        title="Rename selected item"
+        size="sm"
+        footer={(
+          <>
+            <Button variant="ghost" onClick={closeRenameModal} disabled={renamingNode}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="file-explorer-rename-form"
+              variant="secondary"
+              loading={renamingNode}
+              disabled={!renameInputValue.trim()}
+            >
+              Rename
+            </Button>
+          </>
+        )}
+      >
+        <form id="file-explorer-rename-form" className="space-y-3" onSubmit={handleRenameSubmit}>
+          <label className="block text-sm font-medium text-gray-900 dark:text-gray-100" htmlFor="file-explorer-rename-input">
+            New name
+          </label>
+          <input
+            id="file-explorer-rename-input"
+            type="text"
+            value={renameInputValue}
+            onChange={(event) => setRenameInputValue(event.target.value)}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
+            autoFocus
+          />
+        </form>
+      </Modal>
+
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={() => {
+          void handleConfirmDelete();
+        }}
+        title="Delete selected item"
+        message={selectedNode
+          ? `Delete ${selectedNode.kind} "${selectedNode.name}"?${selectedNode.kind === "directory" ? " This will delete its contents." : ""}`
+          : "Delete the selected item?"}
+        confirmLabel="Delete"
+        loading={deletingNode}
+        variant="danger"
+      />
+
+      <Modal
+        isOpen={tmuxPromptOpen && canPromptForTerminalTmux}
+        onClose={() => setTmuxPromptOpen(false)}
+        title="Create terminal"
+        description="Choose how this terminal should start."
+        size="sm"
+        footer={(
+          <>
+            <Button variant="ghost" onClick={() => setTmuxPromptOpen(false)} disabled={creatingTerminal}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              loading={creatingTerminal}
+              onClick={() => {
+                void createTerminal({ useTmux: false });
+              }}
+            >
+              Without tmux
+            </Button>
+            <Button
+              variant="primary"
+              loading={creatingTerminal}
+              onClick={() => {
+                void createTerminal({ useTmux: true });
+              }}
+            >
+              With tmux
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+          <p>Start this terminal in tmux when available?</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Choose without tmux if you want a normal interactive shell without trying tmux first.
+          </p>
+        </div>
+      </Modal>
 
       <WorkspaceFileConflictModal
         isOpen={conflictState?.kind === "save_conflict"}

@@ -12,9 +12,15 @@ import { sshServerManager } from "../core/ssh-server-manager";
 import { createLogger } from "../core/logger";
 import { type WorkspaceFileEntry } from "../types";
 import {
+  CancelWorkspaceFileUploadRequestSchema,
+  CompleteWorkspaceFileUploadRequestSchema,
+  CreateWorkspaceFileUploadRequestSchema,
+  DeleteWorkspaceFileRequestSchema,
   GetWorkspaceFileRequestSchema,
   GetWorkspaceFileTreeRequestSchema,
   ListWorkspaceFilesRequestSchema,
+  RenameWorkspaceFileRequestSchema,
+  UploadWorkspaceFileChunkRequestSchema,
   WriteWorkspaceFileRequestSchema,
 } from "../types/schemas";
 import { errorResponse } from "./helpers";
@@ -70,6 +76,18 @@ function mapFileError(error: unknown): Response {
   }
   if (message.includes("not a directory") || message.includes("not a file")) {
     return errorResponse("invalid_path_type", message, 400);
+  }
+  if (message.includes("Cannot modify the active explorer root")) {
+    return errorResponse("invalid_server_path", message, 400);
+  }
+  if (message.includes("File name must not contain path separators") || message.includes("File name is required")) {
+    return errorResponse("invalid_file_name", message, 400);
+  }
+  if (message.includes("Upload session does not exist")) {
+    return errorResponse("upload_session_not_found", message, 404);
+  }
+  if (message.includes("upload offset") || message.includes("Upload is incomplete")) {
+    return errorResponse("invalid_upload_state", message, 400);
   }
   if (message.includes("not a browser-renderable image")) {
     return errorResponse("invalid_preview_type", message, 400);
@@ -341,6 +359,197 @@ export const sshServerFilesRoutes = {
         log.error("Failed to write standalone SSH server file", {
           serverId: req.params.id,
           path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/files/rename": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(RenameWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const response = await fileExplorerService.renameNode(
+          target,
+          validation.data.path,
+          validation.data.newName,
+          {
+            expectedVersionToken: validation.data.expectedVersionToken ?? undefined,
+            overwrite: validation.data.overwrite,
+          },
+        );
+        return Response.json({
+          success: true,
+          serverId: req.params.id,
+          file: response.file,
+          previousPath: response.previousPath,
+          overwritten: response.overwritten,
+        });
+      } catch (error) {
+        log.error("Failed to rename standalone SSH server file", {
+          serverId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/files/delete": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(DeleteWorkspaceFileRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const response = await fileExplorerService.deleteNode(target, validation.data.path, {
+          expectedVersionToken: validation.data.expectedVersionToken ?? undefined,
+          kind: validation.data.kind,
+        });
+        return Response.json({
+          success: true,
+          serverId: req.params.id,
+          deletedPath: response.deletedPath,
+          kind: response.kind,
+        });
+      } catch (error) {
+        log.error("Failed to delete standalone SSH server file", {
+          serverId: req.params.id,
+          path: validation.data.path,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/files/upload": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(CreateWorkspaceFileUploadRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const response = await fileExplorerService.createUploadSession(
+          target,
+          validation.data.directory,
+          validation.data.fileName,
+          validation.data.size,
+          {
+            overwrite: validation.data.overwrite,
+          },
+        );
+        return Response.json({
+          serverId: req.params.id,
+          ...response,
+        }, { status: 201 });
+      } catch (error) {
+        log.error("Failed to create standalone SSH server file upload", {
+          serverId: req.params.id,
+          directory: validation.data.directory,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/files/upload/chunk": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = parseSearchParams(UploadWorkspaceFileChunkRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+      if (!req.body) {
+        return errorResponse("invalid_upload_chunk", "Upload chunk body is required", 400);
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const response = await fileExplorerService.writeUploadChunk(
+          target,
+          validation.data.uploadId,
+          validation.data.offset,
+          req.body,
+          {
+            signal: req.signal,
+          },
+        );
+        return Response.json({
+          success: true,
+          serverId: req.params.id,
+          uploadId: response.uploadId,
+          bytesWritten: response.bytesWritten,
+          nextOffset: response.nextOffset,
+        });
+      } catch (error) {
+        log.error("Failed to write standalone SSH server file upload chunk", {
+          serverId: req.params.id,
+          uploadId: validation.data.uploadId,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/files/upload/complete": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(CompleteWorkspaceFileUploadRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const response = await fileExplorerService.completeUpload(target, validation.data.uploadId);
+        return Response.json({
+          success: true,
+          serverId: req.params.id,
+          file: response.file,
+          overwritten: response.overwritten,
+        });
+      } catch (error) {
+        log.error("Failed to complete standalone SSH server file upload", {
+          serverId: req.params.id,
+          uploadId: validation.data.uploadId,
+          error: String(error),
+        });
+        return mapFileError(error);
+      }
+    },
+  },
+
+  "/api/ssh-servers/:id/files/upload/cancel": {
+    async POST(req: Request & { params: { id: string } }): Promise<Response> {
+      const validation = await parseAndValidate(CancelWorkspaceFileUploadRequestSchema, req);
+      if (!validation.success) {
+        return validation.response;
+      }
+
+      try {
+        const target = await getServerFileTarget(req, validation.data.startDirectory ?? undefined);
+        const response = await fileExplorerService.cancelUpload(target, validation.data.uploadId);
+        return Response.json({
+          success: true,
+          serverId: req.params.id,
+          uploadId: response.uploadId,
+        });
+      } catch (error) {
+        log.error("Failed to cancel standalone SSH server file upload", {
+          serverId: req.params.id,
+          uploadId: validation.data.uploadId,
           error: String(error),
         });
         return mapFileError(error);

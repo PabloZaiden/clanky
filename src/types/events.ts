@@ -15,6 +15,7 @@
  * @module types/events
  */
 
+import type { Agent, AgentRun, AgentRunStatus } from "./agent";
 import type { Chat, ChatConfig, ChatStatus } from "./chat";
 import type { AutomaticPrFlowState, GitCommit, TaskConfig, TaskLogEntry, ModelConfig } from "./task";
 import type { MessageImageAttachment } from "./message-attachments";
@@ -135,6 +136,27 @@ export type ChatEvent =
   | ChatErrorEvent
   | ChatDeletedEvent;
 
+/**
+ * Union type of all agent-scoped events streamed to clients.
+ */
+export type AgentEvent =
+  | AgentCreatedEvent
+  | AgentUpdatedEvent
+  | AgentDeletedEvent
+  | AgentRunScheduledEvent
+  | AgentRunStartedEvent
+  | AgentRunStatusEvent
+  | AgentRunMessageEvent
+  | AgentRunToolCallEvent
+  | AgentRunToolCallExtraEvent
+  | AgentRunLogEvent
+  | AgentRunSkippedEvent
+  | AgentRunCompletedEvent
+  | AgentRunFailedEvent
+  | AgentRunInterruptedEvent
+  | AgentRunDeletedEvent
+  | AgentRunsPurgedEvent;
+
 export interface ChatCreatedEvent {
   type: "chat.created";
   chatId: string;
@@ -160,6 +182,7 @@ export interface ChatStatusEvent {
 export interface ChatMessageEvent {
   type: "chat.message";
   chatId: string;
+  scope: ChatConfig["scope"];
   message: MessageData;
   timestamp: string;
 }
@@ -167,6 +190,7 @@ export interface ChatMessageEvent {
 export interface ChatToolCallEvent {
   type: "chat.tool_call";
   chatId: string;
+  scope: ChatConfig["scope"];
   tool: ToolCallData;
   timestamp: string;
 }
@@ -174,6 +198,7 @@ export interface ChatToolCallEvent {
 export interface ChatToolCallExtraEvent {
   type: "chat.tool_call.extra";
   chatId: string;
+  scope: ChatConfig["scope"];
   toolId: string;
   extra: ToolCallExtra;
   timestamp: string;
@@ -182,6 +207,7 @@ export interface ChatToolCallExtraEvent {
 export interface ChatLogEvent {
   type: "chat.log";
   chatId: string;
+  scope: ChatConfig["scope"];
   log: TaskLogEntry;
   timestamp: string;
 }
@@ -205,6 +231,128 @@ export interface ChatDeletedEvent {
   type: "chat.deleted";
   chatId: string;
   scope: ChatConfig["scope"];
+  timestamp: string;
+}
+
+export interface AgentCreatedEvent {
+  type: "agent.created";
+  agentId: string;
+  agent: Agent;
+  timestamp: string;
+}
+
+export interface AgentUpdatedEvent {
+  type: "agent.updated";
+  agentId: string;
+  agent: Agent;
+  timestamp: string;
+}
+
+export interface AgentDeletedEvent {
+  type: "agent.deleted";
+  agentId: string;
+  timestamp: string;
+}
+
+export interface AgentRunScheduledEvent {
+  type: "agent.run.scheduled";
+  agentId: string;
+  agentRunId: string;
+  run: AgentRun;
+  timestamp: string;
+}
+
+export interface AgentRunStartedEvent {
+  type: "agent.run.started";
+  agentId: string;
+  agentRunId: string;
+  run: AgentRun;
+  timestamp: string;
+}
+
+export interface AgentRunStatusEvent {
+  type: "agent.run.status";
+  agentId: string;
+  agentRunId: string;
+  status: AgentRunStatus;
+  timestamp: string;
+}
+
+export interface AgentRunMessageEvent {
+  type: "agent.run.message";
+  agentId: string;
+  agentRunId: string;
+  message: MessageData;
+  timestamp: string;
+}
+
+export interface AgentRunToolCallEvent {
+  type: "agent.run.tool_call";
+  agentId: string;
+  agentRunId: string;
+  tool: ToolCallData;
+  timestamp: string;
+}
+
+export interface AgentRunToolCallExtraEvent {
+  type: "agent.run.tool_call.extra";
+  agentId: string;
+  agentRunId: string;
+  toolId: string;
+  extra: ToolCallExtra;
+  timestamp: string;
+}
+
+export interface AgentRunLogEvent {
+  type: "agent.run.log";
+  agentId: string;
+  agentRunId: string;
+  log: TaskLogEntry;
+  timestamp: string;
+}
+
+export interface AgentRunSkippedEvent {
+  type: "agent.run.skipped";
+  agentId: string;
+  agentRunId: string;
+  reason: string;
+  timestamp: string;
+}
+
+export interface AgentRunCompletedEvent {
+  type: "agent.run.completed";
+  agentId: string;
+  agentRunId: string;
+  run: AgentRun;
+  timestamp: string;
+}
+
+export interface AgentRunFailedEvent {
+  type: "agent.run.failed";
+  agentId: string;
+  agentRunId: string;
+  message: string;
+  timestamp: string;
+}
+
+export interface AgentRunInterruptedEvent {
+  type: "agent.run.interrupted";
+  agentId: string;
+  agentRunId: string;
+  timestamp: string;
+}
+
+export interface AgentRunDeletedEvent {
+  type: "agent.run.deleted";
+  agentId: string;
+  agentRunId: string;
+  timestamp: string;
+}
+
+export interface AgentRunsPurgedEvent {
+  type: "agent.runs.purged";
+  agentId: string;
+  deletedRunIds: string[];
   timestamp: string;
 }
 

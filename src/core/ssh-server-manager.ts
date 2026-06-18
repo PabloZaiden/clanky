@@ -45,8 +45,11 @@ import { getSshConnectionTargetFromServer } from "./ssh-connection-target";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
 import { checkSshServerPrerequisites } from "./ssh-server-prerequisites";
 import { parseDevboxTemplatesOutput } from "./ssh-server-devbox-templates";
+import { createLogger } from "./logger";
 
 type SshServerExecutorFactory = (server: SshServerConfig, password: string) => CommandExecutor;
+
+const log = createLogger("core:ssh-server-manager");
 
 function buildRemoteSessionName(id: string): string {
   return `clanky-${id.replace(/-/g, "").slice(0, 24)}`;
@@ -215,22 +218,17 @@ export class SshServerManager {
 
   async deleteSession(id: string, request: DeleteSshServerSessionRequest): Promise<boolean> {
     const session = await this.requireSession(id);
-    if (isPersistentSshSession(session)) {
-      const server = await this.requireServerConfig(session.config.sshServerId);
-      const credentialToken = request.credentialToken?.trim();
-      if (!credentialToken) {
-        throw new Error("SSH credential token is required to delete persistent standalone SSH sessions");
-      }
-      const password = sshCredentialManager.getPasswordForToken(server.id, credentialToken);
-      const executor = this.buildExecutor(server, password);
-      const result = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand(session)], {
-        cwd: "/",
+    await this.deletePersistentSessionBestEffort(session, request);
+
+    const deleted = await deleteSshServerSession(id);
+    if (deleted) {
+      sshSessionEventEmitter.emit({
+        type: "ssh_session.deleted",
+        sshSessionId: id,
+        timestamp: new Date().toISOString(),
       });
-      if (!result.success) {
-        throw new Error(result.stderr.trim() || result.stdout.trim() || "Failed to stop remote persistent SSH session");
-      }
     }
-    return await deleteSshServerSession(id);
+    return deleted;
   }
 
   async deleteInternalSessionRecord(id: string): Promise<boolean> {
@@ -349,6 +347,40 @@ export class SshServerManager {
       throw new Error(`SSH server session not found: ${id}`);
     }
     return session;
+  }
+
+  private async deletePersistentSessionBestEffort(
+    session: SshServerSession,
+    request: DeleteSshServerSessionRequest,
+  ): Promise<void> {
+    if (!isPersistentSshSession(session)) {
+      return;
+    }
+
+    const credentialToken = request.credentialToken?.trim();
+    if (!credentialToken) {
+      return;
+    }
+
+    try {
+      const server = await this.requireServerConfig(session.config.sshServerId);
+      const password = sshCredentialManager.getPasswordForToken(server.id, credentialToken);
+      const executor = this.buildExecutor(server, password);
+      const result = await executor.exec("bash", ["-lc", buildPersistentSessionDeleteCommand(session)], {
+        cwd: "/",
+      });
+      if (!result.success) {
+        throw new Error(result.stderr.trim() || result.stdout.trim() || "Failed to stop remote persistent SSH session");
+      }
+    } catch (error) {
+      log.warn("Failed to stop remote standalone persistent SSH session during deletion", {
+        sshSessionId: session.config.id,
+        sshServerId: session.config.sshServerId,
+        remoteSessionName: session.config.remoteSessionName,
+        status: session.state.status,
+        error: String(error),
+      });
+    }
   }
 }
 

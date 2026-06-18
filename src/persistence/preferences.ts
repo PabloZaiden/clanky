@@ -16,7 +16,9 @@ import { createLogger } from "../core/logger";
 import {
   DEFAULT_THEME_PREFERENCE,
   DEFAULT_QUICK_CHAT_SETTINGS,
+  DEFAULT_SCHEDULER_TIMEZONE,
   THEME_PREFERENCES,
+  isValidIanaTimeZone,
   type DashboardViewMode,
   type QuickChatSettings,
   type ThemePreference,
@@ -85,6 +87,8 @@ export interface UserPreferences {
   themePreference?: ThemePreference;
   /** Quick chat workspace/model settings */
   quickChatSettings?: QuickChatSettings;
+  /** IANA timezone used by schedules such as Agents */
+  schedulerTimezone?: string;
 }
 
 /**
@@ -386,4 +390,32 @@ export async function setQuickChatSettings(settings: QuickChatSettings): Promise
     hasModel: normalized.model !== null,
   });
   setPreference("quickChatSettings", JSON.stringify(normalized));
+}
+
+export async function getSchedulerTimezone(): Promise<string> {
+  log.debug("Getting scheduler timezone preference");
+  const value = getPreference("schedulerTimezone");
+  if (value === null) {
+    log.trace("Scheduler timezone preference not set, using default", {
+      default: DEFAULT_SCHEDULER_TIMEZONE,
+    });
+    return DEFAULT_SCHEDULER_TIMEZONE;
+  }
+  if (isValidIanaTimeZone(value)) {
+    return value;
+  }
+  log.warn("Invalid scheduler timezone preference, using default", {
+    storedValue: value,
+    default: DEFAULT_SCHEDULER_TIMEZONE,
+  });
+  return DEFAULT_SCHEDULER_TIMEZONE;
+}
+
+export async function setSchedulerTimezone(timezone: string): Promise<void> {
+  log.debug("Setting scheduler timezone preference", { timezone });
+  if (!isValidIanaTimeZone(timezone)) {
+    log.error("Invalid scheduler timezone provided", { timezone });
+    throw new Error(`Invalid scheduler timezone: ${timezone}`);
+  }
+  setPreference("schedulerTimezone", timezone);
 }

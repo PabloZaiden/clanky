@@ -7,11 +7,18 @@ import { fileExplorerService, resolveFileExplorerRootDirectory } from "./file-ex
 import type {
   Workspace,
   WorkspaceFileEntry,
+  WorkspaceFileDeleteResponse,
+  WorkspaceFileUploadCancelResponse,
+  WorkspaceFileUploadChunkResponse,
+  WorkspaceFileUploadCompleteResponse,
+  WorkspaceFileUploadCreateResponse,
   WorkspaceFileMetadataResponse,
   WorkspaceFileListResponse,
+  WorkspaceFileRenameResponse,
   WorkspaceFileReadResponse,
   WorkspaceFileTreeResponse,
   WorkspaceFileWriteResponse,
+  WorkspaceFileKind,
 } from "../types";
 
 export interface WorkspaceFileImageReadResponse {
@@ -169,6 +176,113 @@ class WorkspaceFileService {
       workspaceId: workspace.id,
       file: response.file,
       overwritten: response.overwritten,
+    };
+  }
+
+  async renameNode(
+    workspace: Workspace,
+    requestedPath: string,
+    newName: string,
+    options?: {
+      expectedVersionToken?: string | null;
+      overwrite?: boolean;
+      startDirectory?: string;
+    },
+  ): Promise<WorkspaceFileRenameResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.renameNode(target, requestedPath, newName, options);
+    return {
+      success: true,
+      workspaceId: workspace.id,
+      file: response.file,
+      previousPath: response.previousPath,
+      overwritten: response.overwritten,
+    };
+  }
+
+  async deleteNode(
+    workspace: Workspace,
+    requestedPath: string,
+    options?: {
+      expectedVersionToken?: string | null;
+      kind?: WorkspaceFileKind;
+      startDirectory?: string;
+    },
+  ): Promise<WorkspaceFileDeleteResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.deleteNode(target, requestedPath, options);
+    return {
+      success: true,
+      workspaceId: workspace.id,
+      deletedPath: response.deletedPath,
+      kind: response.kind,
+    };
+  }
+
+  async createUploadSession(
+    workspace: Workspace,
+    directory: string,
+    fileName: string,
+    size: number,
+    options?: {
+      overwrite?: boolean;
+      startDirectory?: string;
+    },
+  ): Promise<WorkspaceFileUploadCreateResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.createUploadSession(target, directory, fileName, size, options);
+    return {
+      workspaceId: workspace.id,
+      ...response,
+    };
+  }
+
+  async writeUploadChunk(
+    workspace: Workspace,
+    uploadId: string,
+    offset: number,
+    stream: ReadableStream<Uint8Array>,
+    options?: { startDirectory?: string; signal?: AbortSignal },
+  ): Promise<WorkspaceFileUploadChunkResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.writeUploadChunk(target, uploadId, offset, stream, {
+      signal: options?.signal,
+    });
+    return {
+      success: true,
+      workspaceId: workspace.id,
+      uploadId: response.uploadId,
+      bytesWritten: response.bytesWritten,
+      nextOffset: response.nextOffset,
+    };
+  }
+
+  async completeUpload(
+    workspace: Workspace,
+    uploadId: string,
+    options?: { startDirectory?: string },
+  ): Promise<WorkspaceFileUploadCompleteResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.completeUpload(target, uploadId);
+    return {
+      success: true,
+      workspaceId: workspace.id,
+      file: response.file,
+      overwritten: response.overwritten,
+    };
+  }
+
+  async cancelUpload(
+    workspace: Workspace,
+    uploadId: string,
+    options?: { startDirectory?: string },
+  ): Promise<WorkspaceFileUploadCancelResponse> {
+    const target = await this.getTarget(workspace, options?.startDirectory);
+    const response = await fileExplorerService.cancelUpload(target, uploadId);
+    return {
+      success: true,
+      workspaceId: workspace.id,
+      uploadId: response.uploadId,
     };
   }
 }

@@ -1,3 +1,4 @@
+export * from "./agent";
 export * from "./chat";
 export * from "./commit-scope";
 export * from "./components";

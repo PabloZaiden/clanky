@@ -7,7 +7,12 @@
  */
 
 import { z } from "zod";
-import { DEFAULT_QUICK_CHAT_SETTINGS, THEME_PREFERENCES, type QuickChatSettings } from "@clanky/shared";
+import {
+  DEFAULT_QUICK_CHAT_SETTINGS,
+  THEME_PREFERENCES,
+  isValidIanaTimeZone,
+  type QuickChatSettings,
+} from "@clanky/shared";
 import { CheapModelSelectionSchema, ModelConfigSchema } from "./model";
 
 /**
@@ -66,6 +71,13 @@ export const SetThemePreferenceRequestSchema = z.object({
   theme: z.enum(THEME_PREFERENCES, {
     error: "theme must be 'light', 'dark', or 'system'",
   }),
+});
+
+export const SetSchedulerTimezoneRequestSchema = z.object({
+  timezone: z.string().trim().min(1, "timezone is required").refine(
+    isValidIanaTimeZone,
+    { message: "timezone must be a valid IANA timezone" },
+  ),
 });
 
 export const QuickChatSettingsSchema = z.object({
