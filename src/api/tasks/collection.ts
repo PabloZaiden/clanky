@@ -225,7 +225,7 @@ export const tasksCollectionRoutes = {
             await taskManager.acceptPlan(task.config.id, {
               mode: "start_task",
               executionPrompt: UPLOADED_PLAN_IMPLEMENTATION_PROMPT,
-              executionPromptMode: "plain_chat",
+              executionPromptMode: "task_context",
             });
             const updatedTask = await taskManager.getTask(task.config.id);
             return Response.json(updatedTask ?? task, { status: 201 });

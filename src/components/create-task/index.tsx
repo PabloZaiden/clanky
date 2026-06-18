@@ -127,6 +127,7 @@ export function CreateTaskForm({
     setPlanMode(true);
     setAutoAcceptPlan(true);
     setSelectedTemplate("");
+    setAttachments([]);
   }, [setAutoAcceptPlan, setPlanMode, setSelectedTemplate, uploadedPlan]);
 
   return (

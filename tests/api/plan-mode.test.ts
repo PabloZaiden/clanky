@@ -381,8 +381,8 @@ describe("Plan Mode API Integration", () => {
       expect(seededPlan).not.toContain("<promise>PLAN_READY</promise>");
 
       const executionPrompt = await waitForSentPromptContaining(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
-      expect(executionPrompt).toBe(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
-      expect(mockBackend.getSentPrompts().map(getPromptText).join("\n")).not.toContain(
+      expect(executionPrompt).toContain(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
+      expect(executionPrompt).not.toContain(
         "Create a detailed plan to achieve this goal",
       );
     });
