@@ -1039,6 +1039,8 @@ export class ChatManager {
       await taskManager.seedPlanFiles(task.config.id, {
         planContent: currentPlan.planContent,
         statusContent: currentPlan.statusContent ?? buildSeededPlanStatusContent(task.config.name),
+        planSourcePath: currentPlan.planSourcePath,
+        statusSourcePath: currentPlan.statusContent ? currentPlan.statusSourcePath : undefined,
       });
       await taskManager.saveLastUsedModel(working.chat.config.model);
     } catch (error) {

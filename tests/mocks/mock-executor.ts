@@ -191,6 +191,23 @@ export class TestCommandExecutor implements CommandExecutor {
     }
   }
 
+  async copyFile(sourcePath: string, destinationPath: string): Promise<boolean> {
+    try {
+      const dir = destinationPath.substring(0, destinationPath.lastIndexOf("/"));
+      if (dir) {
+        await mkdir(dir, { recursive: true });
+      }
+      const source = Bun.file(sourcePath);
+      if (!(await source.exists())) {
+        return false;
+      }
+      await Bun.write(destinationPath, source);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * List files in a directory locally.
    */
