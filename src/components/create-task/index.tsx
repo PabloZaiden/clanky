@@ -183,14 +183,6 @@ export function CreateTaskForm({
         modelsLoading={modelsLoading}
       />
 
-      <UploadedPlanField
-        uploadedPlan={uploadedPlan}
-        error={uploadedPlanError}
-        onUploadedPlanChange={setUploadedPlan}
-        onErrorChange={setUploadedPlanError}
-        disabled={isEditingDraft || isEditing}
-      />
-
       {!uploadedPlan && (
         <TemplateSelector
           selectedTemplate={selectedTemplate}
@@ -236,6 +228,14 @@ export function CreateTaskForm({
           onTemplateClear={() => setSelectedTemplate("")}
         />
       )}
+
+      <UploadedPlanField
+        uploadedPlan={uploadedPlan}
+        error={uploadedPlanError}
+        onUploadedPlanChange={setUploadedPlan}
+        onErrorChange={setUploadedPlanError}
+        disabled={isEditingDraft || isEditing}
+      />
 
       <TaskSettings
         planMode={planMode}
