@@ -75,6 +75,10 @@ export function buildWorkspaceActionItems({
       onClick: () => onNavigate({ view: "compose", kind: "chat", scopeId: workspace.id }),
     },
     {
+      label: "New Agent",
+      onClick: () => onNavigate({ view: "compose", kind: "agent", scopeId: workspace.id }),
+    },
+    {
       label: "Open code explorer",
       onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "workspace", workspaceId: workspace.id } }),
     },
