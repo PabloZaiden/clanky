@@ -29,6 +29,7 @@ import {
 import { log, setLogLevel, isLogLevelFromEnv } from "./core/logger";
 import { getLogLevelPreference } from "./persistence/preferences";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
+import { agentScheduler } from "./core/agent-scheduler";
 import { parseSensitiveFlag } from "./lib/sensitive-data";
 
 type StoppableServer = {
@@ -155,6 +156,8 @@ export async function startServer(): Promise<void> {
         const url = new URL(req.url);
         const taskId = url.searchParams.get("taskId") ?? undefined;
         const chatId = url.searchParams.get("chatId") ?? undefined;
+        const agentId = url.searchParams.get("agentId") ?? undefined;
+        const agentRunId = url.searchParams.get("agentRunId") ?? undefined;
         const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
         const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
         const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
@@ -164,6 +167,8 @@ export async function startServer(): Promise<void> {
           data: {
             taskId,
             chatId,
+            agentId,
+            agentRunId,
             sshSessionId,
             sshServerSessionId,
             provisioningJobId,
@@ -251,8 +256,9 @@ export async function startServer(): Promise<void> {
   });
 
   pushedTaskMonitor.start();
+  agentScheduler.start();
 
-  registerServerShutdown([server, pushedTaskMonitor]);
+  registerServerShutdown([server, pushedTaskMonitor, agentScheduler]);
 
   for (const message of getServerStartupMessages(runtimeConfig)) {
     log.info(message);

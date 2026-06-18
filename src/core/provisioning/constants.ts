@@ -2,4 +2,4 @@ export const DEFAULT_JOB_RETENTION_MS = 30 * 60 * 1000;
 export const DEFAULT_MAX_LOG_ENTRIES = 2000;
 export const DEVBOX_UP_TIMEOUT_MS = 15 * 60 * 1000;
 export const GIT_CLONE_TIMEOUT_MS = 5 * 60 * 1000;
-export const DEFAULT_COMMAND_TIMEOUT_MS = 2 * 60 * 1000;
+export const DEFAULT_COMMAND_TIMEOUT_MS = 30 * 60 * 1000;

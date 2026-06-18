@@ -55,6 +55,12 @@ import {
   UpdateSshServerRequestSchema,
   UpdateSshSessionRequestSchema,
   UpdateWorkspaceRequestSchema,
+  CancelWorkspaceFileUploadRequestSchema,
+  CompleteWorkspaceFileUploadRequestSchema,
+  CreateWorkspaceFileUploadRequestSchema,
+  DeleteWorkspaceFileRequestSchema,
+  RenameWorkspaceFileRequestSchema,
+  UploadWorkspaceFileChunkRequestSchema,
   WorkspaceImportRequestSchema,
   WriteWorkspaceFileRequestSchema,
 } from "../types/schemas";
@@ -388,6 +394,30 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
     description: "Write a workspace file with optional conflict checks.",
     requestSchema: WriteWorkspaceFileRequestSchema,
   },
+  "/api/workspaces/:id/files/rename": {
+    description: "Rename a workspace file or directory in the active explorer root.",
+    requestSchema: RenameWorkspaceFileRequestSchema,
+  },
+  "/api/workspaces/:id/files/delete": {
+    description: "Delete a workspace file or directory in the active explorer root.",
+    requestSchema: DeleteWorkspaceFileRequestSchema,
+  },
+  "/api/workspaces/:id/files/upload": {
+    description: "Create a workspace file upload session.",
+    requestSchema: CreateWorkspaceFileUploadRequestSchema,
+  },
+  "/api/workspaces/:id/files/upload/chunk": {
+    description: "Upload a raw chunk for a workspace file upload session.",
+    querySchema: UploadWorkspaceFileChunkRequestSchema,
+  },
+  "/api/workspaces/:id/files/upload/complete": {
+    description: "Complete a workspace file upload session.",
+    requestSchema: CompleteWorkspaceFileUploadRequestSchema,
+  },
+  "/api/workspaces/:id/files/upload/cancel": {
+    description: "Cancel a workspace file upload session.",
+    requestSchema: CancelWorkspaceFileUploadRequestSchema,
+  },
   "/api/preferences/last-model": {
     description: "Persist the user's most recently used model.",
     requestSchema: SetLastModelRequestSchema,
@@ -509,6 +539,30 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   "/api/ssh-servers/:id/files/write": {
     description: "Write a standalone SSH server file.",
     requestSchema: WriteWorkspaceFileRequestSchema,
+  },
+  "/api/ssh-servers/:id/files/rename": {
+    description: "Rename a standalone SSH server file or directory in the active explorer root.",
+    requestSchema: RenameWorkspaceFileRequestSchema,
+  },
+  "/api/ssh-servers/:id/files/delete": {
+    description: "Delete a standalone SSH server file or directory in the active explorer root.",
+    requestSchema: DeleteWorkspaceFileRequestSchema,
+  },
+  "/api/ssh-servers/:id/files/upload": {
+    description: "Create a standalone SSH server file upload session.",
+    requestSchema: CreateWorkspaceFileUploadRequestSchema,
+  },
+  "/api/ssh-servers/:id/files/upload/chunk": {
+    description: "Upload a raw chunk for a standalone SSH server file upload session.",
+    querySchema: UploadWorkspaceFileChunkRequestSchema,
+  },
+  "/api/ssh-servers/:id/files/upload/complete": {
+    description: "Complete a standalone SSH server file upload session.",
+    requestSchema: CompleteWorkspaceFileUploadRequestSchema,
+  },
+  "/api/ssh-servers/:id/files/upload/cancel": {
+    description: "Cancel a standalone SSH server file upload session.",
+    requestSchema: CancelWorkspaceFileUploadRequestSchema,
   },
   "/api/ssh-sessions": {
     description: "Create a workspace-backed SSH session.",

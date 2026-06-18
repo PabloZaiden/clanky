@@ -2,6 +2,7 @@
  * Central export for all types in the Clanky Tasks Management System.
  */
 
+export * from "./agent";
 export * from "./task";
 export * from "./task-request";
 export * from "./chat";

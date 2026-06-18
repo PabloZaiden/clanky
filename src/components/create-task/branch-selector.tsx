@@ -8,6 +8,7 @@ interface BranchSelectorProps {
   defaultBranch: string;
   currentBranch: string;
   disabled?: boolean;
+  helpText?: string | null;
 }
 
 export function BranchSelector({
@@ -18,6 +19,7 @@ export function BranchSelector({
   defaultBranch,
   currentBranch,
   disabled = false,
+  helpText = "Branch to base the task on (default: repository's default branch)",
 }: BranchSelectorProps) {
   return (
     <div>
@@ -69,9 +71,11 @@ export function BranchSelector({
           </>
         )}
       </select>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-        Branch to base the task on (default: repository's default branch)
-      </p>
+      {helpText && (
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {helpText}
+        </p>
+      )}
     </div>
   );
 }

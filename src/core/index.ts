@@ -4,6 +4,10 @@
 
 export * from "./conventional-commits";
 export * from "./chat-manager";
+export * from "./agent-manager";
+export * from "./agent-runner";
+export * from "./agent-schedule";
+export * from "./agent-scheduler";
 export * from "./event-emitter";
 export * from "./git-service";
 export * from "./branch-name";

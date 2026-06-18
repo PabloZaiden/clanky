@@ -33,6 +33,7 @@ import { sshServerFilesRoutes } from "./ssh-server-files";
 import { sshSessionsRoutes } from "./ssh-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats";
+import { agentsRoutes } from "./agents";
 import { passkeyAuthRoutes } from "./passkey-auth";
 import { authRoutes } from "./auth";
 import { vncSessionRoutes } from "./vnc-sessions";
@@ -66,6 +67,7 @@ export const apiRoutes = {
   ...sshSessionsRoutes,
   ...provisioningRoutes,
   ...chatsRoutes,
+  ...agentsRoutes,
   ...passkeyAuthRoutes,
   ...authRoutes,
   ...vncSessionRoutes,
@@ -87,6 +89,7 @@ export * from "./ssh-sessions";
 export * from "./websocket";
 export * from "./provisioning";
 export * from "./chats";
+export * from "./agents";
 export * from "./passkey-auth";
 export * from "./auth";
 export * from "./vnc-sessions";
