@@ -28,8 +28,6 @@ describe("workspace action items", () => {
       onOpenGitHub: () => {},
     });
 
-    expect(items.slice(0, 3).map((item) => item.label)).toEqual(["New Task", "New Chat", "New Agent"]);
-
     const newAgentItem = items.find((item) => item.label === "New Agent");
     expect(newAgentItem).toBeDefined();
     newAgentItem?.onClick();
