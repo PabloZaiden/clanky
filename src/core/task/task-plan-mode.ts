@@ -83,7 +83,8 @@ export async function acceptPlanImpl(
   Object.assign(engine.state, updatedState);
   await updateTaskState(taskId, engine.state);
 
-  const executionPrompt = buildAcceptedPlanExecutionPrompt();
+  const executionPrompt = options.executionPrompt ?? buildAcceptedPlanExecutionPrompt();
+  const executionPromptMode = options.executionPromptMode;
 
   ctx.emitter.emit({
     type: "task.plan.accepted",
@@ -114,7 +115,7 @@ export async function acceptPlanImpl(
     { config: engine.config, state: engine.state },
     git,
     async () => {
-      await beginAcceptedPlanExecution(ctx, taskId, executionPrompt);
+      await beginAcceptedPlanExecution(ctx, taskId, executionPrompt, executionPromptMode);
     },
     engine,
   );
@@ -126,7 +127,7 @@ export async function acceptPlanImpl(
   }
 
   if (syncResult.syncStatus !== "conflicts_being_resolved") {
-    await beginAcceptedPlanExecution(ctx, taskId, executionPrompt);
+    await beginAcceptedPlanExecution(ctx, taskId, executionPrompt, executionPromptMode);
   }
 
   return {
@@ -151,6 +152,7 @@ async function beginAcceptedPlanExecution(
   ctx: TaskCtx,
   taskId: string,
   executionPrompt: string,
+  executionPromptMode?: "task_context" | "plain_chat",
 ): Promise<void> {
   const engine = ctx.engines.get(taskId);
   if (!engine) {
@@ -179,7 +181,7 @@ async function beginAcceptedPlanExecution(
     timestamp: createTimestamp(),
   });
 
-  engine.setPendingPrompt(executionPrompt);
+  engine.setPendingPrompt(executionPrompt, undefined, executionPromptMode);
 
   engine.continueExecution().catch((error) => {
     log.error(`Task ${taskId} execution after plan acceptance failed:`, String(error));

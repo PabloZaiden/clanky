@@ -27,6 +27,11 @@ export interface CreateTaskFormActionState {
   onSaveAsDraft: () => void;
 }
 
+export interface UploadedPlanFile {
+  fileName: string;
+  planContent: string;
+}
+
 export function getComposeDraftActionLabel(isEditingDraft: boolean): string {
   return isEditingDraft ? "Update" : "Save as Draft";
 }

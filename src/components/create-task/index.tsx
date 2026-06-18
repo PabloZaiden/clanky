@@ -2,7 +2,7 @@
  * CreateTaskForm component for creating new Clanky Tasks.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { WorkspaceSelector } from "../WorkspaceSelector";
 import {
   type CreateTaskFormActionState,
@@ -18,9 +18,12 @@ import { PromptField } from "./prompt-field";
 import { TaskSettings } from "./task-settings";
 import { AdvancedOptions } from "./advanced-options";
 import { FormActions } from "./form-actions";
+import { UploadedPlanField } from "./uploaded-plan-field";
 import { useCreateTaskForm } from "./use-create-task-form";
+import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 import type { ComposerImageAttachment } from "../../types/message-attachments";
 import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
+import type { UploadedPlanFile } from "./types";
 
 export type { CreateTaskFormActionState, CreateTaskFormProps, CreateTaskFormSubmitRequest };
 export { getComposeDraftActionLabel, getComposeSubmitActionLabel };
@@ -50,6 +53,8 @@ export function CreateTaskForm({
   leadingActions,
 }: CreateTaskFormProps) {
   const [attachments, setAttachments] = useState<ComposerImageAttachment[]>([]);
+  const [uploadedPlan, setUploadedPlan] = useState<UploadedPlanFile | null>(null);
+  const [uploadedPlanError, setUploadedPlanError] = useState<string | null>(null);
   const {
     formRef,
     promptRef,
@@ -111,7 +116,18 @@ export function CreateTaskForm({
     isEditingDraft,
     attachments,
     renderActions,
+    uploadedPlan,
   });
+  const uploadedPlanLocked = !!uploadedPlan;
+
+  useEffect(() => {
+    if (!uploadedPlan) {
+      return;
+    }
+    setPlanMode(true);
+    setAutoAcceptPlan(true);
+    setSelectedTemplate("");
+  }, [setAutoAcceptPlan, setPlanMode, setSelectedTemplate, uploadedPlan]);
 
   return (
     <form ref={formRef} onSubmit={handleSubmit} className="space-y-3 sm:space-y-4">
@@ -166,16 +182,26 @@ export function CreateTaskForm({
         modelsLoading={modelsLoading}
       />
 
-      <TemplateSelector
-        selectedTemplate={selectedTemplate}
-        onChange={setSelectedTemplate}
-        onPromptChange={(p) => {
-          setPrompt(p);
-          promptRef.current = p;
-        }}
-        onPlanModeChange={setPlanMode}
-        promptRef={promptRef}
+      <UploadedPlanField
+        uploadedPlan={uploadedPlan}
+        error={uploadedPlanError}
+        onUploadedPlanChange={setUploadedPlan}
+        onErrorChange={setUploadedPlanError}
+        disabled={isEditingDraft || isEditing}
       />
+
+      {!uploadedPlan && (
+        <TemplateSelector
+          selectedTemplate={selectedTemplate}
+          onChange={setSelectedTemplate}
+          onPromptChange={(p) => {
+            setPrompt(p);
+            promptRef.current = p;
+          }}
+          onPlanModeChange={setPlanMode}
+          promptRef={promptRef}
+        />
+      )}
 
       <TitleField
         name={name}
@@ -189,30 +215,37 @@ export function CreateTaskForm({
         required={isEditing || isEditingDraft}
       />
 
-      {/* Prompt */}
-      <PromptField
-        prompt={prompt}
-        onChange={(value) => {
-          setPrompt(value);
-          promptRef.current = value;
-        }}
-        attachments={attachments}
-        onAttachmentsChange={setAttachments}
-        planMode={planMode}
-        isEditingDraft={isEditingDraft}
-        selectedTemplate={selectedTemplate}
-        onTemplateClear={() => setSelectedTemplate("")}
-      />
-
-        <TaskSettings
+      {uploadedPlan ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-200">
+          <p className="font-medium">Prompt that will be sent to the agent</p>
+          <p className="mt-1">{UPLOADED_PLAN_IMPLEMENTATION_PROMPT}</p>
+        </div>
+      ) : (
+        <PromptField
+          prompt={prompt}
+          onChange={(value) => {
+            setPrompt(value);
+            promptRef.current = value;
+          }}
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
           planMode={planMode}
-          onPlanModeChange={setPlanMode}
-          autoAcceptPlan={autoAcceptPlan}
-          onAutoAcceptPlanChange={setAutoAcceptPlan}
-          fullyAutonomous={fullyAutonomous}
-          onFullyAutonomousChange={setFullyAutonomous}
-          useWorktree={useWorktree}
+          isEditingDraft={isEditingDraft}
+          selectedTemplate={selectedTemplate}
+          onTemplateClear={() => setSelectedTemplate("")}
+        />
+      )}
+
+      <TaskSettings
+        planMode={planMode}
+        onPlanModeChange={setPlanMode}
+        autoAcceptPlan={autoAcceptPlan}
+        onAutoAcceptPlanChange={setAutoAcceptPlan}
+        fullyAutonomous={fullyAutonomous}
+        onFullyAutonomousChange={setFullyAutonomous}
+        useWorktree={useWorktree}
         onUseWorktreeChange={setUseWorktree}
+        uploadedPlanLocked={uploadedPlanLocked}
       />
 
       <AdvancedOptions

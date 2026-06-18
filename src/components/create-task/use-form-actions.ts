@@ -12,6 +12,8 @@ import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
 import { toMessageImageAttachments } from "../../lib/image-attachments";
 import { cheapModelValueToSelection } from "./use-model-selection";
 import { DEFAULT_TASK_CONFIG } from "../../types/task";
+import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
+import type { UploadedPlanFile } from "./types";
 
 const log = createLogger("CreateTaskForm");
 
@@ -56,6 +58,7 @@ export function useFormActions({
   prompt,
   name,
   attachments,
+  uploadedPlan,
 }: {
   selectedWorkspaceId: string | undefined;
   selectedModel: string;
@@ -85,6 +88,7 @@ export function useFormActions({
   prompt: string;
   name: string;
   attachments: ComposerImageAttachment[];
+  uploadedPlan: UploadedPlanFile | null;
 }): UseFormActionsReturn {
   const [submitting, setSubmitting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -94,22 +98,25 @@ export function useFormActions({
   const saveAsDraftActionRef = useRef<() => void>(() => {});
 
   const isSubmitting = loading || submitting || generatingTitle;
+  const hasUploadedPlan = !!uploadedPlan?.planContent.trim();
+  const hasTaskInput = !!prompt.trim() || hasUploadedPlan;
 
   const hasName = !!name.trim();
   const canAutoGenerateTitle =
     !!selectedWorkspaceId &&
-    !!prompt.trim() &&
+    hasTaskInput &&
     !!selectedModel &&
     selectedModelEnabled &&
     !isSubmitting;
   const canSaveDraft =
     !!selectedWorkspaceId &&
     !!prompt.trim() &&
+    !hasUploadedPlan &&
     (isEditing ? hasName : hasName || canAutoGenerateTitle) &&
     !isSubmitting;
   const canSubmit =
     !!selectedWorkspaceId &&
-    !!prompt.trim() &&
+    hasTaskInput &&
     selectedModelEnabled &&
     !isSubmitting &&
     (isEditing ? hasName : true);
@@ -121,16 +128,24 @@ export function useFormActions({
 
       const currentName = nameRef.current;
       const currentPrompt = promptRef.current;
+      const currentUploadedPlan = uploadedPlan?.planContent.trim()
+        ? uploadedPlan
+        : null;
+      const effectivePrompt = currentUploadedPlan
+        ? UPLOADED_PLAN_IMPLEMENTATION_PROMPT
+        : currentPrompt.trim();
 
       log.info("Submitting create-task form", {
         asDraft,
-        hasPrompt: currentPrompt.trim().length > 0,
+        hasPrompt: effectivePrompt.length > 0,
+        hasUploadedPlan: !!currentUploadedPlan,
         hasName: currentName.trim().length > 0,
         selectedWorkspaceId,
       });
 
       if (!selectedWorkspaceId) return;
-      if (!currentPrompt.trim()) return;
+      if (!effectivePrompt) return;
+      if (asDraft && currentUploadedPlan) return;
       if (!asDraft && !selectedModel) return;
       if (!asDraft && !selectedModelEnabled) return;
       if (!currentName.trim() && !isEditing && (!selectedModel || !selectedModelEnabled)) return;
@@ -155,11 +170,11 @@ export function useFormActions({
         const request: CreateTaskFormSubmitRequest = {
           name: finalName,
           workspaceId: selectedWorkspaceId,
-          prompt: currentPrompt.trim(),
-          attachments: attachments.length > 0 && !asDraft ? toMessageImageAttachments(attachments) : [],
-          planMode,
-          autoAcceptPlan: planMode ? autoAcceptPlan : false,
-          fullyAutonomous: planMode ? fullyAutonomous : false,
+          prompt: effectivePrompt,
+          attachments: attachments.length > 0 && !asDraft && !currentUploadedPlan ? toMessageImageAttachments(attachments) : [],
+          planMode: currentUploadedPlan ? true : planMode,
+          autoAcceptPlan: currentUploadedPlan ? true : planMode ? autoAcceptPlan : false,
+          fullyAutonomous: currentUploadedPlan ? fullyAutonomous : planMode ? fullyAutonomous : false,
           cheapModel: cheapModelValueToSelection(selectedCheapModel),
           maxIterations: maxIterations.trim()
             ? Math.max(parseInt(maxIterations, 10), 1)
@@ -179,6 +194,9 @@ export function useFormActions({
           useWorktree,
           clearPlanningFolder,
           draft: asDraft,
+          uploadedPlan: currentUploadedPlan
+            ? { planContent: currentUploadedPlan.planContent }
+            : undefined,
         };
         if (parsedModel) {
           request.model = {
@@ -207,9 +225,9 @@ export function useFormActions({
       selectedCheapModel,
       selectedModelEnabled,
       planMode,
-       autoAcceptPlan,
-       fullyAutonomous,
-       maxIterations,
+      autoAcceptPlan,
+      fullyAutonomous,
+      maxIterations,
       maxConsecutiveErrors,
       activityTimeoutSeconds,
       selectedBranch,
@@ -217,6 +235,7 @@ export function useFormActions({
       clearPlanningFolder,
       useWorktree,
       attachments,
+      uploadedPlan,
       generateTitle,
     ]
   );

@@ -14,6 +14,7 @@ import { backendManager } from "../../src/core/backend-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { closeDatabase } from "../../src/persistence/database";
 import { PlanModeMockBackend } from "../mocks/mock-backend";
+import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../src/lib/uploaded-plan";
 
 // Default test model for task creation (model is now required)
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
@@ -113,6 +114,28 @@ describe("Plan Mode API Integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     throw new Error(`Plan for task ${taskId} did not become ready within ${timeoutMs}ms`);
+  }
+
+  function getPromptText(prompt: { parts?: Array<{ type: string; text?: string }> }): string {
+    return prompt.parts
+      ?.filter((part) => part.type === "text" && typeof part.text === "string")
+      .map((part) => part.text)
+      .join("\n") ?? "";
+  }
+
+  async function waitForSentPromptContaining(text: string, timeoutMs = 10000): Promise<string> {
+    const startTime = Date.now();
+    let lastPrompt = "";
+    while (Date.now() - startTime < timeoutMs) {
+      const prompts = mockBackend.getSentPrompts().map(getPromptText);
+      const match = prompts.find((prompt) => prompt.includes(text));
+      if (match) {
+        return match;
+      }
+      lastPrompt = prompts.at(-1) ?? "";
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`No sent prompt contained "${text}" within ${timeoutMs}ms. Last prompt: ${lastPrompt}`);
   }
 
   beforeAll(async () => {
@@ -309,6 +332,104 @@ describe("Plan Mode API Integration", () => {
           ...baseCreateTaskPayload,
           // Missing name, prompt, directory
           planMode: true,
+        }),
+      });
+
+      expect(response.status).toBe(400);
+    });
+
+    test("starts from uploaded plan as an approved plan", async () => {
+      const uploadedPlanContent = `\uFEFF# Uploaded plan
+
+1. Update the implementation.
+2. Verify the behavior.
+
+<promise>PLAN_READY</promise>`;
+
+      const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          prompt: UPLOADED_PLAN_IMPLEMENTATION_PROMPT,
+          name: "Uploaded Plan Task",
+          workspaceId: currentWorkspaceId,
+          maxIterations: 1,
+          planMode: false,
+          autoAcceptPlan: false,
+          model: testModel,
+          useWorktree: true,
+          uploadedPlan: {
+            planContent: uploadedPlanContent,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const task = await response.json();
+      expect(task.config.prompt).toBe(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
+      expect(task.config.planMode).toBe(true);
+      expect(task.config.autoAcceptPlan).toBe(true);
+      expect(task.state.planMode?.active).toBe(false);
+      expect(task.state.planMode?.isPlanReady).toBe(true);
+
+      const worktreePath = task.state.git?.worktreePath;
+      expect(worktreePath).toBeTruthy();
+      const seededPlan = await Bun.file(join(worktreePath, ".clanky-planning", "plan.md")).text();
+      expect(seededPlan).toContain("# Uploaded plan");
+      expect(seededPlan).toContain("Update the implementation.");
+      expect(seededPlan).not.toContain("<promise>PLAN_READY</promise>");
+
+      const executionPrompt = await waitForSentPromptContaining(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
+      expect(executionPrompt).toBe(UPLOADED_PLAN_IMPLEMENTATION_PROMPT);
+      expect(mockBackend.getSentPrompts().map(getPromptText).join("\n")).not.toContain(
+        "Create a detailed plan to achieve this goal",
+      );
+    });
+
+    test("returns 400 when uploaded plan content normalizes to empty", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          prompt: UPLOADED_PLAN_IMPLEMENTATION_PROMPT,
+          name: "Empty Uploaded Plan",
+          workspaceId: currentWorkspaceId,
+          maxIterations: 1,
+          planMode: false,
+          autoAcceptPlan: false,
+          model: testModel,
+          useWorktree: true,
+          uploadedPlan: {
+            planContent: "<promise>PLAN_READY</promise>",
+          },
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      const error = await response.json();
+      expect(error.error).toBe("invalid_uploaded_plan");
+    });
+
+    test("returns 400 when saving an uploaded plan as a draft", async () => {
+      const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...baseCreateTaskPayload,
+          prompt: UPLOADED_PLAN_IMPLEMENTATION_PROMPT,
+          name: "Draft Uploaded Plan",
+          workspaceId: currentWorkspaceId,
+          maxIterations: 1,
+          planMode: false,
+          autoAcceptPlan: false,
+          model: testModel,
+          useWorktree: true,
+          draft: true,
+          uploadedPlan: {
+            planContent: "# Plan\n\nDo it.",
+          },
         }),
       });
 

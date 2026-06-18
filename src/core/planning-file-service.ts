@@ -17,7 +17,7 @@ export interface ValidatedPlanningFiles {
   statusContent?: string;
 }
 
-function normalizePlanContent(content: string): string {
+export function normalizePlanContent(content: string): string {
   return content.replace(/^\uFEFF/, "").replace(PLAN_READY_MARKER, "").trim();
 }
 
@@ -136,6 +136,19 @@ export function buildSeededPlanStatusContent(taskName: string): string {
 1. Review \`plan.md\`.
 2. Accept the plan to start execution, or send feedback to refine it.
 3. Keep this file updated as work progresses.`;
+}
+
+export function normalizeUploadedPlanningFiles(files: ValidatedPlanningFiles): ValidatedPlanningFiles {
+  const planContent = normalizePlanContent(files.planContent);
+  if (!planContent) {
+    throw new InvalidCurrentPlanError("The uploaded plan file is empty.");
+  }
+
+  const statusContent = files.statusContent?.trim();
+  return {
+    planContent,
+    statusContent: statusContent ? statusContent : undefined,
+  };
 }
 
 export async function writePlanningFiles(
