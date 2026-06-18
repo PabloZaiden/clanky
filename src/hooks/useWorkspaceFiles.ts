@@ -30,7 +30,7 @@ export interface WorkspaceLargeFileWarningState {
   file: WorkspaceFileEntry;
 }
 
-export const LARGE_FILE_WARNING_THRESHOLD_BYTES = 20 * 1024;
+export const LARGE_FILE_WARNING_THRESHOLD_BYTES = 1 * 1024 * 1024;
 
 export interface UseFileExplorerResult {
   directoryEntries: Record<string, WorkspaceFileNode[]>;
