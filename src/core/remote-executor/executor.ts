@@ -820,7 +820,7 @@ export class CommandExecutorImpl implements CommandExecutor {
     const parentDir = dirname(destinationPath);
     const result = await this.exec("sh", [
       "-lc",
-      `mkdir -p ${quoteShell(parentDir)} && cp -- ${quoteShell(sourcePath)} ${quoteShell(destinationPath)}`,
+      `mkdir -p ${quoteShell(parentDir)} && cp ${quoteShell(sourcePath)} ${quoteShell(destinationPath)}`,
     ]);
     return result.success;
   }

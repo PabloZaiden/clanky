@@ -1739,7 +1739,7 @@ describe("Chats API Integration", () => {
       join(chatWorktreePath, "plans", "seeded-plan.md"),
       "\uFEFF# Imported plan\n\n1. Do the seeded work.\n\n<promise>PLAN_READY</promise>\n",
     );
-    await writeFile(join(chatWorktreePath, "plans", "status.md"), "# Imported status\n\nReady to review.");
+    await writeFile(join(chatWorktreePath, "plans", "status.md"), "\n# Imported status\n\nReady to review.\n");
 
     const spawnResponse = await fetch(`${baseUrl}/api/chats/${chatId}/spawn-task-from-current-plan`, {
       method: "POST",

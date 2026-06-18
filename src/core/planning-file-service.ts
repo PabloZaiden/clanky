@@ -117,7 +117,8 @@ export async function readValidatedPlanningFiles(
   const rawStatusContent = source.statusPath === source.planPath
     ? null
     : await executor.readFile(source.statusPath);
-  const statusContent = rawStatusContent?.trim() ? rawStatusContent : undefined;
+  const normalizedStatusContent = rawStatusContent?.trim();
+  const statusContent = normalizedStatusContent ? normalizedStatusContent : undefined;
   return {
     planContent,
     statusContent,
