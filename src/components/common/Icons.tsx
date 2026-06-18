@@ -190,6 +190,41 @@ export function RefreshIcon({ className = "", size = "h-4 w-4" }: IconProps) {
 }
 
 /**
+ * Copy/path icon for copying file or directory paths.
+ */
+export function CopyPathIcon({ className = "", size = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      className={`${size} ${className}`.trim()}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8 7h8M8 11h8M8 15h5"
+      />
+      <rect
+        x="6"
+        y="3"
+        width="12"
+        height="16"
+        rx="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 21h7a2 2 0 002-2V7"
+      />
+    </svg>
+  );
+}
+
+/**
  * Text wrap icon for editor wrap controls.
  */
 export function WrapTextIcon({ className = "", size = "h-4 w-4" }: IconProps) {
