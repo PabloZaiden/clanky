@@ -18,7 +18,7 @@ import type {
 
 export type { ModelConfig };
 
-export type ChatScope = "workspace" | "task";
+export type ChatScope = "workspace" | "task" | "agent";
 
 export type ChatConnectionStatus =
   | "connected"
@@ -147,8 +147,12 @@ export function isTaskChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope"
   return "config" in chat ? chat.config.scope === "task" : chat.scope === "task";
 }
 
+export function isAgentChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
+  return "config" in chat ? chat.config.scope === "agent" : chat.scope === "agent";
+}
+
 export function isStandaloneChat(chat: Pick<Chat, "config"> | Pick<ChatConfig, "scope">): boolean {
-  return !isTaskChat(chat);
+  return !isTaskChat(chat) && !isAgentChat(chat);
 }
 
 export function isWorkspaceChat(chat: Pick<Chat, "config"> | ChatConfig): boolean {

@@ -4,7 +4,7 @@
  * No external dependencies - uses native patterns.
  */
 
-import type { ChatEvent, TaskEvent, ProvisioningEvent, SshSessionEvent } from "../types";
+import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, SshSessionEvent } from "../types";
 import { log } from "./logger";
 
 type EventHandler<T> = (event: T) => void;
@@ -75,6 +75,11 @@ export const taskEventEmitter = new SimpleEventEmitter<TaskEvent>();
  * Global event emitter instance for chat events.
  */
 export const chatEventEmitter = new SimpleEventEmitter<ChatEvent>();
+
+/**
+ * Global event emitter instance for scheduled agent events.
+ */
+export const agentEventEmitter = new SimpleEventEmitter<AgentEvent>();
 
 /**
  * Global event emitter instance for SSH session events.

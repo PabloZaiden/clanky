@@ -1,8 +1,14 @@
 import type { ServerWebSocket } from "bun";
-import { chatEventEmitter, taskEventEmitter, provisioningEventEmitter, sshSessionEventEmitter } from "../../core/event-emitter";
+import {
+  agentEventEmitter,
+  chatEventEmitter,
+  taskEventEmitter,
+  provisioningEventEmitter,
+  sshSessionEventEmitter,
+} from "../../core/event-emitter";
 import { createLogger } from "../../core/logger";
 import { sanitizeProvisioningEvent } from "../../lib/sensitive-data";
-import type { ChatEvent, TaskEvent, ProvisioningEvent, SshSessionEvent } from "../../types";
+import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, SshSessionEvent } from "../../types";
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
@@ -15,6 +21,19 @@ export const MAX_CONNECTIONS = 100;
 /** Set of active WebSocket connections for tracking and limit enforcement */
 export const activeConnections = new Set<ServerWebSocket<WebSocketData>>();
 
+function getChatEventScope(event: ChatEvent): string | undefined {
+  if ("scope" in event) {
+    return event.scope;
+  }
+  if (event.type === "chat.created") {
+    return event.config.scope;
+  }
+  if (event.type === "chat.updated") {
+    return event.chat.config.scope;
+  }
+  return undefined;
+}
+
 /**
  * Called when a WebSocket connection is opened.
  *
@@ -25,6 +44,8 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   const {
     taskId,
     chatId,
+    agentId,
+    agentRunId,
     sshSessionId,
     sshServerSessionId,
     provisioningJobId,
@@ -54,6 +75,8 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   log.info("WebSocket connection opened", {
     taskId: taskId ?? "all",
     chatId: chatId ?? "all",
+    agentId: agentId ?? "all",
+    agentRunId: agentRunId ?? "all",
     activeConnections: activeConnections.size,
   });
 
@@ -134,13 +157,15 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     type: "connected",
     taskId: taskId ?? null,
     chatId: chatId ?? null,
+    agentId: agentId ?? null,
+    agentRunId: agentRunId ?? null,
     sshSessionId: sshSessionId ?? null,
     sshServerSessionId: sshServerSessionId ?? null,
     provisioningJobId: provisioningJobId ?? null,
   }));
 
   const hasScopedSubscription = Boolean(
-    taskId || chatId || sshSessionId || sshServerSessionId || provisioningJobId,
+    taskId || chatId || agentId || agentRunId || sshSessionId || sshServerSessionId || provisioningJobId,
   );
   const shouldSubscribeToAllRuntimeEvents = !hasScopedSubscription;
 
@@ -165,10 +190,31 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
         if (chatId && event.chatId !== chatId) {
           return;
         }
+        if (!chatId && getChatEventScope(event) === "agent") {
+          return;
+        }
         try {
           ws.send(JSON.stringify(event));
         } catch (sendError) {
           log.trace("Failed to send chat event to WebSocket client", { error: String(sendError) });
+        }
+      })
+    : undefined;
+
+  const shouldSubscribeToAgentEvents = shouldSubscribeToAllRuntimeEvents || !!agentId || !!agentRunId;
+  const agentUnsubscribe = shouldSubscribeToAgentEvents
+    ? agentEventEmitter.subscribe((event: AgentEvent) => {
+        if (agentId && event.agentId !== agentId) {
+          return;
+        }
+        if (agentRunId && "agentRunId" in event && event.agentRunId !== agentRunId) {
+          return;
+        }
+
+        try {
+          ws.send(JSON.stringify(event));
+        } catch (sendError) {
+          log.trace("Failed to send agent event to WebSocket client", { error: String(sendError) });
         }
       })
     : undefined;
@@ -208,6 +254,7 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   ws.data.unsubscribers = [
     ...(taskUnsubscribe ? [taskUnsubscribe] : []),
     ...(chatUnsubscribe ? [chatUnsubscribe] : []),
+    ...(agentUnsubscribe ? [agentUnsubscribe] : []),
     ...(sshSessionUnsubscribe ? [sshSessionUnsubscribe] : []),
     ...(provisioningUnsubscribe ? [provisioningUnsubscribe] : []),
   ];
@@ -258,6 +305,8 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     error: String(err),
     taskId: ws.data.taskId,
     chatId: ws.data.chatId,
+    agentId: ws.data.agentId,
+    agentRunId: ws.data.agentRunId,
     sshSessionId: ws.data.sshSessionId,
     sshServerSessionId: ws.data.sshServerSessionId,
     provisioningJobId: ws.data.provisioningJobId,

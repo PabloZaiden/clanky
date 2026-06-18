@@ -11,6 +11,8 @@ import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import { ComposeTaskView } from "./compose-task-view";
 import { ComposeChatView } from "./compose-chat-view";
 import { ComposeWorkspaceView } from "./compose-workspace-view";
+import { AgentComposer } from "./agents-view";
+import type { UseAgentsResult } from "../../hooks/useAgents";
 
 interface ComposeViewProps {
   kind: ComposeKind;
@@ -28,6 +30,8 @@ interface ComposeViewProps {
     request: import("../../types").CreateSshServerChatRequest,
   ) => Promise<import("../../types").Chat | null>;
   dashboardData: UseDashboardDataResult;
+  agents: UseAgentsResult;
+  schedulerTimezone: string;
   workspaces: Workspace[];
   workspacesLoading: boolean;
   workspaceError: string | null;
@@ -65,6 +69,8 @@ export function ComposeView(props: ComposeViewProps) {
     importExistingChat,
     createSshServerChat,
     dashboardData,
+    agents,
+    schedulerTimezone,
     workspaces,
     workspacesLoading,
     workspaceError,
@@ -111,6 +117,29 @@ export function ComposeView(props: ComposeViewProps) {
         provisioning={provisioning}
         workspacesSaving={workspacesSaving}
         dashboardData={dashboardData}
+      />
+    );
+  }
+
+  if (kind === "agent") {
+    return (
+      <AgentComposer
+        composeWorkspace={composeWorkspace}
+        workspaces={workspaces}
+        workspacesLoading={workspacesLoading}
+        workspaceError={workspaceError}
+        models={dashboardData.models}
+        modelsLoading={dashboardData.modelsLoading}
+        lastModel={dashboardData.lastModel}
+        schedulerTimezone={schedulerTimezone}
+        branches={dashboardData.branches}
+        branchesLoading={dashboardData.branchesLoading}
+        currentBranch={dashboardData.currentBranch}
+        defaultBranch={dashboardData.defaultBranch}
+        shellHeaderOffsetClassName={shellHeaderOffsetClassName}
+        onWorkspaceChange={dashboardData.handleWorkspaceChange}
+        onCreateAgent={agents.createAgent}
+        navigateWithinShell={navigateWithinShell}
       />
     );
   }

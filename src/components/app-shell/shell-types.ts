@@ -1,6 +1,6 @@
 import { canJumpstart, getTaskStatusPill, isFinalState } from "../../utils";
 import { createLogger } from "../../lib/logger";
-import type { Chat, Task, SshSession, Workspace } from "../../types";
+import type { Agent, Chat, Task, SshSession, Workspace } from "../../types";
 import type { SshServer, SshServerSession } from "../../types/ssh-server";
 import {
   getChatStatusBadgeVariant,
@@ -40,6 +40,13 @@ export interface SidebarTaskNode {
 
 export interface SidebarChatNode {
   chat: Chat;
+  title: string;
+  badge: string;
+  badgeVariant: BadgeVariant;
+}
+
+export interface SidebarAgentNode {
+  agent: Agent;
   title: string;
   badge: string;
   badgeVariant: BadgeVariant;
@@ -137,6 +144,9 @@ export type CodeExplorerTarget =
 export type ShellRoute =
   | { view: "home" }
   | { view: "settings" }
+  | { view: "agents"; workspaceId?: string }
+  | { view: "agent"; agentId: string }
+  | { view: "agent-run"; agentId: string; runId: string }
   | { view: "code-explorer"; target?: CodeExplorerTarget }
   | { view: "task"; taskId: string }
   | { view: "task-files"; taskId: string; startDirectory?: string }
@@ -152,7 +162,7 @@ export type ShellRoute =
   | { view: "server-arise"; serverId: string }
   | {
       view: "compose";
-      kind: "task" | "chat" | "workspace" | "ssh-session" | "ssh-server" | "ssh-server-chat";
+      kind: "task" | "chat" | "agent" | "workspace" | "ssh-session" | "ssh-server" | "ssh-server-chat";
       scopeId?: string;
     }
   | {
@@ -216,7 +226,7 @@ export function getSidebarWorkspaceSectionCollapseKey(
   sectionId: SidebarSectionId,
   groupId: SidebarWorkspaceGroupId,
   workspaceId: string,
-  childSectionId: "tasks" | "history" | "chats" | "ssh-sessions",
+  childSectionId: "tasks" | "history" | "chats" | "agents" | "ssh-sessions",
 ): string {
   return buildSidebarCollapseKey(sectionId, "group", groupId, "workspace", workspaceId, childSectionId);
 }

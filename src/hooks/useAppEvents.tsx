@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { TaskEvent, ChatEvent, SshSessionEvent } from "../types";
+import type { AgentEvent, TaskEvent, ChatEvent, SshSessionEvent } from "../types";
 import {
   useWebSocket,
   type UseWebSocketResult,
   type WebSocketConnectionStatus,
 } from "./useWebSocket";
 
-type AppEvent = TaskEvent | ChatEvent | SshSessionEvent;
+type AppEvent = TaskEvent | ChatEvent | SshSessionEvent | AgentEvent;
 type AppEventHandler = (event: AppEvent) => void;
 type AppEventFilter<T extends AppEvent> = (event: AppEvent) => event is T;
 
@@ -99,4 +99,8 @@ export function isChatEvent(event: AppEvent): event is ChatEvent {
 
 export function isSshSessionEvent(event: AppEvent): event is SshSessionEvent {
   return event.type.startsWith("ssh_session.");
+}
+
+export function isAgentEvent(event: AppEvent): event is AgentEvent {
+  return event.type.startsWith("agent.");
 }

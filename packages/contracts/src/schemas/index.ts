@@ -63,6 +63,25 @@ export {
   SpawnCurrentPlanTaskRequestSchema,
 } from "./chat";
 
+// Agent schemas
+export {
+  AgentScheduleIntervalUnitSchema,
+  AgentScheduleIntervalSchema,
+  AgentScheduleSchema,
+  CreateAgentRequestSchema,
+  UpdateAgentRequestSchema,
+  RunAgentRequestSchema,
+  DeleteAgentRunsRequestSchema,
+  AgentRunsQuerySchema,
+  SchedulerTimezoneRequestSchema,
+  type CreateAgentRequest,
+  type UpdateAgentRequest,
+  type RunAgentRequest,
+  type DeleteAgentRunsRequest,
+  type AgentRunsQuery,
+  type SchedulerTimezoneRequest,
+} from "./agent";
+
 // Workspace schemas
 export {
   AgentProviderSchema,
@@ -96,6 +115,7 @@ export {
   SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
   SetThemePreferenceRequestSchema,
+  SetSchedulerTimezoneRequestSchema,
   QuickChatSettingsSchema,
   SetQuickChatSettingsRequestSchema,
   normalizeQuickChatSettings,

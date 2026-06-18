@@ -3,8 +3,9 @@
  */
 
 export { useWebSocket, useGlobalEvents, useTaskEvents, type WebSocketConnectionStatus, type UseWebSocketOptions, type UseWebSocketResult } from "./useWebSocket";
-export { AppEventsProvider, isChatEvent, isTaskEvent, isSshSessionEvent, useAppEvents } from "./useAppEvents";
+export { AppEventsProvider, isAgentEvent, isChatEvent, isTaskEvent, isSshSessionEvent, useAppEvents } from "./useAppEvents";
 export { useChats, type UseChatsResult } from "./useChats";
+export { useAgents, type UseAgentsResult } from "./useAgents";
 export { useTasks, type UseTasksResult, type CreateTaskResult } from "./useTasks";
 export { useTask, type UseTaskResult } from "./useTask";
 export { useSshSessions, type UseSshSessionsResult } from "./useSshSessions";
@@ -24,6 +25,7 @@ export {
 } from "./useFileExplorerFullTreePreference";
 export { useLogLevelPreference, type UseLogLevelPreferenceResult } from "./useLogLevelPreference";
 export { useQuickChatSettings, type UseQuickChatSettingsResult } from "./useQuickChatSettings";
+export { useSchedulerTimezone, type UseSchedulerTimezoneResult } from "./useSchedulerTimezone";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
 export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdStatus, type OptimizeResult } from "./useAgentsMdOptimizer";
 export { useCountdownReload, computeProgressPercent, KILL_SERVER_COUNTDOWN_SECONDS, type UseCountdownReloadResult } from "./useCountdownReload";
