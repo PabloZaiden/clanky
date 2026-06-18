@@ -13,6 +13,7 @@ import { useWorkspaceSelection } from "./use-workspace-selection";
 import { useModelSelection } from "./use-model-selection";
 import { useFormActions } from "./use-form-actions";
 import { useTitleGeneration } from "./use-title-generation";
+import type { UploadedPlanFile } from "./types";
 
 export interface UseCreateTaskFormReturn {
   // Refs
@@ -90,6 +91,7 @@ export function useCreateTaskForm({
   isEditingDraft = false,
   attachments = [],
   renderActions,
+  uploadedPlan,
 }: Pick<
   CreateTaskFormProps,
   | "onSubmit"
@@ -107,7 +109,9 @@ export function useCreateTaskForm({
   | "isEditingDraft"
   | "attachments"
   | "renderActions"
->): UseCreateTaskFormReturn {
+> & {
+  uploadedPlan?: UploadedPlanFile | null;
+}): UseCreateTaskFormReturn {
   const isEditing = !!editTaskId;
 
   const fields = useFormFields({ isEditing, initialTaskData });
@@ -140,6 +144,7 @@ export function useCreateTaskForm({
     nameRef: fields.nameRef,
     promptRef: fields.promptRef,
     setName: fields.setName,
+    promptOverride: uploadedPlan?.planContent,
   });
 
   const actions = useFormActions({
@@ -171,6 +176,7 @@ export function useCreateTaskForm({
     prompt: fields.prompt,
     name: fields.name,
     attachments,
+    uploadedPlan: uploadedPlan ?? null,
   });
 
   return {

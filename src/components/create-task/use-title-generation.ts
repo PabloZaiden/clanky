@@ -24,6 +24,7 @@ export function useTitleGeneration({
   nameRef,
   promptRef,
   setName,
+  promptOverride,
 }: {
   selectedWorkspaceId: string | undefined;
   selectedModel: string;
@@ -31,6 +32,7 @@ export function useTitleGeneration({
   nameRef: React.MutableRefObject<string>;
   promptRef: React.MutableRefObject<string>;
   setName: (v: string) => void;
+  promptOverride?: string;
 }): UseTitleGenerationReturn {
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const toast = useToast();
@@ -40,7 +42,8 @@ export function useTitleGeneration({
       return null;
     }
 
-    if (!selectedWorkspaceId || !promptRef.current.trim()) {
+    const promptForTitle = promptOverride?.trim() || promptRef.current.trim();
+    if (!selectedWorkspaceId || !promptForTitle) {
       return null;
     }
 
@@ -55,7 +58,7 @@ export function useTitleGeneration({
     try {
       const generatedTitle = await generateTaskTitleApi({
         workspaceId: selectedWorkspaceId,
-        prompt: promptRef.current.trim(),
+        prompt: promptForTitle,
         model: {
           providerID: parsedModel.providerID,
           modelID: parsedModel.modelID,
@@ -79,7 +82,7 @@ export function useTitleGeneration({
     } finally {
       setGeneratingTitle(false);
     }
-  }, [generatingTitle, selectedCheapModel, selectedModel, selectedWorkspaceId, nameRef, promptRef, setName, toast]);
+  }, [generatingTitle, promptOverride, selectedCheapModel, selectedModel, selectedWorkspaceId, nameRef, promptRef, setName, toast]);
 
   const handleGenerateTitle = useCallback(async () => {
     await generateTitle();

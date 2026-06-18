@@ -16,6 +16,9 @@ import { parseAndValidate } from "../validation";
 import { errorResponse } from "../helpers";
 import { CreateTaskRequestSchema, GenerateTaskTitleRequestSchema } from "../../types/schemas";
 import { startErrorResponse } from "./helpers";
+import { normalizeUploadedPlanningFiles } from "../../core/planning-file-service";
+import type { ValidatedPlanningFiles } from "../../core/planning-file-service";
+import { UPLOADED_PLAN_IMPLEMENTATION_PROMPT } from "../../lib/uploaded-plan";
 
 const log = createLogger("api:tasks");
 
@@ -78,13 +81,33 @@ export const tasksCollectionRoutes = {
         return validation.response;
       }
       const body = validation.data;
+      let uploadedPlan: ValidatedPlanningFiles | null = null;
+      if (body.uploadedPlan) {
+        try {
+          uploadedPlan = normalizeUploadedPlanningFiles(body.uploadedPlan);
+        } catch (error) {
+          log.warn("POST /api/tasks - Uploaded plan validation failed", {
+            workspaceId: body.workspaceId,
+            error: String(error),
+          });
+          return errorResponse(
+            "invalid_uploaded_plan",
+            error instanceof Error ? error.message : String(error),
+            400,
+          );
+        }
+      }
+      const hasUploadedPlan = uploadedPlan !== null;
+      const effectivePlanMode = hasUploadedPlan ? true : body.planMode;
+      const effectiveAutoAcceptPlan = hasUploadedPlan ? true : body.autoAcceptPlan;
 
       log.debug("POST /api/tasks - Request validated", {
         name: body.name,
         workspaceId: body.workspaceId,
-        planMode: body.planMode,
+        planMode: effectivePlanMode,
         draft: body.draft,
         hasModel: !!body.model,
+        hasUploadedPlan,
       });
 
       // Resolve workspaceId to directory - workspaceId is required
@@ -176,12 +199,12 @@ export const tasksCollectionRoutes = {
           gitCommitScope: body.git.commitScope,
           baseBranch: effectiveBaseBranch,
           useWorktree: body.useWorktree,
-           clearPlanningFolder: body.clearPlanningFolder,
-           planMode: body.planMode,
-           autoAcceptPlan: body.autoAcceptPlan,
-           fullyAutonomous: body.fullyAutonomous,
-           draft: body.draft,
-         });
+          clearPlanningFolder: body.clearPlanningFolder,
+          planMode: effectivePlanMode,
+          autoAcceptPlan: effectiveAutoAcceptPlan,
+          fullyAutonomous: body.fullyAutonomous,
+          draft: body.draft,
+        });
 
         // Save the model as last used if provided
         await taskManager.saveLastUsedModel({
@@ -194,6 +217,32 @@ export const tasksCollectionRoutes = {
         // If draft mode is enabled, return the task without starting
         if (body.draft) {
           return Response.json(task, { status: 201 });
+        }
+
+        if (uploadedPlan) {
+          try {
+            await taskManager.seedPlanFiles(task.config.id, uploadedPlan);
+            await taskManager.acceptPlan(task.config.id, {
+              mode: "start_task",
+              executionPrompt: UPLOADED_PLAN_IMPLEMENTATION_PROMPT,
+              executionPromptMode: "task_context",
+            });
+            const updatedTask = await taskManager.getTask(task.config.id);
+            return Response.json(updatedTask ?? task, { status: 201 });
+          } catch (startError) {
+            try {
+              await taskManager.deleteTask(task.config.id);
+            } catch (deleteError) {
+              log.warn("Failed to clean up task after uploaded plan start failure", {
+                taskId: task.config.id,
+                error: String(deleteError),
+              });
+            }
+            return startErrorResponse(startError, "start_uploaded_plan_failed", "Task created but failed to start from uploaded plan", {
+              taskId: task.config.id,
+              planMode: true,
+            });
+          }
         }
 
         // If plan mode is enabled, start the plan mode session

@@ -531,9 +531,11 @@ export class PlanModeMockBackend implements Backend {
   private nameCounter = 0;
   private sessions = new Map<string, AgentSession>();
   private sessionResponseIndex = new Map<string, number>();
+  private sentPrompts: PromptInput[] = [];
   reset(): void {
     this.sessionResponseIndex.clear();
     this.pendingPrompt = false;
+    this.sentPrompts = [];
   }
 
   private getNextStreamResponse(sessionId: string): string {
@@ -585,6 +587,7 @@ export class PlanModeMockBackend implements Backend {
   }
 
   async sendPromptAsync(_sessionId: string, _prompt: PromptInput): Promise<void> {
+    this.sentPrompts.push(_prompt);
     this.pendingPrompt = true;
   }
 
@@ -687,5 +690,9 @@ export class PlanModeMockBackend implements Backend {
 
   async deleteSession(id: string): Promise<void> {
     this.sessions.delete(id);
+  }
+
+  getSentPrompts(): PromptInput[] {
+    return [...this.sentPrompts];
   }
 }

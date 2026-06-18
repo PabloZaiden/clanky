@@ -80,6 +80,13 @@ const ActivityTimeoutSecondsSchema = z
   .min(60, "activityTimeoutSeconds must be at least 60 seconds")
   .nullable();
 
+export const UploadedPlanRequestSchema = z.object({
+  planContent: z.string().refine((value) => value.trim().length > 0, {
+    message: "uploaded plan content is required and cannot be empty",
+  }),
+  statusContent: z.string().optional(),
+});
+
 /**
  * Schema for CreateTaskRequest - POST /api/tasks
  *
@@ -103,6 +110,15 @@ export const CreateTaskRequestSchema = z.object({
   autoAcceptPlan: z.boolean(),
   fullyAutonomous: z.boolean(),
   draft: z.boolean(),
+  uploadedPlan: UploadedPlanRequestSchema.optional(),
+}).superRefine((value, ctx) => {
+  if (value.uploadedPlan && value.draft) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["uploadedPlan"],
+      message: "uploaded plans cannot be saved as drafts",
+    });
+  }
 });
 
 /**

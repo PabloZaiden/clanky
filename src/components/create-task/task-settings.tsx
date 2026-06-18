@@ -7,6 +7,7 @@ interface TaskSettingsProps {
   onFullyAutonomousChange: (value: boolean) => void;
   useWorktree: boolean;
   onUseWorktreeChange: (value: boolean) => void;
+  uploadedPlanLocked?: boolean;
 }
 
 export function TaskSettings({
@@ -18,6 +19,7 @@ export function TaskSettings({
   onFullyAutonomousChange,
   useWorktree,
   onUseWorktreeChange,
+  uploadedPlanLocked = false,
 }: TaskSettingsProps) {
   return (
     <>
@@ -26,13 +28,23 @@ export function TaskSettings({
           <input
             type="checkbox"
             checked={planMode}
-            onChange={(e) => onPlanModeChange(e.target.checked)}
+            onChange={(e) => {
+              if (!uploadedPlanLocked) {
+                onPlanModeChange(e.target.checked);
+              }
+            }}
+            disabled={uploadedPlanLocked}
             className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
           />
           <div className="flex-1">
             <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Plan Mode
             </span>
+            {uploadedPlanLocked && (
+              <span className="block text-xs text-gray-500 dark:text-gray-400">
+                Required because the uploaded file is already a plan.
+              </span>
+            )}
           </div>
         </label>
       </div>
@@ -43,7 +55,12 @@ export function TaskSettings({
             <input
               type="checkbox"
               checked={autoAcceptPlan}
-              onChange={(e) => onAutoAcceptPlanChange(e.target.checked)}
+              onChange={(e) => {
+                if (!uploadedPlanLocked) {
+                  onAutoAcceptPlanChange(e.target.checked);
+                }
+              }}
+              disabled={uploadedPlanLocked}
               className="mt-1 h-4 w-4 rounded border-gray-300 text-gray-700 focus:ring-gray-500 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-300"
             />
             <div className="flex-1">
@@ -51,7 +68,9 @@ export function TaskSettings({
                 Auto-accept plan
               </span>
               <span className="block text-xs text-gray-500 dark:text-gray-400">
-                Skip manual plan review and continue as soon as the plan is ready.
+                {uploadedPlanLocked
+                  ? "Required because the uploaded plan has already been approved."
+                  : "Skip manual plan review and continue as soon as the plan is ready."}
               </span>
             </div>
           </label>

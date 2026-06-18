@@ -77,6 +77,8 @@ export interface GenerateTaskTitleOptions {
 
 export interface AcceptPlanOptions {
   mode?: "start_task" | "open_ssh";
+  executionPrompt?: string;
+  executionPromptMode?: FollowUpPromptMode;
 }
 
 export type AcceptPlanResult =
