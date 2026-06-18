@@ -1,6 +1,6 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, type ReactNode } from "react";
 import type { WorkspaceFileNode } from "../../types";
-import { ActionMenu, type ActionMenuItem } from "../common";
+import { ActionMenu, Button, CopyPathIcon, RefreshIcon, SidebarIcon, type ActionMenuItem } from "../common";
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
@@ -29,6 +29,39 @@ function FileIcon() {
     <svg className="h-4 w-4 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M7 3h7l5 5v13a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z" />
     </svg>
+  );
+}
+
+interface FileTreeHeaderButtonProps {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  icon: ReactNode;
+  ariaExpanded?: boolean;
+}
+
+function FileTreeHeaderButton({
+  label,
+  onClick,
+  disabled,
+  icon,
+  ariaExpanded,
+}: FileTreeHeaderButtonProps) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="xs"
+      onClick={onClick}
+      disabled={disabled}
+      icon={icon}
+      aria-label={label}
+      aria-expanded={ariaExpanded}
+      title={label}
+      className="w-8 px-0"
+    >
+      <span className="sr-only">{label}</span>
+    </Button>
   );
 }
 
@@ -73,7 +106,7 @@ function renderDirectory(
   onToggleDirectory: (path: string) => Promise<void>,
   onOpenFile: (path: string) => Promise<void>,
   depth = 0,
-): React.ReactNode {
+): ReactNode {
   const entries = (entriesByDirectory[path] ?? []).filter((entry) => showHiddenFiles || !isHiddenEntry(entry));
   return entries.map((entry) => {
     const isDirectory = entry.kind === "directory";
@@ -147,6 +180,7 @@ function WorkspaceFileTreeComponent({
   canRenameSelectedNode,
   canDeleteSelectedNode,
 }: WorkspaceFileTreeProps) {
+  const collapseLabel = collapsed ? "Expand file explorer" : "Collapse file explorer";
   const actionItems = useMemo<ActionMenuItem[]>(() => [
     {
       id: "root",
@@ -154,22 +188,10 @@ function WorkspaceFileTreeComponent({
       onClick: onOpenRootPicker,
     },
     {
-      id: "refresh",
-      label: "Refresh explorer",
-      disabled: loading,
-      onClick: () => void onRefresh(),
-    },
-    {
       id: "hidden",
       label: showHiddenFiles ? "Hide hidden files" : "Show hidden files",
       disabled: loading,
       onClick: () => void onToggleShowHiddenFiles(),
-    },
-    {
-      id: "copy-path",
-      label: "Copy selected file path",
-      disabled: !canCopySelectedFilePath,
-      onClick: () => void onCopySelectedFilePath(),
     },
     {
       id: "download",
@@ -196,26 +218,16 @@ function WorkspaceFileTreeComponent({
       destructive: true,
       onClick: onDeleteSelectedNode,
     },
-    {
-      id: "collapse",
-      label: collapsed ? "Expand file explorer" : "Collapse file explorer",
-      onClick: onToggleCollapsed,
-    },
   ], [
-    canCopySelectedFilePath,
     canDeleteSelectedNode,
     canDownloadSelectedFile,
     canRenameSelectedNode,
     canUploadFile,
-    collapsed,
     loading,
-    onCopySelectedFilePath,
     onDeleteSelectedNode,
     onDownloadSelectedFile,
     onOpenRootPicker,
-    onRefresh,
     onRenameSelectedNode,
-    onToggleCollapsed,
     onToggleShowHiddenFiles,
     onUploadFile,
     showHiddenFiles,
@@ -255,7 +267,25 @@ function WorkspaceFileTreeComponent({
             Files
           </div>
         )}
-        <div className={collapsed ? "flex items-center gap-1.5 lg:flex-col" : "flex w-full items-center justify-between gap-1.5"}>
+        <div className={collapsed ? "flex items-center gap-1.5 lg:flex-col" : "flex w-full items-center justify-end gap-1.5"}>
+          <FileTreeHeaderButton
+            label={collapseLabel}
+            onClick={onToggleCollapsed}
+            icon={<SidebarIcon size="h-4 w-4" />}
+            ariaExpanded={!collapsed}
+          />
+          <FileTreeHeaderButton
+            label="Refresh explorer"
+            onClick={() => void onRefresh()}
+            disabled={loading}
+            icon={<RefreshIcon size="h-4 w-4" />}
+          />
+          <FileTreeHeaderButton
+            label="Copy selected file path"
+            onClick={() => void onCopySelectedFilePath()}
+            disabled={!canCopySelectedFilePath}
+            icon={<CopyPathIcon size="h-4 w-4" />}
+          />
           <ActionMenu
             items={actionItems}
             ariaLabel="File explorer actions"
