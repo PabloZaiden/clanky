@@ -1,7 +1,8 @@
 import { useMemo } from "react";
-import type { SshServer, SshServerSession } from "../../types";
+import type { Agent, SshServer, SshServerSession } from "../../types";
 import type { useTaskGrouping } from "../../hooks";
 import { StatusBadge, type BadgeVariant } from "../common";
+import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import {
   buildActiveWorkSidebarItems,
   type ShellRoute,
@@ -64,6 +65,9 @@ function getQuickChatRoute(chatNode: SidebarChatNode): ShellRoute {
 export function OverviewView({
   servers,
   sessionsByServerId,
+  agents,
+  agentsLoading,
+  agentsError,
   serverNodes,
   workspaceGroups,
   sidebarWorkspaceGroups,
@@ -73,6 +77,9 @@ export function OverviewView({
 }: {
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
+  agents: Agent[];
+  agentsLoading: boolean;
+  agentsError: string | null;
   serverNodes: SidebarServerNode[];
   workspaceGroups: ReturnType<typeof useTaskGrouping>["workspaceGroups"];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
@@ -93,6 +100,11 @@ export function OverviewView({
       sessionCount: sessionsByServerId[server.config.id]?.length ?? 0,
     }));
   }, [servers, sessionsByServerId]);
+  const workspaceNamesById = useMemo(() => {
+    return Object.fromEntries(
+      workspaceGroups.map((group) => [group.workspace.id, group.workspace.name]),
+    );
+  }, [workspaceGroups]);
 
   return (
     <ShellPanel
@@ -167,6 +179,16 @@ export function OverviewView({
             </div>
           </div>
         )}
+
+        <ConfiguredAgentsSection
+          agents={agents}
+          loading={agentsLoading}
+          error={agentsError}
+          description="Scheduled automations configured across your workspaces."
+          emptyText="No configured agents yet. Create an agent from a workspace to see it here."
+          workspaceNamesById={workspaceNamesById}
+          onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
+        />
 
         <div className="space-y-4 rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-neutral-950/50">
           <div>

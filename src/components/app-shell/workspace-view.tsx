@@ -1,4 +1,4 @@
-import type { Chat, SshServer, Workspace } from "../../types";
+import type { Agent, Chat, SshServer, Workspace } from "../../types";
 import { findRegisteredSshServer } from "../../types/settings";
 import type { useChats, useTasks, useSshSessions } from "../../hooks";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
@@ -14,6 +14,7 @@ import type { SidebarPinningState } from "./sidebar-pins";
 import { ShellPanel } from "./shell-panel";
 import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
 import { buildWorkspaceActionItems } from "./shell-action-items";
+import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 
 function getWorkspaceHeaderServerLabel(
   workspace: Workspace,
@@ -36,6 +37,9 @@ export function WorkspaceView({
   relatedTasks,
   relatedChats,
   relatedSessions,
+  relatedAgents,
+  agentsLoading,
+  agentsError,
   registeredSshServers,
   headerOffsetClassName,
   onPullLatestChanges,
@@ -47,6 +51,9 @@ export function WorkspaceView({
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
   relatedChats: ReturnType<typeof useChats>["chats"];
   relatedSessions: ReturnType<typeof useSshSessions>["sessions"];
+  relatedAgents: Agent[];
+  agentsLoading: boolean;
+  agentsError: string | null;
   registeredSshServers: readonly SshServer[];
   headerOffsetClassName?: string;
   onPullLatestChanges: () => void;
@@ -164,6 +171,16 @@ export function WorkspaceView({
             <p className="text-sm text-gray-600 dark:text-gray-400">No active items in this workspace right now.</p>
           )}
         </div>
+
+        <ConfiguredAgentsSection
+          agents={relatedAgents}
+          loading={agentsLoading}
+          error={agentsError}
+          title="Configured Agents"
+          description="Scheduled automations configured for this workspace."
+          emptyText="No configured agents for this workspace yet."
+          onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
+        />
 
         {historyTasks.length > 0 ? (
           <div
