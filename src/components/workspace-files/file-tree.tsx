@@ -309,11 +309,11 @@ function WorkspaceFileTreeComponent({
         ) : (
           <div className="flex w-full items-center justify-between gap-1.5">
             <div className="flex items-center gap-1.5">
-              {refreshButton}
+              {collapseButton}
               {copyPathButton}
-              {actionsMenu}
+              {refreshButton}
             </div>
-            {collapseButton}
+            {actionsMenu}
           </div>
         )}
         {collapsed && (
