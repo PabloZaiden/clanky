@@ -171,10 +171,8 @@ export function AppShell({ route, onNavigate, passkeyAuth }: AppShellProps) {
       servers,
       sessionsByServerId,
       chats,
-      workspaces,
-      workspaceSessions: sessions,
     }),
-    [chats, servers, sessions, sessionsByServerId, workspaces],
+    [chats, servers, sessionsByServerId],
   );
   const quickChatWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === quickChatSettings.settings.workspaceId) ?? null,

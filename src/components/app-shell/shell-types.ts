@@ -462,20 +462,6 @@ export function buildActiveWorkSidebarItems(
   return items.filter((item) => item.kind !== "chat" || !quickChatIds.has(item.chatNode.chat.config.id));
 }
 
-function createServerSessionNodeFromWorkspaceSession(
-  session: SshSession,
-  workspaceName: string,
-): SidebarServerSessionNode {
-  return {
-    id: session.config.id,
-    title: session.config.name,
-    subtitle: `${workspaceName} · ${getSshConnectionModeLabel(session.config.connectionMode)}`,
-    badge: getSshSessionStatusLabel(session.state.status),
-    badgeVariant: getSshSessionStatusBadgeVariant(session.state.status),
-    createdAt: session.config.createdAt,
-  };
-}
-
 function createServerSessionNodeFromStandaloneSession(session: SshServerSession): SidebarServerSessionNode {
   return {
     id: session.config.id,
@@ -491,17 +477,11 @@ export function buildServerSidebarNodes({
   servers,
   sessionsByServerId,
   chats = [],
-  workspaces,
-  workspaceSessions,
 }: {
   servers: SshServer[];
   sessionsByServerId: Record<string, SshServerSession[]>;
   chats?: Chat[];
-  workspaces: Workspace[];
-  workspaceSessions: SshSession[];
 }): SidebarServerNode[] {
-  const workspacesById = new Map(workspaces.map((workspace) => [workspace.id, workspace]));
-  const workspaceSessionsByServerId = new Map<string, SidebarServerSessionNode[]>();
   const chatsByServerId = new Map<string, Chat[]>();
 
   for (const chat of chats) {
@@ -513,33 +493,13 @@ export function buildServerSidebarNodes({
     chatsByServerId.set(chat.config.source.sshServerId, serverChats);
   }
 
-  for (const session of workspaceSessions) {
-    const workspace = workspacesById.get(session.config.workspaceId);
-    const serverId = workspace?.sshServerId;
-    if (!serverId) {
-      continue;
-    }
-    const groupedSessions = workspaceSessionsByServerId.get(serverId) ?? [];
-    groupedSessions.push(
-      createServerSessionNodeFromWorkspaceSession(
-        session,
-        workspace?.name ?? "Unknown workspace",
-      ),
-    );
-    workspaceSessionsByServerId.set(serverId, groupedSessions);
-  }
-
   return servers.map((server) => {
     const standaloneSessions = (sessionsByServerId[server.config.id] ?? [])
       .map(createServerSessionNodeFromStandaloneSession);
-    const workspaceBackedSessions = workspaceSessionsByServerId.get(server.config.id) ?? [];
     return {
       server,
       key: server.config.id,
-      sessions: sortByDesc([
-        ...workspaceBackedSessions,
-        ...standaloneSessions,
-      ], (session) => session.createdAt),
+      sessions: sortByDesc(standaloneSessions, (session) => session.createdAt),
       chats: sortByDesc(chatsByServerId.get(server.config.id) ?? [], (chat) => chat.config.updatedAt)
         .map((chat) => ({
           chat,
