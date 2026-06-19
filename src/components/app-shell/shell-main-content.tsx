@@ -375,12 +375,16 @@ function renderMainContent(props: ShellMainContentProps) {
     const relatedSessions = sessions.filter(
       (session) => session.config.workspaceId === selectedWorkspace.id,
     );
+    const relatedAgents = agents.agents.filter((agent) => agent.config.workspaceId === selectedWorkspace.id);
     return (
       <WorkspaceView
         workspace={selectedWorkspace}
         relatedTasks={relatedTasks}
         relatedChats={relatedChats}
         relatedSessions={relatedSessions}
+        relatedAgents={relatedAgents}
+        agentsLoading={agents.loading}
+        agentsError={agents.error}
         registeredSshServers={servers}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onPullLatestChanges={() => {
@@ -704,6 +708,9 @@ function renderMainContent(props: ShellMainContentProps) {
     <OverviewView
       servers={servers}
       sessionsByServerId={sessionsByServerId}
+      agents={agents.agents}
+      agentsLoading={agents.loading}
+      agentsError={agents.error}
       serverNodes={serverNodes}
       workspaceGroups={workspaceGroups}
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
