@@ -250,6 +250,38 @@ function WorkspaceFileTreeComponent({
     selectedNodePath,
     showHiddenFiles,
   ]);
+  const collapseButton = (
+    <FileTreeHeaderButton
+      label={collapseLabel}
+      onClick={onToggleCollapsed}
+      icon={<SidebarIcon size="h-4 w-4" />}
+      ariaExpanded={!collapsed}
+    />
+  );
+  const refreshButton = (
+    <FileTreeHeaderButton
+      label="Refresh explorer"
+      onClick={() => void onRefresh()}
+      disabled={loading}
+      icon={<RefreshIcon size="h-4 w-4" />}
+    />
+  );
+  const copyPathButton = (
+    <FileTreeHeaderButton
+      label="Copy selected file path"
+      onClick={() => void onCopySelectedFilePath()}
+      disabled={!canCopySelectedFilePath}
+      icon={<CopyPathIcon size="h-4 w-4" />}
+    />
+  );
+  const actionsMenu = (
+    <ActionMenu
+      items={actionItems}
+      ariaLabel="File explorer actions"
+      triggerVariant="ghost"
+      triggerSize="compact"
+    />
+  );
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-neutral-900">
@@ -267,32 +299,23 @@ function WorkspaceFileTreeComponent({
             Files
           </div>
         )}
-        <div className={collapsed ? "flex items-center gap-1.5 lg:flex-col" : "flex w-full items-center justify-end gap-1.5"}>
-          <FileTreeHeaderButton
-            label={collapseLabel}
-            onClick={onToggleCollapsed}
-            icon={<SidebarIcon size="h-4 w-4" />}
-            ariaExpanded={!collapsed}
-          />
-          <FileTreeHeaderButton
-            label="Refresh explorer"
-            onClick={() => void onRefresh()}
-            disabled={loading}
-            icon={<RefreshIcon size="h-4 w-4" />}
-          />
-          <FileTreeHeaderButton
-            label="Copy selected file path"
-            onClick={() => void onCopySelectedFilePath()}
-            disabled={!canCopySelectedFilePath}
-            icon={<CopyPathIcon size="h-4 w-4" />}
-          />
-          <ActionMenu
-            items={actionItems}
-            ariaLabel="File explorer actions"
-            triggerVariant="ghost"
-            triggerSize="compact"
-          />
-        </div>
+        {collapsed ? (
+          <div className="flex items-center gap-1.5 lg:flex-col">
+            {collapseButton}
+            {refreshButton}
+            {copyPathButton}
+            {actionsMenu}
+          </div>
+        ) : (
+          <div className="flex w-full items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5">
+              {refreshButton}
+              {copyPathButton}
+              {actionsMenu}
+            </div>
+            {collapseButton}
+          </div>
+        )}
         {collapsed && (
           <div className="mt-auto hidden text-[11px] font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400 lg:block [writing-mode:vertical-rl]">
             Files
