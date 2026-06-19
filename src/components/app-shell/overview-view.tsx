@@ -185,7 +185,6 @@ export function OverviewView({
           loading={agentsLoading}
           error={agentsError}
           description="Scheduled automations configured across your workspaces."
-          emptyText="No configured agents yet. Create an agent from a workspace to see it here."
           workspaceNamesById={workspaceNamesById}
           onSelectAgent={(agentId) => onNavigate({ view: "agent", agentId })}
         />

@@ -268,7 +268,6 @@ export function Dashboard({ onSelectTask, onSelectSshSession }: DashboardProps) 
             loading={agentsLoading}
             error={agentsError}
             description="Scheduled automations configured across your workspaces."
-            emptyText="No configured agents yet."
             workspaceNamesById={workspaceNamesById}
           />
 
