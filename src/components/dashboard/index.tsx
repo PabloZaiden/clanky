@@ -3,7 +3,7 @@
  * Orchestrates data fetching, modal state, and task grouping via extracted hooks and components.
  */
 
-import { useTasks, useSshServers, useSshSessions, useWorkspaces, useViewModePreference } from "../../hooks";
+import { useAgents, useTasks, useSshServers, useSshSessions, useWorkspaces, useViewModePreference } from "../../hooks";
 import { useWorkspaceServerSettings } from "../../hooks";
 import { useToast } from "../../hooks/useToast";
 import { useDashboardData } from "../../hooks/useDashboardData";
@@ -14,6 +14,7 @@ import { TaskGrid } from "../TaskGrid";
 import { DashboardModals } from "../DashboardModals";
 import { CreateSshServerModal } from "../CreateSshServerModal";
 import { CreateSshSessionModal } from "../CreateSshSessionModal";
+import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 import { DashboardSshSection } from "./DashboardSshSection";
 import { useMemo, useState } from "react";
 import type { SshServer } from "../../types";
@@ -71,6 +72,11 @@ export function Dashboard({ onSelectTask, onSelectSshSession }: DashboardProps) 
     exportConfig,
     importConfig,
   } = useWorkspaces();
+  const {
+    agents,
+    loading: agentsLoading,
+    error: agentsError,
+  } = useAgents();
 
   // Data fetching hook
   const dashboardData = useDashboardData();
@@ -87,6 +93,9 @@ export function Dashboard({ onSelectTask, onSelectSshSession }: DashboardProps) 
   const [workspaceArchivedTasksPurging, setWorkspaceArchivedTasksPurging] = useState(false);
   const sshWorkspaces = useMemo(() => {
     return workspaces.filter((workspace) => workspace.serverSettings.agent.transport === "ssh");
+  }, [workspaces]);
+  const workspaceNamesById = useMemo(() => {
+    return Object.fromEntries(workspaces.map((workspace) => [workspace.id, workspace.name]));
   }, [workspaces]);
   const selectedWorkspaceArchivedTaskCount = useMemo(() => {
     if (!modals.workspaceSettingsModal.workspaceId) {
@@ -252,6 +261,15 @@ export function Dashboard({ onSelectTask, onSelectSshSession }: DashboardProps) 
             }}
             onSelectSession={(sessionId) => onSelectSshSession?.(sessionId)}
             onRenameSession={(sessionId) => modals.setSshSessionRenameModal({ open: true, sessionId })}
+          />
+
+          <ConfiguredAgentsSection
+            agents={agents}
+            loading={agentsLoading}
+            error={agentsError}
+            description="Scheduled automations configured across your workspaces."
+            emptyText="No configured agents yet."
+            workspaceNamesById={workspaceNamesById}
           />
 
           <TaskGrid
