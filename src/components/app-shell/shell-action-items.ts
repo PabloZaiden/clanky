@@ -67,18 +67,22 @@ export function buildWorkspaceActionItems({
   const workspaceSshEnabled = workspace.serverSettings.agent.transport === "ssh";
   const items: ActionMenuItem[] = [
     {
+      id: "new-task",
       label: "New Task",
       onClick: () => onNavigate({ view: "compose", kind: "task", scopeId: workspace.id }),
     },
     {
+      id: "new-chat",
       label: "New Chat",
       onClick: () => onNavigate({ view: "compose", kind: "chat", scopeId: workspace.id }),
     },
     {
+      id: "new-agent",
       label: "New Agent",
       onClick: () => onNavigate({ view: "compose", kind: "agent", scopeId: workspace.id }),
     },
     {
+      id: "open-code-explorer",
       label: "Open code explorer",
       onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "workspace", workspaceId: workspace.id } }),
     },
@@ -88,14 +92,19 @@ export function buildWorkspaceActionItems({
       onClick: onPullLatestChanges,
       disabled: pullingLatestChanges,
     },
-    ...(githubUrl
-      ? [{
-          label: "Open in GitHub",
-          onClick: () => onOpenGitHub(githubUrl),
-        }]
-      : []),
+    {
+      id: "open-github",
+      label: "Open in GitHub",
+      onClick: () => {
+        if (githubUrl) {
+          onOpenGitHub(githubUrl);
+        }
+      },
+      disabled: !githubUrl,
+    },
     ...(workspaceSshEnabled
       ? [{
+          id: "new-ssh-session",
           label: "New SSH Session",
           onClick: () => onNavigate({ view: "compose", kind: "ssh-session", scopeId: workspace.id }),
         }]
@@ -117,14 +126,17 @@ export function buildSshServerActionItems({
 }: SshServerActionItemOptions): ActionMenuItem[] {
   const items: ActionMenuItem[] = [
     {
+      id: "open-code-explorer",
       label: "Open code explorer",
       onClick: () => onNavigate({ view: "code-explorer", target: { contentType: "server", serverId: server.config.id } }),
     },
     {
+      id: "new-session",
       label: "New Session",
       onClick: () => onNavigate({ view: "compose", kind: "ssh-session", scopeId: server.config.id }),
     },
     {
+      id: "new-chat",
       label: "New Chat",
       onClick: () => onNavigate({ view: "compose", kind: "ssh-server-chat", scopeId: server.config.id }),
     },
@@ -150,6 +162,7 @@ export function buildTaskActionItems({
 }: TaskActionItemOptions): ActionMenuItem[] {
   return withPinAction([
     {
+      id: "open-code-explorer",
       label: "Open code explorer",
       onClick: onOpenCodeExplorer,
     },
