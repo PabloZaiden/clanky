@@ -46,7 +46,6 @@ export interface ConfiguredAgentsSectionProps {
   error: string | null;
   title?: string;
   description?: string;
-  emptyText?: string;
   workspaceNamesById?: Record<string, string>;
   onSelectAgent?: (agentId: string) => void;
 }
@@ -57,10 +56,13 @@ export function ConfiguredAgentsSection({
   error,
   title = "Configured Agents",
   description,
-  emptyText = "No configured agents yet.",
   workspaceNamesById = {},
   onSelectAgent,
 }: ConfiguredAgentsSectionProps) {
+  if (!loading && !error && agents.length === 0) {
+    return null;
+  }
+
   const itemClassName = "flex w-full min-w-0 items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition dark:border-gray-800 dark:bg-neutral-900";
   const interactiveItemClassName = `${itemClassName} hover:border-gray-300 hover:bg-gray-100 dark:hover:border-gray-700 dark:hover:bg-neutral-800`;
 
@@ -84,12 +86,6 @@ export function ConfiguredAgentsSection({
 
       {loading ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">Loading agents...</p>
-      ) : null}
-
-      {!loading && agents.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-neutral-950 dark:text-gray-400">
-          {emptyText}
-        </div>
       ) : null}
 
       {agents.length > 0 ? (
