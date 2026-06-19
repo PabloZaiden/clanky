@@ -35,7 +35,9 @@ function AgentStatusPill({ status }: { status: string }) {
 }
 
 function getScheduleText(agent: Agent): string {
-  return `Every ${agent.config.schedule.interval.value} ${agent.config.schedule.interval.unit}`;
+  const { value, unit } = agent.config.schedule.interval;
+  const displayUnit = value === 1 ? unit.slice(0, -1) : unit;
+  return `Every ${value} ${displayUnit}`;
 }
 
 export interface ConfiguredAgentsSectionProps {
