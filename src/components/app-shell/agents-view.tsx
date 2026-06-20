@@ -705,7 +705,7 @@ function AgentDetail({
                   Run now
                 </Button>
               )}
-              <Button type="button" variant="ghost" size="sm" onClick={() => setPurgeOpen(true)}>
+              <Button type="button" variant="danger" size="sm" onClick={() => setPurgeOpen(true)}>
                 Purge runs
               </Button>
               <Button type="button" variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
