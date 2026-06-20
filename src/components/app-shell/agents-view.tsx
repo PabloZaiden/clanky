@@ -8,7 +8,7 @@ import { mergeToolCallRecord, upsertToolCallExtra } from "../../types/tool-call"
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
-import { Button, ConfirmModal } from "../common";
+import { ActionMenu, Button, ConfirmModal, type ActionMenuItem } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 
@@ -605,6 +605,42 @@ function AgentDetail({
     }
   }
 
+  const agentActionItems: ActionMenuItem[] = [
+    {
+      id: "edit",
+      label: "Edit",
+      onClick: () => setIsEditing(true),
+    },
+    {
+      id: "toggle-paused",
+      label: agent.config.enabled ? "Pause" : "Resume",
+      onClick: () => void handleTogglePaused(),
+    },
+    agent.state.status === "running"
+      ? {
+          id: "interrupt",
+          label: "Interrupt",
+          onClick: () => void onInterruptAgent(agent.config.id),
+        }
+      : {
+          id: "run-now",
+          label: "Run now",
+          onClick: () => void onRunAgent(agent.config.id),
+        },
+    {
+      id: "purge-runs",
+      label: "Purge runs",
+      onClick: () => setPurgeOpen(true),
+      destructive: true,
+    },
+    {
+      id: "delete",
+      label: "Delete",
+      onClick: () => setDeleteOpen(true),
+      destructive: true,
+    },
+  ];
+
   if (isEditing) {
     return (
       <AgentForm
@@ -646,27 +682,36 @@ function AgentDetail({
         badges={<AgentStatusPill status={agent.state.status} />}
         actions={(
           <>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
-              Edit
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => void handleTogglePaused()}>
-              {agent.config.enabled ? "Pause" : "Resume"}
-            </Button>
-            {agent.state.status === "running" ? (
-              <Button type="button" variant="secondary" size="sm" onClick={() => void onInterruptAgent(agent.config.id)}>
-                Interrupt
+            <div className="sm:hidden">
+              <ActionMenu
+                items={agentActionItems}
+                ariaLabel="Agent actions"
+                triggerVariant="ghost"
+              />
+            </div>
+            <div className="hidden items-center gap-1.5 sm:flex">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
+                Edit
               </Button>
-            ) : (
-              <Button type="button" size="sm" onClick={() => void onRunAgent(agent.config.id)}>
-                Run now
+              <Button type="button" variant="ghost" size="sm" onClick={() => void handleTogglePaused()}>
+                {agent.config.enabled ? "Pause" : "Resume"}
               </Button>
-            )}
-            <Button type="button" variant="ghost" size="sm" onClick={() => setPurgeOpen(true)}>
-              Purge runs
-            </Button>
-            <Button type="button" variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
-              Delete
-            </Button>
+              {agent.state.status === "running" ? (
+                <Button type="button" variant="secondary" size="sm" onClick={() => void onInterruptAgent(agent.config.id)}>
+                  Interrupt
+                </Button>
+              ) : (
+                <Button type="button" size="sm" onClick={() => void onRunAgent(agent.config.id)}>
+                  Run now
+                </Button>
+              )}
+              <Button type="button" variant="ghost" size="sm" onClick={() => setPurgeOpen(true)}>
+                Purge runs
+              </Button>
+              <Button type="button" variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
+                Delete
+              </Button>
+            </div>
           </>
         )}
       >
