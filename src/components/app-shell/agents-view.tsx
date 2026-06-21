@@ -420,36 +420,75 @@ function AgentRunsList({
   onDeleteRun: (runId: string) => Promise<boolean>;
   onNavigate: (route: ShellRoute) => void;
 }) {
+  const toast = useToast();
+  const [deleteRun, setDeleteRun] = useState<AgentRun | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
+
+  function closeDeleteRunConfirmation(): void {
+    if (deletePending) {
+      return;
+    }
+    setDeleteRun(null);
+  }
+
+  async function handleConfirmDeleteRun(): Promise<void> {
+    if (!deleteRun) {
+      return;
+    }
+    setDeletePending(true);
+    try {
+      const deleted = await onDeleteRun(deleteRun.id);
+      if (!deleted) {
+        toast.error("Failed to delete agent run");
+        return;
+      }
+      setDeleteRun(null);
+    } finally {
+      setDeletePending(false);
+    }
+  }
+
   if (runs.length === 0) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">No runs yet.</p>;
   }
 
   return (
-    <div className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-800 dark:bg-neutral-950">
-      {runs.slice(0, 25).map((run) => (
-        <div key={run.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            type="button"
-            className="min-w-0 flex-1 text-left"
-            onClick={() => onNavigate({ view: "agent-run", agentId: agent.config.id, runId: run.id })}
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <AgentStatusPill status={run.status} />
-              <span className="text-xs text-gray-500 dark:text-gray-400">{run.trigger}</span>
-            </div>
-            <p className="mt-1 truncate text-sm text-gray-700 dark:text-gray-200">
-              {formatDate(run.scheduledFor)}
-            </p>
-            {run.error && (
-              <p className="mt-1 truncate text-xs text-red-600 dark:text-red-300">{run.error.message}</p>
-            )}
-          </button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void onDeleteRun(run.id)}>
-            Delete
-          </Button>
-        </div>
-      ))}
-    </div>
+    <>
+      <div className="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-gray-800 dark:border-gray-800 dark:bg-neutral-950">
+        {runs.slice(0, 25).map((run) => (
+          <div key={run.id} className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              className="min-w-0 flex-1 text-left"
+              onClick={() => onNavigate({ view: "agent-run", agentId: agent.config.id, runId: run.id })}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <AgentStatusPill status={run.status} />
+                <span className="text-xs text-gray-500 dark:text-gray-400">{run.trigger}</span>
+              </div>
+              <p className="mt-1 truncate text-sm text-gray-700 dark:text-gray-200">
+                {formatDate(run.scheduledFor)}
+              </p>
+              {run.error && (
+                <p className="mt-1 truncate text-xs text-red-600 dark:text-red-300">{run.error.message}</p>
+              )}
+            </button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setDeleteRun(run)}>
+              Delete
+            </Button>
+          </div>
+        ))}
+      </div>
+      <ConfirmModal
+        isOpen={Boolean(deleteRun)}
+        onClose={closeDeleteRunConfirmation}
+        onConfirm={() => void handleConfirmDeleteRun()}
+        title="Delete agent run"
+        message={`Delete the ${deleteRun?.trigger ?? "selected"} run for "${agent.config.name}" scheduled for ${formatDate(deleteRun?.scheduledFor)}? This cannot be undone.`}
+        confirmLabel="Delete run"
+        loading={deletePending}
+      />
+    </>
   );
 }
 
