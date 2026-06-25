@@ -30,6 +30,7 @@ interface TaskDetailsTabContentProps {
   isPlanning: boolean;
   isPlanReady: boolean;
   isLogActive: boolean;
+  applyLogBottomSafeAreaPadding: boolean;
   feedbackRounds: number;
   markdownEnabled: boolean;
 
@@ -44,11 +45,7 @@ interface TaskDetailsTabContentProps {
   portForwardData: { forwards: PortForward[]; forwardsLoading: boolean; forwardsError: string | null };
   content: UseTaskContentResult;
   actions: UseTaskActionsResult;
-  isLogFocusMode: boolean;
-  onEnterLogFocusMode: () => void;
-  onExitLogFocusMode: () => void;
   onFileOpenError: (message: string) => void;
-  applySafeAreaBottomToLogFocusBar?: boolean;
 }
 
 export function TaskDetailsTabContent({
@@ -59,6 +56,7 @@ export function TaskDetailsTabContent({
   isPlanning,
   isPlanReady,
   isLogActive,
+  applyLogBottomSafeAreaPadding,
   feedbackRounds,
   markdownEnabled,
   messages,
@@ -69,11 +67,7 @@ export function TaskDetailsTabContent({
   portForwardData,
   content,
   actions,
-  isLogFocusMode,
-  onEnterLogFocusMode,
-  onExitLogFocusMode,
   onFileOpenError,
-  applySafeAreaBottomToLogFocusBar = false,
 }: TaskDetailsTabContentProps) {
   const { config, state } = task;
   const toolPathDisplayRoot = state.git?.worktreePath ?? config.directory;
@@ -112,13 +106,7 @@ export function TaskDetailsTabContent({
   }), [config.workspaceId, getTaskFileHash, onFileOpenError, openLinkedTaskFile, toolPathDisplayRoot]);
 
   return (
-    <div
-      className={
-        activeTab === "log" && isLogFocusMode
-          ? "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-[#1e1e1e]"
-          : "flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-neutral-800"
-      }
-    >
+    <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden bg-white dark:bg-neutral-800">
       {activeTab === "log" && (
         <LogTab
           messages={messages}
@@ -127,12 +115,9 @@ export function TaskDetailsTabContent({
           {...logDisplay}
           markdownEnabled={markdownEnabled}
           isLogActive={isLogActive}
+          applyBottomSafeAreaPadding={applyLogBottomSafeAreaPadding}
           toolPathDisplayRoot={toolPathDisplayRoot}
           fileLinkContext={fileLinkContext}
-          isFocusMode={isLogFocusMode}
-          onEnterFocusMode={onEnterLogFocusMode}
-          onExitFocusMode={onExitLogFocusMode}
-          applySafeAreaBottomToFocusBar={applySafeAreaBottomToLogFocusBar}
         />
       )}
       {(activeTab === "chat" || hasVisitedChatTab) && (
