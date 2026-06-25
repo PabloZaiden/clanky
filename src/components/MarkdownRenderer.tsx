@@ -85,20 +85,20 @@ export function MarkdownRenderer({
               {children}
             </pre>
           ),
-          table: ({ children }) => (
+          table: ({ children, className, ...props }) => (
             <div className="max-w-full overflow-x-auto">
-              <table className="min-w-max max-w-none">
+              <table {...props} className={`min-w-max max-w-none ${className ?? ""}`.trim()}>
                 {children}
               </table>
             </div>
           ),
-          th: ({ children }) => (
-            <th className="whitespace-normal break-words">
+          th: ({ children, className, ...props }) => (
+            <th {...props} className={`whitespace-normal break-words ${className ?? ""}`.trim()}>
               {children}
             </th>
           ),
-          td: ({ children }) => (
-            <td className="whitespace-normal break-words">
+          td: ({ children, className, ...props }) => (
+            <td {...props} className={`whitespace-normal break-words ${className ?? ""}`.trim()}>
               {children}
             </td>
           ),

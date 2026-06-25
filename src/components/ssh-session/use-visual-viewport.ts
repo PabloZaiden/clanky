@@ -26,7 +26,7 @@ function getViewportBottomClearancePx() {
   }
   const raw = getComputedStyle(document.documentElement).getPropertyValue("--safe-area-inset-bottom");
   const parsed = Number.parseFloat(raw);
-  return Number.isFinite(parsed) ? Math.max(parsed, MIN_BOTTOM_CLEARANCE_PX) : MIN_BOTTOM_CLEARANCE_PX;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.max(parsed, MIN_BOTTOM_CLEARANCE_PX) : 0;
 }
 
 export function getFocusModeViewportStyle(
