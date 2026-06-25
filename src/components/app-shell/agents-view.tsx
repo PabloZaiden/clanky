@@ -155,6 +155,12 @@ function AgentForm({
   );
 
   useEffect(() => {
+    if (mode === "create" && initialWorkspace && workspaceId !== initialWorkspace.id) {
+      setWorkspaceId(initialWorkspace.id);
+    }
+  }, [initialWorkspace?.id, mode, workspaceId]);
+
+  useEffect(() => {
     if (!selectedWorkspace) {
       setBaseBranch("");
       return;

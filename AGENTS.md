@@ -301,6 +301,7 @@ test("hello world", () => {
 - **Prefer no new test over a low-value test.** A test is only worth adding if it catches realistic regressions during refactors or bugs.
 - The default committed coverage should be **API tests, integration/user-scenario tests, or e2e tests** that exercise real application behavior through public boundaries.
 - New tests should prove a meaningful workflow, state transition, persistence effect, security rule, or external contract. Good examples: creating/running/accepting/pushing a task through the API, workspace lifecycle, plan-mode workflow, auth/passkey boundaries, SSH/session behavior, provisioning behavior, branch safety, and review-cycle behavior.
+- Automated tests should generally set `CLANKY_DISABLE_PASSKEY=true` so they do not require interactive passkey setup, unless the test is explicitly verifying passkey registration, login, deletion, or enforcement behavior.
 - Bug fixes should be covered at the highest practical level that reproduces the bug. Prefer an API/integration/e2e regression over a unit test of the helper that happened to contain the bug.
 - UI-only changes, text/copy changes, styling changes, layout changes, label changes, and presentation refactors should **not** get automated tests. Validate them manually when needed.
 - If you need to validate real agent scenarios for a new feature or to reproduce a bug, use a local Copilot CLI unless the user explicitly says otherwise. Mocks usually do not work well for this kind of manual validation.
