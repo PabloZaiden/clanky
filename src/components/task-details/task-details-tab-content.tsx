@@ -30,6 +30,7 @@ interface TaskDetailsTabContentProps {
   isPlanning: boolean;
   isPlanReady: boolean;
   isLogActive: boolean;
+  applyLogBottomSafeAreaPadding: boolean;
   feedbackRounds: number;
   markdownEnabled: boolean;
 
@@ -55,6 +56,7 @@ export function TaskDetailsTabContent({
   isPlanning,
   isPlanReady,
   isLogActive,
+  applyLogBottomSafeAreaPadding,
   feedbackRounds,
   markdownEnabled,
   messages,
@@ -113,6 +115,7 @@ export function TaskDetailsTabContent({
           {...logDisplay}
           markdownEnabled={markdownEnabled}
           isLogActive={isLogActive}
+          applyBottomSafeAreaPadding={applyLogBottomSafeAreaPadding}
           toolPathDisplayRoot={toolPathDisplayRoot}
           fileLinkContext={fileLinkContext}
         />

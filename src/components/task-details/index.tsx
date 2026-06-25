@@ -203,7 +203,8 @@ export function TaskDetails({
           <TaskDetailsTabContent
             activeTab={activeTab} task={task} taskId={taskId} labels={labels}
             isPlanning={isPlanning} isPlanReady={isPlanReady}
-            isLogActive={isLogActive} feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
+            isLogActive={isLogActive} applyLogBottomSafeAreaPadding={!showActionBar}
+            feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
             messages={messages} toolCalls={toolCalls} logs={logs}
             logDisplay={logDisplay}
             portForward={portForward}

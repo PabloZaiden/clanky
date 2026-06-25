@@ -15,6 +15,7 @@ interface LogTabProps {
   onShowToolsChange: (v: boolean) => void;
   markdownEnabled: boolean;
   isLogActive: boolean;
+  applyBottomSafeAreaPadding: boolean;
   toolPathDisplayRoot?: string;
   fileLinkContext?: TranscriptFileLinkContext;
 }
@@ -31,6 +32,7 @@ export function LogTab({
   onShowToolsChange,
   markdownEnabled,
   isLogActive,
+  applyBottomSafeAreaPadding,
   toolPathDisplayRoot,
   fileLinkContext,
 }: LogTabProps) {
@@ -56,9 +58,9 @@ export function LogTab({
         />
       </div>
 
-      <div className="flex-shrink-0 border-t border-gray-200 px-1.5 py-2 dark:border-gray-700 sm:p-4">
+      <div className={`flex-shrink-0 border-t border-gray-200 dark:border-gray-700 ${applyBottomSafeAreaPadding ? "safe-area-bottom" : ""}`}>
         <div
-          className="hide-scrollbar flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap sm:flex-wrap sm:gap-3 sm:overflow-visible"
+          className="hide-scrollbar flex min-w-0 items-center gap-2 overflow-x-auto whitespace-nowrap px-1.5 py-2 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:p-4"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           <label className="shrink-0 cursor-pointer text-[11px] text-gray-700 dark:text-gray-300 sm:text-sm">
