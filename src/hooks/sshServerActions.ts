@@ -154,6 +154,21 @@ export async function createStandaloneSshSessionApi(options: {
   );
 }
 
+export async function updateStandaloneSshSessionApi(
+  sessionId: string,
+  request: { name?: string },
+): Promise<SshServerSession> {
+  return await apiCall<SshServerSession>(
+    `/api/ssh-server-sessions/${sessionId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+    "Update standalone SSH session",
+  );
+}
+
 export async function deleteStandaloneSshSessionApi(options: {
   sessionId: string;
   serverId: string;

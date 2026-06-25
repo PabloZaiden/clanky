@@ -5,6 +5,5 @@ export {
   appWebSocketUrl,
   configureClientRuntime,
   getConfiguredPublicBasePath,
-  PASSKEY_AUTH_REQUIRED_EVENT,
   setConfiguredPublicBasePath,
-} from "@clanky/client-sdk/public-path";
+} from "@/client-sdk/public-path";

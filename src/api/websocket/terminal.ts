@@ -1,6 +1,7 @@
 import type { ServerWebSocket } from "bun";
 import { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
 import { createLogger } from "../../core/logger";
+import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
 
 const log = createLogger("api:websocket");
@@ -12,6 +13,10 @@ export async function startTerminalBridge(
   const { sshSessionId, sshServerSessionId } = ws.data;
   const terminalSessionId = sshSessionId ?? sshServerSessionId;
   if (!terminalSessionId || ws.data.terminalBridge) {
+    return;
+  }
+  if (!ws.data.user) {
+    sendTerminalAuthError(ws, "Authenticated user context is required for SSH terminal connections");
     return;
   }
 
@@ -57,7 +62,7 @@ export async function startTerminalBridge(
   ws.data.terminalBridge = bridge;
 
   try {
-    await bridge.connect();
+    await runWithCurrentUser(ws.data.user, () => bridge.connect());
     ws.send(JSON.stringify({
       type: "terminal.connected",
       sshSessionId: sshSessionId ?? null,

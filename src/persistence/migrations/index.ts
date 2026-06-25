@@ -71,9 +71,6 @@ const KNOWN_TABLE_NAMES = new Set([
   "forwarded_ports",
   "workspaces",
   "preferences",
-  "passkey_credentials",
-  "auth_device_requests",
-  "auth_refresh_sessions",
   "review_comments",
   "schema_migrations",
 ]);

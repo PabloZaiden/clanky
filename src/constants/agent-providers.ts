@@ -1,4 +1,4 @@
-import { AGENT_PROVIDER_IDS } from "@clanky/shared";
+import { AGENT_PROVIDER_IDS } from "@/shared";
 import type { AgentProvider } from "../types/settings";
 
 export interface AgentProviderOption {

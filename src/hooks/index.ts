@@ -14,25 +14,17 @@ export { useSshServers, type UseSshServersResult } from "./useSshServers";
 export { useTaskPortForwards, type UseTaskPortForwardsResult } from "./useTaskPortForwards";
 export { useWorkspaceServerSettings, type UseWorkspaceServerSettingsResult } from "./useWorkspaceServerSettings";
 export { useMarkdownPreference, type UseMarkdownPreferenceResult } from "./useMarkdownPreference";
-export {
-  ThemePreferenceProvider,
-  useThemePreference,
-  type UseThemePreferenceResult,
-} from "./useThemePreference";
+export { useResolvedTheme, type ResolvedTheme } from "./useResolvedTheme";
 export {
   useFileExplorerFullTreePreference,
   type UseFileExplorerFullTreePreferenceResult,
 } from "./useFileExplorerFullTreePreference";
-export { useLogLevelPreference, type UseLogLevelPreferenceResult } from "./useLogLevelPreference";
 export { useQuickChatSettings, type UseQuickChatSettingsResult } from "./useQuickChatSettings";
 export { useSchedulerTimezone, type UseSchedulerTimezoneResult } from "./useSchedulerTimezone";
 export { useWorkspaces, type UseWorkspacesResult } from "./useWorkspaces";
 export { useAgentsMdOptimizer, type UseAgentsMdOptimizerResult, type AgentsMdStatus, type OptimizeResult } from "./useAgentsMdOptimizer";
-export { useCountdownReload, computeProgressPercent, KILL_SERVER_COUNTDOWN_SECONDS, type UseCountdownReloadResult } from "./useCountdownReload";
 export { useToast, type ToastContextValue, type Toast, type ToastOptions } from "./useToast";
-export { usePasskeyAuth, type UsePasskeyAuthResult } from "./usePasskeyAuth";
 export { useTaskGrouping, groupTasksByStatus, sectionConfig, type StatusGroups, type StatusSectionKey, type SectionConfig, type WorkspaceGroup, type UseTaskGroupingResult } from "./useTaskGrouping";
-export { useDashboardModals, type ModalState, type UncommittedModalState, type UseDashboardModalsResult } from "./useDashboardModals";
 export { useDashboardData, type UseDashboardDataResult } from "./useDashboardData";
 export { useViewModePreference, type UseViewModePreferenceResult, type DashboardViewMode } from "./useViewModePreference";
 export { useProvisioningJob, type UseProvisioningJobResult, type StartProvisioningJobRequest } from "./useProvisioningJob";

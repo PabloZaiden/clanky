@@ -7,6 +7,7 @@ import type { TaskConfig, TaskState } from "../../types";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:tasks");
 
@@ -16,14 +17,17 @@ const log = createLogger("persistence:tasks");
  */
 export async function updateTaskState(taskId: string, state: TaskState): Promise<boolean> {
   log.debug("Updating task state", { taskId, status: state.status });
-  const db = getDatabase();
+  return updateTaskStateForUser(taskId, state, requirePersistenceUserId());
+}
 
+export async function updateTaskStateForUser(taskId: string, state: TaskState, userId: string): Promise<boolean> {
+  const db = getDatabase();
   // Prepare statements outside transaction
-  const selectStmt = db.prepare("SELECT * FROM tasks WHERE id = ?");
+  const selectStmt = db.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?");
 
   // Use transaction to ensure atomic read-modify-write
   const updateInTransaction = db.transaction(() => {
-    const row = selectStmt.get(taskId) as Record<string, unknown> | null;
+    const row = selectStmt.get(taskId, userId) as Record<string, unknown> | null;
     if (!row) {
       log.debug("Task not found for state update", { taskId });
       return false;
@@ -41,10 +45,10 @@ export async function updateTaskState(taskId: string, state: TaskState): Promise
     // which would delete related records in review_comments table
     const setClause = columns.map(col => `${col} = ?`).join(", ");
     const values = columns.map(col => newRow[col as keyof typeof newRow]) as (string | number | null | Uint8Array)[];
-    values.push(taskId); // Add id for WHERE clause
+    values.push(taskId, userId); // Add id and user_id for WHERE clause
 
     const updateStmt = db.prepare(`
-      UPDATE tasks SET ${setClause} WHERE id = ?
+      UPDATE tasks SET ${setClause} WHERE id = ? AND user_id = ?
     `);
     updateStmt.run(...values);
 
@@ -62,13 +66,14 @@ export async function updateTaskState(taskId: string, state: TaskState): Promise
 export async function updateTaskConfig(taskId: string, config: TaskConfig): Promise<boolean> {
   log.debug("Updating task config", { taskId, name: config.name });
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
 
   // Prepare statements outside transaction
-  const selectStmt = db.prepare("SELECT * FROM tasks WHERE id = ?");
+  const selectStmt = db.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?");
 
   // Use transaction to ensure atomic read-modify-write
   const updateInTransaction = db.transaction(() => {
-    const row = selectStmt.get(taskId) as Record<string, unknown> | null;
+    const row = selectStmt.get(taskId, userId) as Record<string, unknown> | null;
     if (!row) {
       log.debug("Task not found for config update", { taskId });
       return false;
@@ -86,10 +91,10 @@ export async function updateTaskConfig(taskId: string, config: TaskConfig): Prom
     // which would delete related records in review_comments table
     const setClause = columns.map(col => `${col} = ?`).join(", ");
     const values = columns.map(col => newRow[col as keyof typeof newRow]) as (string | number | null | Uint8Array)[];
-    values.push(taskId); // Add id for WHERE clause
+    values.push(taskId, userId); // Add id and user_id for WHERE clause
 
     const updateStmt = db.prepare(`
-      UPDATE tasks SET ${setClause} WHERE id = ?
+      UPDATE tasks SET ${setClause} WHERE id = ? AND user_id = ?
     `);
     updateStmt.run(...values);
 

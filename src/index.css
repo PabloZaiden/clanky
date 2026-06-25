@@ -55,6 +55,10 @@
     @apply w-full h-full overflow-hidden;
   }
 
+  #clanky-main-header-title-slot:not(:empty) + .clanky-main-header-title-fallback {
+    display: none;
+  }
+
   /* Prevent text selection on interactive elements */
   button,
   a,

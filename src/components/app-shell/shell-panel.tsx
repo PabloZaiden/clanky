@@ -1,4 +1,5 @@
 import type { InputHTMLAttributes } from "react";
+import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "./main-header-portal";
 
 export function ShellPanel({
   eyebrow: _eyebrow,
@@ -27,35 +28,49 @@ export function ShellPanel({
   headerOffsetClassName?: string;
   children: React.ReactNode;
 }) {
+  const frameworkHeader = useFrameworkMainHeaderSlots();
+
   if (variant === "compact") {
+    const header = (
+      <div className="border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-neutral-800 sm:px-6 lg:px-8">
+        <div
+          className={[
+            headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0",
+            "flex min-h-14 items-center gap-1.5 overflow-hidden",
+          ].join(" ")}
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+            <h1 className="min-w-0 truncate text-base font-semibold text-gray-900 dark:text-gray-100">
+              {title}
+            </h1>
+            {badges && <div className="flex flex-shrink-0 items-center gap-1.5">{badges}</div>}
+            {description && (
+              <span
+                className={[
+                  "min-w-0 flex-shrink truncate text-xs text-gray-500 dark:text-gray-400",
+                  descriptionClassName ?? "",
+                ].join(" ").trim()}
+              >
+                {description}
+              </span>
+            )}
+          </div>
+          {actions && <div className="ml-auto flex min-w-max flex-shrink-0 items-center justify-end gap-1.5 overflow-visible">{actions}</div>}
+        </div>
+      </div>
+    );
+
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden bg-gray-50 dark:bg-neutral-900">
-        <div className="border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-neutral-800 sm:px-6 lg:px-8">
-          <div
-            className={[
-              headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0",
-              "flex min-h-14 flex-wrap items-center gap-1.5",
-            ].join(" ")}
-          >
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-              <h1 className="min-w-0 truncate text-base font-semibold text-gray-900 dark:text-gray-100">
-                {title}
-              </h1>
-              {badges && <div className="flex flex-wrap items-center gap-1.5">{badges}</div>}
-              {description && (
-                <span
-                  className={[
-                    "min-w-0 max-w-full truncate text-xs text-gray-500 dark:text-gray-400",
-                    descriptionClassName ?? "",
-                  ].join(" ").trim()}
-                >
-                  {description}
-                </span>
-              )}
-            </div>
-            {actions && <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5">{actions}</div>}
-          </div>
-        </div>
+        {frameworkHeader.available ? (
+          <FrameworkMainHeaderPortal
+            title={title}
+            description={description}
+            descriptionClassName={descriptionClassName}
+            badges={badges}
+            actions={actions}
+          />
+        ) : header}
 
         <div
           data-testid={bodyContainerTestId}

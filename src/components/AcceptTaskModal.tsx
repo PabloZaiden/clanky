@@ -4,7 +4,8 @@
  */
 
 import { useState } from "react";
-import { Modal, Button } from "./common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button } from "./common";
 import { createLogger } from "../lib/logger";
 
 const log = createLogger("AcceptTaskModal");

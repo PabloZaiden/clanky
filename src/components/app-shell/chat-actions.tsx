@@ -1,11 +1,10 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Button, ConfirmModal, Modal, insertPinActionItem, type ActionMenuItem } from "../common";
+import { ConfirmModal, Modal, type ActionMenuItem } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
 import { RenameChatModal } from "../RenameChatModal";
 import { SpawnCurrentPlanModal } from "../SpawnCurrentPlanModal";
 import { appAbsoluteUrl, appFetch } from "../../lib/public-path";
 import type { Chat, Task } from "../../types";
-import { buildPinActionItem } from "./shell-action-items";
-import type { SidebarPinningState } from "./sidebar-pins";
 
 interface ChatActionItemOptions {
   chat: Chat;
@@ -18,13 +17,11 @@ interface ChatActionItemOptions {
   onTranscript: () => void;
   onRename: () => void;
   onDelete: () => void;
-  sidebarPinning?: SidebarPinningState;
 }
 
 interface UseChatActionsOptions {
   chat: Chat | null;
   hasCodeExplorerAction: boolean;
-  sidebarPinning?: SidebarPinningState;
   onOpenCodeExplorer?: (chat: Chat) => void;
   onTaskSpawned?: (task: Task) => void;
   onChatRenamed?: (chat: Chat) => void | Promise<void>;
@@ -36,10 +33,6 @@ interface ChatActionsController {
   items: ActionMenuItem[];
   modals: ReactNode;
   isDeletePending: boolean;
-}
-
-function withPinAction(items: ActionMenuItem[], pinItem: ActionMenuItem | null): ActionMenuItem[] {
-  return pinItem ? insertPinActionItem(items, pinItem) : items;
 }
 
 async function parseError(response: Response, fallback: string): Promise<string> {
@@ -74,54 +67,52 @@ function buildChatActionItems({
   onTranscript,
   onRename,
   onDelete,
-  sidebarPinning,
 }: ChatActionItemOptions): ActionMenuItem[] {
   const isActive = ["starting", "streaming", "interrupting", "reconnecting"].includes(chat.state.status);
   const hasMessages = chat.state.messages.length > 0;
 
-  return withPinAction([
+  return [
     {
       id: "spawn-task",
       label: spawnPending ? "Spawning task..." : "Spawn Task",
-      onClick: onSpawnTask,
+      onAction: onSpawnTask,
       disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
     },
     {
       id: "spawn-task-from-current-plan",
       label: spawnCurrentPlanPending ? "Spawning task from plan file..." : "Spawn task from plan file",
-      onClick: onSpawnTaskFromCurrentPlan,
+      onAction: onSpawnTaskFromCurrentPlan,
       disabled: isActive || spawnPending || spawnCurrentPlanPending || !hasMessages,
     },
     {
       id: "code-explorer",
       label: "Code explorer",
-      onClick: onOpenCodeExplorer,
+      onAction: onOpenCodeExplorer,
       disabled: !hasCodeExplorerAction,
     },
     {
       id: "rename",
       label: "Rename",
-      onClick: onRename,
+      onAction: onRename,
     },
     {
       id: "transcript",
       label: "Transcript",
-      onClick: onTranscript,
+      onAction: onTranscript,
       disabled: !hasMessages,
     },
     {
       id: "delete",
       label: "Delete",
-      onClick: onDelete,
+      onAction: onDelete,
       destructive: true,
     },
-  ], buildPinActionItem(sidebarPinning, { kind: "chat", id: chat.config.id }));
+  ];
 }
 
 export function useChatActions({
   chat,
   hasCodeExplorerAction,
-  sidebarPinning,
   onOpenCodeExplorer,
   onTaskSpawned,
   onChatRenamed,
@@ -260,9 +251,8 @@ export function useChatActions({
       onTranscript: () => setTranscriptTarget(chat),
       onRename: () => setRenameTarget(chat),
       onDelete: () => setDeleteTarget(chat),
-      sidebarPinning,
     });
-  }, [chat, hasCodeExplorerAction, isSpawnCurrentPlanPending, isSpawnPending, onActionError, onOpenCodeExplorer, onTaskSpawned, sidebarPinning]);
+  }, [chat, hasCodeExplorerAction, isSpawnCurrentPlanPending, isSpawnPending, onActionError, onOpenCodeExplorer, onTaskSpawned]);
 
   const modals = (
     <>

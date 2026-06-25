@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Button, Modal } from "./common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button } from "./common";
 
 const DEFAULT_PLAN_FILE_PATH = ".clanky-planning/plan.md";
 

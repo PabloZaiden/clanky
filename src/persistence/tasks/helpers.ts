@@ -8,6 +8,7 @@ import { DEFAULT_TASK_CONFIG } from "../../types/task";
 import { normalizeCommitScope } from "../../utils/commit-scope";
 import { createLogger } from "../../core/logger";
 import { CheapModelSelectionSchema } from "../../types/schemas";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:tasks");
 
@@ -19,6 +20,7 @@ const log = createLogger("persistence:tasks");
  */
 export const ALLOWED_TASK_COLUMNS = new Set([
   "id",
+  "user_id",
   "name",
   "directory",
   "prompt",
@@ -100,6 +102,7 @@ export function taskToRow(task: Task): Record<string, unknown> {
   const { config, state } = task;
   return {
     id: config.id,
+    user_id: requirePersistenceUserId(),
     // Config fields
     name: config.name,
     directory: config.directory,

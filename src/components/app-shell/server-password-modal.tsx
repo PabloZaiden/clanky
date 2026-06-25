@@ -1,5 +1,6 @@
 import { useCallback, type FormEvent } from "react";
-import { Button, Modal, PASSWORD_INPUT_PROPS } from "../common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button, PASSWORD_INPUT_PROPS } from "../common";
 
 interface ServerPasswordModalProps {
   isOpen: boolean;

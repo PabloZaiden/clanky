@@ -13,15 +13,13 @@
 
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
+import { requirePersistenceUserId } from "./ownership";
 import {
-  DEFAULT_THEME_PREFERENCE,
   DEFAULT_QUICK_CHAT_SETTINGS,
   DEFAULT_SCHEDULER_TIMEZONE,
-  THEME_PREFERENCES,
   isValidIanaTimeZone,
   type DashboardViewMode,
   type QuickChatSettings,
-  type ThemePreference,
 } from "../types/preferences";
 import { CheapModelSelectionSchema } from "../types/schemas/model";
 import { normalizeQuickChatSettings } from "../types/schemas";
@@ -38,7 +36,6 @@ export type { DashboardViewMode } from "../types/preferences";
  * Valid dashboard view mode values for validation.
  */
 const VALID_VIEW_MODES: DashboardViewMode[] = ["rows", "cards"];
-const VALID_THEME_PREFERENCES: ThemePreference[] = [...THEME_PREFERENCES];
 
 /**
  * Default dashboard view mode when no preference is set.
@@ -49,16 +46,6 @@ export const DEFAULT_VIEW_MODE: DashboardViewMode = "rows";
  * Default file explorer loading mode when no preference is set.
  */
 export const DEFAULT_FILE_EXPLORER_FULL_TREE = true;
-
-/**
- * Valid log level names.
- */
-export type LogLevelName = "silly" | "trace" | "debug" | "info" | "warn" | "error" | "fatal";
-
-/**
- * Default log level when no preference is set.
- */
-export const DEFAULT_LOG_LEVEL: LogLevelName = "info";
 
 /**
  * User preferences structure.
@@ -79,12 +66,8 @@ export interface UserPreferences {
   markdownRenderingEnabled?: boolean;
   /** Whether the file explorer loads the entire tree in one request (defaults to true) */
   fileExplorerFullTreeEnabled?: boolean;
-  /** Log level for both frontend and backend (defaults to "info") */
-  logLevel?: LogLevelName;
   /** Dashboard view mode (defaults to "rows") */
   dashboardViewMode?: DashboardViewMode;
-  /** Visual theme preference (defaults to "system") */
-  themePreference?: ThemePreference;
   /** Quick chat workspace/model settings */
   quickChatSettings?: QuickChatSettings;
   /** IANA timezone used by schedules such as Agents */
@@ -97,8 +80,8 @@ export interface UserPreferences {
 function getPreference(key: string): string | null {
   log.trace("Getting preference", { key });
   const db = getDatabase();
-  const stmt = db.prepare("SELECT value FROM preferences WHERE key = ?");
-  const row = stmt.get(key) as { value: string } | null;
+  const stmt = db.prepare("SELECT value FROM preferences WHERE key = ? AND user_id = ?");
+  const row = stmt.get(key, requirePersistenceUserId()) as { value: string } | null;
   const value = row?.value ?? null;
   log.trace("Preference retrieved", { key, found: value !== null });
   return value;
@@ -111,11 +94,11 @@ function setPreference(key: string, value: string): void {
   log.debug("Setting preference", { key });
   const db = getDatabase();
   const stmt = db.prepare(`
-    INSERT INTO preferences (key, value)
-    VALUES (?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    INSERT INTO preferences (key, user_id, value)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key, user_id) DO UPDATE SET value = excluded.value
   `);
-  stmt.run(key, value);
+  stmt.run(key, requirePersistenceUserId(), value);
   log.trace("Preference set", { key });
 }
 
@@ -258,44 +241,6 @@ export async function setFileExplorerFullTreeEnabled(enabled: boolean): Promise<
 }
 
 /**
- * Valid log levels for validation.
- */
-const VALID_LOG_LEVELS: LogLevelName[] = ["silly", "trace", "debug", "info", "warn", "error", "fatal"];
-
-/**
- * Get the log level preference.
- * Defaults to "info" if not set.
- */
-export async function getLogLevelPreference(): Promise<LogLevelName> {
-  log.debug("Getting log level preference");
-  const value = getPreference("logLevel");
-  if (value === null) {
-    log.trace("Log level preference not set, using default", { default: DEFAULT_LOG_LEVEL });
-    return DEFAULT_LOG_LEVEL;
-  }
-  // Validate the stored value is a valid log level
-  if (VALID_LOG_LEVELS.includes(value as LogLevelName)) {
-    log.trace("Log level preference", { level: value });
-    return value as LogLevelName;
-  }
-  log.warn("Invalid log level preference, using default", { storedValue: value, default: DEFAULT_LOG_LEVEL });
-  return DEFAULT_LOG_LEVEL;
-}
-
-/**
- * Set the log level preference.
- */
-export async function setLogLevelPreference(level: LogLevelName): Promise<void> {
-  log.debug("Setting log level preference", { level });
-  // Validate the level before storing
-  if (!VALID_LOG_LEVELS.includes(level)) {
-    log.error("Invalid log level provided", { level, validLevels: VALID_LOG_LEVELS });
-    throw new Error(`Invalid log level: ${level}. Valid levels are: ${VALID_LOG_LEVELS.join(", ")}`);
-  }
-  setPreference("logLevel", level);
-}
-
-/**
  * Get the dashboard view mode preference.
  * Defaults to "rows" if not set.
  */
@@ -324,45 +269,6 @@ export async function setDashboardViewMode(mode: DashboardViewMode): Promise<voi
     throw new Error(`Invalid dashboard view mode: ${mode}. Valid modes are: ${VALID_VIEW_MODES.join(", ")}`);
   }
   setPreference("dashboardViewMode", mode);
-}
-
-/**
- * Get the visual theme preference.
- * Defaults to "system" if not set.
- */
-export async function getThemePreference(): Promise<ThemePreference> {
-  log.debug("Getting theme preference");
-  const value = getPreference("themePreference");
-  if (value === null) {
-    log.trace("Theme preference not set, using default", { default: DEFAULT_THEME_PREFERENCE });
-    return DEFAULT_THEME_PREFERENCE;
-  }
-  if (VALID_THEME_PREFERENCES.includes(value as ThemePreference)) {
-    log.trace("Theme preference", { theme: value });
-    return value as ThemePreference;
-  }
-  log.warn("Invalid theme preference, using default", {
-    storedValue: value,
-    default: DEFAULT_THEME_PREFERENCE,
-  });
-  return DEFAULT_THEME_PREFERENCE;
-}
-
-/**
- * Set the visual theme preference.
- */
-export async function setThemePreference(theme: ThemePreference): Promise<void> {
-  log.debug("Setting theme preference", { theme });
-  if (!VALID_THEME_PREFERENCES.includes(theme)) {
-    log.error("Invalid theme preference provided", {
-      theme,
-      validThemes: VALID_THEME_PREFERENCES,
-    });
-    throw new Error(
-      `Invalid theme preference: ${theme}. Valid themes are: ${VALID_THEME_PREFERENCES.join(", ")}`,
-    );
-  }
-  setPreference("themePreference", theme);
 }
 
 export async function getQuickChatSettings(): Promise<QuickChatSettings> {

@@ -3,7 +3,8 @@
  */
 
 import { useState, useEffect } from "react";
-import { Modal, Button } from "../common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
 import { WorkspaceSettingsForm } from "./workspace-settings-form";
 import type { WorkspaceSettingsModalProps } from "./types";
 

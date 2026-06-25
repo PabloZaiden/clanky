@@ -45,7 +45,7 @@ jobs:
         run: |
           set -e
           rm -f /tmp/clanky-pr-smoke.log /tmp/clanky-pr-index.html /tmp/clanky-pr-app.css
-          CLANKY_PORT=3018 bun run dev > /tmp/clanky-pr-smoke.log 2>&1 &
+          CLANKY_DISABLE_PASSKEY=1 CLANKY_PORT=3018 bun src/index.ts serve > /tmp/clanky-pr-smoke.log 2>&1 &
           APP_PID=$!
           trap 'kill $APP_PID 2>/dev/null || true' EXIT
           sleep 2

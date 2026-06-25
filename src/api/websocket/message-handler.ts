@@ -1,5 +1,6 @@
 import type { ServerWebSocket } from "bun";
 import { createLogger } from "../../core/logger";
+import { runWithCurrentUser } from "../../core/user-context";
 import type { WebSocketData } from "./types";
 import type { startTerminalBridge, sendTerminalAuthError } from "./terminal";
 
@@ -115,7 +116,16 @@ export function createMessageHandler(helpers: TerminalHelpers) {
           typeof data.cols === "number" &&
           typeof data.rows === "number"
         ) {
-          void ws.data.terminalBridge.resize(data.cols, data.rows).catch((resizeError: Error) => {
+          if (!ws.data.user) {
+            helpers.sendTerminalAuthError(
+              ws,
+              "Authenticated user context is required for SSH terminal resize",
+            );
+            return;
+          }
+          const resize = () => ws.data.terminalBridge!.resize(data.cols, data.rows);
+          const resizePromise = runWithCurrentUser(ws.data.user, resize);
+          void resizePromise.catch((resizeError: Error) => {
             log.warn("Ignoring SSH terminal resize error", {
               sshSessionId: ws.data.sshSessionId,
               sshServerSessionId: ws.data.sshServerSessionId,

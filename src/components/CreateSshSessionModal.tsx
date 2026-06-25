@@ -3,7 +3,8 @@
  */
 
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Modal } from "./common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button } from "./common";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 import type { Workspace, SshServer } from "../types";
 

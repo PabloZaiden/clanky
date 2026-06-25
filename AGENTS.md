@@ -27,9 +27,22 @@ When working on tasks, follow this general workflow to ensure clarity and goal a
 
 ## Project Overview
 
-Clanky is a full-stack Bun + React application for controlling and managing Clanky Tasks through ACP-compatible agent backends (Codex, Copilot, or OpenCode). It uses Bun's native bundler and server, React 19 for the frontend, and Tailwind CSS v4 for styling.
+Clanky is a full-stack Bun + React application for controlling and managing Clanky Tasks through ACP-compatible agent backends (Codex, Copilot, or OpenCode). It uses Bun's native bundler and server, React 19 for the frontend, Tailwind CSS v4 for styling, and `@pablozaiden/webapp` for shared app foundations.
 
 For more project information, see the [README.md](README.md).
+
+## Webapp framework migration rules
+
+- Prefer `@pablozaiden/webapp` primitives for auth, passkeys, API keys, device auth, same-origin checks, app shell, sidebar, settings, realtime, server health, and server lifecycle actions.
+- Keep Clanky as one app and one binary. Use `clanky serve` for the server and `clanky <subcommand>` for CLI commands; do not reintroduce a separate `clanky-cli` binary.
+- Use `bun --hot src/index.ts serve` for development; do not add Vite, a separate web dev server, or `CLANKY_WEB_DIST_DIR` for dev.
+- Treat app data as private per user. Existing one-time migrated data belongs to owner `admin`; newly invited users should start empty.
+- Use app-owned websocket upgrade/proxy handlers only for raw transports such as SSH terminal, VNC, and forwarded-port proxying. Normal app state updates should use framework realtime.
+- Add route metadata directly to framework route definitions when API/CLI discovery is needed; do not maintain a separate hand-written route catalog unless it is a temporary migration bridge.
+- Use framework settings for generic theme, log level, passkeys, device sessions, API keys, users, and server operations. Keep only Clanky-specific settings in app-owned settings sections.
+- Use route-backed `SidebarNode.actions` for task, chat, agent, SSH session, workspace and server commands. The framework owns both sidebar context menus and active title-bar three-line menus; do not reintroduce Clanky-local shell/header action menus.
+- Use framework dialogs/modals/action menus for generic UI behavior. Framework dialogs handle Enter/Escape, destructive/delete menu items are red and last, and sidebar badges render as compact status dots.
+- Header action buttons must remain visible and non-deforming; titles/subtitles should truncate before actions are clipped.
 
 ## Authentication & Authorization
 

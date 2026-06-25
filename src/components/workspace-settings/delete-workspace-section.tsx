@@ -3,7 +3,8 @@
  */
 
 import { useState } from "react";
-import { Button, ConfirmModal } from "../common";
+import { ConfirmModal } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
 import { useToast } from "../../hooks";
 import type { DeleteWorkspaceRequest, Workspace } from "../../types/workspace";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";

@@ -48,12 +48,6 @@ export function isSameOriginCheckDisabled(): boolean {
 export function getAppConfig(): AppConfig {
   return {
     remoteOnly: isRemoteOnlyMode(),
-    passkeyAuth: {
-      passkeyConfigured: false,
-      passkeyDisabled: false,
-      passkeyRequired: false,
-      authenticated: false,
-    },
     publicBasePath: null,
   };
 }

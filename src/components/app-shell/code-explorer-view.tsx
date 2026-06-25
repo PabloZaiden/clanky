@@ -7,7 +7,6 @@ import { FileExplorerView } from "./file-explorer-view";
 import {
   getCodeExplorerOptionGroups,
   getCodeExplorerOptions,
-  getCodeExplorerTargetId,
   resolveCodeExplorerTarget,
 } from "./code-explorer-targets";
 import type { CodeExplorerTarget, ShellRoute } from "./shell-types";
@@ -62,38 +61,6 @@ export function CodeExplorerView({
     createSession,
     createStandaloneSession,
   });
-  const selectedOptionId = options.find((option) => {
-    if (!routeTarget) {
-      return false;
-    }
-
-    return option.kind === routeTarget.contentType
-      && getCodeExplorerTargetId(option.target) === getCodeExplorerTargetId(routeTarget);
-  })?.id ?? "";
-  const contentSwitcher = (
-    <select
-      value={selectedOptionId}
-      onChange={(event) => {
-        const nextOption = options.find((option) => option.id === event.target.value);
-        if (nextOption) {
-          onNavigate({ view: "code-explorer", target: nextOption.target });
-        }
-      }}
-      aria-label="Select code explorer content"
-      className="h-9 min-w-0 w-full max-w-[12rem] rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 sm:h-10 sm:max-w-none sm:w-[18rem] lg:w-[20rem] dark:border-gray-700 dark:bg-neutral-800 dark:text-gray-100"
-    >
-      <option value="">Select code explorer content</option>
-      {groupedOptions.map((group) => (
-        <optgroup key={group.kind} label={group.label}>
-          {group.options.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
-  );
 
   if (!routeTarget || !resolvedTarget) {
     return (
@@ -102,7 +69,6 @@ export function CodeExplorerView({
         description="Choose the content you want to explore."
         variant="compact"
         headerOffsetClassName={headerOffsetClassName}
-        actions={contentSwitcher}
       >
         <div className="space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -158,7 +124,6 @@ export function CodeExplorerView({
       testIdPrefix={resolvedTarget.testIdPrefix}
       credentialPromptName={resolvedTarget.credentialPromptName}
       initialFilePath={resolvedTarget.initialFilePath}
-      headerActions={contentSwitcher}
       sshSessionDetailsComponent={sshSessionDetailsComponent}
     />
   );

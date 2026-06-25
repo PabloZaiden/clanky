@@ -12,6 +12,7 @@ import { getServerFingerprint } from "../../types/settings";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { workspaceToRow, rowToWorkspace } from "./helpers";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:workspaces");
 
@@ -39,8 +40,9 @@ export async function createWorkspace(workspace: Workspace): Promise<void> {
 export async function getWorkspace(id: string): Promise<Workspace | null> {
   log.debug("Getting workspace", { id });
   const db = getDatabase();
-  const stmt = db.prepare("SELECT * FROM workspaces WHERE id = ?");
-  const row = stmt.get(id) as Record<string, unknown> | null;
+  const userId = requirePersistenceUserId();
+  const stmt = db.prepare("SELECT * FROM workspaces WHERE id = ? AND user_id = ?");
+  const row = stmt.get(id, userId) as Record<string, unknown> | null;
   if (!row) {
     log.debug("Workspace not found", { id });
     return null;
@@ -64,6 +66,7 @@ export async function updateWorkspace(
     hasDevcontainerSubpathUpdate: updates.devcontainerSubpath !== undefined,
   });
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
 
   const setClauses: string[] = [];
   const values: (string | number | null)[] = [];
@@ -93,9 +96,9 @@ export async function updateWorkspace(
   setClauses.push("updated_at = ?");
   values.push(new Date().toISOString());
 
-  values.push(id);
+  values.push(id, userId);
 
-  const sql = `UPDATE workspaces SET ${setClauses.join(", ")} WHERE id = ?`;
+  const sql = `UPDATE workspaces SET ${setClauses.join(", ")} WHERE id = ? AND user_id = ?`;
   const stmt = db.prepare(sql);
   stmt.run(...values);
 
@@ -105,8 +108,9 @@ export async function updateWorkspace(
 
 export async function countWorkspaceTasks(id: string): Promise<number> {
   const db = getDatabase();
-  const taskCountStmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ?");
-  const taskCountRow = taskCountStmt.get(id) as { count: number };
+  const userId = requirePersistenceUserId();
+  const taskCountStmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ? AND user_id = ?");
+  const taskCountRow = taskCountStmt.get(id, userId) as { count: number };
   return taskCountRow.count;
 }
 
@@ -136,7 +140,7 @@ export async function deleteWorkspace(id: string): Promise<{ success: boolean; r
     };
   }
 
-  db.run("DELETE FROM workspaces WHERE id = ?", [id]);
+  db.run("DELETE FROM workspaces WHERE id = ? AND user_id = ?", [id, requirePersistenceUserId()]);
   log.info("Workspace deleted", { id, name: workspace.name });
   return { success: true };
 }

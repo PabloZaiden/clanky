@@ -72,19 +72,14 @@ export function getShellShortcutForKeyboardEvent(event: KeyboardEvent): ShellSho
   return Object.values(SHELL_SHORTCUTS).find((shortcut) => shortcut.key === eventKey) ?? null;
 }
 
-function buildExplorerHash(path: string, startDirectory?: string, filePath?: string): string {
-  if (!startDirectory && !filePath) {
-    return path;
-  }
-
+function buildRouteHash(view: string, params: Record<string, string | undefined> = {}): string {
   const searchParams = new URLSearchParams();
-  if (startDirectory) {
-    searchParams.set("startDirectory", startDirectory);
+  for (const [key, value] of Object.entries(params)) {
+    if (value) {
+      searchParams.set(key, value);
+    }
   }
-  if (filePath) {
-    searchParams.set("filePath", filePath);
-  }
-  return `${path}?${searchParams.toString()}`;
+  return `/${view}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
 }
 
 function buildCodeExplorerHash(target?: CodeExplorerTarget): string {
@@ -94,62 +89,80 @@ function buildCodeExplorerHash(target?: CodeExplorerTarget): string {
 
   switch (target.contentType) {
     case "workspace":
-      return buildExplorerHash(`/code-explorer/workspace/${target.workspaceId}`, target.startDirectory, target.filePath);
+      return buildRouteHash("code-explorer", {
+        contentType: "workspace",
+        workspaceId: target.workspaceId,
+        startDirectory: target.startDirectory,
+        filePath: target.filePath,
+      });
     case "task":
-      return buildExplorerHash(`/code-explorer/task/${target.taskId}`, target.startDirectory, target.filePath);
+      return buildRouteHash("code-explorer", {
+        contentType: "task",
+        taskId: target.taskId,
+        startDirectory: target.startDirectory,
+        filePath: target.filePath,
+      });
     case "server":
-      return buildExplorerHash(`/code-explorer/server/${target.serverId}`, target.startDirectory, target.filePath);
+      return buildRouteHash("code-explorer", {
+        contentType: "server",
+        serverId: target.serverId,
+        startDirectory: target.startDirectory,
+        filePath: target.filePath,
+      });
     case "chat":
-      return buildExplorerHash(`/code-explorer/chat/${target.chatId}`, target.startDirectory, target.filePath);
+      return buildRouteHash("code-explorer", {
+        contentType: "chat",
+        chatId: target.chatId,
+        startDirectory: target.startDirectory,
+        filePath: target.filePath,
+      });
   }
 }
 
 export function getHashForShellRoute(route: ShellRoute): string {
   switch (route.view) {
     case "home":
-      return "/";
+      return "/home";
     case "code-explorer":
       return buildCodeExplorerHash(route.target);
     case "task":
-      return `/task/${route.taskId}`;
+      return buildRouteHash("task", { taskId: route.taskId });
     case "task-files":
-      return buildExplorerHash(`/task-files/${route.taskId}`, route.startDirectory);
+      return buildRouteHash("task-files", { taskId: route.taskId, startDirectory: route.startDirectory });
     case "ssh":
-      return `/ssh/${route.sshSessionId}`;
+      return buildRouteHash("ssh", { sshSessionId: route.sshSessionId });
     case "chat":
-      return `/chat/${route.chatId}`;
+      return buildRouteHash("chat", { chatId: route.chatId });
     case "agent":
-      return `/agent/${route.agentId}`;
+      return buildRouteHash("agent", { agentId: route.agentId });
     case "agent-run":
-      return `/agent/${route.agentId}/run/${route.runId}`;
+      return buildRouteHash("agent-run", { agentId: route.agentId, runId: route.runId });
     case "workspace":
-      return `/workspace/${route.workspaceId}`;
+      return buildRouteHash("workspace", { workspaceId: route.workspaceId });
     case "workspace-files":
-      return buildExplorerHash(`/workspace-files/${route.workspaceId}`, route.startDirectory);
+      return buildRouteHash("workspace-files", { workspaceId: route.workspaceId, startDirectory: route.startDirectory });
     case "workspace-settings":
-      return `/workspace-settings/${route.workspaceId}`;
+      return buildRouteHash("workspace-settings", { workspaceId: route.workspaceId });
     case "ssh-server":
-      return `/server/${route.serverId}`;
+      return buildRouteHash("ssh-server", { serverId: route.serverId });
     case "vnc-session":
-      return `/server/${route.serverId}/vnc`;
+      return buildRouteHash("vnc-session", { serverId: route.serverId });
     case "ssh-server-settings":
-      return `/server-settings/${route.serverId}`;
+      return buildRouteHash("ssh-server-settings", { serverId: route.serverId });
     case "server-files":
-      return buildExplorerHash(`/server-files/${route.serverId}`, route.startDirectory);
+      return buildRouteHash("server-files", { serverId: route.serverId, startDirectory: route.startDirectory });
     case "server-arise":
-      return `/server-arise/${route.serverId}`;
+      return buildRouteHash("server-arise", { serverId: route.serverId });
     case "settings":
       return "/settings";
     case "agents":
-      return route.workspaceId ? `/workspace/${route.workspaceId}/agents` : "/agents";
+      return buildRouteHash("agents", { workspaceId: route.workspaceId });
     case "rebuild-workspace":
-      return `/rebuild-workspace/${route.workspaceId}`;
+      return buildRouteHash("rebuild-workspace", { workspaceId: route.workspaceId });
     case "restart-workspace":
-      return `/restart-workspace/${route.workspaceId}`;
+      return buildRouteHash("restart-workspace", { workspaceId: route.workspaceId });
     case "compose":
-      return route.scopeId
-        ? `/new/${route.kind}/${route.scopeId}`
-        : `/new/${route.kind}`;
+      return buildRouteHash("compose", { kind: route.kind, scopeId: route.scopeId });
   }
 }
 

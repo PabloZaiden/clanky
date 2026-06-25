@@ -15,10 +15,8 @@ export interface UseAppConfigResult {
   remoteOnly: boolean;
   version: string | null;
   appSettingsResetting: boolean;
-  appSettingsKilling: boolean;
   appSettingsPurgingTerminalTasks: boolean;
   resetAllSettings: () => Promise<boolean>;
-  killServer: () => Promise<boolean>;
   purgeTerminalTasks: () => Promise<PurgeTerminalTasksResult | null>;
 }
 
@@ -28,7 +26,6 @@ export function useAppConfig(): UseAppConfigResult {
   const [remoteOnly, setRemoteOnly] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   const [appSettingsResetting, setAppSettingsResetting] = useState(false);
-  const [appSettingsKilling, setAppSettingsKilling] = useState(false);
   const [appSettingsPurgingTerminalTasks, setAppSettingsPurgingTerminalTasks] = useState(false);
 
   useEffect(() => {
@@ -71,24 +68,6 @@ export function useAppConfig(): UseAppConfigResult {
     }
   }, []);
 
-  const killServer = useCallback(async () => {
-    setAppSettingsKilling(true);
-    try {
-      const response = await appFetch("/api/server/kill", { method: "POST" });
-      if (!response.ok) {
-        log.error("Failed to kill server: HTTP", response.status);
-        toast.error("Failed to kill server");
-      }
-      return response.ok;
-    } catch (error) {
-      log.error("Failed to kill server:", error);
-      toast.error("Failed to kill server");
-      return false;
-    } finally {
-      setAppSettingsKilling(false);
-    }
-  }, []);
-
   const purgeTerminalTasks = useCallback(async (): Promise<PurgeTerminalTasksResult | null> => {
     setAppSettingsPurgingTerminalTasks(true);
     try {
@@ -106,10 +85,8 @@ export function useAppConfig(): UseAppConfigResult {
     remoteOnly,
     version,
     appSettingsResetting,
-    appSettingsKilling,
     appSettingsPurgingTerminalTasks,
     resetAllSettings,
-    killServer,
     purgeTerminalTasks,
   };
 }

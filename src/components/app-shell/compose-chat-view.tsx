@@ -18,7 +18,8 @@ import {
   parseModelKey,
 } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
-import { Button, Modal } from "../common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
 

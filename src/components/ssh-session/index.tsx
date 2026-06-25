@@ -2,12 +2,11 @@
  * Dedicated SSH session terminal view.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
-import { ActionMenu, Button, ConfirmModal, EditIcon, StatusBadge } from "../common";
+import { Button, StatusBadge } from "../common";
 import { useSshSession, useToast } from "../../hooks";
-import { RenameSshSessionModal } from "../RenameSshSessionModal";
 import { isPersistentSshSession, writeTextToClipboard } from "../../utils";
 import { isStandaloneSession } from "./session-utils";
 import {
@@ -29,38 +28,31 @@ import { useTerminalRenderer } from "./use-terminal-renderer";
 import { useFocusMode } from "./use-focus-mode";
 import { FocusModeBar } from "./focus-mode-bar";
 import { getFocusModeViewportStyle, useVisualViewport } from "./use-visual-viewport";
-import type { SidebarPinningState } from "../app-shell/sidebar-pins";
-import { buildSshSessionActionItems } from "../app-shell/shell-action-items";
+import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "../app-shell/main-header-portal";
 
 export interface SshSessionDetailsProps {
   sshSessionId: string;
   onBack?: () => void;
   showBackButton?: boolean;
-  headerOffsetClassName?: string;
   copyTextToClipboard?: (text: string) => Promise<void>;
   forcedFocusMode?: boolean;
-  sidebarPinning?: SidebarPinningState;
 }
 
 export function SshSessionDetails({
   sshSessionId,
   onBack,
   showBackButton = true,
-  headerOffsetClassName,
   copyTextToClipboard = writeTextToClipboard,
   forcedFocusMode = false,
-  sidebarPinning,
 }: SshSessionDetailsProps) {
   const toast = useToast();
   const { error: showErrorToast } = toast;
-  const { session, sessionKind, loading, error, deleteSession, refresh, updateSession } = useSshSession(sshSessionId);
+  const { session, sessionKind, loading, error, deleteSession, refresh } = useSshSession(sshSessionId);
+  const frameworkHeader = useFrameworkMainHeaderSlots();
 
   const terminalContainerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showRenameModal, setShowRenameModal] = useState(false);
 
   const focusTerminal = useCallback(() => {
     terminalRef.current?.focus();
@@ -79,8 +71,6 @@ export function SshSessionDetails({
   const hasPersistentSession = useMemo(() => {
     return session ? isPersistentSshSession(session) : false;
   }, [session]);
-
-  const canRenameSession = sessionKind === "workspace";
 
   const standalone = useStandaloneSession({ session, sessionKind, showErrorToast });
 
@@ -164,16 +154,6 @@ export function SshSessionDetails({
     showErrorToast,
   });
 
-  async function handleDelete() {
-    const success = await deleteSession();
-    if (!success) {
-      showErrorToast(error ?? "Failed to delete SSH session.");
-      return;
-    }
-    setShowDeleteConfirm(false);
-    onBack?.();
-  }
-
   async function handleStandalonePasswordSubmit() {
     if (!session || !isStandaloneSession(session)) {
       return;
@@ -194,7 +174,6 @@ export function SshSessionDetails({
           standalone.setStandalonePassword("");
           standalone.setShowPasswordPrompt(false);
           standalone.setPendingStandaloneAction(null);
-          setShowDeleteConfirm(false);
           onBack?.();
         }
         return;
@@ -214,10 +193,6 @@ export function SshSessionDetails({
     } catch (error) {
       showErrorToast(String(error));
     }
-  }
-
-  async function handleRename(newName: string) {
-    await updateSession({ name: newName });
   }
 
   if (loading && !session) {
@@ -242,15 +217,7 @@ export function SshSessionDetails({
     sendEncodedTerminalKey: keyboard.sendEncodedTerminalKey,
     sendCtrlC: keyboard.sendCtrlC,
   };
-  const headerActionItems = buildSshSessionActionItems({
-    sessionId: session.config.id,
-    includeOpenSession: false,
-    canRename: canRenameSession,
-    onOpenSession: () => {},
-    onRename: () => setShowRenameModal(true),
-    onDelete: () => setShowDeleteConfirm(true),
-    sidebarPinning,
-  });
+  const shouldPublishFrameworkHeader = frameworkHeader.available && !forcedFocusMode;
 
   function renderClipboardFallback(compact: boolean) {
     if (clipboard.pendingTerminalClipboardText === null) {
@@ -275,61 +242,22 @@ export function SshSessionDetails({
     <div
       className={
         isFocusMode
-          ? "flex h-full min-h-0 flex-col bg-[#1e1e1e]"
-          : "h-full min-h-0 flex flex-col bg-gray-50 dark:bg-neutral-900"
+          ? "flex min-h-0 flex-1 flex-col bg-[#1e1e1e]"
+          : "flex min-h-0 flex-1 flex-col bg-gray-50 dark:bg-neutral-900"
       }
       style={focusModeContainerStyle}
     >
-      {/* Header — hidden in focus mode */}
-      {!isFocusMode && (
-        <div className="border-b border-gray-200 bg-white px-3 py-2 dark:border-gray-800 dark:bg-neutral-800">
-          <div
-            className={[
-              headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0",
-              "flex min-h-14 flex-wrap items-center justify-between gap-1.5",
-            ].join(" ")}
-          >
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-              {showBackButton && onBack && (
-                <Button variant="ghost" size="xs" onClick={onBack}>← Back</Button>
-              )}
-              <h1 className="min-w-0 break-words text-base font-semibold text-gray-900 dark:text-gray-100 [overflow-wrap:anywhere]">
-                {session.config.name}
-              </h1>
-              <StatusBadge variant={connection.socketStatus === "open" ? "success" : connection.socketStatus === "connecting" ? "info" : "warning"}>
-                {connection.socketStatus === "open" ? "connected" : connection.socketStatus === "closed" ? "disconnected" : "connecting"}
-              </StatusBadge>
-            </div>
-            <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-              {canRenameSession && (
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => setShowRenameModal(true)}
-                  aria-label="Rename SSH session"
-                  title="Rename SSH session"
-                >
-                  <span className="flex items-center gap-1">
-                    <EditIcon size="h-3.5 w-3.5" />
-                    Rename
-                  </span>
-                </Button>
-              )}
-              {headerActionItems.length > 0 && (
-                <ActionMenu
-                  items={headerActionItems}
-                  ariaLabel={`SSH session actions for ${session.config.name}`}
-                  triggerVariant="ghost"
-                />
-              )}
-              <Button variant="danger" size="xs" onClick={() => setShowDeleteConfirm(true)}>
-                Delete Session
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Embedded focus mode is controlled by its parent (for example, code explorer). */}
+      {shouldPublishFrameworkHeader ? (
+        <FrameworkMainHeaderPortal
+          title={session.config.name}
+          badges={(
+            <StatusBadge variant={connection.socketStatus === "open" ? "success" : connection.socketStatus === "connecting" ? "info" : "warning"}>
+              {connection.socketStatus === "open" ? "connected" : connection.socketStatus === "closed" ? "disconnected" : "connecting"}
+            </StatusBadge>
+          )}
+        />
+      ) : null}
       {/* Main content area */}
       <div
         className={
@@ -385,26 +313,6 @@ export function SshSessionDetails({
         />
       )}
 
-      {/* Modals */}
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={() => void handleDelete()}
-        title="Delete SSH session?"
-        message={hasPersistentSession
-          ? "This removes the Clanky session metadata and attempts to stop the remote persistent session."
-          : "This removes the saved Clanky session metadata. Direct SSH mode does not keep a remote persistent session."}
-        confirmLabel="Delete"
-        loading={false}
-      />
-      {!isFocusMode && (
-        <RenameSshSessionModal
-          isOpen={showRenameModal}
-          onClose={() => setShowRenameModal(false)}
-          currentName={sessionKind === "workspace" ? session.config.name : ""}
-          onRename={handleRename}
-        />
-      )}
       <StandalonePasswordModal
         isOpen={standalone.showPasswordPrompt}
         onClose={() => {

@@ -6,6 +6,7 @@ import type { Chat } from "../../types";
 import { createLogger } from "../../core/logger";
 import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:chats");
 
@@ -73,32 +74,33 @@ export async function saveChat(chat: Chat): Promise<void> {
     INSERT INTO chats (${columns.join(", ")})
     VALUES (${placeholders})
     ON CONFLICT(id) DO UPDATE SET ${updateClause}
+    WHERE chats.user_id = excluded.user_id
   `).run(...values);
 }
 
 export async function loadChat(chatId: string): Promise<Chat | null> {
   const row = getDatabase()
-    .prepare("SELECT * FROM chats WHERE id = ?")
-    .get(chatId) as Record<string, unknown> | null;
+    .prepare("SELECT * FROM chats WHERE id = ? AND user_id = ?")
+    .get(chatId, requirePersistenceUserId()) as Record<string, unknown> | null;
 
   return row ? rowToChat(row) : null;
 }
 
 export async function loadTaskChat(taskId: string): Promise<Chat | null> {
   const row = getDatabase()
-    .prepare("SELECT * FROM chats WHERE task_id = ? AND scope = 'task' LIMIT 1")
-    .get(taskId) as Record<string, unknown> | null;
+    .prepare("SELECT * FROM chats WHERE task_id = ? AND scope = 'task' AND user_id = ? LIMIT 1")
+    .get(taskId, requirePersistenceUserId()) as Record<string, unknown> | null;
 
   return row ? rowToChat(row) : null;
 }
 
 export async function deleteChat(chatId: string): Promise<boolean> {
-  const result = getDatabase().prepare("DELETE FROM chats WHERE id = ?").run(chatId);
+  const result = getDatabase().prepare("DELETE FROM chats WHERE id = ? AND user_id = ?").run(chatId, requirePersistenceUserId());
   return result.changes > 0;
 }
 
 export async function deleteChatsByTaskId(taskId: string): Promise<number> {
-  const result = getDatabase().prepare("DELETE FROM chats WHERE task_id = ?").run(taskId);
+  const result = getDatabase().prepare("DELETE FROM chats WHERE task_id = ? AND user_id = ?").run(taskId, requirePersistenceUserId());
   return result.changes;
 }
 
@@ -108,8 +110,8 @@ export async function listChats(): Promise<Chat[]> {
 
 export async function listChatSummaries(): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE scope = 'workspace' ORDER BY created_at DESC`)
-    .all() as Record<string, unknown>[];
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE scope = 'workspace' AND user_id = ? ORDER BY created_at DESC`)
+    .all(requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 
@@ -119,8 +121,8 @@ export async function listChatsByWorkspace(workspaceId: string): Promise<Chat[]>
 
 export async function listChatSummariesByWorkspace(workspaceId: string): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE workspace_id = ? AND scope = 'workspace' ORDER BY created_at DESC`)
-    .all(workspaceId) as Record<string, unknown>[];
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE workspace_id = ? AND scope = 'workspace' AND user_id = ? ORDER BY created_at DESC`)
+    .all(workspaceId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 
@@ -130,8 +132,8 @@ export async function listChatsBySshServer(sshServerId: string): Promise<Chat[]>
 
 export async function listChatSummariesBySshServer(sshServerId: string): Promise<Chat[]> {
   const rows = getDatabase()
-    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE ssh_server_id = ? AND source_kind = 'ssh_server' AND scope = 'workspace' ORDER BY created_at DESC`)
-    .all(sshServerId) as Record<string, unknown>[];
+    .prepare(`SELECT ${CHAT_LIST_COLUMNS} FROM chats WHERE ssh_server_id = ? AND source_kind = 'ssh_server' AND scope = 'workspace' AND user_id = ? ORDER BY created_at DESC`)
+    .all(sshServerId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map((row) => createChatListSnapshot(rowToChat(row)));
 }
 
@@ -154,7 +156,7 @@ export async function getWorkspaceChatNameStats(
           END
         ), 0) AS max_generated_suffix
       FROM chats
-      WHERE workspace_id = ? AND scope = 'workspace'
+      WHERE workspace_id = ? AND scope = 'workspace' AND user_id = ?
     `)
     .get(
       generatedNamePrefix.length,
@@ -164,6 +166,7 @@ export async function getWorkspaceChatNameStats(
       suffixStart,
       suffixStart,
       workspaceId,
+      requirePersistenceUserId(),
     ) as { standalone_chat_count: number; max_generated_suffix: number } | null;
 
   return {
@@ -173,5 +176,5 @@ export async function getWorkspaceChatNameStats(
 }
 
 export async function chatExists(chatId: string): Promise<boolean> {
-  return getDatabase().prepare("SELECT 1 FROM chats WHERE id = ? LIMIT 1").get(chatId) !== null;
+  return getDatabase().prepare("SELECT 1 FROM chats WHERE id = ? AND user_id = ? LIMIT 1").get(chatId, requirePersistenceUserId()) !== null;
 }

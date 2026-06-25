@@ -6,6 +6,7 @@ import type { Server } from "bun";
 import { portForwardManager } from "../core/port-forward-manager";
 import { errorResponse } from "./helpers";
 import type { WebSocketData } from "./websocket";
+import { requireCurrentUser } from "../core/user-context";
 
 function getBasePath(taskId: string, forwardId: string): string {
   return `/task/${taskId}/port/${forwardId}`;
@@ -162,6 +163,7 @@ async function upgradeProxyWebSocket(
   }
 
   const forward = forwardOrResponse;
+  const user = requireCurrentUser();
   const url = new URL(req.url);
   const targetUrl = `ws://127.0.0.1:${String(forward.config.localPort)}${normalizeProxyPath(rawPath)}${url.search}`;
   const upgraded = server.upgrade(req, {
@@ -170,6 +172,7 @@ async function upgradeProxyWebSocket(
       portForwardId: forwardId,
       portForwardMode: true,
       proxyTargetUrl: targetUrl,
+      user,
     } as WebSocketData,
   });
 

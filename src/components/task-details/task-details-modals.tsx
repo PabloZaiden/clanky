@@ -6,7 +6,7 @@
 import type { FileContentResponse } from "../../types";
 import type { TaskState } from "../../types/task";
 import type { UseTaskActionsResult } from "./use-task-actions";
-import { ConfirmModal } from "../common";
+import { ConfirmModal } from "@pablozaiden/webapp/web";
 import {
   AcceptTaskModal,
   AddressCommentsModal,

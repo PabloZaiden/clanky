@@ -12,6 +12,7 @@ import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, SshSessionEve
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
+import { runWithCurrentUser } from "../../core/user-context";
 
 const log = createLogger("api:websocket");
 
@@ -122,7 +123,12 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   }
 
   if (vncMode && vncSessionId) {
-    void vncSessionManager.openTcpSocket(vncSessionId).then(({ socket }) => {
+    if (!ws.data.user) {
+      ws.close(1008, "Authenticated user context is required for VNC connections");
+      return;
+    }
+
+    void runWithCurrentUser(ws.data.user, () => vncSessionManager.openTcpSocket(vncSessionId)).then(({ socket }) => {
       ws.data.vncSocket = socket;
       const pendingMessages = ws.data.pendingVncMessages ?? [];
       ws.data.pendingVncMessages = undefined;

@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef, type FormEvent } from "react";
-import { Modal } from "../common";
+import { Modal } from "@pablozaiden/webapp/web";
 import { ProvisioningJobView } from "../ProvisioningJobView";
 import { getStoredSshServerCredential } from "../../lib/ssh-browser-credentials";
 import type { AgentProvider, ServerSettings, SshServer } from "../../types";

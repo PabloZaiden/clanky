@@ -27,6 +27,7 @@ import {
   resolveAutomaticPrFlowReviewThread,
 } from "./automatic-pr-flow-github";
 import { extractAutomaticPrFeedback } from "./automatic-pr-feedback";
+import { runForEachActiveUser } from "./background-users";
 
 const log = createLogger("core:pushed-task-monitor");
 
@@ -173,13 +174,15 @@ export class PushedTaskMonitor {
 
     this.isRunning = true;
     try {
-      const tasks = await this.deps.listTasks();
-      for (const task of tasks) {
-        if (!isEligibleForMonitoring(task)) {
-          continue;
+      await runForEachActiveUser(async () => {
+        const tasks = await this.deps.listTasks();
+        for (const task of tasks) {
+          if (!isEligibleForMonitoring(task)) {
+            continue;
+          }
+          await this.monitorTask(task);
         }
-        await this.monitorTask(task);
-      }
+      });
     } catch (error) {
       log.error("Pushed task monitor run failed", {
         error: String(error),

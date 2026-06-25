@@ -1,7 +1,7 @@
 import { runUpdateCommand as runInstallerUpdateCommand, type UpdaterDependencies } from "@pablozaiden/installer";
 
 const GITHUB_REPOSITORY = "pablozaiden/clanky";
-const CLI_BINARY_NAME = "clanky-cli";
+const CLI_BINARY_NAME = "clanky";
 const SERVER_BINARY_NAME = "clanky";
 
 export interface UpdateCommandOptions {

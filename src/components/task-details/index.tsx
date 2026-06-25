@@ -3,7 +3,7 @@
  */
 
 import { useTask, useTaskPortForwards, useMarkdownPreference, useToast } from "../../hooks";
-import { ActionMenu, Button, StatusBadge } from "../common";
+import { Button, StatusBadge } from "../common";
 import { TaskActionBar } from "../TaskActionBar";
 import {
   getTaskStatusPill,
@@ -26,8 +26,7 @@ import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
 import { getFocusModeViewportStyle, useVisualViewport } from "../ssh-session/use-visual-viewport";
 import { replaceShellRoute } from "../app-shell/shell-navigation";
-import type { SidebarPinningState } from "../app-shell/sidebar-pins";
-import { buildTaskActionItems } from "../app-shell/shell-action-items";
+import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "../app-shell/main-header-portal";
 
 export interface TaskDetailsProps {
   /** Task ID to display */
@@ -36,24 +35,18 @@ export interface TaskDetailsProps {
   onBack?: () => void;
   /** Whether to render the back button in shell layouts */
   showBackButton?: boolean;
-  /** Left offset used when the shell keeps the collapsed-sidebar trigger visible */
-  headerOffsetClassName?: string;
   /** Navigate to the SSH session details view */
   onSelectSshSession?: (sshSessionId: string) => void;
   /** Navigate to the task-scoped code explorer view */
   onOpenTaskFiles?: (taskId: string) => void;
-  /** Shared sidebar pinning state for shell action menus */
-  sidebarPinning?: SidebarPinningState;
 }
 
 export function TaskDetails({
   taskId,
   onBack,
   showBackButton = true,
-  headerOffsetClassName,
   onSelectSshSession,
   onOpenTaskFiles,
-  sidebarPinning,
 }: TaskDetailsProps) {
    const {
       task, loading, error, messages, toolCalls, logs, gitChangeCounter,
@@ -105,6 +98,7 @@ export function TaskDetails({
   const isLogFocusActive = activeTab === "log" && isLogFocusMode && !!task;
   const viewport = useVisualViewport(isLogFocusActive);
   const focusModeContainerStyle = getFocusModeViewportStyle(isLogFocusActive, viewport);
+  const frameworkHeader = useFrameworkMainHeaderSlots();
 
   if (loading && !task) {
     return (
@@ -141,21 +135,6 @@ export function TaskDetails({
   const visibleTabs = tabs;
   const showActionBar = activeTab !== "chat" && (isActive || isPlanning || canTerminalFollowUp);
   const errorBannerSpacingClassName = isLogFocusActive ? "mx-3 mt-3 mb-3" : "mx-3 mt-3 mb-3 sm:mx-4";
-  const headerActionItems = buildTaskActionItems({
-    taskId: config.id,
-    onOpenCodeExplorer: () => {
-      if (onOpenTaskFiles) {
-        onOpenTaskFiles(config.id);
-        return;
-      }
-      replaceShellRoute({
-        view: "code-explorer",
-        target: { contentType: "task", taskId: config.id },
-      });
-    },
-    sidebarPinning,
-  });
-
   return (
     <div
       className={
@@ -165,30 +144,16 @@ export function TaskDetails({
       }
       style={focusModeContainerStyle}
     >
-      {!isLogFocusActive && (
-        <header className="bg-white dark:bg-neutral-800 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 safe-area-top">
-          <div className="px-4 sm:px-6 lg:px-8 py-2">
-            <div
-              data-testid="task-header-primary-row"
-              className={[(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "flex min-h-14 items-center gap-2"].join(" ")}
-            >
-              {showBackButton && onBack && <Button variant="ghost" size="sm" onClick={onBack}>← Back</Button>}
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-gray-900 dark:text-gray-100">{config.name}</h1>
-                <StatusBadge variant={statusPill.variant} size="sm" className="shrink-0">
-                  {statusPill.label}
-                </StatusBadge>
-              </div>
-              {headerActionItems.length > 0 && (
-                <div className="ml-auto flex shrink-0 items-center justify-end">
-                  <ActionMenu items={headerActionItems} ariaLabel={`Task actions for ${config.name}`} />
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-      )}
-
+      {!isLogFocusActive && frameworkHeader.available ? (
+        <FrameworkMainHeaderPortal
+          title={config.name}
+          badges={(
+            <StatusBadge variant={statusPill.variant} size="sm" className="shrink-0">
+              {statusPill.label}
+            </StatusBadge>
+          )}
+        />
+      ) : null}
       <main className="flex flex-1 min-h-0 flex-col overflow-hidden">
         {error && (
           <div className={`${errorBannerSpacingClassName} rounded-md bg-red-50 dark:bg-red-900/20 p-3 flex-shrink-0`}>

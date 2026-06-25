@@ -7,6 +7,7 @@ import type { Task, TaskStatus } from "../../types";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { rowToTask } from "./helpers";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:tasks");
 const STALE_TASK_RESET_MESSAGE = "Forcefully stopped by connection reset";
@@ -39,17 +40,18 @@ const ACTIVE_TASK_STATUSES: TaskStatus[] = [
 export async function getActiveTaskByDirectory(directory: string, workspaceId: string): Promise<Task | null> {
   log.debug("Getting active task by directory and workspace", { directory, workspaceId });
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
 
   // Build placeholders for the IN clause
   const placeholders = ACTIVE_TASK_STATUSES.map(() => "?").join(", ");
 
   const stmt = db.prepare(`
     SELECT * FROM tasks 
-    WHERE directory = ? AND workspace_id = ? AND status IN (${placeholders})
+    WHERE directory = ? AND workspace_id = ? AND user_id = ? AND status IN (${placeholders})
     LIMIT 1
   `);
 
-  const row = stmt.get(directory, workspaceId, ...ACTIVE_TASK_STATUSES) as Record<string, unknown> | null;
+  const row = stmt.get(directory, workspaceId, userId, ...ACTIVE_TASK_STATUSES) as Record<string, unknown> | null;
 
   if (!row) {
     log.debug("No active task found for directory", { directory, workspaceId });
@@ -84,6 +86,7 @@ export async function resetStaleTask(taskId: string): Promise<boolean> {
   log.debug("Resetting stale task", { taskId });
   const db = getDatabase();
   const now = new Date().toISOString();
+  const userId = requirePersistenceUserId();
 
   const placeholders = STALE_TASK_STATUSES.map(() => "?").join(", ");
 
@@ -94,7 +97,7 @@ export async function resetStaleTask(taskId: string): Promise<boolean> {
         error_iteration = ${STALE_TASK_RESET_ERROR_ITERATION},
         error_timestamp = ?,
         completed_at = ?
-    WHERE id = ? AND status IN (${placeholders})
+    WHERE id = ? AND user_id = ? AND status IN (${placeholders})
   `);
 
   const result = stmt.run(
@@ -102,6 +105,7 @@ export async function resetStaleTask(taskId: string): Promise<boolean> {
     now,
     now,
     taskId,
+    userId,
     ...STALE_TASK_STATUSES,
   );
 
@@ -130,6 +134,7 @@ export async function resetStaleTasks(): Promise<number> {
   log.debug("Resetting stale tasks");
   const db = getDatabase();
   const now = new Date().toISOString();
+  const userId = requirePersistenceUserId();
 
   // Build placeholders for the IN clause
   const placeholders = STALE_TASK_STATUSES.map(() => "?").join(", ");
@@ -141,10 +146,10 @@ export async function resetStaleTasks(): Promise<number> {
         error_iteration = ${STALE_TASK_RESET_ERROR_ITERATION},
         error_timestamp = ?,
         completed_at = ?
-    WHERE status IN (${placeholders})
+    WHERE user_id = ? AND status IN (${placeholders})
   `);
 
-  const result = stmt.run(STALE_TASK_RESET_MESSAGE, now, now, ...STALE_TASK_STATUSES);
+  const result = stmt.run(STALE_TASK_RESET_MESSAGE, now, now, userId, ...STALE_TASK_STATUSES);
 
   if (result.changes > 0) {
     log.info("Reset stale tasks", { count: result.changes });

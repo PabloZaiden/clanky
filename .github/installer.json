@@ -6,12 +6,7 @@
     {
       "name": "clanky",
       "assetPrefix": "clanky",
-      "postInstallMessage": "Run 'clanky' to start the local server."
-    },
-    {
-      "name": "clanky-cli",
-      "assetPrefix": "clanky-cli",
-      "postInstallMessage": "Run 'clanky-cli --help' to use the API client."
+      "postInstallMessage": "Run 'clanky serve' to start the local server, or 'clanky --help' for CLI commands."
     }
   ],
   "checksums": {

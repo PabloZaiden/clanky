@@ -43,7 +43,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Clanky data directory (Docker volume mountable)
 # Keep .gitkeep files but ignore all data
 data/*
-apps/server/data
 
 # Clanky planning directory
 .clanky-planning/*

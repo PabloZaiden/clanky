@@ -1,6 +1,7 @@
 import { memo, useMemo, type ReactNode } from "react";
+import { ActionMenu, type ActionMenuItem } from "@pablozaiden/webapp/web";
 import type { WorkspaceFileNode } from "../../types";
-import { ActionMenu, Button, CopyPathIcon, RefreshIcon, SidebarIcon, type ActionMenuItem } from "../common";
+import { Button, CopyPathIcon, RefreshIcon, SidebarIcon } from "../common";
 
 function Chevron({ expanded }: { expanded: boolean }) {
   return (
@@ -185,38 +186,38 @@ function WorkspaceFileTreeComponent({
     {
       id: "root",
       label: "Change explorer root",
-      onClick: onOpenRootPicker,
+      onAction: onOpenRootPicker,
     },
     {
       id: "hidden",
       label: showHiddenFiles ? "Hide hidden files" : "Show hidden files",
       disabled: loading,
-      onClick: () => void onToggleShowHiddenFiles(),
+      onAction: () => void onToggleShowHiddenFiles(),
     },
     {
       id: "download",
       label: "Download selected file",
       disabled: !canDownloadSelectedFile,
-      onClick: () => void onDownloadSelectedFile(),
+      onAction: () => void onDownloadSelectedFile(),
     },
     {
       id: "upload",
       label: "Upload file",
       disabled: !canUploadFile,
-      onClick: onUploadFile,
+      onAction: onUploadFile,
     },
     {
       id: "rename",
       label: "Rename selected item",
       disabled: !canRenameSelectedNode,
-      onClick: onRenameSelectedNode,
+      onAction: onRenameSelectedNode,
     },
     {
       id: "delete",
       label: "Delete selected item",
       disabled: !canDeleteSelectedNode,
       destructive: true,
-      onClick: onDeleteSelectedNode,
+      onAction: onDeleteSelectedNode,
     },
   ], [
     canDeleteSelectedNode,

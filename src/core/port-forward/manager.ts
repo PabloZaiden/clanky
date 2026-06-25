@@ -11,6 +11,7 @@ import {
   listPortForwardsByTaskId,
   listPortForwardsBySshSessionId,
   listPortForwardsByStatuses,
+  listReservedPortForwardLocalPortsForMaintenance,
   savePortForward,
 } from "../../persistence/forwarded-ports";
 import { loadTask } from "../../persistence/tasks";
@@ -31,6 +32,7 @@ import {
   isActiveLocalPortConstraintError,
   isActiveWorkspaceRemotePortConstraintError,
 } from "./constraint-helpers";
+import { requireCurrentUser, runWithCurrentUser } from "../user-context";
 
 const log = createLogger("core:port-forward-manager");
 const DATABASE_NOT_INITIALIZED_MESSAGE = "Database not initialized. Call initializeDatabase() first.";
@@ -46,24 +48,27 @@ export class PortForwardManager {
     stdio: ["ignore", "ignore", "pipe"],
   });
   private localPortAllocator: LocalPortAllocator = ensureLocalPortAvailable;
-  private initialized = false;
-  private initializing: Promise<void> | null = null;
+  private initializedUserIds = new Set<string>();
+  private initializingByUserId = new Map<string, Promise<void>>();
 
   async initialize(): Promise<void> {
-    if (this.initialized) {
+    const user = requireCurrentUser();
+    if (this.initializedUserIds.has(user.id)) {
       return;
     }
-    if (this.initializing) {
-      await this.initializing;
+    const existing = this.initializingByUserId.get(user.id);
+    if (existing) {
+      await existing;
       return;
     }
 
-    this.initializing = this.reconcilePersistedForwards();
+    const initializing = this.reconcilePersistedForwards();
+    this.initializingByUserId.set(user.id, initializing);
     try {
-      await this.initializing;
-      this.initialized = true;
+      await initializing;
+      this.initializedUserIds.add(user.id);
     } finally {
-      this.initializing = null;
+      this.initializingByUserId.delete(user.id);
     }
   }
 
@@ -184,8 +189,8 @@ export class PortForwardManager {
       stdio: ["ignore", "ignore", "pipe"],
     }));
     this.runtimeHandles.clear();
-    this.initialized = false;
-    this.initializing = null;
+    this.initializedUserIds.clear();
+    this.initializingByUserId.clear();
   }
 
   setLocalPortAllocatorForTesting(allocator: LocalPortAllocator | null): void {
@@ -209,6 +214,7 @@ export class PortForwardManager {
     const runtimeHandle: RuntimeHandle = {
       child,
       deleting: false,
+      user: requireCurrentUser(),
     };
     this.runtimeHandles.set(forward.config.id, runtimeHandle);
 
@@ -216,7 +222,9 @@ export class PortForwardManager {
       const handle = this.runtimeHandles.get(forward.config.id);
       const deleting = handle?.deleting ?? false;
       this.runtimeHandles.delete(forward.config.id);
-      void this.handleUnexpectedExit(forward.config.id, deleting, code, signal);
+      if (handle) {
+        void runWithCurrentUser(handle.user, () => this.handleUnexpectedExit(forward.config.id, deleting, code, signal));
+      }
     });
   }
 
@@ -309,12 +317,7 @@ export class PortForwardManager {
   }
 
   private async getReservedLocalPorts(): Promise<Set<number>> {
-    const reserved = new Set<number>();
-    const forwards = await listPortForwardsByStatuses(["starting", "active", "stopping"]);
-    for (const forward of forwards) {
-      reserved.add(forward.config.localPort);
-    }
-    return reserved;
+    return await listReservedPortForwardLocalPortsForMaintenance(["starting", "active", "stopping"]);
   }
 
   private async reserveStartingForward(options: {

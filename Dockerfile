@@ -1,16 +1,22 @@
 # Build stage
 FROM oven/bun:1 AS builder
 
-WORKDIR /app
+WORKDIR /clanky
+ARG TARGETARCH
 
-# Copy repository
 COPY . .
 
 # Install dependencies
 RUN bun install --frozen-lockfile
 
-# Build the standalone server binary
-RUN cd apps/server && bun run build
+# Build the standalone product binary
+RUN case "$TARGETARCH" in \
+      amd64) BUN_TARGET=bun-linux-x64 ;; \
+      arm64) BUN_TARGET=bun-linux-arm64 ;; \
+      *) echo "Unsupported architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    bun src/build.ts --target="$BUN_TARGET" && \
+    cp "dist/clanky-${BUN_TARGET#bun-}" /tmp/clanky
 
 # Production stage - minimal image
 FROM debian:bookworm-slim
@@ -29,8 +35,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sshpass \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy the standalone server binary from builder
-COPY --from=builder /app/apps/server/dist/clanky /app/clanky
+# Copy the standalone product binary from builder
+COPY --from=builder /tmp/clanky /app/clanky
 
 # Create a non-root user for running the application
 RUN groupadd --system clanky && \
@@ -62,5 +68,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # Use tini as init process for proper signal handling
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# Run the server
-CMD ["/app/clanky"]
+# Run the server subcommand
+CMD ["/app/clanky", "serve"]

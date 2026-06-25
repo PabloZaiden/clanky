@@ -1,4 +1,5 @@
 import type { SshTerminalBridge } from "../../core/ssh-terminal-bridge";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 /**
  * WebSocket client data attached to each connection.
@@ -31,6 +32,8 @@ export interface WebSocketData {
   portForwardMode?: boolean;
   /** Whether this socket bridges noVNC RFB traffic to a local TCP tunnel */
   vncMode?: boolean;
+  /** Authenticated framework user for websocket operations that need persistence ownership */
+  user?: CurrentUser;
   /** Active TCP socket for VNC bridge traffic */
   vncSocket?: import("node:net").Socket;
   /** RFB payloads received before the VNC TCP socket is ready */

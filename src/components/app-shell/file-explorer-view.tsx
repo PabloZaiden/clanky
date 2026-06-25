@@ -5,7 +5,8 @@ import { useFileExplorer, useFileExplorerFullTreePreference, useToast } from "..
 import { storeSshServerPassword } from "../../lib/ssh-browser-credentials";
 import { formatFileSize, writeTextToClipboard } from "../../utils";
 import { SshSessionDetails, type SshSessionDetailsProps } from "../SshSessionDetails";
-import { Button, ConfirmModal, Modal } from "../common";
+import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
 import type { CodeExplorerTerminalOptions } from "./code-explorer-targets";
 import { requireFileExplorerServerCredentialToken } from "../../hooks/workspaceFileActions";
 import { ShellPanel } from "./shell-panel";
@@ -82,7 +83,7 @@ export function FileExplorerView({
   title,
   description,
   defaultRootDirectory,
-  backLabel,
+  backLabel: _backLabel,
   backRoute,
   headerOffsetClassName,
   onNavigate,
@@ -575,13 +576,14 @@ export function FileExplorerView({
       actions={(
         <>
           {headerActions}
-          <div className="hidden sm:block">
+          <div className="hidden flex-shrink-0 sm:block">
             <Button
               variant="ghost"
               size="sm"
+              className="whitespace-nowrap"
               onClick={() => onNavigate(backRoute)}
             >
-              {backLabel}
+              Back
             </Button>
           </div>
         </>
@@ -737,7 +739,6 @@ export function FileExplorerView({
                   <SshSessionDetailsComponent
                     sshSessionId={selectedSessionId}
                     showBackButton={false}
-                    headerOffsetClassName={headerOffsetClassName}
                     forcedFocusMode={true}
                   />
                 ) : (

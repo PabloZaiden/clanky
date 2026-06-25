@@ -6,11 +6,13 @@ import type {
   AgentState,
 } from "../../types/agent";
 import { createLogger } from "../../core/logger";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:agents");
 
 export const ALLOWED_AGENT_COLUMNS = new Set([
   "id",
+  "user_id",
   "name",
   "workspace_id",
   "directory",
@@ -41,6 +43,7 @@ export const ALLOWED_AGENT_COLUMNS = new Set([
 
 export const ALLOWED_AGENT_RUN_COLUMNS = new Set([
   "id",
+  "user_id",
   "agent_id",
   "chat_id",
   "status",
@@ -104,6 +107,7 @@ export function agentToRow(agent: Agent): Record<string, unknown> {
   const { config, state } = agent;
   return {
     id: config.id,
+    user_id: requirePersistenceUserId(),
     name: config.name,
     workspace_id: config.workspaceId,
     directory: config.directory,
@@ -186,6 +190,7 @@ export function rowToAgent(row: Record<string, unknown>): Agent {
 export function agentRunToRow(run: AgentRun): Record<string, unknown> {
   return {
     id: run.id,
+    user_id: requirePersistenceUserId(),
     agent_id: run.agentId,
     chat_id: run.chatId ?? null,
     status: run.status,

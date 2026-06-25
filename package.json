@@ -4,29 +4,23 @@
   "version": "0.0.0-development",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
   "scripts": {
-    "dev": "bun run dev:server",
-    "dev:server": "cd apps/server && bun run dev",
-    "dev:cli": "cd apps/cli && bun run dev",
-    "start": "bun run start:server",
-    "start:server": "cd apps/server && bun run start",
+    "dev": "bun run build:novnc && bun --hot src/index.ts serve",
+    "dev:server": "bun run dev",
+    "start": "bun src/index.ts serve",
+    "start:server": "bun run start",
     "build": "bun scripts/run-build.ts",
     "build:novnc": "bun scripts/novnc-vendor.ts",
-    "build:workspaces": "bun scripts/run-workspace-script.ts build",
     "test": "bun scripts/run-tests.ts all",
     "test:backend": "bun scripts/run-tests.ts backend",
     "test:frontend": "bun scripts/run-tests.ts frontend",
-    "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo",
-    "tsc:workspaces": "bun scripts/run-workspace-script.ts build"
+    "tsc": "mkdir -p .cache/tsc && bunx tsc --noEmit --pretty false --incremental --tsBuildInfoFile .cache/tsc/build.tsbuildinfo"
   },
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
     "@novnc/novnc": "1.7.0",
     "@pablozaiden/installer": "0.0.6",
+    "@pablozaiden/webapp": "0.3.1",
     "@simplewebauthn/browser": "13.3.0",
     "@simplewebauthn/server": "13.3.1",
     "@tailwindcss/typography": "0.5.20",

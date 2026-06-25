@@ -3,6 +3,7 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { CommandExecutor } from "../command-executor";
 import type { SshConnectionMode, SshServerSession, SshSession, Workspace } from "../../types";
 import { getWorkspace } from "../../persistence/workspaces";
@@ -32,6 +33,7 @@ import {
   buildDirectResizeCommand,
 } from "./command-builders";
 import { extractClipboardSequences } from "./osc52";
+import { requireCurrentUser, runWithCurrentUser } from "../user-context";
 
 const log = createLogger("core:ssh-terminal-bridge");
 
@@ -50,6 +52,7 @@ export class SshTerminalBridge {
   private startupError: string | undefined;
   private stdoutBuffer = "";
   private stderrBuffer = "";
+  private user: CurrentUser | null = null;
 
   constructor(
     private readonly sessionId: string,
@@ -77,6 +80,7 @@ export class SshTerminalBridge {
   }
 
   private async connectInternal(): Promise<void> {
+    this.user = requireCurrentUser();
     this.closing = false;
     this.ready = false;
     this.skipCloseStatusUpdate = false;
@@ -144,7 +148,7 @@ export class SshTerminalBridge {
 
           try {
             if (!skipStatusUpdate) {
-              await this.markStatus(nextStatus, error);
+              await this.runWithBridgeUser(() => this.markStatus(nextStatus, error));
             }
           } catch (statusError) {
             log.error("Failed to update SSH session status after terminal close", {
@@ -378,7 +382,15 @@ export class SshTerminalBridge {
       await sshServerManager.markStatus(this.sessionId, status, error);
       return;
     }
+
     await sshSessionManager.markStatus(this.sessionId, status, error);
+  }
+
+  private runWithBridgeUser<T>(callback: () => T): T {
+    if (!this.user) {
+      throw new Error("Current user context is required");
+    }
+    return runWithCurrentUser(this.user, callback);
   }
 
   private async getCommandExecutor(): Promise<CommandExecutor> {

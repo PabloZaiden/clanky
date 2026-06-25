@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import net from "node:net";
 import type { ChildProcess } from "node:child_process";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 import type { VncSession } from "../types";
 import {
   deleteVncSession,
@@ -8,6 +9,7 @@ import {
   getVncSession,
   listVncSessionsBySshServerId,
   listVncSessionsByStatuses,
+  listReservedVncLocalPortsForMaintenance,
   saveVncSession,
 } from "../persistence/vnc-sessions";
 import { getSshServerConfig } from "../persistence/ssh-servers";
@@ -16,6 +18,7 @@ import { buildSshProcessConfig, getSshConnectionTargetFromServer } from "./ssh-c
 import { ensureLocalPortAvailable } from "./port-forward/port-allocator";
 import { isProcessAlive, waitForProcessExit, waitForProcessStartup } from "./port-forward/process-lifecycle";
 import { createLogger } from "./logger";
+import { requireCurrentUser, runWithCurrentUser } from "./user-context";
 
 const log = createLogger("core:vnc-session-manager");
 const VNC_REMOTE_HOST = "127.0.0.1";
@@ -27,27 +30,31 @@ const TCP_CONNECT_TIMEOUT_MS = 2_000;
 interface RuntimeHandle {
   child: ChildProcess;
   deleting: boolean;
+  user: CurrentUser;
 }
 
 export class VncSessionManager {
   private runtimeHandles = new Map<string, RuntimeHandle>();
-  private initialized = false;
-  private initializing: Promise<void> | null = null;
+  private initializedUserIds = new Set<string>();
+  private initializingByUserId = new Map<string, Promise<void>>();
 
   async initialize(): Promise<void> {
-    if (this.initialized) {
+    const user = requireCurrentUser();
+    if (this.initializedUserIds.has(user.id)) {
       return;
     }
-    if (this.initializing) {
-      await this.initializing;
+    const existing = this.initializingByUserId.get(user.id);
+    if (existing) {
+      await existing;
       return;
     }
-    this.initializing = this.reconcilePersistedSessions();
+    const initializing = this.reconcilePersistedSessions();
+    this.initializingByUserId.set(user.id, initializing);
     try {
-      await this.initializing;
-      this.initialized = true;
+      await initializing;
+      this.initializedUserIds.add(user.id);
     } finally {
-      this.initializing = null;
+      this.initializingByUserId.delete(user.id);
     }
   }
 
@@ -103,7 +110,7 @@ export class VncSessionManager {
         env: spawnConfig.env,
         stdio: ["ignore", "ignore", "pipe"],
       });
-      this.attachRuntimeHandle(session, child);
+      this.attachRuntimeHandle(session, child, requireCurrentUser());
       await waitForProcessStartup(child);
       await this.waitForLocalPort(session.config.localPort);
       const activeSession: VncSession = {
@@ -168,13 +175,13 @@ export class VncSessionManager {
     });
   }
 
-  private attachRuntimeHandle(session: VncSession, child: ChildProcess): void {
-    this.runtimeHandles.set(session.config.id, { child, deleting: false });
+  private attachRuntimeHandle(session: VncSession, child: ChildProcess, user: CurrentUser): void {
+    this.runtimeHandles.set(session.config.id, { child, deleting: false, user });
     child.once("exit", (code, signal) => {
       const handle = this.runtimeHandles.get(session.config.id);
       this.runtimeHandles.delete(session.config.id);
-      if (!handle?.deleting) {
-        void this.markUnexpectedExit(session.config.id, code, signal);
+      if (handle && !handle.deleting) {
+        void runWithCurrentUser(handle.user, () => this.markUnexpectedExit(session.config.id, code, signal));
       }
     });
   }
@@ -221,8 +228,7 @@ export class VncSessionManager {
   }
 
   private async getReservedLocalPorts(): Promise<Set<number>> {
-    const sessions = await listVncSessionsByStatuses(["starting", "active", "stopping"]);
-    return new Set(sessions.map((session) => session.config.localPort));
+    return await listReservedVncLocalPortsForMaintenance(["starting", "active", "stopping"]);
   }
 
   private async waitForLocalPort(localPort: number): Promise<void> {

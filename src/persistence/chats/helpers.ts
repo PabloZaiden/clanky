@@ -5,11 +5,13 @@
 import type { Chat, ChatConfig, ChatSource, ChatState } from "../../types";
 import { DEFAULT_CHAT_CONFIG } from "../../types/chat";
 import { createLogger } from "../../core/logger";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:chats");
 
 export const ALLOWED_CHAT_COLUMNS = new Set([
   "id",
+  "user_id",
   "name",
   "source_kind",
   "workspace_id",
@@ -101,6 +103,7 @@ export function chatToRow(chat: Chat): Record<string, unknown> {
   };
   return {
     id: config.id,
+    user_id: requirePersistenceUserId(),
     name: config.name,
     source_kind: source.kind,
     workspace_id: source.kind === "workspace" ? source.workspaceId : null,

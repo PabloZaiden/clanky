@@ -7,4 +7,4 @@ export {
   type CliWsConnection,
   type CliWsDependencies,
   type WsCommandOptions,
-} from "@clanky/client-sdk/websocket";
+} from "@/client-sdk/websocket";

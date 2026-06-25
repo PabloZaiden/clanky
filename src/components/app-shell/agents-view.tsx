@@ -8,9 +8,11 @@ import { mergeToolCallRecord, upsertToolCallExtra } from "../../types/tool-call"
 import { ConversationViewer } from "../LogViewer";
 import { ModelSelector, makeModelKey, parseModelKey } from "../ModelSelector";
 import { BranchSelector } from "../create-task/branch-selector";
-import { ActionMenu, Button, ConfirmModal, type ActionMenuItem } from "../common";
+import { ConfirmModal } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
 import { ShellPanel } from "./shell-panel";
 import type { ShellRoute } from "./shell-types";
+import { FrameworkMainHeaderPortal } from "./main-header-portal";
 
 const inputClassName = "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
 const compactInputClassName = "mt-1 block rounded-md border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-300 dark:border-gray-600 dark:bg-neutral-700 dark:text-gray-100 dark:focus:ring-gray-600 disabled:opacity-60";
@@ -560,16 +562,13 @@ function AgentDetail({
   currentBranch,
   defaultBranch,
   headerOffsetClassName,
+  editing,
   onWorkspaceChange,
   onUpdateAgent,
-  onRunAgent,
-  onInterruptAgent,
-  onPauseAgent,
-  onResumeAgent,
-  onDeleteAgent,
   onDeleteRun,
-  onPurgeRuns,
   onRefreshRuns,
+  onCancelEdit,
+  onSavedEdit,
   onNavigate,
 }: {
   agent: Agent;
@@ -586,101 +585,22 @@ function AgentDetail({
   currentBranch: string;
   defaultBranch: string;
   headerOffsetClassName: string;
+  editing: boolean;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
-  onRunAgent: UseAgentsResult["runAgent"];
-  onInterruptAgent: UseAgentsResult["interruptAgent"];
-  onPauseAgent: UseAgentsResult["pauseAgent"];
-  onResumeAgent: UseAgentsResult["resumeAgent"];
-  onDeleteAgent: UseAgentsResult["deleteAgent"];
   onDeleteRun: UseAgentsResult["deleteRun"];
-  onPurgeRuns: UseAgentsResult["purgeRuns"];
   onRefreshRuns: UseAgentsResult["refreshRuns"];
+  onCancelEdit: () => void;
+  onSavedEdit: (agent: Agent) => void;
   onNavigate: (route: ShellRoute) => void;
 }) {
-  const toast = useToast();
-  const [isEditing, setIsEditing] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deletePending, setDeletePending] = useState(false);
-  const [purgeOpen, setPurgeOpen] = useState(false);
-  const [purgePending, setPurgePending] = useState(false);
   const workspace = workspaces.find((item) => item.id === agent.config.workspaceId) ?? null;
 
   useEffect(() => {
     void onRefreshRuns(agent.config.id);
   }, [agent.config.id, onRefreshRuns]);
 
-  async function handleDeleteAgent(): Promise<void> {
-    setDeletePending(true);
-    try {
-      const deleted = await onDeleteAgent(agent.config.id);
-      if (!deleted) {
-        toast.error("Failed to delete agent");
-        return;
-      }
-      setDeleteOpen(false);
-      onNavigate(workspace ? { view: "agents", workspaceId: workspace.id } : { view: "home" });
-    } finally {
-      setDeletePending(false);
-    }
-  }
-
-  async function handleTogglePaused(): Promise<void> {
-    const updated = agent.config.enabled
-      ? await onPauseAgent(agent.config.id)
-      : await onResumeAgent(agent.config.id);
-    if (!updated) {
-      toast.error(agent.config.enabled ? "Failed to pause agent" : "Failed to resume agent");
-    }
-  }
-
-  async function handlePurgeRuns(): Promise<void> {
-    setPurgePending(true);
-    try {
-      await onPurgeRuns(agent.config.id);
-      setPurgeOpen(false);
-    } finally {
-      setPurgePending(false);
-    }
-  }
-
-  const agentActionItems: ActionMenuItem[] = [
-    {
-      id: "edit",
-      label: "Edit",
-      onClick: () => setIsEditing(true),
-    },
-    {
-      id: "toggle-paused",
-      label: agent.config.enabled ? "Pause" : "Resume",
-      onClick: () => void handleTogglePaused(),
-    },
-    agent.state.status === "running"
-      ? {
-          id: "interrupt",
-          label: "Interrupt",
-          onClick: () => void onInterruptAgent(agent.config.id),
-        }
-      : {
-          id: "run-now",
-          label: "Run now",
-          onClick: () => void onRunAgent(agent.config.id),
-        },
-    {
-      id: "purge-runs",
-      label: "Purge runs",
-      onClick: () => setPurgeOpen(true),
-      destructive: true,
-    },
-    {
-      id: "delete",
-      label: "Delete",
-      onClick: () => setDeleteOpen(true),
-      destructive: true,
-    },
-  ];
-
-  if (isEditing) {
+  if (editing) {
     return (
       <AgentForm
         mode="edit"
@@ -701,10 +621,9 @@ function AgentDetail({
         onWorkspaceChange={onWorkspaceChange}
         onCreateAgent={async () => null}
         onUpdateAgent={onUpdateAgent}
-        onCancel={() => setIsEditing(false)}
+        onCancel={onCancelEdit}
         onSaved={(savedAgent) => {
-          setIsEditing(false);
-          onNavigate({ view: "agent", agentId: savedAgent.config.id });
+          onSavedEdit(savedAgent);
         }}
       />
     );
@@ -719,40 +638,6 @@ function AgentDetail({
         variant="compact"
         headerOffsetClassName={headerOffsetClassName}
         badges={<AgentStatusPill status={agent.state.status} />}
-        actions={(
-          <>
-            <div className="sm:hidden">
-              <ActionMenu
-                items={agentActionItems}
-                ariaLabel="Agent actions"
-                triggerVariant="ghost"
-              />
-            </div>
-            <div className="hidden items-center gap-1.5 sm:flex">
-              <Button type="button" variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
-                Edit
-              </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => void handleTogglePaused()}>
-                {agent.config.enabled ? "Pause" : "Resume"}
-              </Button>
-              {agent.state.status === "running" ? (
-                <Button type="button" variant="secondary" size="sm" onClick={() => void onInterruptAgent(agent.config.id)}>
-                  Interrupt
-                </Button>
-              ) : (
-                <Button type="button" size="sm" onClick={() => void onRunAgent(agent.config.id)}>
-                  Run now
-                </Button>
-              )}
-              <Button type="button" variant="danger" size="sm" onClick={() => setPurgeOpen(true)}>
-                Purge runs
-              </Button>
-              <Button type="button" variant="danger" size="sm" onClick={() => setDeleteOpen(true)}>
-                Delete
-              </Button>
-            </div>
-          </>
-        )}
       >
         <div className="space-y-6">
           <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-neutral-950">
@@ -775,24 +660,6 @@ function AgentDetail({
           </section>
         </div>
       </ShellPanel>
-      <ConfirmModal
-        isOpen={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        onConfirm={() => void handleDeleteAgent()}
-        title="Delete agent"
-        message={`Delete "${agent.config.name}" and its runs?`}
-        confirmLabel="Delete agent"
-        loading={deletePending}
-      />
-      <ConfirmModal
-        isOpen={purgeOpen}
-        onClose={() => setPurgeOpen(false)}
-        onConfirm={() => void handlePurgeRuns()}
-        title="Purge agent runs"
-        message={`Purge all completed, failed, skipped, interrupted, and cancelled runs for "${agent.config.name}"? This cannot be undone.`}
-        confirmLabel="Purge runs"
-        loading={purgePending}
-      />
     </>
   );
 }
@@ -923,32 +790,25 @@ function AgentRunDetail({
   }
 
   const isActive = run.status === "scheduled" || run.status === "starting" || run.status === "running";
+  const backRoute = agent ? { view: "agent", agentId: agent.config.id } as const : { view: "home" } as const;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-900">
-      <header className="flex-shrink-0 border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-800 dark:bg-neutral-800 sm:px-6 lg:px-8">
-        <div className={`${headerOffsetClassName} flex min-h-14 items-center gap-2`}>
+      <FrameworkMainHeaderPortal
+        title={agent?.config.name ?? run.configSnapshot.name}
+        description={formatDate(run.scheduledFor)}
+        badges={<AgentStatusPill status={run.status} />}
+        actions={(
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => onNavigate(agent ? { view: "agent", agentId: agent.config.id } : { view: "home" })}
+            onClick={() => onNavigate(backRoute)}
           >
             ← Back
           </Button>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <h1 className="truncate text-lg font-bold text-gray-900 dark:text-gray-100">
-                {agent?.config.name ?? run.configSnapshot.name}
-              </h1>
-              <AgentStatusPill status={run.status} />
-            </div>
-            <p className="truncate text-xs text-gray-500 dark:text-gray-400">
-              {formatDate(run.scheduledFor)}
-            </p>
-          </div>
-        </div>
-      </header>
+        )}
+      />
       {run.error && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {run.error.message}
@@ -1040,13 +900,7 @@ export function AgentsView({
   selectedWorkspaceId: _selectedWorkspaceId,
   onWorkspaceChange,
   onUpdateAgent,
-  onRunAgent,
-  onInterruptAgent,
-  onPauseAgent,
-  onResumeAgent,
-  onDeleteAgent,
   onDeleteRun,
-  onPurgeRuns,
   onRefreshRuns,
   runsByAgentId,
   route,
@@ -1058,6 +912,9 @@ export function AgentsView({
   defaultBranch,
   loading,
   error,
+  editingAgentId,
+  onCancelAgentEdit,
+  onSavedAgentEdit,
 }: {
   agents: Agent[];
   workspaces: Workspace[];
@@ -1068,13 +925,7 @@ export function AgentsView({
   selectedWorkspaceId: string | null;
   onWorkspaceChange: (workspaceId: string | null, directory: string) => void;
   onUpdateAgent: UseAgentsResult["updateAgent"];
-  onRunAgent: UseAgentsResult["runAgent"];
-  onInterruptAgent: UseAgentsResult["interruptAgent"];
-  onPauseAgent: UseAgentsResult["pauseAgent"];
-  onResumeAgent: UseAgentsResult["resumeAgent"];
-  onDeleteAgent: UseAgentsResult["deleteAgent"];
   onDeleteRun: UseAgentsResult["deleteRun"];
-  onPurgeRuns: UseAgentsResult["purgeRuns"];
   onRefreshRuns: UseAgentsResult["refreshRuns"];
   runsByAgentId: Record<string, AgentRun[]>;
   route: ShellRoute;
@@ -1086,6 +937,9 @@ export function AgentsView({
   defaultBranch: string;
   loading: boolean;
   error: string | null;
+  editingAgentId: string | null;
+  onCancelAgentEdit: () => void;
+  onSavedAgentEdit: (agent: Agent) => void;
 }) {
   if (route.view === "agent") {
     const agent = agents.find((item) => item.config.id === route.agentId);
@@ -1114,16 +968,13 @@ export function AgentsView({
         currentBranch={currentBranch}
         defaultBranch={defaultBranch}
         headerOffsetClassName={headerOffsetClassName}
+        editing={editingAgentId === agent.config.id}
         onWorkspaceChange={onWorkspaceChange}
         onUpdateAgent={onUpdateAgent}
-        onRunAgent={onRunAgent}
-        onInterruptAgent={onInterruptAgent}
-        onPauseAgent={onPauseAgent}
-        onResumeAgent={onResumeAgent}
-        onDeleteAgent={onDeleteAgent}
         onDeleteRun={onDeleteRun}
-        onPurgeRuns={onPurgeRuns}
         onRefreshRuns={onRefreshRuns}
+        onCancelEdit={onCancelAgentEdit}
+        onSavedEdit={onSavedAgentEdit}
         onNavigate={navigateWithinShell}
       />
     );
