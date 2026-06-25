@@ -15,8 +15,8 @@ Use this skill when working on Clanky code that touches app foundations.
 - Framework headers own title/action overflow behavior. Keep important actions such as `Back` as header actions and let titles/subtitles truncate instead of clipping buttons.
 - Framework dialogs handle Enter as confirm/primary action and Escape as cancel/close; do not add custom modal keyboard handling unless the framework primitive cannot be used.
 - Treat app data as private per user. Use the current framework user id for Clanky workspaces, tasks, chats, agents, SSH resources, VNC sessions, forwarded ports, comments, and app-specific preferences.
-- Newly invited users must start with empty Clanky data. Existing production data is migrated once to owner username `admin`.
-- Keep one-time migration code clearly marked as temporary and remove it after the deployment has migrated.
+- New users must start with empty Clanky app data.
+- The multi-user database migration has already been deployed; do not reintroduce one-time legacy data backfill code.
 - Use app-owned websocket upgrade/proxy handlers only for SSH terminal, VNC, and forwarded-port proxy traffic. Normal app events should use framework realtime.
 - Keep Clanky-specific settings only for quick chat, markdown rendering, full file explorer tree, scheduler timezone, last model, last directory, and workspace server settings.
 - Keep raw transports app-owned only for SSH terminal, VNC and forwarded-port proxying; normal UI state should use framework realtime and framework shell surfaces.

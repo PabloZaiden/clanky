@@ -9,10 +9,6 @@ import { join } from "path";
 import { mkdir, rm, unlink } from "fs/promises";
 import { runMigrations } from "./migrations";
 import { createLogger } from "../core/logger";
-import {
-  TEMPORARY_FRAMEWORK_OWNER_USER_ID,
-  TEMPORARY_FRAMEWORK_OWNER_USERNAME,
-} from "./ownership";
 
 const log = createLogger("database");
 
@@ -92,12 +88,6 @@ export async function initializeDatabase(): Promise<void> {
   db.run("PRAGMA busy_timeout = 5000");
   log.trace("PRAGMA busy_timeout = 5000");
   
-  // Existing single-user databases need user_id columns before createTables()
-  // reaches indexes that reference those columns. This is temporary one-time
-  // migration support and should be removed after the production backfill.
-  runTemporaryPersistenceOwnershipMigration(db);
-  log.trace("Temporary persistence ownership pre-migration completed");
-
   // Create tables and indexes for the current baseline.
   createTables(db);
   log.trace("Tables created");
@@ -106,9 +96,6 @@ export async function initializeDatabase(): Promise<void> {
   runMigrations(db);
   log.trace("Migrations completed");
 
-  runTemporaryPersistenceOwnershipMigration(db);
-  log.trace("Temporary persistence ownership post-migration completed");
-  
   log.info("Database initialized", { path: dbPath });
 }
 
@@ -119,24 +106,6 @@ export async function initializeDatabase(): Promise<void> {
  * This base schema is the Clanky reset baseline. Historical migrations and
  * legacy compatibility repairs are intentionally not preserved.
  */
-const APP_OWNED_USER_TABLES = [
-  "workspaces",
-  "tasks",
-  "chats",
-  "agents",
-  "agent_runs",
-  "ssh_servers",
-  "ssh_server_sessions",
-  "ssh_sessions",
-  "vnc_sessions",
-  "forwarded_ports",
-  "review_comments",
-] as const;
-
-const TEMPORARY_OLD_AUTH_SUBJECT = "clanky-user";
-
-type AppOwnedUserTable = (typeof APP_OWNED_USER_TABLES)[number] | "preferences";
-
 function createFrameworkAuthTables(database: Database): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS webapp_users (
@@ -726,234 +695,6 @@ function createTables(database: Database): void {
   createAllTables();
 }
 
-const TEMPORARY_MIGRATION_TABLE_NAMES = new Set<string>([
-  ...APP_OWNED_USER_TABLES,
-  "preferences",
-  "passkey_credentials",
-  "auth_device_requests",
-  "auth_refresh_sessions",
-  "webapp_users",
-  "webapp_passkeys",
-  "webapp_device_auth_requests",
-  "webapp_refresh_sessions",
-]);
-
-function tableExists(database: Database, tableName: string): boolean {
-  const row = database
-    .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?")
-    .get(tableName) as { name: string } | null;
-  return row !== null;
-}
-
-function getTableColumns(database: Database, tableName: string): string[] {
-  if (!TEMPORARY_MIGRATION_TABLE_NAMES.has(tableName)) {
-    throw new Error(`Unknown migration table name: ${tableName}`);
-  }
-  const rows = database.query(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
-  return rows.map((row) => row.name);
-}
-
-function ensureTemporaryFrameworkOwner(database: Database): void {
-  const now = new Date().toISOString();
-  const byUsername = database
-    .query("SELECT id, role FROM webapp_users WHERE username = ?")
-    .get(TEMPORARY_FRAMEWORK_OWNER_USERNAME) as { id: string; role: string } | null;
-  const byId = database
-    .query("SELECT username, role FROM webapp_users WHERE id = ?")
-    .get(TEMPORARY_FRAMEWORK_OWNER_USER_ID) as { username: string; role: string } | null;
-
-  if (byUsername && byUsername.id !== TEMPORARY_FRAMEWORK_OWNER_USER_ID) {
-    throw new Error(
-      `Temporary webapp auth migration expected admin owner id "${TEMPORARY_FRAMEWORK_OWNER_USER_ID}" but username "${TEMPORARY_FRAMEWORK_OWNER_USERNAME}" has id "${byUsername.id}"`,
-    );
-  }
-  if (byId && byId.username !== TEMPORARY_FRAMEWORK_OWNER_USERNAME) {
-    throw new Error(
-      `Temporary webapp auth migration expected user id "${TEMPORARY_FRAMEWORK_OWNER_USER_ID}" to have username "${TEMPORARY_FRAMEWORK_OWNER_USERNAME}" but found "${byId.username}"`,
-    );
-  }
-  if ((byUsername?.role ?? byId?.role) && (byUsername?.role ?? byId?.role) !== "owner") {
-    throw new Error("Temporary webapp auth migration requires framework user admin to have owner role");
-  }
-
-  database
-    .query(`
-      INSERT INTO webapp_users (id, username, role, auth_version, created_at, updated_at, last_login_at, disabled_at)
-      VALUES (?, ?, 'owner', 1, ?, ?, NULL, NULL)
-      ON CONFLICT(id) DO UPDATE SET
-        username = excluded.username,
-        role = excluded.role,
-        updated_at = excluded.updated_at
-    `)
-    .run(TEMPORARY_FRAMEWORK_OWNER_USER_ID, TEMPORARY_FRAMEWORK_OWNER_USERNAME, now, now);
-}
-
-function assertTemporaryAuthMappingCompatible(database: Database): void {
-  if (tableExists(database, "passkey_credentials")) {
-    const row = database.query("SELECT COUNT(*) AS count FROM passkey_credentials").get() as { count: number };
-    if (row.count > 1) {
-      throw new Error("Temporary webapp auth migration expected at most one legacy Clanky passkey");
-    }
-  }
-
-  if (tableExists(database, "auth_device_requests")) {
-    const row = database
-      .query(`
-        SELECT subject FROM auth_device_requests
-        WHERE subject IS NOT NULL AND subject != ?
-        LIMIT 1
-      `)
-      .get(TEMPORARY_OLD_AUTH_SUBJECT) as { subject: string } | null;
-    if (row) {
-      throw new Error(`Temporary webapp auth migration cannot map legacy device auth subject "${row.subject}"`);
-    }
-  }
-
-  if (tableExists(database, "auth_refresh_sessions")) {
-    const row = database
-      .query(`
-        SELECT subject FROM auth_refresh_sessions
-        WHERE subject IS NOT NULL AND subject != ?
-        LIMIT 1
-      `)
-      .get(TEMPORARY_OLD_AUTH_SUBJECT) as { subject: string } | null;
-    if (row) {
-      throw new Error(`Temporary webapp auth migration cannot map legacy refresh subject "${row.subject}"`);
-    }
-  }
-}
-
-function migrateTemporaryLegacyAuth(database: Database): void {
-  if (tableExists(database, "passkey_credentials")) {
-    database
-      .query(`
-        INSERT OR IGNORE INTO webapp_passkeys (
-          id, user_id, name, credential_id, public_key, counter, device_type,
-          backed_up, transports, created_at, updated_at, last_used_at
-        )
-        SELECT
-          id, ?, name, credential_id, public_key, counter, device_type,
-          backed_up, COALESCE(transports, '[]'), created_at, updated_at, last_used_at
-        FROM passkey_credentials
-        ORDER BY created_at ASC
-        LIMIT 1
-      `)
-      .run(TEMPORARY_FRAMEWORK_OWNER_USER_ID);
-  }
-
-  if (tableExists(database, "auth_device_requests")) {
-    database
-      .query(`
-        INSERT OR IGNORE INTO webapp_device_auth_requests (
-          device_code_hash, user_code, client_id, scope, status,
-          approved_by_user_id, created_at, updated_at, expires_at
-        )
-        SELECT
-          device_code_hash, user_code, client_id, scope, status,
-          CASE WHEN status IN ('approved', 'consumed') THEN ? ELSE NULL END,
-          created_at, updated_at, expires_at
-        FROM auth_device_requests
-      `)
-      .run(TEMPORARY_FRAMEWORK_OWNER_USER_ID);
-  }
-
-  if (tableExists(database, "auth_refresh_sessions")) {
-    database
-      .query(`
-        INSERT OR IGNORE INTO webapp_refresh_sessions (
-          id, user_id, family_id, client_id, scope, refresh_token_hash,
-          created_at, updated_at, expires_at, last_used_at, revoked_at
-        )
-        SELECT
-          id, ?, family_id, client_id, scope, refresh_token_hash,
-          created_at, updated_at, refresh_expires_at, last_used_at, revoked_at
-        FROM auth_refresh_sessions
-      `)
-      .run(TEMPORARY_FRAMEWORK_OWNER_USER_ID);
-  }
-}
-
-function dropTemporaryLegacyAuthTables(database: Database): void {
-  database.run("DROP TABLE IF EXISTS auth_refresh_sessions");
-  database.run("DROP TABLE IF EXISTS auth_device_requests");
-  database.run("DROP TABLE IF EXISTS passkey_credentials");
-}
-
-function ensureTemporaryUserIdColumn(database: Database, tableName: AppOwnedUserTable): void {
-  if (!tableExists(database, tableName)) {
-    return;
-  }
-  const columns = getTableColumns(database, tableName);
-  if (!columns.includes("user_id")) {
-    database.run(`ALTER TABLE ${tableName} ADD COLUMN user_id TEXT`);
-  }
-  database
-    .query(`UPDATE ${tableName} SET user_id = ? WHERE user_id IS NULL`)
-    .run(TEMPORARY_FRAMEWORK_OWNER_USER_ID);
-}
-
-function ensureTemporaryPreferencesOwnership(database: Database): void {
-  if (!tableExists(database, "preferences")) {
-    return;
-  }
-
-  const columns = getTableColumns(database, "preferences");
-  const tableInfo = database.query("PRAGMA table_info(preferences)").all() as Array<{ name: string; pk: number }>;
-  const primaryKeyColumns = tableInfo
-    .filter((row) => row.pk > 0)
-    .sort((left, right) => left.pk - right.pk)
-    .map((row) => row.name);
-  const needsRebuild =
-    !columns.includes("user_id") ||
-    primaryKeyColumns.length !== 2 ||
-    primaryKeyColumns[0] !== "key" ||
-    primaryKeyColumns[1] !== "user_id";
-
-  if (!needsRebuild) {
-    database
-      .query("UPDATE preferences SET user_id = ? WHERE user_id IS NULL")
-      .run(TEMPORARY_FRAMEWORK_OWNER_USER_ID);
-    return;
-  }
-
-  database.run("DROP TABLE IF EXISTS preferences_temporary_webapp_ownership");
-  database.run(`
-    CREATE TABLE preferences_temporary_webapp_ownership (
-      key TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      value TEXT NOT NULL,
-      PRIMARY KEY (key, user_id)
-    )
-  `);
-  const userIdExpression = columns.includes("user_id") ? "COALESCE(user_id, ?)" : "?";
-  database
-    .query(`
-      INSERT OR REPLACE INTO preferences_temporary_webapp_ownership (key, user_id, value)
-      SELECT key, ${userIdExpression}, value FROM preferences
-    `)
-    .run(TEMPORARY_FRAMEWORK_OWNER_USER_ID);
-  database.run("DROP TABLE preferences");
-  database.run("ALTER TABLE preferences_temporary_webapp_ownership RENAME TO preferences");
-}
-
-function runTemporaryPersistenceOwnershipMigration(database: Database): void {
-  // TEMPORARY webapp migration/backfill: remove after the one-time production
-  // deployment data has been assigned to the framework owner user "admin".
-  const migrate = database.transaction(() => {
-    createFrameworkAuthTables(database);
-    ensureTemporaryFrameworkOwner(database);
-    assertTemporaryAuthMappingCompatible(database);
-    migrateTemporaryLegacyAuth(database);
-    dropTemporaryLegacyAuthTables(database);
-    for (const tableName of APP_OWNED_USER_TABLES) {
-      ensureTemporaryUserIdColumn(database, tableName);
-    }
-    ensureTemporaryPreferencesOwnership(database);
-  });
-
-  migrate();
-}
-
 /**
  * Close the database connection.
  * Should be called when the application shuts down.
@@ -1004,9 +745,6 @@ export function resetDatabase(): void {
     db!.run("DROP TABLE IF EXISTS ssh_servers");
     db!.run("DROP TABLE IF EXISTS workspaces");
     db!.run("DROP TABLE IF EXISTS sessions");
-    db!.run("DROP TABLE IF EXISTS auth_refresh_sessions");
-    db!.run("DROP TABLE IF EXISTS auth_device_requests");
-    db!.run("DROP TABLE IF EXISTS passkey_credentials");
     db!.run("DROP TABLE IF EXISTS preferences");
     db!.run("DROP TABLE IF EXISTS webapp_refresh_sessions");
     db!.run("DROP TABLE IF EXISTS webapp_device_auth_requests");
@@ -1023,7 +761,6 @@ export function resetDatabase(): void {
   log.trace("Tables recreated");
   
   runMigrations(db);
-  runTemporaryPersistenceOwnershipMigration(db);
   log.info("Database reset complete");
 }
 
