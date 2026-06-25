@@ -36,7 +36,7 @@ For more project information, see the [README.md](README.md).
 - Prefer `@pablozaiden/webapp` primitives for auth, passkeys, API keys, device auth, same-origin checks, app shell, sidebar, settings, realtime, server health, and server lifecycle actions.
 - Keep Clanky as one app and one binary. Use `clanky serve` for the server and `clanky <subcommand>` for CLI commands; do not reintroduce a separate `clanky-cli` binary.
 - Use `bun --hot src/index.ts serve` for development; do not add Vite, a separate web dev server, or `CLANKY_WEB_DIST_DIR` for dev.
-- Treat app data as private per user. Existing one-time migrated data belongs to owner `admin`; newly invited users should start empty.
+- Treat app data as private per user. New users start with empty Clanky app data.
 - Use app-owned websocket upgrade/proxy handlers only for raw transports such as SSH terminal, VNC, and forwarded-port proxying. Normal app state updates should use framework realtime.
 - Add route metadata directly to framework route definitions when API/CLI discovery is needed; do not maintain a separate hand-written route catalog unless it is a temporary migration bridge.
 - Use framework settings for generic theme, log level, passkeys, device sessions, API keys, users, and server operations. Keep only Clanky-specific settings in app-owned settings sections.
@@ -497,7 +497,7 @@ Common fixes:
 
 The project uses a migration system to evolve the database schema over time. The complete current schema is defined in `src/persistence/database.ts` as the base schema. Migrations are used only for schema changes added after the base schema was established.
 
-**Note:** The Clanky reset starts from a clean schema baseline in `src/persistence/database.ts` with schema version 0 and no historical migrations. Databases created before this reset must be recreated (delete `data/clanky.db` and restart).
+**Note:** The Clanky reset starts from a clean schema baseline in `src/persistence/database.ts`. Historical migrations remain as no-op version markers so clean databases keep the same schema version as already-deployed databases.
 
 ### How Migrations Work
 

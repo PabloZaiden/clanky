@@ -11,7 +11,7 @@ import { GitService } from "../src/core/git-service";
 import { TaskManager } from "../src/core/task-manager";
 import { backendManager } from "../src/core/backend-manager";
 import { ensureDataDirectories } from "../src/persistence/database";
-import { closeDatabase } from "../src/persistence/database";
+import { closeDatabase, getDatabase } from "../src/persistence/database";
 import { createWorkspace } from "../src/persistence/workspaces";
 import { loadTask } from "../src/persistence/tasks";
 import { TestCommandExecutor } from "./mocks/mock-executor";
@@ -54,6 +54,16 @@ export const testOwnerUser: CurrentUser = {
   isOwner: true,
   isAdmin: true,
 };
+
+export function seedTestOwnerUser(): void {
+  const now = new Date().toISOString();
+  getDatabase()
+    .query(`
+      INSERT OR IGNORE INTO webapp_users (id, username, role, auth_version, created_at, updated_at, last_login_at, disabled_at)
+      VALUES (?, ?, ?, 1, ?, ?, NULL, NULL)
+    `)
+    .run(testOwnerUser.id, testOwnerUser.username, testOwnerUser.role, now, now);
+}
 
 /**
  * Test context containing all test dependencies.
@@ -116,6 +126,7 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   // Set env var for persistence
   process.env["CLANKY_DATA_DIR"] = dataDir;
   await ensureDataDirectories();
+  seedTestOwnerUser();
 
   // Create the default test workspace (required for tasks with workspaceId)
   await runWithCurrentUser(testOwnerUser, () => createWorkspace({

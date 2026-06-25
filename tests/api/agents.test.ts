@@ -16,6 +16,7 @@ import { listTasks } from "../../src/persistence/tasks";
 import type { AgentRun } from "../../src/types/agent";
 import { TestCommandExecutor } from "../mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
+import { seedTestOwnerUser } from "../setup";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 
@@ -95,6 +96,7 @@ describe("Agents API Integration", () => {
     closeDatabase();
     process.env["CLANKY_DATA_DIR"] = testDataDir;
     await ensureDataDirectories();
+    seedTestOwnerUser();
 
     await Bun.$`git init ${testWorkDir}`.quiet();
     await Bun.$`git -C ${testWorkDir} config user.email "test@test.com"`.quiet();
