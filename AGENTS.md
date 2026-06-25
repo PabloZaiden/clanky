@@ -40,8 +40,11 @@ For more project information, see the [README.md](README.md).
 - Use app-owned websocket upgrade/proxy handlers only for raw transports such as SSH terminal, VNC, and forwarded-port proxying. Normal app state updates should use framework realtime.
 - Add route metadata directly to framework route definitions when API/CLI discovery is needed; do not maintain a separate hand-written route catalog unless it is a temporary migration bridge.
 - Use framework settings for generic theme, log level, passkeys, device sessions, API keys, users, and server operations. Keep only Clanky-specific settings in app-owned settings sections.
+- Route components rendered by `WebAppRoot.routes` must use `Page` as the top-level wrapper. Do not render content directly into `.wapp-main-content`, recreate shell spacing, or duplicate the fixed framework title with an app-local heading.
+- Prefer framework main-content primitives (`Page`, `Panel`, `DataList`, `DataListRow`, `FormGroup`, `FormActions`, `DangerZone`, `LoadingState`, `ErrorState`, `CodeValue`) before custom CSS. Use `EntityHeader` only for entity-specific headings that are distinct from the fixed title bar.
 - Use route-backed `SidebarNode.actions` for task, chat, agent, SSH session, workspace and server commands. The framework owns both sidebar context menus and active title-bar three-line menus; do not reintroduce Clanky-local shell/header action menus.
 - Use framework dialogs/modals/action menus for generic UI behavior. Framework dialogs handle Enter/Escape, destructive/delete menu items are red and last, and sidebar badges render as compact status dots.
+- Prefer structured `settings.sections[].rows` for app settings; use custom `render` sections only when the framework row model cannot represent the setting.
 - Header action buttons must remain visible and non-deforming; titles/subtitles should truncate before actions are clipped.
 
 ## Authentication & Authorization
