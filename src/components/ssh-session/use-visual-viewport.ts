@@ -18,6 +18,17 @@ export interface VisualViewportState {
   offsetTop: number;
 }
 
+const MIN_BOTTOM_CLEARANCE_PX = 12;
+
+function getViewportBottomClearancePx() {
+  if (typeof window === "undefined") {
+    return MIN_BOTTOM_CLEARANCE_PX;
+  }
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--safe-area-inset-bottom");
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? Math.max(parsed, MIN_BOTTOM_CLEARANCE_PX) : MIN_BOTTOM_CLEARANCE_PX;
+}
+
 export function getFocusModeViewportStyle(
   enabled: boolean,
   viewport: VisualViewportState | null,
@@ -26,8 +37,9 @@ export function getFocusModeViewportStyle(
     return undefined;
   }
 
+  const bottomClearance = getViewportBottomClearancePx();
   const style: CSSProperties = {
-    height: `${viewport.height}px`,
+    height: `${Math.max(0, viewport.height - bottomClearance)}px`,
     overflow: "hidden",
   };
   if (viewport.offsetTop > 0) {

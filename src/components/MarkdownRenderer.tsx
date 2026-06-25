@@ -56,7 +56,7 @@ export function MarkdownRenderer({
   return (
     <div
       data-dimmed={dimmed ? "true" : "false"}
-      className={`markdown-renderer prose prose-sm dark:prose-invert min-w-0 max-w-none break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
+      className={`markdown-renderer prose prose-sm dark:prose-invert min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
     >
       <Markdown
         remarkPlugins={[remarkGfm]}
@@ -84,6 +84,23 @@ export function MarkdownRenderer({
             <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 p-4 text-sm dark:bg-neutral-800">
               {children}
             </pre>
+          ),
+          table: ({ children }) => (
+            <div className="max-w-full overflow-x-auto">
+              <table className="min-w-max max-w-none">
+                {children}
+              </table>
+            </div>
+          ),
+          th: ({ children }) => (
+            <th className="whitespace-normal break-words">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="whitespace-normal break-words">
+              {children}
+            </td>
           ),
         }}
       >
