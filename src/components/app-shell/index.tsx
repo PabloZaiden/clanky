@@ -438,12 +438,12 @@ export function AppShell() {
             ? (workspaces.find((w) => w.id === selectedChat?.config.workspaceId) ?? null)
             : null;
   const composeWorkspace =
-    route.view === "compose" && route.kind !== "ssh-server" && route.kind !== "ssh-server-chat" && route.scopeId
-      ? (workspaces.find((w) => w.id === route.scopeId) ?? null)
+    route.view === "compose" && route.kind !== "ssh-server" && route.kind !== "ssh-server-chat"
+      ? (workspaces.find((w) => w.id === (route.workspaceId ?? route.scopeId)) ?? null)
       : null;
   const composeServer =
-    route.view === "compose" && (route.kind === "ssh-session" || route.kind === "ssh-server" || route.kind === "ssh-server-chat") && route.scopeId
-      ? (servers.find((s) => s.config.id === route.scopeId) ?? null)
+    route.view === "compose" && (route.kind === "ssh-session" || route.kind === "ssh-server" || route.kind === "ssh-server-chat")
+      ? (servers.find((s) => s.config.id === (route.serverId ?? route.scopeId)) ?? null)
       : null;
   const composeServerSessionCount = composeServer
     ? (sessionsByServerId[composeServer.config.id]?.length ?? 0)
@@ -994,7 +994,7 @@ export function AppShell() {
             id: "new-agent",
             title: "New agent",
             label: "New",
-            route: routeNode({ view: "compose", kind: "agent", scopeId: workspaceId }),
+            route: routeNode({ view: "compose", kind: "agent", workspaceId }),
           },
           children: agentNodesByWorkspace.get(workspaceId) ?? [],
         },
@@ -1006,7 +1006,7 @@ export function AppShell() {
             id: "new-ssh-session",
             title: "New SSH session",
             label: "New",
-            route: routeNode({ view: "compose", kind: "ssh-session", scopeId: workspaceId }),
+            route: routeNode({ view: "compose", kind: "ssh-session", workspaceId }),
           },
           children: workspaceNode.sshSessions.map((sessionNode): SidebarNode => ({
             type: "item",
@@ -1036,7 +1036,7 @@ export function AppShell() {
         actions: sidebarActionItems([
           { id: "new-task", label: "New Task", onClick: () => navigateWithinShell({ view: "compose", kind: "task", scopeId: workspaceId }) },
           { id: "new-chat", label: "New Chat", onClick: () => navigateWithinShell({ view: "compose", kind: "chat", scopeId: workspaceId }) },
-          { id: "new-agent", label: "New Agent", onClick: () => navigateWithinShell({ view: "compose", kind: "agent", scopeId: workspaceId }) },
+          { id: "new-agent", label: "New Agent", onClick: () => navigateWithinShell({ view: "compose", kind: "agent", workspaceId }) },
           { id: "open-code-explorer", label: "Open code explorer", onClick: () => navigateWithinShell({ view: "code-explorer", target: { contentType: "workspace", workspaceId } }) },
           {
             id: "pull-latest-changes",
@@ -1050,7 +1050,7 @@ export function AppShell() {
             onClick: () => void openWorkspaceGitHubUrl(workspaceNode.workspace, (message) => toast.error(message)),
           },
           ...(workspaceNode.workspace.serverSettings.agent.transport === "ssh"
-            ? [{ id: "new-ssh-session", label: "New SSH Session", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-session", scopeId: workspaceId }) }]
+            ? [{ id: "new-ssh-session", label: "New SSH Session", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-session", workspaceId }) }]
             : []),
           { id: "workspace-settings", label: "Workspace Settings", onClick: () => navigateWithinShell({ view: "workspace-settings", workspaceId }) },
         ]),
@@ -1070,7 +1070,7 @@ export function AppShell() {
         route: routeNode({ view: "ssh-server", serverId }),
         actions: sidebarActionItems([
           { id: "open-code-explorer", label: "Open code explorer", onClick: () => navigateWithinShell({ view: "code-explorer", target: { contentType: "server", serverId } }) },
-          { id: "new-session", label: "New Session", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-session", scopeId: serverId }) },
+          { id: "new-session", label: "New Session", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-session", serverId }) },
           { id: "new-chat", label: "New Chat", onClick: () => navigateWithinShell({ view: "compose", kind: "ssh-server-chat", scopeId: serverId }) },
           { id: "start-vnc-session", label: "Start VNC Session", onClick: () => navigateWithinShell({ view: "vnc-session", serverId }) },
           { id: "ssh-server-settings", label: "SSH Server Settings", onClick: () => navigateWithinShell({ view: "ssh-server-settings", serverId }) },
@@ -1086,7 +1086,7 @@ export function AppShell() {
               id: "new-session",
               title: "New SSH session",
               label: "New",
-              route: routeNode({ view: "compose", kind: "ssh-session", scopeId: serverId }),
+              route: routeNode({ view: "compose", kind: "ssh-session", serverId }),
             },
             children: serverNode.sessions.map((sessionNode): SidebarNode => ({
               type: "item",

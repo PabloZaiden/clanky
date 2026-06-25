@@ -162,7 +162,12 @@ export function getHashForShellRoute(route: ShellRoute): string {
     case "restart-workspace":
       return buildRouteHash("restart-workspace", { workspaceId: route.workspaceId });
     case "compose":
-      return buildRouteHash("compose", { kind: route.kind, scopeId: route.scopeId });
+      return buildRouteHash("compose", {
+        kind: route.kind,
+        scopeId: route.scopeId,
+        workspaceId: route.workspaceId,
+        serverId: route.serverId,
+      });
   }
 }
 

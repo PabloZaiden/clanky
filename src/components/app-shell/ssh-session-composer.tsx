@@ -54,6 +54,22 @@ export function SshSessionComposer({
   const [useTmux, setUseTmux] = useState(readStoredUseTmuxPreference);
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (!initialWorkspaceId) {
+      return;
+    }
+    setTargetType("workspace");
+    setSelectedWorkspaceId(initialWorkspaceId);
+  }, [initialWorkspaceId]);
+
+  useEffect(() => {
+    if (!initialServerId) {
+      return;
+    }
+    setTargetType("server");
+    setSelectedServerId(initialServerId);
+  }, [initialServerId]);
+
   function handleUseTmuxChange(nextUseTmux: boolean): void {
     setUseTmux(nextUseTmux);
     storeUseTmuxPreference(nextUseTmux);

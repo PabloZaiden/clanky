@@ -164,6 +164,8 @@ export type ShellRoute =
       view: "compose";
       kind: "task" | "chat" | "agent" | "workspace" | "ssh-session" | "ssh-server" | "ssh-server-chat";
       scopeId?: string;
+      workspaceId?: string;
+      serverId?: string;
     }
   | {
       view: "rebuild-workspace";
