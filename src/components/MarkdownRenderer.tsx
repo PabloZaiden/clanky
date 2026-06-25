@@ -56,7 +56,7 @@ export function MarkdownRenderer({
   return (
     <div
       data-dimmed={dimmed ? "true" : "false"}
-      className={`markdown-renderer prose prose-sm dark:prose-invert min-w-0 max-w-none break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
+      className={`markdown-renderer prose prose-sm dark:prose-invert min-w-0 max-w-full break-words [overflow-wrap:anywhere] [&_li]:break-words [&_p]:break-words [&_td]:break-words [&_th]:break-words ${dimmed ? "opacity-60" : ""} ${className}`.trim()}
     >
       <Markdown
         remarkPlugins={[remarkGfm]}
@@ -84,6 +84,23 @@ export function MarkdownRenderer({
             <pre className="max-w-full overflow-x-auto rounded-lg bg-gray-100 p-4 text-sm dark:bg-neutral-800">
               {children}
             </pre>
+          ),
+          table: ({ children, className, ...props }) => (
+            <div className="max-w-full overflow-x-auto">
+              <table {...props} className={`min-w-max max-w-none ${className ?? ""}`.trim()}>
+                {children}
+              </table>
+            </div>
+          ),
+          th: ({ children, className, ...props }) => (
+            <th {...props} className={`whitespace-normal break-words ${className ?? ""}`.trim()}>
+              {children}
+            </th>
+          ),
+          td: ({ children, className, ...props }) => (
+            <td {...props} className={`whitespace-normal break-words ${className ?? ""}`.trim()}>
+              {children}
+            </td>
           ),
         }}
       >
