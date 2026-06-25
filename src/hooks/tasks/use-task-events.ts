@@ -12,6 +12,44 @@ interface UseTaskEventsOptions {
   setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
 }
 
+export function shouldRefreshTaskSnapshotForEvent(event: TaskEvent): boolean {
+  switch (event.type) {
+    case "task.created":
+    case "task.deleted":
+    case "task.log":
+    case "task.message":
+    case "task.progress":
+    case "task.tool_call":
+    case "task.tool_call.extra":
+      return false;
+
+    case "task.started":
+    case "task.stopped":
+    case "task.completed":
+    case "task.ssh_handoff":
+    case "task.session_aborted":
+    case "task.merged":
+    case "task.accepted":
+    case "task.pushed":
+    case "task.discarded":
+    case "task.error":
+    case "task.iteration.start":
+    case "task.iteration.end":
+    case "task.git.commit":
+    case "task.sync.started":
+    case "task.sync.clean":
+    case "task.sync.conflicts":
+    case "task.sync.failed":
+    case "task.plan.accepted":
+    case "task.plan.ready":
+    case "task.plan.feedback":
+    case "task.plan.discarded":
+    case "task.pending.updated":
+    case "task.automatic_pr_flow.updated":
+      return true;
+  }
+}
+
 export function useTaskEvents({ refresh, refreshTask, setTasks }: UseTaskEventsOptions): void {
   function handleEvent(event: TaskEvent) {
     switch (event.type) {
@@ -24,25 +62,11 @@ export function useTaskEvents({ refresh, refreshTask, setTasks }: UseTaskEventsO
         setTasks((prev) => prev.filter((task) => task.config.id !== event.taskId));
         break;
 
-      case "task.started":
-      case "task.stopped":
-      case "task.completed":
-      case "task.ssh_handoff":
-      case "task.merged":
-      case "task.accepted":
-      case "task.pushed":
-      case "task.discarded":
-      case "task.error":
-      case "task.iteration.start":
-      case "task.iteration.end":
-      case "task.plan.accepted":
-      case "task.plan.ready":
-      case "task.plan.feedback":
-      case "task.plan.discarded":
-      case "task.automatic_pr_flow.updated":
-        // Refresh the specific task to get updated state
-        refreshTask(event.taskId);
-        break;
+      default:
+        if (shouldRefreshTaskSnapshotForEvent(event)) {
+          // Refresh the specific task summary to keep dashboard/sidebar state in sync.
+          refreshTask(event.taskId);
+        }
     }
   }
 
