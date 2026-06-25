@@ -20,11 +20,9 @@ import { useTaskActions } from "./use-task-actions";
 import { useModels } from "./use-models";
 import { usePortForwardActions } from "./use-port-forward-actions";
 import { useLogDisplayState } from "./use-log-display-state";
-import { useLogFocusMode } from "./use-log-focus-mode";
 import { useTaskRemoteStatus } from "./use-task-remote-status";
 import { TaskDetailsModals } from "./task-details-modals";
 import { TaskDetailsTabContent } from "./task-details-tab-content";
-import { getFocusModeViewportStyle, useVisualViewport } from "../ssh-session/use-visual-viewport";
 import { replaceShellRoute } from "../app-shell/shell-navigation";
 import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "../app-shell/main-header-portal";
 
@@ -60,9 +58,7 @@ export function TaskDetails({
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const toast = useToast();
   const { forwards, loading: forwardsLoading, error: forwardsError, createForward, deleteForward } = useTaskPortForwards(taskId);
-
   const logDisplay = useLogDisplayState();
-  const { isFocusMode: isLogFocusMode, toggleFocusMode: toggleLogFocusMode } = useLogFocusMode();
   const { activeTab, tabsWithUpdates, setTabsWithUpdates, handleTabChange } = useTabState({
     taskId, task,
     messagesCount: messages.length, toolCallsCount: toolCalls.length, logsCount: logs.length,
@@ -95,9 +91,6 @@ export function TaskDetails({
     workspaceId: task?.config.workspaceId,
   });
   const portForward = usePortForwardActions({ taskId, toast, createForward, deleteForward });
-  const isLogFocusActive = activeTab === "log" && isLogFocusMode && !!task;
-  const viewport = useVisualViewport(isLogFocusActive);
-  const focusModeContainerStyle = getFocusModeViewportStyle(isLogFocusActive, viewport);
   const frameworkHeader = useFrameworkMainHeaderSlots();
 
   if (loading && !task) {
@@ -134,17 +127,10 @@ export function TaskDetails({
   const isLogActive = isActive || (isPlanning && !isPlanReady);
   const visibleTabs = tabs;
   const showActionBar = activeTab !== "chat" && (isActive || isPlanning || canTerminalFollowUp);
-  const errorBannerSpacingClassName = isLogFocusActive ? "mx-3 mt-3 mb-3" : "mx-3 mt-3 mb-3 sm:mx-4";
+  const errorBannerSpacingClassName = "mx-3 mt-3 mb-3 sm:mx-4";
   return (
-    <div
-      className={
-        isLogFocusActive
-          ? "flex h-full min-h-0 flex-col overflow-hidden bg-[#1e1e1e]"
-          : "flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-neutral-900"
-      }
-      style={focusModeContainerStyle}
-    >
-      {!isLogFocusActive && frameworkHeader.available ? (
+    <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-neutral-900">
+      {frameworkHeader.available ? (
         <FrameworkMainHeaderPortal
           title={config.name}
           badges={(
@@ -183,54 +169,49 @@ export function TaskDetails({
         )}
 
         <div className="flex min-w-0 flex-1 min-h-0 flex-col overflow-hidden">
-          {!isLogFocusActive && (
-            <div className="flex flex-shrink-0 overflow-x-auto border-b border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-neutral-800 sm:px-4">
-              {visibleTabs.map((tab) => {
-                const hasUpdate = tabsWithUpdates.has(tab.id as TabId);
-                const showPlanIndicator = tab.id === "plan" && isPlanning && !isPlanReady && activeTab !== "plan";
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => handleTabChange(tab.id as TabId)}
-                    className={`relative px-1.5 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                      activeTab === tab.id
-                        ? "border-gray-900 text-gray-900 dark:border-gray-100 dark:text-gray-100"
-                        : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      {tab.label}
-                      {showPlanIndicator && (
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-500 opacity-75" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-600" />
-                        </span>
-                      )}
-                    </span>
-                    {hasUpdate && !showPlanIndicator && activeTab !== tab.id && (
-                      <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-gray-500" />
+          <div className="flex flex-shrink-0 overflow-x-auto border-b border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-neutral-800 sm:px-4">
+            {visibleTabs.map((tab) => {
+              const hasUpdate = tabsWithUpdates.has(tab.id as TabId);
+              const showPlanIndicator = tab.id === "plan" && isPlanning && !isPlanReady && activeTab !== "plan";
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabChange(tab.id as TabId)}
+                  className={`relative px-1.5 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? "border-gray-900 text-gray-900 dark:border-gray-100 dark:text-gray-100"
+                      : "border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    {tab.label}
+                    {showPlanIndicator && (
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-500 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-gray-600" />
+                      </span>
                     )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                  </span>
+                  {hasUpdate && !showPlanIndicator && activeTab !== tab.id && (
+                    <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-gray-500" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
           <TaskDetailsTabContent
             activeTab={activeTab} task={task} taskId={taskId} labels={labels}
             isPlanning={isPlanning} isPlanReady={isPlanReady}
-            isLogActive={isLogActive} feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
+            isLogActive={isLogActive} applyLogBottomSafeAreaPadding={!showActionBar}
+            feedbackRounds={feedbackRounds} markdownEnabled={markdownEnabled}
             messages={messages} toolCalls={toolCalls} logs={logs}
             logDisplay={logDisplay}
             portForward={portForward}
             portForwardData={{ forwards, forwardsLoading, forwardsError }}
             content={content}
             actions={actions}
-            isLogFocusMode={isLogFocusActive}
-            onEnterLogFocusMode={toggleLogFocusMode}
-            onExitLogFocusMode={toggleLogFocusMode}
             onFileOpenError={toast.error}
-            applySafeAreaBottomToLogFocusBar={!showActionBar}
           />
         </div>
       </main>
