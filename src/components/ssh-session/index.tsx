@@ -105,6 +105,24 @@ export function SshSessionDetails({
   const { isFocusMode, toggleFocusMode } = useFocusMode(forcedFocusMode);
   const usesViewportAwareFocusMode = isFocusMode && !forcedFocusMode;
 
+  useEffect(() => {
+    if (forcedFocusMode || typeof document === "undefined") {
+      return;
+    }
+
+    const header = document.querySelector<HTMLElement>(".wapp-main-header");
+    if (!header) {
+      return;
+    }
+
+    const previousDisplay = header.style.display;
+    header.style.display = isFocusMode ? "none" : previousDisplay;
+
+    return () => {
+      header.style.display = previousDisplay;
+    };
+  }, [forcedFocusMode, isFocusMode]);
+
   // Track the visual viewport so the focus-mode layout can shrink when the
   // mobile on-screen keyboard is visible.
   const viewport = useVisualViewport(usesViewportAwareFocusMode);
@@ -217,7 +235,7 @@ export function SshSessionDetails({
     sendEncodedTerminalKey: keyboard.sendEncodedTerminalKey,
     sendCtrlC: keyboard.sendCtrlC,
   };
-  const shouldPublishFrameworkHeader = frameworkHeader.available && !forcedFocusMode;
+  const shouldPublishFrameworkHeader = frameworkHeader.available && !forcedFocusMode && !isFocusMode;
 
   function renderClipboardFallback(compact: boolean) {
     if (clipboard.pendingTerminalClipboardText === null) {
