@@ -13,7 +13,6 @@ import { ensureDataDirectories } from "../../src/persistence/database";
 import { backendManager } from "../../src/core/backend-manager";
 import { taskManager } from "../../src/core/task-manager";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import packageJson from "../../package.json";
 import { createMockBackend } from "../mocks/mock-backend";
 import { updateTaskState } from "../../src/persistence/tasks";
 import type { TaskLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
@@ -185,17 +184,6 @@ describe("Tasks CRUD API Integration", () => {
   // Clean up before and after each test
   beforeEach(cleanupActiveTasks);
   afterEach(cleanupActiveTasks);
-
-  describe("GET /api/health", () => {
-    test("returns healthy status", async () => {
-      const response = await fetch(`${baseUrl}/api/health`);
-      expect(response.status).toBe(200);
-
-      const body = await response.json();
-      expect(body.healthy).toBe(true);
-      expect(body.version).toBe(packageJson.version);
-    });
-  });
 
   describe("POST /api/tasks", () => {
     test("creates a new task with required fields and preserves the provided name", async () => {

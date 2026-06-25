@@ -19,7 +19,6 @@ import {
 } from "./ModelSelector";
 import { ChatTemplateSelector } from "./chat-template-selector";
 import {
-  ActionMenu,
   Button,
   FocusPreservingButton,
   StatusBadge,
@@ -34,8 +33,7 @@ import { getStreamingActivityStatus, mergeChatSnapshot } from "../utils/chat-sna
 import { DEFAULT_CHAT_INTERRUPT_REASON } from "../types";
 import { mergeToolCallRecord, upsertToolCallExtra } from "../types/tool-call";
 import { getHashForShellRoute, replaceShellRoute } from "./app-shell/shell-navigation";
-import type { SidebarPinningState } from "./app-shell/sidebar-pins";
-import { useChatActions } from "./app-shell/chat-actions";
+import { FrameworkMainHeaderPortal, useFrameworkMainHeaderSlots } from "./app-shell/main-header-portal";
 import type {
   Chat,
   ChatEvent,
@@ -110,28 +108,17 @@ function isStaleTerminalEvent(chat: Chat, timestamp: string): boolean {
 export function ChatDetails({
   chatId,
   onBack,
-  onOpenCodeExplorer,
-  onOpenTask,
   showBackButton = true,
-  headerOffsetClassName,
   embeddedTaskId,
-  sidebarPinning,
 }: {
   chatId: string;
   onBack?: () => void;
-  onOpenCodeExplorer?: (chatId: string) => void;
-  onOpenTask?: (taskId: string) => void;
   showBackButton?: boolean;
-  headerOffsetClassName?: string;
   embeddedTaskId?: string;
-  sidebarPinning?: SidebarPinningState;
 }) {
   const toast = useToast();
   const { enabled: markdownEnabled } = useMarkdownPreference();
   const isEmbedded = typeof embeddedTaskId === "string" && embeddedTaskId.length > 0;
-  const chatHeaderClassName = "border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-neutral-800 flex-shrink-0 safe-area-top";
-  const chatHeaderInnerClassName = "px-4 sm:px-6 lg:px-8 py-2";
-  const chatHeaderPrimaryRowClassName = [(headerOffsetClassName ?? "ml-14 sm:ml-16 lg:ml-0"), "flex min-h-14 items-center gap-2"].join(" ");
   const [chat, setChat] = useState<Chat | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +133,7 @@ export function ChatDetails({
   const attachmentControlRef = useRef<ImageAttachmentControlHandle>(null);
   const composerFormRef = useRef<HTMLFormElement>(null);
   const reconnectAttemptedRef = useRef(false);
+  const frameworkHeader = useFrameworkMainHeaderSlots();
   const { models, modelsLoading } = useAvailableModels({
     directory: isEmbedded ? undefined : chat?.config.directory,
     workspaceId: isEmbedded || chat?.config.source?.kind === "ssh_server" ? undefined : chat?.config.workspaceId,
@@ -489,7 +477,6 @@ export function ChatDetails({
     }
   }
 
-  const hasCodeExplorerAction = Boolean(onOpenCodeExplorer) && !isEmbedded;
   const chatWorkingDirectory = chat?.state.worktree?.worktreePath ?? chat?.config.directory ?? "";
   const fileLinkContext = useMemo(() => {
     if (!chat || !chatWorkingDirectory) {
@@ -543,17 +530,6 @@ export function ChatDetails({
     };
   }, [chat, chatWorkingDirectory, embeddedTaskId, toast]);
 
-  const chatActions = useChatActions({
-    chat: isEmbedded ? null : chat,
-    hasCodeExplorerAction,
-    sidebarPinning,
-    onOpenCodeExplorer: (target) => onOpenCodeExplorer?.(target.config.id),
-    onTaskSpawned: (task) => onOpenTask?.(task.config.id),
-    onChatRenamed: (updatedChat) => setChat(updatedChat),
-    onChatDeleted: () => onBack?.(),
-    onActionError: (message) => toast.error(message),
-  });
-
   const {
     composerRef,
     composerRows,
@@ -579,27 +555,17 @@ export function ChatDetails({
 
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <header
-          data-testid="chat-header"
-          className={chatHeaderClassName}
-        >
-          <div className={chatHeaderInnerClassName}>
-            <div
-              data-testid="chat-header-primary-row"
-              className={chatHeaderPrimaryRowClassName}
-            >
-              {showBackButton && onBack && (
-                <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-                  ← Back
-                </Button>
-              )}
-              <div className="min-w-0 flex-1">
-                <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Not found</h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "Chat not found"}</p>
-              </div>
-            </div>
+        <div className="p-6">
+          {showBackButton && onBack && (
+            <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+              ← Back
+            </Button>
+          )}
+          <div className="mt-4 min-w-0">
+            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Not found</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{error ?? "Chat not found"}</p>
           </div>
-        </header>
+        </div>
       </div>
     );
   }
@@ -829,47 +795,20 @@ export function ChatDetails({
 
   return (
     <div className={`flex h-full min-h-0 flex-col bg-white ${isEmbedded ? "dark:bg-neutral-800" : "dark:bg-neutral-900"}`}>
-      {!isEmbedded && (
-        <header
-          data-testid="chat-header"
-          className={chatHeaderClassName}
-        >
-          <div className={chatHeaderInnerClassName}>
-            <div
-              data-testid="chat-header-primary-row"
-              className={chatHeaderPrimaryRowClassName}
+      {!isEmbedded && frameworkHeader.available ? (
+        <FrameworkMainHeaderPortal
+          title={chat.config.name}
+          badges={(
+            <StatusBadge
+              variant={getChatStatusBadgeVariant(chat.state.status)}
+              size="sm"
+              className="shrink-0"
             >
-              {showBackButton && onBack && (
-                <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-                  ← Back
-                </Button>
-              )}
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <h1 className="min-w-0 flex-1 truncate text-lg font-bold text-gray-900 dark:text-gray-100" title={chat.config.name}>
-                  {chat.config.name}
-                </h1>
-                <StatusBadge
-                  variant={getChatStatusBadgeVariant(chat.state.status)}
-                  size="sm"
-                  className="shrink-0"
-                >
-                  {getChatStatusLabel(chat.state.status)}
-                </StatusBadge>
-              </div>
-              <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
-                <div data-testid="chat-header-actions">
-                  <ActionMenu
-                    items={chatActions.items}
-                    ariaLabel="Chat actions"
-                    disabled={chatActions.isDeletePending}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-      )}
-
+              {getChatStatusLabel(chat.state.status)}
+            </StatusBadge>
+          )}
+        />
+      ) : null}
       {chat.state.error && (
         <div className="mx-4 mt-3 rounded-md bg-red-50 p-3 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-300">
           {chat.state.error.message}
@@ -879,7 +818,6 @@ export function ChatDetails({
       {conversation}
       {permissionApprovalPanel}
       {composer}
-      {!isEmbedded && chatActions.modals}
     </div>
   );
 }

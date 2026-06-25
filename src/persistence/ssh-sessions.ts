@@ -10,11 +10,13 @@ import {
 } from "../types";
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
+import { requirePersistenceUserId } from "./ownership";
 
 const log = createLogger("persistence:ssh-sessions");
 
 const ALLOWED_SSH_SESSION_COLUMNS = new Set([
   "id",
+  "user_id",
   "name",
   "workspace_id",
   "task_id",
@@ -42,6 +44,7 @@ function validateColumnNames(columns: string[]): void {
 function sshSessionToRow(session: SshSession): Record<string, unknown> {
   return {
     id: session.config.id,
+    user_id: requirePersistenceUserId(),
     name: session.config.name,
     workspace_id: session.config.workspaceId,
     task_id: session.config.taskId ?? null,
@@ -102,7 +105,8 @@ export async function saveSshSession(session: SshSession): Promise<void> {
 
   db.run(
     `INSERT INTO ssh_sessions (${columns.join(", ")}) VALUES (${placeholders})
-     ON CONFLICT(id) DO UPDATE SET ${updateClause}`,
+     ON CONFLICT(id) DO UPDATE SET ${updateClause}
+     WHERE ssh_sessions.user_id = excluded.user_id`,
     values,
   );
   log.debug("Saved SSH session", {
@@ -114,35 +118,35 @@ export async function saveSshSession(session: SshSession): Promise<void> {
 
 export async function getSshSession(id: string): Promise<SshSession | null> {
   const db = getDatabase();
-  const row = db.query("SELECT * FROM ssh_sessions WHERE id = ?").get(id) as Record<string, unknown> | null;
+  const row = db.query("SELECT * FROM ssh_sessions WHERE id = ? AND user_id = ?").get(id, requirePersistenceUserId()) as Record<string, unknown> | null;
   return row ? rowToSshSession(row) : null;
 }
 
 export async function listSshSessions(): Promise<SshSession[]> {
   const db = getDatabase();
-  const rows = db.query("SELECT * FROM ssh_sessions ORDER BY created_at DESC").all() as Record<string, unknown>[];
+  const rows = db.query("SELECT * FROM ssh_sessions WHERE user_id = ? ORDER BY created_at DESC").all(requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map(rowToSshSession);
 }
 
 export async function listSshSessionsByWorkspace(workspaceId: string): Promise<SshSession[]> {
   const db = getDatabase();
   const rows = db.query(
-    "SELECT * FROM ssh_sessions WHERE workspace_id = ? ORDER BY created_at DESC",
-  ).all(workspaceId) as Record<string, unknown>[];
+    "SELECT * FROM ssh_sessions WHERE workspace_id = ? AND user_id = ? ORDER BY created_at DESC",
+  ).all(workspaceId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map(rowToSshSession);
 }
 
 export async function getSshSessionByTaskId(taskId: string): Promise<SshSession | null> {
   const db = getDatabase();
   const row = db.query(
-    "SELECT * FROM ssh_sessions WHERE task_id = ? LIMIT 1",
-  ).get(taskId) as Record<string, unknown> | null;
+    "SELECT * FROM ssh_sessions WHERE task_id = ? AND user_id = ? LIMIT 1",
+  ).get(taskId, requirePersistenceUserId()) as Record<string, unknown> | null;
   return row ? rowToSshSession(row) : null;
 }
 
 export async function countSshSessionsByWorkspace(workspaceId: string): Promise<number> {
   const db = getDatabase();
-  const row = db.query("SELECT COUNT(*) AS count FROM ssh_sessions WHERE workspace_id = ?").get(workspaceId) as {
+  const row = db.query("SELECT COUNT(*) AS count FROM ssh_sessions WHERE workspace_id = ? AND user_id = ?").get(workspaceId, requirePersistenceUserId()) as {
     count?: number;
   } | null;
   return row?.count ?? 0;
@@ -150,6 +154,6 @@ export async function countSshSessionsByWorkspace(workspaceId: string): Promise<
 
 export async function deleteSshSession(id: string): Promise<boolean> {
   const db = getDatabase();
-  const result = db.run("DELETE FROM ssh_sessions WHERE id = ?", [id]);
+  const result = db.run("DELETE FROM ssh_sessions WHERE id = ? AND user_id = ?", [id, requirePersistenceUserId()]);
   return result.changes > 0;
 }

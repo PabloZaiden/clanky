@@ -2,7 +2,6 @@
  * Settings API endpoints for Clanky Tasks Management System.
  * 
  * This module provides endpoints for:
- * - Getting application configuration
  * - Resetting database
  * 
  * Note: Server settings and connection management are now per-workspace.
@@ -13,11 +12,8 @@
  */
 
 import { backendManager } from "../core/backend-manager";
-import { getAppConfig } from "../core/config";
 import { deleteAndReinitializeDatabase } from "../persistence/database";
 import { createLogger } from "../core/logger";
-import { getPublicBasePathFromForwardedPrefix } from "../utils/public-base-path";
-import { getPasskeyAuthStatus } from "../core/passkey-auth";
 import { listWorkspaces } from "../persistence/workspaces";
 import { taskManager } from "../core/task-manager";
 import { purgeArchivedWorkspaceTasks } from "./workspaces/archived-task-purge";
@@ -28,47 +24,13 @@ const log = createLogger("api:settings");
 /**
  * Settings API routes.
  * 
- * Provides endpoints for application configuration and management:
- * - GET /api/config - Get application configuration
+ * Provides endpoints for Clanky-specific management:
  * - POST /api/settings/reset-all - Delete and reinitialize database
- * - POST /api/server/kill - Terminate the server process (for container restart)
  * 
  * Note: Global server settings and connection reset endpoints have been removed.
  * Server settings and connection management are now per-workspace via the workspace API.
  */
 export const settingsRoutes = {
-  "/api/config": {
-    /**
-     * GET /api/config - Get application configuration.
-     * 
-     * Returns settings that affect app behavior based on environment.
-     * Currently includes:
-     * - remoteOnly: Whether local stdio transport is disabled (CLANKY_REMOTE_ONLY)
-     * 
-     * @returns AppConfig object
-     */
-    async GET(req: Request): Promise<Response> {
-      log.debug("GET /api/config");
-      const config = getAppConfig();
-      const passkeyAuth = await getPasskeyAuthStatus(req);
-      const publicBasePath = getPublicBasePathFromForwardedPrefix(
-        req.headers.get("x-forwarded-prefix"),
-      );
-      const responseConfig = {
-        ...config,
-        passkeyAuth,
-        publicBasePath: publicBasePath || null,
-      };
-      log.debug("Returning app config", {
-        remoteOnly: config.remoteOnly,
-        passkeyRequired: passkeyAuth.passkeyRequired,
-        passkeyAuthenticated: passkeyAuth.authenticated,
-        publicBasePath: publicBasePath || null,
-      });
-      return Response.json(responseConfig);
-    },
-  },
-
   "/api/settings/reset-all": {
     /**
      * POST /api/settings/reset-all - Delete database and reinitialize.
@@ -159,37 +121,6 @@ export const settingsRoutes = {
           500,
         );
       }
-    },
-  },
-
-  "/api/server/kill": {
-    /**
-     * POST /api/server/kill - Terminate the server process.
-     * 
-     * This is a DESTRUCTIVE operation that terminates the Clanky server process.
-     * In containerized environments (e.g., Kubernetes), this will cause the container
-     * to restart, potentially pulling an updated image.
-     * 
-     * The server sends a success response before scheduling the exit to ensure
-     * the client receives confirmation that the kill was initiated.
-     * 
-     * @returns Success response with message, then server terminates
-     */
-    async POST(): Promise<Response> {
-      log.warn("POST /api/server/kill - Server kill requested");
-      
-      // Schedule the server termination after a short delay to allow the response to be sent
-      setTimeout(() => {
-        log.info("Server is shutting down...");
-        // Exit with code 0 to indicate intentional termination
-        // In k8s, the container will restart based on the restart policy
-        process.exit(0);
-      }, 100);
-      
-      return Response.json({ 
-        success: true, 
-        message: "Server is shutting down. The connection will be lost." 
-      });
     },
   },
 };

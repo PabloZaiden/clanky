@@ -1,4 +1,5 @@
-import { Button, Modal, PASSWORD_INPUT_PROPS } from "../common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button, PASSWORD_INPUT_PROPS } from "../common";
 
 export interface StandalonePasswordModalProps {
   isOpen: boolean;

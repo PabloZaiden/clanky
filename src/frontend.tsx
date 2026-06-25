@@ -6,7 +6,8 @@
  */
 
 import { createRoot } from "react-dom/client";
-import { configureClientRuntime } from "@clanky/client-sdk/public-path";
+import { configureClientRuntime } from "@/client-sdk/public-path";
+import "@pablozaiden/webapp/web/styles.css";
 import { App } from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/common/Toast";

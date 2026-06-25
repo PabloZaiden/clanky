@@ -24,19 +24,9 @@ export {
   type BadgeVariant,
 } from "./Badge";
 export { StatusBadge } from "./StatusBadge";
-export { Modal, ConfirmModal, type ModalProps, type ConfirmModalProps } from "./Modal";
 export { ChatIcon, CodeIcon, CopyPathIcon, EditIcon, GearIcon, GridIcon, HamburgerIcon, ListIcon, RefreshIcon, SidebarIcon, WrapTextIcon, type IconProps } from "./Icons";
 export { CollapsibleSection, type CollapsibleSectionProps } from "./CollapsibleSection";
 export { ToastProvider } from "./Toast";
-export {
-  ActionMenu,
-  ContextMenu,
-  insertPinActionItem,
-  type ActionMenuProps,
-  type ActionMenuItem,
-  type ContextMenuPosition,
-  type ContextMenuProps,
-} from "./ActionMenu";
 export { PASSWORD_INPUT_PROPS } from "./passwordInputProps";
 export {
   getComposerMinHeightClass,

@@ -1,4 +1,5 @@
 import { hostname } from "os";
+import { startServer } from "../server";
 import { formatClankyVersion, CLANKY_VERSION } from "../version";
 import {
   getCliRequestAuthContext,
@@ -31,46 +32,51 @@ const CLI_HELP_ENTRIES: CliHelpEntry[] = [
   {
     name: "help",
     description: "Show the CLI help and available commands.",
-    usage: ["clanky-cli help"],
+    usage: ["clanky help"],
+  },
+  {
+    name: "serve",
+    description: "Start the Clanky web/API server.",
+    usage: ["clanky serve"],
   },
   {
     name: "version",
-    description: "Print the current clanky-cli version.",
-    usage: ["clanky-cli version"],
+    description: "Print the current clanky version.",
+    usage: ["clanky version"],
   },
   {
     name: "update",
     description: "Check for or install newer Clanky release binaries.",
-    usage: ["clanky-cli update [--check] [--version <version>]"],
+    usage: ["clanky update [--check] [--version <version>]"],
   },
   {
     name: "auth",
     description: "Authenticate against a Clanky server and store credentials.",
-    usage: ["clanky-cli auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]"],
+    usage: ["clanky auth <base-url> [--client-id <client-id>] [--cookies <cookie-header>]"],
   },
   {
     name: "status",
     description: "Show the current authentication status for a server.",
-    usage: ["clanky-cli status [base-url]"],
+    usage: ["clanky status [base-url]"],
   },
   {
     name: "api",
     description: "List API endpoints or send an authenticated API request.",
     usage: [
-      "clanky-cli api",
-      "clanky-cli api <endpoint> [--method <method>] [--payload <json>]",
+      "clanky api",
+      "clanky api <endpoint> [--method <method>] [--payload <json>]",
     ],
   },
   {
     name: "schema",
     description: "Show the request schema metadata for an API endpoint.",
-    usage: ["clanky-cli schema <endpoint>"],
+    usage: ["clanky schema <endpoint>"],
   },
   {
     name: "ws",
     description: "Stream live WebSocket events for tasks, chats, SSH, or provisioning.",
     usage: [
-      "clanky-cli ws [base-url] [--task-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
+      "clanky ws [base-url] [--task-id <id>] [--chat-id <id>] [--ssh-session-id <id>] [--ssh-server-session-id <id>] [--provisioning-job-id <id>]",
     ],
   },
 ];
@@ -89,10 +95,10 @@ const CLI_COMMANDS = [
   "Commands:",
   ...CLI_HELP_ENTRIES.map((entry) => `  ${entry.name.padEnd(CLI_COMMAND_WIDTH)} ${entry.description}`),
 ].join("\n");
-const CLI_HELP = [formatClankyVersion("clanky-cli"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
+const CLI_HELP = [formatClankyVersion("clanky"), "", CLI_USAGE, "", CLI_COMMANDS].join("\n");
 
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
-const DEFAULT_CLIENT_ID = "clanky-cli";
+const DEFAULT_CLIENT_ID = "clanky";
 
 type CliOutputDependencies = {
   out?: (message: string) => void;
@@ -104,6 +110,9 @@ export type CliCommand =
     action: "help";
     exitCode: number;
   }
+  | {
+      action: "serve";
+    }
   | {
       action: "version";
     }
@@ -387,6 +396,14 @@ export function parseCliCommand(args: string[], dependencies: CliParseDependenci
     return { action };
   }
 
+  if (action === "serve") {
+    const { positionals } = parseCommandArguments(restArgs, []);
+    if (positionals.length > 0) {
+      throw createUsageError(`Unexpected argument: ${positionals[0]}`);
+    }
+    return { action };
+  }
+
   if (action === "update") {
     const { positionals, options, flags } = parseCommandArguments(restArgs, ["--version"], ["--check"]);
     if (positionals.length > 0) {
@@ -530,8 +547,11 @@ export async function runCli(
         out(CLI_HELP);
         return command.exitCode;
       case "version":
-        out(formatClankyVersion("clanky-cli"));
+        out(formatClankyVersion("clanky"));
         return 0;
+      case "serve":
+        await startServer();
+        return undefined;
       case "update":
         return await runUpdateCommand(command, {
           fetchFn,
@@ -582,6 +602,10 @@ export async function runMain(
   args: string[],
   dependencies: CliRuntimeDependencies = {},
 ): Promise<number | undefined> {
+  if (args[0] === "serve") {
+    await startServer();
+    return undefined;
+  }
   const runCliFn = dependencies.runCliFn ?? runCli;
   return await runCliFn(args, dependencies);
 }

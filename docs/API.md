@@ -12,46 +12,44 @@ The port can be configured via the `CLANKY_PORT` environment variable, and the b
 
 ## Authentication
 
-By default, the API does not require application-level credentials. In production deployments, Clanky is still expected to run behind a reverse proxy that enforces authentication and authorization.
+Authentication, users, passkeys, API keys, device auth, health, theme, log level, and server operations are provided by `@pablozaiden/webapp`. This document covers Clanky-owned domain endpoints only.
 
-When passkey authentication is configured, browser requests use a passkey session cookie and non-browser clients can authenticate with bearer tokens issued by the device flow. The public bootstrap remains available so the SPA can render the login gate and call the passkey auth endpoints. Set `CLANKY_DISABLE_PASSKEY=true` to bypass application-level passkey enforcement.
-
-`clanky-cli auth` uses the device flow endpoints, `clanky-cli status` validates stored bearer credentials through `GET /api/auth/status`, `clanky-cli api` sends authenticated REST calls with those stored tokens, `clanky-cli ws` opens authenticated websocket sessions against `/api/ws`, `clanky-cli schema` exposes discoverability metadata for catalogued endpoints, and `clanky-cli update` checks or installs published Clanky release binaries from GitHub Releases.
+`clanky auth` uses the framework device flow, `clanky api` sends authenticated REST calls with stored framework tokens, `clanky ws` opens authenticated websocket sessions against `/api/ws`, `clanky schema` exposes discoverability metadata for catalogued Clanky endpoints, and `clanky update` checks or installs published Clanky release binaries from GitHub Releases.
 
 ## CLI discovery helpers
 
-The standalone `clanky-cli` binary exposes API discovery directly:
+The standalone `clanky` binary exposes the server and API discovery directly:
 
 ```bash
 # Start the embedded local server
-clanky
+clanky serve
 
 # Print the installed CLI version
-clanky-cli version
+clanky version
 
 # Check whether a newer published binary is available
-clanky-cli update --check
+clanky update --check
 
 # Update the installed release binaries in place
-clanky-cli update
+clanky update
 
 # Authenticate against a server
-clanky-cli auth http://localhost:3000
+clanky auth http://localhost:3000
 
 # List discoverable endpoints
-clanky-cli api
+clanky api
 
 # Invoke an authenticated API request (prints one JSON object)
-clanky-cli api tasks/my-task --method GET
+clanky api tasks/my-task --method GET
 
 # Inspect the schema metadata for an endpoint
-clanky-cli schema auth/device
+clanky schema tasks
 
 # Stream websocket events over stdio
-clanky-cli ws --task-id my-task
+clanky ws --task-id my-task
 ```
 
-`clanky-cli help` includes the same version banner shown by `clanky-cli version`, which makes it easier to confirm the client version while browsing the built-in command list. `clanky-cli update` currently supports only the published Linux and macOS release binaries, updates `clanky-cli` plus a sibling `clanky` binary when one is installed beside it, prints progress while release metadata and downloads are in flight, and should not be used from a Bun source checkout. If a present `clanky` binary cannot be replaced because it is in use or not writable, the command emits a warning for that sibling update and still completes the `clanky-cli` update. `clanky-cli api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `clanky-cli ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
+`clanky help` includes the same version banner shown by `clanky version`, which makes it easier to confirm the client version while browsing the built-in command list. `clanky update` currently supports only the published Linux and macOS release binary, prints progress while release metadata and downloads are in flight, and should not be used from a Bun source checkout. `clanky api <endpoint>` emits a single JSON envelope so scripts can always parse the output. `clanky ws` reuses the stored CLI auth state, writes inbound websocket frames to stdout one line at a time, reads one JSON value per non-empty stdin line, and sends diagnostics to stderr so stdout stays machine-safe.
 
 Example CLI output:
 
@@ -114,47 +112,6 @@ This execution channel is decoupled from ACP streaming/provider internals. The f
 - Directory listings
 
 ## Endpoints
-
-### Health Check
-
-#### GET /api/health
-
-Check if the server is running.
-
-**Response**
-
-```json
-{
-  "healthy": true,
-  "version": "0.0.0-development"
-}
-```
-
-The `version` field is read from `package.json` at startup and will reflect the actual build version.
-
----
-
-### Auth Status
-
-#### GET /api/auth/status
-
-Validate whether the current passkey session or bearer token is authenticated.
-
-This endpoint is protected by the normal application-auth layer, so unauthenticated requests receive a `401` response.
-
-**Response**
-
-```json
-{
-  "authenticated": true,
-  "authKind": "bearer",
-  "subject": "clanky-user",
-  "clientId": "clanky-cli",
-  "scope": ""
-}
-```
-
----
 
 ### Tasks CRUD
 
@@ -1315,59 +1272,6 @@ Set the markdown rendering preference.
 | 400 | `validation_error` | `enabled` must be a boolean |
 | 500 | `save_failed` | Failed to save preference |
 
-#### GET /api/preferences/log-level
-
-Get the server log level preference.
-
-**Response**
-
-```json
-{
-  "level": "info",
-  "defaultLevel": "info",
-  "availableLevels": ["silly", "trace", "debug", "info", "warn", "error", "fatal"],
-  "isFromEnv": false
-}
-```
-
-| Field | Description |
-|-------|-------------|
-| `level` | Current active log level |
-| `defaultLevel` | Default log level ("info") |
-| `availableLevels` | All valid log level names |
-| `isFromEnv` | Whether the log level was set via `CLANKY_LOG_LEVEL` environment variable |
-
-#### PUT /api/preferences/log-level
-
-Set the server log level. Takes effect immediately for both frontend and backend logging.
-
-**Request Body**
-
-```json
-{
-  "level": "debug"
-}
-```
-
-Valid levels: `silly`, `trace`, `debug`, `info`, `warn`, `error`, `fatal`.
-
-**Response**
-
-```json
-{
-  "success": true,
-  "level": "debug"
-}
-```
-
-**Errors**
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `validation_error` | Level is required |
-| 400 | `invalid_level` | Invalid log level name |
-| 500 | `save_failed` | Failed to save preference |
-
 #### GET /api/preferences/dashboard-view-mode
 
 Get the dashboard view mode preference.
@@ -2041,25 +1945,6 @@ The endpoint uses the same archived-task predicate as the workspace purge endpoi
 
 ---
 
-### Server
-
-#### POST /api/server/kill
-
-Terminate the server process. This is a **destructive** operation. In containerized environments (e.g., Kubernetes), this will cause the container to restart, potentially pulling an updated image.
-
-The server sends a success response before scheduling the exit to ensure the client receives confirmation.
-
-**Response**
-
-```json
-{
-  "success": true,
-  "message": "Server is shutting down. The connection will be lost."
-}
-```
-
----
-
 ### SSH Sessions
 
 Workspace-backed SSH sessions are persistent dtach-backed sessions created against SSH-configured workspaces.
@@ -2503,13 +2388,13 @@ wss://example.com/api/ws                # Secure WebSocket
 
 ```bash
 # Connect using stored CLI credentials and stream one task only
-clanky-cli ws --task-id abc-123
+clanky ws --task-id abc-123
 
 # Override the base URL explicitly
-clanky-cli ws https://example.com/clanky --provisioning-job-id job-42
+clanky ws https://example.com/clanky --provisioning-job-id job-42
 ```
 
-`clanky-cli ws` uses the same stored bearer token and cookie state as `clanky-cli status` and `clanky-cli api`. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination.
+`clanky ws` uses the same stored bearer token and cookie state as `clanky status` and `clanky api`. The command upgrades a websocket connection to `/api/ws`, prints each incoming text frame to stdout unchanged, accepts one JSON value per non-empty stdin line, and exits non-zero on invalid stdin, auth/connection failures, or abnormal websocket termination.
 
 **Connection Message**
 

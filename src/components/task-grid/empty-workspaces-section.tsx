@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { DeleteWorkspaceRequest, Workspace, SshServer } from "../../types";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import { getServerLabel } from "../../types/settings";
-import { ConfirmModal } from "../common";
+import { ConfirmModal } from "@pablozaiden/webapp/web";
 import { useToast } from "../../hooks";
 import { getStoredSshCredentialToken } from "../../lib/ssh-browser-credentials";
 import { isAutoProvisionedWorkspace } from "../../lib/workspace-deletion-safety";

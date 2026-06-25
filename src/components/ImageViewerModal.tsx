@@ -1,4 +1,5 @@
-import { Button, Modal } from "./common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button } from "./common";
 
 export interface ImageViewerModalImage {
   src: string;

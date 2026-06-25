@@ -3,17 +3,13 @@ import { findRegisteredSshServer } from "../../types/settings";
 import type { useChats, useTasks, useSshSessions } from "../../hooks";
 import { getTaskStatusPill, isWorkspaceHistoryTask } from "../../utils";
 import {
-  ActionMenu,
   StatusBadge,
   getChatStatusBadgeVariant,
   getSshSessionStatusBadgeVariant,
   getSshSessionStatusLabel,
 } from "../common";
 import type { ShellRoute } from "./shell-types";
-import type { SidebarPinningState } from "./sidebar-pins";
 import { ShellPanel } from "./shell-panel";
-import { useWorkspaceGitHubUrl } from "./use-workspace-github-url";
-import { buildWorkspaceActionItems } from "./shell-action-items";
 import { ConfiguredAgentsSection } from "../ConfiguredAgentsSection";
 
 function getWorkspaceHeaderServerLabel(
@@ -42,10 +38,7 @@ export function WorkspaceView({
   agentsError,
   registeredSshServers,
   headerOffsetClassName,
-  onPullLatestChanges,
-  pullingLatestChanges,
   onNavigate,
-  sidebarPinning,
 }: {
   workspace: Workspace;
   relatedTasks: ReturnType<typeof useTasks>["tasks"];
@@ -56,28 +49,14 @@ export function WorkspaceView({
   agentsError: string | null;
   registeredSshServers: readonly SshServer[];
   headerOffsetClassName?: string;
-  onPullLatestChanges: () => void;
-  pullingLatestChanges: boolean;
   onNavigate: (route: ShellRoute) => void;
-  sidebarPinning: SidebarPinningState;
 }) {
-  const githubUrl = useWorkspaceGitHubUrl(workspace);
   const serverLabel = getWorkspaceHeaderServerLabel(workspace, registeredSshServers);
   const activityTasks = relatedTasks.filter((task) => !isWorkspaceHistoryTask(task.state.status));
   const historyTasks = relatedTasks.filter((task) => isWorkspaceHistoryTask(task.state.status));
   const hasActivity = activityTasks.length > 0 || relatedChats.length > 0 || relatedSessions.length > 0;
   const activityRowClassName = "flex min-w-0 w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition hover:border-gray-300 hover:bg-gray-100 dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-gray-700 dark:hover:bg-neutral-800";
   const historyDescription = "Merged and deleted tasks from this workspace.";
-  const createActionItems = buildWorkspaceActionItems({
-    workspace,
-    githubUrl,
-    pullingLatestChanges,
-    onNavigate,
-    onPullLatestChanges,
-    onOpenGitHub: (url) => window.open(url, "_blank", "noopener,noreferrer"),
-    sidebarPinning,
-  });
-
   function renderTaskRow(task: ReturnType<typeof useTasks>["tasks"][number]) {
     const route: ShellRoute = { view: "task", taskId: task.config.id };
     const statusPill = getTaskStatusPill(task);
@@ -110,7 +89,6 @@ export function WorkspaceView({
       description={serverLabel}
       variant="compact"
       headerOffsetClassName={headerOffsetClassName}
-      actions={<ActionMenu items={createActionItems} ariaLabel={`Workspace actions for ${workspace.name}`} />}
     >
       <div className="min-w-0 space-y-6">
         <div

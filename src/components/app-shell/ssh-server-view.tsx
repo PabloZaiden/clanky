@@ -1,26 +1,20 @@
 import type { SshServer, SshServerSession } from "../../types";
-import { ActionMenu, Badge } from "../common";
+import { Badge } from "../common";
 import type { ShellRoute } from "./shell-types";
-import type { SidebarPinningState } from "./sidebar-pins";
 import { ShellPanel, SummaryCard } from "./shell-panel";
 import { EmptySection } from "./shell-sidebar";
-import { buildSshServerActionItems } from "./shell-action-items";
 
 export function SshServerView({
   server,
   sessions,
   headerOffsetClassName,
   onNavigate,
-  sidebarPinning,
 }: {
   server: SshServer;
   sessions: SshServerSession[];
   headerOffsetClassName?: string;
   onNavigate: (route: ShellRoute) => void;
-  sidebarPinning: SidebarPinningState;
 }) {
-  const actionItems = buildSshServerActionItems({ server, onNavigate, sidebarPinning });
-
   return (
     <ShellPanel
       eyebrow="SSH server"
@@ -33,7 +27,6 @@ export function SshServerView({
           {sessions.length} session{sessions.length === 1 ? "" : "s"}
         </Badge>
       )}
-      actions={<ActionMenu items={actionItems} ariaLabel={`SSH server actions for ${server.config.name}`} />}
     >
       <div className="grid gap-4 lg:grid-cols-3">
         <SummaryCard label="Address" value={server.config.address} meta="Stored without credentials on the server." />

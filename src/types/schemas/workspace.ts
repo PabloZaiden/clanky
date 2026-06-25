@@ -1,1 +1,1 @@
-export * from "@clanky/contracts/schemas/workspace";
+export * from "@/contracts/schemas/workspace";

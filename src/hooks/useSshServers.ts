@@ -4,21 +4,68 @@ import type {
   SshConnectionMode,
   SshServer,
   SshServerSession,
+  SshSessionEvent,
+  UpdateSshSessionRequest,
   UpdateSshServerRequest,
 } from "../types";
+import { isSshSessionEvent, useAppEvents } from "./useAppEvents";
 import {
   createStandaloneSshSessionApi,
   createSshServerApi,
+  deleteStandaloneSshSessionApi,
   deleteSshServerApi,
   listSshServerSessionsApi,
   listSshServersApi,
   saveStandaloneSshServerPassword,
+  updateStandaloneSshSessionApi,
   updateSshServerApi,
 } from "./sshServerActions";
 import {
   clearStoredSshServerCredential,
   getStoredSshServerCredential,
 } from "../lib/ssh-browser-credentials";
+
+function applyStandaloneSshSessionStatus(
+  sessionsByServerId: Record<string, SshServerSession[]>,
+  sessionId: string,
+  status: SshServerSession["state"]["status"],
+  error: string | undefined,
+): Record<string, SshServerSession[]> {
+  let changed = false;
+  const nextEntries = Object.entries(sessionsByServerId).map(([serverId, sessions]) => {
+    const nextSessions = sessions.map((session) => {
+      if (session.config.id !== sessionId) {
+        return session;
+      }
+      changed = true;
+      return {
+        ...session,
+        state: {
+          ...session.state,
+          status,
+          error,
+        },
+      };
+    });
+    return [serverId, nextSessions] as const;
+  });
+  return changed ? Object.fromEntries(nextEntries) : sessionsByServerId;
+}
+
+function removeStandaloneSshSession(
+  sessionsByServerId: Record<string, SshServerSession[]>,
+  sessionId: string,
+): Record<string, SshServerSession[]> {
+  let changed = false;
+  const nextEntries = Object.entries(sessionsByServerId).map(([serverId, sessions]) => {
+    const nextSessions = sessions.filter((session) => session.config.id !== sessionId);
+    if (nextSessions.length !== sessions.length) {
+      changed = true;
+    }
+    return [serverId, nextSessions] as const;
+  });
+  return changed ? Object.fromEntries(nextEntries) : sessionsByServerId;
+}
 
 export interface UseSshServersResult {
   servers: SshServer[];
@@ -33,6 +80,8 @@ export interface UseSshServersResult {
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
+  updateSession: (serverId: string, sessionId: string, request: UpdateSshSessionRequest) => Promise<SshServerSession>;
+  deleteSession: (serverId: string, sessionId: string) => Promise<boolean>;
   hasStoredCredential: (serverId: string) => boolean;
 }
 
@@ -146,6 +195,60 @@ export function useSshServers(): UseSshServersResult {
     }
   }, []);
 
+  const updateSession = useCallback(async (
+    serverId: string,
+    sessionId: string,
+    request: UpdateSshSessionRequest,
+  ): Promise<SshServerSession> => {
+    try {
+      setError(null);
+      const session = await updateStandaloneSshSessionApi(sessionId, request);
+      setSessionsByServerId((prev) => ({
+        ...prev,
+        [serverId]: (prev[serverId] ?? []).map((item) => item.config.id === sessionId ? session : item),
+      }));
+      return session;
+    } catch (err) {
+      const message = String(err);
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
+    }
+  }, []);
+
+  const deleteSession = useCallback(async (serverId: string, sessionId: string): Promise<boolean> => {
+    try {
+      setError(null);
+      await deleteStandaloneSshSessionApi({
+        serverId,
+        sessionId,
+        requireCredential: false,
+      });
+      setSessionsByServerId((prev) => ({
+        ...prev,
+        [serverId]: (prev[serverId] ?? []).filter((session) => session.config.id !== sessionId),
+      }));
+      return true;
+    } catch (err) {
+      setError(String(err));
+      return false;
+    }
+  }, []);
+
+  const handleSshSessionEvent = useCallback((event: SshSessionEvent) => {
+    if (!event.sshSessionId) {
+      return;
+    }
+    if (event.type === "ssh_session.deleted") {
+      setSessionsByServerId((prev) => removeStandaloneSshSession(prev, event.sshSessionId));
+      return;
+    }
+    if (event.type === "ssh_session.status") {
+      setSessionsByServerId((prev) => applyStandaloneSshSessionStatus(prev, event.sshSessionId, event.status, event.error));
+    }
+  }, []);
+
+  useAppEvents<SshSessionEvent>(handleSshSessionEvent, isSshSessionEvent);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -160,6 +263,8 @@ export function useSshServers(): UseSshServersResult {
     updateServer,
     deleteServer,
     createSession,
+    updateSession,
+    deleteSession,
     hasStoredCredential: (serverId: string) => getStoredSshServerCredential(serverId) !== null,
   };
 }

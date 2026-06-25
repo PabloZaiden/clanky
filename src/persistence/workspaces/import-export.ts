@@ -13,6 +13,7 @@ import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { rowToWorkspace } from "./helpers";
 import { createWorkspace } from "./crud";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:workspaces");
 
@@ -23,8 +24,8 @@ const log = createLogger("persistence:workspaces");
 export async function exportWorkspaces(): Promise<WorkspaceExportData> {
   log.debug("Exporting all workspaces");
   const db = getDatabase();
-  const stmt = db.prepare("SELECT * FROM workspaces ORDER BY name COLLATE NOCASE ASC");
-  const rows = stmt.all() as Array<Record<string, unknown>>;
+  const stmt = db.prepare("SELECT * FROM workspaces WHERE user_id = ? ORDER BY name COLLATE NOCASE ASC");
+  const rows = stmt.all(requirePersistenceUserId()) as Array<Record<string, unknown>>;
 
   const workspaces: WorkspaceConfig[] = rows.map((row) => {
     const workspace = rowToWorkspace(row);

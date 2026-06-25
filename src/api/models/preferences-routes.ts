@@ -5,9 +5,7 @@
  * - GET/PUT /api/preferences/last-directory
  * - GET/PUT /api/preferences/markdown-rendering
  * - GET/PUT /api/preferences/file-explorer-full-tree
- * - GET/PUT /api/preferences/log-level
  * - GET/PUT /api/preferences/dashboard-view-mode
- * - GET/PUT /api/preferences/theme
  * - GET/PUT /api/preferences/scheduler-timezone
  *
  * @module api/models/preferences-routes
@@ -24,26 +22,15 @@ import {
   setMarkdownRenderingEnabled,
   getFileExplorerFullTreeEnabled,
   setFileExplorerFullTreeEnabled,
-  getLogLevelPreference,
-  setLogLevelPreference,
-  DEFAULT_LOG_LEVEL,
   getDashboardViewMode,
   setDashboardViewMode,
-  getThemePreference,
-  setThemePreference,
   getQuickChatSettings,
   setQuickChatSettings,
   getSchedulerTimezone,
   setSchedulerTimezone,
 } from "../../persistence/preferences";
 import { getWorkspace } from "../../persistence/workspaces";
-import {
-  createLogger,
-  setLogLevel as setBackendLogLevel,
-  type LogLevelName,
-  VALID_LOG_LEVELS,
-  isLogLevelFromEnv,
-} from "../../core/logger";
+import { createLogger } from "../../core/logger";
 import { parseAndValidate } from "../validation";
 import { errorResponse } from "../helpers";
 import {
@@ -52,9 +39,7 @@ import {
   SetLastDirectoryRequestSchema,
   SetMarkdownRenderingRequestSchema,
   SetFileExplorerFullTreeRequestSchema,
-  SetLogLevelRequestSchema,
   SetDashboardViewModeRequestSchema,
-  SetThemePreferenceRequestSchema,
   SetSchedulerTimezoneRequestSchema,
   SetQuickChatSettingsRequestSchema,
 } from "../../types/schemas";
@@ -250,57 +235,6 @@ export const preferencesRoutes = {
     },
   },
 
-  "/api/preferences/log-level": {
-    /**
-     * GET /api/preferences/log-level - Get log level preference.
-     *
-     * @returns Object with level, defaultLevel, availableLevels, and isFromEnv
-     */
-    async GET(): Promise<Response> {
-      const level = await getLogLevelPreference();
-      return Response.json({
-        level,
-        defaultLevel: DEFAULT_LOG_LEVEL,
-        availableLevels: VALID_LOG_LEVELS,
-        isFromEnv: isLogLevelFromEnv(),
-      });
-    },
-
-    /**
-     * PUT /api/preferences/log-level - Set log level preference.
-     *
-     * Request Body:
-     * - level (required): Log level name string
-     *
-     * @returns Success response
-     */
-    async PUT(req: Request): Promise<Response> {
-      const result = await parseAndValidate(SetLogLevelRequestSchema, req);
-      if (!result.success) {
-        return result.response;
-      }
-
-      const level = result.data.level;
-
-      if (!VALID_LOG_LEVELS.includes(level as LogLevelName)) {
-        return errorResponse("invalid_level", `Invalid log level: ${level}. Valid levels are: ${VALID_LOG_LEVELS.join(", ")}`);
-      }
-
-      try {
-        // Save to preferences
-        await setLogLevelPreference(level as LogLevelName);
-
-        // Also update the backend logger in real-time
-        setBackendLogLevel(level as LogLevelName);
-
-        return Response.json({ success: true, level });
-      } catch (error) {
-        logPreferenceSaveFailure("log-level", error);
-        return errorResponse("save_failed", String(error), 500);
-      }
-    },
-  },
-
   "/api/preferences/dashboard-view-mode": {
     /**
      * GET /api/preferences/dashboard-view-mode - Get dashboard view mode preference.
@@ -331,41 +265,6 @@ export const preferencesRoutes = {
         return Response.json({ success: true, mode: result.data.mode });
       } catch (error) {
         logPreferenceSaveFailure("dashboard-view-mode", error);
-        return errorResponse("save_failed", String(error), 500);
-      }
-    },
-  },
-
-  "/api/preferences/theme": {
-    /**
-     * GET /api/preferences/theme - Get theme preference.
-     *
-     * @returns Object with theme property
-     */
-    async GET(): Promise<Response> {
-      const theme = await getThemePreference();
-      return Response.json({ theme });
-    },
-
-    /**
-     * PUT /api/preferences/theme - Set theme preference.
-     *
-     * Request Body:
-     * - theme (required): "light", "dark", or "system"
-     *
-     * @returns Success response
-     */
-    async PUT(req: Request): Promise<Response> {
-      const result = await parseAndValidate(SetThemePreferenceRequestSchema, req);
-      if (!result.success) {
-        return result.response;
-      }
-
-      try {
-        await setThemePreference(result.data.theme);
-        return Response.json({ success: true, theme: result.data.theme });
-      } catch (error) {
-        logPreferenceSaveFailure("theme", error);
         return errorResponse("save_failed", String(error), 500);
       }
     },

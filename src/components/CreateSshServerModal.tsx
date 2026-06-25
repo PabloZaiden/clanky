@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { SshServer } from "../types";
-import { Button, Modal, PASSWORD_INPUT_PROPS } from "./common";
+import { Modal } from "@pablozaiden/webapp/web";
+import { Button, PASSWORD_INPUT_PROPS } from "./common";
 import { useToast } from "../hooks";
 
 export interface CreateSshServerModalProps {

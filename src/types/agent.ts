@@ -1,2 +1,2 @@
-export * from "@clanky/shared/agent";
+export * from "@/shared/agent";
 

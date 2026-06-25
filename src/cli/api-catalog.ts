@@ -3,8 +3,6 @@ import { apiRoutes } from "../api";
 import {
   AddressCommentsRequestSchema,
   CheckSshServerPrerequisitesRequestSchema,
-  CompletePasskeyAuthenticationRequestSchema,
-  CompletePasskeyRegistrationRequestSchema,
   CreateChatRequestSchema,
   CreateSshServerChatRequestSchema,
   CreateTaskRequestSchema,
@@ -18,20 +16,15 @@ import {
   DeleteSshServerSessionRequestSchema,
   DiscoverSshServerChatModelsRequestSchema,
   DiscoverSshServerChatProvidersRequestSchema,
-  DeviceStartRequestSchema,
-  DeviceVerificationActionSchema,
   FollowUpRequestSchema,
   GenerateTaskTitleRequestSchema,
   GetWorkspaceFileRequestSchema,
   GetWorkspaceFileTreeRequestSchema,
   InterruptChatRequestSchema,
-  IssuerSettingsSchema,
   ListWorkspaceFilesRequestSchema,
   PendingPromptRequestSchema,
   PlanAcceptRequestSchema,
   PlanFeedbackRequestSchema,
-  PublicRevokeRequestSchema,
-  RefreshEndpointRequestSchema,
   ReplyToChatPermissionRequestSchema,
   ReconnectChatRequestSchema,
   SendChatMessageRequestSchema,
@@ -41,15 +34,12 @@ import {
   SetLastCheapModelRequestSchema,
   SetLastDirectoryRequestSchema,
   SetLastModelRequestSchema,
-  SetLogLevelRequestSchema,
   SetMarkdownRenderingRequestSchema,
   SetQuickChatSettingsRequestSchema,
-  SetThemePreferenceRequestSchema,
   SetPendingRequestSchema,
   SshCredentialExchangeRequestSchema,
   StartDraftRequestSchema,
   TestConnectionRequestSchema,
-  TokenRequestSchema,
   UpdateChatRequestSchema,
   UpdateTaskRequestSchema,
   UpdateSshServerRequestSchema,
@@ -87,77 +77,8 @@ const SensitiveQuerySchema = z.object({
 });
 
 const endpointOverrides: Record<string, ApiEndpointOverride> = {
-  "/api/health": {
-    description: "Server health check.",
-  },
   "/api/config": {
     description: "Server configuration and runtime settings.",
-  },
-  "/api/auth/device": {
-    description: "Start a device authorization flow for CLI login.",
-    requestSchema: DeviceStartRequestSchema,
-  },
-  "/api/auth/device/verification": {
-    description: "Inspect a pending device authorization request.",
-    querySchema: z.object({
-      user_code: z.string().trim().min(1),
-    }),
-  },
-  "/api/auth/device/approve": {
-    description: "Approve a pending device authorization request.",
-    requestSchema: DeviceVerificationActionSchema,
-  },
-  "/api/auth/device/deny": {
-    description: "Deny a pending device authorization request.",
-    requestSchema: DeviceVerificationActionSchema,
-  },
-  "/api/auth/token": {
-    description: "Exchange a device code or refresh token for bearer tokens.",
-    requestSchema: TokenRequestSchema,
-  },
-  "/api/auth/refresh": {
-    description: "Exchange a refresh token for a new bearer token set.",
-    requestSchema: RefreshEndpointRequestSchema,
-  },
-  "/api/auth/revoke": {
-    description: "Revoke a stored refresh token or session.",
-    requestSchema: PublicRevokeRequestSchema,
-  },
-  "/api/auth/status": {
-    description: "Validate the current bearer token and return auth details.",
-  },
-  "/api/auth/sessions": {
-    description: "List active authentication sessions.",
-  },
-  "/api/auth/sessions/:id": {
-    description: "Revoke an authentication session.",
-  },
-  "/api/auth/issuer": {
-    description: "Read or update the token issuer settings.",
-    requestSchema: IssuerSettingsSchema,
-  },
-  "/api/passkey-auth/status": {
-    description: "Read the current passkey authentication status.",
-  },
-  "/api/passkey-auth/registration/options": {
-    description: "Start passkey registration and return browser options.",
-  },
-  "/api/passkey-auth/registration/verify": {
-    description: "Complete passkey registration.",
-    requestSchema: CompletePasskeyRegistrationRequestSchema,
-  },
-  "/api/passkey-auth/authentication/options": {
-    description: "Start passkey authentication and return browser options.",
-  },
-  "/api/passkey-auth/authentication/verify": {
-    description: "Complete passkey authentication.",
-    requestSchema: CompletePasskeyAuthenticationRequestSchema,
-  },
-  "/api/passkey-auth/logout": {
-    description: "End the current passkey-backed browser session.",
-  },
-  "/api/passkey-auth/passkey": {
-    description: "Delete configured passkeys for the current account.",
   },
   "/api/tasks": {
     description: "List tasks or create a new task.",
@@ -438,17 +359,9 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
     description: "Persist file explorer tree loading preferences.",
     requestSchema: SetFileExplorerFullTreeRequestSchema,
   },
-  "/api/preferences/log-level": {
-    description: "Persist the preferred application log level.",
-    requestSchema: SetLogLevelRequestSchema,
-  },
   "/api/preferences/dashboard-view-mode": {
     description: "Persist the preferred dashboard layout.",
     requestSchema: SetDashboardViewModeRequestSchema,
-  },
-  "/api/preferences/theme": {
-    description: "Persist the preferred application theme.",
-    requestSchema: SetThemePreferenceRequestSchema,
   },
   "/api/preferences/quick-chat": {
     description: "Persist quick chat workspace and model preferences.",
@@ -599,9 +512,6 @@ const endpointOverrides: Record<string, ApiEndpointOverride> = {
   },
   "/api/settings/purge-terminal-tasks": {
     description: "Purge terminal-state tasks across all workspaces.",
-  },
-  "/api/server/kill": {
-    description: "Shut down the Clanky server process.",
   },
 };
 

@@ -18,6 +18,8 @@ import { TestCommandExecutor } from "./mocks/mock-executor";
 import { MockAcpBackend, defaultTestModel } from "./mocks/mock-backend";
 import type { TaskEvent } from "../src/types/events";
 import { getDefaultServerSettings } from "../src/types/settings";
+import { runWithCurrentUser } from "../src/core/user-context";
+import type { CurrentUser } from "@pablozaiden/webapp/contracts";
 
 /**
  * Default test workspace ID that can be used in tests.
@@ -43,6 +45,14 @@ export const testModelFields = {
   modelProviderID: testModel.providerID,
   modelID: testModel.modelID,
   modelVariant: testModel.variant,
+};
+
+export const testOwnerUser: CurrentUser = {
+  id: "admin",
+  username: "admin",
+  role: "owner",
+  isOwner: true,
+  isAdmin: true,
 };
 
 /**
@@ -108,14 +118,14 @@ export async function setupTestContext(options: SetupOptions = {}): Promise<Test
   await ensureDataDirectories();
 
   // Create the default test workspace (required for tasks with workspaceId)
-  await createWorkspace({
+  await runWithCurrentUser(testOwnerUser, () => createWorkspace({
     id: testWorkspaceId,
     name: "Test Workspace",
     directory: workDir,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     serverSettings: getDefaultServerSettings(),
-  });
+  }));
 
   // Create initial files
   for (const [path, content] of Object.entries(initialFiles)) {

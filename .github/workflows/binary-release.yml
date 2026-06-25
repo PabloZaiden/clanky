@@ -11,19 +11,14 @@ jobs:
     permissions:
       contents: write
     with:
+      install_command: bun install --frozen-lockfile
       prebuild_command: bun run build
       binaries: |
         [
           {
             "name": "clanky",
             "asset_prefix": "clanky",
-            "build_command": "bun --cwd apps/server src/build.ts --target=$BUN_TARGET",
-            "output_path": "apps/server/dist/clanky-$RELEASE_TARGET"
-          },
-          {
-            "name": "clanky-cli",
-            "asset_prefix": "clanky-cli",
-            "build_command": "bun --cwd apps/cli src/build.ts --target=$BUN_TARGET",
-            "output_path": "apps/cli/dist/clanky-cli-$RELEASE_TARGET"
+            "build_command": "bun src/build.ts --target=$BUN_TARGET",
+            "output_path": "dist/clanky-$RELEASE_TARGET"
           }
         ]

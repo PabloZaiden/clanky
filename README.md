@@ -7,12 +7,11 @@
 
 Clanky is a coding agent manager for running, reviewing, and iterating on tasks with coding agents such as Codex, Copilot, OpenCode, and Claude Code.
 
-The repository is organized as a workspace-style monorepo:
+The repository is organized as a single Bun app:
 
-- `apps/server` - web and API server.
-- `apps/web` - browser bundle workspace for the shared web app assets
-- `apps/cli` - standalone API client CLI
-- `packages/shared`, `packages/contracts`, `packages/client-sdk` - shared runtime-neutral types/helpers, API contracts, and client transport/auth utilities
+- `src` - the Clanky app and binary entrypoint, including the Bun server, React UI, CLI subcommands, shared helpers, API contracts, and client transport utilities.
+
+Shared foundations such as passkey/API-key/device auth, users, settings, app shell, sidebar/title-bar action menus, dialogs, realtime plumbing, health, and server lifecycle operations come from `@pablozaiden/webapp`. Clanky-owned code focuses on coding-agent domains: tasks, chats, agents, workspaces, SSH/VNC sessions, file exploration, and provider/runtime orchestration.
 
 ## Best way to use Clanky
 
@@ -64,16 +63,16 @@ Install the latest Linux or macOS binary releases:
 curl -fsSL https://raw.githubusercontent.com/pablozaiden/installer/main/install.sh | sh -s -- pablozaiden/clanky
 ```
 
-The shared installer downloads the latest release assets for Linux or macOS (`x64` or `arm64`) and installs both `clanky` and `clanky-cli` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
+The shared installer downloads the latest release asset for Linux or macOS (`x64` or `arm64`) and installs `clanky` in `$HOME/.local/bin`. If that directory is not on your `PATH`, the installer prints the shell profile line to add.
 
 You can also download binaries directly from the [Releases page](https://github.com/pablozaiden/clanky/releases/latest).
 
 Once installed from a release binary, you can update the installed release binaries in place:
 
 ```bash
-clanky-cli update --check
-clanky-cli update
-clanky-cli update --version v0.8.1
+clanky update --check
+clanky update
+clanky update --version v0.8.1
 ```
 
 ## Quick start
@@ -89,7 +88,7 @@ clanky-cli update --version v0.8.1
 
 ```bash
 # Installed server binary (embedded API + web, same-origin)
-clanky
+clanky serve
 
 # Source development (combined API + web, same-origin)
 bun dev
@@ -102,38 +101,38 @@ The UI is available at `http://localhost:3000` by default. Use `CLANKY_PORT` to 
 
 ### CLI client commands
 
-The separately installed `clanky-cli` binary exposes the terminal client surface:
+The `clanky` binary exposes both the server and terminal client surfaces:
 
 ```bash
 # Check which version is installed
-clanky-cli version
+clanky version
 
 # Check whether a newer published binary is available
-clanky-cli update --check
+clanky update --check
 
 # Update the installed release binaries in place
-clanky-cli update
+clanky update
 
 # Install a specific published release
-clanky-cli update --version v0.8.1
+clanky update --version v0.8.1
 
 # Start device authorization against a specific Clanky server
-clanky-cli auth http://localhost:3000
+clanky auth http://localhost:3000
 
 # Check whether stored CLI credentials are still valid
-clanky-cli status
+clanky status
 
 # List the discoverable REST endpoints
-clanky-cli api
+clanky api
 
 # Invoke an authenticated API request (prints one JSON object)
-clanky-cli api tasks/my-task --method GET
+clanky api tasks/my-task --method GET
 
 # Inspect the expected schema for an endpoint
-clanky-cli schema auth/device
+clanky schema auth/device
 
 # Stream authenticated websocket events over stdio
-clanky-cli ws --task-id my-task
+clanky ws --task-id my-task
 ```
 
 ## Key features
@@ -163,7 +162,7 @@ clanky-cli ws --task-id my-task
 
 - Passkey authentication protects the browser session and device-approval flow.
 - Bearer tokens are issued through the device authorization flow and work as an alternative to the browser passkey session for APIs, WebSocket upgrades, and forwarded-port proxy access.
-- `clanky-cli auth` stores bearer credentials in per-user CLI state under the home directory, `clanky-cli status` validates them through `GET /api/auth/status`, `clanky-cli api` sends authenticated REST calls with the stored tokens, `clanky-cli ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky-cli schema` exposes endpoint discoverability data from the built-in API catalog.
+- `clanky auth` stores bearer credentials in per-user CLI state under the home directory, `clanky status` validates them through `GET /api/auth/status`, `clanky api` sends authenticated REST calls with the stored tokens, `clanky ws` uses those same credentials for authenticated websocket upgrades to `/api/ws`, and `clanky schema` exposes endpoint discoverability data from the built-in API catalog.
 - Clanky exposes `/.well-known/openid-configuration` and `/.well-known/jwks.json` so external clients can verify access tokens.
 - Set `CLANKY_DISABLE_PASSKEY=true`, `1`, or `yes` to bypass only the passkey requirement as an emergency override.
 - Set `CLANKY_DISABLE_SAME_ORIGIN_CHECK=true`, `1`, or `yes` only for development setups where the frontend intentionally runs on a different local origin than the backend. Leave it unset in normal and production deployments.
@@ -203,8 +202,7 @@ bun run test
 bun dev
 ```
 
-`bun run build` creates a standalone executable in `dist/clanky`.
-It also builds `apps/server/dist/clanky` and `apps/cli/dist/clanky-cli`.
+`bun run build` creates standalone executables in `dist/`.
 
 To repopulate local demo data for the UI, run:
 

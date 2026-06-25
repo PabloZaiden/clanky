@@ -56,7 +56,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     pattern: "tests/unit/**/*.test.{ts,tsx,js,jsx}",
     shardCount: 6,
     fileConcurrency: 2,
-    argsPrefix: ["test", "--dots", "--timeout", "30000"],
+    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
   },
   {
@@ -65,7 +65,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     pattern: "tests/api/**/*.test.{ts,tsx,js,jsx}",
     shardCount: 3,
     fileConcurrency: 2,
-    argsPrefix: ["test", "--dots", "--timeout", "30000"],
+    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
   },
   {
@@ -74,7 +74,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     pattern: "tests/e2e/**/*.test.{ts,tsx,js,jsx}",
     shardCount: 1,
     fileConcurrency: 1,
-    argsPrefix: ["test", "--dots", "--timeout", "30000"],
+    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
   },
   {
@@ -83,7 +83,7 @@ const suiteDefinitions: SuiteDefinition[] = [
     pattern: "tests/integration/**/*.test.{ts,tsx,js,jsx}",
     shardCount: 2,
     fileConcurrency: 1,
-    argsPrefix: ["test", "--dots", "--timeout", "30000"],
+    argsPrefix: ["test", "--dots", "--timeout", "30000", "--preload", "./tests/backend-user-context.ts"],
     modes: ["all", "backend"],
   },
   {
@@ -162,6 +162,7 @@ export function buildEnv(sourceEnv: Record<string, string | undefined> = process
   if (env["CLANKY_LOG_LEVEL"] === undefined) {
     env["CLANKY_LOG_LEVEL"] = "fatal";
   }
+  env["CLANKY_TEST_OWNER_CONTEXT"] = "1";
   return env;
 }
 

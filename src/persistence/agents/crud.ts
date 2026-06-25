@@ -8,6 +8,7 @@ import {
   validateAgentColumnNames,
   validateAgentRunColumnNames,
 } from "./helpers";
+import { requirePersistenceUserId } from "../ownership";
 
 const DELETE_AGENT_RUN_BATCH_SIZE = 500;
 
@@ -36,6 +37,7 @@ function buildUpsertSql(tableName: "agents" | "agent_runs", row: Record<string, 
       INSERT INTO ${tableName} (${columns.join(", ")})
       VALUES (${placeholders})
       ON CONFLICT(id) DO UPDATE SET ${updateClause}
+      WHERE ${tableName}.user_id = excluded.user_id
     `,
     values,
   };
@@ -49,39 +51,43 @@ export async function saveAgent(agent: Agent): Promise<void> {
 }
 
 export async function loadAgent(agentId: string): Promise<Agent | null> {
+  const userId = requirePersistenceUserId();
   const row = getDatabase()
-    .prepare("SELECT * FROM agents WHERE id = ?")
-    .get(agentId) as Record<string, unknown> | null;
+    .prepare("SELECT * FROM agents WHERE id = ? AND user_id = ?")
+    .get(agentId, userId) as Record<string, unknown> | null;
   return row ? rowToAgent(row) : null;
 }
 
 export async function listAgents(): Promise<Agent[]> {
+  const userId = requirePersistenceUserId();
   const rows = getDatabase()
-    .prepare("SELECT * FROM agents ORDER BY created_at DESC")
-    .all() as Record<string, unknown>[];
+    .prepare("SELECT * FROM agents WHERE user_id = ? ORDER BY created_at DESC")
+    .all(userId) as Record<string, unknown>[];
   return rows.map(rowToAgent);
 }
 
 export async function listAgentsByWorkspace(workspaceId: string): Promise<Agent[]> {
+  const userId = requirePersistenceUserId();
   const rows = getDatabase()
-    .prepare("SELECT * FROM agents WHERE workspace_id = ? ORDER BY created_at DESC")
-    .all(workspaceId) as Record<string, unknown>[];
+    .prepare("SELECT * FROM agents WHERE workspace_id = ? AND user_id = ? ORDER BY created_at DESC")
+    .all(workspaceId, userId) as Record<string, unknown>[];
   return rows.map(rowToAgent);
 }
 
 export async function listDueAgents(now: string): Promise<Agent[]> {
+  const userId = requirePersistenceUserId();
   const rows = getDatabase()
     .prepare(`
       SELECT * FROM agents
-      WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?
+      WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ? AND user_id = ?
       ORDER BY next_run_at ASC
     `)
-    .all(now) as Record<string, unknown>[];
+    .all(now, userId) as Record<string, unknown>[];
   return rows.map(rowToAgent);
 }
 
 export async function deleteAgent(agentId: string): Promise<boolean> {
-  const result = getDatabase().prepare("DELETE FROM agents WHERE id = ?").run(agentId);
+  const result = getDatabase().prepare("DELETE FROM agents WHERE id = ? AND user_id = ?").run(agentId, requirePersistenceUserId());
   return result.changes > 0;
 }
 
@@ -93,9 +99,10 @@ export async function saveAgentRun(run: AgentRun): Promise<void> {
 }
 
 export async function loadAgentRun(runId: string): Promise<AgentRun | null> {
+  const userId = requirePersistenceUserId();
   const row = getDatabase()
-    .prepare("SELECT * FROM agent_runs WHERE id = ?")
-    .get(runId) as Record<string, unknown> | null;
+    .prepare("SELECT * FROM agent_runs WHERE id = ? AND user_id = ?")
+    .get(runId, userId) as Record<string, unknown> | null;
   return row ? rowToAgentRun(row) : null;
 }
 
@@ -105,30 +112,32 @@ export async function listAgentRuns(
 ): Promise<AgentRun[]> {
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
+  const userId = requirePersistenceUserId();
   const rows = getDatabase()
     .prepare(`
       SELECT * FROM agent_runs
-      WHERE agent_id = ?
+      WHERE agent_id = ? AND user_id = ?
       ORDER BY created_at DESC
       LIMIT ? OFFSET ?
     `)
-    .all(agentId, limit, offset) as Record<string, unknown>[];
+    .all(agentId, userId, limit, offset) as Record<string, unknown>[];
   return rows.map(rowToAgentRun);
 }
 
 export async function listActiveAgentRuns(agentId: string): Promise<AgentRun[]> {
+  const userId = requirePersistenceUserId();
   const rows = getDatabase()
     .prepare(`
       SELECT * FROM agent_runs
-      WHERE agent_id = ? AND status IN ('scheduled', 'starting', 'running')
+      WHERE agent_id = ? AND user_id = ? AND status IN ('scheduled', 'starting', 'running')
       ORDER BY created_at DESC
     `)
-    .all(agentId) as Record<string, unknown>[];
+    .all(agentId, userId) as Record<string, unknown>[];
   return rows.map(rowToAgentRun);
 }
 
 export async function deleteAgentRun(runId: string): Promise<boolean> {
-  const result = getDatabase().prepare("DELETE FROM agent_runs WHERE id = ?").run(runId);
+  const result = getDatabase().prepare("DELETE FROM agent_runs WHERE id = ? AND user_id = ?").run(runId, requirePersistenceUserId());
   return result.changes > 0;
 }
 
@@ -136,8 +145,9 @@ export async function deleteAgentRuns(
   agentId: string,
   options: AgentRunPurgeOptions = {},
 ): Promise<string[]> {
-  const clauses = ["agent_id = ?"];
-  const values: Array<string> = [agentId];
+  const userId = requirePersistenceUserId();
+  const clauses = ["agent_id = ?", "user_id = ?"];
+  const values: Array<string> = [agentId, userId];
   if (options.before) {
     clauses.push("created_at < ?");
     values.push(options.before);
@@ -159,8 +169,8 @@ export async function deleteAgentRuns(
   const db = getDatabase();
   for (let index = 0; index < runIds.length; index += DELETE_AGENT_RUN_BATCH_SIZE) {
     const batch = runIds.slice(index, index + DELETE_AGENT_RUN_BATCH_SIZE);
-    db.prepare(`DELETE FROM agent_runs WHERE id IN (${batch.map(() => "?").join(", ")})`)
-      .run(...batch);
+    db.prepare(`DELETE FROM agent_runs WHERE user_id = ? AND id IN (${batch.map(() => "?").join(", ")})`)
+      .run(userId, ...batch);
   }
   return runIds;
 }

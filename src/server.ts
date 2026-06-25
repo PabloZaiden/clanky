@@ -2,266 +2,218 @@
  * Main server startup for the Clanky web application.
  */
 
-import { serve, type Server } from "bun";
+import type { Server } from "bun";
 import index from "./index.html";
-import { posix as pathPosix } from "path";
+import { createWebAppServer, defineRoutes, sqliteWebAppStore, type ResourceRealtimeEvent, type RouteDefinition, type RouteTable, type WebAppServer, type WebAppWebSocketData } from "@pablozaiden/webapp/server";
 import { apiRoutes } from "./api";
-import {
-  wrapRouteHandlerWithApplicationAuth,
-  wrapRoutesWithApplicationAuth,
-} from "./api/application-auth";
-import { wrapRoutesWithLogging, wrapRouteHandlerWithLogging } from "./api/request-logging";
-import {
-  wrapRouteHandlerWithSameOriginProtection,
-  wrapRoutesWithSameOriginProtection,
-} from "./api/same-origin-guard";
 import { portForwardProxyRoutes } from "./api/port-forwards";
-import { ensureDataDirectories } from "./persistence/database";
+import { websocketHandlers } from "./api/websocket";
+import { ensureDataDirectories, getDataDir, initializeDatabase } from "./persistence/database";
 import { resetStaleTasks } from "./persistence/tasks";
+import { runForEachActiveUser } from "./core/background-users";
 import { backendManager } from "./core/backend-manager";
-import { websocketHandlers, type WebSocketData } from "./api/websocket";
-import {
-  DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS,
-  getServerDevelopmentConfig,
-  getServerRuntimeConfig,
-  getServerStartupMessages,
-} from "./core/server-config";
-import { log, setLogLevel, isLogLevelFromEnv } from "./core/logger";
-import { getLogLevelPreference } from "./persistence/preferences";
+import { getServerStartupMessages } from "./core/server-config";
+import { log, setLogLevel } from "./core/logger";
 import { pushedTaskMonitor } from "./core/pushed-task-monitor";
 import { agentScheduler } from "./core/agent-scheduler";
-import { parseSensitiveFlag } from "./lib/sensitive-data";
+import { getAppConfig } from "./core/config";
+import {
+  agentEventEmitter,
+  chatEventEmitter,
+  provisioningEventEmitter,
+  sshSessionEventEmitter,
+  taskEventEmitter,
+} from "./core/event-emitter";
+import { getPublicBasePathFromForwardedPrefix } from "./utils/public-base-path";
+import { runWithCurrentUser } from "./core/user-context";
+import { CLANKY_VERSION } from "./version";
 
-type StoppableServer = {
-  stop(closeActiveConnections?: boolean): void;
-};
+type ClankyRealtimeEvent = ResourceRealtimeEvent | Record<string, unknown>;
+type LegacyRouteHandler = (req: Request, server?: Server<WebAppWebSocketData>) => Response | undefined | Promise<Response | undefined>;
+type LegacyRouteMethods = Record<string, LegacyRouteHandler>;
+type LegacyRouteValue = LegacyRouteMethods | LegacyRouteHandler;
 
-function getConfiguredWebDistDir(): string | undefined {
-  const configuredDir = process.env["CLANKY_WEB_DIST_DIR"]?.trim();
-  return configuredDir ? configuredDir.replace(/\/+$/, "") : undefined;
+let app: WebAppServer<ClankyRealtimeEvent> | undefined;
+let realtimeBridgeRegistered = false;
+
+function legacyRequest(req: Request, params: Record<string, string>): Request {
+  const wrapped = new Request(req);
+  Object.defineProperty(wrapped, "params", {
+    value: params,
+    enumerable: true,
+  });
+  return wrapped;
 }
 
-function getWebAssetPath(distDir: string, pathname: string): string {
-  const normalizedPath = pathPosix.normalize(pathname === "/" ? "/index.html" : pathname);
-  const segments = normalizedPath
-    .split("/")
-    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
-  return `${distDir}/${segments.join("/")}`;
-}
-
-function decodeWebPathname(pathname: string): string | undefined {
-  try {
-    return decodeURIComponent(pathname);
-  } catch {
-    return undefined;
-  }
-}
-
-export async function serveWebApp(req: Request) {
-  const distDir = getConfiguredWebDistDir();
-  if (!distDir) {
-    return new Response("CLANKY_WEB_DIST_DIR is not configured.", { status: 500 });
-  }
-
-  const url = new URL(req.url);
-  const decodedPathname = decodeWebPathname(url.pathname);
-  if (decodedPathname === undefined) {
-    return new Response("Malformed request path", { status: 400 });
-  }
-
-  const assetPath = getWebAssetPath(distDir, decodedPathname);
-  const assetFile = Bun.file(assetPath);
-  if (await assetFile.exists()) {
-    return new Response(assetFile);
-  }
-
-  const spaIndex = Bun.file(`${distDir}/index.html`);
-  if (await spaIndex.exists()) {
-    return new Response(spaIndex);
-  }
-
-  return new Response("Configured web dist is missing index.html.", { status: 500 });
-}
-
-export function getWebAppRoute() {
-  return getConfiguredWebDistDir() ? serveWebApp : index;
-}
-
-function registerServerShutdown(servers: StoppableServer[]): void {
-  let alreadyStopped = false;
-
-  const stopServers = () => {
-    if (alreadyStopped) {
-      return;
-    }
-
-    alreadyStopped = true;
-    for (const server of servers) {
-      server.stop(true);
-    }
+function adaptHandler(
+  handler: (req: Request, server?: Server<WebAppWebSocketData>) => Response | undefined | Promise<Response | undefined>,
+) {
+  return async (req: Request, ctx: Parameters<NonNullable<RouteDefinition<ClankyRealtimeEvent>["GET"]>>[1]) => {
+    const user = ctx.requireUser();
+    return await runWithCurrentUser(user, () => handler(legacyRequest(req, ctx.params), ctx.server as Server<WebAppWebSocketData> | undefined));
   };
-
-  process.once("SIGINT", stopServers);
-  process.once("SIGTERM", stopServers);
 }
 
-export async function startServer(): Promise<void> {
-  await ensureDataDirectories();
+function adaptLegacyRoutes(routes: Record<string, LegacyRouteValue>): RouteTable<ClankyRealtimeEvent> {
+  const converted: RouteTable<ClankyRealtimeEvent> = {};
+  const methods = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+  for (const [path, route] of Object.entries(routes)) {
+    const auth = path === "/api/settings/reset-all" || path === "/api/settings/purge-terminal-tasks" ? "owner" : "user";
+    if (typeof route === "function") {
+      converted[path] = {
+        auth,
+        sameOrigin: path.startsWith("/task/") ? "always" : "mutations",
+        ...Object.fromEntries(methods.map((method) => [method, adaptHandler(route as LegacyRouteHandler)])),
+      };
+      continue;
+    }
 
-  if (!isLogLevelFromEnv()) {
-    const savedLogLevel = await getLogLevelPreference();
-    setLogLevel(savedLogLevel);
-    log.debug(`Log level set from saved preference: ${savedLogLevel}`);
-  } else {
-    log.debug("Log level set from CLANKY_LOG_LEVEL environment variable");
+    converted[path] = {
+      auth,
+      sameOrigin: path.startsWith("/task/") ? "always" : "mutations",
+    };
+    for (const method of methods) {
+      const handler = route[method];
+      if (handler) {
+        converted[path]![method] = adaptHandler(handler);
+      }
+    }
   }
+  return converted;
+}
+
+function publishLegacyEvent(
+  appServer: WebAppServer<ClankyRealtimeEvent>,
+  event: object,
+  target: Record<string, string | undefined>,
+): void {
+  appServer.realtime.publish(event as ClankyRealtimeEvent, { target });
+}
+
+function registerRealtimeBridge(appServer: WebAppServer<ClankyRealtimeEvent>): void {
+  if (realtimeBridgeRegistered) {
+    return;
+  }
+  realtimeBridgeRegistered = true;
+  taskEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { taskId: event.taskId }));
+  chatEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { chatId: event.chatId }));
+  agentEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { agentId: event.agentId }));
+  sshSessionEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { sshSessionId: event.sshSessionId }));
+  provisioningEventEmitter.subscribe((event) => publishLegacyEvent(appServer, event, { provisioningJobId: event.provisioningJobId }));
+}
+
+const routes = defineRoutes<ClankyRealtimeEvent>({
+  ...adaptLegacyRoutes(apiRoutes as unknown as Record<string, LegacyRouteValue>),
+  ...adaptLegacyRoutes(portForwardProxyRoutes as unknown as Record<string, LegacyRouteValue>),
+  "/api/ssh-terminal": {
+    auth: "user",
+    sameOrigin: "always",
+    GET: (req, ctx) => {
+      const user = ctx.requireUser();
+      const url = new URL(req.url);
+      const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
+      const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
+
+      if (!sshSessionId && !sshServerSessionId) {
+        return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
+      }
+
+      const upgraded = ctx.server?.upgrade(req, {
+        data: {
+          webappSocketHandler: "clanky",
+          sshSessionId,
+          sshServerSessionId,
+          terminalMode: true,
+          user,
+        },
+      });
+
+      return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+    },
+  },
+  "/api/vnc": {
+    auth: "user",
+    sameOrigin: "always",
+    GET: (req, ctx) => {
+      const user = ctx.requireUser();
+      const url = new URL(req.url);
+      const vncSessionId = url.searchParams.get("vncSessionId") ?? undefined;
+      if (!vncSessionId) {
+        return new Response("vncSessionId is required", { status: 400 });
+      }
+      const upgraded = ctx.server?.upgrade(req, {
+        data: {
+          webappSocketHandler: "clanky",
+          vncSessionId,
+          vncMode: true,
+          user,
+        },
+      });
+      return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
+    },
+  },
+});
+
+export async function getWebAppServer(): Promise<WebAppServer<ClankyRealtimeEvent>> {
+  if (app) return app;
+  await ensureDataDirectories();
+  await initializeDatabase();
+  const dataDir = getDataDir();
+  const store = sqliteWebAppStore({ dataDir, fileName: "clanky.db" });
+  app = createWebAppServer<ClankyRealtimeEvent>({
+    appName: "Clanky",
+    envPrefix: "CLANKY",
+    index,
+    version: CLANKY_VERSION,
+    store,
+    auth: { passkeys: true, apiKeys: true, deviceAuth: true },
+    logLevel: { onChange: setLogLevel },
+    realtime: { path: "/api/ws" },
+    routes,
+    websockets: {
+      clanky: websocketHandlers as never,
+    },
+    configResponse: (req) => {
+      const publicBasePath = getPublicBasePathFromForwardedPrefix(req.headers.get("x-forwarded-prefix"));
+      return {
+        ...getAppConfig(),
+        publicBasePath: publicBasePath || null,
+      };
+    },
+  });
+  registerRealtimeBridge(app);
+  return app;
+}
+
+export function resetWebAppServerForTests(): void {
+  app = undefined;
+}
+
+export async function startServer(): Promise<Server<WebAppWebSocketData>> {
+  const appServer = await getWebAppServer();
 
   await backendManager.initialize();
 
-  const staleTasksReset = await resetStaleTasks();
+  let staleTasksReset = 0;
+  await runForEachActiveUser(async () => {
+    staleTasksReset += await resetStaleTasks();
+  });
   if (staleTasksReset > 0) {
     log.info(`Reconciled ${staleTasksReset} stale tasks during startup`);
   }
 
-  const runtimeConfig = getServerRuntimeConfig();
-  const development = getServerDevelopmentConfig();
-  const publicAuthRoutes = new Set([
-    "/api/config",
-    "/api/passkey-auth/status",
-    "/api/passkey-auth/authentication/options",
-    "/api/passkey-auth/authentication/verify",
-    "/api/passkey-auth/logout",
-    "/api/auth/device",
-    "/api/auth/token",
-    "/api/auth/refresh",
-    "/api/auth/revoke",
-    "/.well-known/jwks.json",
-    "/.well-known/openid-configuration",
-  ]);
-  const sameOriginProtectionOptions = {
-    disabled: runtimeConfig.sameOriginProtection.disabled,
-  };
-  const protectedApiRoutes = wrapRoutesWithApplicationAuth(apiRoutes, publicAuthRoutes);
-  const loggedApiRoutes = wrapRoutesWithLogging(
-    wrapRoutesWithSameOriginProtection(protectedApiRoutes, sameOriginProtectionOptions),
-  );
-  const protectedPortForwardRoutes = wrapRoutesWithApplicationAuth(portForwardProxyRoutes);
-  const sameOriginProtectedPortForwardRoutes = wrapRoutesWithSameOriginProtection(
-    protectedPortForwardRoutes,
-    sameOriginProtectionOptions,
-  );
-  const websocketRoute = wrapRouteHandlerWithLogging(
-    wrapRouteHandlerWithSameOriginProtection(
-      wrapRouteHandlerWithApplicationAuth((req: Request, server: Server<WebSocketData>) => {
-        const url = new URL(req.url);
-        const taskId = url.searchParams.get("taskId") ?? undefined;
-        const chatId = url.searchParams.get("chatId") ?? undefined;
-        const agentId = url.searchParams.get("agentId") ?? undefined;
-        const agentRunId = url.searchParams.get("agentRunId") ?? undefined;
-        const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
-        const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
-        const provisioningJobId = url.searchParams.get("provisioningJobId") ?? undefined;
-        const sensitive = parseSensitiveFlag(url.searchParams.get("sensitive"));
-
-        const upgraded = server.upgrade(req, {
-          data: {
-            taskId,
-            chatId,
-            agentId,
-            agentRunId,
-            sshSessionId,
-            sshServerSessionId,
-            provisioningJobId,
-            sensitive,
-            terminalMode: false,
-          } as WebSocketData,
-        });
-
-        if (upgraded) {
-          return undefined;
-        }
-
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }),
-      {
-        ...sameOriginProtectionOptions,
-        alwaysProtect: true,
-      },
-    ),
-    "/api/ws",
-  );
-  const sshTerminalRoute = wrapRouteHandlerWithLogging(
-    wrapRouteHandlerWithSameOriginProtection(
-      wrapRouteHandlerWithApplicationAuth((req: Request, server: Server<WebSocketData>) => {
-        const url = new URL(req.url);
-        const sshSessionId = url.searchParams.get("sshSessionId") ?? undefined;
-        const sshServerSessionId = url.searchParams.get("sshServerSessionId") ?? undefined;
-
-        if (!sshSessionId && !sshServerSessionId) {
-          return new Response("sshSessionId or sshServerSessionId is required", { status: 400 });
-        }
-
-        const upgraded = server.upgrade(req, {
-          data: { sshSessionId, sshServerSessionId, terminalMode: true } as WebSocketData,
-        });
-
-        if (upgraded) {
-          return undefined;
-        }
-
-        return new Response("WebSocket upgrade failed", { status: 400 });
-      }),
-      {
-        ...sameOriginProtectionOptions,
-        alwaysProtect: true,
-      },
-    ),
-    "/api/ssh-terminal",
-  );
-  const vncRoute = wrapRouteHandlerWithLogging(
-    wrapRouteHandlerWithSameOriginProtection(
-      wrapRouteHandlerWithApplicationAuth((req: Request, server: Server<WebSocketData>) => {
-        const url = new URL(req.url);
-        const vncSessionId = url.searchParams.get("vncSessionId") ?? undefined;
-        if (!vncSessionId) {
-          return new Response("vncSessionId is required", { status: 400 });
-        }
-        const upgraded = server.upgrade(req, {
-          data: { vncSessionId, vncMode: true } as WebSocketData,
-        });
-        return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
-      }),
-      {
-        ...sameOriginProtectionOptions,
-        alwaysProtect: true,
-      },
-    ),
-    "/api/vnc",
-  );
-
-  const server = serve<WebSocketData>({
-    hostname: runtimeConfig.host,
-    port: runtimeConfig.port,
-    idleTimeout: DEFAULT_SERVER_IDLE_TIMEOUT_SECONDS,
-    routes: {
-      ...loggedApiRoutes,
-      ...sameOriginProtectedPortForwardRoutes,
-      "/api/ws": websocketRoute,
-      "/api/ssh-terminal": sshTerminalRoute,
-      "/api/vnc": vncRoute,
-      "/*": getWebAppRoute(),
-    },
-    websocket: websocketHandlers,
-    development,
-  });
-
+  const server = appServer.start();
   pushedTaskMonitor.start();
   agentScheduler.start();
 
-  registerServerShutdown([server, pushedTaskMonitor, agentScheduler]);
-
-  for (const message of getServerStartupMessages(runtimeConfig)) {
+  for (const message of getServerStartupMessages({
+    host: appServer.config.host,
+    port: appServer.config.port,
+    hostSource: process.env["CLANKY_HOST"]?.trim() ? "CLANKY_HOST" : "default",
+    sameOriginProtection: { disabled: appServer.config.sameOriginDisabled },
+  })) {
     log.info(message);
   }
   log.info(`Clanky server running at ${server.url}`);
+  return server;
 }

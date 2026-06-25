@@ -5,6 +5,7 @@
 
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
+import { requirePersistenceUserId } from "./ownership";
 
 const log = createLogger("persistence:review-comments");
 
@@ -21,11 +22,13 @@ export function insertReviewComment(comment: {
 }): void {
   log.debug("Inserting review comment", { id: comment.id, taskId: comment.taskId, reviewCycle: comment.reviewCycle });
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
   db.run(
-    `INSERT INTO review_comments (id, task_id, review_cycle, comment_text, created_at, status)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO review_comments (id, user_id, task_id, review_cycle, comment_text, created_at, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       comment.id,
+      userId,
       comment.taskId,
       comment.reviewCycle,
       comment.commentText,
@@ -54,8 +57,9 @@ export function getReviewComments(taskId: string): Array<{
   const comments = db.query(
     `SELECT * FROM review_comments 
      WHERE task_id = ? 
+       AND user_id = ?
      ORDER BY review_cycle DESC, created_at ASC`
-  ).all(taskId) as Array<{
+  ).all(taskId, requirePersistenceUserId()) as Array<{
     id: string;
     task_id: string;
     review_cycle: number;
@@ -79,8 +83,8 @@ export function markCommentsAsAddressed(taskId: string, reviewCycle: number, add
   db.run(
     `UPDATE review_comments 
      SET status = 'addressed', addressed_at = ?
-     WHERE task_id = ? AND review_cycle = ? AND status = 'pending'`,
-    [addressedAt, taskId, reviewCycle]
+     WHERE task_id = ? AND user_id = ? AND review_cycle = ? AND status = 'pending'`,
+    [addressedAt, taskId, requirePersistenceUserId(), reviewCycle]
   );
   log.debug("Comments marked as addressed", { taskId, reviewCycle, addressedAt });
 }

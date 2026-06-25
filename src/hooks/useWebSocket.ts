@@ -139,21 +139,22 @@ export function useWebSocket<T = unknown>(options: UseWebSocketOptions<T>): UseW
         return;
       }
       try {
-        const data = JSON.parse(event.data) as T & { type?: string };
+        const data = JSON.parse(event.data) as (T & { type?: string }) | { type: "event"; event: T };
 
         // Skip connection confirmation and pong messages
         if (data.type === "connected" || data.type === "pong") {
           return;
         }
+        const payload = data.type === "event" && "event" in data ? data.event : data;
 
         setEvents((prev) => {
-          const newEvents = [...prev, data];
+          const newEvents = [...prev, payload as T];
           if (newEvents.length > maxEventsRef.current) {
             return newEvents.slice(-maxEventsRef.current);
           }
           return newEvents;
         });
-        onEventRef.current?.(data);
+        onEventRef.current?.(payload as T);
       } catch {
         log.warn("Failed to parse WebSocket message:", event.data);
       }

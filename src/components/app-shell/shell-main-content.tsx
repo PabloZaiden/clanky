@@ -1,14 +1,10 @@
 import type { Chat, Task, SshSession, Workspace } from "../../types";
 import type { CreateSshSessionRequest } from "../../types/api";
 import type { SshServer } from "../../types/ssh-server";
-import type { WorkspaceExportData, WorkspaceImportResult } from "../../types/workspace";
-import type { QuickChatSettings } from "../../types/preferences";
 import type { WorkspaceGroup } from "../../hooks/useTaskGrouping";
 import type { UseDashboardDataResult } from "../../hooks/useDashboardData";
 import type { UseAgentsResult } from "../../hooks/useAgents";
 import type { UseProvisioningJobResult } from "../../hooks/useProvisioningJob";
-import type { UsePasskeyAuthResult } from "../../hooks/usePasskeyAuth";
-import { AppSettingsPanel } from "../AppSettingsModal";
 import { ChatDetails } from "../ChatDetails";
 import { TaskDetails } from "../TaskDetails";
 import { SshSessionDetails } from "../SshSessionDetails";
@@ -26,7 +22,6 @@ import { CodeExplorerView } from "./code-explorer-view";
 import { AgentsView } from "./agents-view";
 import type { ShellRoute } from "./shell-types";
 import type { SidebarServerNode, SidebarWorkspaceGroupNode, SidebarWorkspaceNode } from "./shell-types";
-import type { SidebarPinningState } from "./sidebar-pins";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
@@ -90,25 +85,14 @@ interface ShellMainContentProps {
   ) => Promise<SshServer | null>;
   deleteServer: (id: string) => Promise<boolean>;
   deleteWorkspace: (id: string, options?: import("../../types").DeleteWorkspaceRequest) => Promise<{ success: boolean; error?: string }>;
-  pullLatestWorkspaceChanges: (id: string) => Promise<void>;
-  pullingLatestWorkspaceIds: ReadonlySet<string>;
-  exportConfig: () => Promise<WorkspaceExportData | null>;
-  importConfig: (data: WorkspaceExportData) => Promise<WorkspaceImportResult | null>;
 
   // Dashboard data
   dashboardData: UseDashboardDataResult;
-  passkeyAuth: UsePasskeyAuthResult;
-  quickChatSettings: QuickChatSettings;
-  quickChatSettingsLoading: boolean;
-  quickChatSettingsSaving: boolean;
-  quickChatSettingsError: string | null;
-  updateQuickChatSettings: (settings: QuickChatSettings) => Promise<QuickChatSettings | null>;
   schedulerTimezone: string;
-  schedulerTimezoneLoading: boolean;
-  schedulerTimezoneSaving: boolean;
-  schedulerTimezoneError: string | null;
-  updateSchedulerTimezone: (timezone: string) => Promise<string | null>;
   agents: UseAgentsResult;
+  editingAgentId: string | null;
+  onCancelAgentEdit: () => void;
+  onSavedAgentEdit: (agent: import("../../types").Agent) => void;
 
   // Compose state
   composeActionState: CreateTaskFormActionState | null;
@@ -132,7 +116,6 @@ interface ShellMainContentProps {
 
   // Toast
   toast: import("../../hooks/useToast").ToastContextValue;
-  sidebarPinning: SidebarPinningState;
 }
 
 function renderMainContent(props: ShellMainContentProps) {
@@ -165,27 +148,12 @@ function renderMainContent(props: ShellMainContentProps) {
     purgeTask,
     deleteServer,
     deleteWorkspace,
-    pullLatestWorkspaceChanges,
-    pullingLatestWorkspaceIds,
     dashboardData,
-    passkeyAuth,
-    quickChatSettings,
-    quickChatSettingsLoading,
-    quickChatSettingsSaving,
-    quickChatSettingsError,
-    updateQuickChatSettings,
     schedulerTimezone,
-    schedulerTimezoneLoading,
-    schedulerTimezoneSaving,
-    schedulerTimezoneError,
-    updateSchedulerTimezone,
     createChat,
     importExistingChat,
     workspaceSettings,
-    exportConfig,
-    importConfig,
     workspacesSaving,
-    sidebarPinning,
     agents,
   } = props;
 
@@ -203,15 +171,12 @@ function renderMainContent(props: ShellMainContentProps) {
         lastModel={dashboardData.lastModel}
         selectedWorkspaceId={dashboardData.modelsWorkspaceId}
         schedulerTimezone={schedulerTimezone}
+        editingAgentId={props.editingAgentId}
+        onCancelAgentEdit={props.onCancelAgentEdit}
+        onSavedAgentEdit={props.onSavedAgentEdit}
         onWorkspaceChange={dashboardData.handleWorkspaceChange}
         onUpdateAgent={agents.updateAgent}
-        onRunAgent={agents.runAgent}
-        onInterruptAgent={agents.interruptAgent}
-        onPauseAgent={agents.pauseAgent}
-        onResumeAgent={agents.resumeAgent}
-        onDeleteAgent={agents.deleteAgent}
         onDeleteRun={agents.deleteRun}
-        onPurgeRuns={agents.purgeRuns}
         onRefreshRuns={agents.refreshRuns}
         runsByAgentId={agents.runsByAgentId}
         route={route}
@@ -276,13 +241,11 @@ function renderMainContent(props: ShellMainContentProps) {
           void refreshTasks();
         }}
         showBackButton={false}
-        headerOffsetClassName={shellHeaderOffsetClassName}
         onSelectSshSession={(sshSessionId) => navigateWithinShell({ view: "ssh", sshSessionId })}
         onOpenTaskFiles={(taskId) => navigateWithinShell({
           view: "code-explorer",
           target: { contentType: "task", taskId },
         })}
-        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -326,16 +289,7 @@ function renderMainContent(props: ShellMainContentProps) {
           navigateWithinShell({ view: "home" });
           void refreshChats();
         }}
-        onOpenCodeExplorer={(chatId) => navigateWithinShell({
-          view: "code-explorer",
-          target: { contentType: "chat", chatId },
-        })}
-        onOpenTask={(taskId) => {
-          navigateWithinShell({ view: "task", taskId });
-        }}
         showBackButton={false}
-        headerOffsetClassName={shellHeaderOffsetClassName}
-        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -350,8 +304,6 @@ function renderMainContent(props: ShellMainContentProps) {
           void refreshSshServers();
         }}
         showBackButton={false}
-        headerOffsetClassName={shellHeaderOffsetClassName}
-        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -387,12 +339,7 @@ function renderMainContent(props: ShellMainContentProps) {
         agentsError={agents.error}
         registeredSshServers={servers}
         headerOffsetClassName={shellHeaderOffsetClassName}
-        onPullLatestChanges={() => {
-          void pullLatestWorkspaceChanges(selectedWorkspace.id);
-        }}
-        pullingLatestChanges={pullingLatestWorkspaceIds.has(selectedWorkspace.id)}
         onNavigate={navigateWithinShell}
-        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -463,7 +410,6 @@ function renderMainContent(props: ShellMainContentProps) {
         sessions={sessionsByServerId[selectedServer.config.id] ?? []}
         headerOffsetClassName={shellHeaderOffsetClassName}
         onNavigate={navigateWithinShell}
-        sidebarPinning={sidebarPinning}
       />
     );
   }
@@ -655,55 +601,6 @@ function renderMainContent(props: ShellMainContentProps) {
     );
   }
 
-  if (route.view === "settings") {
-    return (
-      <ShellPanel
-        eyebrow="App settings"
-        title="Settings"
-        variant="compact"
-        headerOffsetClassName={shellHeaderOffsetClassName}
-      >
-        <AppSettingsPanel
-          onResetAll={dashboardData.resetAllSettings}
-          resetting={dashboardData.appSettingsResetting}
-          onKillServer={dashboardData.killServer}
-          killingServer={dashboardData.appSettingsKilling}
-          onPurgeTerminalTasks={async () => {
-            const result = await dashboardData.purgeTerminalTasks();
-            if (result) {
-              await refreshTasks();
-            }
-            return result;
-          }}
-          purgingTerminalTasks={dashboardData.appSettingsPurgingTerminalTasks}
-          onExportConfig={exportConfig}
-          onImportConfig={importConfig}
-          configSaving={workspacesSaving}
-          passkeyAuthStatus={passkeyAuth.status}
-          workspaces={workspaces}
-          workspacesLoading={workspacesLoading}
-          quickChatSettings={quickChatSettings}
-          quickChatSettingsLoading={quickChatSettingsLoading}
-          quickChatSettingsSaving={quickChatSettingsSaving}
-          quickChatSettingsError={quickChatSettingsError}
-          onUpdateQuickChatSettings={updateQuickChatSettings}
-          schedulerTimezone={schedulerTimezone}
-          schedulerTimezoneLoading={schedulerTimezoneLoading}
-          schedulerTimezoneSaving={schedulerTimezoneSaving}
-          schedulerTimezoneError={schedulerTimezoneError}
-          onUpdateSchedulerTimezone={updateSchedulerTimezone}
-          registeringPasskey={passkeyAuth.registering}
-          loggingOutPasskey={passkeyAuth.loggingOut}
-          removingPasskey={passkeyAuth.removingPasskey}
-          refreshingPasskeyAuth={passkeyAuth.refreshing}
-          onRegisterPasskey={passkeyAuth.registerPasskey}
-          onLogoutPasskey={passkeyAuth.logout}
-          onRemovePasskey={passkeyAuth.removePasskey}
-        />
-      </ShellPanel>
-    );
-  }
-
   return (
     <OverviewView
       servers={servers}
@@ -757,4 +654,8 @@ export function ShellMainContent(props: ShellMainContentProps) {
       </div>
     </div>
   );
+}
+
+export function ShellRouteContent(props: ShellMainContentProps) {
+  return renderMainContent(props);
 }

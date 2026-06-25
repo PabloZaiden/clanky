@@ -41,23 +41,65 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Smoke test app startup
+      - name: Build binary
+        run: bun run build
+
+      - name: Smoke test binary startup
         run: |
           set -e
-          rm -f /tmp/clanky-pr-smoke.log /tmp/clanky-pr-index.html /tmp/clanky-pr-app.css
-          CLANKY_PORT=3018 bun run dev > /tmp/clanky-pr-smoke.log 2>&1 &
+          rm -f /tmp/clanky-pr-binary-smoke.log /tmp/clanky-pr-index.html /tmp/clanky-pr-app.css
+          CLANKY_DISABLE_PASSKEY=1 CLANKY_HOST=127.0.0.1 CLANKY_PORT=3018 CLANKY_DATA_DIR="$(mktemp -d)" ./dist/clanky serve > /tmp/clanky-pr-binary-smoke.log 2>&1 &
           APP_PID=$!
-          trap 'kill $APP_PID 2>/dev/null || true' EXIT
-          sleep 2
+          trap 'kill "$APP_PID" 2>/dev/null || true' EXIT
 
-          if ! kill -0 "$APP_PID" 2>/dev/null; then
-            echo "Clanky exited during startup"
-            cat /tmp/clanky-pr-smoke.log
-            exit 1
-          fi
+          for attempt in $(seq 1 30); do
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "Clanky exited during startup"
+              cat /tmp/clanky-pr-binary-smoke.log
+              exit 1
+            fi
+            if curl --fail --silent --show-error http://127.0.0.1:3018/api/health; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Clanky did not become ready"
+              cat /tmp/clanky-pr-binary-smoke.log
+              exit 1
+            fi
+            sleep 1
+          done
 
-          curl -v --fail http://127.0.0.1:3018/api/health
           curl -v --fail http://127.0.0.1:3018/ -o /tmp/clanky-pr-index.html
           css_path=$(grep -oE '/[^" ]+\.css' /tmp/clanky-pr-index.html | head -n1)
           test -n "$css_path"
           curl -v --fail "http://127.0.0.1:3018$css_path" -o /tmp/clanky-pr-app.css
+
+      - name: Smoke test Docker image
+        run: |
+          set -e
+          docker build -t clanky-pr-smoke .
+          docker run -d --name clanky-pr-smoke -p 3019:8080 \
+            -e CLANKY_DISABLE_PASSKEY=1 \
+            -e CLANKY_DATA_DIR=/app/data \
+            clanky-pr-smoke
+          trap 'docker rm -f clanky-pr-smoke 2>/dev/null || true' EXIT
+
+          for attempt in $(seq 1 45); do
+            status=$(docker inspect --format='{{.State.Health.Status}}' clanky-pr-smoke 2>/dev/null || echo "starting")
+            if [ "$status" = "healthy" ]; then
+              break
+            fi
+            if [ "$status" = "unhealthy" ]; then
+              echo "Docker smoke container became unhealthy"
+              docker logs clanky-pr-smoke
+              exit 1
+            fi
+            if [ "$attempt" -eq 45 ]; then
+              echo "Docker smoke container did not become healthy"
+              docker logs clanky-pr-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+
+          curl --fail --silent --show-error http://127.0.0.1:3019/api/health

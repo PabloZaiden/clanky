@@ -3,7 +3,8 @@
  */
 
 import { useState } from "react";
-import { Button, Badge, ConfirmModal } from "../common";
+import { ConfirmModal } from "@pablozaiden/webapp/web";
+import { Button, Badge } from "../common";
 import type { PurgeArchivedTasksResult } from "../../hooks";
 import type { Workspace } from "../../types/workspace";
 import { TrashIcon } from "./icons";

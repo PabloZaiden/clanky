@@ -6,7 +6,6 @@
 export * from "./common";
 
 // Main components
-export { Dashboard } from "./Dashboard";
 export { TaskCard } from "./TaskCard";
 export { TaskDetails } from "./TaskDetails";
 export { SshSessionDetails } from "./SshSessionDetails";

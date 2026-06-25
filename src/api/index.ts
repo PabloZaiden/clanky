@@ -5,7 +5,6 @@
  * that can be spread into Bun's serve() routes option.
  * 
  * Route Modules:
- * - health: Server health check endpoint
  * - tasks: Task CRUD, control, data, and review operations
  * - models: AI model listing and user preferences
  * - settings: Server configuration and connection management
@@ -21,7 +20,6 @@
  * @module api
  */
 
-import { healthRoutes } from "./health";
 import { tasksRoutes } from "./tasks";
 import { modelsAndPreferencesRoutes } from "./models";
 import { settingsRoutes } from "./settings";
@@ -34,8 +32,6 @@ import { sshSessionsRoutes } from "./ssh-sessions";
 import { provisioningRoutes } from "./provisioning";
 import { chatsRoutes } from "./chats";
 import { agentsRoutes } from "./agents";
-import { passkeyAuthRoutes } from "./passkey-auth";
-import { authRoutes } from "./auth";
 import { vncSessionRoutes } from "./vnc-sessions";
 
 /**
@@ -55,7 +51,6 @@ import { vncSessionRoutes } from "./vnc-sessions";
  * ```
  */
 export const apiRoutes = {
-  ...healthRoutes,
   ...tasksRoutes,
   ...modelsAndPreferencesRoutes,
   ...settingsRoutes,
@@ -68,14 +63,11 @@ export const apiRoutes = {
   ...provisioningRoutes,
   ...chatsRoutes,
   ...agentsRoutes,
-  ...passkeyAuthRoutes,
-  ...authRoutes,
   ...vncSessionRoutes,
 };
 
 // Re-export individual route modules
 export * from "./helpers";
-export * from "./health";
 export * from "./tasks";
 export * from "./models";
 export * from "./settings";
@@ -90,7 +82,4 @@ export * from "./websocket";
 export * from "./provisioning";
 export * from "./chats";
 export * from "./agents";
-export * from "./passkey-auth";
-export * from "./auth";
 export * from "./vnc-sessions";
-export * from "./same-origin-guard";

@@ -5,11 +5,13 @@
 import type { PortForward } from "../types";
 import { getDatabase } from "./database";
 import { createLogger } from "../core/logger";
+import { requirePersistenceUserId } from "./ownership";
 
 const log = createLogger("persistence:forwarded-ports");
 
 const ALLOWED_FORWARDED_PORT_COLUMNS = new Set([
   "id",
+  "user_id",
   "task_id",
   "workspace_id",
   "ssh_session_id",
@@ -35,6 +37,7 @@ function validateColumnNames(columns: string[]): void {
 function portForwardToRow(forward: PortForward): Record<string, number | string | null> {
   return {
     id: forward.config.id,
+    user_id: requirePersistenceUserId(),
     task_id: forward.config.taskId,
     workspace_id: forward.config.workspaceId,
     ssh_session_id: forward.config.sshSessionId ?? null,
@@ -87,7 +90,8 @@ export async function savePortForward(forward: PortForward): Promise<void> {
 
   db.run(
     `INSERT INTO forwarded_ports (${columns.join(", ")}) VALUES (${placeholders})
-     ON CONFLICT(id) DO UPDATE SET ${updateClause}`,
+     ON CONFLICT(id) DO UPDATE SET ${updateClause}
+     WHERE forwarded_ports.user_id = excluded.user_id`,
     values,
   );
   log.debug("Saved forwarded port", {
@@ -99,23 +103,23 @@ export async function savePortForward(forward: PortForward): Promise<void> {
 
 export async function getPortForward(id: string): Promise<PortForward | null> {
   const db = getDatabase();
-  const row = db.query("SELECT * FROM forwarded_ports WHERE id = ?").get(id) as Record<string, unknown> | null;
+  const row = db.query("SELECT * FROM forwarded_ports WHERE id = ? AND user_id = ?").get(id, requirePersistenceUserId()) as Record<string, unknown> | null;
   return row ? rowToPortForward(row) : null;
 }
 
 export async function listPortForwardsByTaskId(taskId: string): Promise<PortForward[]> {
   const db = getDatabase();
   const rows = db.query(
-    "SELECT * FROM forwarded_ports WHERE task_id = ? ORDER BY created_at DESC",
-  ).all(taskId) as Record<string, unknown>[];
+    "SELECT * FROM forwarded_ports WHERE task_id = ? AND user_id = ? ORDER BY created_at DESC",
+  ).all(taskId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map(rowToPortForward);
 }
 
 export async function listPortForwardsBySshSessionId(sshSessionId: string): Promise<PortForward[]> {
   const db = getDatabase();
   const rows = db.query(
-    "SELECT * FROM forwarded_ports WHERE ssh_session_id = ? ORDER BY created_at DESC",
-  ).all(sshSessionId) as Record<string, unknown>[];
+    "SELECT * FROM forwarded_ports WHERE ssh_session_id = ? AND user_id = ? ORDER BY created_at DESC",
+  ).all(sshSessionId, requirePersistenceUserId()) as Record<string, unknown>[];
   return rows.map(rowToPortForward);
 }
 
@@ -128,10 +132,26 @@ export async function listPortForwardsByStatuses(
 
   const db = getDatabase();
   const placeholders = statuses.map(() => "?").join(", ");
+  const userId = requirePersistenceUserId();
   const rows = db.query(
-    `SELECT * FROM forwarded_ports WHERE status IN (${placeholders}) ORDER BY created_at DESC`,
-  ).all(...statuses) as Record<string, unknown>[];
+    `SELECT * FROM forwarded_ports WHERE user_id = ? AND status IN (${placeholders}) ORDER BY created_at DESC`,
+  ).all(userId, ...statuses) as Record<string, unknown>[];
   return rows.map(rowToPortForward);
+}
+
+export async function listReservedPortForwardLocalPortsForMaintenance(
+  statuses: Array<PortForward["state"]["status"]>,
+): Promise<Set<number>> {
+  if (statuses.length === 0) {
+    return new Set();
+  }
+
+  const db = getDatabase();
+  const placeholders = statuses.map(() => "?").join(", ");
+  const rows = db.query(
+    `SELECT DISTINCT local_port FROM forwarded_ports WHERE status IN (${placeholders})`,
+  ).all(...statuses) as Array<{ local_port: number }>;
+  return new Set(rows.map((row) => row.local_port));
 }
 
 export async function findPortForwardByWorkspaceAndRemotePort(
@@ -148,16 +168,17 @@ export async function findPortForwardByWorkspaceAndRemotePort(
   const row = db.query(
     `SELECT * FROM forwarded_ports
      WHERE workspace_id = ?
+       AND user_id = ?
        AND remote_port = ?
        AND status IN (${placeholders})
      ORDER BY created_at DESC
      LIMIT 1`,
-  ).get(workspaceId, remotePort, ...statuses) as Record<string, unknown> | null;
+  ).get(workspaceId, requirePersistenceUserId(), remotePort, ...statuses) as Record<string, unknown> | null;
   return row ? rowToPortForward(row) : null;
 }
 
 export async function deletePortForward(id: string): Promise<boolean> {
   const db = getDatabase();
-  const result = db.run("DELETE FROM forwarded_ports WHERE id = ?", [id]);
+  const result = db.run("DELETE FROM forwarded_ports WHERE id = ? AND user_id = ?", [id, requirePersistenceUserId()]);
   return result.changes > 0;
 }

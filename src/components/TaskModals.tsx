@@ -5,7 +5,8 @@
 
 import { useState } from "react";
 import type { UncommittedChangesError } from "../types";
-import { Modal, ConfirmModal, Button } from "./common";
+import { ConfirmModal, Modal } from "@pablozaiden/webapp/web";
+import { Button } from "./common";
 
 // ============================================================================
 // Delete Task Modal

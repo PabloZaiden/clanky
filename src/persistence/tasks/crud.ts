@@ -6,6 +6,7 @@ import type { Task } from "../../types";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { taskToRow, rowToTask, validateColumnNames } from "./helpers";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:tasks");
 
@@ -110,6 +111,7 @@ export async function saveTask(task: Task): Promise<void> {
     INSERT INTO tasks (${columns.join(", ")})
     VALUES (${placeholders})
     ON CONFLICT(id) DO UPDATE SET ${updateClause}
+    WHERE tasks.user_id = excluded.user_id
   `);
 
   stmt.run(...values);
@@ -122,10 +124,13 @@ export async function saveTask(task: Task): Promise<void> {
  */
 export async function loadTask(taskId: string): Promise<Task | null> {
   log.debug("Loading task", { taskId });
-  const db = getDatabase();
+  return loadTaskForUser(taskId, requirePersistenceUserId());
+}
 
-  const stmt = db.prepare("SELECT * FROM tasks WHERE id = ?");
-  const row = stmt.get(taskId) as Record<string, unknown> | null;
+export async function loadTaskForUser(taskId: string, userId: string): Promise<Task | null> {
+  const db = getDatabase();
+  const stmt = db.prepare("SELECT * FROM tasks WHERE id = ? AND user_id = ?");
+  const row = stmt.get(taskId, userId) as Record<string, unknown> | null;
 
   if (!row) {
     log.debug("Task not found", { taskId });
@@ -144,9 +149,10 @@ export async function loadTask(taskId: string): Promise<Task | null> {
 export async function deleteTask(taskId: string): Promise<boolean> {
   log.debug("Deleting task", { taskId });
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
 
-  const stmt = db.prepare("DELETE FROM tasks WHERE id = ?");
-  const result = stmt.run(taskId);
+  const stmt = db.prepare("DELETE FROM tasks WHERE id = ? AND user_id = ?");
+  const result = stmt.run(taskId, userId);
 
   const deleted = result.changes > 0;
   if (deleted) {
@@ -163,10 +169,13 @@ export async function deleteTask(taskId: string): Promise<boolean> {
  */
 export async function listTasks(): Promise<Task[]> {
   log.debug("Listing all tasks");
-  const db = getDatabase();
+  return listTasksForUser(requirePersistenceUserId());
+}
 
-  const stmt = db.prepare("SELECT * FROM tasks ORDER BY created_at DESC");
-  const rows = stmt.all() as Record<string, unknown>[];
+export async function listTasksForUser(userId: string): Promise<Task[]> {
+  const db = getDatabase();
+  const stmt = db.prepare("SELECT * FROM tasks WHERE user_id = ? ORDER BY created_at DESC");
+  const rows = stmt.all(userId) as Record<string, unknown>[];
 
   const tasks = rows.map(rowToTask);
   log.debug("Tasks listed", { count: tasks.length });
@@ -182,9 +191,10 @@ export async function listTasks(): Promise<Task[]> {
 export async function listTaskSummaries(): Promise<Task[]> {
   log.debug("Listing task summaries");
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
 
-  const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks ORDER BY created_at DESC`);
-  const rows = stmt.all() as Record<string, unknown>[];
+  const stmt = db.prepare(`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? ORDER BY created_at DESC`);
+  const rows = stmt.all(userId) as Record<string, unknown>[];
 
   const tasks = rows.map((row) => createTaskListSnapshot(rowToTask(row)));
   log.debug("Task summaries listed", { count: tasks.length });
@@ -197,9 +207,10 @@ export async function listTaskSummaries(): Promise<Task[]> {
 export async function taskExists(taskId: string): Promise<boolean> {
   log.debug("Checking if task exists", { taskId });
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
 
-  const stmt = db.prepare("SELECT 1 FROM tasks WHERE id = ? LIMIT 1");
-  const row = stmt.get(taskId);
+  const stmt = db.prepare("SELECT 1 FROM tasks WHERE id = ? AND user_id = ? LIMIT 1");
+  const row = stmt.get(taskId, userId);
 
   const exists = row !== null;
   log.debug("Task exists check result", { taskId, exists });

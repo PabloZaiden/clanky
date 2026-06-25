@@ -22,6 +22,29 @@ interface CliOptions {
   applySeed: boolean;
 }
 
+const DEMO_OWNER_USER_ID = "admin";
+const USER_OWNED_SEED_TABLES = [
+  "ssh_servers",
+  "ssh_server_sessions",
+  "workspaces",
+  "ssh_sessions",
+  "tasks",
+  "chats",
+  "review_comments",
+  "forwarded_ports",
+] as const;
+
+function prepareSeedSqlForCurrentSchema(sql: string): string {
+  let preparedSql = sql;
+  for (const tableName of USER_OWNED_SEED_TABLES) {
+    preparedSql = preparedSql.replaceAll(
+      `INSERT INTO ${tableName} (\n  id,`,
+      `INSERT INTO ${tableName} (\n  id,\n  user_id,`,
+    );
+  }
+  return preparedSql.replaceAll(/\) VALUES \(\n  ('demo-[^']+',)/g, `) VALUES (\n  $1\n  '${DEMO_OWNER_USER_ID}',`);
+}
+
 function parseArgs(argv: string[]): CliOptions {
   const repoRoot = resolve(import.meta.dir, "..", "..");
   let dataDir = join(repoRoot, "data");
@@ -67,7 +90,8 @@ async function writeRuntimeArtifacts(dataDir: string): Promise<{
   await mkdir(dataDir, { recursive: true });
   await mkdir(keyDir, { recursive: true });
 
-  await Bun.write(sqlPath, Bun.file(sqlSourcePath));
+  const sql = await Bun.file(sqlSourcePath).text();
+  await Bun.write(sqlPath, prepareSeedSqlForCurrentSchema(sql));
 
   for (const keyFileName of new Bun.Glob("*.json").scanSync({ cwd: keySourceDir })) {
     await Bun.write(

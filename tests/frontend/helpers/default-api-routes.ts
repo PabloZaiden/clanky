@@ -107,19 +107,11 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
   defaultRoute("/api/preferences/dashboard-view-mode", () => ({
     mode: "rows",
   })),
-  defaultRoute("/api/preferences/theme", () => ({
-    theme: "system",
-  })),
   defaultRoute("/api/preferences/quick-chat", () => ({
     workspaceId: "",
     model: null,
     useWorktree: false,
   })),
-  defaultRoute("/api/auth/issuer", () => ({
-    canonicalIssuer: null,
-    effectiveIssuer: "urn:clanky:instance:test",
-  })),
-  defaultRoute("/api/auth/sessions", () => []),
 ];
 
 export function resolveDefaultApiRoute(

@@ -16,4 +16,4 @@ export {
   type CliStatusDependencies,
   type StatusCommandOptions,
   type StoredCliCredentials,
-} from "@clanky/client-sdk/cli-auth";
+} from "@/client-sdk/cli-auth";

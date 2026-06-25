@@ -11,6 +11,7 @@ import type { Workspace } from "../../types/workspace";
 import { getDatabase } from "../database";
 import { createLogger } from "../../core/logger";
 import { rowToWorkspace } from "./helpers";
+import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:workspaces");
 
@@ -23,12 +24,13 @@ const log = createLogger("persistence:workspaces");
 export async function listWorkspacesByDirectory(directory: string): Promise<Workspace[]> {
   log.debug("Listing workspaces by directory", { directory });
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
   const stmt = db.prepare(`
     SELECT * FROM workspaces
-    WHERE directory = ?
+    WHERE directory = ? AND user_id = ?
     ORDER BY name COLLATE NOCASE ASC, created_at ASC
   `);
-  const rows = stmt.all(directory) as Array<Record<string, unknown>>;
+  const rows = stmt.all(directory, userId) as Array<Record<string, unknown>>;
   return rows.map(rowToWorkspace);
 }
 
@@ -38,11 +40,13 @@ export async function listWorkspacesByDirectory(directory: string): Promise<Work
 export async function listWorkspaces(): Promise<Workspace[]> {
   log.debug("Listing all workspaces");
   const db = getDatabase();
+  const userId = requirePersistenceUserId();
   const stmt = db.prepare(`
     SELECT * FROM workspaces
+    WHERE user_id = ?
     ORDER BY name COLLATE NOCASE ASC
   `);
-  const rows = stmt.all() as Array<Record<string, unknown>>;
+  const rows = stmt.all(userId) as Array<Record<string, unknown>>;
   const workspaces = rows.map(rowToWorkspace);
   log.debug("Workspaces listed", { count: workspaces.length });
   return workspaces;
@@ -54,8 +58,9 @@ export async function listWorkspaces(): Promise<Workspace[]> {
 export async function getWorkspaceTaskCount(workspaceId: string): Promise<number> {
   log.debug("Getting workspace task count", { workspaceId });
   const db = getDatabase();
-  const stmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ?");
-  const row = stmt.get(workspaceId) as { count: number };
+  const userId = requirePersistenceUserId();
+  const stmt = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE workspace_id = ? AND user_id = ?");
+  const row = stmt.get(workspaceId, userId) as { count: number };
   log.debug("Workspace task count retrieved", { workspaceId, count: row.count });
   return row.count;
 }
@@ -67,8 +72,9 @@ export async function getWorkspaceTaskCount(workspaceId: string): Promise<number
 export async function touchWorkspace(id: string): Promise<void> {
   log.debug("Touching workspace", { id });
   const db = getDatabase();
-  db.run("UPDATE workspaces SET updated_at = ? WHERE id = ?", [
+  db.run("UPDATE workspaces SET updated_at = ? WHERE id = ? AND user_id = ?", [
     new Date().toISOString(),
     id,
+    requirePersistenceUserId(),
   ]);
 }

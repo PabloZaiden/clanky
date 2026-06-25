@@ -8,7 +8,8 @@ import {
   type CreateTaskFormActionState,
 } from "../CreateTaskForm";
 import type { CreateTaskFormSubmitRequest } from "../../types/task-request";
-import { Button, ConfirmModal } from "../common";
+import { ConfirmModal } from "@pablozaiden/webapp/web";
+import { Button } from "../common";
 import type { ShellRoute } from "./shell-types";
 import { ShellPanel } from "./shell-panel";
 import { persistDraftChanges, startDraftTask } from "../../lib/draft-task-start";

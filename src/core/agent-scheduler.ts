@@ -12,6 +12,7 @@ import { createLogger } from "./logger";
 import { agentEventEmitter } from "./event-emitter";
 import { agentRunner } from "./agent-runner";
 import { calculateNextRunAt } from "./agent-schedule";
+import { runForEachActiveUser } from "./background-users";
 
 const log = createLogger("agent-scheduler");
 const POLL_INTERVAL_MS = 5000;
@@ -53,7 +54,9 @@ export class AgentScheduler {
     if (this.timer) {
       return;
     }
-    void this.reconcileStaleRuns().then(() => this.tick()).catch((error) => {
+    void runForEachActiveUser(async () => {
+      await this.reconcileStaleRuns();
+    }).then(() => this.tick()).catch((error) => {
       log.error("Failed to start agent scheduler", { error: String(error) });
     });
     this.timer = setInterval(() => {
@@ -77,10 +80,12 @@ export class AgentScheduler {
     }
     this.ticking = true;
     try {
-      const dueAgents = await listDueAgents(now.toISOString());
-      for (const agent of dueAgents) {
-        await this.processDueAgent(agent, now);
-      }
+      await runForEachActiveUser(async () => {
+        const dueAgents = await listDueAgents(now.toISOString());
+        for (const agent of dueAgents) {
+          await this.processDueAgent(agent, now);
+        }
+      });
     } catch (error) {
       log.error("Agent scheduler tick failed", { error: String(error) });
     } finally {
