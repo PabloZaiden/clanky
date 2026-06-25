@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import { configureClientRuntime } from "@/client-sdk/public-path";
 import "@pablozaiden/webapp/web/styles.css";
 import { App } from "./App";
+import "./webapp-overrides.css";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/common/Toast";
 
