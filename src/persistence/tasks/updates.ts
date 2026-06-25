@@ -37,7 +37,7 @@ export async function updateTaskStateForUser(taskId: string, state: TaskState, u
     task.state = state;
 
     const newRow = taskToRow(task);
-    const columns = Object.keys(newRow).filter(col => col !== "id");
+    const columns = Object.keys(newRow).filter(col => col !== "id" && col !== "user_id");
     // Validate column names to prevent SQL injection
     validateColumnNames(columns);
 
@@ -83,7 +83,7 @@ export async function updateTaskConfig(taskId: string, config: TaskConfig): Prom
     task.config = config;
 
     const newRow = taskToRow(task);
-    const columns = Object.keys(newRow).filter(col => col !== "id");
+    const columns = Object.keys(newRow).filter(col => col !== "id" && col !== "user_id");
     // Validate column names to prevent SQL injection
     validateColumnNames(columns);
 

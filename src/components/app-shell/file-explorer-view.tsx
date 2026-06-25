@@ -83,7 +83,7 @@ export function FileExplorerView({
   title,
   description,
   defaultRootDirectory,
-  backLabel: _backLabel,
+  backLabel,
   backRoute,
   headerOffsetClassName,
   onNavigate,
@@ -583,7 +583,7 @@ export function FileExplorerView({
               className="whitespace-nowrap"
               onClick={() => onNavigate(backRoute)}
             >
-              Back
+              {backLabel}
             </Button>
           </div>
         </>

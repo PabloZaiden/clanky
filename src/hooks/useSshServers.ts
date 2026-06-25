@@ -5,6 +5,7 @@ import type {
   SshServer,
   SshServerSession,
   SshSessionEvent,
+  UpdateSshSessionRequest,
   UpdateSshServerRequest,
 } from "../types";
 import { isSshSessionEvent, useAppEvents } from "./useAppEvents";
@@ -79,7 +80,7 @@ export interface UseSshServersResult {
     serverId: string,
     options?: { name?: string; connectionMode?: SshConnectionMode; useTmux?: boolean },
   ) => Promise<SshServerSession>;
-  updateSession: (serverId: string, sessionId: string, request: { name?: string }) => Promise<SshServerSession>;
+  updateSession: (serverId: string, sessionId: string, request: UpdateSshSessionRequest) => Promise<SshServerSession>;
   deleteSession: (serverId: string, sessionId: string) => Promise<boolean>;
   hasStoredCredential: (serverId: string) => boolean;
 }
@@ -197,7 +198,7 @@ export function useSshServers(): UseSshServersResult {
   const updateSession = useCallback(async (
     serverId: string,
     sessionId: string,
-    request: { name?: string },
+    request: UpdateSshSessionRequest,
   ): Promise<SshServerSession> => {
     try {
       setError(null);

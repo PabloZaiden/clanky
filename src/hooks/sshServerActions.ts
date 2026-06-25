@@ -9,6 +9,7 @@ import type {
   SshServerPrerequisiteReport,
   SshServerSession,
   VncSession,
+  UpdateSshSessionRequest,
   UpdateSshServerRequest,
 } from "../types";
 import { createLogger } from "../lib/logger";
@@ -156,14 +157,14 @@ export async function createStandaloneSshSessionApi(options: {
 
 export async function updateStandaloneSshSessionApi(
   sessionId: string,
-  request: { name?: string },
+  request: UpdateSshSessionRequest,
 ): Promise<SshServerSession> {
   return await apiCall<SshServerSession>(
     `/api/ssh-server-sessions/${sessionId}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(request),
+      body: JSON.stringify({ name: request.name.trim() }),
     },
     "Update standalone SSH session",
   );
