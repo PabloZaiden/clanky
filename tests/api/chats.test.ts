@@ -16,7 +16,7 @@ import { normalizeQuickChatSettings } from "../../src/types/schemas";
 import { backendManager } from "../../src/core/backend-manager";
 import { chatEventEmitter } from "../../src/core/event-emitter";
 import { getPlanFilePath } from "../../src/lib/planning-files";
-import type { Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
+import type { Chat, Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "../../src/types/preferences";
 import type { ChatEvent } from "../../src/types/events";
 import { DEFAULT_TASK_CONFIG } from "../../src/types/task";
@@ -125,13 +125,14 @@ describe("Chats API Integration", () => {
     throw new Error(`Timed out waiting for chat ${chatId} to settle`);
   }
 
-  async function waitForStreamingAssistantMessage(chatId: string, timeoutMs = 5000): Promise<Awaited<ReturnType<typeof loadChat>>> {
+  async function waitForStreamingAssistantMessage(chatId: string, timeoutMs = 5000): Promise<Chat> {
     const start = Date.now();
 
     while (Date.now() - start < timeoutMs) {
       const chat = await loadChat(chatId);
       if (
-        chat?.state.status === "streaming"
+        chat
+        && chat.state.status === "streaming"
         && chat.state.activeMessageId
         && chat.state.messages.some((message) => message.id === chat.state.activeMessageId && message.role === "assistant")
       ) {
