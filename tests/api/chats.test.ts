@@ -16,12 +16,12 @@ import { normalizeQuickChatSettings } from "../../src/types/schemas";
 import { backendManager } from "../../src/core/backend-manager";
 import { chatEventEmitter } from "../../src/core/event-emitter";
 import { getPlanFilePath } from "../../src/lib/planning-files";
-import type { Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
+import type { Chat, Task, TaskLogEntry, PersistedMessage, PersistedToolCall } from "../../src/types";
 import { DEFAULT_QUICK_CHAT_SETTINGS } from "../../src/types/preferences";
 import type { ChatEvent } from "../../src/types/events";
 import { DEFAULT_TASK_CONFIG } from "../../src/types/task";
 import { TestCommandExecutor } from "../mocks/mock-executor";
-import { MockAcpBackend, defaultTestModel } from "../mocks/mock-backend";
+import { MockAcpBackend, NeverCompletingMockBackend, defaultTestModel } from "../mocks/mock-backend";
 
 const testModel = { providerID: "test-provider", modelID: "test-model", variant: "" };
 const updatedTestModel = { providerID: "test-provider", modelID: "test-model-2", variant: "" };
@@ -123,6 +123,25 @@ describe("Chats API Integration", () => {
     }
 
     throw new Error(`Timed out waiting for chat ${chatId} to settle`);
+  }
+
+  async function waitForStreamingAssistantMessage(chatId: string, timeoutMs = 5000): Promise<Chat> {
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      const chat = await loadChat(chatId);
+      if (
+        chat
+        && chat.state.status === "streaming"
+        && chat.state.activeMessageId
+        && chat.state.messages.some((message) => message.id === chat.state.activeMessageId && message.role === "assistant")
+      ) {
+        return chat;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    throw new Error(`Timed out waiting for chat ${chatId} to stream an assistant message`);
   }
 
   function createTestTask(taskId: string, workingDirectory: string): Task {
@@ -262,6 +281,58 @@ describe("Chats API Integration", () => {
     const reconnected = await reconnectResponse.json();
     expect(reconnected.state.session.id).toBe(settled.state.session?.id);
     expect(reconnected.state.status).toBe("idle");
+  });
+
+  test("preserves the active assistant message when interrupting a chat", async () => {
+    backendManager.setBackendForTesting(new NeverCompletingMockBackend({
+      models: [defaultTestModel],
+    }));
+    backendManager.setExecutorFactoryForTesting(() => new TestCommandExecutor());
+
+    try {
+      const createResponse = await fetch(`${baseUrl}/api/chats`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Interrupt Preserve Test",
+          workspaceId: testWorkspaceId,
+          model: testModel,
+          useWorktree: false,
+          baseBranch: "main",
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const created = await createResponse.json();
+
+      const sendResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: "Start a long response" }),
+      });
+      expect(sendResponse.status).toBe(200);
+
+      const streaming = await waitForStreamingAssistantMessage(created.config.id);
+      const activeMessageId = streaming?.state.activeMessageId;
+      expect(activeMessageId).toBeString();
+      expect(streaming?.state.messages.find((message) => message.id === activeMessageId)?.content).toBe("Still working...");
+
+      const interruptResponse = await fetch(`${baseUrl}/api/chats/${created.config.id}/interrupt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: "test interrupt" }),
+      });
+      expect(interruptResponse.status).toBe(200);
+      const interrupted = await interruptResponse.json();
+
+      expect(interrupted.state.status).toBe("idle");
+      expect(interrupted.state.activeMessageId).toBeUndefined();
+      expect(interrupted.state.messages.map((message: { role: string; content: string }) => [message.role, message.content])).toEqual([
+        ["user", "Start a long response"],
+        ["assistant", "Still working..."],
+      ]);
+    } finally {
+      installMockBackend(["Hello from chat API", "Second response"]);
+    }
   });
 
   test("imports an existing provider session with replayed history", async () => {

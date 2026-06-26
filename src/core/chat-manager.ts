@@ -2437,7 +2437,6 @@ export class ChatManager {
 
   private async completeInterruptedChat(chat: Chat): Promise<Chat> {
     const now = createTimestamp();
-    const activeMessageId = chat.state.activeMessageId;
     const updated = await this.updateChatStateAndReturn(chat, {
       ...chat.state,
       status: "idle",
@@ -2458,9 +2457,6 @@ export class ChatManager {
             }
           : toolCall
       ),
-      messages: activeMessageId
-        ? chat.state.messages.filter((message) => message.id !== activeMessageId)
-        : chat.state.messages,
       lastActivityAt: now,
     });
     this.emitter.emit({
