@@ -69,8 +69,19 @@ export function safeJsonParse<T>(json: string, fallback: T, fieldName: string, r
   }
 }
 
-function hasMessageContent(message: PersistedMessage): boolean {
+export function hasMessageContent(message: PersistedMessage): boolean {
   return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0;
+}
+
+function booleanColumn(row: Record<string, unknown>, columnName: string): boolean | undefined {
+  const value = row[columnName];
+  if (value === 1 || value === true) {
+    return true;
+  }
+  if (value === 0 || value === false) {
+    return false;
+  }
+  return undefined;
 }
 
 function requireChatString(row: Record<string, unknown>, columnName: string, rowId: unknown): string {
@@ -181,7 +192,8 @@ export function rowToChat(row: Record<string, unknown>): Chat {
   const messages = row["messages"] ? safeJsonParse<PersistedMessage[]>(row["messages"] as string, [], "messages", rowId) : [];
   const logs = row["logs"] ? safeJsonParse(row["logs"] as string, [], "logs", rowId) : [];
   const toolCalls = row["tool_calls"] ? safeJsonParse<PersistedToolCall[]>(row["tool_calls"] as string, [], "tool_calls", rowId) : [];
-  const hasMessages = messages.some(hasMessageContent);
+  const hasMessages = booleanColumn(row, "has_messages") ?? messages.some(hasMessageContent);
+  const hasTranscript = booleanColumn(row, "has_transcript") ?? (hasMessages || toolCalls.length > 0);
 
   const state: ChatState = {
     id: config.id,
@@ -193,7 +205,7 @@ export function rowToChat(row: Record<string, unknown>): Chat {
     logs,
     toolCalls,
     hasMessages,
-    hasTranscript: hasMessages || toolCalls.length > 0,
+    hasTranscript,
     pendingPermissionRequests: row["pending_permission_requests"]
       ? safeJsonParse(row["pending_permission_requests"] as string, [], "pending_permission_requests", rowId)
       : [],

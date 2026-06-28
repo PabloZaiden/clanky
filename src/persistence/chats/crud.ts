@@ -3,17 +3,12 @@
  */
 
 import type { Chat } from "../../types";
-import type { PersistedMessage } from "../../types/task";
 import { createLogger } from "../../core/logger";
 import { getDatabase } from "../database";
-import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
+import { chatToRow, hasMessageContent, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:chats");
-
-function hasMessageContent(message: PersistedMessage): boolean {
-  return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0;
-}
 
 const CHAT_LIST_COLUMNS = [
   "id",
@@ -50,10 +45,12 @@ const CHAT_LIST_COLUMNS = [
   "active_message_id",
   "interrupt_requested",
   "connection_status",
+  "CASE WHEN messages IS NOT NULL AND messages <> '[]' THEN 1 ELSE 0 END AS has_messages",
+  "CASE WHEN (messages IS NOT NULL AND messages <> '[]') OR (tool_calls IS NOT NULL AND tool_calls <> '[]') THEN 1 ELSE 0 END AS has_transcript",
 ].join(", ");
 
 export function createChatListSnapshot(chat: Chat): Chat {
-  const hasMessages = chat.state.messages.some(hasMessageContent);
+  const hasMessages = chat.state.hasMessages ?? chat.state.messages.some(hasMessageContent);
   return {
     config: chat.config,
     state: {
@@ -62,7 +59,7 @@ export function createChatListSnapshot(chat: Chat): Chat {
       logs: [],
       toolCalls: [],
       hasMessages,
-      hasTranscript: hasMessages || chat.state.toolCalls.length > 0,
+      hasTranscript: chat.state.hasTranscript ?? (hasMessages || chat.state.toolCalls.length > 0),
     },
   };
 }
