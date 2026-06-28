@@ -154,9 +154,7 @@ describe("sidebar node builders", () => {
       chats: [quickChat],
       sessions: [],
     });
-    const quickChatWorkspace = workspaceGroups[0]!.workspaces[0]!;
-
-    expect(buildActiveWorkSidebarItems(workspaceGroups, { quickChatWorkspace }).map((item) => item.key)).toEqual([
+    expect(buildActiveWorkSidebarItems(workspaceGroups).map((item) => item.key)).toEqual([
       "chat:chat-1",
     ]);
   });

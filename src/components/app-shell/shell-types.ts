@@ -111,7 +111,6 @@ export type SidebarActiveWorkItem =
     };
 
 interface BuildActiveWorkSidebarItemsOptions {
-  quickChatWorkspace?: SidebarWorkspaceNode | null;
   serverNodes?: SidebarServerNode[];
 }
 

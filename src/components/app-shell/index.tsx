@@ -841,10 +841,7 @@ export function AppShell() {
       }
     }
 
-    const activeWork = buildActiveWorkSidebarItems(sidebarWorkspaceGroups, {
-      quickChatWorkspace: quickChatWorkspaceNode,
-      serverNodes,
-    }).map((item): SidebarNode => {
+    const activeWork = buildActiveWorkSidebarItems(sidebarWorkspaceGroups, { serverNodes }).map((item): SidebarNode => {
       if (item.kind === "task") {
         return {
           type: "item",
@@ -1167,7 +1164,6 @@ export function AppShell() {
     navigateWithinShell,
     pullLatestWorkspaceChanges,
     pullingLatestWorkspaceIds,
-    quickChatWorkspaceNode,
     serverNodes,
     sidebarWorkspaceGroups,
     toast,
