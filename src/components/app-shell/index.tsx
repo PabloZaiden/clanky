@@ -369,18 +369,6 @@ export function AppShell() {
     () => workspaces.find((workspace) => workspace.id === quickChatSettings.settings.workspaceId) ?? null,
     [quickChatSettings.settings.workspaceId, workspaces],
   );
-  const quickChatWorkspaceNode = useMemo(() => {
-    if (!quickChatWorkspace) {
-      return null;
-    }
-    for (const group of sidebarWorkspaceGroups) {
-      const workspaceNode = group.workspaces.find((node) => node.workspace.id === quickChatWorkspace.id);
-      if (workspaceNode) {
-        return workspaceNode;
-      }
-    }
-    return null;
-  }, [quickChatWorkspace, sidebarWorkspaceGroups]);
   const [quickChatCreating, setQuickChatCreating] = useState(false);
   const quickChatUnavailableReason = useMemo(() => {
     if (!quickChatSettings.settings.workspaceId) {
@@ -646,7 +634,6 @@ export function AppShell() {
         serverNodes={serverNodes}
         workspaceGroups={workspaceGroups}
         sidebarWorkspaceGroups={sidebarWorkspaceGroups}
-        quickChatWorkspace={quickChatWorkspaceNode}
         workspacesLoading={workspacesLoading}
         workspacesSaving={workspacesSaving}
         workspaceError={workspaceError}
@@ -714,7 +701,6 @@ export function AppShell() {
     provisioning,
     purgeTask,
     quickChatSettings,
-    quickChatWorkspaceNode,
     refreshChats,
     refreshSshServers,
     refreshSshSessions,

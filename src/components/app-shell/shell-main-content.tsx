@@ -21,7 +21,7 @@ import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import { AgentsView } from "./agents-view";
 import type { ShellRoute } from "./shell-types";
-import type { SidebarServerNode, SidebarWorkspaceGroupNode, SidebarWorkspaceNode } from "./shell-types";
+import type { SidebarServerNode, SidebarWorkspaceGroupNode } from "./shell-types";
 import type { UseWorkspaceCreateResult } from "./use-workspace-create";
 import type { UseWorkspaceSettingsShellResult } from "./use-workspace-settings-shell";
 import type {
@@ -48,7 +48,6 @@ interface ShellMainContentProps {
   serverNodes: SidebarServerNode[];
   workspaceGroups: WorkspaceGroup[];
   sidebarWorkspaceGroups: SidebarWorkspaceGroupNode[];
-  quickChatWorkspace: SidebarWorkspaceNode | null;
   workspacesLoading: boolean;
   workspacesSaving: boolean;
   workspaceError: string | null;
@@ -133,7 +132,6 @@ function renderMainContent(props: ShellMainContentProps) {
     serverNodes,
     workspaceGroups,
     sidebarWorkspaceGroups,
-    quickChatWorkspace,
     workspacesLoading,
     workspaceError,
     selectedTask,
@@ -611,7 +609,6 @@ function renderMainContent(props: ShellMainContentProps) {
       serverNodes={serverNodes}
       workspaceGroups={workspaceGroups}
       sidebarWorkspaceGroups={sidebarWorkspaceGroups}
-      quickChatWorkspace={quickChatWorkspace}
       headerOffsetClassName={shellHeaderOffsetClassName}
       onNavigate={navigateWithinShell}
     />
