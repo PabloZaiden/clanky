@@ -16,7 +16,3 @@ export const CreateSshSessionRequestSchema = z.object({
 export const UpdateSshSessionRequestSchema = z.object({
   name: z.string().trim().min(1, "name is required"),
 });
-
-export const CreatePortForwardRequestSchema = z.object({
-  remotePort: z.number().int().min(1).max(65535),
-});

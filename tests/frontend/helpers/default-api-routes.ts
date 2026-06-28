@@ -77,7 +77,7 @@ export const DEFAULT_API_ROUTES: DefaultApiRouteDefinition[] = [
     exists: false,
     content: "",
   })),
-  defaultRoute("/api/tasks/:id/port-forwards", () => []),
+  defaultRoute("/api/workspaces/:workspaceId/previews", () => []),
   defaultRoute("/api/tasks/:id/pull-request", () => ({
     enabled: false,
     destinationType: "disabled",

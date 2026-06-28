@@ -16,6 +16,7 @@ export * from "./settings";
 export * from "./preferences";
 export * from "./components";
 export * from "./provisioning";
+export * from "./preview";
 export * from "./message-attachments";
 export * from "./tool-call";
 export * from "./workspace-files";

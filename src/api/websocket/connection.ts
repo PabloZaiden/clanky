@@ -4,15 +4,17 @@ import {
   chatEventEmitter,
   taskEventEmitter,
   provisioningEventEmitter,
+  previewEventEmitter,
   sshSessionEventEmitter,
 } from "../../core/event-emitter";
 import { createLogger } from "../../core/logger";
 import { sanitizeProvisioningEvent } from "../../lib/sensitive-data";
-import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, SshSessionEvent } from "../../types";
+import type { AgentEvent, ChatEvent, TaskEvent, ProvisioningEvent, PreviewEvent, SshSessionEvent } from "../../types";
 import type { WebSocketData } from "./types";
 import { startTerminalBridge } from "./terminal";
 import { vncSessionManager } from "../../core/vnc-session-manager";
 import { runWithCurrentUser } from "../../core/user-context";
+import { previewSessionManager } from "../../core/preview-session-manager";
 
 const log = createLogger("api:websocket");
 
@@ -52,11 +54,9 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     provisioningJobId,
     sensitive,
     terminalMode,
-    portForwardMode,
-    proxyTargetUrl,
-    portForwardId,
     vncMode,
     vncSessionId,
+    previewBridgeMode,
   } = ws.data;
 
   // Enforce connection limit — close oldest connection if at capacity
@@ -82,6 +82,12 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
   });
 
   // Terminal sockets attach directly to SSH sessions and do not subscribe to app events.
+  if (previewBridgeMode) {
+    ws.send(JSON.stringify({ type: "connected" }));
+    return;
+  }
+
+  // Terminal sockets attach directly to SSH sessions and do not subscribe to app events.
   const terminalSessionId = sshSessionId ?? sshServerSessionId;
   if (terminalMode && terminalSessionId) {
     if (sshServerSessionId) {
@@ -89,36 +95,6 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
     }
 
     void startTerminalBridge(ws);
-    return;
-  }
-
-  if (portForwardMode && proxyTargetUrl) {
-    const proxySocket = new WebSocket(proxyTargetUrl);
-    proxySocket.binaryType = "arraybuffer";
-    ws.data.proxySocket = proxySocket;
-
-    proxySocket.addEventListener("message", (event) => {
-      try {
-        ws.send(event.data);
-      } catch (sendError) {
-        log.trace("Failed to send proxied websocket payload", {
-          error: String(sendError),
-          portForwardId,
-        });
-      }
-    });
-
-    proxySocket.addEventListener("close", (event) => {
-      ws.close(event.code || 1000, event.reason || undefined);
-    });
-
-    proxySocket.addEventListener("error", () => {
-      try {
-        ws.close(1011, "Upstream websocket error");
-      } catch {
-        // Ignore close errors during websocket proxy cleanup.
-      }
-    });
     return;
   }
 
@@ -257,12 +233,23 @@ export function open(ws: ServerWebSocket<WebSocketData>): void {
       })
     : undefined;
 
+  const previewUnsubscribe = shouldSubscribeToAllRuntimeEvents
+    ? previewEventEmitter.subscribe((event: PreviewEvent) => {
+        try {
+          ws.send(JSON.stringify(event));
+        } catch (sendError) {
+          log.trace("Failed to send preview event to WebSocket client", { error: String(sendError) });
+        }
+      })
+    : undefined;
+
   ws.data.unsubscribers = [
     ...(taskUnsubscribe ? [taskUnsubscribe] : []),
     ...(chatUnsubscribe ? [chatUnsubscribe] : []),
     ...(agentUnsubscribe ? [agentUnsubscribe] : []),
     ...(sshSessionUnsubscribe ? [sshSessionUnsubscribe] : []),
     ...(provisioningUnsubscribe ? [provisioningUnsubscribe] : []),
+    ...(previewUnsubscribe ? [previewUnsubscribe] : []),
   ];
 }
 
@@ -283,14 +270,13 @@ export function close(ws: ServerWebSocket<WebSocketData>): void {
     ws.data.terminalBridge = undefined;
   }
 
-  if (ws.data.proxySocket) {
-    ws.data.proxySocket.close();
-    ws.data.proxySocket = undefined;
-  }
-
   if (ws.data.vncSocket) {
     ws.data.vncSocket.destroy();
     ws.data.vncSocket = undefined;
+  }
+
+  if (ws.data.previewBridgeSessionId && ws.data.user) {
+    void previewSessionManager.closeBridgeSession(ws, "Preview bridge disconnected");
   }
 
   if (ws.data.unsubscribers) {
@@ -323,13 +309,12 @@ export function error(ws: ServerWebSocket<WebSocketData>, err: Error): void {
     void ws.data.terminalBridge.dispose();
     ws.data.terminalBridge = undefined;
   }
-  if (ws.data.proxySocket) {
-    ws.data.proxySocket.close();
-    ws.data.proxySocket = undefined;
-  }
   if (ws.data.vncSocket) {
     ws.data.vncSocket.destroy();
     ws.data.vncSocket = undefined;
+  }
+  if (ws.data.previewBridgeSessionId && ws.data.user) {
+    void previewSessionManager.closeBridgeSession(ws, "Preview bridge error");
   }
   if (ws.data.unsubscribers) {
     for (const unsubscribe of ws.data.unsubscribers) {

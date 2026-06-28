@@ -22,16 +22,16 @@ export interface WebSocketData {
   provisioningJobId?: string;
   /** Whether sensitive provisioning data should be included */
   sensitive?: boolean;
-  /** Optional forwarded port ID for proxied websocket traffic */
-  portForwardId?: string;
   /** Optional VNC session ID for raw RFB websocket traffic */
   vncSessionId?: string;
   /** Whether this socket is a terminal transport socket */
   terminalMode?: boolean;
-  /** Whether this socket proxies a forwarded port websocket */
-  portForwardMode?: boolean;
   /** Whether this socket bridges noVNC RFB traffic to a local TCP tunnel */
   vncMode?: boolean;
+  /** Whether this socket is the CLI live-preview bridge */
+  previewBridgeMode?: boolean;
+  /** Registered preview session for a CLI bridge socket */
+  previewBridgeSessionId?: string;
   /** Authenticated framework user for websocket operations that need persistence ownership */
   user?: CurrentUser;
   /** Active TCP socket for VNC bridge traffic */
@@ -40,10 +40,6 @@ export interface WebSocketData {
   pendingVncMessages?: Buffer[];
   /** Active terminal bridge for terminal-mode sockets */
   terminalBridge?: SshTerminalBridge;
-  /** Outbound websocket for proxied forwarded-port traffic */
-  proxySocket?: WebSocket;
-  /** Target URL for proxied forwarded-port traffic */
-  proxyTargetUrl?: string;
   /** Unsubscribe functions for event emitter cleanup */
   unsubscribers?: Array<() => void>;
 }

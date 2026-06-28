@@ -18,6 +18,7 @@ import { ServerAriseView } from "./server-arise-view";
 import { SshServerSettingsView } from "./ssh-server-settings-view";
 import { VncSessionView } from "./vnc-session-view";
 import { WorkspaceSettingsView } from "./shell-workspace-settings-view";
+import { WorkspacePreviewsView } from "./workspace-previews-view";
 import { CodeExplorerView } from "./code-explorer-view";
 import { AgentsView } from "./agents-view";
 import type { ShellRoute } from "./shell-types";
@@ -358,6 +359,29 @@ function renderMainContent(props: ShellMainContentProps) {
         createSession={props.createSession}
         createStandaloneSession={props.createStandaloneSession}
         onNavigate={navigateWithinShell}
+      />
+    );
+  }
+
+  if (route.view === "workspace-previews") {
+    if (!selectedWorkspace) {
+      return (
+        <ShellPanel
+          eyebrow="Workspace"
+          title="Workspace not found"
+          description="The selected workspace no longer exists."
+        >
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Use the sidebar or home button to continue.
+          </p>
+        </ShellPanel>
+      );
+    }
+
+    return (
+      <WorkspacePreviewsView
+        workspace={selectedWorkspace}
+        headerOffsetClassName={shellHeaderOffsetClassName}
       />
     );
   }

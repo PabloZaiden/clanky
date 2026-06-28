@@ -62,6 +62,7 @@ const ROUTE_VIEWS = [
   "ssh",
   "workspace",
   "workspace-files",
+  "workspace-previews",
   "workspace-settings",
   "ssh-server",
   "vnc-session",
@@ -426,6 +427,7 @@ export function AppShell() {
   const selectedWorkspace =
     route.view === "workspace"
       || route.view === "workspace-files"
+      || route.view === "workspace-previews"
       || route.view === "workspace-settings"
       || route.view === "rebuild-workspace"
       || route.view === "restart-workspace"
@@ -1035,6 +1037,7 @@ export function AppShell() {
           { id: "new-chat", label: "New Chat", onClick: () => navigateWithinShell({ view: "compose", kind: "chat", scopeId: workspaceId }) },
           { id: "new-agent", label: "New Agent", onClick: () => navigateWithinShell({ view: "compose", kind: "agent", workspaceId }) },
           { id: "open-code-explorer", label: "Open code explorer", onClick: () => navigateWithinShell({ view: "code-explorer", target: { contentType: "workspace", workspaceId } }) },
+          { id: "workspace-previews", label: "Previews", onClick: () => navigateWithinShell({ view: "workspace-previews", workspaceId }) },
           {
             id: "pull-latest-changes",
             label: pullingLatestWorkspaceIds.has(workspaceId) ? "Pulling Latest Changes..." : "Pull Latest Changes",

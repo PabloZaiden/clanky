@@ -28,7 +28,6 @@ import { sshSessionEventEmitter } from "./event-emitter";
 import { createLogger } from "./logger";
 import { buildDefaultSshSessionName, buildTaskSshSessionName } from "../utils";
 import { isPersistentSshSession } from "../utils";
-import { portForwardManager } from "./port-forward-manager";
 import { buildPersistentSessionDeleteCommand } from "./ssh-persistent-session";
 
 const log = createLogger("core:ssh-session-manager");
@@ -105,7 +104,6 @@ export class SshSessionManager {
 
   async deleteSession(id: string): Promise<boolean> {
     const session = await this.requireSession(id);
-    await portForwardManager.deleteForwardsBySshSessionId(id);
     await this.deletePersistentSessionBestEffort(session);
 
     const deleted = await deleteSshSession(id);

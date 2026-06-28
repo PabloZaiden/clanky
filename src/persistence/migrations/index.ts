@@ -69,7 +69,7 @@ const KNOWN_TABLE_NAMES = new Set([
   "ssh_servers",
   "ssh_server_sessions",
   "vnc_sessions",
-  "forwarded_ports",
+  "preview_sessions",
   "workspaces",
   "preferences",
   "review_comments",
@@ -112,6 +112,43 @@ export const migrations: Migration[] = [
   { version: 2, name: "add_vnc_sessions", up: () => {} },
   { version: 3, name: "add_agents", up: () => {} },
   { version: 4, name: "add_agent_run_chat_id", up: () => {} },
+  {
+    version: 5,
+    name: "replace_port_forwards_with_previews",
+    up: (db) => {
+      db.run("DROP TABLE IF EXISTS forwarded_ports");
+      db.run(`
+        CREATE TABLE IF NOT EXISTS preview_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          workspace_id TEXT NOT NULL,
+          remote_host TEXT NOT NULL,
+          remote_port INTEGER NOT NULL,
+          local_host TEXT NOT NULL,
+          local_port INTEGER NOT NULL,
+          local_url TEXT NOT NULL,
+          initial_path TEXT NOT NULL,
+          cli_client_id TEXT,
+          cli_hostname TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          status TEXT NOT NULL,
+          connected_at TEXT,
+          closed_at TEXT,
+          error_message TEXT,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+        )
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_preview_sessions_workspace_created
+        ON preview_sessions(user_id, workspace_id, created_at DESC)
+      `);
+      db.run(`
+        CREATE INDEX IF NOT EXISTS idx_preview_sessions_status_updated
+        ON preview_sessions(user_id, status, updated_at DESC)
+      `);
+    },
+  },
 ];
 
 /**

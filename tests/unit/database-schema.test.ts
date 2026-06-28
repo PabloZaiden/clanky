@@ -39,6 +39,8 @@ describe("database schema", () => {
       expect(tableNames()).not.toContain("passkey_credentials");
       expect(tableNames()).not.toContain("auth_device_requests");
       expect(tableNames()).not.toContain("auth_refresh_sessions");
+      expect(tableNames()).not.toContain("forwarded_ports");
+      expect(tableNames()).toContain("preview_sessions");
 
       const users = getDatabase()
         .query("SELECT COUNT(*) AS count FROM webapp_users")
