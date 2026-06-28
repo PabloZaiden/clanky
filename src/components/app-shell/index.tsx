@@ -700,7 +700,6 @@ export function AppShell() {
     navigateWithinShell,
     provisioning,
     purgeTask,
-    quickChatSettings,
     refreshChats,
     refreshSshServers,
     refreshSshSessions,
