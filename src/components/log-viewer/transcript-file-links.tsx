@@ -1,4 +1,4 @@
-import { useMemo, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, useMemo, type MouseEvent as ReactMouseEvent, type ReactElement, type ReactNode } from "react";
 import { getFileExplorerFileMetadataApi } from "../../hooks/workspaceFileActions";
 import type { TranscriptFileLinkContext, TranscriptFileLinkTarget } from "./types";
 
@@ -143,6 +143,14 @@ function hasFileNameShape(value: string): boolean {
   return dotIndex > 0 && dotIndex < fileName.length - 1;
 }
 
+function hasAbsolutePathShape(value: string): boolean {
+  if (!isAbsolutePath(value) || value.endsWith("/")) {
+    return false;
+  }
+  const segments = value.split("/").filter(Boolean);
+  return segments.length >= 2;
+}
+
 export function looksLikeFileLinkCandidate(value: string): boolean {
   const trimmedValue = value.trim();
   if (
@@ -161,6 +169,10 @@ export function looksLikeFileLinkCandidate(value: string): boolean {
   const normalizedValue = normalizePath(trimmedValue);
   if (normalizedValue === "." || normalizedValue === "/" || normalizedValue.endsWith("/")) {
     return false;
+  }
+
+  if (isAbsolutePath(normalizedValue)) {
+    return hasAbsolutePathShape(normalizedValue);
   }
 
   if (normalizedValue.includes("/")) {
@@ -182,8 +194,16 @@ function resolveCandidateTarget(candidate: string, context: TranscriptFileLinkCo
   }
 
   if (isAbsolutePath(normalizedCandidate)) {
+    const isDirectoryShapedCandidate = !hasFileNameShape(normalizedCandidate);
     if (normalizedCandidate === normalizedRoot) {
       return null;
+    }
+    if (isDirectoryShapedCandidate) {
+      return {
+        kind: "directory",
+        path: ".",
+        startDirectory: normalizedCandidate,
+      };
     }
     const absoluteRelativePath = relativePath(normalizedRoot, normalizedCandidate);
     if (
@@ -202,11 +222,13 @@ function resolveCandidateTarget(candidate: string, context: TranscriptFileLinkCo
         return null;
       }
       return {
+        kind: "file",
         path: outsideRootFileName,
         startDirectory: outsideRootDirectory,
       };
     }
     return {
+      kind: "file",
       path: absoluteRelativePath,
       startDirectory: normalizedRoot,
     };
@@ -217,6 +239,7 @@ function resolveCandidateTarget(candidate: string, context: TranscriptFileLinkCo
   }
 
   return {
+    kind: "file",
     path: normalizedCandidate,
     startDirectory: normalizedRoot,
   };
@@ -231,10 +254,15 @@ async function validateFileLinkTarget(
     target.path,
     { startDirectory: target.startDirectory },
   );
-  if (response.file.kind !== "file") {
-    throw new Error(`"${target.path}" is not a file.`);
+  if (response.file.kind === "directory") {
+    return {
+      kind: "directory",
+      path: ".",
+      startDirectory: response.file.absolutePath,
+    };
   }
   return {
+    kind: "file",
     path: response.file.path,
     startDirectory: target.startDirectory,
   };
@@ -298,6 +326,28 @@ export function TranscriptInlineCode({
   const href = fileLinkContext.getFileHref(target);
 
   return (
+    <TranscriptPathLink target={target} fileLinkContext={fileLinkContext} href={href}>
+      <code className={getInlineCodeClassName(className)}>{children}</code>
+    </TranscriptPathLink>
+  );
+}
+
+function getTargetDisplayPath(target: TranscriptFileLinkTarget): string {
+  return target.kind === "directory" ? target.startDirectory : target.path;
+}
+
+function TranscriptPathLink({
+  children,
+  target,
+  fileLinkContext,
+  href,
+}: {
+  children: ReactNode;
+  target: TranscriptFileLinkTarget;
+  fileLinkContext: TranscriptFileLinkContext;
+  href: string;
+}) {
+  return (
     <a
       href={href}
       onClick={(event) => {
@@ -309,7 +359,7 @@ export function TranscriptInlineCode({
           .then((validatedTarget) => fileLinkContext.openFile(validatedTarget))
           .catch((error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
-            const fallbackMessage = message || `Could not open "${target.path}".`;
+            const fallbackMessage = message || `Could not open "${getTargetDisplayPath(target)}".`;
             if (fileLinkContext.onFileOpenError) {
               fileLinkContext.onFileOpenError(fallbackMessage);
               return;
@@ -318,11 +368,119 @@ export function TranscriptInlineCode({
           });
       }}
       className="inline underline decoration-dotted underline-offset-2 hover:decoration-solid"
-      data-file-link-path={target.path}
+      data-file-link-path={getTargetDisplayPath(target)}
     >
-      <code className={getInlineCodeClassName(className)}>{children}</code>
+      {children}
     </a>
   );
+}
+
+function trimTrailingPathPunctuation(value: string): { candidate: string; trailing: string } {
+  let candidate = value;
+  let trailing = "";
+
+  while (candidate.length > 0) {
+    const lastCharacter = candidate[candidate.length - 1];
+    if (lastCharacter && /[.,;:!?]/.test(lastCharacter)) {
+      candidate = candidate.slice(0, -1);
+      trailing = `${lastCharacter}${trailing}`;
+      continue;
+    }
+    if (
+      (lastCharacter === ")" && candidate.split(")").length > candidate.split("(").length)
+      || (lastCharacter === "]" && candidate.split("]").length > candidate.split("[").length)
+      || (lastCharacter === "}" && candidate.split("}").length > candidate.split("{").length)
+    ) {
+      candidate = candidate.slice(0, -1);
+      trailing = `${lastCharacter}${trailing}`;
+      continue;
+    }
+    break;
+  }
+
+  return { candidate, trailing };
+}
+
+function splitPlainTextPathParts(content: string, fileLinkContext?: TranscriptFileLinkContext): ReactNode[] {
+  if (!fileLinkContext) {
+    return [content];
+  }
+
+  const result: ReactNode[] = [];
+  const absolutePathPattern = /(^|[\s([{<])((?:\/|[A-Za-z]:\/)[^\s`<>"'|;&$]+)/g;
+  let currentIndex = 0;
+
+  for (const match of content.matchAll(absolutePathPattern)) {
+    const [fullMatch, prefix = "", rawCandidate = ""] = match;
+    const matchIndex = match.index ?? 0;
+    const candidateStartIndex = matchIndex + prefix.length;
+    const { candidate, trailing } = trimTrailingPathPunctuation(rawCandidate);
+    const target = resolveCandidateTarget(candidate, fileLinkContext);
+
+    if (!target) {
+      continue;
+    }
+
+    if (candidateStartIndex > currentIndex) {
+      result.push(content.slice(currentIndex, candidateStartIndex));
+    }
+
+    const href = fileLinkContext.getFileHref(target);
+    result.push(
+      <TranscriptPathLink
+        key={`path-${candidateStartIndex}-${candidate}`}
+        target={target}
+        fileLinkContext={fileLinkContext}
+        href={href}
+      >
+        {candidate}
+      </TranscriptPathLink>,
+    );
+
+    if (trailing) {
+      result.push(trailing);
+    }
+
+    currentIndex = matchIndex + fullMatch.length;
+  }
+
+  if (currentIndex < content.length) {
+    result.push(content.slice(currentIndex));
+  }
+
+  return result.length > 0 ? result : [content];
+}
+
+export function TranscriptInlineTextContent({
+  content,
+  fileLinkContext,
+}: {
+  content: string;
+  fileLinkContext?: TranscriptFileLinkContext;
+}) {
+  const parts = useMemo(() => splitPlainTextPathParts(content, fileLinkContext), [content, fileLinkContext]);
+  return <>{parts}</>;
+}
+
+export function renderTranscriptTextNodes(children: ReactNode, fileLinkContext?: TranscriptFileLinkContext): ReactNode {
+  return Children.map(children, (child) => {
+    if (typeof child === "string") {
+      return <TranscriptInlineTextContent content={child} fileLinkContext={fileLinkContext} />;
+    }
+    if (!isValidElement(child)) {
+      return child;
+    }
+    if (child.type === "a" || child.type === "code" || child.type === "pre" || child.type === TranscriptInlineCode) {
+      return child;
+    }
+    const props = child.props as { children?: ReactNode };
+    if (props.children === undefined) {
+      return child;
+    }
+    return cloneElement(child as ReactElement<{ children?: ReactNode }>, {
+      children: renderTranscriptTextNodes(props.children, fileLinkContext),
+    });
+  });
 }
 
 export function TranscriptTextContent({
@@ -363,7 +521,7 @@ export function TranscriptTextContent({
       {parts.map((part, index) => (
         part.type === "code"
           ? <TranscriptInlineCode key={`code-${index}`} fileLinkContext={fileLinkContext}>{part.value}</TranscriptInlineCode>
-          : <span key={`text-${index}`}>{part.value}</span>
+          : <TranscriptInlineTextContent key={`text-${index}`} content={part.value} fileLinkContext={fileLinkContext} />
       ))}
     </div>
   );

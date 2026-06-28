@@ -73,13 +73,13 @@ export function TaskDetailsTabContent({
     }
   }, [activeTab]);
 
-  const getTaskFileHash = useCallback(({ path, startDirectory }: TranscriptFileLinkTarget) => getHashForShellRoute({
+  const getTaskFileHash = useCallback(({ path, startDirectory, kind }: TranscriptFileLinkTarget) => getHashForShellRoute({
     view: "code-explorer",
     target: {
       contentType: "task",
       taskId,
       startDirectory,
-      filePath: path,
+      filePath: kind === "directory" ? undefined : path,
     },
   }), [taskId]);
 
