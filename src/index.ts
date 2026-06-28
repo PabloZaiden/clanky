@@ -1,12 +1,15 @@
 /**
- * Main binary entrypoint for the standalone Clanky server.
+ * Main binary entrypoint for the Clanky CLI.
  */
 
-import { startServer } from "./server";
+import { runMain } from "./cli/runtime";
 
 try {
-  await startServer();
+  const exitCode = await runMain(Bun.argv.slice(2));
+  if (exitCode !== undefined) {
+    process.exit(exitCode);
+  }
 } catch (error) {
-  console.error(`Fatal error during startup: ${String(error)}`);
+  console.error(`Fatal error: ${String(error)}`);
   process.exit(1);
 }

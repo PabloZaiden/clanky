@@ -48,6 +48,14 @@ jobs:
         run: |
           set -e
           rm -f /tmp/clanky-pr-binary-smoke.log /tmp/clanky-pr-index.html /tmp/clanky-pr-app.css
+          ./dist/clanky --help > /tmp/clanky-pr-help.log
+          grep -q "Usage:" /tmp/clanky-pr-help.log
+          if ./dist/clanky > /tmp/clanky-pr-empty.log 2>&1; then
+            echo "Plain clanky should print help and exit non-zero"
+            cat /tmp/clanky-pr-empty.log
+            exit 1
+          fi
+          grep -q "Usage:" /tmp/clanky-pr-empty.log
           CLANKY_DISABLE_PASSKEY=1 CLANKY_HOST=127.0.0.1 CLANKY_PORT=3018 CLANKY_DATA_DIR="$(mktemp -d)" ./dist/clanky serve > /tmp/clanky-pr-binary-smoke.log 2>&1 &
           APP_PID=$!
           trap 'kill "$APP_PID" 2>/dev/null || true' EXIT

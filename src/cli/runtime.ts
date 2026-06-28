@@ -157,6 +157,7 @@ export interface CliRuntimeDependencies extends CliOutputDependencies {
   getHostname?: () => string;
   sleep?: (ms: number) => Promise<void>;
   now?: () => Date;
+  startServerFn?: () => Promise<unknown>;
   runCliFn?: typeof runCli;
   updateDependencies?: Partial<CliUpdateDependencies>;
   wsDependencies?: Partial<CliWsDependencies>;
@@ -603,6 +604,7 @@ export async function runCli(
   const now = dependencies.now ?? (() => new Date());
   const out = dependencies.out ?? console.log;
   const err = dependencies.err ?? console.error;
+  const startServerFn = dependencies.startServerFn ?? startServer;
 
   try {
     const command = parseCliCommand(args, {
@@ -616,7 +618,7 @@ export async function runCli(
         out(formatClankyVersion("clanky"));
         return 0;
       case "serve":
-        await startServer();
+        await startServerFn();
         return undefined;
       case "update":
         return await runUpdateCommand(command, {
@@ -677,10 +679,6 @@ export async function runMain(
   args: string[],
   dependencies: CliRuntimeDependencies = {},
 ): Promise<number | undefined> {
-  if (args[0] === "serve") {
-    await startServer();
-    return undefined;
-  }
   const runCliFn = dependencies.runCliFn ?? runCli;
   return await runCliFn(args, dependencies);
 }
