@@ -3,12 +3,17 @@
  */
 
 import type { Chat } from "../../types";
+import type { PersistedMessage } from "../../types/task";
 import { createLogger } from "../../core/logger";
 import { getDatabase } from "../database";
 import { chatToRow, rowToChat, validateChatColumnNames } from "./helpers";
 import { requirePersistenceUserId } from "../ownership";
 
 const log = createLogger("persistence:chats");
+
+function hasMessageContent(message: PersistedMessage): boolean {
+  return message.content.trim().length > 0 || (message.attachments?.length ?? 0) > 0;
+}
 
 const CHAT_LIST_COLUMNS = [
   "id",
@@ -48,6 +53,7 @@ const CHAT_LIST_COLUMNS = [
 ].join(", ");
 
 export function createChatListSnapshot(chat: Chat): Chat {
+  const hasMessages = chat.state.messages.some(hasMessageContent);
   return {
     config: chat.config,
     state: {
@@ -55,6 +61,8 @@ export function createChatListSnapshot(chat: Chat): Chat {
       messages: [],
       logs: [],
       toolCalls: [],
+      hasMessages,
+      hasTranscript: hasMessages || chat.state.toolCalls.length > 0,
     },
   };
 }
